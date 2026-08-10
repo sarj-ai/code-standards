@@ -407,6 +407,22 @@ def test_init_wires_an_empty_pyright_config(tmp_path: Path) -> None:
     }
 
 
+@pytest.mark.parametrize("table", ["pyright", "basedpyright"])
+def test_init_refuses_a_pyproject_pyright_authority_that_cannot_extend_json(tmp_path: Path, table: str) -> None:
+    _ = _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        f'{pyproject.read_text(encoding="utf-8")}\n[tool.{table}]\nextends = ".pyright-strict.json"\n',
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "cannot inherit the canonical JSON configuration" in proc.stderr
+    assert not (tmp_path / "pyrightconfig.json").exists()
+
+
 def test_init_refuses_to_replace_an_existing_pyright_parent(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     config = tmp_path / "pyrightconfig.json"
@@ -761,6 +777,25 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert "uv run --frozen" not in proc.stdout
     assert ".github/workflows/standards.yml" in proc.stdout
+
+
+def test_setup_repairs_an_outdated_managed_yarn_workflow(tmp_path: Path) -> None:
+    package = _typescript_repo(tmp_path) / "package.json"
+    package.write_text('{"name":"web","private":true,"packageManager":"yarn@4.15.0"}\n', encoding="utf-8")
+    (tmp_path / "yarn.lock").write_text("__metadata:\n  version: 8\n", encoding="utf-8")
+    first = _cli("--root", str(tmp_path), "setup", "--no-install")
+    workflow = tmp_path / ".github" / "workflows" / "standards.yml"
+    workflow.write_text(
+        workflow.read_text(encoding="utf-8").replace("--mode=skip-build", "--mode=skip-builds"),
+        encoding="utf-8",
+    )
+
+    second = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert "--mode=skip-builds" not in workflow.read_text(encoding="utf-8")
+    assert "--mode=skip-build" in workflow.read_text(encoding="utf-8")
 
 
 def test_nested_python_project_uses_the_same_isolated_launcher(tmp_path: Path) -> None:

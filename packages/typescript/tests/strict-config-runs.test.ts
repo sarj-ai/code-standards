@@ -106,6 +106,48 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   );
 
   it.each(CONFIG_FACTORIES)(
+    "%s lints dependency-cruiser config without requiring project ownership",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/.dependency-cruiser.cjs"),
+      ]);
+
+      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
+      expect(result?.messages.map((message) => message.ruleId)).toContain("no-var");
+      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
+        "@typescript-eslint/await-thenable",
+      );
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s lints shared ESLint config without requiring project ownership",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/eslint.config.base.js"),
+      ]);
+
+      expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
+      expect(result?.messages.map((message) => message.ruleId)).toContain("no-var");
+      expect(result?.messages.map((message) => message.ruleId)).not.toContain(
+        "@typescript-eslint/await-thenable",
+      );
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
     "%s keeps an owned generic config type-aware by default",
     async (_name, createConfig) => {
       const eslint = new ESLint({

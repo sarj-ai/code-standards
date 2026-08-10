@@ -220,7 +220,7 @@ def install_command(
             return f"pnpm install --no-frozen-lockfile --ignore-scripts{suffix}"
         case PackageManager.YARN:
             if yarn is YarnVariant.BERRY:
-                return "yarn install --mode=skip-builds"
+                return "yarn install --mode=skip-build"
             return "yarn install --ignore-scripts"
         case PackageManager.BUN:
             return "bun install --ignore-scripts"

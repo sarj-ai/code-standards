@@ -285,7 +285,12 @@ def build_plan(
     workflow = root / ".github" / "workflows" / "standards.yml"
     workflow_contents = github_ci_workflow(root, version=manifest.adopted_version())
     existing_gates = standards_check_workflows(root)
-    if existing_gates:
+    if workflow.is_file() and _is_managed_workflow(workflow):
+        if workflow.read_text(encoding="utf-8") == workflow_contents:
+            plan.skips.append((workflow, "already runs the canonical pinned Standards gate"))
+        else:
+            plan.writes.append((workflow, workflow_contents))
+    elif existing_gates:
         names = ", ".join(path.relative_to(root).as_posix() for path in existing_gates)
         plan.skips.append((workflow, f"existing workflow already runs the canonical Standards check: {names}"))
     elif workflow.is_file() and (migrated := _migrate_legacy_workflow_gate(workflow)) is not None:
@@ -306,6 +311,17 @@ def build_plan(
         )
     _note_subproject_destinations(root, plan)
     return plan
+
+
+def _is_managed_workflow(path: Path) -> bool:
+    try:
+        first_line = path.read_text(encoding="utf-8").splitlines()[0]
+    except OSError, IndexError:
+        return False
+    return (
+        first_line.startswith("# Managed by sarj-standards ")
+        and "regenerate with `sarj-standards show ci" in first_line
+    )
 
 
 def _report_independent_roots(
@@ -519,8 +535,18 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
         except tomllib.TOMLDecodeError as exc:
             plan.errors.append(f"cannot safely wire {pyproject}: {exc}")
             return
-        python_target = _python_target(manifest.as_table(parsed))
-        ruff = manifest.as_table(manifest.as_table(manifest.as_table(parsed).get("tool")).get("ruff"))
+        document = manifest.as_table(parsed)
+        python_target = _python_target(document)
+        tool = manifest.as_table(document.get("tool"))
+        pyright_tables = tuple(name for name in ("pyright", "basedpyright") if name in tool)
+        if pyright_tables:
+            tables = " and ".join(f"[tool.{name}]" for name in pyright_tables)
+            plan.errors.append(
+                f"cannot safely wire {pyproject}: {tables} cannot inherit the canonical JSON configuration; "
+                "move those settings to pyrightconfig.json, remove the TOML table, then rerun setup"
+            )
+            return
+        ruff = manifest.as_table(tool.get("ruff"))
         lint = manifest.as_table(ruff.get("lint"))
         conflicts = tuple(
             (key, f"extend-{key}")
@@ -1441,7 +1467,7 @@ def _workflow_run_commands(value: object) -> tuple[str, ...]:
 def _ci_javascript_install(client: PackageManager, yarn: YarnVariant) -> str:
     if client is PackageManager.YARN:
         return (
-            "yarn install --immutable --mode=skip-builds"
+            "yarn install --immutable --mode=skip-build"
             if yarn is YarnVariant.BERRY
             else "yarn install --frozen-lockfile --ignore-scripts"
         )

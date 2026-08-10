@@ -75,7 +75,11 @@ const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
     .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
 );
-const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = ["**/vite.config.ts"];
+const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
+  "**/vite.config.ts",
+  "**/.dependency-cruiser.{js,cjs,mjs,ts,cts,mts}",
+  "**/eslint.config*.{js,cjs,mjs,ts,cts,mts}",
+];
 
 // unicorn ships 341 rules; this config used to run 12 of them. The set below
 // was chosen by RUNNING every non-deprecated unicorn 72 rule over 4,356 deduped
@@ -1046,11 +1050,8 @@ export function createConfig(options = {}) {
   ...(SYNTAX_ONLY_CONFIG_FILES.length === 0
     ? []
     : [{
-      // Project service rejects a file that no discovered tsconfig owns. Vite
-      // configs are commonly kept outside an application's `src`-only
-      // tsconfig. Consumers whose tsconfig owns them can pass
-      // `syntaxOnlyConfigFiles: []`; other unowned files must be named
-      // explicitly rather than losing typed lint through a broad config glob.
+      // Project service rejects conventional tool configs outside a tsconfig.
+      // Pass [] when the project owns them; name other exceptions explicitly.
       files: SYNTAX_ONLY_CONFIG_FILES,
       languageOptions: {
         parserOptions: {

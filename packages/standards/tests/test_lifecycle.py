@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from sarj_standards.libs.adoption import lifecycle, scaffold
+from sarj_standards.libs.adoption import lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager
 
 
@@ -260,6 +260,43 @@ def test_eslint_selection_keeps_owned_projects_when_other_files_are_unowned(tmp_
     assert selection.unowned_count == 1
 
 
+def test_eslint_selection_routes_root_scripts_to_the_adopted_nested_project(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"name":"root"}\n', encoding="utf-8")
+    project = tmp_path / "typescript"
+    project.mkdir()
+    (project / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    (project / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (project / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    source = scripts / "release.mjs"
+    source.write_text("export const release = true;\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        "5.6.8",
+        ("eslint", "markdownlint", "taplo", "yamllint"),
+        ".",
+        "typescript",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    selection = lifecycle.select_eslint_commands(tmp_path, [str(source)], label="analysis")
+
+    assert selection.unowned_count == 0
+    assert len(selection.commands) == 1
+    assert selection.commands[0].cwd == project
+    assert selection.commands[0].argv == (
+        "npm",
+        "exec",
+        "--offline",
+        "--",
+        "eslint",
+        "--config",
+        "eslint.config.mjs",
+        "--",
+        "../scripts/release.mjs",
+    )
+
+
 @pytest.mark.parametrize("root_has_package", [False, True])
 def test_selected_eslint_keeps_a_directory_with_its_nested_project_owner(
     tmp_path: Path, *, root_has_package: bool
@@ -277,8 +314,8 @@ def test_selected_eslint_keeps_a_directory_with_its_nested_project_owner(
 
     assert len(commands) == 1
     assert commands[0].cwd == project
-    assert commands[0].argv[:6] == ("npm", "exec", "--offline", "--", "eslint", "--")
-    assert set(commands[0].argv[6:]) == {"app.ts", "eslint.config.mjs"}
+    assert commands[0].argv[:7] == ("npm", "exec", "--offline", "--", "eslint", "--config", "eslint.config.mjs")
+    assert set(commands[0].argv[8:]) == {"app.ts", "eslint.config.mjs"}
 
 
 def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:
