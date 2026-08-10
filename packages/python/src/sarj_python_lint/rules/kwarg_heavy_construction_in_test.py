@@ -65,7 +65,18 @@ class KwargHeavyConstructionInTest(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_call.py",
-                        "def test_first():\n    assert Call(a=1, b=2, c=3, d=4, e=5, f=6, g=7, h=8, i=9)\n\ndef test_second():\n    assert Call(a=1, b=2, c=3, d=4, e=5, f=6, g=7, h=8, i=9)\n",
+                        "def test_style():\n"
+                        "    style = Style(\n"
+                        '        color="red", bgcolor="black", bold=True, dim=True, italic=True,\n'
+                        "        underline=True, blink=True, blink2=True, reverse=True,\n"
+                        "    )\n"
+                        "    assert str(style)\n\n"
+                        "def test_style_again():\n"
+                        "    other = Style(\n"
+                        '        color="blue", bgcolor="white", bold=False, dim=True, italic=True,\n'
+                        "        underline=True, blink=True, blink2=True, reverse=True,\n"
+                        "    )\n"
+                        "    assert str(other)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_call.py"),
@@ -79,7 +90,18 @@ class KwargHeavyConstructionInTest(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_call.py",
-                        "def build_call(**overrides):\n    return Call(**overrides)\n\ndef test_first():\n    assert build_call(a=1)\n",
+                        "def build_style(**overrides):\n"
+                        "    defaults = dict(\n"
+                        "        dim=True, italic=True, underline=True,\n"
+                        "        blink=True, blink2=True, reverse=True,\n"
+                        "    )\n"
+                        "    return Style(**(defaults | overrides))\n\n"
+                        "def test_style():\n"
+                        '    style = build_style(color="red", bgcolor="black", bold=True)\n'
+                        "    assert str(style)\n\n"
+                        "def test_style_again():\n"
+                        '    other = build_style(color="blue", bgcolor="white", bold=False)\n'
+                        "    assert str(other)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_call.py"),

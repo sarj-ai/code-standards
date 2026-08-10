@@ -153,16 +153,9 @@ resource "google_project_service" "run" {}
 
 def test_flags_a_run_that_is_mostly_disabled_code():
     """The boundary: a genuine disabled block is code-dominant and must still fire."""
-    src = """
-# resource "google_storage_bucket" "old" {
-#   name          = "legacy-artifacts"
-#   location      = "US"
-#   force_destroy = true
-# }
-resource "google_storage_bucket" "new" {}
-"""
+    src = _PUBLIC_EXAMPLES[0].focus_file.source
     diags = _check(src)
-    assert len(diags) == 5
+    assert len(diags) == _PUBLIC_EXAMPLES[0].expected_count
     assert all("Commented-out Terraform" in d.message for d in diags)
 
 

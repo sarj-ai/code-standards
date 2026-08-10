@@ -297,7 +297,16 @@ class PreferLibraryFake(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/fakes/s3.py",
-                        "class FakeS3Client:\n    def put_object(self, **kwargs):\n        return kwargs\n\n    def get_object(self, **kwargs):\n        return kwargs\n\n    def delete_object(self, **kwargs):\n        return kwargs\n",
+                        "class FakeS3Client:\n"
+                        "    def __init__(self):\n"
+                        "        self.objects = {}\n\n"
+                        "    def put_object(self, Bucket, Key, Body):\n"
+                        "        self.objects[(Bucket, Key)] = Body\n"
+                        '        return {"ResponseMetadata": {"HTTPStatusCode": 200}}\n\n'
+                        "    def get_object(self, Bucket, Key):\n"
+                        '        return {"Body": self.objects[(Bucket, Key)]}\n\n'
+                        "    def delete_object(self, Bucket, Key):\n"
+                        "        self.objects.pop((Bucket, Key), None)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/fakes/s3.py"),
