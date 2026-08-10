@@ -137,9 +137,7 @@ def test_verify_tags_process_failure_is_not_reported_as_recovery(
 
     monkeypatch.setattr(release, "verify_remote_release_tags", fail)
 
-    status = cli.main(
-        ["--root", str(tmp_path), "maintain", "release", "verify-tags", "--commit", "publish-sha"]
-    )
+    status = cli.main(["--root", str(tmp_path), "maintain", "release", "verify-tags", "--commit", "publish-sha"])
 
     assert status == 2
     assert capsys.readouterr().err == "error: git ls-remote failed with exit code 128\n"
