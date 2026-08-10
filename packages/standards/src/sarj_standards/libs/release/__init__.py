@@ -42,6 +42,7 @@ from sarj_standards.libs.release.tags import (
     missing_remote_release_tags,
     read_manifest_version,
     validate_release_tag,
+    verify_remote_release_tags,
 )
 from sarj_standards.libs.release.typescript import (
     PackedArtifact,
@@ -93,4 +94,5 @@ __all__ = (
     "verify_built_package",
     "verify_package_tarball",
     "verify_python_wheel_license",
+    "verify_remote_release_tags",
 )

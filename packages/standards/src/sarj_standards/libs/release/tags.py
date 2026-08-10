@@ -174,6 +174,35 @@ def missing_remote_release_tags(
     return tuple(tag for tag in tags if not _remote_tag_exists(resolved, tag, runner=runner))
 
 
+def verify_remote_release_tags(
+    root: Path,
+    *,
+    commit: str,
+    runner: ProcessRunner = run_process,
+) -> tuple[str, ...]:
+    """Return missing manifest tags and reject existing tags bound to the wrong tree."""
+    resolved = root.resolve()
+    if not commit or commit.startswith("-"):
+        msg = "release tag verification requires an explicit publishing commit"
+        raise ValueError(msg)
+    resolved_commit = (
+        runner(
+            ("git", "rev-parse", "--verify", f"{commit}^{{commit}}"),
+            cwd=resolved,
+            capture_output=True,
+        ).stdout.strip()
+        or commit
+    )
+    missing: list[str] = []
+    for target_name in RELEASE_TARGETS:
+        tag = _current_tag(target_name, resolved)
+        if not _remote_tag_exists(resolved, tag, runner=runner):
+            missing.append(tag)
+            continue
+        _require_remote_tag_commit(resolved, tag, target_name, resolved_commit, runner=runner)
+    return tuple(missing)
+
+
 def create_release_tags(
     root: Path,
     targets: tuple[str, ...],
@@ -276,8 +305,33 @@ def _require_remote_tag_commit(
     )
     references = dict(line.split("\t", 1)[::-1] for line in result.stdout.splitlines() if "\t" in line)
     actual = references.get(f"refs/tags/{tag}^{{}}", references.get(f"refs/tags/{tag}"))
+    if actual is None:
+        msg = f"existing remote tag {tag} has no resolvable object"
+        raise ValueError(msg)
+    try:
+        actual_commit = runner(
+            ("git", "rev-parse", "--verify", f"{actual}^{{commit}}"),
+            cwd=root,
+            capture_output=True,
+        ).stdout.strip()
+    except ProcessFailureError as exc:
+        msg = f"existing remote tag {tag} does not resolve to a commit"
+        raise ValueError(msg) from exc
+    if not actual_commit:
+        msg = f"existing remote tag {tag} does not resolve to a commit"
+        raise ValueError(msg)
+    actual = actual_commit
     if actual == commit:
         return
+    try:
+        runner(
+            ("git", "merge-base", "--is-ancestor", actual, commit),
+            cwd=root,
+            capture_output=True,
+        )
+    except ProcessFailureError as exc:
+        msg = f"existing remote tag {tag} points to {actual}, which is not an ancestor of publishing commit {commit}"
+        raise ValueError(msg) from exc
     target_paths = (*RELEASE_ARTIFACT_FILES[target_name], *RELEASE_ARTIFACT_PREFIXES[target_name])
     try:
         runner(

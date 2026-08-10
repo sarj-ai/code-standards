@@ -1615,7 +1615,11 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             print(f"{validated.tag} exactly matches {validated.manifest}")
             return 0
         if args.release_cmd == "verify-tags":
-            missing = release.missing_remote_release_tags(root)
+            missing = (
+                release.verify_remote_release_tags(root, commit=args.release_commit)
+                if args.release_commit
+                else release.missing_remote_release_tags(root)
+            )
             if missing:
                 for tag_name in missing:
                     print(f"missing release tag: {tag_name}")
@@ -1804,7 +1808,12 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     release_commands = release.add_subparsers(dest="release_cmd", required=True)
     tag = release_commands.add_parser("check-tag", help="require a release tag to match its package manifest")
     tag.add_argument("tag")
-    release_commands.add_parser("verify-tags", help="verify all manifest release tags on origin")
+    verify_tags = release_commands.add_parser("verify-tags", help="verify all manifest release tags on origin")
+    verify_tags.add_argument(
+        "--commit",
+        dest="release_commit",
+        help="also require existing tags to match this publishing commit or an unchanged package tree",
+    )
     create_tags = release_commands.add_parser("create-tags", help="create and push manifest release tags")
     create_tags.add_argument(
         "release_targets",
