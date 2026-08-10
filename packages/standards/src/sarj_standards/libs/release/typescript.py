@@ -87,7 +87,7 @@ def _npm_pack_report(output: str) -> dict[str, object]:
     decoder = json.JSONDecoder()
     reports: list[dict[str, object]] = []
     for index, character in enumerate(output):
-        if character != "[":
+        if character not in "[{":
             continue
         try:
             candidate: object
@@ -104,9 +104,24 @@ def _npm_pack_report(output: str) -> dict[str, object]:
 
 
 def _as_pack_report(value: object) -> dict[str, object] | None:
-    if not is_object_list(value) or not value or not is_object_dict(value[0]):
+    if is_object_list(value):
+        if not value or not is_object_dict(value[0]):
+            return None
+        return _valid_pack_report(value[0])
+    if not is_object_dict(value):
         return None
-    report = string_object_dict(value[0], label="npm pack report")
+    reports = tuple(
+        report
+        for item in string_object_dict(value, label="npm pack reports").values()
+        if (report := _valid_pack_report(item)) is not None
+    )
+    return reports[0] if len(reports) == 1 else None
+
+
+def _valid_pack_report(value: object) -> dict[str, object] | None:
+    if not is_object_dict(value):
+        return None
+    report = string_object_dict(value, label="npm pack report")
     return report if "filename" in report and "files" in report else None
 
 

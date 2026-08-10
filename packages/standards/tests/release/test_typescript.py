@@ -12,9 +12,11 @@ from sarj_standards.libs.release import ProcessResult, pack_typescript, run_type
 
 class FakeRunner:
     package_root: Path
+    npm_12_manifest: bool
 
-    def __init__(self, package_root: Path) -> None:
+    def __init__(self, package_root: Path, *, npm_12_manifest: bool = False) -> None:
         self.package_root = package_root
+        self.npm_12_manifest = npm_12_manifest
         self.calls: list[tuple[str, ...]] = []
 
     def __call__(
@@ -43,7 +45,8 @@ class FakeRunner:
             info = tarfile.TarInfo("package/dist/index.js")
             info.size = len(contents)
             package.addfile(info, io.BytesIO(contents))
-        report = [{"filename": archive.name, "files": [{"path": "dist/index.js"}]}]
+        artifact = {"filename": archive.name, "files": [{"path": "dist/index.js"}]}
+        report = {"example": artifact} if self.npm_12_manifest else [artifact]
         return ProcessResult(0, f"build output\n{json.dumps(report)}\n")
 
 
@@ -74,6 +77,15 @@ def test_pack_typescript_uses_argv_and_verifies_archive(tmp_path: Path) -> None:
             str(destination.resolve()),
         )
     ]
+
+
+def test_pack_typescript_accepts_npm_12_object_manifest(tmp_path: Path) -> None:
+    package, _ = _package(tmp_path)
+    runner = FakeRunner(package, npm_12_manifest=True)
+
+    result = pack_typescript(package, tmp_path / "out", runner=runner)
+
+    assert result.path.name == "example-1.0.0.tgz"
 
 
 def test_check_mode_runs_clean_checks_then_pack(tmp_path: Path) -> None:
