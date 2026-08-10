@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.67.6"
+version = "0.67.7"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -31,7 +31,7 @@ Issues = "https://github.com/sarj-ai/standards/issues"
 [dependency-groups]
 dev = [
   "pytest>=9.0",
-  "ruff>=0.15",
+  "ruff>=0.16.1",
   "basedpyright>=1.39",
 ]
 

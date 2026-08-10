@@ -1,6 +1,6 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.13.2"
+version = "0.13.3"
 description = "Deterministic PostgreSQL migration rules for safe, repeatable schema changes."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -33,7 +33,7 @@ Issues = "https://github.com/sarj-ai/standards/issues"
 dev = [
   "pytest>=9.0",
   "pytest-benchmark>=5.2",
-  "ruff>=0.15",
+  "ruff>=0.16.1",
   "basedpyright>=1.39",
 ]
 

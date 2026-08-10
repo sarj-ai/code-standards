@@ -33,8 +33,8 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
         text = workflow.read_text(encoding="utf-8")
         for match in re.finditer(r"(?m)^\s*- uses: astral-sh/setup-uv@[^\n]+$", text):
             following = text[match.end() :].split("\n      - ", 1)[0]
-            if "version: '0.11.32'" not in following:
-                violations.append(f"setup-uv does not pin uv 0.11.32 in {workflow}")
+            if "version: '0.12.3'" not in following:
+                violations.append(f"setup-uv does not pin uv 0.12.3 in {workflow}")
     assert violations == []
 
 
@@ -154,7 +154,7 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
     assert "npm ci --ignore-scripts" in release
     assert 'npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts" --ignore-scripts' in release
     assert "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
-    assert release.count("npm install --global npm@11.19.0 --ignore-scripts") == 2
+    assert release.count("npm install --global npm@12.0.2 --ignore-scripts") == 2
 
     def assert_dependency_free(job: str) -> None:
         match = re.search(rf"(?ms)^  {job}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
