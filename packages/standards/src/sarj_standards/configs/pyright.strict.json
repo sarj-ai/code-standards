@@ -32,6 +32,7 @@
   // Fires on every builder/fluent call (argparse.add_argument, query builders, …)
   // where the returned handle is intentionally discarded — noise, not type safety.
   "reportUnusedCallResult": false,
+  "reportUnusedCoroutine": "error",
 
   "reportUnnecessaryIsInstance": "error",
   // Exhaustive match fallbacks are required by SARJ032 and remain useful to
