@@ -989,6 +989,64 @@ def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
     assert adopted.hook_manager == "lefthook"
 
 
+def test_switching_to_lefthook_retires_only_the_generated_precommit_hook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    config = tmp_path / ".pre-commit-config.yaml"
+    original = config.read_text(encoding="utf-8")
+    config.write_text(
+        original.replace(
+            "      - id: sarj-standards-check\n",
+            "      - id: keep-consumer-hook\n"
+            "        name: keep consumer hook\n"
+            "        entry: true\n"
+            "        language: system\n"
+            "      - id: sarj-standards-check\n",
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  jobs:\n    - name: consumer\n      run: true\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = config.read_text(encoding="utf-8")
+    assert "id: keep-consumer-hook" in updated
+    assert "id: sarj-standards-check" not in updated
+    assert "id: sarj-standards-drift" not in updated
+    assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.hook_manager == "lefthook"
+    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.manager-conflict"]
+
+
+def test_switching_to_lefthook_refuses_a_customized_generated_precommit_hook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "        stages: [pre-commit]\n",
+            "        stages: [pre-commit]\n        args: [--consumer-scope]\n",
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  jobs:\n    - name: consumer\n      run: true\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install")
+
+    assert proc.returncode == 2
+    assert "consumer-owned keys: args" in proc.stderr
+    assert "id: sarj-standards-check" in config.read_text(encoding="utf-8")
+
+
 def test_init_accepts_a_runner_wrapped_lefthook_command(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     (tmp_path / "lefthook.yml").write_text(
@@ -1294,6 +1352,57 @@ def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> N
     findings = doctor.diagnose(tmp_path)
 
     assert [finding for finding in findings if finding.id == "doctor.hooks.precommit"]
+
+
+def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  jobs:\n    - name: standards\n"
+        f"      run: uvx --isolated --python 3.14 --from sarj-standards=={__version__} "
+        "sarj-standards check --staged --trust-repository-code -- {staged_files}\n",
+        encoding="utf-8",
+    )
+
+    conflicts = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.manager-conflict"]
+
+    assert len(conflicts) == 1
+    assert conflicts[0].level is doctor.Level.DRIFT
+    assert "canonical lefthook Standards hook is also active" in conflicts[0].detail
+
+
+def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\n# pre_commit hook-type=pre-commit\n", encoding="utf-8")
+    hook.with_name("pre-commit.legacy").write_text(
+        "#!/bin/sh\nexport LEFTHOOK_BIN=.git/hooks/.sarj-lefthook\n",
+        encoding="utf-8",
+    )
+
+    conflicts = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.manager-conflict"]
+
+    assert len(conflicts) == 1
+    assert conflicts[0].level is doctor.Level.DRIFT
+    assert "installed hook chain includes lefthook" in conflicts[0].detail
+
+
+def test_doctor_warns_when_selected_lefthook_is_not_installed(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  jobs:\n    - name: consumer\n      run: true\n",
+        encoding="utf-8",
+    )
+    assert _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install").returncode == 0
+
+    warnings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.lefthook-install"]
+
+    assert len(warnings) == 1
+    assert warnings[0].level is doctor.Level.WARN
+    assert warnings[0].remediation == "run `sarj-standards maintain hooks install`"
 
 
 @pytest.mark.parametrize(
