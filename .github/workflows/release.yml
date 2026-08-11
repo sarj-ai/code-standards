@@ -46,7 +46,15 @@ jobs:
         run: |
           set -euo pipefail
           deadline=$((SECONDS + 2700))
-          for specification in 'repo-ci.yml|release-ready' 'private-refs.yml|private references'; do
+          for specification in \
+            'repo-ci.yml|release-ready' \
+            'private-refs.yml|private references' \
+            'python-ci.yml|python CI' \
+            'typescript-ci.yml|typescript CI' \
+            'sql-ci.yml|sql CI' \
+            'iac-ci.yml|iac CI' \
+            'tsconfig-ci.yml|tsconfig CI' \
+            'standards-ci.yml|standards CI'; do
             IFS='|' read -r workflow expected_name <<< "$specification"
             while (( SECONDS < deadline )); do
               response="$(gh api --method GET \

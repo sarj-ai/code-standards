@@ -89,8 +89,17 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     for package in ("typescript", "python", "sql", "iac", "standards", "tsconfig"):
         assert f"needs.detect.outputs.{package} == 'true'" in release_safety
     assert "actions: read" in release
-    assert "repo-ci.yml|release-ready" in release
-    assert "private-refs.yml|private references" in release
+    for specification in (
+        "repo-ci.yml|release-ready",
+        "private-refs.yml|private references",
+        "python-ci.yml|python CI",
+        "typescript-ci.yml|typescript CI",
+        "sql-ci.yml|sql CI",
+        "iac-ci.yml|iac CI",
+        "tsconfig-ci.yml|tsconfig CI",
+        "standards-ci.yml|standards CI",
+    ):
+        assert specification in release
     assert "head_sha == $sha" in release
     assert "head_repository.full_name == $repo" in release
     assert '.event == "push"' in release
@@ -186,14 +195,36 @@ def test_release_ready_is_one_stable_required_gate() -> None:
 
     assert workflow.startswith("name: release-ready\n")
     assert "\n  release-ready:\n" in workflow
-    assert "make verify" in workflow
-    assert "make build" in workflow
-    assert "typescript@6.0.3" in workflow
-    assert '"extends": "@sarj/tsconfig/strict.json"' in workflow
-    assert "npm pack --dry-run ./packages/tsconfig" in workflow
+    assert "make verify" not in workflow
+    assert "make build" not in workflow
+    assert "Cross-package repository policy" in workflow
+    assert "packages/standards --locked --dev" in workflow
     assert "cancel-in-progress: true" in workflow
     assert "typescript@6.0.3" in tsconfig_workflow
     assert "typescript@latest" not in tsconfig_workflow
+
+
+def test_parallel_package_workflows_are_always_present_with_stable_contexts() -> None:
+    expected_names = {
+        "python-ci.yml": "name: python package",
+        "typescript-ci.yml": "name: typescript plugin (${{ matrix.node }})",
+        "sql-ci.yml": "name: sql package",
+        "iac-ci.yml": "name: iac package",
+        "tsconfig-ci.yml": "name: tsconfig package",
+        "standards-ci.yml": "name: standards package",
+    }
+    for filename, job_name in expected_names.items():
+        workflow = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
+        trigger = workflow.partition("\npermissions:\n")[0]
+        assert "paths:" not in trigger
+        assert job_name in workflow
+
+
+def test_pre_push_keeps_complete_tests_in_ci() -> None:
+    lefthook = (REPO_ROOT / "lefthook.yml").read_text(encoding="utf-8")
+    pre_push = lefthook.partition("\npre-push:\n")[2]
+    assert "run: make lint" in pre_push
+    assert "make verify" not in pre_push
 
 
 def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:

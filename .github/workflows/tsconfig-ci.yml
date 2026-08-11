@@ -3,13 +3,7 @@ name: tsconfig CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'packages/tsconfig/**'
-      - '.github/workflows/tsconfig-ci.yml'
   pull_request:
-    paths:
-      - 'packages/tsconfig/**'
-      - '.github/workflows/tsconfig-ci.yml'
 
 permissions:
   contents: read
@@ -20,6 +14,7 @@ concurrency:
 
 jobs:
   test:
+    name: tsconfig package
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:

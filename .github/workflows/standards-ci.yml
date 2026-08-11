@@ -3,31 +3,7 @@ name: standards CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'packages/standards/**'
-      - '.github/workflows/standards-ci.yml'
-      # test_code_allocation.py compares all three sibling registries against each
-      # other and against the hooks file; a code claimed in another package must
-      # fail here, where the whole namespace is importable at once.
-      - 'packages/*/src/*/rules/_registry.py'
-      - '.pre-commit-hooks.yaml'
-      - 'pyproject.toml'
-      - 'packages/python/pyproject.toml'
-      - 'packages/sql/pyproject.toml'
-      - 'packages/iac/pyproject.toml'
   pull_request:
-    paths:
-      - 'packages/standards/**'
-      - '.github/workflows/standards-ci.yml'
-      # test_code_allocation.py compares all three sibling registries against each
-      # other and against the hooks file; a code claimed in another package must
-      # fail here, where the whole namespace is importable at once.
-      - 'packages/*/src/*/rules/_registry.py'
-      - '.pre-commit-hooks.yaml'
-      - 'pyproject.toml'
-      - 'packages/python/pyproject.toml'
-      - 'packages/sql/pyproject.toml'
-      - 'packages/iac/pyproject.toml'
 
 permissions:
   contents: read
@@ -38,6 +14,7 @@ concurrency:
 
 jobs:
   portability-smoke:
+    name: standards portability (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +71,7 @@ jobs:
           fi
 
   test:
+    name: standards package
     runs-on: ubuntu-latest
     timeout-minutes: 40
     defaults:

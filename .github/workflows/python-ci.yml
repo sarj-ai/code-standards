@@ -3,29 +3,7 @@ name: python CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'packages/python/**'
-      - '.github/workflows/python-ci.yml'
-      # The strict configs these jobs lint against are generated at the root from
-      # packages/standards, so a change there changes this job's
-      # result without touching this package.
-      - 'packages/standards/src/sarj_standards/configs/**'
-      - '.ruff-strict.toml'
-      - '.pyright-strict.json'
-      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
-      - '.pre-commit-hooks.yaml'
   pull_request:
-    paths:
-      - 'packages/python/**'
-      - '.github/workflows/python-ci.yml'
-      # The strict configs these jobs lint against are generated at the root from
-      # packages/standards, so a change there changes this job's
-      # result without touching this package.
-      - 'packages/standards/src/sarj_standards/configs/**'
-      - '.ruff-strict.toml'
-      - '.pyright-strict.json'
-      # test_hook_sync.py reads it: a deleted hook must fail this job, not ship.
-      - '.pre-commit-hooks.yaml'
 
 permissions:
   contents: read
@@ -36,6 +14,7 @@ concurrency:
 
 jobs:
   test:
+    name: python package
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:

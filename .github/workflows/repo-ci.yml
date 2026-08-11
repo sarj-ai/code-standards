@@ -34,42 +34,12 @@ jobs:
           version: '0.12.3'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: |
-            apps/docs/package-lock.json
-            packages/typescript/package-lock.json
-      - name: Install locked toolchains
+      - name: Install repository-policy toolchain
         run: |
           uv python install 3.14
-          for project in python sql iac standards; do
-            uv sync --project "packages/$project" --locked --dev
-          done
-          npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
-          npm --prefix apps/docs ci --ignore-scripts --no-audit --no-fund
-      - name: Complete source verification
-        run: make verify
-      - name: Build publishable packages
-        run: make build
-      - name: Test the published tsconfig contract with TypeScript 6.0.3
-        run: |
-          consumer="$RUNNER_TEMP/tsconfig-consumer"
-          mkdir -p "$consumer/src"
-          printf '{"private":true,"type":"module"}\n' > "$consumer/package.json"
-          npm install --prefix "$consumer" --ignore-scripts --no-audit --no-fund --package-lock=false \
-            typescript@6.0.3 "$GITHUB_WORKSPACE/packages/tsconfig"
-          cat > "$consumer/tsconfig.json" <<'EOF'
-          {
-            "extends": "@sarj/tsconfig/strict.json",
-            "include": ["src/**/*"],
-            "compilerOptions": {"noEmit": true}
-          }
-          EOF
-          printf 'export const value: string = "verified";\n' > "$consumer/src/index.ts"
-          "$consumer/node_modules/.bin/tsc" --project "$consumer/tsconfig.json"
-          npm pack --dry-run ./packages/tsconfig
+          uv sync --project packages/standards --locked --dev
+      - name: Cross-package repository policy
+        run: make check-versions-synced check-file-conventions check-no-private-refs
       - name: Release causality
         env:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
