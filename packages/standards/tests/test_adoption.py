@@ -1520,6 +1520,11 @@ def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: s
     assert "permissions:\n  contents: read" in rendered.stdout
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in rendered.stdout
     assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in rendered.stdout
+    uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
+    uv_required = manifest.text_field(uv_config, "required-version")
+    assert uv_required is not None
+    uv_version = uv_required.removeprefix("==")
+    assert f"version: '{uv_version}'" in rendered.stdout
     assert "sarj-standards check" in rendered.stdout
     if ecosystem == "python":
         assert "uv sync --locked" not in rendered.stdout

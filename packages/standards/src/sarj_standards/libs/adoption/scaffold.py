@@ -1338,6 +1338,7 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         "          persist-credentials: false",
         "      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0",
         "        with:",
+        "          version: '0.12.3'",
         "          enable-cache: true",
         "          cache-dependency-glob: '**/uv.lock'",
     ]
