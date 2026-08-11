@@ -126,6 +126,12 @@ def test_ruff_config_is_valid_toml() -> None:
     assert re.search(r'select\s*=\s*\[\s*"ALL"\s*\]', text)
 
 
+def test_pyright_allows_directly_awaited_discarded_results() -> None:
+    text = PYRIGHT_STRICT.read_text()
+    assert '"reportUnusedCallResult": false' in text
+    assert '"reportUnusedCoroutine": "error"' in text
+
+
 def test_requested_ruff_families_remain_globally_enabled() -> None:
     data = tomllib.loads(RUFF_STRICT.read_text())
     lint = manifest.table_field(manifest.as_table(data), "lint")
