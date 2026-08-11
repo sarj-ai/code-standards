@@ -289,18 +289,33 @@ def _invoke_python_projects(
         return (ToolReport(name, Completion.FAILED, issues=(issue,), analyzer_id=AnalyzerId(name)),)
     reports: list[ToolReport] = []
     for project, scoped_files in projects:
-        argv = (_project_analyzer(project, "basedpyright"), "--outputjson", *scoped_files)
+        argv = (_project_analyzer(project, "basedpyright"), "--outputjson")
         project_id = project.relative_to(root).as_posix() or None
+        report = _invoke(
+            name,
+            argv,
+            cwd=project,
+            root=root,
+            runner=runner,
+            parser=parser,
+            invocation_id=project_id,
+            file_count=len(scoped_files),
+        )
+        selected = frozenset(_relative(Path(path), root) for path in scoped_files)
         reports.append(
-            _invoke(
-                name,
-                argv,
-                cwd=project,
-                root=root,
-                runner=runner,
-                parser=parser,
-                invocation_id=project_id,
-                file_count=len(scoped_files),
+            ToolReport(
+                report.name,
+                report.completion,
+                diagnostics=tuple(
+                    diagnostic for diagnostic in report.diagnostics if diagnostic.location.path in selected
+                ),
+                issues=report.issues,
+                analyzer_id=report.analyzer_id,
+                invocation_id=report.invocation_id,
+                version=report.version,
+                duration_ms=report.duration_ms,
+                file_count=report.file_count,
+                cache_status=report.cache_status,
             )
         )
     return tuple(reports)
@@ -795,7 +810,7 @@ def _eslint_json_argv(argv: Sequence[str]) -> tuple[str, ...]:
     except ValueError as exc:
         msg = "ESLint command does not contain an eslint executable"
         raise ValueError(msg) from exc
-    values[index:index] = ["--format", "json", "--no-warn-ignored"]
+    values[index:index] = ["--format", "json", "--no-warn-ignored", "--no-cache"]
     return tuple(values)
 
 

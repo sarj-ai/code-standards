@@ -432,6 +432,7 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
         text_excluded_paths=() if current is None else current.text_excluded_paths,
         doctor_excluded_paths=() if current is None else current.doctor_excluded_paths,
         diagnostic_baseline=None if current is None else current.diagnostic_baseline,
+        ci_bootstrap=() if current is None else current.ci_bootstrap,
     )
     contents = desired.render()
     if current is not None:
@@ -1334,7 +1335,13 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         python_root = root / python_dest
         if (python_root / "uv.lock").is_file():
             project = "" if python_dest == "." else f" --project {shlex.quote(python_dest)}"
-            lines.extend(("      - name: Install Python dependencies", f"        run: uv sync --locked{project}"))
+            workspace = " --all-packages" if _is_uv_workspace(python_root) else ""
+            lines.extend(
+                ("      - name: Install Python dependencies", f"        run: uv sync --locked{project}{workspace}")
+            )
+    for index, command in enumerate(() if adopted is None else adopted.ci_bootstrap, start=1):
+        label = "Bootstrap analysis inputs" if index == 1 else f"Bootstrap analysis inputs ({index})"
+        lines.extend((f"      - name: {label}", f"        run: {json.dumps(command)}"))
     lines.extend(
         (
             "      - name: Run standards",
@@ -1342,6 +1349,18 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         )
     )
     return "\n".join(lines) + "\n"
+
+
+def _is_uv_workspace(project: Path) -> bool:
+    """Return whether the locked Python project declares uv workspace members."""
+    pyproject = project / "pyproject.toml"
+    try:
+        parsed: object = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except OSError, tomllib.TOMLDecodeError:
+        return False
+    tool = manifest.table_field(manifest.as_table(parsed), "tool")
+    uv = manifest.table_field(tool, "uv")
+    return bool(manifest.table_field(uv, "workspace"))
 
 
 def standards_check_workflows(root: Path) -> tuple[Path, ...]:
