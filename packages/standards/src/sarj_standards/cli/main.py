@@ -439,12 +439,14 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
     try:
         _ = manifest.load(root)
     except (OSError, TypeError, ValueError) as exc:
+        migration_error: OSError | TypeError | ValueError | None = None
         try:
             legacy = manifest.load_for_setup(root)
-        except OSError, TypeError, ValueError:
+        except (OSError, TypeError, ValueError) as legacy_error:
             legacy = None
+            migration_error = legacy_error
         if legacy is None:
-            print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
+            print(f"error: cannot plan upgrade: {migration_error or exc}", file=sys.stderr)
             return 2
         if args.check:
             print(
@@ -722,18 +724,22 @@ def cmd_check(args: _Args) -> int:
     root = _resolve_dest(args.dest)
     if args.staged:
         try:
-            staged = _staged_files(root)
+            staged_names = _staged_file_names(root)
+            staged = _safe_staged_paths(root, staged_names)
         except (OSError, subprocess.SubprocessError) as exc:
             if args.output_format != "text":
                 return _emit_analysis_report(args, root, _machine_input_error(root, f"cannot read staged files: {exc}"))
             print(f"error: cannot read staged files: {exc}", file=sys.stderr)
             return 2
         if args.files:
+            requested = frozenset(_repository_relative_names(root, args.files))
+            selected_staged_names = [name for name in staged_names if name in requested]
             staged_set = frozenset(staged)
             args.files = [path for path in _safe_staged_paths(root, args.files) if path in staged_set]
         else:
+            selected_staged_names = staged_names
             args.files = staged
-        drifted = _unstaged_versions(root, args.files)
+        drifted = _unstaged_versions(root, selected_staged_names)
         if drifted:
             message = (
                 "--staged found files with unstaged content; run through pre-commit "
@@ -1118,8 +1124,8 @@ def _check_staged_adoption_health(
     return 1 if drifted else 0
 
 
-def _staged_files(root: Path) -> list[str]:
-    """Return staged, non-deleted files as absolute paths safe for any caller CWD."""
+def _staged_file_names(root: Path) -> list[str]:
+    """Return repository-relative index paths before worktree safety filtering."""
     git = shutil.which("git")
     if git is None:
         msg = "git is required for --staged"
@@ -1131,8 +1137,8 @@ def _staged_files(root: Path) -> list[str]:
         capture_output=True,
         env=_git_environment(),
     )
-    names = (part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0"))
-    return _safe_staged_paths(root, names)
+    names = [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
+    return list(dict.fromkeys(names))
 
 
 def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
@@ -1170,20 +1176,33 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
         msg = "git is required for --staged"
         raise OSError(msg)
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
-        [git, "diff", "--name-only", "--diff-filter=ACMR", "-z"],
+        [git, "diff", "--name-only", "-z"],
         cwd=root,
         check=True,
         capture_output=True,
         env=_git_environment(),
     )
     unstaged = {part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part}
-    repository = root.resolve()
-    selected = {
-        resolved.relative_to(repository).as_posix()
-        for path in staged_paths
-        if (resolved := Path(path).resolve()).is_relative_to(repository)
-    }
+    selected = set(_repository_relative_names(root, staged_paths))
     return tuple(sorted(unstaged & selected))
+
+
+def _repository_relative_names(root: Path, paths: Iterable[str]) -> list[str]:
+    """Normalize supplied paths without requiring their worktree versions to exist."""
+    repository = root.resolve()
+    relative_names: list[str] = []
+    for raw in paths:
+        supplied = Path(raw)
+        lexical = Path(
+            os.path.abspath(  # ruff: ignore[os-path-abspath] -- preserve a missing worktree path lexically.
+                supplied if supplied.is_absolute() else repository / supplied
+            )
+        )
+        try:
+            relative_names.append(lexical.relative_to(repository).as_posix())
+        except ValueError:
+            continue
+    return list(dict.fromkeys(relative_names))
 
 
 def _git_environment() -> dict[str, str]:
@@ -1252,12 +1271,17 @@ def cmd_format(args: _Args) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+    adopted = _declared_manifest(args)
+    ecosystems = scaffold.detect(root) if adopted is None else scaffold.detect_adopted(root, adopted)
     commands = (
-        lifecycle.selected_format_commands(root, args.files)
-        if args.files
-        else lifecycle.format_commands(scaffold.detect(root))
+        lifecycle.selected_format_commands(root, args.files) if args.files else lifecycle.format_commands(ecosystems)
     )
     return lifecycle.execute(commands)
+
+
+def _staged_files(root: Path) -> list[str]:
+    """Return staged, non-deleted files as absolute paths safe for any caller CWD."""
+    return _safe_staged_paths(root, _staged_file_names(root))
 
 
 def cmd_inspect(args: _Args) -> int:

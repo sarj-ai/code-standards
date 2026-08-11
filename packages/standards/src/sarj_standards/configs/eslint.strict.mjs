@@ -510,6 +510,8 @@ const BUILD_OUTPUT_IGNORES = [
   "**/.svelte-kit/**",
   "**/.astro/**",
   "**/.wrangler/**",
+  "**/.pnp.cjs",
+  "**/.pnp.loader.mjs",
   "**/storybook-static/**",
   "**/__generated__/**",
   "**/generated/**",

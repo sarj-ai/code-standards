@@ -44,6 +44,11 @@ LOCKFILES: Final[tuple[tuple[str, PackageManager], ...]] = (
 _ESLINT: Final = "eslint"
 _YARN_BERRY_MINIMUM_MAJOR: Final = 2
 _YAML_ENTRY = re.compile(r'^\s*(?P<key>"[^"]+"|\'[^\']+\'|[^:#]+):\s*(?P<value>[^#\n]+?)\s*(?:#.*)?$')
+_EXACT_VERSION = re.compile(
+    r"^(?P<version>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)"
+    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)"
+    r"(?:\+sha(?:224|256|384|512)\.[0-9a-f]+)?$"
+)
 
 
 def detect(root: Path) -> PackageManager:
@@ -93,6 +98,21 @@ def yarn_variant(root: Path) -> YarnVariant:
     if (root / ".yarnrc.yml").is_file():
         return YarnVariant.BERRY
     return YarnVariant.CLASSIC
+
+
+def declared_version(root: Path, client: PackageManager) -> str | None:
+    """Return an exact declared client version without Corepack's integrity suffix."""
+    declared = _declared_manager_spec(root / "package.json")
+    if declared is None:
+        return None
+    name, separator, raw_version = declared.partition("@")
+    if name != client or not separator:
+        return None
+    match = _EXACT_VERSION.fullmatch(raw_version)
+    if match is None:
+        msg = f"packageManager {declared!r} must pin an exact semantic version"
+        raise ValueError(msg)
+    return match.group("version")
 
 
 def _declared_manager_spec(package_json: Path) -> str | None:

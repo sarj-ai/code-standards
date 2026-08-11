@@ -8,4 +8,13 @@ One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and reposi
 uv tool install --python 3.14 sarj-standards
 ```
 
+## Contributing
+
+Install uv 0.12.3, Python 3.14, Node 22.16, and GNU Make. Then bootstrap a fresh checkout:
+
+```bash
+make setup
+make verify
+```
+
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/standards)

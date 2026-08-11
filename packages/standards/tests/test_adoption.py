@@ -285,6 +285,58 @@ def test_setup_one_way_migrates_the_final_schema_less_manifest(tmp_path: Path) -
     assert "schema = 3" in (tmp_path / manifest.MANIFEST_NAME).read_text(encoding="utf-8")
 
 
+def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    manifest_path.write_text(
+        'version = "0.42.0"\nconfigs = [\n  "ruff",\n]\nprofile = "application"\n\n'
+        '[dest]\npython = "."\ntypescript = "."\n\n'
+        '[verify]\npaths = ["src"]\n\n'
+        '[hooks]\nmanager = "none"\n\n'
+        '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ052"]\n\n'
+        '[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ052"]\nreason = "legacy fixtures"\n\n'
+        "[consumer]\nkeep = true\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.profile == "application"
+    assert adopted.verify_paths == ("src",)
+    assert adopted.hook_manager == "none"
+    assert adopted.excluded_paths == ("generated/**",)
+    assert adopted.excluded_rules == ("python:SARJ052",)
+    assert adopted.exclusion_overrides == (
+        manifest.ExclusionOverride(("tests/**",), ("python:SARJ052",), "legacy fixtures"),
+    )
+    assert "[consumer]\nkeep = true" in manifest_path.read_text(encoding="utf-8")
+    assert not (tmp_path / ".pre-commit-config.yaml").exists()
+
+
+def test_setup_refuses_to_discard_a_schema_less_python_baseline(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    baseline = tmp_path / "python-baseline.json"
+    baseline.write_text('{"src/app.py":{"SARJ052":1}}\n', encoding="utf-8")
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    manifest_path.write_text(
+        'version = "0.42.0"\nconfigs = ["ruff"]\n\n'
+        '[dest]\npython = "."\ntypescript = "."\n\n'
+        '[gradual]\npython_baseline = "python-baseline.json"\n',
+        encoding="utf-8",
+    )
+    before = manifest_path.read_bytes()
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "cannot losslessly migrate legacy [gradual].python_baseline" in proc.stderr
+    assert manifest_path.read_bytes() == before
+    assert baseline.read_text(encoding="utf-8") == '{"src/app.py":{"SARJ052":1}}\n'
+
+
 def test_doctor_repair_uses_the_same_one_way_manifest_migration(tmp_path: Path) -> None:
     _ = _typescript_repo(tmp_path)
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
@@ -1520,6 +1572,11 @@ def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: s
     assert "permissions:\n  contents: read" in rendered.stdout
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in rendered.stdout
     assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in rendered.stdout
+    uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
+    uv_required = manifest.text_field(uv_config, "required-version")
+    assert uv_required is not None
+    uv_version = uv_required.removeprefix("==")
+    assert f"version: '{uv_version}'" in rendered.stdout
     assert "sarj-standards check" in rendered.stdout
     if ecosystem == "python":
         assert "uv sync --locked" not in rendered.stdout

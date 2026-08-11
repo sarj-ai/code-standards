@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+from importlib.metadata import version as distribution_version
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
+import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_standards.libs.adoption import lifecycle, manifest, scaffold
+import sarj_standards.cli.main as cli
+from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def _project(root: Path, name: str) -> Path:
@@ -67,6 +78,43 @@ def test_fix_uses_the_isolated_ruff_without_requiring_a_consumer_lockfile(tmp_pa
     assert all("--frozen" not in command.argv for command in commands)
 
 
+def test_fix_routes_to_the_adopted_nested_typescript_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web = tmp_path / "apps" / "web"
+    web.mkdir(parents=True)
+    (tmp_path / "package.json").write_text(
+        '{"name":"workspace","private":true,"packageManager":"pnpm@11.0.0"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "pnpm-workspace.yaml").write_text('packages:\n  - "apps/*"\n', encoding="utf-8")
+    (web / "package.json").write_text('{"name":"web","private":true}\n', encoding="utf-8")
+    (tmp_path / ".sarj-standards.toml").write_text(
+        manifest.Manifest(
+            version=distribution_version("sarj-standards"),
+            configs=("eslint",),
+            python_dest=".",
+            typescript_dest="apps/web",
+        ).render(),
+        encoding="utf-8",
+    )
+    planned: list[lifecycle.Command] = []
+
+    def clean_diagnosis(_root: Path) -> list[doctor.Finding]:
+        return []
+
+    def capture(commands: Iterable[lifecycle.Command]) -> int:
+        planned.extend(commands)
+        return 0
+
+    monkeypatch.setattr(doctor, "diagnose", clean_diagnosis)
+    monkeypatch.setattr(lifecycle, "execute", capture)
+
+    assert cli.main(["--root", str(tmp_path), "fix"]) == 0
+    assert [command.cwd for command in planned] == [web]
+
+
 def test_selected_fix_routes_only_the_requested_python_and_typescript_files(tmp_path: Path) -> None:
     python_file = tmp_path / "service.py"
     python_file.write_text("value=1\n", encoding="utf-8")
@@ -112,11 +160,140 @@ def test_precommit_install_is_explicitly_scoped_to_commit_stage(tmp_path: Path, 
     assert command.argv[-4:] == ("pre-commit", "install", "--hook-type", "pre-commit")
 
 
-def test_precommit_install_skips_linked_worktree_gitfile(tmp_path: Path) -> None:
+def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hooks = tmp_path / ".git" / "hooks"
+    hooks.mkdir(parents=True)
+    hook = hooks / "pre-commit"
+    hook.write_text(
+        "#!/usr/bin/env bash\n"
+        "INSTALL_PYTHON=/removed/uv-cache/archive/bin/python\n"
+        "ARGS=(hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit)\n"
+        'if [ -x "$INSTALL_PYTHON" ]; then\n'
+        '    exec "$INSTALL_PYTHON" -mpre_commit "${ARGS[@]}"\n'
+        "elif command -v pre-commit > /dev/null; then\n"
+        '    exec pre-commit "${ARGS[@]}"\n'
+        "else\n"
+        "    exit 1\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+
+    def installed_hook(_root: Path) -> Path:
+        return hook
+
+    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle._precommit_hook_path", installed_hook)
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    capture = tmp_path / "uvx-args"
+    uvx = binaries / "uvx"
+    uvx.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\n', encoding="utf-8")
+    uvx.chmod(0o755)
+    bash = shutil.which("bash")
+    assert bash is not None
+
+    lifecycle.harden_precommit_hook(tmp_path)
+    completed = subprocess.run(
+        (bash, str(hook)),
+        check=False,
+        env={"PATH": f"{binaries}{os.pathsep}/usr/bin:/bin", "CAPTURE": str(capture)},
+    )
+
+    assert completed.returncode == 0
+    arguments = capture.read_text(encoding="utf-8")
+    assert f"pre-commit=={distribution_version('pre-commit')}" in arguments
+    assert "hook-impl" in arguments
+
+
+def test_precommit_installer_hardens_the_generated_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hardened: list[Path] = []
+
+    def find_true(_executable: str) -> str:
+        return "/usr/bin/true"
+
+    monkeypatch.setattr(shutil, "which", find_true)
+    monkeypatch.setattr(lifecycle, "harden_precommit_hook", hardened.append)
+
+    status = lifecycle.execute([lifecycle.Command("pre-commit hooks", ("pre-commit", "install"), tmp_path)])
+
+    assert status == 0
+    assert hardened == [tmp_path]
+
+
+def test_precommit_install_includes_linked_worktree_gitfile(tmp_path: Path) -> None:
     (tmp_path / ".git").write_text("gitdir: ../.git/worktrees/fixture\n", encoding="utf-8")
     ecosystems = scaffold.Ecosystems(True, False, python_root=tmp_path)
 
-    assert lifecycle.install_commands(tmp_path, ecosystems) == []
+    [command] = lifecycle.install_commands(tmp_path, ecosystems)
+
+    assert command.label == "pre-commit hooks"
+
+
+def test_linked_worktree_hook_survives_its_install_cache_deletion(tmp_path: Path) -> None:
+    primary = tmp_path / "primary"
+    linked = tmp_path / "linked checkout"
+    primary.mkdir()
+    subprocess.run(("git", "init", "-q", "-b", "main"), cwd=primary, check=True)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=primary, check=True)
+    subprocess.run(("git", "config", "user.email", "test@example.invalid"), cwd=primary, check=True)
+    (primary / ".pre-commit-config.yaml").write_text("repos: []\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=primary, check=True)
+    subprocess.run(("git", "commit", "-qm", "fixture"), cwd=primary, check=True)
+    subprocess.run(("git", "worktree", "add", "-q", "-b", "linked", str(linked)), cwd=primary, check=True)
+    subprocess.run(
+        (sys.executable, "-m", "pre_commit", "install", "--hook-type", "pre-commit"),
+        cwd=linked,
+        check=True,
+    )
+    hook = Path(
+        subprocess.run(
+            ("git", "rev-parse", "--git-path", "hooks/pre-commit"),
+            cwd=linked,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    original_mode = hook.stat().st_mode
+    cache_python = tmp_path / "deleted cache" / "bin" / "python"
+    cache_python.parent.mkdir(parents=True)
+    cache_python.write_text("temporary", encoding="utf-8")
+    lines = hook.read_text(encoding="utf-8").splitlines()
+    hook.write_text(
+        "\n".join(f"INSTALL_PYTHON={cache_python}" if line.startswith("INSTALL_PYTHON=") else line for line in lines)
+        + "\n",
+        encoding="utf-8",
+    )
+    hook.chmod(original_mode)
+    cache_python.unlink()
+    cache_python.parent.rmdir()
+    cache_python.parent.parent.rmdir()
+
+    lifecycle.harden_precommit_hook(linked)
+
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    capture = tmp_path / "uvx-args"
+    uvx = binaries / "uvx"
+    uvx.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\n', encoding="utf-8")
+    uvx.chmod(0o755)
+    bash = shutil.which("bash")
+    assert bash is not None
+    completed = subprocess.run(
+        (bash, str(hook)),
+        cwd=linked,
+        check=False,
+        env={"PATH": f"{binaries}{os.pathsep}/usr/bin:/bin", "CAPTURE": str(capture)},
+    )
+
+    assert completed.returncode == 0
+    assert hook.stat().st_mode == original_mode
+    assert f"pre-commit=={distribution_version('pre-commit')}" in capture.read_text(encoding="utf-8")
 
 
 def test_staged_eslint_uses_detected_project_cwd_and_package_manager(tmp_path: Path) -> None:

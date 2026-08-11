@@ -23,7 +23,7 @@ from typing import (
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.linting import runner
 
-from . import manifest, packagemanager, scaffold
+from . import manifest, packagemanager, scaffold, transaction
 
 
 if TYPE_CHECKING:
@@ -34,6 +34,12 @@ _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules"
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
 _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 _COMMAND_TIMEOUT = timedelta(minutes=10)
+_GIT_DISCOVERY_TIMEOUT = timedelta(seconds=5)
+_GIT_SAFE_ENV = frozenset(
+    {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
+)
+_PRECOMMIT_HOOK_LABEL = "pre-commit hooks"
+_PRECOMMIT_UVX_MARKER = "# sarj-standards: cache-independent pinned pre-commit fallback"
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +98,8 @@ def install_commands(
                 ecosystems.python_root,
             )
         )
-    if (root / ".git").is_dir() and hook_manager == "pre-commit":
+    git_metadata = root / ".git"
+    if (git_metadata.is_dir() or git_metadata.is_file()) and hook_manager == "pre-commit":
         hook_argv = (
             "uvx",
             "--from",
@@ -102,7 +109,7 @@ def install_commands(
             "--hook-type",
             "pre-commit",
         )
-        commands.append(Command("pre-commit hooks", hook_argv, root))
+        commands.append(Command(_PRECOMMIT_HOOK_LABEL, hook_argv, root))
     return commands
 
 
@@ -372,7 +379,58 @@ def execute(commands: Iterable[Command]) -> int:
             return 2
         if completed.returncode:
             return completed.returncode
+        if command.label == _PRECOMMIT_HOOK_LABEL:
+            try:
+                harden_precommit_hook(command.cwd)
+            except (OSError, subprocess.SubprocessError) as exc:
+                sys.stderr.write(f"error: installed pre-commit hook is not durable: {exc}\n")
+                return 2
     return 0
+
+
+def harden_precommit_hook(root: Path) -> None:
+    """Add a pinned uvx fallback to pre-commit's generated hook launcher."""
+    hook = _precommit_hook_path(root)
+    text = hook.read_text(encoding="utf-8")
+    if _PRECOMMIT_UVX_MARKER in text:
+        return
+    fallback_point = "elif command -v pre-commit > /dev/null; then"
+    if fallback_point not in text:
+        msg = f"{hook} does not contain pre-commit's expected launcher fallback"
+        raise OSError(msg)
+    version = distribution_version("pre-commit")
+    fallback = (
+        f"{_PRECOMMIT_UVX_MARKER}\n"
+        "elif command -v uvx > /dev/null; then\n"
+        f'    exec uvx --isolated --python 3.14 --from pre-commit=={version} pre-commit "${{ARGS[@]}}"\n'
+    )
+    transaction.atomic_write_text(hook.parent, hook, text.replace(fallback_point, fallback + fallback_point, 1))
+
+
+def _precommit_hook_path(root: Path) -> Path:
+    git = shutil.which("git")
+    if git is None:
+        msg = "git is required to resolve the installed pre-commit hook"
+        raise OSError(msg)
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git query.
+        (git, "rev-parse", "--git-path", "hooks/pre-commit"),
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env=_git_environment(),
+        text=True,
+        timeout=_GIT_DISCOVERY_TIMEOUT.total_seconds(),
+    )
+    resolved = Path(completed.stdout.strip())
+    return resolved if resolved.is_absolute() else root / resolved
+
+
+def _git_environment() -> dict[str, str]:
+    return {
+        name: value
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- hook-local Git variables must not redirect discovery.
+        if name in _GIT_SAFE_ENV
+    }
 
 
 def _command_environment(command: Command) -> dict[str, str] | None:

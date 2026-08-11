@@ -79,6 +79,9 @@ _PYTHON_MAJOR: Final = 3
 _LEGACY_WORKFLOW_VERIFY: Final = re.compile(
     r"(?P<command>(?:[^\s\"']*/)?sarj-standards(?:\s+--root\s+[^\s;&|]+)?)\s+verify\b"
 )
+_SCHEMA_LESS_VERSION_LINE: Final = re.compile(r'(?m)^[ \t]*version\s*=\s*"[^"]*"\s*$')
+_SCHEMA_LESS_CONFIGS_START: Final = re.compile(r"^[ \t]*configs\s*=")
+_FIRST_TOML_TABLE: Final = re.compile(r"(?m)^\s*\[")
 
 _RUFF_EXTEND = re.compile(r"^[ \t]*\[tool\.ruff\][ \t]*$", re.MULTILINE)
 _RUFF_LINT_SECTION = re.compile(
@@ -141,6 +144,26 @@ def detect(
             if install_root is not None and client is PackageManager.YARN
             else YarnVariant.CLASSIC
         ),
+    )
+
+
+def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
+    """Resolve only the ecosystem destinations recorded during setup."""
+    python = bool({"ruff", "pyright"}.intersection(adopted.configs))
+    typescript = "eslint" in adopted.configs
+    detected = detect(
+        root,
+        python_dest=adopted.python_dest if python else None,
+        typescript_dest=adopted.typescript_dest if typescript else None,
+    )
+    return Ecosystems(
+        python=python,
+        typescript=typescript,
+        python_root=detected.python_root if python else None,
+        typescript_root=detected.typescript_root if typescript else None,
+        typescript_install_root=detected.typescript_install_root if typescript else None,
+        client=detected.client,
+        yarn=detected.yarn,
     )
 
 
@@ -441,7 +464,8 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
         except ValueError:
             strict = None
         if strict is None:
-            plan.writes.append((path, contents))
+            legacy_text = path.read_text(encoding="utf-8")
+            plan.writes.append((path, _migrate_schema_less_manifest(legacy_text, desired)))
             plan.notes.append("migrated the legacy manifest to the current schema")
             return
         if strict != desired:
@@ -452,6 +476,41 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
             plan.notes.append("updated the manifest to match the requested capabilities and profile")
             return
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
+
+
+def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
+    """Add current metadata without discarding consumer-owned TOML tables."""
+    version_line = _SCHEMA_LESS_VERSION_LINE.search(text)
+    if version_line is None:  # The legacy loader proves this before planning.
+        return text
+    prefix = f'schema = {manifest.MANIFEST_SCHEMA}\nbundle = "{desired.version}"\nrule_profile = "all"\n'
+    migrated = f"{text[: version_line.start()]}{prefix}{text[version_line.end() :]}"
+    migrated = _without_schema_less_configs(migrated)
+    disabled = tuple(name for name in manifest.ALL_CONFIGS if name not in desired.configs)
+    disabled_text = ", ".join(f'"{name}"' for name in disabled)
+    policy = f"\n[capabilities]\ndisable = [{disabled_text}]\n"
+    table = _FIRST_TOML_TABLE.search(migrated)
+    if table is None:
+        return f"{migrated.rstrip()}\n{policy}"
+    return f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
+
+
+def _without_schema_less_configs(text: str) -> str:
+    """Remove the validated legacy configs array, including multiline arrays."""
+    lines = text.splitlines(keepends=True)
+    kept: list[str] = []
+    skipping = False
+    depth = 0
+    for line in lines:
+        if not skipping and _SCHEMA_LESS_CONFIGS_START.match(line):
+            skipping = True
+        if skipping:
+            depth += line.count("[") - line.count("]")
+            if depth <= 0:
+                skipping = False
+            continue
+        kept.append(line)
+    return "".join(kept)
 
 
 def _generated_python_exclusions(repository: Path, python_root: Path | None) -> tuple[str, ...]:
@@ -720,6 +779,13 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
     client = plan.ecosystems.client
     install_root = plan.ecosystems.typescript_install_root or root
     _plan_npm_overrides(install_root, plan, client)
+    typescript_root = plan.ecosystems.typescript_root
+    if (
+        client is PackageManager.YARN
+        and typescript_root is not None
+        and typescript_root.resolve() != install_root.resolve()
+    ):
+        _plan_yarn_workspace_peers(typescript_root, plan)
     # pnpm 11 reads overrides from pnpm-workspace.yaml even for a standalone
     # package. Setup creates that policy file below, so the ensuing install is
     # always a workspace install for pnpm.
@@ -820,6 +886,27 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
         f"{override_target}:\n{printed}\n"
         f"    {client} cannot resolve the tree without them -- eslint-plugin-react"
         " peers eslint <=9.7 and the unicorn floor needs >=10.4."
+    )
+
+
+def _plan_yarn_workspace_peers(typescript_root: Path, plan: Plan) -> None:
+    """Declare ESLint peers in the Yarn workspace that imports them."""
+    package_json = typescript_root / "package.json"
+    if not package_json.is_file():
+        plan.errors.append(f"cannot adopt TypeScript in {typescript_root}: package.json is missing")
+        return
+    try:
+        merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), None, client=PackageManager.YARN)
+    except (TypeError, ValueError) as exc:
+        plan.errors.append(f"cannot safely merge tested ESLint peers into {package_json}: {exc}")
+        return
+    if merged is None:
+        plan.skips.append((package_json, "Yarn workspace already pins the tested ESLint peers"))
+        return
+    plan.writes.append((package_json, merged))
+    plan.notes.append(
+        f"pinned the tested ESLint peers in Yarn workspace {package_json};"
+        " Plug'n'Play resolves config imports from that workspace rather than its install root"
     )
 
 
@@ -1284,6 +1371,7 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         else adopted.typescript_dest
     )
     ecosystems = detect(root, python_dest=python_override, typescript_dest=typescript_override)
+    install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = _runner_prefix(version=version)
     lines = [
         f"# Managed by sarj-standards {version}; regenerate with `sarj-standards show ci --output .github/workflows/standards.yml`.",
@@ -1310,6 +1398,7 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         "          persist-credentials: false",
         "      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0",
         "        with:",
+        "          version: '0.12.3'",
         "          enable-cache: true",
         "          cache-dependency-glob: '**/uv.lock'",
     ]
@@ -1324,13 +1413,24 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
                     "          node-version: 24",
                 )
             )
+        if (
+            ecosystems.client is PackageManager.NPM
+            and install_root is not None
+            and (npm_version := packagemanager.declared_version(install_root, PackageManager.NPM)) is not None
+        ):
+            lines.extend(
+                (
+                    "      - name: Activate declared npm version",
+                    f"        run: npm install --global npm@{npm_version} --ignore-scripts",
+                )
+            )
         javascript_command = _ci_javascript_install(ecosystems.client, ecosystems.yarn)
         if ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
             javascript_command = f"corepack enable && {javascript_command}"
         lines.extend(("      - name: Install JavaScript dependencies", f"        run: {javascript_command}"))
-        install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         if install_root is not None and install_root != root:
-            lines.append(f"        working-directory: {install_root.relative_to(root).as_posix()}")
+            relative_install_root = install_root.relative_to(root).as_posix()
+            lines.append(f"        working-directory: {json.dumps(relative_install_root)}")
     if ecosystems.python:
         python_root = root / python_dest
         if (python_root / "uv.lock").is_file():

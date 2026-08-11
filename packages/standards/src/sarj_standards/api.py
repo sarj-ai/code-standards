@@ -393,7 +393,16 @@ class Standards:
             scaffold,
         )
 
-        return _operation_result(lifecycle.execute(lifecycle.format_commands(scaffold.detect(self.root))))
+        try:
+            adopted = load_manifest(self.root)
+            ecosystems = scaffold.detect(self.root) if adopted is None else scaffold.detect_adopted(self.root, adopted)
+        except (OSError, TypeError, ValueError) as exc:
+            return Result(
+                Status.INVALID,
+                findings=(Finding("fix.input.invalid", "error", str(exc)),),
+                exit_code=_INVALID_EXIT,
+            )
+        return _operation_result(lifecycle.execute(lifecycle.format_commands(ecosystems)))
 
     def doctor(self) -> Result:
         diagnosed = diagnose(self.root)

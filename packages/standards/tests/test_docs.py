@@ -145,6 +145,8 @@ def test_sync_is_deterministic_and_check_then_passes(tmp_path: Path) -> None:
     assert second.status == 0
     assert docs.check(tmp_path).status == 0
     assert "uv tool install --python 3.14 sarj-standards" in rendered
+    assert "Install uv 0.12.3, Python 3.14, Node 22.16, and GNU Make" in rendered
+    assert "make setup\nmake verify" in rendered
     assert "[Documentation](https://code-standards.sarj.ai/)" in rendered
     assert "## Rule catalog" not in rendered
     for relative in GENERATED_READMES:

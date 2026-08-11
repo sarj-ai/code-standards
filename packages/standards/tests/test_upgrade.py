@@ -267,6 +267,33 @@ def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsy
     assert source.read_text(encoding="utf-8") == "export const value = 1;\n"
 
 
+def test_update_refuses_to_discard_a_legacy_python_baseline(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\n',
+        encoding="utf-8",
+    )
+    baseline = tmp_path / "python-baseline.json"
+    baseline.write_text('{"service.py":{"SARJ052":1}}\n', encoding="utf-8")
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    manifest_path.write_text(
+        'version = "0.42.0"\nconfigs = ["ruff"]\n\n'
+        '[dest]\npython = "."\ntypescript = "."\n\n'
+        '[gradual]\npython_baseline = "python-baseline.json"\n',
+        encoding="utf-8",
+    )
+    before = manifest_path.read_bytes()
+
+    status = _main(["update", "--offline", "--no-install", str(tmp_path)])
+
+    assert status == 2
+    assert "cannot losslessly migrate legacy [gradual].python_baseline" in capsys.readouterr().err
+    assert manifest_path.read_bytes() == before
+    assert baseline.read_text(encoding="utf-8") == '{"service.py":{"SARJ052":1}}\n'
+
+
 def test_update_check_explains_the_safe_legacy_migration(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "fixture"\nversion = "0.0.0"\n',
