@@ -191,6 +191,7 @@ def test_release_ready_is_one_stable_required_gate() -> None:
     assert "typescript@6.0.3" in workflow
     assert '"extends": "@sarj/tsconfig/strict.json"' in workflow
     assert "npm pack --dry-run ./packages/tsconfig" in workflow
+    assert "cancel-in-progress: true" in workflow
     assert "typescript@6.0.3" in tsconfig_workflow
     assert "typescript@latest" not in tsconfig_workflow
 

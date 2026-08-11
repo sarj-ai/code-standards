@@ -10,7 +10,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # A completed runner can occasionally remain stuck in GitHub's finalizer.
+  # The newest main revision supersedes it and must be able to make progress.
+  cancel-in-progress: true
 
 jobs:
   release-ready:
