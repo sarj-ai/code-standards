@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from importlib.metadata import version as distribution_version
 import json
+import os
 from pathlib import Path
+import shutil
+import subprocess
 
 import pytest
 
@@ -110,6 +114,62 @@ def test_precommit_install_is_explicitly_scoped_to_commit_stage(tmp_path: Path, 
     command = lifecycle.install_commands(tmp_path, ecosystems)[-1]
 
     assert command.argv[-4:] == ("pre-commit", "install", "--hook-type", "pre-commit")
+
+
+def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(tmp_path: Path) -> None:
+    hooks = tmp_path / ".git" / "hooks"
+    hooks.mkdir(parents=True)
+    hook = hooks / "pre-commit"
+    hook.write_text(
+        "#!/usr/bin/env bash\n"
+        "INSTALL_PYTHON=/removed/uv-cache/archive/bin/python\n"
+        "ARGS=(hook-impl --config=.pre-commit-config.yaml --hook-type=pre-commit)\n"
+        'if [ -x "$INSTALL_PYTHON" ]; then\n'
+        '    exec "$INSTALL_PYTHON" -mpre_commit "${ARGS[@]}"\n'
+        "elif command -v pre-commit > /dev/null; then\n"
+        '    exec pre-commit "${ARGS[@]}"\n'
+        "else\n"
+        "    exit 1\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    capture = tmp_path / "uvx-args"
+    uvx = binaries / "uvx"
+    uvx.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\n', encoding="utf-8")
+    uvx.chmod(0o755)
+
+    lifecycle.harden_precommit_hook(tmp_path)
+    completed = subprocess.run(
+        (str(hook),),
+        check=False,
+        env={"PATH": f"{binaries}{os.pathsep}/usr/bin:/bin", "CAPTURE": str(capture)},
+    )
+
+    assert completed.returncode == 0
+    arguments = capture.read_text(encoding="utf-8")
+    assert f"pre-commit=={distribution_version('pre-commit')}" in arguments
+    assert "hook-impl" in arguments
+
+
+def test_precommit_installer_hardens_the_generated_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hardened: list[Path] = []
+
+    def find_true(_executable: str) -> str:
+        return "/usr/bin/true"
+
+    monkeypatch.setattr(shutil, "which", find_true)
+    monkeypatch.setattr(lifecycle, "harden_precommit_hook", hardened.append)
+
+    status = lifecycle.execute([lifecycle.Command("pre-commit hooks", ("pre-commit", "install"), tmp_path)])
+
+    assert status == 0
+    assert hardened == [tmp_path]
 
 
 def test_precommit_install_skips_linked_worktree_gitfile(tmp_path: Path) -> None:

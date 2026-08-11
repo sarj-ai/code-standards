@@ -720,6 +720,13 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
     client = plan.ecosystems.client
     install_root = plan.ecosystems.typescript_install_root or root
     _plan_npm_overrides(install_root, plan, client)
+    typescript_root = plan.ecosystems.typescript_root
+    if (
+        client is PackageManager.YARN
+        and typescript_root is not None
+        and typescript_root.resolve() != install_root.resolve()
+    ):
+        _plan_yarn_workspace_peers(typescript_root, plan)
     # pnpm 11 reads overrides from pnpm-workspace.yaml even for a standalone
     # package. Setup creates that policy file below, so the ensuing install is
     # always a workspace install for pnpm.
@@ -820,6 +827,27 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
         f"{override_target}:\n{printed}\n"
         f"    {client} cannot resolve the tree without them -- eslint-plugin-react"
         " peers eslint <=9.7 and the unicorn floor needs >=10.4."
+    )
+
+
+def _plan_yarn_workspace_peers(typescript_root: Path, plan: Plan) -> None:
+    """Declare ESLint peers in the Yarn workspace that imports them."""
+    package_json = typescript_root / "package.json"
+    if not package_json.is_file():
+        plan.errors.append(f"cannot adopt TypeScript in {typescript_root}: package.json is missing")
+        return
+    try:
+        merged = _merged_npm_overrides(package_json.read_text(encoding="utf-8"), None, client=PackageManager.YARN)
+    except (TypeError, ValueError) as exc:
+        plan.errors.append(f"cannot safely merge tested ESLint peers into {package_json}: {exc}")
+        return
+    if merged is None:
+        plan.skips.append((package_json, "Yarn workspace already pins the tested ESLint peers"))
+        return
+    plan.writes.append((package_json, merged))
+    plan.notes.append(
+        f"pinned the tested ESLint peers in Yarn workspace {package_json};"
+        " Plug'n'Play resolves config imports from that workspace rather than its install root"
     )
 
 

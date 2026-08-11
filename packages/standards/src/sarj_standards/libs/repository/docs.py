@@ -109,6 +109,11 @@ def _root_readme(
         f"# {title}",
         _string(standards, "description"),
         "```bash\nuv tool install --python 3.14 sarj-standards\n```",
+        (
+            "## Contributing\n\n"
+            "Install uv 0.12.3, Python 3.14, Node 22.16, and GNU Make. Then bootstrap a fresh checkout:\n\n"
+            "```bash\nmake setup\nmake verify\n```"
+        ),
         f"[Documentation]({_DOCUMENTATION_URL}) · [Source]({_source_url(standards)})",
     ]
     return "\n\n".join(sections) + "\n"

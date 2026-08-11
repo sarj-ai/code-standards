@@ -12,6 +12,7 @@ import pytest
 
 from sarj_standards.api import Standards
 import sarj_standards.cli.main as cli
+from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 
 
@@ -83,6 +84,70 @@ def test_global_root_equals_form_is_valid_after_the_command(tmp_path: Path) -> N
     assert cli.main(["setup", f"--root={tmp_path}", "--no-install"]) == 0
     assert cli.main(["doctor", f"--root={tmp_path}"]) == 0
     assert cli.main(["exclude", "list", f"--root={tmp_path}"]) == 0
+
+
+def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    web = tmp_path / "apps" / "web"
+    source = web / "src"
+    source.mkdir(parents=True)
+    (tmp_path / "package.json").write_text(
+        json.dumps(
+            {
+                "name": "workspace",
+                "private": True,
+                "packageManager": "yarn@4.15.0",
+                "workspaces": ["apps/*"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "yarn.lock").write_text("__metadata:\n  version: 8\n", encoding="utf-8")
+    (web / "package.json").write_text('{"name":"web","private":true,"type":"module"}\n', encoding="utf-8")
+    (source / "index.ts").write_text("export {};\n", encoding="utf-8")
+    binaries = tmp_path / "test-bin"
+    binaries.mkdir()
+    yarn = binaries / "yarn"
+    yarn.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = install ]; then : > .pnp.cjs; exit 0; fi\n'
+        'if [ "$1" = exec ] && [ "$2" = eslint ] && grep -q \'"eslint"\' package.json; then echo "[]"; exit 0; fi\n'
+        "exit 127\n",
+        encoding="utf-8",
+    )
+    yarn.chmod(0o755)
+    monkeypatch.setenv(
+        "PATH",
+        f"{binaries}{os.pathsep}{os.environ['PATH']}",  # ruff: ignore[banned-api] -- retain the test runner's tool path behind the fake Yarn executable.
+    )
+
+    assert (
+        cli.main(
+            [
+                "--root",
+                str(tmp_path),
+                "setup",
+                "--hooks",
+                "none",
+                "--typescript-dest",
+                "apps/web",
+            ]
+        )
+        == 0
+    )
+    _ = capsys.readouterr()
+    assert cli.main(["--root", str(tmp_path), "doctor"]) == 0
+    _ = capsys.readouterr()
+    assert cli.main(["--root", str(tmp_path), "check", "--trust-repository-code"]) == 0
+
+    root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    web_package: object = json.loads((web / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    assert "resolutions" in as_table(root_package)
+    assert manifest.eslint_peers().items() <= manifest.table_field(as_table(web_package), "devDependencies").items()
 
 
 def test_unified_ratchet_initializes_and_checks_a_suppression_budget(tmp_path: Path) -> None:
