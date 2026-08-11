@@ -108,6 +108,7 @@ from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
 )
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
+from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
     StoreInsertRequiresOnConflict,
@@ -140,6 +141,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferStructOverNamedtuple.id: PreferStructOverNamedtuple,
         NoCommentCruft.id: NoCommentCruft,
         StoreInsertRequiresOnConflict.id: StoreInsertRequiresOnConflict,
+        SourceCoupledTest.id: SourceCoupledTest,
         NoQueryWithManyJoins.id: NoQueryWithManyJoins,
         NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
         NoSelectStar.id: NoSelectStar,

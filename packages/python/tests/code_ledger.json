@@ -115,5 +115,6 @@
   "SARJ098": "no-duplicate-dunder-all-entry",
   "SARJ099": "redundant-module-docstring",
   "SARJ400": "invalid-pydantic-field-default",
-  "SARJ401": "no-frozen-after-validator-field-write"
+  "SARJ401": "no-frozen-after-validator-field-write",
+  "SARJ402": "source-coupled-test"
 }

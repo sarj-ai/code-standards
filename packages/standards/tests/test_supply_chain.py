@@ -74,7 +74,7 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     assert "workflow_dispatch" not in trigger
     assert "tags:" not in trigger
     assert "branches: [main]" in trigger
-    assert release.count("uv build\n") == 4
+    assert release.count("uv build\n") == 4  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert release.count("*.tar.gz") >= 8
     assert re.search(r"(?m)^\s+path: .*dist/\*\s*$", release) is None
     assert "pypa/gh-action-pypi-publish@" in release
@@ -83,7 +83,7 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
 def test_release_waits_for_exact_revision_safety_checks() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
-    assert "\n  release-safety:\n" in release
+    assert "\n  release-safety:\n" in release  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert "release-safety:\n    needs: detect\n" in release
     release_safety = release.partition("\n  release-safety:\n")[2].partition("\n  detect:\n")[0]
     for package in ("typescript", "python", "sql", "iac", "standards", "tsconfig"):
@@ -112,17 +112,19 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
 
 def test_typescript_release_does_not_emit_source_maps() -> None:
     config = (REPO_ROOT / "packages/typescript/tsup.config.ts").read_text(encoding="utf-8")
-    assert "sourcemap: false" in config
+    assert "sourcemap: false" in config  # sarj-noqa: SARJ402 -- build config text is the packaging-policy contract
 
 
 def test_typescript_prepack_builds_clean_source_before_verifying_exports() -> None:
     manifest = (REPO_ROOT / "packages/typescript/package.json").read_text(encoding="utf-8")
-    assert '"prepack": "npm run build && npm run verify-package"' in manifest
+    assert (  # sarj-noqa: SARJ402 -- manifest text is the packaging-policy contract
+        '"prepack": "npm run build && npm run verify-package"' in manifest
+    )
 
 
 def test_release_has_no_tag_writer_or_write_capable_token() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    assert "\n  tag:\n" not in release
+    assert "\n  tag:\n" not in release  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert "contents: write" not in release
     assert "git push" not in release
 
@@ -130,7 +132,9 @@ def test_release_has_no_tag_writer_or_write_capable_token() -> None:
 def test_release_tags_publish_a_github_release_for_new_standards_versions() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release-tags.yml").read_text(encoding="utf-8")
 
-    assert "standards_tag: ${{ steps.recovery.outputs.standards_tag }}" in workflow
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        "standards_tag: ${{ steps.recovery.outputs.standards_tag }}" in workflow
+    )
     assert "STANDARDS_TAG: ${{ needs.preflight.outputs.standards_tag }}" in workflow
     assert 'case "$release_status" in' in workflow
     assert "404)" in workflow
@@ -140,7 +144,9 @@ def test_release_tags_publish_a_github_release_for_new_standards_versions() -> N
 
 def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    assert "environment: npm-release" not in release
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        "environment: npm-release" not in release
+    )
     assert "environment: npm-typescript-release" in release
     assert "environment: npm-tsconfig-release" in release
     assert release.count("artifact_sha256:") == 6
@@ -151,7 +157,9 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
 def test_pypi_publishers_exclude_checksum_manifests() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
-    assert release.count("path: verified-dist") == 4
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        release.count("path: verified-dist") == 4
+    )
     assert release.count("verified-dist/SHA256SUMS") == 4
     assert release.count("Stage verified distributions for publication") == 4
     assert release.count("cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/") == 4
@@ -162,7 +170,7 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     typescript_ci = (REPO_ROOT / ".github/workflows/typescript-ci.yml").read_text(encoding="utf-8")
 
-    assert "npm ci --ignore-scripts" in release
+    assert "npm ci --ignore-scripts" in release  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
     assert 'npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts" --ignore-scripts' in release
     assert "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
     assert release.count("npm install --global npm@12.0.2 --ignore-scripts") == 2
@@ -195,7 +203,9 @@ def test_release_ready_is_one_stable_required_gate() -> None:
     workflow = (REPO_ROOT / ".github/workflows/repo-ci.yml").read_text(encoding="utf-8")
     tsconfig_workflow = (REPO_ROOT / ".github/workflows/tsconfig-ci.yml").read_text(encoding="utf-8")
 
-    assert workflow.startswith("name: release-ready\n")
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
+        workflow.startswith("name: release-ready\n")
+    )
     assert "\n  release-ready:\n" in workflow
     assert "make verify" not in workflow
     assert "make build" not in workflow
@@ -232,7 +242,7 @@ def test_pre_push_keeps_complete_tests_in_ci() -> None:
 def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
     workflow = (REPO_ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
 
-    assert "branches: [main]" in workflow
+    assert "branches: [main]" in workflow  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
     assert "schedule:" not in workflow
     assert "WORKERS_CI_COMMIT_SHA: ${{ github.sha }}" in workflow
     assert "Verify production credentials" in workflow
@@ -256,7 +266,9 @@ def test_python_publishers_smoke_and_bind_wheels_and_sdists(
     executable: str,
 ) -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    assert f'uv pip install --python "$RUNNER_TEMP/{package}-wheel/bin/python" dist/*.whl' in release
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
+        f'uv pip install --python "$RUNNER_TEMP/{package}-wheel/bin/python" dist/*.whl' in release
+    )
     assert f'uv pip install --python "$RUNNER_TEMP/{package}-sdist/bin/python"' in release
     assert f"import {module}" in release
     assert f'bin/{executable}" --help' in release

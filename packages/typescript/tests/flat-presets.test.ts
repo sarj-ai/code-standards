@@ -18,6 +18,7 @@ import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import plugin, {
+  advisoryRules,
   applicationOnlyRules,
   recommendedRules,
   strictRules,
@@ -112,7 +113,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
     expect(weaker).toEqual([]);
   });
 
-  it.each(PRESETS)("%s treats every active custom rule as an error", (name) => {
+  it.each(PRESETS)("%s treats only calibrated advisory rules as warnings", (name) => {
     const entries = Object.entries(plugin.configs[name].rules);
     const nonErrors = entries
       .filter(([, setting]) => {
@@ -122,6 +123,6 @@ describe("configs.recommended / configs.strict are flat config", () => {
         return severity !== "error";
       })
       .map(([rule]) => rule);
-    expect(nonErrors).toEqual([]);
+    expect(nonErrors).toEqual(advisoryRules.map((rule) => `@sarj/${rule}`).sort());
   });
 });

@@ -24,7 +24,7 @@ dependencies = [
   "PyYAML==6.0.3",
   "ruff==0.16.1",
   "sarj-iac-lint==0.9.4",
-  "sarj-python-lint==0.67.10",
+  "sarj-python-lint==0.67.11",
   "sarj-sql-lint==0.13.3",
   "sqlfluff==4.2.2",
 ]

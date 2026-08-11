@@ -40,6 +40,7 @@ import applicationConfig, {
 import strictConfig, {
   createConfig as createStrictConfig,
 } from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
+import { advisoryRules } from "../src/index.js";
 
 /**
  * Paths chosen to exercise every `files:`-scoped block in the config, because a
@@ -198,7 +199,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const warnings = Object.entries(plainConfig.rules ?? {})
       .filter(([, setting]) => severityOf(setting) === 1)
       .map(([rule]) => rule);
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual(advisoryRules.map((rule) => `@sarj/${rule}`));
 
     // Component identifiers are PascalCase, while component filenames remain
     // kebab-case under the shared filename policy.
@@ -245,8 +246,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     );
   });
 
-  it("keeps every enabled custom rule at error severity", () => {
-    const nonErrors = [strictConfig, applicationConfig]
+  it("keeps only calibrated advisory custom rules below error severity", () => {
+    const nonErrors = new Set([strictConfig, applicationConfig]
       .flatMap((config) => config as Linter.Config[])
       .flatMap((entry) => Object.entries(entry.rules ?? {}))
       .filter(
@@ -254,8 +255,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
           rule.startsWith("@sarj/") && setting !== "off" && setting !== 0,
       )
       .filter(([, setting]) => severityOf(setting) !== "error")
-      .map(([rule]) => rule);
-    expect(nonErrors).toEqual([]);
+      .map(([rule]) => rule));
+    expect([...nonErrors].sort()).toEqual(advisoryRules.map((rule) => `@sarj/${rule}`).sort());
   });
 
   /**
