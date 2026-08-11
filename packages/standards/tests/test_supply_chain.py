@@ -103,6 +103,8 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     assert "head_sha == $sha" in release
     assert "head_repository.full_name == $repo" in release
     assert '.event == "push"' in release
+    assert "actions/runs/$run_id/jobs" in release
+    assert "pending_jobs == 0 && successful_jobs > 0" in release
     assert "timed out waiting for $expected_name" in release
     assert release.count("needs: [detect, release-safety]") == 6
     assert "needs.release-safety.result == 'success'" in release
