@@ -22,10 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-_VERSION_LINE = re.compile(r'(?m)^version\s*=\s*"[^"]*"\s*$')
 _BUNDLE_LINE = re.compile(r'(?m)^bundle\s*=\s*"[^"]*"\s*$')
-_CONFIGS_LINE = re.compile(r"(?m)^configs\s*=\s*\[[^\n]*\]\s*$")
-_FIRST_TABLE = re.compile(r"(?m)^\s*\[")
 _INSTALL_REMEDIABLE_FINDING_IDS = frozenset(
     {
         "doctor.eslint.override",
@@ -228,24 +225,6 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         preconditions,
         preexisting_drift,
     )
-
-
-def _migrate_v1_manifest(text: str, adopted: manifest.Manifest) -> str:
-    """Add schema-2 policy metadata without rewriting consumer-owned tables."""
-    version_line = _VERSION_LINE.search(text)
-    if version_line is None:  # guarded by the caller; retain a total helper.
-        return text
-    prefix = f'schema = {manifest.MANIFEST_SCHEMA}\nbundle = "{manifest.adopted_version()}"\nrule_profile = "all"\n'
-    migrated = f"{text[: version_line.start()]}{prefix}{text[version_line.start() :]}"
-    migrated = _VERSION_LINE.sub("", migrated, count=1)
-    migrated = _CONFIGS_LINE.sub("", migrated, count=1)
-    disabled = tuple(name for name in manifest.ALL_CONFIGS if name not in adopted.configs)
-    disabled_text = ", ".join(f'"{name}"' for name in disabled)
-    policy = f"\n[capabilities]\ndisable = [{disabled_text}]\n"
-    table = _FIRST_TABLE.search(migrated)
-    if table is None:
-        return f"{migrated.rstrip()}\n{policy}"
-    return f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
 
 
 def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str]) -> scaffold.Ecosystems:

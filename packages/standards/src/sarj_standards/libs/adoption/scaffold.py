@@ -79,6 +79,9 @@ _PYTHON_MAJOR: Final = 3
 _LEGACY_WORKFLOW_VERIFY: Final = re.compile(
     r"(?P<command>(?:[^\s\"']*/)?sarj-standards(?:\s+--root\s+[^\s;&|]+)?)\s+verify\b"
 )
+_SCHEMA_LESS_VERSION_LINE: Final = re.compile(r'(?m)^[ \t]*version\s*=\s*"[^"]*"\s*$')
+_SCHEMA_LESS_CONFIGS_START: Final = re.compile(r"^[ \t]*configs\s*=")
+_FIRST_TOML_TABLE: Final = re.compile(r"(?m)^\s*\[")
 
 _RUFF_EXTEND = re.compile(r"^[ \t]*\[tool\.ruff\][ \t]*$", re.MULTILINE)
 _RUFF_LINT_SECTION = re.compile(
@@ -441,7 +444,8 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
         except ValueError:
             strict = None
         if strict is None:
-            plan.writes.append((path, contents))
+            legacy_text = path.read_text(encoding="utf-8")
+            plan.writes.append((path, _migrate_schema_less_manifest(legacy_text, desired)))
             plan.notes.append("migrated the legacy manifest to the current schema")
             return
         if strict != desired:
@@ -452,6 +456,41 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
             plan.notes.append("updated the manifest to match the requested capabilities and profile")
             return
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
+
+
+def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
+    """Add current metadata without discarding consumer-owned TOML tables."""
+    version_line = _SCHEMA_LESS_VERSION_LINE.search(text)
+    if version_line is None:  # The legacy loader proves this before planning.
+        return text
+    prefix = f'schema = {manifest.MANIFEST_SCHEMA}\nbundle = "{desired.version}"\nrule_profile = "all"\n'
+    migrated = f"{text[: version_line.start()]}{prefix}{text[version_line.end() :]}"
+    migrated = _without_schema_less_configs(migrated)
+    disabled = tuple(name for name in manifest.ALL_CONFIGS if name not in desired.configs)
+    disabled_text = ", ".join(f'"{name}"' for name in disabled)
+    policy = f"\n[capabilities]\ndisable = [{disabled_text}]\n"
+    table = _FIRST_TOML_TABLE.search(migrated)
+    if table is None:
+        return f"{migrated.rstrip()}\n{policy}"
+    return f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
+
+
+def _without_schema_less_configs(text: str) -> str:
+    """Remove the validated legacy configs array, including multiline arrays."""
+    lines = text.splitlines(keepends=True)
+    kept: list[str] = []
+    skipping = False
+    depth = 0
+    for line in lines:
+        if not skipping and _SCHEMA_LESS_CONFIGS_START.match(line):
+            skipping = True
+        if skipping:
+            depth += line.count("[") - line.count("]")
+            if depth <= 0:
+                skipping = False
+            continue
+        kept.append(line)
+    return "".join(kept)
 
 
 def _generated_python_exclusions(repository: Path, python_root: Path | None) -> tuple[str, ...]:

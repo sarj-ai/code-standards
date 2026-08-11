@@ -439,12 +439,14 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
     try:
         _ = manifest.load(root)
     except (OSError, TypeError, ValueError) as exc:
+        migration_error: OSError | TypeError | ValueError | None = None
         try:
             legacy = manifest.load_for_setup(root)
-        except OSError, TypeError, ValueError:
+        except (OSError, TypeError, ValueError) as legacy_error:
             legacy = None
+            migration_error = legacy_error
         if legacy is None:
-            print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
+            print(f"error: cannot plan upgrade: {migration_error or exc}", file=sys.stderr)
             return 2
         if args.check:
             print(

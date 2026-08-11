@@ -296,7 +296,9 @@ def load_for_setup(root: Path) -> Manifest | None:
         return legacy
 
 
-def _load_schema_less_manifest(root: Path) -> Manifest | None:
+def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the complete legacy policy atomically.
+    root: Path,
+) -> Manifest | None:
     path = manifest_path(root)
     try:
         parsed: object = tomllib.loads(path.read_text(encoding="utf-8"))
@@ -323,12 +325,34 @@ def _load_schema_less_manifest(root: Path) -> Manifest | None:
         typescript_dest = _dest_value(dest, "typescript")
     except TypeError:
         return None
+    gradual_table = table_field(data, "gradual")
+    if "python_baseline" in gradual_table:
+        _ = _relative_file(root, gradual_table, "python_baseline")
+        msg = (
+            "cannot losslessly migrate legacy [gradual].python_baseline to the fingerprint-based "
+            "[baseline].diagnostics format; preserve the legacy manifest and replace or retire its baseline "
+            "before rerunning setup"
+        )
+        raise ValueError(msg)
+    verify_table = table_field(data, "verify")
+    hooks_table = table_field(data, "hooks")
+    exclude_table = table_field(data, "exclude")
+    raw_hook_manager = hooks_table.get("manager", "pre-commit")
+    if not isinstance(raw_hook_manager, str) or raw_hook_manager not in HOOK_MANAGERS:
+        msg = f"manifest [hooks].manager must be one of: {', '.join(HOOK_MANAGERS)}"
+        raise ValueError(msg)
+    hook_manager: HookManager = raw_hook_manager
     return Manifest(
         version=declared,
         configs=tuple(dict.fromkeys(item for item in raw_configs if isinstance(item, str))),
         python_dest=python_dest,
         typescript_dest=typescript_dest,
         profile=profile,
+        verify_paths=_verify_paths(root, verify_table),
+        hook_manager=hook_manager,
+        excluded_paths=_path_patterns(root, exclude_table, "paths"),
+        excluded_rules=_rule_selectors(exclude_table, "rules"),
+        exclusion_overrides=_exclusion_overrides(root, exclude_table),
     )
 
 
