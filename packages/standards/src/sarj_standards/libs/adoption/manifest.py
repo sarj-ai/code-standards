@@ -100,6 +100,7 @@ class Manifest:
     text_excluded_paths: tuple[str, ...] = ()
     doctor_excluded_paths: tuple[str, ...] = ()
     diagnostic_baseline: str | None = None
+    ci_bootstrap: tuple[str, ...] = ()
 
     def render(self) -> str:
         """Serialise to the TOML text written at the repo root."""
@@ -149,6 +150,9 @@ class Manifest:
             sections.append(f"\n[doctor]\nexclude = [{paths}]\n")
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {json.dumps(self.diagnostic_baseline)}\n")
+        if self.ci_bootstrap:
+            commands = ", ".join(json.dumps(command) for command in self.ci_bootstrap)
+            sections.append(f"\n[ci]\nbootstrap = [{commands}]\n")
         return "".join(sections)
 
 
@@ -250,6 +254,7 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
     text_table = table_field(data, "text")
     doctor_table = table_field(data, "doctor")
     baseline_table = table_field(data, "baseline")
+    ci_table = table_field(data, "ci")
     raw_hook_manager = hooks_table.get("manager", "pre-commit")
     if not isinstance(raw_hook_manager, str) or raw_hook_manager not in HOOK_MANAGERS:
         msg = f"manifest [hooks].manager must be one of: {', '.join(HOOK_MANAGERS)}"
@@ -276,6 +281,7 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
         text_excluded_paths=_string_list(text_table, "exclude", label="manifest [text].exclude"),
         doctor_excluded_paths=_string_list(doctor_table, "exclude", label="manifest [doctor].exclude"),
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
+        ci_bootstrap=_ci_bootstrap(ci_table),
     )
 
 
@@ -356,6 +362,15 @@ def _string_list(
         msg = f"{label} must contain only non-empty strings"
         raise TypeError(msg)
     return tuple(dict.fromkeys(value for value in values if isinstance(value, str)))
+
+
+def _ci_bootstrap(table: Mapping[str, object]) -> tuple[str, ...]:
+    """Read explicit single-line commands for generated CI setup."""
+    commands = _string_list(table, "bootstrap", label="manifest [ci].bootstrap")
+    if any(command != command.strip() or "\n" in command or "\r" in command for command in commands):
+        msg = "manifest [ci].bootstrap commands must be trimmed single-line strings"
+        raise ValueError(msg)
+    return commands
 
 
 def _path_patterns(root: Path, table: Mapping[str, object], key: str) -> tuple[str, ...]:

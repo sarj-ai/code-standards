@@ -40,6 +40,23 @@ const workflow = [
     {workflow.map(([command, description]) => <li><code>{command}</code><span>{description}</span></li>)}
   </ol>
 
+  <section class="command-block" aria-labelledby="ci-bootstrap">
+    <div>
+      <h2 id="ci-bootstrap">Generated analysis inputs</h2>
+      <p>
+        When lint configuration imports ignored build or code-generation output, declare the exact preparation commands
+        in <code>.sarj-standards.toml</code>. <code>show ci</code> emits them after dependency installation and before
+        analysis; Standards never guesses a repository build script.
+      </p>
+      <Code
+        code={'[ci]\nbootstrap = ["yarn generate", "uv run --project python generate-api"]'}
+        lang="toml"
+        frame="code"
+        wrap
+      />
+    </div>
+  </section>
+
   <nav class="command-index" aria-label="CLI commands">
     {commandGroups.map((command) => <a href={`#${commandAnchor(command)}`}><code>{command.name}</code></a>)}
   </nav>

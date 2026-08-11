@@ -94,6 +94,7 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
                 "--format",
                 "json",
                 "--no-warn-ignored",
+                "--no-cache",
                 "--",
                 "app.ts",
             ),
@@ -101,7 +102,7 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
         ),
         pytest.param(
             ("pnpm", "exec", "eslint", "--", "app.ts"),
-            ("pnpm", "exec", "eslint", "--format", "json", "--no-warn-ignored", "--", "app.ts"),
+            ("pnpm", "exec", "eslint", "--format", "json", "--no-warn-ignored", "--no-cache", "--", "app.ts"),
             id="pnpm-local-exec",
         ),
     ],
@@ -196,7 +197,7 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
 
     assert called
     assert called[0][0] == str(binary)
-    assert called[0][1:4] == ("--format", "json", "--no-warn-ignored")
+    assert called[0][1:5] == ("--format", "json", "--no-warn-ignored", "--no-cache")
     assert reports[0].completion is Completion.COMPLETE
 
 
@@ -641,7 +642,42 @@ def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifes
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
-    assert seen[1] == ((str(analyzer), "--outputjson", str(source)), project)
+    assert seen[1] == ((str(analyzer), "--outputjson"), project)
+
+
+def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tmp_path: Path) -> None:
+    project = tmp_path / "python"
+    project.mkdir()
+    (project / "pyrightconfig.json").write_text('{"include":["."]}\n', encoding="utf-8")
+    selected = project / "selected.py"
+    unselected = project / "unselected.py"
+    selected.write_text("value = 1\n", encoding="utf-8")
+    unselected.write_text("value = 2\n", encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = cwd
+        seen.append(tuple(argv))
+        if argv[0] == "ruff":
+            return ProcessOutput(0, "[]", "")
+        diagnostics = [
+            {
+                "file": str(path),
+                "severity": "error",
+                "message": "fixture error",
+                "rule": "reportGeneralTypeIssues",
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+            }
+            for path in (selected, unselected)
+        ]
+        return ProcessOutput(1, json.dumps({"generalDiagnostics": diagnostics}), "")
+
+    reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+
+    basedpyright = next(report for report in reports if report.name == "basedpyright")
+    assert seen[1] == ("basedpyright", "--outputjson")
+    assert basedpyright.completion is Completion.COMPLETE
+    assert [diagnostic.location.path for diagnostic in basedpyright.diagnostics] == ["python/selected.py"]
 
 
 def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp_path: Path) -> None:
@@ -687,7 +723,7 @@ def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp
             ),
             project,
         ),
-        (("basedpyright", "--outputjson", str(source)), project),
+        (("basedpyright", "--outputjson"), project),
     ]
 
 

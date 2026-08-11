@@ -170,7 +170,13 @@ def test_this_repos_own_overrides_are_the_ones_consumers_get() -> None:
 
 
 def test_manifest_round_trips(tmp_path: Path) -> None:
-    written = manifest.Manifest(version="1.2.3", configs=("ruff", "pyright"), python_dest=".", typescript_dest="web")
+    written = manifest.Manifest(
+        version="1.2.3",
+        configs=("ruff", "pyright"),
+        python_dest=".",
+        typescript_dest="web",
+        ci_bootstrap=("yarn generate",),
+    )
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(written.render())
     assert manifest.load(tmp_path) == written
 
@@ -200,6 +206,18 @@ def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> N
 
     assert adopted is not None
     assert adopted.verify_paths == ("src", "README.md")
+
+
+@pytest.mark.parametrize("command", [" yarn generate", "yarn generate ", "yarn generate\nnext"])
+def test_manifest_rejects_unsafe_ci_bootstrap_shape(tmp_path: Path, command: str) -> None:
+    rendered = json.dumps(command)
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 3\nbundle = "1.2.3"\n[ci]\nbootstrap = [{rendered}]\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="trimmed single-line"):
+        _ = manifest.load(tmp_path)
 
 
 def test_manifest_rejects_custom_verification_path_escape(tmp_path: Path) -> None:
@@ -512,7 +530,8 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     )
     path.write_text(
         f'{current}\n[text]\nexclude = ["templates/**"]\n\n[doctor]\nexclude = ["tests/fixtures/**"]\n'
-        '\n[baseline]\ndiagnostics = "quality/diagnostics.json"\n',
+        '\n[baseline]\ndiagnostics = "quality/diagnostics.json"\n'
+        '\n[ci]\nbootstrap = ["yarn generate"]\n',
         encoding="utf-8",
     )
 
@@ -525,6 +544,7 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     assert adopted.text_excluded_paths == ("templates/**",)
     assert adopted.doctor_excluded_paths == ("tests/fixtures/**",)
     assert adopted.diagnostic_baseline == "quality/diagnostics.json"
+    assert adopted.ci_bootstrap == ("yarn generate",)
 
 
 def test_sync_uses_profile_recorded_in_manifest(tmp_path: Path) -> None:
@@ -1506,6 +1526,31 @@ def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: s
     else:
         assert "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" in rendered.stdout
         assert "npm ci --no-audit --no-fund" in rendered.stdout
+
+
+def test_show_ci_syncs_every_uv_workspace_package_and_runs_configured_bootstrap(tmp_path: Path) -> None:
+    python = tmp_path / "python"
+    python.mkdir()
+    (python / "pyproject.toml").write_text(
+        "[project]\nname='root'\nversion='0'\n[tool.uv.workspace]\nmembers=['packages/*']\n",
+        encoding="utf-8",
+    )
+    (python / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        __version__,
+        manifest.default_configs(has_python=True, has_typescript=False),
+        "python",
+        ".",
+        ci_bootstrap=("uv run --project python generate-api", "yarn generate"),
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    rendered = _cli("--root", str(tmp_path), "show", "ci")
+
+    assert rendered.returncode == 0, rendered.stderr
+    assert "uv sync --locked --project python --all-packages" in rendered.stdout
+    assert 'run: "uv run --project python generate-api"' in rendered.stdout
+    assert 'run: "yarn generate"' in rendered.stdout
 
 
 def test_generated_ci_is_recognized_as_an_executable_standards_gate(tmp_path: Path) -> None:

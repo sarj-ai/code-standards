@@ -42,6 +42,15 @@ def test_scoped_root_pyright_config_keeps_the_root_project(tmp_path: Path) -> No
     assert tmp_path in {command.cwd for command in commands}
 
 
+def test_verification_disables_eslint_cache(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
+    ecosystems = scaffold.Ecosystems(False, True, typescript_root=tmp_path)
+
+    [command] = lifecycle.verification_commands(ecosystems)
+
+    assert "--no-cache" in command.argv
+
+
 def test_fix_uses_the_isolated_ruff_without_requiring_a_consumer_lockfile(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "fixture"\nversion = "0.0.0"\n',
