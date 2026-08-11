@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 
 import pytest
@@ -892,6 +893,7 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     native = tmp_path / "installed" / "lefthook"
     native.parent.mkdir()
     native.write_text("native binary", encoding="utf-8")
+    native.chmod(0o755)
     monkeypatch.setattr("sarj_standards.libs.repository.hooks._native_binary", lambda: native)
     hook = tmp_path / ".git/hooks/pre-commit"
     hook.parent.mkdir(parents=True)
@@ -904,7 +906,58 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     assert calls[0] == ["/bin/lefthook", "install", "-f"]
     durable = hook.parent / ".sarj-lefthook"
     assert durable.read_text(encoding="utf-8") == "native binary"
+    assert stat.S_IMODE(durable.stat().st_mode) == 0o755
     assert hook.read_text(encoding="utf-8").count(f"export LEFTHOOK_BIN={durable.as_posix()}") == 1
+
+
+@pytest.mark.parametrize(
+    ("link_kind", "expected_error"),
+    [
+        pytest.param("symlink", "refusing symlink mutation target", id="symlink"),
+        pytest.param("hardlink", "refusing hard-linked mutation target", id="hardlink"),
+    ],
+)
+def test_hook_install_refuses_linked_durable_binary_without_overwriting_its_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    link_kind: str,
+    expected_error: str,
+) -> None:
+    calls: list[list[str]] = []
+    native = tmp_path / "installed" / "lefthook"
+    native.parent.mkdir()
+    native.write_text("new binary", encoding="utf-8")
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    victim = tmp_path / "outside"
+    victim.write_text("keep me", encoding="utf-8")
+    durable = hook.parent / ".sarj-lefthook"
+    if link_kind == "symlink":
+        durable.symlink_to(victim)
+    else:
+        durable.hardlink_to(victim)
+    (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
+
+    def run(argv: list[str], **_kwargs: object) -> None:
+        calls.append(argv)
+
+    def binary(_name: str) -> Path:
+        return Path("/bin/true")
+
+    def git(_root: Path, *_args: str) -> str:
+        return ".git/hooks/pre-commit\n"
+
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks._binary", binary)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks._native_binary", lambda: native)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks._git", git)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.subprocess.run", run)
+
+    with pytest.raises(OSError, match=expected_error):
+        hooks.install(tmp_path)
+
+    assert calls == []
+    assert victim.read_text(encoding="utf-8") == "keep me"
 
 
 @pytest.mark.parametrize(

@@ -107,6 +107,41 @@ def test_standards_facade_returns_typed_doctor_result(tmp_path: Path) -> None:
     assert result.findings[0].id == "doctor.manifest.absent"
 
 
+def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    web = tmp_path / "apps" / "web"
+    web.mkdir(parents=True)
+    (tmp_path / "package.json").write_text(
+        '{"name":"workspace","private":true,"packageManager":"pnpm@11.0.0"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "pnpm-workspace.yaml").write_text('packages:\n  - "apps/*"\n', encoding="utf-8")
+    (web / "package.json").write_text('{"name":"web","private":true}\n', encoding="utf-8")
+    (tmp_path / ".sarj-standards.toml").write_text(
+        Manifest(
+            version=api.__version__,
+            configs=("eslint",),
+            python_dest=".",
+            typescript_dest="apps/web",
+        ).render(),
+        encoding="utf-8",
+    )
+    planned: list[Command] = []
+
+    def capture(commands: Sequence[Command]) -> int:
+        planned.extend(commands)
+        return 0
+
+    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle.execute", capture)
+
+    result = api.Standards(tmp_path).fix()
+
+    assert result.status is api.Status.OK
+    assert [command.cwd for command in planned] == [web]
+
+
 def test_standards_facade_rejects_selected_paths_outside_root(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.py"
     outside.write_text("value = 1\n", encoding="utf-8")

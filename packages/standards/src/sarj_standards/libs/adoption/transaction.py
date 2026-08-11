@@ -85,12 +85,13 @@ def atomic_write_text(root: Path, path: Path, contents: str) -> None:
     atomic_write_bytes(root, path, contents.encode("utf-8"))
 
 
-def atomic_write_bytes(root: Path, path: Path, contents: bytes) -> None:
+def atomic_write_bytes(root: Path, path: Path, contents: bytes, *, mode: int | None = None) -> None:
     """Replace one validated binary file without following a swapped final symlink."""
     validate_targets(root, (path,))
     path.parent.mkdir(parents=True, exist_ok=True)
     validate_targets(root, (path,))
-    mode = stat.S_IMODE(path.stat(follow_symlinks=False).st_mode) if path.is_file() else 0o644
+    if mode is None:
+        mode = stat.S_IMODE(path.stat(follow_symlinks=False).st_mode) if path.is_file() else 0o644
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary_path = Path(temporary)
     try:
