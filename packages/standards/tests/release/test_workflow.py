@@ -155,6 +155,8 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     ):
         assert specification in workflow
     assert "head_repository.full_name == $repo" in workflow
+    assert "actions/runs/$run_id/jobs" in workflow
+    assert "pending_jobs == 0 && successful_jobs > 0" in workflow
     assert "maintain release create-tags typescript python sql iac standards tsconfig" in workflow
     assert '--commit "$PUBLISHED_SHA"' in workflow
     assert 'maintain release verify-tags --commit "$TARGET_SHA"' in workflow

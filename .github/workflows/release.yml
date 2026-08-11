@@ -77,6 +77,25 @@ jobs:
                 echo "::error::$expected_name concluded $conclusion for $TARGET_SHA"
                 exit 1
               fi
+              # GitHub can finish every job successfully while leaving the
+              # outer workflow-run record indefinitely in_progress. Derive the
+              # same terminal result from the exact run's jobs so publishing is
+              # not coupled to that eventual-consistency finalizer.
+              run_id="$(jq -r '.id' <<< "$run")"
+              jobs="$(gh api --method GET \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+                -f per_page=100)"
+              failed_jobs="$(jq '[.jobs[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral")] | length' <<< "$jobs")"
+              pending_jobs="$(jq '[.jobs[] | select(.status != "completed")] | length' <<< "$jobs")"
+              successful_jobs="$(jq '[.jobs[] | select(.conclusion == "success")] | length' <<< "$jobs")"
+              if (( failed_jobs > 0 )); then
+                jq -r '.jobs[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | "::error::\(.name) concluded \(.conclusion)"' <<< "$jobs"
+                exit 1
+              fi
+              if (( pending_jobs == 0 && successful_jobs > 0 )); then
+                echo "$expected_name jobs succeeded for $TARGET_SHA; outer run finalization is still pending"
+                break
+              fi
               echo "waiting for $expected_name to complete at $TARGET_SHA"
               sleep 15
             done
