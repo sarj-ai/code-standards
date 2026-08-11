@@ -889,15 +889,70 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr("sarj_standards.libs.repository.hooks.shutil.which", which)
     monkeypatch.setattr("sarj_standards.libs.repository.hooks.subprocess.run", run)
     monkeypatch.setattr("sarj_standards.libs.repository.hooks._git", git)
+    native = tmp_path / "installed" / "lefthook"
+    native.parent.mkdir()
+    native.write_text("native binary", encoding="utf-8")
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks._native_binary", lambda: native)
     hook = tmp_path / ".git/hooks/pre-commit"
     hook.parent.mkdir(parents=True)
     hook.write_text("#!/bin/sh\n", encoding="utf-8")
     (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
 
     hooks.install(tmp_path)
+    hooks.install(tmp_path)
 
     assert calls[0] == ["/bin/lefthook", "install", "-f"]
-    assert 'LEFTHOOK_BIN="/bin/lefthook"' in hook.read_text(encoding="utf-8")
+    durable = hook.parent / ".sarj-lefthook"
+    assert durable.read_text(encoding="utf-8") == "native binary"
+    assert hook.read_text(encoding="utf-8").count(f"export LEFTHOOK_BIN={durable.as_posix()}") == 1
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        pytest.param(("Darwin", "arm64", "lefthook-darwin-arm64", "lefthook"), id="macos-arm64"),
+        pytest.param(("Linux", "aarch64", "lefthook-linux-arm64", "lefthook"), id="linux-arm64"),
+        pytest.param(("Windows", "AMD64", "lefthook-windows-x86_64", "lefthook.exe"), id="windows-x64"),
+    ],
+)
+def test_native_hook_binary_matches_the_runtime_platform(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    runtime: tuple[str, str, str, str],
+) -> None:
+    system, machine, directory, filename = runtime
+    expected = tmp_path / "lefthook" / "bin" / directory / filename
+    expected.parent.mkdir(parents=True)
+    expected.write_text("binary", encoding="utf-8")
+
+    def which(name: str, *, path: str | None = None) -> str:
+        assert path is not None
+        return f"/bin/{name}"
+
+    def run(_argv: list[str], **_kwargs: object) -> None:
+        return None
+
+    def git(_root: Path, *_args: str) -> str:
+        return ".git/hooks/pre-commit\n"
+
+    def purelib(_name: str) -> str:
+        return str(tmp_path)
+
+    hook = tmp_path / ".git/hooks/pre-commit"
+    hook.parent.mkdir(parents=True)
+    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.shutil.which", which)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.subprocess.run", run)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks._git", git)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.platform.system", lambda: system)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.platform.machine", lambda: machine)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.sysconfig.get_path", purelib)
+
+    hooks.install(tmp_path)
+
+    durable = hook.parent / f".sarj-lefthook{expected.suffix}"
+    assert durable.read_text(encoding="utf-8") == "binary"
 
 
 def test_live_rule_inventory_is_machine_readable() -> None:

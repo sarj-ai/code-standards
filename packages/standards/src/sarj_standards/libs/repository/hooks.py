@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+import platform
+import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed-argument git and Lefthook calls are required.
 import sys
+import sysconfig
+from types import MappingProxyType
 from typing import Final
 
 
 _VERSION: Final = "2.1.10"
+_ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"})
 
 
 def install(root: Path) -> int:
@@ -18,16 +23,20 @@ def install(root: Path) -> int:
         raise ValueError(msg)
     binary = _binary("lefthook")
     subprocess.run([str(binary), "install", "-f"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
-    marker = f'export LEFTHOOK_BIN="{binary.as_posix()}"'
-    for hook_name in ("pre-commit", "pre-push"):
-        hook_path = Path(_git(root, "rev-parse", "--git-path", f"hooks/{hook_name}").strip())
-        if not hook_path.is_absolute():
-            hook_path = root / hook_path
-        if not hook_path.is_file():
-            continue
-        lines = [line for line in hook_path.read_text(encoding="utf-8").splitlines() if "LEFTHOOK_BIN=" not in line]
-        lines.insert(1, marker)
-        hook_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    hook_paths = _hook_paths(root)
+    if hook_paths:
+        native_binary = _native_binary()
+        durable_binary = hook_paths[0].parent / f".sarj-lefthook{native_binary.suffix}"
+        shutil.copy2(native_binary, durable_binary)
+        marker = f"export LEFTHOOK_BIN={shlex.quote(durable_binary.as_posix())}"
+        for hook_path in hook_paths:
+            lines = [
+                line
+                for line in hook_path.read_text(encoding="utf-8").splitlines()
+                if "LEFTHOOK_BIN=" not in line
+            ]
+            lines.insert(1, marker)
+            hook_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     subprocess.run([str(binary), "validate"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
     subprocess.run([str(binary), "check-install"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
     return 0
@@ -58,6 +67,34 @@ def _binary(name: str) -> Path:
         msg = f"{name} is missing from the sarj-standards environment"
         raise OSError(msg)
     return Path(executable)
+
+
+def _native_binary() -> Path:
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+    architecture = _ARCHITECTURES.get(machine, machine)
+    suffix = ".exe" if system == "windows" else ""
+    binary = (
+        Path(sysconfig.get_path("purelib"))
+        / "lefthook"
+        / "bin"
+        / f"lefthook-{system}-{architecture}"
+        / f"lefthook{suffix}"
+    )
+    if not binary.is_file():
+        msg = f"native Lefthook binary is missing from the sarj-standards environment: {binary}"
+        raise OSError(msg)
+    return binary
+
+
+def _hook_paths(root: Path) -> list[Path]:
+    paths: list[Path] = []
+    for hook_name in ("pre-commit", "pre-push"):
+        path = Path(_git(root, "rev-parse", "--git-path", f"hooks/{hook_name}").strip())
+        path = path if path.is_absolute() else root / path
+        if path.is_file():
+            paths.append(path)
+    return paths
 
 
 def _installed_version(binary: Path) -> str | None:
