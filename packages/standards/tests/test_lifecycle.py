@@ -212,14 +212,11 @@ def test_precommit_installer_hardens_the_generated_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     hardened: list[Path] = []
-
-    def find_true(_executable: str) -> str:
-        return "/usr/bin/true"
-
-    monkeypatch.setattr(shutil, "which", find_true)
     monkeypatch.setattr(lifecycle, "harden_precommit_hook", hardened.append)
 
-    status = lifecycle.execute([lifecycle.Command("pre-commit hooks", ("pre-commit", "install"), tmp_path)])
+    status = lifecycle.execute(
+        [lifecycle.Command("pre-commit hooks", (sys.executable, "-c", "raise SystemExit(0)"), tmp_path)]
+    )
 
     assert status == 0
     assert hardened == [tmp_path]

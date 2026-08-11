@@ -111,15 +111,29 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
     (source / "index.ts").write_text("export {};\n", encoding="utf-8")
     binaries = tmp_path / "test-bin"
     binaries.mkdir()
-    yarn = binaries / "yarn"
-    yarn.write_text(
-        "#!/bin/sh\n"
-        'if [ "$1" = install ]; then : > .pnp.cjs; exit 0; fi\n'
-        'if [ "$1" = exec ] && [ "$2" = eslint ] && grep -q \'"eslint"\' package.json; then echo "[]"; exit 0; fi\n'
-        "exit 127\n",
+    yarn_shim = binaries / "yarn_shim.py"
+    yarn_shim.write_text(
+        "from pathlib import Path\n"
+        "import sys\n"
+        "arguments = sys.argv[1:]\n"
+        "if arguments[:1] == ['install']:\n"
+        "    Path('.pnp.cjs').touch()\n"
+        "    raise SystemExit(0)\n"
+        "if arguments[:2] == ['exec', 'eslint'] and '\"eslint\"' in Path('package.json').read_text():\n"
+        "    print('[]')\n"
+        "    raise SystemExit(0)\n"
+        "raise SystemExit(127)\n",
         encoding="utf-8",
     )
-    yarn.chmod(0o755)
+    if sys.platform == "win32":
+        (binaries / "yarn.cmd").write_text(
+            f'@"{sys.executable}" "{yarn_shim}" %*\r\n',
+            encoding="utf-8",
+        )
+    else:
+        yarn = binaries / "yarn"
+        yarn.write_text(f"#!{sys.executable}\n{yarn_shim.read_text(encoding='utf-8')}", encoding="utf-8")
+        yarn.chmod(0o755)
     monkeypatch.setenv(
         "PATH",
         f"{binaries}{os.pathsep}{os.environ['PATH']}",  # ruff: ignore[banned-api] -- retain the test runner's tool path behind the fake Yarn executable.
