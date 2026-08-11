@@ -50,7 +50,7 @@ def test_flags_regex_over_raw_python_source():
     )
 
 
-def test_reports_once_per_test():
+def test_reports_once_for_multiple_assertions_on_one_source():
     assert (
         len(
             check("""
@@ -62,6 +62,17 @@ def test_reports_once_per_test():
         )
         == 1
     )
+
+
+def test_reports_each_independent_source_in_one_test():
+    diagnostics = check("""
+        def test_policy():
+            terraform = Path("main.tf").read_text()
+            assert "resource" in terraform
+            workflow = Path("workflow.yml").read_text()
+            assert "permissions:" in workflow
+    """)
+    assert len(diagnostics) == 2
 
 
 @pytest.mark.parametrize("parser", ["json.loads", "ast.parse", "yaml.safe_load"])
@@ -110,6 +121,83 @@ def test_allows_generated_output_through_tmp_path_aliases():
     """)
         == []
     )
+
+
+def test_flags_inline_read_and_chained_transform():
+    diagnostics = check("""
+        def test_policy():
+            assert "permissions:" in Path("workflow.yml").read_text().lower().strip()
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_flags_path_alias():
+    diagnostics = check("""
+        def test_policy():
+            policy = Path("main.tf")
+            source = policy.read_text()
+            assert source.find("resource") >= 0
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_flags_source_path_collection_loop():
+    diagnostics = check("""
+        def test_policy():
+            paths = ("main.tf", "workflow.yml")
+            for path in paths:
+                source = (ROOT / path).read_text()
+                assert "resource" in source
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_flags_context_managed_read():
+    diagnostics = check("""
+        def test_policy():
+            with open("scripts/deploy.sh") as source:
+                assert source.read().startswith("#!/bin/bash")
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_reassignment_kills_taint():
+    assert (
+        check("""
+        def test_policy():
+            source = Path("main.tf").read_text()
+            source = render_runtime_value()
+            assert "resource" in source
+    """)
+        == []
+    )
+
+
+def test_nested_scope_does_not_inherit_or_leak_taint():
+    assert (
+        check("""
+        def test_policy():
+            source = render_runtime_value()
+            def helper():
+                source = Path("main.tf").read_text()
+                assert "resource" in source
+            assert "resource" in source
+    """)
+        == []
+    )
+
+
+def test_flags_unittest_method_and_async_test():
+    diagnostics = check("""
+        class TestPolicy:
+            def test_sync(self):
+                assert "resource" in Path("main.tf").read_text()
+
+            async def test_async(self):
+                source = Path("workflow.yml").read_text()
+                assert source.count("permissions:") == 1
+    """)
+    assert len(diagnostics) == 2
 
 
 def test_allows_direct_validator_execution():

@@ -172,7 +172,9 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
 
     assert "npm ci --ignore-scripts" in release  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
     assert 'npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts" --ignore-scripts' in release
-    assert "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
+        "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
+    )
     assert release.count("npm install --global npm@12.0.2 --ignore-scripts") == 2
 
     def assert_dependency_free(job: str) -> None:
@@ -212,7 +214,7 @@ def test_release_ready_is_one_stable_required_gate() -> None:
     assert "Cross-package repository policy" in workflow
     assert "packages/standards --locked --dev" in workflow
     assert "cancel-in-progress: true" in workflow
-    assert "typescript@6.0.3" in tsconfig_workflow
+    assert "typescript@6.0.3" in tsconfig_workflow  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
     assert "typescript@latest" not in tsconfig_workflow
 
 
