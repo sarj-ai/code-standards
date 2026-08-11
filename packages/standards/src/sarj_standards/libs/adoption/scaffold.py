@@ -292,6 +292,7 @@ def build_plan(
     if plan.hook_manager == "pre-commit":
         _plan_precommit(root, plan, force=force)
     elif plan.hook_manager == "lefthook":
+        _plan_retire_precommit_staged_check(root, plan)
         if hooks.lefthook_config(root) is None:
             plan.errors.append("--hooks lefthook requires lefthook.yml or lefthook.yaml")
         elif not hooks.lefthook_runs_staged_check(root):
@@ -1135,6 +1136,31 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
     _record(plan, path, f"repos:\n{block}", force=force, reason="exists")
 
 
+def _plan_retire_precommit_staged_check(root: Path, plan: Plan) -> None:
+    """Remove only the generated Standards hook when Lefthook becomes authoritative."""
+    existing = [root / name for name in _PRECOMMIT_CONFIG_NAMES if (root / name).is_file()]
+    if len(existing) > 1:
+        plan.errors.append(
+            "multiple pre-commit configurations are active: "
+            + ", ".join(path.name for path in existing)
+            + "; keep one before switching hook managers"
+        )
+        return
+    if not existing:
+        return
+    path = existing[0]
+    text = path.read_text(encoding="utf-8")
+    if not _has_owned_hooks(text):
+        return
+    try:
+        updated = _remove_owned_precommit_hooks(text)
+    except ValueError as exc:
+        plan.errors.append(f"cannot safely retire the Standards pre-commit hook in {path}: {exc}")
+        return
+    plan.writes.append((path, updated))
+    plan.notes.append("removed the generated Standards pre-commit hook because Lefthook is authoritative")
+
+
 def _migrate_official_remote_hook(text: str, runner_prefix: str) -> tuple[str | None, str | None]:
     """Replace a plain official umbrella hook while retaining every unrelated byte."""
     official = tuple(
@@ -1212,6 +1238,39 @@ def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
         )
         canonical = canonical[: block.start] + replacement + canonical[block.end :]
     return canonical
+
+
+def _remove_owned_precommit_hooks(text: str) -> str:
+    """Remove generated staged hooks while preserving unrelated local hooks byte-for-byte."""
+    local_blocks = tuple(
+        block
+        for block in hooks.precommit_repo_blocks(text)
+        if block.repository == "local" and _has_owned_hook_in_block(block.text)
+    )
+    updated = text
+    for block in reversed(local_blocks):
+        custom_keys = _owned_hook_custom_keys(block.text)
+        if custom_keys:
+            names = ", ".join(sorted(custom_keys))
+            msg = f"customized local Sarj hook has consumer-owned keys: {names}"
+            raise ValueError(msg)
+        replacement = _canonicalize_local_hook_block(
+            block.text,
+            "",
+            item_indent=block.indent,
+            insert_canonical=False,
+        )
+        try:
+            parsed = cast("object", yaml.safe_load(f"repos:\n{replacement}"))
+        except yaml.YAMLError as exc:
+            msg = "generated local hook block is not valid YAML"
+            raise ValueError(msg) from exc
+        repositories = manifest.list_field(manifest.as_table(parsed), "repos")
+        repository = manifest.as_table(repositories[0]) if repositories else {}
+        if not manifest.list_field(repository, "hooks"):
+            replacement = ""
+        updated = updated[: block.start] + replacement + updated[block.end :]
+    return updated
 
 
 def _has_owned_hooks(text: str) -> bool:

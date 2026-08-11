@@ -271,6 +271,39 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
         return
     if adopted is None or adopted.hook_manager == "none":
         return
+    configured = {
+        manager
+        for manager, active in (
+            ("pre-commit", hooks.precommit_runs_staged_check(root)),
+            ("lefthook", hooks.lefthook_runs_staged_check(root)),
+        )
+        if active
+    }
+    unexpected_configured = configured - {adopted.hook_manager}
+    if unexpected_configured:
+        names = ", ".join(sorted(unexpected_configured))
+        yield Finding(
+            Level.DRIFT,
+            manifest.MANIFEST_NAME,
+            f"declares {adopted.hook_manager}, but a canonical {names} Standards hook is also active",
+            "doctor.hooks.manager-conflict",
+            f"rerun `sarj-standards setup --hooks {adopted.hook_manager}` to keep one hook owner",
+        )
+    installed = _installed_hook_managers(root) if _git_worktree(root) else frozenset[str]()
+    unexpected_installed = installed - {adopted.hook_manager}
+    if unexpected_installed:
+        names = ", ".join(sorted(unexpected_installed))
+        yield Finding(
+            Level.DRIFT,
+            ".git/hooks/pre-commit",
+            f"installed hook chain includes {names}, but the manifest selects {adopted.hook_manager}",
+            "doctor.hooks.manager-conflict",
+            (
+                "run `sarj-standards maintain hooks install`"
+                if adopted.hook_manager == "lefthook"
+                else f"reinstall the selected manager with `sarj-standards setup --hooks {adopted.hook_manager}`"
+            ),
+        )
     if adopted.hook_manager == "pre-commit":
         if hooks.precommit_runs_staged_check(root):
             yield Finding(
@@ -279,7 +312,7 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
                 "runs exactly one canonical staged check",
                 "doctor.hooks.precommit",
             )
-            if _git_worktree(root) and not _installed_precommit_hook(root):
+            if _git_worktree(root) and "pre-commit" not in installed:
                 yield Finding(
                     Level.WARN,
                     ".git/hooks/pre-commit",
@@ -299,6 +332,14 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
     path = hooks.lefthook_config(root)
     if path is not None and hooks.lefthook_runs_staged_check(root):
         yield Finding(Level.OK, path.name, "runs the canonical staged check", "doctor.hooks.lefthook")
+        if _git_worktree(root) and "lefthook" not in installed:
+            yield Finding(
+                Level.WARN,
+                ".git/hooks/pre-commit",
+                "the configuration is healthy, but this checkout has no installed Lefthook commit hook",
+                "doctor.hooks.lefthook-install",
+                "run `sarj-standards maintain hooks install`",
+            )
         return
     yield Finding(
         Level.DRIFT,
@@ -328,10 +369,11 @@ def _git_worktree(root: Path) -> bool:
     return completed.returncode == 0 and completed.stdout.strip() == "true"
 
 
-def _installed_precommit_hook(root: Path) -> bool:
+def _installed_hook_managers(root: Path) -> frozenset[str]:
+    """Return every manager participating in the active pre-commit hook chain."""
     git = shutil.which("git")
     if git is None:
-        return False
+        return frozenset()
     try:
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
             (git, "rev-parse", "--git-path", "hooks/pre-commit"),
@@ -343,18 +385,24 @@ def _installed_precommit_hook(root: Path) -> bool:
             timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
         )
     except OSError, subprocess.TimeoutExpired:
-        return False
+        return frozenset()
     if completed.returncode:
-        return False
+        return frozenset()
     hook = Path(completed.stdout.strip())
     path = hook if hook.is_absolute() else root / hook
-    if not path.is_file():
-        return False
-    try:
-        contents = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-    return "hook-type=pre-commit" in contents or "pre_commit" in contents
+    managers: set[str] = set()
+    for candidate in (path, path.with_name(f"{path.name}.legacy")):
+        if not candidate.is_file():
+            continue
+        try:
+            contents = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if "LEFTHOOK_BIN=" in contents or "lefthook" in contents.lower():
+            managers.add("lefthook")
+        if "hook-type=pre-commit" in contents or "pre_commit" in contents:
+            managers.add("pre-commit")
+    return frozenset(managers)
 
 
 def _has_adopted_eslint(root: Path) -> bool:
