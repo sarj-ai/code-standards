@@ -224,7 +224,43 @@ def test_ci_installs_nested_javascript_project_from_its_install_root(tmp_path: P
     workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
 
     assert "run: npm ci --no-audit --no-fund" in workflow
-    assert "working-directory: services/web" in workflow
+    assert "npm install --global" not in workflow
+    assert 'working-directory: "services/web"' in workflow
+
+
+def test_ci_yaml_quotes_a_nested_install_root_with_shell_metacharacters(tmp_path: Path) -> None:
+    web = tmp_path / "services" / "web # production"
+    web.mkdir(parents=True)
+    _ = (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
+    _ = (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+
+    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+
+    assert 'working-directory: "services/web # production"' in workflow
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        pytest.param("npm@12.0.2", id="version"),
+        pytest.param("npm@12.0.2+sha512.abcdef", id="version-with-integrity"),
+    ],
+)
+def test_ci_activates_the_exact_declared_npm_version(tmp_path: Path, declaration: str) -> None:
+    _ = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": declaration})
+
+    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+
+    activation = "run: npm install --global npm@12.0.2 --ignore-scripts"
+    assert activation in workflow
+    assert workflow.index(activation) < workflow.index("run: npm ci")
+
+
+def test_ci_rejects_a_non_exact_declared_npm_version(tmp_path: Path) -> None:
+    _ = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "npm@latest"})
+
+    with pytest.raises(ValueError, match="must pin an exact semantic version"):
+        scaffold.github_ci_workflow(tmp_path, version="0.0.0")
 
 
 def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> None:

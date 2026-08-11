@@ -1312,6 +1312,7 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         else adopted.typescript_dest
     )
     ecosystems = detect(root, python_dest=python_override, typescript_dest=typescript_override)
+    install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = _runner_prefix(version=version)
     lines = [
         f"# Managed by sarj-standards {version}; regenerate with `sarj-standards show ci --output .github/workflows/standards.yml`.",
@@ -1353,13 +1354,24 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
                     "          node-version: 24",
                 )
             )
+        if (
+            ecosystems.client is PackageManager.NPM
+            and install_root is not None
+            and (npm_version := packagemanager.declared_version(install_root, PackageManager.NPM)) is not None
+        ):
+            lines.extend(
+                (
+                    "      - name: Activate declared npm version",
+                    f"        run: npm install --global npm@{npm_version} --ignore-scripts",
+                )
+            )
         javascript_command = _ci_javascript_install(ecosystems.client, ecosystems.yarn)
         if ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
             javascript_command = f"corepack enable && {javascript_command}"
         lines.extend(("      - name: Install JavaScript dependencies", f"        run: {javascript_command}"))
-        install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
         if install_root is not None and install_root != root:
-            lines.append(f"        working-directory: {install_root.relative_to(root).as_posix()}")
+            relative_install_root = install_root.relative_to(root).as_posix()
+            lines.append(f"        working-directory: {json.dumps(relative_install_root)}")
     if ecosystems.python:
         python_root = root / python_dest
         if (python_root / "uv.lock").is_file():
