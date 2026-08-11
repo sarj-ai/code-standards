@@ -7,11 +7,17 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_standards.libs.adoption import lifecycle, manifest, scaffold
+import sarj_standards.cli.main as cli
+from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def _project(root: Path, name: str) -> Path:
@@ -70,6 +76,43 @@ def test_fix_uses_the_isolated_ruff_without_requiring_a_consumer_lockfile(tmp_pa
     assert commands[0].argv[1:] == ("format", ".")
     assert commands[1].argv[1:] == ("check", "--fix", ".")
     assert all("--frozen" not in command.argv for command in commands)
+
+
+def test_fix_routes_to_the_adopted_nested_typescript_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    web = tmp_path / "apps" / "web"
+    web.mkdir(parents=True)
+    (tmp_path / "package.json").write_text(
+        '{"name":"workspace","private":true,"packageManager":"pnpm@11.0.0"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "pnpm-workspace.yaml").write_text('packages:\n  - "apps/*"\n', encoding="utf-8")
+    (web / "package.json").write_text('{"name":"web","private":true}\n', encoding="utf-8")
+    (tmp_path / ".sarj-standards.toml").write_text(
+        manifest.Manifest(
+            version=distribution_version("sarj-standards"),
+            configs=("eslint",),
+            python_dest=".",
+            typescript_dest="apps/web",
+        ).render(),
+        encoding="utf-8",
+    )
+    planned: list[lifecycle.Command] = []
+
+    def clean_diagnosis(_root: Path) -> list[doctor.Finding]:
+        return []
+
+    def capture(commands: Iterable[lifecycle.Command]) -> int:
+        planned.extend(commands)
+        return 0
+
+    monkeypatch.setattr(doctor, "diagnose", clean_diagnosis)
+    monkeypatch.setattr(lifecycle, "execute", capture)
+
+    assert cli.main(["--root", str(tmp_path), "fix"]) == 0
+    assert [command.cwd for command in planned] == [web]
 
 
 def test_selected_fix_routes_only_the_requested_python_and_typescript_files(tmp_path: Path) -> None:

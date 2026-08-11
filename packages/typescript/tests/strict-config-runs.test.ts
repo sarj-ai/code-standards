@@ -327,6 +327,22 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(globalIgnores.length).toBe(1);
   });
 
+  it.each(CONFIG_FACTORIES)("%s ignores Yarn Plug'n'Play runtime files", async (_name, factory) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: factory(),
+      warnIgnored: false,
+    });
+
+    const generated = await eslint.lintFiles([
+      resolve(FIXTURE_DIR, ".pnp.cjs"),
+      resolve(FIXTURE_DIR, ".pnp.loader.mjs"),
+    ]);
+
+    expect(generated.flatMap((result) => result.messages)).toEqual([]);
+  });
+
   /**
    * The 18 react rules were dropped wholesale because eslint-plugin-react calls
    * `context.getFilename()`, removed in ESLint 10. Dropping them swapped a crash

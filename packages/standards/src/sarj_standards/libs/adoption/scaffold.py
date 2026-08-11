@@ -147,6 +147,26 @@ def detect(
     )
 
 
+def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
+    """Resolve only the ecosystem destinations recorded during setup."""
+    python = bool({"ruff", "pyright"}.intersection(adopted.configs))
+    typescript = "eslint" in adopted.configs
+    detected = detect(
+        root,
+        python_dest=adopted.python_dest if python else None,
+        typescript_dest=adopted.typescript_dest if typescript else None,
+    )
+    return Ecosystems(
+        python=python,
+        typescript=typescript,
+        python_root=detected.python_root if python else None,
+        typescript_root=detected.typescript_root if typescript else None,
+        typescript_install_root=detected.typescript_install_root if typescript else None,
+        client=detected.client,
+        yarn=detected.yarn,
+    )
+
+
 def _override(root: Path, dest: str | None) -> Path | None:
     if dest is None:
         return None

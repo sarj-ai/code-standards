@@ -1271,10 +1271,10 @@ def cmd_format(args: _Args) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
+    adopted = _declared_manifest(args)
+    ecosystems = scaffold.detect(root) if adopted is None else scaffold.detect_adopted(root, adopted)
     commands = (
-        lifecycle.selected_format_commands(root, args.files)
-        if args.files
-        else lifecycle.format_commands(scaffold.detect(root))
+        lifecycle.selected_format_commands(root, args.files) if args.files else lifecycle.format_commands(ecosystems)
     )
     return lifecycle.execute(commands)
 

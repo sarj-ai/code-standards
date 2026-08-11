@@ -170,7 +170,7 @@ def test_missing_local_eslint_fails_before_package_manager_execution(
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues[0].kind == "missing-dependency"
     assert "node_modules/.bin/eslint is missing" in reports[0].issues[0].message
-    assert "doctor --repair" in reports[0].issues[0].message
+    assert "sarj-standards setup" in reports[0].issues[0].message
 
 
 def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
