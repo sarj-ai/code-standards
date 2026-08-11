@@ -3,21 +3,7 @@ name: typescript CI
 on:
   push:
     branches: [main]
-    paths:
-      - 'packages/typescript/**'
-      - 'packages/standards/src/sarj_standards/configs/eslint*.mjs'
-      - 'packages/standards/src/sarj_standards/configs/rule-ledger.json'
-      - 'packages/standards/src/sarj_standards/libs/release/**'
-      - 'packages/standards/src/sarj_standards/cli/**'
-      - '.github/workflows/typescript-ci.yml'
   pull_request:
-    paths:
-      - 'packages/typescript/**'
-      - 'packages/standards/src/sarj_standards/configs/eslint*.mjs'
-      - 'packages/standards/src/sarj_standards/configs/rule-ledger.json'
-      - 'packages/standards/src/sarj_standards/libs/release/**'
-      - 'packages/standards/src/sarj_standards/cli/**'
-      - '.github/workflows/typescript-ci.yml'
 
 permissions:
   contents: read
@@ -28,6 +14,7 @@ concurrency:
 
 jobs:
   test:
+    name: typescript plugin (${{ matrix.node }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

@@ -40,10 +40,12 @@ pre-commit:
 
 pre-push:
   commands:
-    verify:
-      run: make verify
+    static-verification:
+      # CI owns the complete package test matrix. Keep push feedback bounded to
+      # lint, type, policy, docs, and artifact-consistency checks.
+      run: make lint
       fail_text: >-
-        Standards verification failed. Fix the reported failures before pushing.
+        Standards static verification failed. Fix the reported failures before pushing.
     private-refs-commit-messages:
       run: if test -f .sarj-private-refs.toml; then uv run --project packages/standards --frozen sarj-standards --root . maintain check --only private-refs --commits "$(git merge-base origin/main HEAD)..HEAD"; else echo "private-reference scan delegated to trusted CI"; fi
       fail_text: >-

@@ -143,8 +143,17 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     assert "\n  tag:\n    needs: [preflight, release-safety]\n" in workflow
     assert "needs.preflight.outputs.recovery == 'true'" in workflow
     assert "needs.release-safety.result == 'success'" in workflow
-    assert "repo-ci.yml|release-ready" in workflow
-    assert "private-refs.yml|private references" in workflow
+    for specification in (
+        "repo-ci.yml|release-ready",
+        "private-refs.yml|private references",
+        "python-ci.yml|python CI",
+        "typescript-ci.yml|typescript CI",
+        "sql-ci.yml|sql CI",
+        "iac-ci.yml|iac CI",
+        "tsconfig-ci.yml|tsconfig CI",
+        "standards-ci.yml|standards CI",
+    ):
+        assert specification in workflow
     assert "head_repository.full_name == $repo" in workflow
     assert "maintain release create-tags typescript python sql iac standards tsconfig" in workflow
     assert '--commit "$PUBLISHED_SHA"' in workflow
