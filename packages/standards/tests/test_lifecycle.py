@@ -265,9 +265,7 @@ def test_linked_worktree_hook_survives_its_install_cache_deletion(tmp_path: Path
     cache_python.write_text("temporary", encoding="utf-8")
     lines = hook.read_text(encoding="utf-8").splitlines()
     hook.write_text(
-        "\n".join(
-            f"INSTALL_PYTHON={cache_python}" if line.startswith("INSTALL_PYTHON=") else line for line in lines
-        )
+        "\n".join(f"INSTALL_PYTHON={cache_python}" if line.startswith("INSTALL_PYTHON=") else line for line in lines)
         + "\n",
         encoding="utf-8",
     )
