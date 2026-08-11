@@ -65,6 +65,7 @@ import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 import stepdown from "./rules/stepdown.js";
+import sourceCoupledTest from "./rules/source-coupled-test.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
 import { renamedRules } from "./rules/_renames.js";
 import { retiredRules } from "./rules/_retired.js";
@@ -133,12 +134,13 @@ const rules = {
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "stepdown": stepdown,
+  "source-coupled-test": sourceCoupledTest,
   "zod-naming-convention": zodNamingConvention,
 } as const;
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.6.7",
+  version: "15.6.8",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -147,6 +149,9 @@ const applicationOnlyRules = [
   "prefer-native-random-uuid",
   "prefer-shadcn-primitives",
 ] as const;
+
+/** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
+const advisoryRules = ["source-coupled-test"] as const;
 
 const recommendedRules = {
   "@sarj/duplicate-test-body": "error",
@@ -205,6 +210,7 @@ const recommendedRules = {
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
+  "@sarj/source-coupled-test": "warn",
   "@sarj/zod-naming-convention": "error",
 } as const;
 
@@ -269,6 +275,7 @@ const strictRules = {
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
+  "@sarj/source-coupled-test": "warn",
   "@sarj/zod-naming-convention": "error",
 } as const;
 
@@ -301,4 +308,4 @@ const plugin = {
 export default plugin;
 export { publicDocumentation } from "./rules/_docs.js";
 export { type RetiredRule, retiredRules } from "./rules/_retired.js";
-export { applicationOnlyRules, recommendedRules, renamedRules, rules, strictRules };
+export { advisoryRules, applicationOnlyRules, recommendedRules, renamedRules, rules, strictRules };

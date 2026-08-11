@@ -1093,6 +1093,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
+      "@sarj/source-coupled-test": "warn",
       "@sarj/no-positional-tuple-return": "error",
       "@sarj/no-restated-comment": "error",
       "@sarj/no-restated-jsdoc": "error",

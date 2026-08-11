@@ -54,6 +54,13 @@ function moduleSource(name: string): string {
   return readFileSync(resolve(RULES_DIR, `${name}.ts`), "utf8");
 }
 
+/** Sarj rule keys configured by a shipped flat-config module. */
+function configuredSarjRuleNames(source: string): Set<string> {
+  return new Set(
+    Array.from(source.matchAll(/"@sarj\/([a-z0-9-]+)"\s*:/gu), (match) => match[1] ?? ""),
+  );
+}
+
 /** The leading block comment's content lines, `*` prefixes and blanks removed. */
 function fileoverviewLines(source: string): string[] {
   if (!source.startsWith("/*")) return [];
@@ -323,12 +330,14 @@ describe("a rename ships a map, not a hole", () => {
   });
 
   it("leaves no old name in the shipped strict config", () => {
-    const config = readFileSync(
-      resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
-      "utf8",
+    const configured = configuredSarjRuleNames(
+      readFileSync(
+        resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
+        "utf8",
+      ),
     );
     for (const from of Object.keys(renamedRules)) {
-      expect(config).not.toContain(`"@sarj/${from}"`);
+      expect(configured).not.toContain(from);
     }
   });
 

@@ -88,6 +88,7 @@
       "require-keyword-only-swap-prone-params",
       "require-port-for-service",
       "restated-test-docstring",
+      "source-coupled-test",
       "stepdown",
       "store-insert-requires-on-conflict",
       "test-phase-label-comment",
@@ -175,6 +176,7 @@
       "require-port-for-service",
       "require-static-next-matcher",
       "require-zod-form-validation",
+      "source-coupled-test",
       "stepdown",
       "store-insert-requires-on-conflict",
       "test-loops-over-literal-cases",
@@ -258,7 +260,8 @@
       "SARJ098",
       "SARJ099",
       "SARJ400",
-      "SARJ401"
+      "SARJ401",
+      "SARJ402"
     ],
     "sql": [
       "SARJ101",

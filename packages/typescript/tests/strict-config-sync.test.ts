@@ -125,6 +125,16 @@ function referencedRuleNames(configText: string): string[] {
   );
 }
 
+/** Rule names deliberately mentioned in line or block comments. */
+function documentedRuleNames(configText: string): Set<string> {
+  const comments = configText.match(/\/\/[^\n]*|\/\*[\s\S]*?\*\//gu) ?? [];
+  return new Set(
+    comments.flatMap((comment) =>
+      Array.from(comment.matchAll(/@sarj\/([a-z0-9-]+)/gu), (match) => match[1] ?? ""),
+    ),
+  );
+}
+
 /**
  * Each rule's severity in the config's MAIN block, keyed by rule name.
  *
@@ -168,6 +178,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
   it("every plugin rule is either wired into the strict config or explicitly opted out", () => {
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
     const referenced = new Set(referencedRuleNames(text));
+    const documented = documentedRuleNames(text);
 
     // Architectural rules whose options are inherently per-repo, so a SHARED
     // config cannot set them meaningfully. Each is documented as an opt-in in
@@ -190,7 +201,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     for (const name of [...PER_REPO_OPT_IN].filter(
       (candidate) => !applicationOnlyRules.includes(candidate as (typeof applicationOnlyRules)[number]),
     )) {
-      expect(text).toContain(name);
+      expect(documented).toContain(name);
     }
 
     // ...and the exemption must still be needed. If someone wires an opt-in for

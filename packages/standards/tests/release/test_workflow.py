@@ -132,8 +132,8 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     workflow = (REPO_ROOT / ".github/workflows/release-tags.yml").read_text(encoding="utf-8")
 
-    assert "contents: write" not in release
-    assert "workflow_run:" in workflow
+    assert "contents: write" not in release  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert "workflow_run:" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert "github.event.workflow_run.conclusion == 'success'" in workflow
     assert "github.event.workflow_run.head_branch == 'main'" in workflow
     assert "github.event.workflow_run.head_repository.full_name == github.repository" in workflow

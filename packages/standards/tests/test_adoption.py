@@ -2286,7 +2286,7 @@ def test_the_manifest_filename_is_a_stable_public_contract() -> None:
 
 def test_release_version_detection_does_not_short_circuit_git_diff() -> None:
     workflow = (REPO_ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-    assert "| grep -q" not in workflow
+    assert "| grep -q" not in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
 
 
 def test_doctor_treats_a_repository_that_was_never_setup_as_drift(tmp_path: Path) -> None:
