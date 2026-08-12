@@ -6,7 +6,18 @@ import pytest
 
 # `_hcl` is package-private by design; the walker is exercised directly because
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
-from sarj_iac_lint._hcl import blocks
+from sarj_iac_lint._hcl import blocks, tokens
+
+
+def test_tokens_keeps_an_interpolated_string_whole():
+    """SARJ204 relies on this: an interpolated reference is never an operand token."""
+    assert tokens('"cache-${var.environment}"') == ('"cache-${var.environment}"',)
+
+
+def test_tokens_keeps_multichar_operators_whole():
+    """SARJ204 reads comparisons by index, so `==` must not split into two tokens."""
+    assert tokens('var.env=="prod"') == ("var.env", "==", '"prod"')
+    assert tokens('var.env != "prod"') == ("var.env", "!=", '"prod"')
 
 
 def test_parses_type_labels_and_position():

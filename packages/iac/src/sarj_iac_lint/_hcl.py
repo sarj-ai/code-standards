@@ -179,6 +179,11 @@ _OPENERS = frozenset("([{")
 _CLOSERS = frozenset(")]}")
 
 
+def tokens(text: str) -> tuple[str, ...]:
+    """Split `text` into HCL tokens, keeping whole strings and multi-character operators."""
+    return tuple(m.group(0) for m in _TOKEN_RE.finditer(text))
+
+
 class _Tok(NamedTuple):
     text: str
     line: int  # 1-based
