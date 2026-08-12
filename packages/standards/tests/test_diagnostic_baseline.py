@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards import api
+from sarj_standards.cli.main import main as cli_main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.adoption.manifest import load as load_manifest
 from sarj_standards.libs.diagnostics import baseline
@@ -92,3 +93,59 @@ def test_diagnostic_baseline_rejects_duplicate_fingerprints(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="repeats fingerprint"):
         baseline.load(path)
+
+
+def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) -> None:
+    (tmp_path / "service.py").write_text("import logging\n", encoding="utf-8")
+    (tmp_path / "main.tf").write_text(
+        'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',
+        encoding="utf-8",
+    )
+
+    assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 0
+
+    raw = api.Standards(tmp_path).analyze(external=True, mode=api.AnalysisMode.RAW)
+    recorded = baseline.load(tmp_path / "diagnostic-baseline.json")
+
+    # One command has to cover every engine, or a consumer needs one baseline per tool.
+    assert {"SARJ052", "SARJ204"} <= {item.code for item in raw.diagnostics}
+    assert sum(recorded.values()) == len(raw.diagnostics)
+
+
+def test_baselined_findings_stop_failing_but_a_new_one_still_does(tmp_path: Path) -> None:
+    source = tmp_path / "main.tf"
+    source.write_text(
+        'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',
+        encoding="utf-8",
+    )
+    assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 0
+    (tmp_path / MANIFEST_NAME).write_text(_manifest("diagnostic-baseline.json").render(), encoding="utf-8")
+
+    settled = api.Standards(tmp_path).analyze()
+    assert [item.code for item in settled.diagnostics] == []
+
+    source.write_text(
+        source.read_text(encoding="utf-8")
+        + '\nresource "google_storage_bucket" "b" {\n  count = var.environment == "dev" ? 1 : 0\n}\n',
+        encoding="utf-8",
+    )
+
+    grown = api.Standards(tmp_path).analyze()
+    assert "SARJ204" in [item.code for item in grown.diagnostics]
+
+
+def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) -> None:
+    (tmp_path / "main.tf").write_text(
+        'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',
+        encoding="utf-8",
+    )
+    assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 0
+
+    assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 2
+    assert cli_main(["--root", str(tmp_path), "baseline", "update"]) == 0
+
+
+def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
+    (tmp_path / "main.tf").write_text('resource "x" "y" {}\n', encoding="utf-8")
+
+    assert cli_main(["--root", str(tmp_path), "baseline", "init", "/etc/hosts"]) == 2

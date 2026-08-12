@@ -111,6 +111,7 @@ class _Args(argparse.Namespace):
     attempts: int = 6
     delay_seconds: timedelta = timedelta(seconds=10)
     ratchet_cmd: str = ""
+    baseline_cmd: str = ""
     baseline: Path | None = None
     package: list[str]
     exclude_subtree: list[str]
@@ -1378,6 +1379,56 @@ def cmd_ratchet(args: _Args) -> int:
     return run_ratchet(argv)
 
 
+_DEFAULT_DIAGNOSTIC_BASELINE = "diagnostic-baseline.json"
+
+
+def cmd_baseline(args: _Args) -> int:
+    """Snapshot today's findings so only new ones fail, for every engine at once."""
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
+
+    root = _resolve_dest(args.dest)
+    output = args.output if args.output is not None else root / _DEFAULT_DIAGNOSTIC_BASELINE
+    if args.baseline_cmd == "init" and output.exists():
+        print(
+            f"error: diagnostic baseline already exists: {output}; use `sarj-standards baseline update`",
+            file=sys.stderr,
+        )
+        return 2
+    try:
+        # `analyze` rejects anything outside the repository, so normalize the paths a
+        # caller naturally types (absolute, or relative to the shell) before handing over.
+        selected = _selected_paths(root, args.files) if args.files else None
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    report = Standards(root).analyze(
+        selected,
+        external=True,
+        trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
+        mode=AnalysisMode.RAW,
+    )
+    blocked = [issue for issue in report.issues if issue.kind != "baseline-failure"]
+    if blocked:
+        for issue in blocked:
+            print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
+        return 2
+    rendered = baseline.render(report.diagnostics)
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write diagnostic baseline {output}: {exc}", file=sys.stderr)
+        return 2
+    recorded = len(report.diagnostics)
+    print(f"baseline written: {output} ({recorded} diagnostic(s) recorded)")
+    adopted = manifest.load(root)
+    if adopted is None or adopted.diagnostic_baseline is None:
+        relative = output.relative_to(root) if output.is_relative_to(root) else output
+        print(f'point the manifest at it: [baseline] diagnostics = "{relative}"')
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv, namespace=_Args())
@@ -1428,6 +1479,8 @@ def _dispatch(args: _Args) -> int:
             return cmd_exclude(args)
         case "ratchet":
             return cmd_ratchet(args)
+        case "baseline":
+            return cmd_baseline(args)
         case "maintain":
             return _cmd_repo(args)
         case _:  # argparse enforces `required=True`, so this is unreachable
@@ -1560,6 +1613,28 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
         help="use the executing bundle and skip every network-dependent install",
     )
     update.add_argument("--no-install", action="store_true", help="do not install dependencies or hooks")
+
+    baseline_parser = sub.add_parser(
+        "baseline",
+        help="grandfather today's findings so only new ones fail",
+    )
+    baseline_commands = baseline_parser.add_subparsers(dest="baseline_cmd", required=True)
+    for name, help_text in (
+        ("init", "record the first diagnostic baseline"),
+        ("update", "re-record the diagnostic baseline after reviewed cleanup"),
+    ):
+        command = baseline_commands.add_parser(name, help=help_text)
+        command.add_argument(
+            "--output",
+            type=Path,
+            help=f"baseline JSON (default: {_DEFAULT_DIAGNOSTIC_BASELINE})",
+        )
+        command.add_argument(
+            "--trust-repository-code",
+            action="store_true",
+            help="run repository-local analyzers that execute project code",
+        )
+        command.add_argument("files", nargs="*", help="paths to analyze (default: the whole repository)")
 
     ratchet = sub.add_parser("ratchet", help="keep the Python suppression budget from growing")
     ratchet_commands = ratchet.add_subparsers(dest="ratchet_cmd", required=True)
