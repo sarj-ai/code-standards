@@ -116,6 +116,10 @@ class NoEnvironmentConditional(Rule):
             "Comparison against the empty string is an unset-input test, not an environment branch, and is ignored.",
             'An interpolated value such as "cache-${var.environment}" names a resource and is not a branch.',
             "Only .tf and .hcl are read: blocks() drops file-level attributes, so .tfvars is out of scope.",
+            (
+                "A diagnostic is reported at the attribute's line. In a multi-line value the comparison itself "
+                "may sit further down, so `# sarj-noqa: SARJ204` belongs on the attribute line."
+            ),
         ),
         examples=(
             RuleExample(

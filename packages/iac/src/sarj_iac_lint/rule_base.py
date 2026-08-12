@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
 import re
-from typing import ClassVar, Final, Self
+from typing import TYPE_CHECKING, ClassVar, Final, Self
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 _SARJ_NOQA_RE = re.compile(
@@ -196,7 +200,7 @@ class NativeRuleSpec:
         return tuple(example for example in self.examples if example.public)
 
 
-def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
+def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
     """Report whether the diagnostic's line carries a `# sarj-noqa[: CODE]` comment."""
     if line < 1 or line > len(source_lines):
         return False

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_iac_lint.rule_base import is_suppressed
 from sarj_iac_lint.rules.no_environment_conditional import (
     ENVIRONMENT_SEGMENTS,
     QUALIFIED_SEGMENTS,
@@ -484,6 +485,33 @@ resource "google_monitoring_alert_policy" "a" {
 }
 """
     assert _check(src) == []
+
+
+def test_a_multiline_value_reports_at_the_attribute_line():
+    """Suppression is line-keyed, so the diagnostic must land where a noqa can reach it."""
+    src = """
+locals {
+  node_metadata = merge(
+    { disable-legacy-endpoints = "true" },
+    var.environment == "production" ? { serial-port-logging-enable = "false" } : {},
+  )
+}
+"""
+    (diag,) = _check(src)
+    assert diag.line == 3
+
+
+def test_a_noqa_on_the_attribute_line_suppresses_a_multiline_value():
+    src = """
+locals {
+  node_metadata = merge(  # sarj-noqa: SARJ204 — prod-only org policy
+    { disable-legacy-endpoints = "true" },
+    var.environment == "production" ? { serial-port-logging-enable = "false" } : {},
+  )
+}
+"""
+    (diag,) = _check(src)
+    assert is_suppressed(src.splitlines(), diag.line, diag.code)
 
 
 def test_reads_a_conditional_split_across_lines():
