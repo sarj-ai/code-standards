@@ -14,6 +14,8 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING, NoReturn
 
+from packaging.version import InvalidVersion, Version
+
 from sarj_standards import __version__
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption import manifest
@@ -81,6 +83,7 @@ class _Args(argparse.Namespace):
     profile: manifest.Profile | None = None
     output_format: str = "text"
     offline: bool = False
+    target_version: str | None = None
     release_cmd: str = ""
     release_mode: str = ""
     tag: str = ""
@@ -112,6 +115,9 @@ class _Args(argparse.Namespace):
     delay_seconds: timedelta = timedelta(seconds=10)
     ratchet_cmd: str = ""
     baseline_cmd: str = ""
+    selected_rules: list[str]
+    selector: str = ""
+    evaluation_scope: str = "corpus"
     baseline: Path | None = None
     package: list[str]
     exclude_subtree: list[str]
@@ -133,6 +139,7 @@ class _Args(argparse.Namespace):
         self.wheels = []
         self.package = []
         self.exclude_subtree = []
+        self.selected_rules = []
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -388,16 +395,41 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
 
 
 def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command preserves preview/apply state.
-    """Preview or apply the latest coherent bundle."""
+    """Preview or apply one coherent bundle, optionally pinned exactly."""
     from sarj_standards.libs.adoption import doctor, lifecycle, upgrade  # ruff: ignore[import-outside-top-level]
 
-    if (
-        not args.offline
-        and os.environ.get(  # ruff: ignore[banned-api] -- private recursion sentinel, not application settings
+    target_version: str | None = None
+    if args.target_version is not None:
+        try:
+            target_version = str(Version(args.target_version))
+        except InvalidVersion:
+            print(f"error: invalid standards version: {args.target_version}", file=sys.stderr)
+            return 2
+        if target_version != args.target_version:
+            print(
+                f"error: standards version must be canonical ({target_version}), got {args.target_version}",
+                file=sys.stderr,
+            )
+            return 2
+
+    bootstrapped = (
+        os.environ.get(  # ruff: ignore[banned-api] -- private recursion sentinel, not application settings
             "SARJ_STANDARDS_BOOTSTRAPPED"
         )
-        != "1"
+        == "1"
+    )
+    if (
+        target_version is not None
+        and (bootstrapped or args.offline)
+        and Version(__version__) != Version(target_version)
     ):
+        print(
+            f"error: exact update requested standards {target_version}, but the executing bundle is {__version__}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not args.offline and not bootstrapped:
         executable = shutil.which("uvx")
         if executable is None:
             print(
@@ -408,12 +440,15 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level] -- lazy route
 
         command = [
-            *launcher.argv(executable=executable, refresh=True),
+            *launcher.argv(executable=executable, version=target_version, refresh=True),
             "--root",
             str(_resolve_dest(args.dest)),
             "update",
-            "--offline",
         ]
+        if target_version is None:
+            command.append("--offline")
+        else:
+            command.extend(("--to", target_version))
         if args.check:
             command.append("--check")
         if args.no_install:
@@ -429,7 +464,7 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             ).returncode
         except subprocess.TimeoutExpired:
             print(
-                "error: resolving the latest standards release timed out; check the network or pass --offline",
+                "error: resolving the requested standards release timed out; check the network or pass --offline",
                 file=sys.stderr,
             )
             return 2
@@ -815,6 +850,49 @@ def cmd_analyze(args: _Args) -> int:
         external=args.external,
         trust=args.trust,
         mode=AnalysisMode(args.analysis_mode),
+    )
+    return _emit_analysis_report(args, root, report)
+
+
+def cmd_rule_evaluate(args: _Args) -> int:
+    """Run only explicitly selected custom rules for fleet calibration."""
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+
+    root = _resolve_dest(args.dest)
+    if _validate_analysis_output(args, root):
+        return 2
+    report = Standards(root).analyze(
+        args.files or None,
+        external=any(selector.startswith("eslint:") for selector in args.selected_rules),
+        trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
+        mode=(AnalysisMode.CORPUS if args.evaluation_scope == "corpus" else AnalysisMode.POLICY),
+        rules=args.selected_rules,
+    )
+    return _emit_analysis_report(args, root, report)
+
+
+def cmd_observe(args: _Args) -> int:
+    """Emit selected-rule diagnostics without making findings block CI."""
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.policy import warning_selectors  # ruff: ignore[import-outside-top-level]
+
+    root = _resolve_dest(args.dest)
+    if _validate_analysis_output(args, root):
+        return 2
+    warning_rules = warning_selectors()
+    invalid = sorted(set(args.selected_rules) - warning_rules)
+    if invalid:
+        print(
+            "error: observe accepts warning-stage rules only: " + ", ".join(invalid),
+            file=sys.stderr,
+        )
+        return 2
+    report = Standards(root).analyze(
+        args.files or None,
+        external=any(selector.startswith("eslint:") for selector in args.selected_rules),
+        trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
+        mode=AnalysisMode.OBSERVE,
+        rules=args.selected_rules,
     )
     return _emit_analysis_report(args, root, report)
 
@@ -1473,6 +1551,8 @@ def _dispatch(args: _Args) -> int:
             return cmd_format(args)
         case "check":
             return cmd_check(args)
+        case "observe":
+            return cmd_observe(args)
         case "show":
             return cmd_show(args)
         case "exclude":
@@ -1504,7 +1584,7 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     sub = parser.add_subparsers(
         dest="cmd",
         required=True,
-        metavar="{setup,check,fix,doctor,update,ratchet,exclude,show,maintain}",
+        metavar="{setup,check,observe,fix,doctor,update,ratchet,exclude,show,maintain}",
         title="commands",
     )
 
@@ -1601,6 +1681,36 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
         help="selected paths; when omitted, check the complete repository",
     )
 
+    observe = sub.add_parser(
+        "observe",
+        help="report selected warning-stage rules without failing on their diagnostics",
+    )
+    observe.add_argument(
+        "--rule",
+        dest="selected_rules",
+        action="append",
+        required=True,
+        help="canonical ENGINE:ID selector (repeatable)",
+    )
+    observe.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("text", "json", "sarif", "github"),
+        default="text",
+    )
+    observe.add_argument("--output", type=Path)
+    observe.add_argument(
+        "--trust-repository-code",
+        action="store_true",
+        help="allow repository ESLint configuration to execute",
+    )
+    observe.add_argument(
+        "--max-annotations-per-level",
+        type=int,
+        default=10,
+    )
+    observe.add_argument("files", nargs="*", help="selected paths; defaults to adopted verification paths")
+
     fix = sub.add_parser("fix", help="apply safe formatting and lint fixes")
     fix.add_argument("--staged", action="store_true", help="fix only files staged in Git")
     fix.add_argument("files", nargs="*", help="selected paths; when omitted, fix the complete repository")
@@ -1611,6 +1721,12 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
         "--offline",
         action="store_true",
         help="use the executing bundle and skip every network-dependent install",
+    )
+    update.add_argument(
+        "--to",
+        dest="target_version",
+        metavar="VERSION",
+        help="resolve and apply exactly this immutable coherent bundle version",
     )
     update.add_argument("--no-install", action="store_true", help="do not install dependencies or hooks")
 
@@ -1879,6 +1995,39 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
         if args.rules_cmd == "manifest":
             print(json.dumps(rule_inventory_artifact.load(), indent=2))
             return 0
+        if args.rules_cmd == "changes":
+            from sarj_standards.libs.release.process import (  # ruff: ignore[import-outside-top-level]
+                ProcessFailureError,
+            )
+            from sarj_standards.libs.repository import rule_changes  # ruff: ignore[import-outside-top-level]
+
+            try:
+                comparison = rule_changes.compare(
+                    _resolve_dest(args.dest),
+                    before=args.before,
+                    after=args.after,
+                )
+            except (OSError, TypeError, ValueError, ProcessFailureError) as exc:
+                print(f"error: cannot compare rule revisions: {exc}", file=sys.stderr)
+                return 2
+            print(
+                json.dumps(comparison, indent=2)
+                if args.output_format == "json"
+                else rule_changes.render_text(comparison)
+            )
+            return 0
+        if args.rules_cmd == "evaluate":
+            return cmd_rule_evaluate(args)
+        if args.rules_cmd == "stage-warning":
+            from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level]
+
+            try:
+                result = rule_lifecycle.stage_warning(_resolve_dest(args.dest), args.selector, check=args.check)
+            except (OSError, TypeError, ValueError, RuntimeError) as exc:
+                print(f"error: cannot stage warning rule: {exc}", file=sys.stderr)
+                return 2
+            print(result.message)
+            return result.status
         result = rule_inventory_artifact.sync(_resolve_dest(args.dest), check=args.rules_cmd == "check")
         print(result.message)
         return result.status
@@ -2009,6 +2158,45 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     rule_commands.add_parser("manifest", help="print the shipped rule inventory")
     rule_commands.add_parser("check", help="verify the shipped rule inventory matches live registries")
     rule_commands.add_parser("sync", help="update the shipped rule inventory from live registries")
+    stage_warning = rule_commands.add_parser(
+        "stage-warning", help="prepare one registered rule for warning-first publication"
+    )
+    stage_warning.add_argument("selector", help="canonical ENGINE:ID selector")
+    stage_warning.add_argument("--check", action="store_true", help="report required staging without writing")
+    rule_changes = rule_commands.add_parser(
+        "changes", help="compare rule inventory and policy between two Git revisions"
+    )
+    rule_changes.add_argument("--before", required=True)
+    rule_changes.add_argument("--after", required=True)
+    rule_changes.add_argument("--format", dest="output_format", choices=("json", "text"), default="text")
+    rule_evaluate = rule_commands.add_parser("evaluate", help="run selected custom rules for consumer calibration")
+    rule_evaluate.add_argument(
+        "--rule",
+        dest="selected_rules",
+        action="append",
+        required=True,
+        help="canonical ENGINE:ID selector (repeatable)",
+    )
+    rule_evaluate.add_argument(
+        "--scope",
+        dest="evaluation_scope",
+        choices=("corpus", "effective"),
+        default="corpus",
+        help="corpus ignores baselines/rule exclusions; effective applies adopted repository policy",
+    )
+    rule_evaluate.add_argument(
+        "--format",
+        dest="output_format",
+        choices=("json", "text"),
+        default="json",
+    )
+    rule_evaluate.add_argument("--output", type=Path)
+    rule_evaluate.add_argument(
+        "--trust-repository-code",
+        action="store_true",
+        help="allow executable repository ESLint configuration",
+    )
+    rule_evaluate.add_argument("files", nargs="*")
     catalog_commands = commands.add_parser(
         "catalog", help="maintain the source-derived public rule catalog"
     ).add_subparsers(dest="catalog_cmd", required=True)

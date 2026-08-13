@@ -83,6 +83,7 @@ def analyze(
     python_baseline: Path | None = None,
     policy: Policy | None = None,
     grouped: GroupedPaths | None = None,
+    rule_ids_by_engine: Mapping[str, frozenset[str]] | None = None,
 ) -> AnalysisReport:
     """Run applicable bundled analyzers without parsing their console output."""
     root = root.resolve()
@@ -103,10 +104,27 @@ def analyze(
                 routed.python,
                 root,
                 python_baseline=python_baseline,
+                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("python"),
             ),
-            _native_report("sarj-sql-lint", "sarj_sql_lint", routed.sql, root),
-            _native_report("sarj-iac-lint", "sarj_iac_lint", routed.iac, root),
-            _text_report(routed, root),
+            _native_report(
+                "sarj-sql-lint",
+                "sarj_sql_lint",
+                routed.sql,
+                root,
+                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("sql"),
+            ),
+            _native_report(
+                "sarj-iac-lint",
+                "sarj_iac_lint",
+                routed.iac,
+                root,
+                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("iac"),
+            ),
+            _text_report(
+                routed,
+                root,
+                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("text"),
+            ),
         )
         if report is not None
     )
@@ -208,11 +226,12 @@ def _native_report(
     root: Path,
     *,
     python_baseline: Path | None = None,
+    rule_ids: frozenset[str] | None = None,
 ) -> ToolReport | None:
-    if not files:
+    if not files or rule_ids == frozenset():
         return None
     try:
-        return _run_native(name, package, files, root, python_baseline=python_baseline)
+        return _run_native(name, package, files, root, python_baseline=python_baseline, rule_ids=rule_ids)
     except Exception as exc:  # ruff: ignore[blind-except] -- one analyzer failure must not erase other tool results.
         issue = ExecutionIssue(name, "analyzer-failure", f"{type(exc).__name__}: {exc}")
         return ToolReport(name, Completion.FAILED, issues=(issue,))
@@ -225,23 +244,29 @@ def _run_native(
     root: Path,
     *,
     python_baseline: Path | None,
+    rule_ids: frozenset[str] | None,
 ) -> ToolReport:
     started = time.monotonic()
     checker_module, registry_module = _load_native(package)
     metadata = _metadata(registry_module.REGISTRY)
+    selected_rules = sorted(registry_module.REGISTRY) if rule_ids is None else sorted(rule_ids)
+    unknown = sorted(set(selected_rules) - registry_module.REGISTRY.keys())
+    if unknown:
+        msg = f"unknown {package} rule(s): {', '.join(unknown)}"
+        raise ValueError(msg)
     paths = [Path(item) for item in files]
     native_result: Sequence[_NativeDiagnostic]
     if package == "sarj_python_lint":
         from sarj_python_lint.__main__ import analyze as analyze_python  # ruff: ignore[import-outside-top-level]
 
         native_result = analyze_python(
-            sorted(registry_module.REGISTRY),
+            selected_rules,
             paths,
             baseline=python_baseline,
             root=root,
         )
     else:
-        native_result = checker_module.analyze(sorted(registry_module.REGISTRY), paths)
+        native_result = checker_module.analyze(selected_rules, paths)
     cache: dict[Path, SourceDocument | None] = {}
     diagnostics = tuple(
         _normalize_native(item, source=name, root=root, metadata=metadata, documents=cache) for item in native_result
@@ -315,18 +340,32 @@ def _severity(item: _NativeDiagnostic) -> Severity:
     return Severity.ERROR
 
 
-def _text_report(grouped: GroupedPaths, root: Path) -> ToolReport | None:
-    if not grouped.text:
+def _text_report(
+    grouped: GroupedPaths,
+    root: Path,
+    *,
+    rule_ids: frozenset[str] | None = None,
+) -> ToolReport | None:
+    if not grouped.text or rule_ids == frozenset():
         return None
     try:
-        return _run_text(grouped.text, root)
+        return _run_text(grouped.text, root, rule_ids=rule_ids)
     except Exception as exc:  # ruff: ignore[blind-except] -- retain results from independent analyzers.
         issue = ExecutionIssue("sarj-text-lint", "analyzer-failure", f"{type(exc).__name__}: {exc}")
         return ToolReport("sarj-text-lint", Completion.FAILED, issues=(issue,))
 
 
-def _run_text(files: Sequence[str], root: Path) -> ToolReport:
-    raw = textlint.check_paths(files, root=root)
+def _run_text(files: Sequence[str], root: Path, *, rule_ids: frozenset[str] | None) -> ToolReport:
+    selected = frozenset(textlint.REGISTRY) if rule_ids is None else rule_ids
+    unknown = sorted(selected - textlint.REGISTRY.keys())
+    if unknown:
+        msg = f"unknown text rule(s): {', '.join(unknown)}"
+        raise ValueError(msg)
+    raw = tuple(
+        finding
+        for finding in textlint.check_paths(files, root=root)
+        if any(meta.code == finding.code and rule_id in selected for rule_id, meta in textlint.REGISTRY.items())
+    )
     by_code = {meta.code: (rule_id, meta.description, meta.blocking) for rule_id, meta in textlint.REGISTRY.items()}
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics = tuple(_normalize_text(item, root, by_code, documents) for item in raw)

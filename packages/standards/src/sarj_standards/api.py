@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 import os
 from pathlib import Path
@@ -99,6 +99,8 @@ class AnalysisMode(StrEnum):
     """Whether analysis follows adopted policy or scans the requested native corpus raw."""
 
     POLICY = "policy"
+    CORPUS = "corpus"
+    OBSERVE = "observe"
     RAW = "raw"
 
 
@@ -249,6 +251,7 @@ class Standards:
         external: bool = False,
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
+        rules: Sequence[str] | None = None,
     ) -> AnalysisReport:
         """Return source findings and execution failures through the versioned diagnostic protocol."""
         try:
@@ -257,8 +260,17 @@ class Standards:
         except ValueError as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
-            adopted = load_manifest(self.root) if normalized_mode is AnalysisMode.POLICY else None
-            selection_policy = Policy.from_manifest(self.root, adopted)
+            adopted = load_manifest(self.root) if normalized_mode is not AnalysisMode.RAW else None
+            selection_policy = (
+                Policy.corpus_from_manifest(self.root, adopted)
+                if normalized_mode is AnalysisMode.CORPUS
+                else (
+                    Policy.observe_from_manifest(self.root, adopted)
+                    if normalized_mode is AnalysisMode.OBSERVE
+                    else Policy.from_manifest(self.root, adopted)
+                )
+            )
+            rule_selection = _rule_selection(rules)
             selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
@@ -266,7 +278,9 @@ class Standards:
             baseline_counts: dict[str, int]
             baseline_counts = (
                 diagnostic_baseline.load(self.root / adopted.diagnostic_baseline)
-                if adopted is not None and adopted.diagnostic_baseline is not None
+                if normalized_mode is AnalysisMode.POLICY
+                and adopted is not None
+                and adopted.diagnostic_baseline is not None
                 else {}
             )
         except (OSError, TypeError, ValueError) as exc:
@@ -281,8 +295,9 @@ class Standards:
             root=self.root,
             policy=selection_policy,
             grouped=selected_groups,
+            rule_ids_by_engine=rule_selection,
         )
-        if adopted is not None and adopted.profile == "application":
+        if adopted is not None and adopted.profile == "application" and rule_selection is None:
             try:
                 policy = _filter_tool_report(_policy_report(self.root, active_selected), selection_policy)
             except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
@@ -300,13 +315,7 @@ class Standards:
                     CoverageDisposition.EXCLUDED,
                 )
             )
-        routed = {
-            *selected_groups.python,
-            *selected_groups.sql,
-            *selected_groups.iac,
-            *selected_groups.text,
-            *selected_groups.typescript,
-        }
+        routed = _routed_for_selection(selected_groups, rule_selection)
         if adopted is not None and adopted.profile == "application":
             routed.update(
                 item
@@ -323,7 +332,7 @@ class Standards:
                 )
             )
         if not external:
-            if selected_groups.typescript:
+            if selected_groups.typescript and (rule_selection is None or "eslint" in rule_selection):
                 eslint_enabled = adopted is None or "eslint" in adopted.configs
                 coverage.append(
                     CoverageNotice(
@@ -337,6 +346,8 @@ class Standards:
                         CoverageDisposition.FAILED if eslint_enabled else CoverageDisposition.NOT_REQUESTED,
                     )
                 )
+            if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
+                native = _with_warning_severity(native, _warning_rule_keys())
             return _with_coverage(_without_baselined_diagnostics(native, baseline_counts), coverage)
         if selected_groups.typescript and adopted is not None and "eslint" not in adopted.configs:
             coverage.append(
@@ -347,25 +358,33 @@ class Standards:
                     CoverageDisposition.NOT_REQUESTED,
                 )
             )
+        run_eslint = rule_selection is None or "eslint" in rule_selection
         external_reports = (
-            analyze_external(
-                active_selected,
-                root=self.root,
-                trust=normalized_trust,
-                policy=selection_policy,
-                capabilities=frozenset(adopted.configs),
-                grouped=selected_groups,
+            (
+                analyze_external(
+                    active_selected,
+                    root=self.root,
+                    trust=normalized_trust,
+                    policy=selection_policy,
+                    capabilities=(frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.configs)),
+                    grouped=selected_groups,
+                )
+                if adopted is not None
+                else analyze_external(
+                    active_selected,
+                    root=self.root,
+                    trust=normalized_trust,
+                    grouped=selected_groups,
+                )
             )
-            if adopted is not None
-            else analyze_external(
-                active_selected,
-                root=self.root,
-                trust=normalized_trust,
-                grouped=selected_groups,
-            )
+            if run_eslint
+            else ()
         )
+        if rule_selection is not None:
+            external_reports = tuple(_filter_report_selectors(report, rule_selection) for report in external_reports)
         if (
             selected_groups.typescript
+            and run_eslint
             and (adopted is None or "eslint" in adopted.configs)
             and not any(report.name == "eslint" for report in external_reports)
         ):
@@ -374,6 +393,8 @@ class Standards:
             )
             external_reports = (*external_reports, ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         combined = report_from_tools(self.root, (*native.tools, *external_reports))
+        if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
+            combined = _with_warning_severity(combined, _warning_rule_keys())
         return _with_coverage(_without_baselined_diagnostics(combined, baseline_counts), coverage)
 
     def run(
@@ -383,9 +404,10 @@ class Standards:
         external: bool = False,
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
+        rules: Sequence[str] | None = None,
     ) -> AnalysisReport:
         """Run the canonical structured analysis engine."""
-        return self.analyze(paths, external=external, trust=trust, mode=mode)
+        return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules)
 
     def fix(self) -> Result:
         from .libs.adoption import (  # ruff: ignore[import-outside-top-level] -- selected operation only
@@ -607,6 +629,126 @@ def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisM
     return [str(root / path) for path in verify_paths]
 
 
+def _rule_selection(values: Sequence[str] | None) -> dict[str, frozenset[str]] | None:
+    if values is None:
+        return None
+    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+
+    catalog = rule_catalog_artifact.load()
+    raw_rules = _object_list(catalog.get("rules"), "shipped rule catalog rules")
+    live: set[str] = set()
+    for value in raw_rules:
+        key: object = value.get("key") if isinstance(value, dict) else None  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        if isinstance(key, str):
+            live.add(key)
+    selected: dict[str, set[str]] = {}
+    for value in values:
+        engine, separator, rule_id = value.partition(":")
+        if not separator or value not in live:
+            msg = f"unknown or invalid rule selector: {value}"
+            raise ValueError(msg)
+        selected.setdefault(engine, set()).add(rule_id)
+    return {engine: frozenset(rule_ids) for engine, rule_ids in selected.items()}
+
+
+def _routed_for_selection(grouped: object, selected: dict[str, frozenset[str]] | None) -> set[str]:
+    from sarj_standards.libs.linting.runner import GroupedPaths  # ruff: ignore[import-outside-top-level]
+
+    if not isinstance(grouped, GroupedPaths):
+        msg = "analysis routing has an invalid internal type"
+        raise TypeError(msg)
+    engines = {"python", "sql", "iac", "text", "eslint"} if selected is None else set(selected)
+    routed: set[str] = set()
+    if "python" in engines:
+        routed.update(grouped.python)
+    if "sql" in engines:
+        routed.update(grouped.sql)
+    if "iac" in engines:
+        routed.update(grouped.iac)
+    if "text" in engines:
+        routed.update(grouped.text)
+    if "eslint" in engines:
+        routed.update(grouped.typescript)
+    return routed
+
+
+def _filter_report_selectors(
+    report: ToolReport,
+    selected: dict[str, frozenset[str]],
+) -> ToolReport:
+    engine_by_source = {"eslint": "eslint"}
+    engine = engine_by_source.get(report.name)
+    allowed: frozenset[str] = frozenset() if engine is None else selected.get(engine, frozenset())
+    if engine == "eslint":
+        allowed = frozenset(f"@sarj/{rule_id}" for rule_id in allowed)
+    return ToolReport(
+        report.name,
+        report.completion,
+        diagnostics=tuple(item for item in report.diagnostics if item.rule_id in allowed),
+        issues=report.issues,
+        analyzer_id=report.analyzer_id,
+        invocation_id=report.invocation_id,
+        version=report.version,
+        duration_ms=report.duration_ms,
+        file_count=report.file_count,
+        cache_status=report.cache_status,
+    )
+
+
+def _warning_rule_keys() -> frozenset[str]:
+    from sarj_standards.libs.linting.policy import (  # ruff: ignore[import-outside-top-level]
+        warning_selectors,
+    )
+
+    return warning_selectors()
+
+
+def _with_warning_severity(report: AnalysisReport, selectors: frozenset[str]) -> AnalysisReport:
+    if not selectors:
+        return report
+    tools = tuple(
+        ToolReport(
+            tool.name,
+            tool.completion,
+            diagnostics=tuple(
+                replace(item, severity=Severity.WARNING) if _selector_for_diagnostic(item) in selectors else item
+                for item in tool.diagnostics
+            ),
+            issues=tool.issues,
+            analyzer_id=tool.analyzer_id,
+            invocation_id=tool.invocation_id,
+            version=tool.version,
+            duration_ms=tool.duration_ms,
+            file_count=tool.file_count,
+            cache_status=tool.cache_status,
+        )
+        for tool in report.tools
+    )
+    return report_from_tools(report.root, tools)
+
+
+def _selector_for_diagnostic(item: Diagnostic) -> str:
+    engine = _engine_for_diagnostic(item)
+    identity = item.rule_id or item.code
+    if engine == "eslint" and identity.startswith("@sarj/"):
+        identity = identity.removeprefix("@sarj/")
+    return f"{engine}:{identity}"
+
+
+def _engine_for_diagnostic(item: Diagnostic) -> str:
+    return {
+        "sarj-python-lint": "python",
+        "sarj-sql-lint": "sql",
+        "sarj-iac-lint": "iac",
+        "sarj-text-lint": "text",
+        "python": "python",
+        "sql": "sql",
+        "iac": "iac",
+        "text": "text",
+        "eslint": "eslint",
+    }.get(item.source, item.source)
+
+
 def _policy_report(root: Path, selected: Sequence[str]) -> ToolReport:
     findings = check_selected_library_policy(root, selected)
     documents: dict[Path, SourceDocument] = {}
@@ -681,6 +823,13 @@ def _sync_target_changes(source: Path, destination: Path) -> bool:
         return not destination.is_file() or source.read_bytes() != destination.read_bytes()
     except OSError:
         return True
+
+
+def _object_list(value: object, label: str) -> list[object]:
+    if not isinstance(value, list):
+        msg = f"{label} must be an array"
+        raise TypeError(msg)
+    return value  # pyright: ignore[reportUnknownVariableType]
 
 
 __all__ = [
