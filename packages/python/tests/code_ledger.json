@@ -116,5 +116,8 @@
   "SARJ099": "redundant-module-docstring",
   "SARJ400": "invalid-pydantic-field-default",
   "SARJ401": "no-frozen-after-validator-field-write",
-  "SARJ402": "source-coupled-test"
+  "SARJ402": "source-coupled-test",
+  "SARJ404": "no-unique-violation-message-match",
+  "SARJ405": "no-apirouter-root-trailing-slash",
+  "SARJ407": "created-at-order-requires-tiebreaker"
 }

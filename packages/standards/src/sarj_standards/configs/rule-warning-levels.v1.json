@@ -1,1 +1,1 @@
-{"rules":[],"schemaVersion":1}
+{"rules":["python:created-at-order-requires-tiebreaker","python:no-apirouter-root-trailing-slash","python:no-unique-violation-message-match"],"schemaVersion":1}

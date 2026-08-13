@@ -24,6 +24,7 @@
   ],
   "rules": {
     "python": [
+      "created-at-order-requires-tiebreaker",
       "defect-xfail-requires-strict",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
@@ -35,6 +36,7 @@
       "kwarg-heavy-construction-in-test",
       "mock-without-spec",
       "no-aggregation-in-store-query",
+      "no-apirouter-root-trailing-slash",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
       "no-duplicate-dunder-all-entry",
@@ -59,6 +61,7 @@
       "no-string-concat-in-loop",
       "no-tautological-expect",
       "no-typed-doc-sections",
+      "no-unique-violation-message-match",
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
       "prefer-class-row",
@@ -262,7 +265,10 @@
       "SARJ099",
       "SARJ400",
       "SARJ401",
-      "SARJ402"
+      "SARJ402",
+      "SARJ404",
+      "SARJ405",
+      "SARJ407"
     ],
     "sql": [
       "SARJ101",
