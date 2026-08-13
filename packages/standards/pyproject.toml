@@ -19,14 +19,14 @@ dependencies = [
   "pathspec==1.1.1",
   "basedpyright==1.39.9",
   "lefthook==2.1.10",
-  "packaging==26.2",
+  "packaging==26.3",
   "pre-commit==4.6.1",
   "PyYAML==6.0.3",
-  "ruff==0.16.1",
+  "ruff==0.16.2",
   "sarj-iac-lint==0.10.0",
   "sarj-python-lint==0.67.11",
   "sarj-sql-lint==0.13.3",
-  "sqlfluff==4.2.2",
+  "sqlfluff==4.3.0",
 ]
 
 [project.scripts]
