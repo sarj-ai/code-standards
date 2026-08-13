@@ -27,6 +27,17 @@ class ProcessResult:
     stdout: str = ""
     stderr: str = ""
 
+    def __post_init__(self) -> None:
+        if type(self.returncode) is not int:
+            msg = "process return code must be an integer"
+            raise TypeError(msg)
+        if type(self.stdout) is not str:
+            msg = "process stdout must be text"
+            raise TypeError(msg)
+        if type(self.stderr) is not str:
+            msg = "process stderr must be text"
+            raise TypeError(msg)
+
 
 class ProcessRunner(Protocol):
     """Run one argv vector without a shell."""

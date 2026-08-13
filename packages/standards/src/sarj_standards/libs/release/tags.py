@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from enum import StrEnum
 import json
 import math
 from pathlib import Path
@@ -28,6 +29,17 @@ _GIT_NO_MATCH = 2
 _GIT_MISSING_REVISION_CODES = frozenset((1, 128))
 _TAGGER_EMAIL = "release-automation@sarj.ai"
 _TAGGER_NAME = "sarj-ai release automation"
+
+
+class ReleaseTargetId(StrEnum):
+    """Stable package identities shared by release manifests and tags."""
+
+    TYPESCRIPT = "typescript"
+    PYTHON = "python"
+    SQL = "sql"
+    IAC = "iac"
+    STANDARDS = "standards"
+    TSCONFIG = "tsconfig"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,22 +70,22 @@ class TagSyncResult:
 
 RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
     {
-        "typescript": ReleaseTarget(Path("packages/typescript/package.json"), "json"),
-        "python": ReleaseTarget(Path("packages/python/pyproject.toml"), "toml"),
-        "sql": ReleaseTarget(Path("packages/sql/pyproject.toml"), "toml"),
-        "iac": ReleaseTarget(Path("packages/iac/pyproject.toml"), "toml"),
-        "standards": ReleaseTarget(Path("packages/standards/pyproject.toml"), "toml"),
-        "tsconfig": ReleaseTarget(Path("packages/tsconfig/package.json"), "json"),
+        ReleaseTargetId.TYPESCRIPT: ReleaseTarget(Path("packages/typescript/package.json"), "json"),
+        ReleaseTargetId.PYTHON: ReleaseTarget(Path("packages/python/pyproject.toml"), "toml"),
+        ReleaseTargetId.SQL: ReleaseTarget(Path("packages/sql/pyproject.toml"), "toml"),
+        ReleaseTargetId.IAC: ReleaseTarget(Path("packages/iac/pyproject.toml"), "toml"),
+        ReleaseTargetId.STANDARDS: ReleaseTarget(Path("packages/standards/pyproject.toml"), "toml"),
+        ReleaseTargetId.TSCONFIG: ReleaseTarget(Path("packages/tsconfig/package.json"), "json"),
     }
 )
 RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
     {
-        "python": ("packages/python/src/",),
-        "sql": ("packages/sql/src/",),
-        "iac": ("packages/iac/src/",),
-        "standards": ("packages/standards/src/",),
-        "typescript": ("packages/typescript/src/",),
-        "tsconfig": ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
+        ReleaseTargetId.PYTHON: ("packages/python/src/",),
+        ReleaseTargetId.SQL: ("packages/sql/src/",),
+        ReleaseTargetId.IAC: ("packages/iac/src/",),
+        ReleaseTargetId.STANDARDS: ("packages/standards/src/",),
+        ReleaseTargetId.TYPESCRIPT: ("packages/typescript/src/",),
+        ReleaseTargetId.TSCONFIG: ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
     }
 )
 RELEASE_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
@@ -140,7 +152,7 @@ def validate_release_tag(
     return ValidatedReleaseTag(tag, target_name, actual, target.manifest)
 
 
-def _current_tag(target_name: str, root: Path) -> str:
+def _current_tag(target_name: ReleaseTargetId, root: Path) -> str:
     target = RELEASE_TARGETS.get(target_name)
     if target is None:
         msg = f"unsupported release target: {target_name}"
@@ -170,7 +182,7 @@ def missing_remote_release_tags(
 ) -> tuple[str, ...]:
     """Return manifest-derived release tags missing from the ``origin`` remote."""
     resolved = root.resolve()
-    tags = (_current_tag(target, resolved) for target in RELEASE_TARGETS)
+    tags = (_current_tag(ReleaseTargetId(target), resolved) for target in RELEASE_TARGETS)
     return tuple(tag for tag in tags if not _remote_tag_exists(resolved, tag, runner=runner))
 
 
@@ -194,7 +206,8 @@ def verify_remote_release_tags(
         or commit
     )
     missing: list[str] = []
-    for target_name in RELEASE_TARGETS:
+    for target_text in RELEASE_TARGETS:
+        target_name = ReleaseTargetId(target_text)
         tag = _current_tag(target_name, resolved)
         if not _remote_tag_exists(resolved, tag, runner=runner):
             missing.append(tag)
@@ -243,7 +256,12 @@ def create_release_tags(
     checker = publication_exists if publication_checker is None else publication_checker
     created: list[str] = []
     existing: list[str] = []
-    for target in dict.fromkeys(targets):
+    for target_text in dict.fromkeys(targets):
+        try:
+            target = ReleaseTargetId(target_text)
+        except ValueError as exc:
+            msg = f"unsupported release target: {target_text}"
+            raise ValueError(msg) from exc
         tag = _current_tag(target, resolved)
         if _remote_tag_exists(resolved, tag, runner=runner):
             _require_remote_tag_commit(resolved, tag, target, resolved_commit, runner=runner)
@@ -284,7 +302,7 @@ def create_release_tags(
 def _require_remote_tag_commit(
     root: Path,
     tag: str,
-    target_name: str,
+    target_name: ReleaseTargetId,
     commit: str,
     *,
     runner: ProcessRunner,

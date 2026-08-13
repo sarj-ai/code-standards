@@ -19,6 +19,7 @@ class CausalityViolation:
 
     target: str
     manifest: Path
+    version_field: str
     changed_paths: tuple[str, ...]
 
     def render(self) -> str:
@@ -28,7 +29,9 @@ class CausalityViolation:
             if len(self.changed_paths) > _DISPLAY_PATH_LIMIT
             else ""
         )
-        return f"{self.target}: bump {self.manifest} because publishable files changed: {paths}{suffix}"
+        return (
+            f"{self.target}: bump {self.version_field} in {self.manifest}; publishable files changed: {paths}{suffix}"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +65,12 @@ def check_release_causality(
     }
     changed_targets = tuple(name for name, paths in by_target.items() if paths)
     violations = tuple(
-        CausalityViolation(name, RELEASE_TARGETS[name].manifest, by_target[name])
+        CausalityViolation(
+            name,
+            RELEASE_TARGETS[name].manifest,
+            'top-level "version"' if RELEASE_TARGETS[name].format == "json" else "[project].version",
+            by_target[name],
+        )
         for name in changed_targets
         if not bumped[name]
     )

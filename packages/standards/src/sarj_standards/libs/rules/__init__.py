@@ -17,6 +17,8 @@ from .contracts import (
     RuleId,
     RuleOrigin,
     RuleProblem,
+    RuleSelection,
+    RuleSelector,
     RuleSpec,
     RuleStatus,
 )
@@ -65,6 +67,8 @@ __all__ = [
     "RuleId",
     "RuleOrigin",
     "RuleProblem",
+    "RuleSelection",
+    "RuleSelector",
     "RuleSpec",
     "RuleStatus",
     "evaluate",

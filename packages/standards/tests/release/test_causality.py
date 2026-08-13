@@ -24,6 +24,25 @@ def test_publishable_source_change_without_version_bump_fails(tmp_path: Path) ->
     assert not report.ok
     assert report.changed_targets == ("python",)
     assert report.violations[0].target == "python"
+    assert report.violations[0].render() == (
+        "python: bump [project].version in packages/python/pyproject.toml; "
+        "publishable files changed: packages/python/src/sarj_python_lint/api.py"
+    )
+
+
+def test_json_package_failure_names_its_exact_version_field(tmp_path: Path) -> None:
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if "--name-only" in argv:
+            return ProcessResult(0, "packages/typescript/src/index.ts\0")
+        return ProcessResult(0, "")
+
+    report = check_release_causality(tmp_path, before="base", after="head", runner=runner)
+
+    assert report.violations[0].render() == (
+        'typescript: bump top-level "version" in packages/typescript/package.json; '
+        "publishable files changed: packages/typescript/src/index.ts"
+    )
 
 
 def test_matching_manifest_bump_satisfies_source_change(tmp_path: Path) -> None:

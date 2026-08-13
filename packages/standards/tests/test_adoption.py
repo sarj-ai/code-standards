@@ -197,6 +197,17 @@ def test_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
     assert adopted.verify_paths == (".",)
 
 
+@pytest.mark.parametrize("section", ["capabilities", "dest", "hooks", "exclude", "ci"])
+def test_manifest_rejects_wrong_typed_optional_tables(tmp_path: Path, section: str) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 3\nbundle = "1.2.3"\n{section} = "not-a-table"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match=rf"manifest \[{section}\] must be a table"):
+        _ = manifest.load(tmp_path)
+
+
 def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> None:
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
         'schema = 3\nbundle = "1.2.3"\n[verify]\npaths = ["src", "README.md"]\n'

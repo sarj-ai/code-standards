@@ -56,7 +56,8 @@ jobs:
           invalid="$(jq -r '.changes[] | select(.kind == "added" and .after.defaultLevel != "warning") | .key' <<< "$changes")"
           if [[ -n "$invalid" ]]; then
             echo "::error::new judgment rules must enter the fleet at warning level"
-            while IFS= read -r selector; do echo "  $selector"; done <<< "$invalid"
-            echo "Run: uv run --project packages/standards sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID"
+            while IFS= read -r selector; do
+              echo "Run: uv run --project packages/standards sarj-standards --root . maintain rules stage-warning $selector"
+            done <<< "$invalid"
             exit 1
           fi

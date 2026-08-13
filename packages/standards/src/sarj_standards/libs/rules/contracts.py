@@ -7,7 +7,11 @@ from enum import StrEnum
 import json
 from pathlib import PurePosixPath
 import re
-from typing import Final, NewType
+from typing import TYPE_CHECKING, Final, NewType, Self
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 _DEFAULT_CASE_PATH = PurePosixPath("case.txt")
@@ -45,6 +49,75 @@ class RuleEngine(StrEnum):
     PYTHON = "python"
     SQL = "sql"
     TEXT = "text"
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class RuleSelector:
+    """Canonical identity for one custom rule across CLI and wire boundaries."""
+
+    engine: RuleEngine
+    rule_id: RuleId
+
+    def __post_init__(self) -> None:
+        if not _KEBAB_CASE.fullmatch(self.rule_id):
+            msg = "rule ID must be non-empty lowercase kebab-case"
+            raise ValueError(msg)
+
+    @classmethod
+    def parse(cls, value: str) -> Self:
+        """Parse the strict public ``ENGINE:ID`` representation."""
+        engine_text, separator, rule_text = value.partition(":")
+        if not separator or ":" in rule_text:
+            msg = "rule selector must use canonical ENGINE:ID form"
+            raise ValueError(msg)
+        try:
+            engine = RuleEngine(engine_text)
+        except ValueError as exc:
+            msg = f"unknown custom-rule engine: {engine_text}"
+            raise ValueError(msg) from exc
+        return cls(engine, RuleId(rule_text))
+
+    def __str__(self) -> str:
+        return f"{self.engine.value}:{self.rule_id}"
+
+    @property
+    def native_rule_id(self) -> str:
+        """Return the analyzer-native rule ID for diagnostic matching."""
+        if self.engine is RuleEngine.ESLINT:
+            return f"@sarj/{self.rule_id}"
+        return str(self.rule_id)
+
+
+@dataclass(frozen=True, slots=True)
+class RuleSelection:
+    """A normalized, duplicate-free selection of custom rules."""
+
+    selectors: frozenset[RuleSelector]
+
+    @classmethod
+    def from_values(cls, values: Iterable[str | RuleSelector]) -> Self:
+        """Normalize public strings and already-parsed selectors once."""
+        if isinstance(values, str):
+            msg = "rule selection must be an iterable of selector values, not one string"
+            raise TypeError(msg)
+        parsed: set[RuleSelector] = set()
+        for value in values:
+            if isinstance(value, RuleSelector):
+                parsed.add(value)
+            else:
+                parsed.add(RuleSelector.parse(value))
+        return cls(frozenset(parsed))
+
+    @property
+    def engines(self) -> frozenset[RuleEngine]:
+        return frozenset(selector.engine for selector in self.selectors)
+
+    def ids_for(self, engine: RuleEngine) -> frozenset[RuleId]:
+        return frozenset(selector.rule_id for selector in self.selectors if selector.engine is engine)
+
+    def native_ids_for(self, engine: RuleEngine) -> frozenset[str]:
+        """Return engine-native IDs only at analyzer adapter boundaries."""
+        return frozenset(selector.native_rule_id for selector in self.selectors if selector.engine is engine)
 
 
 class RuleCategory(StrEnum):

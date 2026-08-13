@@ -3,13 +3,30 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from sarj_standards.libs.release import ProcessResult, credential_free_environment, run_build_process
 
 
-if TYPE_CHECKING:
-    import pytest
+@pytest.mark.parametrize("returncode", [True, False])
+def test_process_result_rejects_boolean_return_codes(returncode: bool) -> None:
+    with pytest.raises(TypeError, match="return code must be an integer"):
+        ProcessResult(returncode)
+
+
+def test_process_result_rejects_non_text_stdout() -> None:
+    with pytest.raises(TypeError, match="process stdout must be text"):
+        ProcessResult(0, b"output")  # pyright: ignore[reportArgumentType]
+
+
+def test_process_result_rejects_non_text_stderr() -> None:
+    with pytest.raises(TypeError, match="process stderr must be text"):
+        ProcessResult(0, stderr=b"error")  # pyright: ignore[reportArgumentType]
+
+
+def test_process_result_accepts_signal_return_codes_and_text_streams() -> None:
+    assert ProcessResult(-15, "output", "terminated").returncode == -15
 
 
 def test_credential_free_environment_removes_common_secret_forms() -> None:

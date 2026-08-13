@@ -218,6 +218,13 @@ def test_release_ready_is_one_stable_required_gate() -> None:
     assert "typescript@latest" not in tsconfig_workflow
 
 
+def test_warning_first_gate_prints_an_executable_command_for_each_rule() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/repo-ci.yml").read_text(encoding="utf-8")
+
+    assert "stage-warning $selector" in workflow  # sarj-noqa: SARJ402 -- workflow text is the author contract
+    assert "stage-warning ENGINE:RULE-ID" not in workflow
+
+
 def test_parallel_package_workflows_are_always_present_with_stable_contexts() -> None:
     expected_names = {
         "python-ci.yml": "name: python package",

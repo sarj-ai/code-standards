@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from operator import itemgetter
 from types import MappingProxyType
@@ -36,6 +37,7 @@ _RELEASE_TARGET_BY_ENGINE: Final = MappingProxyType(
     }
 )
 _POLICY_FIELDS: Final = frozenset({"defaultLevel", "optionsSchema"})
+_INVENTORY_ENTRY_FIELDS: Final = frozenset({"code", "family", "id", "source", "test"})
 _GIT_SHA_LENGTH: Final = 40
 
 
@@ -61,6 +63,7 @@ class RuleChangeV1(TypedDict):
 
     kind: ChangeKind
     key: str
+    releaseTarget: str
     before: RuleDescriptorV1 | None
     after: RuleDescriptorV1 | None
 
@@ -71,6 +74,8 @@ class RuleChangeSetV1(TypedDict):
     schemaVersion: int
     beforeSha: str
     afterSha: str
+    changedSelectors: list[str]
+    changeSetDigest: str
     changes: list[RuleChangeV1]
 
 
@@ -113,10 +118,23 @@ def compare(
         ):
             changes.append(_change("implementation-changed", key, old_descriptor, new_descriptor))
     changes.sort(key=itemgetter("key", "kind"))
+    changed_selectors = sorted({change["key"] for change in changes})
+    identity: dict[str, object] = {
+        "schemaVersion": SCHEMA_VERSION,
+        "beforeSha": before_sha,
+        "afterSha": after_sha,
+        "changedSelectors": changed_selectors,
+        "changes": changes,
+    }
+    digest = hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
     return {
         "schemaVersion": SCHEMA_VERSION,
         "beforeSha": before_sha,
         "afterSha": after_sha,
+        "changedSelectors": changed_selectors,
+        "changeSetDigest": digest,
         "changes": changes,
     }
 
@@ -127,7 +145,17 @@ def _change(
     before: RuleDescriptorV1 | None,
     after: RuleDescriptorV1 | None,
 ) -> RuleChangeV1:
-    return {"kind": kind, "key": key, "before": before, "after": after}
+    current = after if after is not None else before
+    if current is None:  # pragma: no cover - compare only emits changes with at least one descriptor
+        msg = "a rule change must contain a before or after descriptor"
+        raise ValueError(msg)
+    return {
+        "kind": kind,
+        "key": key,
+        "releaseTarget": current["releaseTarget"],
+        "before": before,
+        "after": after,
+    }
 
 
 def _implementation_projection(rule: dict[str, object]) -> dict[str, object]:
@@ -160,6 +188,9 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
     inventory_by_key: dict[str, dict[str, object]] = {}
     for index, raw in enumerate(inventory_entries, start=1):
         entry = _object(raw, label=f"rule inventory entry {index}")
+        if frozenset(entry) != _INVENTORY_ENTRY_FIELDS:
+            msg = f"rule inventory entry {index} has unexpected or missing fields"
+            raise ValueError(msg)
         family = _string(entry, "family")
         try:
             engine = _ENGINE_BY_FAMILY[family]

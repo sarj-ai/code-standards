@@ -69,6 +69,7 @@ from .libs.linting.library_policy import scan_paths as check_selected_library_po
 from .libs.linting.policy import Policy
 from .libs.linting.runner import group_paths
 from .libs.linting.runner import run as check
+from .libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
 
 
 if TYPE_CHECKING:
@@ -251,7 +252,7 @@ class Standards:
         external: bool = False,
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
-        rules: Sequence[str] | None = None,
+        rules: Sequence[str | RuleSelector] | None = None,
     ) -> AnalysisReport:
         """Return source findings and execution failures through the versioned diagnostic protocol."""
         try:
@@ -295,7 +296,7 @@ class Standards:
             root=self.root,
             policy=selection_policy,
             grouped=selected_groups,
-            rule_ids_by_engine=rule_selection,
+            rule_selection=rule_selection,
         )
         if adopted is not None and adopted.profile == "application" and rule_selection is None:
             try:
@@ -332,7 +333,7 @@ class Standards:
                 )
             )
         if not external:
-            if selected_groups.typescript and (rule_selection is None or "eslint" in rule_selection):
+            if selected_groups.typescript and (rule_selection is None or RuleEngine.ESLINT in rule_selection.engines):
                 eslint_enabled = adopted is None or "eslint" in adopted.configs
                 coverage.append(
                     CoverageNotice(
@@ -358,7 +359,7 @@ class Standards:
                     CoverageDisposition.NOT_REQUESTED,
                 )
             )
-        run_eslint = rule_selection is None or "eslint" in rule_selection
+        run_eslint = rule_selection is None or RuleEngine.ESLINT in rule_selection.engines
         external_reports = (
             (
                 analyze_external(
@@ -404,7 +405,7 @@ class Standards:
         external: bool = False,
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
-        rules: Sequence[str] | None = None,
+        rules: Sequence[str | RuleSelector] | None = None,
     ) -> AnalysisReport:
         """Run the canonical structured analysis engine."""
         return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules)
@@ -629,58 +630,58 @@ def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisM
     return [str(root / path) for path in verify_paths]
 
 
-def _rule_selection(values: Sequence[str] | None) -> dict[str, frozenset[str]] | None:
+def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelection | None:
     if values is None:
         return None
+    if isinstance(values, str):
+        msg = "rules must be a sequence of canonical selectors, not one string"
+        raise TypeError(msg)
     from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
 
     catalog = rule_catalog_artifact.load()
     raw_rules = _object_list(catalog.get("rules"), "shipped rule catalog rules")
-    live: set[str] = set()
+    live: set[RuleSelector] = set()
     for value in raw_rules:
         key: object = value.get("key") if isinstance(value, dict) else None  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
         if isinstance(key, str):
-            live.add(key)
-    selected: dict[str, set[str]] = {}
+            live.add(RuleSelector.parse(key))
+    selected: set[RuleSelector] = set()
     for value in values:
-        engine, separator, rule_id = value.partition(":")
-        if not separator or value not in live:
+        selector = value if isinstance(value, RuleSelector) else RuleSelector.parse(value)
+        if selector not in live:
             msg = f"unknown or invalid rule selector: {value}"
             raise ValueError(msg)
-        selected.setdefault(engine, set()).add(rule_id)
-    return {engine: frozenset(rule_ids) for engine, rule_ids in selected.items()}
+        selected.add(selector)
+    return RuleSelection(frozenset(selected))
 
 
-def _routed_for_selection(grouped: object, selected: dict[str, frozenset[str]] | None) -> set[str]:
+def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> set[str]:
     from sarj_standards.libs.linting.runner import GroupedPaths  # ruff: ignore[import-outside-top-level]
 
     if not isinstance(grouped, GroupedPaths):
         msg = "analysis routing has an invalid internal type"
         raise TypeError(msg)
-    engines = {"python", "sql", "iac", "text", "eslint"} if selected is None else set(selected)
+    engines = frozenset(RuleEngine) if selected is None else selected.engines
     routed: set[str] = set()
-    if "python" in engines:
+    if RuleEngine.PYTHON in engines:
         routed.update(grouped.python)
-    if "sql" in engines:
+    if RuleEngine.SQL in engines:
         routed.update(grouped.sql)
-    if "iac" in engines:
+    if RuleEngine.IAC in engines:
         routed.update(grouped.iac)
-    if "text" in engines:
+    if RuleEngine.TEXT in engines:
         routed.update(grouped.text)
-    if "eslint" in engines:
+    if RuleEngine.ESLINT in engines:
         routed.update(grouped.typescript)
     return routed
 
 
 def _filter_report_selectors(
     report: ToolReport,
-    selected: dict[str, frozenset[str]],
+    selected: RuleSelection,
 ) -> ToolReport:
-    engine_by_source = {"eslint": "eslint"}
-    engine = engine_by_source.get(report.name)
-    allowed: frozenset[str] = frozenset() if engine is None else selected.get(engine, frozenset())
-    if engine == "eslint":
-        allowed = frozenset(f"@sarj/{rule_id}" for rule_id in allowed)
+    engine = RuleEngine.ESLINT if report.name == "eslint" else None
+    allowed: frozenset[str] = frozenset() if engine is None else selected.native_ids_for(engine)
     return ToolReport(
         report.name,
         report.completion,
@@ -695,7 +696,7 @@ def _filter_report_selectors(
     )
 
 
-def _warning_rule_keys() -> frozenset[str]:
+def _warning_rule_keys() -> frozenset[RuleSelector]:
     from sarj_standards.libs.linting.policy import (  # ruff: ignore[import-outside-top-level]
         warning_selectors,
     )
@@ -703,7 +704,7 @@ def _warning_rule_keys() -> frozenset[str]:
     return warning_selectors()
 
 
-def _with_warning_severity(report: AnalysisReport, selectors: frozenset[str]) -> AnalysisReport:
+def _with_warning_severity(report: AnalysisReport, selectors: frozenset[RuleSelector]) -> AnalysisReport:
     if not selectors:
         return report
     tools = tuple(
@@ -727,26 +728,31 @@ def _with_warning_severity(report: AnalysisReport, selectors: frozenset[str]) ->
     return report_from_tools(report.root, tools)
 
 
-def _selector_for_diagnostic(item: Diagnostic) -> str:
+def _selector_for_diagnostic(item: Diagnostic) -> RuleSelector | None:
     engine = _engine_for_diagnostic(item)
+    if engine is None:
+        return None
     identity = item.rule_id or item.code
-    if engine == "eslint" and identity.startswith("@sarj/"):
+    if engine is RuleEngine.ESLINT and identity.startswith("@sarj/"):
         identity = identity.removeprefix("@sarj/")
-    return f"{engine}:{identity}"
+    try:
+        return RuleSelector(engine, RuleId(identity))
+    except ValueError:
+        return None
 
 
-def _engine_for_diagnostic(item: Diagnostic) -> str:
+def _engine_for_diagnostic(item: Diagnostic) -> RuleEngine | None:
     return {
-        "sarj-python-lint": "python",
-        "sarj-sql-lint": "sql",
-        "sarj-iac-lint": "iac",
-        "sarj-text-lint": "text",
-        "python": "python",
-        "sql": "sql",
-        "iac": "iac",
-        "text": "text",
-        "eslint": "eslint",
-    }.get(item.source, item.source)
+        "sarj-python-lint": RuleEngine.PYTHON,
+        "sarj-sql-lint": RuleEngine.SQL,
+        "sarj-iac-lint": RuleEngine.IAC,
+        "sarj-text-lint": RuleEngine.TEXT,
+        "python": RuleEngine.PYTHON,
+        "sql": RuleEngine.SQL,
+        "iac": RuleEngine.IAC,
+        "text": RuleEngine.TEXT,
+        "eslint": RuleEngine.ESLINT,
+    }.get(item.source)
 
 
 def _policy_report(root: Path, selected: Sequence[str]) -> ToolReport:

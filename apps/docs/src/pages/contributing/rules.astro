@@ -3,7 +3,7 @@ import ReferencePage from '../../components/ReferencePage.astro';
 import { Code } from '@astrojs/starlight/components';
 
 const prepare = [
-  'sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID',
+  'sarj-standards --root . maintain rules stage-warning python:no-example-rule',
   'sarj-standards --root . maintain rules changes --before origin/main --after HEAD',
   'make verify',
 ].join('\n');

@@ -14,6 +14,7 @@ from pathspec.pattern import Pattern
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, ExclusionOverride, Manifest
+from sarj_standards.libs.rules import RuleSelector
 
 
 if TYPE_CHECKING:
@@ -126,7 +127,7 @@ def _compile_override(value: ExclusionOverride) -> _Override:
 
 
 @lru_cache(maxsize=1)
-def warning_selectors() -> frozenset[str]:
+def warning_selectors() -> frozenset[RuleSelector]:
     payload: object = json.loads(  # pyright: ignore[reportAny]
         (CONFIGS_DIR / "rule-warning-levels.v1.json").read_text(encoding="utf-8")
     )
@@ -145,7 +146,7 @@ def warning_selectors() -> frozenset[str]:
     if any(not isinstance(value, str) for value in rules):
         msg = "invalid bundled warning-rule selectors"
         raise TypeError(msg)
-    return frozenset(value for value in rules if isinstance(value, str))
+    return frozenset(RuleSelector.parse(value) for value in rules if isinstance(value, str))
 
 
 __all__ = ["Policy"]

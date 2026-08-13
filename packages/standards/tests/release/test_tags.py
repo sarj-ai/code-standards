@@ -11,11 +11,22 @@ from sarj_standards.libs.release import (
     ProcessFailureError,
     ProcessResult,
     ReleaseTarget,
+    ReleaseTargetId,
     create_release_tags,
     missing_remote_release_tags,
     validate_release_tag,
     verify_remote_release_tags,
 )
+
+
+def test_release_target_ids_are_the_authoritative_manifest_keys() -> None:
+    assert tuple(RELEASE_TARGETS) == tuple(ReleaseTargetId)
+    assert RELEASE_TARGETS[ReleaseTargetId.PYTHON] == RELEASE_TARGETS["python"]
+
+
+def test_release_target_id_rejects_unknown_packages() -> None:
+    with pytest.raises(ValueError, match="is not a valid ReleaseTargetId"):
+        _ = ReleaseTargetId("unknown")
 
 
 def test_validate_release_tag_reads_json(tmp_path: Path) -> None:
