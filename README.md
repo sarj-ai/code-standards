@@ -17,4 +17,14 @@ make setup
 make verify
 ```
 
+After committing a new rule, authors stage it as a warning and validate the committed diff before opening a PR:
+
+```bash
+sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID
+sarj-standards --root . maintain rules changes --before origin/main --after HEAD
+make verify
+```
+
+Fleet calibration and downstream PR creation run automatically after review and release.
+
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/standards)

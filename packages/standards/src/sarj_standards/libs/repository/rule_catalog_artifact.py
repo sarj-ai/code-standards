@@ -29,6 +29,7 @@ from sarj_standards.schemas import RULE_CATALOG
 
 
 _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
+_WARNING_LEVELS_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json")
 _TYPESCRIPT_PACKAGE: Final = Path("packages/typescript")
 _NODE_PROJECTION: Final = (
     "import {publicDocumentation,rules} from './dist/index.js';"
@@ -313,11 +314,14 @@ def _typescript_file(value: object) -> ExampleFile:
     )
 
 
-def build(root: Path) -> RuleCatalogDocument:
+def build(  # ruff: ignore[too-many-locals] -- joins five engine registries with lifecycle metadata.
+    root: Path,
+) -> RuleCatalogDocument:
     """Build the complete public catalog from current rule registries."""
     from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level]
 
     resolved = root.resolve()
+    warning_rules = _warning_rules(resolved)
     inventory = rule_inventory_artifact.build(resolved)
     raw_rules = inventory["rules"]
     if not _is_array(raw_rules):
@@ -360,7 +364,7 @@ def build(root: Path) -> RuleCatalogDocument:
         documented.append(
             DocumentedRule(
                 spec=spec,
-                default_level=DefaultLevel.ERROR,
+                default_level=(DefaultLevel.WARNING if spec.key in warning_rules else DefaultLevel.ERROR),
                 source=source,
                 test=test,
             )
@@ -369,7 +373,32 @@ def build(root: Path) -> RuleCatalogDocument:
         missing = ", ".join(f"{family}:{rule_id}" for family, rule_id in sorted(locations))
         msg = f"live rules missing source-owned documentation: {missing}"
         raise ValueError(msg)
+    live_keys = {rule.spec.key for rule in documented}
+    unknown_warning_rules = warning_rules - live_keys
+    if unknown_warning_rules:
+        msg = f"warning lifecycle names unknown rules: {', '.join(sorted(unknown_warning_rules))}"
+        raise ValueError(msg)
     return RuleCatalogDocument(tuple(documented))
+
+
+def _warning_rules(root: Path) -> frozenset[str]:
+    path = root / _WARNING_LEVELS_PATH
+    payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    if not _is_object(payload) or set(payload) != {"rules", "schemaVersion"}:
+        msg = "rule warning lifecycle must contain exactly rules and schemaVersion"
+        raise ValueError(msg)
+    if payload["schemaVersion"] != 1 or not _is_array(payload["rules"]):
+        msg = "rule warning lifecycle must use schemaVersion 1 and an array of rules"
+        raise TypeError(msg)
+    rules = payload["rules"]
+    if any(not isinstance(value, str) for value in rules):
+        msg = "rule warning lifecycle selectors must be strings"
+        raise TypeError(msg)
+    selected = frozenset(value for value in rules if isinstance(value, str))
+    if len(selected) != len(rules):
+        msg = "rule warning lifecycle repeats a selector"
+        raise ValueError(msg)
+    return selected
 
 
 def _python_specs() -> tuple[RuleSpec, ...]:

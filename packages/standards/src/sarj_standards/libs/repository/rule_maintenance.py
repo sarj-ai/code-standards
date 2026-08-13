@@ -46,7 +46,6 @@ class SyncResult:
 
 
 def inventory(root: Path) -> list[dict[str, str]]:
-    _ = root  # Preserve the maintenance API while using only wheel-owned inventory.
     items: list[dict[str, str]] = []
     for family, module_name, package in _FAMILIES:
         registry = _registry(module_name)
@@ -72,6 +71,11 @@ def inventory(root: Path) -> list[dict[str, str]]:
                 "test": "packages/standards/tests/test_textlint.py",
             }
         )
+    eslint_rules = (
+        repository.eslint_rule_names(root)
+        if (root / "packages/typescript/src/index.ts").is_file()
+        else list(ledger.load().rules.get(ledger.ESLINT, ()))
+    )
     items.extend(
         {
             "family": "typescript",
@@ -80,7 +84,7 @@ def inventory(root: Path) -> list[dict[str, str]]:
             "source": f"packages/typescript/src/rules/{rule_id}.ts",
             "test": f"packages/typescript/tests/rules/{rule_id}.test.ts",
         }
-        for rule_id in ledger.load().rules.get(ledger.ESLINT, ())
+        for rule_id in eslint_rules
     )
     return sorted(items, key=itemgetter("family", "id"))
 

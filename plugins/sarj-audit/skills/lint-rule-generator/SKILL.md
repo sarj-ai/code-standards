@@ -33,7 +33,9 @@ running or reporting a corpus evaluation.
    pass that must produce no change.
 5. Implement the smallest rule and register it atomically with its metadata,
    strict config, ledger entry, tests, docs, and owning package version. Keep a
-   new judgment-heavy rule at warning severity.
+   new judgment-heavy rule at warning severity. From the Standards repository,
+   stage its lifecycle and synchronize all derived rule artifacts with:
+   `sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID`.
 6. Run focused tests, Ruff/ESLint, type checking, package tests, and the
    repository's own `sarj-standards check`. Fix contradictions and diagnostic
    thrashing rather than adding broad suppressions.
@@ -49,6 +51,11 @@ running or reporting a corpus evaluation.
 10. Produce a reproducible report: rule ID, severity, implementation location,
     test commands, corpus pins or redacted labels, TP/FP/FN counts, sampling,
     interactions, timings, limitations, and promotion recommendation.
+
+Before opening the PR, run
+`sarj-standards --root . maintain rules changes --before origin/main --after HEAD`
+and `make verify`. Fleet calibration is automatic after exact-commit approval;
+do not manually clone or modify consumer repositories during rule authoring.
 
 ## Promotion gate
 

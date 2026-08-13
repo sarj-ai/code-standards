@@ -113,6 +113,13 @@ def _root_readme(
             "## Contributing\n\n"
             "Install uv 0.12.3, Python 3.14, Node 22.16, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
+            "\n\nAfter committing a new rule, authors stage it as a warning and validate the committed diff before opening a PR:\n\n"
+            "```bash\n"
+            "sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID\n"
+            "sarj-standards --root . maintain rules changes --before origin/main --after HEAD\n"
+            "make verify\n"
+            "```\n\n"
+            "Fleet calibration and downstream PR creation run automatically after review and release."
         ),
         f"[Documentation]({_DOCUMENTATION_URL}) · [Source]({_source_url(standards)})",
     ]

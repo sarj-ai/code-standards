@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+import json
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Self
@@ -10,6 +12,7 @@ from typing import TYPE_CHECKING, Final, Self
 from pathspec import PathSpec
 from pathspec.pattern import Pattern
 
+from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, ExclusionOverride, Manifest
 
 
@@ -50,6 +53,25 @@ class Policy:
 
     @classmethod
     def from_manifest(cls, root: Path, manifest: Manifest | None) -> Self:
+        resolved = root.resolve()
+        if manifest is None:
+            return cls(resolved, PathSpec.from_lines("gitignore", ()), frozenset(), ())
+        return cls(
+            resolved,
+            PathSpec.from_lines("gitignore", manifest.excluded_paths),
+            frozenset(manifest.excluded_rules),
+            tuple(_compile_override(item) for item in manifest.exclusion_overrides),
+        )
+
+    @classmethod
+    def corpus_from_manifest(cls, root: Path, manifest: Manifest | None) -> Self:
+        """Apply reviewed path scope while deliberately exposing every rule diagnostic."""
+        policy = cls.from_manifest(root, manifest)
+        return cls(policy.root, policy.excluded_paths, frozenset(), ())
+
+    @classmethod
+    def observe_from_manifest(cls, root: Path, manifest: Manifest | None) -> Self:
+        """Expose lifecycle warnings while preserving consumer-owned exclusions."""
         resolved = root.resolve()
         if manifest is None:
             return cls(resolved, PathSpec.from_lines("gitignore", ()), frozenset(), ())
@@ -101,6 +123,29 @@ class Policy:
 
 def _compile_override(value: ExclusionOverride) -> _Override:
     return _Override(PathSpec.from_lines("gitignore", value.paths), frozenset(value.rules))
+
+
+@lru_cache(maxsize=1)
+def warning_selectors() -> frozenset[str]:
+    payload: object = json.loads(  # pyright: ignore[reportAny]
+        (CONFIGS_DIR / "rule-warning-levels.v1.json").read_text(encoding="utf-8")
+    )
+    if not isinstance(payload, dict):
+        msg = "invalid bundled warning-rule lifecycle"
+        raise TypeError(msg)
+    document: dict[str, object] = payload  # pyright: ignore[reportUnknownVariableType]
+    if document.get("schemaVersion") != 1:
+        msg = "invalid bundled warning-rule lifecycle"
+        raise ValueError(msg)
+    rules_value = document.get("rules")
+    if not isinstance(rules_value, list):
+        msg = "invalid bundled warning-rule selectors"
+        raise TypeError(msg)
+    rules: list[object] = rules_value  # pyright: ignore[reportUnknownVariableType]
+    if any(not isinstance(value, str) for value in rules):
+        msg = "invalid bundled warning-rule selectors"
+        raise TypeError(msg)
+    return frozenset(value for value in rules if isinstance(value, str))
 
 
 __all__ = ["Policy"]

@@ -1,0 +1,39 @@
+---
+import ReferencePage from '../../components/ReferencePage.astro';
+import { Code } from '@astrojs/starlight/components';
+
+const prepare = [
+  'sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID',
+  'sarj-standards --root . maintain rules changes --before origin/main --after HEAD',
+  'make verify',
+].join('\n');
+---
+
+<ReferencePage
+  title="Author a rule"
+  description="Add, calibrate, and release a custom Sarj rule without surprising downstream repositories."
+>
+  <section class="command-block">
+    <div>
+      <h1>Propose a rule</h1>
+      <p>
+        Implement the rule and its focused positive, negative, and near-miss tests in the owning engine, register it,
+        and complete its source-owned rule metadata. Then run the preparation sequence below.
+      </p>
+      <Code code={prepare} lang="bash" frame="terminal" wrap />
+      <p>
+        <code>stage-warning</code> validates the live registry and documentation, records the warning-first lifecycle,
+        and synchronizes the ledger, inventory, and public catalog together. It is safe to rerun.
+      </p>
+      <p>
+        After the PR receives its exact-commit code approval, private fleet calibration scans every eligible consumer.
+        Zero findings pass automatically. Findings pause for consumer-owner review: true positives may ship as warnings;
+        a false positive or uncertain match sends the rule back for refinement. Raw consumer paths and snippets remain private.
+      </p>
+      <p>
+        Publication uses the coherent released bundle. The rollout controller opens or updates one reviewed adoption PR per
+        consumer and never grows a baseline, adds an exclusion, pushes a default branch, approves, merges, or deploys.
+      </p>
+    </div>
+  </section>
+</ReferencePage>
