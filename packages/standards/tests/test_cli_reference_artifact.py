@@ -38,3 +38,22 @@ def test_reference_contains_nested_commands_and_arguments() -> None:
         "install": "uv tool install --python 3.14 sarj-standards",
         "runLatest": "uvx --isolated --python 3.14 --from sarj-standards sarj-standards",
     }
+
+
+def test_reference_preserves_the_rule_authoring_flow_and_exit_contract() -> None:
+    reference = cli_reference_artifact.load()
+    commands = reference["commands"]
+    observe = next(command for command in commands if command["name"] == "observe")
+    assert "findings with exit 0" in observe["summary"]
+
+    maintain = next(command for command in commands if command["name"] == "maintain")
+    rules = next(command for command in maintain["commands"] if command["name"] == "rules")
+    evaluate = next(command for command in rules["commands"] if command["name"] == "evaluate")
+    stage = next(command for command in rules["commands"] if command["name"] == "stage-warning")
+
+    assert "findings exit 1" in evaluate["summary"]
+    scope = next(option for option in evaluate["options"] if option["names"] == ["--scope"])
+    assert scope["choices"] == ["corpus", "effective"]
+    selector = next(option for option in stage["options"] if option["names"] == ["selector"])
+    assert selector["required"]
+    assert selector["summary"] == "canonical ENGINE:ID selector"

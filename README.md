@@ -17,12 +17,18 @@ make setup
 make verify
 ```
 
-After committing a new rule, authors stage it as a warning and validate the committed diff before opening a PR:
+Once a new rule and its tests are registered, stage it as a warning and validate it locally:
 
 ```bash
-sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID
-sarj-standards --root . maintain rules changes --before origin/main --after HEAD
+sarj-standards --root . maintain rules stage-warning python:no-string-concat-in-loop
+sarj-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop --scope corpus
 make verify
+```
+
+After committing the resulting changes, review the complete rule diff:
+
+```bash
+sarj-standards --root . maintain rules changes --before origin/main --after HEAD
 ```
 
 Fleet calibration and downstream PR creation run automatically after review and release.

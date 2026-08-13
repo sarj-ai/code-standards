@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import timedelta
+from enum import StrEnum
 import json
 import os
 from pathlib import Path
@@ -30,6 +31,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from sarj_standards.libs.adoption import service
+    from sarj_standards.libs.rules import RuleSelector
 
 
 _NEXT_STEPS = (
@@ -50,6 +52,13 @@ _INVALID_DOCTOR_IDS = frozenset(
         "doctor.package-json.invalid",
     }
 )
+
+
+class _EvaluationScope(StrEnum):
+    """Policy treatment for selected-rule calibration."""
+
+    CORPUS = "corpus"
+    EFFECTIVE = "effective"
 
 
 class _Args(argparse.Namespace):
@@ -115,9 +124,9 @@ class _Args(argparse.Namespace):
     delay_seconds: timedelta = timedelta(seconds=10)
     ratchet_cmd: str = ""
     baseline_cmd: str = ""
-    selected_rules: list[str]
-    selector: str = ""
-    evaluation_scope: str = "corpus"
+    selected_rules: list[RuleSelector]
+    selector: RuleSelector | None = None
+    evaluation_scope: _EvaluationScope = _EvaluationScope.CORPUS
     baseline: Path | None = None
     package: list[str]
     exclude_subtree: list[str]
@@ -178,6 +187,18 @@ def _user_error(message: str) -> NoReturn:
     """Render invalid command input with argparse's conventional exit status."""
     print(f"error: {message}", file=sys.stderr)
     raise SystemExit(2)
+
+
+def _parse_rule_selector(value: str) -> RuleSelector:
+    """Validate a public rule selector once, at the argparse boundary."""
+    from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level] -- parser startup stays lazy
+        RuleSelector,
+    )
+
+    try:
+        return RuleSelector.parse(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _render_sync(result: service.SyncResult) -> None:
@@ -863,12 +884,15 @@ def cmd_rule_evaluate(args: _Args) -> int:
         return 2
     report = Standards(root).analyze(
         args.files or None,
-        external=any(selector.startswith("eslint:") for selector in args.selected_rules),
+        external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
-        mode=(AnalysisMode.CORPUS if args.evaluation_scope == "corpus" else AnalysisMode.POLICY),
+        mode=(AnalysisMode.CORPUS if args.evaluation_scope is _EvaluationScope.CORPUS else AnalysisMode.POLICY),
         rules=args.selected_rules,
     )
-    return _emit_analysis_report(args, root, report)
+    status = _emit_analysis_report(args, root, report)
+    if args.output_format == "text" and not report.issues:
+        print(_rule_evaluation_summary(report, args.selected_rules))
+    return status
 
 
 def cmd_observe(args: _Args) -> int:
@@ -882,19 +906,53 @@ def cmd_observe(args: _Args) -> int:
     warning_rules = warning_selectors()
     invalid = sorted(set(args.selected_rules) - warning_rules)
     if invalid:
+        rendered = ", ".join(map(str, invalid))
         print(
-            "error: observe accepts warning-stage rules only: " + ", ".join(invalid),
+            f"error: observe accepts warning-stage rules only: {rendered}\n"
+            f"next: sarj-standards maintain rules stage-warning {invalid[0]}",
             file=sys.stderr,
         )
         return 2
     report = Standards(root).analyze(
         args.files or None,
-        external=any(selector.startswith("eslint:") for selector in args.selected_rules),
+        external=any(selector.engine.value == "eslint" for selector in args.selected_rules),
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=AnalysisMode.OBSERVE,
         rules=args.selected_rules,
     )
     return _emit_analysis_report(args, root, report)
+
+
+def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) -> str:
+    """Render deterministic per-rule calibration counts and an author next step."""
+    from sarj_standards.libs.diagnostics import AnalysisReport  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.rules import RuleEngine  # ruff: ignore[import-outside-top-level]
+
+    if not isinstance(report, AnalysisReport):
+        msg = "rule evaluation report has an invalid internal type"
+        raise TypeError(msg)
+    sources = {
+        RuleEngine.ESLINT: frozenset(("eslint",)),
+        RuleEngine.IAC: frozenset(("iac", "sarj-iac-lint")),
+        RuleEngine.PYTHON: frozenset(("python", "sarj-python-lint")),
+        RuleEngine.SQL: frozenset(("sql", "sarj-sql-lint")),
+        RuleEngine.TEXT: frozenset(("text", "sarj-text-lint")),
+    }
+    lines = ["calibration summary:"]
+    for selector in sorted(set(selectors)):
+        count = sum(
+            item.source in sources[selector.engine] and (item.rule_id or item.code) == selector.native_rule_id
+            for item in report.diagnostics
+        )
+        noun = "finding" if count == 1 else "findings"
+        lines.append(f"  {selector}: {count} {noun}")
+    lines.extend(
+        (
+            "next: review these findings for false positives; stage an approved rule with:",
+            f"  sarj-standards maintain rules stage-warning {min(selectors)}",
+        )
+    )
+    return "\n".join(lines)
 
 
 def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
@@ -1683,12 +1741,14 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
 
     observe = sub.add_parser(
         "observe",
-        help="report selected warning-stage rules without failing on their diagnostics",
+        help="report warning-stage findings with exit 0; invalid input or execution still exits 2",
+        description="Report selected warning-stage findings with exit 0; invalid input or execution still exits 2.",
     )
     observe.add_argument(
         "--rule",
         dest="selected_rules",
         action="append",
+        type=_parse_rule_selector,
         required=True,
         help="canonical ENGINE:ID selector (repeatable)",
     )
@@ -2021,12 +2081,17 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
         if args.rules_cmd == "stage-warning":
             from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level]
 
+            if args.selector is None:  # pragma: no cover - argparse requires the positional value
+                msg = "stage-warning requires a rule selector"
+                raise TypeError(msg)
             try:
                 result = rule_lifecycle.stage_warning(_resolve_dest(args.dest), args.selector, check=args.check)
             except (OSError, TypeError, ValueError, RuntimeError) as exc:
                 print(f"error: cannot stage warning rule: {exc}", file=sys.stderr)
                 return 2
             print(result.message)
+            if result.status == 0:
+                print(_rule_author_next_steps(args.selector))
             return result.status
         result = rule_inventory_artifact.sync(_resolve_dest(args.dest), check=args.rules_cmd == "check")
         print(result.message)
@@ -2046,6 +2111,17 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
         print(result.message)
         return result.status
     return 2
+
+
+def _rule_author_next_steps(selector: RuleSelector) -> str:
+    """Render the local validation sequence after warning staging succeeds."""
+    return (
+        "next: validate the staged rule locally\n"
+        f"  sarj-standards --root . maintain rules evaluate --rule {selector} --scope corpus\n"
+        "  make verify\n"
+        "after committing the result:\n"
+        "  sarj-standards --root . maintain rules changes --before origin/main --after HEAD"
+    )
 
 
 def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[too-many-locals] -- argparse requires one variable per subparser.
@@ -2161,7 +2237,7 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     stage_warning = rule_commands.add_parser(
         "stage-warning", help="prepare one registered rule for warning-first publication"
     )
-    stage_warning.add_argument("selector", help="canonical ENGINE:ID selector")
+    stage_warning.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
     stage_warning.add_argument("--check", action="store_true", help="report required staging without writing")
     rule_changes = rule_commands.add_parser(
         "changes", help="compare rule inventory and policy between two Git revisions"
@@ -2169,19 +2245,25 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     rule_changes.add_argument("--before", required=True)
     rule_changes.add_argument("--after", required=True)
     rule_changes.add_argument("--format", dest="output_format", choices=("json", "text"), default="text")
-    rule_evaluate = rule_commands.add_parser("evaluate", help="run selected custom rules for consumer calibration")
+    rule_evaluate = rule_commands.add_parser(
+        "evaluate",
+        help="calibrate selected custom rules; findings exit 1 and invalid input or execution exits 2",
+        description="Calibrate selected custom rules; findings exit 1 and invalid input or execution exits 2.",
+    )
     rule_evaluate.add_argument(
         "--rule",
         dest="selected_rules",
         action="append",
+        type=_parse_rule_selector,
         required=True,
         help="canonical ENGINE:ID selector (repeatable)",
     )
     rule_evaluate.add_argument(
         "--scope",
         dest="evaluation_scope",
-        choices=("corpus", "effective"),
-        default="corpus",
+        type=_EvaluationScope,
+        choices=tuple(_EvaluationScope),
+        default=_EvaluationScope.CORPUS,
         help="corpus ignores baselines/rule exclusions; effective applies adopted repository policy",
     )
     rule_evaluate.add_argument(

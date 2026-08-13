@@ -12,6 +12,7 @@ import sarj_standards
 from sarj_standards import api
 from sarj_standards.libs.adoption.lifecycle import Command
 from sarj_standards.libs.adoption.manifest import Manifest
+from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
 if TYPE_CHECKING:
@@ -50,6 +51,43 @@ def test_package_import_does_not_eagerly_load_release_automation() -> None:
     assert completed.returncode == 0, completed.stderr
 
 
+@pytest.mark.parametrize(
+    ("source", "rule_id", "expected"),
+    [
+        (
+            "sarj-python-lint",
+            "no-global-mutable",
+            RuleSelector(RuleEngine.PYTHON, RuleId("no-global-mutable")),
+        ),
+        (
+            "eslint",
+            "@sarj/no-alert",
+            RuleSelector(RuleEngine.ESLINT, RuleId("no-alert")),
+        ),
+        ("unregistered-tool", "no-alert", None),
+        ("eslint", "@upstream/no-alert", None),
+    ],
+)
+def test_diagnostic_identity_normalizes_only_known_custom_rule_selectors(
+    source: str,
+    rule_id: str,
+    expected: RuleSelector | None,
+) -> None:
+    diagnostic = api.Diagnostic(
+        "TEST001",
+        "finding",
+        api.Severity.ERROR,
+        source,
+        api.Location("src/example.py"),
+        rule_id=rule_id,
+    )
+
+    selector = api._selector_for_diagnostic(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        diagnostic
+    )
+    assert selector == expected
+
+
 def test_canonical_analysis_routes_the_repository_only_once(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -80,6 +118,14 @@ def test_canonical_analysis_routes_the_repository_only_once(
 
     assert report.conclusion is api.Conclusion.PASSED
     assert len(routed) == 1
+
+
+def test_analysis_rejects_a_bare_rule_selector_string(tmp_path: Path) -> None:
+    report = api.Standards(tmp_path).analyze(rules="python:no-rule")
+
+    assert report.conclusion is api.Conclusion.INCONCLUSIVE
+    assert report.issues[0].kind == "invalid-input"
+    assert "sequence of canonical selectors" in report.issues[0].message
 
 
 def test_public_api_is_the_deliberately_small_stable_facade() -> None:

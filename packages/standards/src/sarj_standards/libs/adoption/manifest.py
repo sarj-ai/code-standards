@@ -226,7 +226,7 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
         msg = f"{path} `rule_profile` currently supports only: all"
         raise ValueError(msg)
     raw_profile = data.get("profile", "standard")
-    capabilities_table = table_field(data, "capabilities")
+    capabilities_table = _manifest_table(data, "capabilities")
     disabled = _string_list(capabilities_table, "disable", label="manifest [capabilities].disable")
     unknown_capabilities = sorted(set(disabled) - set(ALL_CONFIGS))
     if unknown_capabilities:
@@ -246,15 +246,15 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
         raise ValueError(msg)
     profile: Profile = raw_profile
 
-    dest_table = table_field(data, "dest")
-    verify_table = table_field(data, "verify")
-    hooks_table = table_field(data, "hooks")
-    exclude_table = table_field(data, "exclude")
-    artifacts_table = table_field(data, "artifacts")
-    text_table = table_field(data, "text")
-    doctor_table = table_field(data, "doctor")
-    baseline_table = table_field(data, "baseline")
-    ci_table = table_field(data, "ci")
+    dest_table = _manifest_table(data, "dest")
+    verify_table = _manifest_table(data, "verify")
+    hooks_table = _manifest_table(data, "hooks")
+    exclude_table = _manifest_table(data, "exclude")
+    artifacts_table = _manifest_table(data, "artifacts")
+    text_table = _manifest_table(data, "text")
+    doctor_table = _manifest_table(data, "doctor")
+    baseline_table = _manifest_table(data, "baseline")
+    ci_table = _manifest_table(data, "ci")
     raw_hook_manager = hooks_table.get("manager", "pre-commit")
     if not isinstance(raw_hook_manager, str) or raw_hook_manager not in HOOK_MANAGERS:
         msg = f"manifest [hooks].manager must be one of: {', '.join(HOOK_MANAGERS)}"
@@ -283,6 +283,17 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         ci_bootstrap=_ci_bootstrap(ci_table),
     )
+
+
+def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
+    """Decode an optional manifest table without hiding a wrong-typed section."""
+    value = data.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        msg = f"manifest [{key}] must be a table"
+        raise TypeError(msg)
+    return as_table(value)  # pyright: ignore[reportUnknownArgumentType] -- runtime dict narrowed above; as_table validates keys
 
 
 def load_for_setup(root: Path) -> Manifest | None:

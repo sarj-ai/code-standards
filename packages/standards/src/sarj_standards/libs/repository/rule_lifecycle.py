@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from difflib import get_close_matches
 import json
 from pathlib import Path
 from types import MappingProxyType
@@ -10,6 +11,7 @@ from typing import Final, TypeGuard
 
 from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.repository import rule_catalog_artifact, rule_inventory_artifact, rule_maintenance
+from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
 _WARNING_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json")
@@ -18,11 +20,11 @@ _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-
 _LEDGER_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-ledger.json")
 _ENGINE_BY_FAMILY: Final = MappingProxyType(
     {
-        "typescript": "eslint",
-        "iac": "iac",
-        "python": "python",
-        "sql": "sql",
-        "text": "text",
+        "typescript": RuleEngine.ESLINT,
+        "iac": RuleEngine.IAC,
+        "python": RuleEngine.PYTHON,
+        "sql": RuleEngine.SQL,
+        "text": RuleEngine.TEXT,
     }
 )
 
@@ -36,26 +38,28 @@ class StageResult:
     message: str
 
 
-def stage_warning(root: Path, selector: str, *, check: bool = False) -> StageResult:
+def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) -> StageResult:
     """Validate and atomically stage one live rule plus all derived artifacts."""
     repository = root.resolve()
     inventory = rule_inventory_artifact.build(repository)
     known = {
-        f"{_ENGINE_BY_FAMILY[entry['family']]}:{entry['id']}"
+        RuleSelector(_ENGINE_BY_FAMILY[entry["family"]], RuleId(entry["id"]))
         for entry in inventory["rules"]
         if entry["family"] in _ENGINE_BY_FAMILY
     }
     if selector not in known:
-        msg = f"unknown live rule selector: {selector}"
-        raise ValueError(msg)
+        raise ValueError(_unknown_selector_message(selector, known))
 
     # Building before mutation proves source-owned metadata/examples are complete.
     _ = rule_catalog_artifact.build(repository)
     warning_path = repository / _WARNING_PATH
     selected = set(_load(warning_path))
     already_staged = selector in selected
-    derived_current = _derived_current(repository) if already_staged else False
-    if already_staged and derived_current:
+    selected.add(selector)
+    rendered = _render(selected)
+    warning_current = warning_path.read_text(encoding="utf-8") == rendered
+    derived_current = _derived_current(repository) if already_staged and warning_current else False
+    if already_staged and warning_current and derived_current:
         return StageResult(status=0, changed=False, message=f"ok: {selector} is already warning-stage")
     if check:
         return StageResult(
@@ -68,21 +72,11 @@ def stage_warning(root: Path, selector: str, *, check: bool = False) -> StageRes
             ),
         )
 
-    selected.add(selector)
-    rendered = (
-        json.dumps(
-            {"schemaVersion": 1, "rules": sorted(selected)},
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        + "\n"
-    )
     managed = (_WARNING_PATH, _INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH)
     paths = tuple(repository / path for path in managed)
     mutation = transaction.FileTransaction.capture(repository, paths)
     try:
-        if not already_staged:
+        if not warning_current:
             transaction.atomic_write_text(repository, warning_path, rendered)
             mutation.mark_written(warning_path)
         _synchronize(repository, mutation)
@@ -96,11 +90,31 @@ def stage_warning(root: Path, selector: str, *, check: bool = False) -> StageRes
         status=0,
         changed=True,
         message=(
-            f"synchronized: derived artifacts for warning-stage {selector}"
+            f"synchronized: warning lifecycle and derived artifacts for {selector}"
             if already_staged
             else f"staged: {selector} will ship at warning level"
         ),
     )
+
+
+def _render(selectors: set[RuleSelector]) -> str:
+    return (
+        json.dumps(
+            {"schemaVersion": 1, "rules": sorted(str(item) for item in selectors)},
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
+def _unknown_selector_message(selector: RuleSelector, known: set[RuleSelector]) -> str:
+    requested = str(selector)
+    suggestion = get_close_matches(requested, (str(item) for item in known), n=1, cutoff=0.6)
+    if suggestion:
+        return f"unknown live rule selector: {requested}; did you mean {suggestion[0]}?"
+    return f"unknown live rule selector: {requested}; run `sarj-standards maintain rules manifest` to list selectors"
 
 
 def _derived_current(repository: Path) -> bool:
@@ -126,7 +140,7 @@ def _synchronize(repository: Path, mutation: transaction.FileTransaction) -> Non
             raise RuntimeError(msg)
 
 
-def _load(path: Path) -> tuple[str, ...]:
+def _load(path: Path) -> tuple[RuleSelector, ...]:
     payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     if not _is_object(payload):
         msg = "rule warning lifecycle must contain exactly schemaVersion and rules"
@@ -142,7 +156,7 @@ def _load(path: Path) -> tuple[str, ...]:
     if any(not isinstance(value, str) or not value for value in values):
         msg = "rule warning lifecycle must contain unique non-empty selectors"
         raise ValueError(msg)
-    selectors = tuple(value for value in values if isinstance(value, str))
+    selectors = tuple(RuleSelector.parse(value) for value in values if isinstance(value, str))
     if len(set(selectors)) != len(selectors):
         msg = "rule warning lifecycle must contain unique non-empty selectors"
         raise ValueError(msg)

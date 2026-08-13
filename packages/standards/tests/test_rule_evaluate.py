@@ -5,17 +5,18 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, TypeGuard
 
+import pytest
+
 from sarj_standards import __version__
 import sarj_standards.api as standards_api
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.linting import policy as lint_policy
+from sarj_standards.libs.rules import RuleSelector
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 _SELECTOR = "python:no-string-concat-in-loop"
@@ -80,6 +81,34 @@ def test_corpus_evaluation_runs_only_the_selected_rule(tmp_path: Path, capsys: p
     assert diagnostics[0]["ruleId"] == "no-string-concat-in-loop"
 
 
+def test_text_evaluation_summarizes_per_rule_findings_and_next_step(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _source(tmp_path)
+
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "maintain",
+            "rules",
+            "evaluate",
+            "--rule",
+            _SELECTOR,
+            "--format",
+            "text",
+            "app/render.py",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert status == 1
+    assert f"  {_SELECTOR}: 1 finding" in output
+    assert "next: review these findings for false positives" in output
+    assert f"sarj-standards maintain rules stage-warning {_SELECTOR}" in output
+
+
 def test_observe_rejects_a_rule_that_is_not_warning_stage(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -103,6 +132,25 @@ def test_observe_rejects_a_rule_that_is_not_warning_stage(
 
     assert status == 2
     assert "warning-stage rules only" in captured.err
+    assert f"next: sarj-standards maintain rules stage-warning {_SELECTOR}" in captured.err
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        (("observe", "--help"), "findings with exit 0"),
+        (("maintain", "rules", "evaluate", "--help"), "findings exit 1"),
+    ],
+)
+def test_selected_rule_help_explains_exit_semantics(
+    argv: tuple[str, ...],
+    expected: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit, match="0"):
+        _ = main(list(argv))
+
+    assert expected in capsys.readouterr().out
 
 
 def test_warning_lifecycle_is_nonblocking_but_observable(
@@ -120,8 +168,9 @@ def test_warning_lifecycle_is_nonblocking_but_observable(
     )
     lint_policy.warning_selectors.cache_clear()
     monkeypatch.setattr(lint_policy, "CONFIGS_DIR", configs)
-    assert lint_policy.warning_selectors() == frozenset({_SELECTOR})
-    monkeypatch.setattr(standards_api, "_warning_rule_keys", lambda: frozenset({_SELECTOR}))
+    warning_selector = RuleSelector.parse(_SELECTOR)
+    assert lint_policy.warning_selectors() == frozenset({warning_selector})
+    monkeypatch.setattr(standards_api, "_warning_rule_keys", lambda: frozenset({warning_selector}))
 
     corpus_status, corpus = _evaluate(tmp_path, "corpus", capsys)
     effective_status, effective = _evaluate(tmp_path, "effective", capsys)

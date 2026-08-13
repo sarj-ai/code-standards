@@ -22,6 +22,7 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     diagnostic_fingerprint,
 )
+from sarj_standards.libs.rules import RuleEngine, RuleSelection
 
 from . import textlint
 from .runner import GroupedPaths, group_paths
@@ -83,7 +84,7 @@ def analyze(
     python_baseline: Path | None = None,
     policy: Policy | None = None,
     grouped: GroupedPaths | None = None,
-    rule_ids_by_engine: Mapping[str, frozenset[str]] | None = None,
+    rule_selection: RuleSelection | None = None,
 ) -> AnalysisReport:
     """Run applicable bundled analyzers without parsing their console output."""
     root = root.resolve()
@@ -104,26 +105,26 @@ def analyze(
                 routed.python,
                 root,
                 python_baseline=python_baseline,
-                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("python"),
+                rule_ids=_selected_ids(rule_selection, RuleEngine.PYTHON),
             ),
             _native_report(
                 "sarj-sql-lint",
                 "sarj_sql_lint",
                 routed.sql,
                 root,
-                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("sql"),
+                rule_ids=_selected_ids(rule_selection, RuleEngine.SQL),
             ),
             _native_report(
                 "sarj-iac-lint",
                 "sarj_iac_lint",
                 routed.iac,
                 root,
-                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("iac"),
+                rule_ids=_selected_ids(rule_selection, RuleEngine.IAC),
             ),
             _text_report(
                 routed,
                 root,
-                rule_ids=None if rule_ids_by_engine is None else rule_ids_by_engine.get("text"),
+                rule_ids=_selected_ids(rule_selection, RuleEngine.TEXT),
             ),
         )
         if report is not None
@@ -147,6 +148,12 @@ def analyze(
         for item in report.tools
     )
     return report_from_tools(root, filtered)
+
+
+def _selected_ids(selection: RuleSelection | None, engine: RuleEngine) -> frozenset[str] | None:
+    if selection is None:
+        return None
+    return frozenset(str(value) for value in selection.ids_for(engine))
 
 
 def _contained_path(value: str, root: Path) -> str:

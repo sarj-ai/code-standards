@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -106,6 +107,34 @@ def test_changes_reports_sorted_additions_and_resolved_shas(repository: Path) ->
     added = result["changes"][0]["after"]
     assert added is not None
     assert added["releaseTarget"] == "python"
+    assert [item["releaseTarget"] for item in result["changes"]] == ["python", "python"]
+
+
+def test_changes_routes_removals_without_consumer_side_descriptor_branching(repository: Path) -> None:
+    before = _write_revision(repository, [_rule("removed")], "base")
+    after = _write_revision(repository, [], "candidate")
+
+    result = rule_changes.compare(repository, before=before, after=after)
+
+    assert result["changes"] == [
+        {
+            "kind": "removed",
+            "key": "python:removed",
+            "releaseTarget": "python",
+            "before": {
+                "key": "python:removed",
+                "engine": "python",
+                "family": "python",
+                "id": "removed",
+                "code": "SARJ999",
+                "defaultLevel": "warning",
+                "releaseTarget": "python",
+                "source": "packages/python/src/rules/removed.py",
+                "test": "packages/python/tests/rules/test_removed.py",
+            },
+            "after": None,
+        }
+    ]
 
 
 def test_changes_distinguishes_policy_and_implementation_changes(repository: Path) -> None:
@@ -119,6 +148,23 @@ def test_changes_distinguishes_policy_and_implementation_changes(repository: Pat
         ("implementation-changed", "python:sample"),
         ("policy-changed", "python:sample"),
     ]
+    assert result["changedSelectors"] == ["python:sample"]
+    identity = {key: value for key, value in result.items() if key != "changeSetDigest"}
+    expected_digest = hashlib.sha256(
+        json.dumps(identity, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+    assert result["changeSetDigest"] == expected_digest
+
+
+def test_change_set_digest_is_stable_for_repeated_comparisons(repository: Path) -> None:
+    before = _write_revision(repository, [_rule("existing")], "base")
+    after = _write_revision(repository, [_rule("a-new"), _rule("existing")], "candidate")
+
+    first = rule_changes.compare(repository, before=before, after=after)
+    second = rule_changes.compare(repository, before=before, after=after)
+
+    assert first["changeSetDigest"] == second["changeSetDigest"]
+    assert len(first["changeSetDigest"]) == 64
 
 
 def test_changes_detects_source_only_implementation_change(repository: Path) -> None:
@@ -147,6 +193,31 @@ def test_changes_fails_when_inventory_and_catalog_disagree(repository: Path) -> 
         _ = rule_changes.compare(repository, before=before, after=broken)
 
     assert after != broken
+
+
+@pytest.mark.parametrize("mutation", ["extra", "missing"])
+def test_changes_rejects_inventory_entries_outside_exact_schema(repository: Path, mutation: str) -> None:
+    before = _write_revision(repository, [_rule("existing")], "base")
+    inventory_path = repository / _INVENTORY
+    first: dict[str, object] = {
+        "family": "python",
+        "id": "existing",
+        "code": "SARJ999",
+        "source": "packages/python/src/rules/existing.py",
+        "test": "packages/python/tests/rules/test_existing.py",
+    }
+    if mutation == "extra":
+        first["owner"] = "standards"
+    else:
+        del first["test"]
+    inventory: dict[str, object] = {"schemaVersion": 1, "rules": [first]}
+    inventory_path.write_text(json.dumps(inventory, sort_keys=True) + "\n", encoding="utf-8")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", f"inventory {mutation} field")
+    broken = _git(repository, "rev-parse", "HEAD")
+
+    with pytest.raises(ValueError, match="inventory entry 1 has unexpected or missing fields"):
+        _ = rule_changes.compare(repository, before=before, after=broken)
 
 
 def test_cli_emits_versioned_json(repository: Path, capsys: pytest.CaptureFixture[str]) -> None:
