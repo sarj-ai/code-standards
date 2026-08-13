@@ -32,6 +32,9 @@ SKIP_DIR_NAMES = frozenset(
 
 # YAML files are included for banner checks while HCL rules self-filter by extension.
 _SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml"})
+# JS files are collected only when they are test files: the deployed-state-snapshot
+# rule reads test expectations, and nothing in this registry reads JS modules.
+_SCANNED_TEST_SUFFIXES = (".test.mjs", ".test.js", ".test.cjs")
 
 _MAX_FILE_BYTES = 500_000
 
@@ -50,7 +53,9 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
                 pass
             continue
         for child in p.rglob("*"):
-            if not child.is_file() or child.suffix not in _SCANNED_SUFFIXES:
+            if not child.is_file():
+                continue
+            if child.suffix not in _SCANNED_SUFFIXES and not child.name.endswith(_SCANNED_TEST_SUFFIXES):
                 continue
             if any(part in SKIP_DIR_NAMES for part in child.parts):
                 continue

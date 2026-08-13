@@ -228,6 +228,21 @@ def test_mixed_files_are_grouped_by_tool(
     )
 
 
+def test_js_test_files_route_to_both_typescript_and_iac(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The IaC deployed-state-snapshot rule reads JS test expectations; ESLint reads the code."""
+    monkeypatch.chdir(tmp_path)
+    for name in ("runtime-inventory.test.mjs", "runtime-inventory.mjs"):
+        (tmp_path / name).touch()
+    grouped = runner.group_paths(["runtime-inventory.test.mjs", "runtime-inventory.mjs"])
+    assert grouped == runner.GroupedPaths(
+        typescript=["runtime-inventory.test.mjs", "runtime-inventory.mjs"],
+        iac=["runtime-inventory.test.mjs"],
+    )
+
+
 def test_symlink_input_is_rejected(tmp_path: Path) -> None:
     target = tmp_path / "target.py"
     target.write_text('"""Target."""\n')

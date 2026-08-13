@@ -404,9 +404,16 @@ def _path_key(path: Path) -> Path:
     return Path(os.path.abspath(path))  # ruff: ignore[os-path-abspath]
 
 
+# JS test files belong to both checkers: ESLint reads them as code, and the IaC
+# registry's deployed-state-snapshot rule reads them as test expectations.
+_IAC_TEST_SUFFIXES = (".test.mjs", ".test.js", ".test.cjs")
+
+
 def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
-    """Route one path; YAML intentionally belongs to both IaC and text checks."""
+    """Route one path; YAML and JS tests intentionally belong to two checkers."""
     _append_path(grouped, _SUFFIX_TO_TOOL.get(path.suffix.lower()), raw_path)
+    if path.name.endswith(_IAC_TEST_SUFFIXES):
+        grouped.iac.append(raw_path)
     if textlint.is_text_path(path):
         grouped.text.append(raw_path)
 
