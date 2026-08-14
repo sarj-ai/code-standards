@@ -1,0 +1,797 @@
+"""Deterministically propagate one published Standards bundle to consumers."""
+
+from __future__ import annotations
+
+import argparse
+import base64
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- centralized argv-only adapter; shell is never enabled
+import sys
+import tempfile
+import tomllib
+from typing import TYPE_CHECKING, Protocol, TypeGuard
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
+SOURCE_REPOSITORY = "https://github.com/sarj-ai/standards.git"
+VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.-]+)?\Z")
+BOT_COMMIT_PREFIX = "chore(standards): adopt "
+MANIFEST = ".sarj-standards.toml"
+EXPECTED_CONSUMERS = 5
+LS_REMOTE_FIELDS = 2
+PORCELAIN_RECORD_MINIMUM = 4
+MANAGED_TRAILER = "Standards-Rollout: managed/v1"
+PR_MARKER_PREFIX = "<!-- sarj-standards-rollout:managed/v1"
+REPOSITORY_VERSION_PIN = re.compile(r"^(STANDARDS_VERSION[ \t]*:?=[ \t]*)\S+[ \t]*$", re.MULTILINE)
+PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyright[ \t]*$")
+VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed -->"
+RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
+SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".sql"})
+
+
+class RolloutError(RuntimeError):
+    """An expected, actionable rollout failure."""
+
+
+def is_object(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict)
+
+
+def is_array(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def required_text(table: Mapping[str, object], key: str) -> str:
+    value = table.get(key)
+    if not isinstance(value, str) or not value:
+        msg = f"rollout registry field {key!r} must be a non-empty string"
+        raise RolloutError(msg)
+    return value
+
+
+def optional_bool(table: Mapping[str, object], key: str) -> bool:
+    value = table.get(key, False)
+    if not isinstance(value, bool):
+        msg = f"rollout registry field {key!r} must be a boolean"
+        raise RolloutError(msg)
+    return value
+
+
+class RolloutArgs(argparse.Namespace):
+    registry: Path = DEFAULT_REGISTRY
+    command: str = ""
+    version: str | None = None
+    dry_run: bool = False
+
+
+class CommandRunner(Protocol):
+    def run(
+        self,
+        command: Sequence[str],
+        *,
+        cwd: Path | None = None,
+        check: bool = True,
+        env: Mapping[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]: ...
+
+
+class SubprocessRunner:
+    """Small injection boundary: tests never invoke git, gh, or uv."""
+
+    @staticmethod
+    def run(
+        command: Sequence[str],
+        *,
+        cwd: Path | None = None,
+        check: bool = True,
+        env: Mapping[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- explicit argv; shell remains disabled
+            list(command), cwd=cwd, check=check, text=True, capture_output=True, env=env
+        )
+
+
+@dataclass(frozen=True)
+class Consumer:
+    name: str
+    repository: str
+    branch: str
+    verify: tuple[str, ...]
+    requires_approval: bool = False
+    auto_merge: bool = False
+
+
+@dataclass(frozen=True)
+class Outcome:
+    consumer: Consumer
+    state: str
+    url: str = ""
+    detail: str = ""
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "name": self.consumer.name,
+            "repository": self.consumer.repository,
+            "branch": self.consumer.branch,
+            "state": self.state,
+            "url": self.url or None,
+            "detail": self.detail or None,
+        }
+
+
+@dataclass(frozen=True)
+class Plan:
+    source_sha: str
+    outcomes: tuple[Outcome, ...]
+
+
+@dataclass(frozen=True)
+class BranchPreparation:
+    branch: str
+    previous_sha: str | None
+
+
+def load_registry(path: Path) -> tuple[Consumer, ...]:
+    with path.open("rb") as stream:
+        parsed: object = tomllib.load(stream)
+    if not is_object(parsed):
+        msg = f"rollout registry must be a TOML table: {path}"
+        raise RolloutError(msg)
+    raw = parsed
+    if raw.get("schema") != 1:
+        msg = f"unsupported registry schema in {path}"
+        raise RolloutError(msg)
+    entries_value = raw.get("consumer")
+    if not is_array(entries_value) or len(entries_value) != EXPECTED_CONSUMERS:
+        msg = "the rollout registry must contain exactly five consumers"
+        raise RolloutError(msg)
+    consumers: list[Consumer] = []
+    for entry_value in entries_value:
+        if not is_object(entry_value) or set(entry_value) - {
+            "name",
+            "repository",
+            "branch",
+            "verify",
+            "requires_approval",
+            "auto_merge",
+        }:
+            msg = f"invalid registry entry keys: {entry_value!r}"
+            raise RolloutError(msg)
+        entry = entry_value
+        name = required_text(entry, "name")
+        repository = required_text(entry, "repository")
+        branch = required_text(entry, "branch")
+        verify_value = entry.get("verify")
+        requires_approval = optional_bool(entry, "requires_approval")
+        auto_merge = optional_bool(entry, "auto_merge")
+        if not is_array(verify_value) or not verify_value:
+            msg = f"invalid registry verification command: {entry!r}"
+            raise RolloutError(msg)
+        if not all(isinstance(item, str) and item for item in verify_value):
+            msg = f"invalid registry values: {entry!r}"
+            raise RolloutError(msg)
+        verify = tuple(item for item in verify_value if isinstance(item, str))
+        consumer = Consumer(
+            name=name,
+            repository=repository,
+            branch=branch,
+            verify=verify,
+            requires_approval=requires_approval,
+            auto_merge=auto_merge,
+        )
+        consumers.append(consumer)
+    identities = tuple((item.repository, item.branch) for item in consumers)
+    if len(set(identities)) != EXPECTED_CONSUMERS:
+        msg = "registry consumers must have unique repository and branch identities"
+        raise RolloutError(msg)
+    if sum(item.auto_merge for item in consumers) > 1:
+        msg = "at most one consumer may enable rollout auto-merge"
+        raise RolloutError(msg)
+    return tuple(consumers)
+
+
+def validate_version(version: str) -> str:
+    if not VERSION_RE.fullmatch(version):
+        msg = f"invalid immutable version: {version!r}"
+        raise RolloutError(msg)
+    return version
+
+
+def rollout_branch(version: str) -> str:
+    return f"standards-rollout/v{validate_version(version)}"
+
+
+def pr_marker(consumer: Consumer, version: str) -> str:
+    return (
+        f"{PR_MARKER_PREFIX} repository={consumer.repository} "
+        f"base={consumer.branch} version={validate_version(version)} -->"
+    )
+
+
+def stdout(result: subprocess.CompletedProcess[str]) -> str:
+    return (result.stdout or "").strip()
+
+
+def json_result(result: subprocess.CompletedProcess[str]) -> object:
+    rendered = stdout(result)
+    try:
+        parsed: object = json.loads(rendered or "null")  # pyright: ignore[reportAny]
+    except json.JSONDecodeError as exc:
+        msg = f"command returned invalid JSON: {rendered[:200]}"
+        raise RolloutError(msg) from exc
+    else:
+        return parsed
+
+
+def verify_release(version: str, runner: CommandRunner) -> str:
+    version = validate_version(version)
+    package = runner.run(
+        (
+            "uvx",
+            "--isolated",
+            "--python",
+            "3.14",
+            "--from",
+            f"sarj-standards=={version}",
+            "sarj-standards",
+            "--version",
+        )
+    )
+    match = re.fullmatch(r"sarj-standards\s+([0-9a-zA-Z.-]+)", stdout(package))
+    if match is None or match.group(1) != version:
+        msg = f"PyPI artifact did not report version {version}"
+        raise RolloutError(msg)
+    tag = f"refs/tags/standards-v{version}"
+    peeled = tag + "^{}"
+    remote = runner.run(("git", "ls-remote", SOURCE_REPOSITORY, tag, peeled))
+    refs = {
+        fields[1]: fields[0] for line in stdout(remote).splitlines() if len(fields := line.split()) == LS_REMOTE_FIELDS
+    }
+    sha = refs.get(peeled)
+    if len(refs) != LS_REMOTE_FIELDS or sha is None or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        msg = f"published tag standards-v{version} is absent or invalid"
+        raise RolloutError(msg)
+    return sha
+
+
+def manifest_version(contents: str) -> str | None:
+    try:
+        parsed = tomllib.loads(contents)
+    except tomllib.TOMLDecodeError:
+        return None
+    value = parsed.get("bundle", parsed.get("version"))
+    return value if isinstance(value, str) else None
+
+
+def base_manifest(consumer: Consumer, runner: CommandRunner) -> str | None:
+    result = runner.run(
+        (
+            "gh",
+            "api",
+            f"repos/{consumer.repository}/contents/{MANIFEST}",
+            "--method",
+            "GET",
+            "-f",
+            f"ref={consumer.branch}",
+        ),
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    payload = json_result(result)
+    if not is_object(payload):
+        return None
+    content = payload.get("content")
+    if not isinstance(content, str):
+        return None
+    try:
+        return base64.b64decode(content, validate=False).decode()
+    except ValueError, UnicodeDecodeError:
+        return None
+
+
+def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dict[str, object] | None:
+    result = runner.run(
+        (
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            consumer.repository,
+            "--state",
+            "all",
+            "--head",
+            rollout_branch(version),
+            "--json",
+            "state,mergedAt,url,headRefName,baseRefName,body",
+            "--limit",
+            "2",
+        )
+    )
+    payload = json_result(result)
+    if not is_array(payload) or not payload:
+        return None
+    if len(payload) != 1:
+        msg = f"{consumer.name}: multiple rollout PRs exist for {rollout_branch(version)}"
+        raise RolloutError(msg)
+    first = payload[0]
+    return first if is_object(first) else None
+
+
+def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome:
+    pull = pull_request(consumer, version, runner)
+    if pull is not None:
+        identity_is_valid = (
+            pull.get("headRefName") == rollout_branch(version)
+            and pull.get("baseRefName") == consumer.branch
+            and pr_marker(consumer, version) in str(pull.get("body", ""))
+        )
+        if not identity_is_valid:
+            return Outcome(
+                consumer,
+                "blocked",
+                str(pull.get("url", "")),
+                "rollout PR ownership marker, head, or base does not match",
+            )
+        if VERIFICATION_FAILED_MARKER in str(pull.get("body", "")):
+            return Outcome(
+                consumer,
+                "blocked",
+                str(pull.get("url", "")),
+                "consumer verification failed; remediation is required in this rollout PR",
+            )
+        if pull.get("state") == "CLOSED" and not pull.get("mergedAt"):
+            return Outcome(consumer, "blocked", str(pull.get("url", "")), "rollout PR was closed without merge")
+        state = "merged" if pull.get("mergedAt") else "pr-open"
+        return Outcome(consumer, state, str(pull.get("url", "")))
+    adopted = manifest_version(base_manifest(consumer, runner) or "")
+    if adopted == version:
+        return Outcome(consumer, "already-current")
+    return Outcome(consumer, "missing", detail=f"base branch has {adopted or 'no readable manifest'}")
+
+
+def status(version: str, consumers: Sequence[Consumer], runner: CommandRunner) -> tuple[Outcome, ...]:
+    validate_version(version)
+    return tuple(status_one(item, version, runner) for item in consumers)
+
+
+def changed_paths(repo: Path, runner: CommandRunner) -> tuple[str, ...]:
+    result = runner.run(("git", "status", "--porcelain=v1", "-z", "--untracked-files=all"), cwd=repo)
+    fields = [field for field in (result.stdout or "").split("\0") if field]
+    paths: list[str] = []
+    index = 0
+    while index < len(fields):
+        record = fields[index]
+        if len(record) < PORCELAIN_RECORD_MINIMUM:
+            msg = "git returned an invalid porcelain status record"
+            raise RolloutError(msg)
+        state, path = record[:2], record[3:]
+        if "D" in state or "R" in state:
+            msg = f"update may not delete or rename files: {path}"
+            raise RolloutError(msg)
+        paths.append(path)
+        index += 2 if "R" in state or "C" in state else 1
+    return tuple(paths)
+
+
+def committed_paths(repo: Path, base: str, runner: CommandRunner) -> tuple[str, ...]:
+    comparison = f"origin/{base}...HEAD"
+    removed = stdout(runner.run(("git", "diff", "--name-only", "--diff-filter=DR", comparison), cwd=repo))
+    if removed:
+        msg = f"rollout branch may not delete or rename files: {removed}"
+        raise RolloutError(msg)
+    result = runner.run(("git", "diff", "--name-only", "-z", "--diff-filter=ACM", comparison), cwd=repo)
+    return tuple(path for path in (result.stdout or "").split("\0") if path)
+
+
+def reject_git_metadata(
+    repo: Path,
+    paths: Sequence[str],
+    runner: CommandRunner,
+    *,
+    comparison: str = "",
+) -> None:
+    diff_args = (comparison,) if comparison else ()
+    summary = stdout(runner.run(("git", "diff", "--summary", *diff_args), cwd=repo))
+    if "mode change" in summary or "create mode 120000" in summary:
+        msg = "update may not change file modes or create symlinks"
+        raise RolloutError(msg)
+    numbers = stdout(runner.run(("git", "diff", "--numstat", *diff_args, "--", *paths), cwd=repo))
+    if any(line.startswith("-\t-\t") for line in numbers.splitlines()):
+        msg = "update may not add or modify binary files"
+        raise RolloutError(msg)
+    for relative in paths:
+        candidate = repo / relative
+        tracked = runner.run(("git", "ls-files", "--error-unmatch", "--", relative), cwd=repo, check=False)
+        untracked_executable = (
+            tracked.returncode != 0
+            and candidate.exists()
+            and bool(stat.S_IMODE(candidate.stat().st_mode) & stat.S_IXUSR)
+        )
+        if candidate.is_symlink() or untracked_executable:
+            msg = f"update may not create symlinks or executable files: {relative}"
+            raise RolloutError(msg)
+        if candidate.is_file() and b"\0" in candidate.read_bytes()[:8192]:
+            msg = f"update may not add or modify binary files: {relative}"
+            raise RolloutError(msg)
+
+
+def reject_unsafe_diff(paths: Sequence[str], *, allowed_source_paths: frozenset[str] = frozenset()) -> None:
+    if not paths:
+        msg = "the update produced no changes but the base manifest is not current"
+        raise RolloutError(msg)
+    unsafe: list[str] = []
+    for rendered in paths:
+        path = Path(rendered)
+        lowered = rendered.lower()
+        workflow_is_unsafe = rendered.startswith(".github/workflows/") and rendered != ".github/workflows/standards.yml"
+        source_is_unsafe = (
+            rendered not in allowed_source_paths
+            and path.suffix in SOURCE_SUFFIXES
+            and any(part in {"src", "app", "apps"} for part in path.parts)
+        )
+        if workflow_is_unsafe or source_is_unsafe or "baseline" in lowered or "exclusion" in lowered:
+            unsafe.append(rendered)
+    if unsafe:
+        msg = "update touched protected paths: " + ", ".join(unsafe)
+        raise RolloutError(msg)
+
+
+def remote_branch_sha(repo: Path, branch: str, runner: CommandRunner) -> str | None:
+    result = runner.run(("git", "ls-remote", "--heads", "origin", branch), cwd=repo)
+    fields = stdout(result).split()
+    return fields[0] if len(fields) == LS_REMOTE_FIELDS else None
+
+
+def unauthenticated_environment() -> dict[str, str]:
+    environment = dict(os.environ)  # ruff: ignore[banned-api] — copy before scrubbing auth
+    environment.pop("GH_TOKEN", None)
+    environment.pop("GITHUB_TOKEN", None)
+    for name in tuple(environment):
+        if name.startswith("STANDARDS_ROLLOUT_"):
+            environment.pop(name)
+    return environment
+
+
+def synchronize_repository_pin(repo: Path, version: str) -> bool:
+    """Update a reviewed repository-owned wrapper pin when one exists."""
+    makefile = repo / "Makefile"
+    if not makefile.is_file():
+        return False
+    original = makefile.read_text(encoding="utf-8")
+    matches = tuple(REPOSITORY_VERSION_PIN.finditer(original))
+    if not matches:
+        return False
+    if len(matches) != 1:
+        msg = "repository Makefile must contain at most one STANDARDS_VERSION pin"
+        raise RolloutError(msg)
+    updated = REPOSITORY_VERSION_PIN.sub(rf"\g<1>{validate_version(version)}", original)
+    if updated == original:
+        return False
+    makefile.write_text(updated, encoding="utf-8")
+    return True
+
+
+def synchronize_repository_checker(repo: Path) -> bool:
+    """Use the checker that the consumer already declares and Standards config targets."""
+    makefile = repo / "Makefile"
+    project = repo / "python/pyproject.toml"
+    if not makefile.is_file() or not project.is_file():
+        return False
+    if "basedpyright" not in project.read_text(encoding="utf-8"):
+        return False
+    original = makefile.read_text(encoding="utf-8")
+    updated, count = PYRIGHT_COMMAND.subn(r"\g<indent>cd python && uv run basedpyright", original)
+    if count > 1:
+        msg = "repository Makefile contains multiple ambiguous Python typecheck commands"
+        raise RolloutError(msg)
+    if updated == original:
+        return False
+    makefile.write_text(updated, encoding="utf-8")
+    return True
+
+
+def remove_retired_eslint_suppressions(repo: Path, runner: CommandRunner) -> frozenset[str]:
+    """Remove only exact retired selector tokens from existing ESLint directives."""
+    matched = runner.run(
+        ("git", "grep", "-lz", "eslint-disable", "--", "*.js", "*.jsx", "*.ts", "*.tsx"),
+        cwd=repo,
+        check=False,
+    )
+    if matched.returncode not in {0, 1}:
+        msg = "could not enumerate retired ESLint suppressions"
+        raise RolloutError(msg)
+    changed: set[str] = set()
+    for relative in (item for item in (matched.stdout or "").split("\0") if item):
+        path = repo / relative
+        original = path.read_text(encoding="utf-8")
+        lines: list[str] = []
+        for line in original.splitlines(keepends=True):
+            updated = line
+            if "eslint-disable" in updated:
+                for selector in RETIRED_ESLINT_SELECTORS:
+                    updated = updated.replace(f", {selector}", "").replace(f"{selector}, ", "").replace(selector, "")
+            lines.append(updated)
+        rendered = "".join(lines)
+        if rendered != original:
+            path.write_text(rendered, encoding="utf-8")
+            changed.add(relative)
+    return frozenset(changed)
+
+
+def verification_detail(result: subprocess.CompletedProcess[str]) -> str:
+    rendered = "\n".join(value.strip() for value in (result.stdout, result.stderr) if value)
+    return rendered[-4000:] or f"verification command exited {result.returncode}"
+
+
+def process_failure_detail(error: subprocess.CalledProcessError) -> str:
+    stdout: object = error.stdout  # pyright: ignore[reportAny] - subprocess exception boundary
+    stderr: object = error.stderr  # pyright: ignore[reportAny] - subprocess exception boundary
+    values = [value.strip() for value in (stdout, stderr) if isinstance(value, str) and value]
+    return ("\n".join(values)[-4000:] or str(error)).strip()
+
+
+def prepare_branch(repo: Path, consumer: Consumer, version: str, runner: CommandRunner) -> BranchPreparation:
+    branch = rollout_branch(version)
+    previous_sha = remote_branch_sha(repo, branch, runner)
+    if previous_sha is None:
+        runner.run(("git", "switch", "-c", branch), cwd=repo)
+        return BranchPreparation(branch, None)
+    runner.run(("git", "fetch", "origin", branch), cwd=repo)
+    message = stdout(runner.run(("git", "show", "-s", "--format=%B", "FETCH_HEAD"), cwd=repo))
+    commit_count = stdout(runner.run(("git", "rev-list", "--count", f"origin/{consumer.branch}..FETCH_HEAD"), cwd=repo))
+    if MANAGED_TRAILER not in message or not message.startswith(BOT_COMMIT_PREFIX + version) or commit_count != "1":
+        msg = f"refusing human-modified rollout branch {branch}"
+        raise RolloutError(msg)
+    runner.run(("git", "switch", "-C", branch, "FETCH_HEAD"), cwd=repo)
+    runner.run(("git", "rebase", f"origin/{consumer.branch}"), cwd=repo)
+    return BranchPreparation(branch, previous_sha)
+
+
+def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verification and mutation state bound
+    consumer: Consumer,
+    version: str,
+    runner: CommandRunner,
+    *,
+    dry_run: bool = False,
+) -> Outcome:
+    existing = status_one(consumer, version, runner)
+    if existing.state == "blocked":
+        if existing.detail.startswith("consumer verification failed"):
+            return existing
+        msg = f"{consumer.name}: {existing.detail}: {existing.url}"
+        raise RolloutError(msg)
+    if existing.state != "missing":
+        return existing
+    if dry_run:
+        return Outcome(consumer, "would-create", detail=rollout_branch(version))
+    with tempfile.TemporaryDirectory(prefix="standards-rollout-") as temporary:
+        repo = Path(temporary) / "repo"
+        runner.run(
+            (
+                "gh",
+                "repo",
+                "clone",
+                consumer.repository,
+                str(repo),
+                "--",
+                "--branch",
+                consumer.branch,
+            )
+        )
+        preparation = prepare_branch(repo, consumer, version, runner)
+        branch = preparation.branch
+        previous_sha = preparation.previous_sha
+        tool = (
+            "uvx",
+            "--isolated",
+            "--python",
+            "3.14",
+            "--from",
+            f"sarj-standards=={version}",
+            "sarj-standards",
+            "--root",
+            ".",
+        )
+        unauthenticated = unauthenticated_environment()
+        migrated_source_paths = remove_retired_eslint_suppressions(repo, runner)
+        failures: list[str] = []
+        try:
+            runner.run((*tool, "update", "--to", version), cwd=repo, env=unauthenticated)
+        except subprocess.CalledProcessError as exc:
+            failures.append("dependency installation failed:\n" + process_failure_detail(exc))
+            repair = runner.run(
+                (*tool, "doctor", "--repair", "--no-install"), cwd=repo, env=unauthenticated, check=False
+            )
+            if repair.returncode != 0:
+                failures.append("pre-update safe repair reported drift:\n" + verification_detail(repair))
+            runner.run((*tool, "update", "--to", version, "--no-install"), cwd=repo, env=unauthenticated)
+        _ = synchronize_repository_pin(repo, version)
+        _ = synchronize_repository_checker(repo)
+        doctor = runner.run((*tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
+        if doctor.returncode != 0:
+            failures.append("Standards doctor failed:\n" + verification_detail(doctor))
+        verification = runner.run(consumer.verify, cwd=repo, env=unauthenticated, check=False)
+        if verification.returncode != 0:
+            failures.append("consumer verification failed:\n" + verification_detail(verification))
+        verification_failure = "\n\n".join(failures)[-4000:]
+        worktree_paths = changed_paths(repo, runner)
+        if worktree_paths:
+            reject_unsafe_diff(worktree_paths, allowed_source_paths=migrated_source_paths)
+            reject_git_metadata(repo, worktree_paths, runner)
+            runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
+            commit_args = (
+                ("--amend", "--no-edit")
+                if previous_sha
+                else (
+                    "-m",
+                    f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}",
+                )
+            )
+            runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", *commit_args), cwd=repo)
+        else:
+            branch_paths = committed_paths(repo, consumer.branch, runner)
+            reject_unsafe_diff(branch_paths)
+            reject_git_metadata(
+                repo,
+                branch_paths,
+                runner,
+                comparison=f"origin/{consumer.branch}...HEAD",
+            )
+        lease = f"--force-with-lease=refs/heads/{branch}:{previous_sha or ''}"
+        runner.run(("git", "push", lease, "-u", "origin", branch), cwd=repo)
+    pull = pull_request(consumer, version, runner)
+    if pull is None:
+        body = f"{pr_marker(consumer, version)}\n\n"
+        if verification_failure:
+            body += (
+                f"{VERIFICATION_FAILED_MARKER}\n\n"
+                f"Consumer verification is blocked:\n\n```text\n{verification_failure}\n```\n\n"
+            )
+        body += f"Deterministic rollout of `sarj-standards=={version}`.\n\nGenerated by `make rollout`."
+        created = runner.run(
+            (
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                consumer.repository,
+                "--base",
+                consumer.branch,
+                "--head",
+                branch,
+                "--title",
+                BOT_COMMIT_PREFIX + version,
+                "--body",
+                body,
+            )
+        )
+        url = stdout(created)
+    else:
+        url = str(pull.get("url", ""))
+        if pull.get("state") == "CLOSED" and not pull.get("mergedAt"):
+            msg = f"refusing to reopen closed rollout PR {url}"
+            raise RolloutError(msg)
+    if consumer.auto_merge and not verification_failure:
+        runner.run(("gh", "pr", "merge", "--repo", consumer.repository, "--auto", "--squash", url), check=False)
+    if verification_failure:
+        return Outcome(consumer, "blocked", url, "consumer verification failed; PR opened for remediation")
+    return Outcome(consumer, "pr-open", url)
+
+
+def plan(version: str, consumers: Sequence[Consumer], runner: CommandRunner) -> Plan:
+    sha = verify_release(version, runner)
+    return Plan(sha, status(version, consumers, runner))
+
+
+def apply(
+    version: str,
+    consumers: Sequence[Consumer],
+    runner: CommandRunner,
+    *,
+    dry_run: bool = False,
+) -> tuple[Outcome, ...]:
+    verify_release(version, runner)
+    outcomes: list[Outcome] = []
+    for consumer in consumers:
+        try:
+            outcomes.append(apply_one(consumer, version, runner, dry_run=dry_run))
+        except subprocess.CalledProcessError as exc:
+            outcomes.append(Outcome(consumer, "error", detail=process_failure_detail(exc)))
+        except (OSError, RolloutError) as exc:
+            outcomes.append(Outcome(consumer, "error", detail=str(exc)))
+    return tuple(outcomes)
+
+
+def latest_version(runner: CommandRunner) -> str:
+    result = runner.run(
+        ("uvx", "--isolated", "--python", "3.14", "--from", "sarj-standards", "sarj-standards", "--version")
+    )
+    match = re.search(r"([0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.-]+)?)", stdout(result))
+    if match is None:
+        msg = "could not determine the latest published Standards version"
+        raise RolloutError(msg)
+    return validate_version(match.group(1))
+
+
+def print_outcomes(version: str, outcomes: Sequence[Outcome], *, source_sha: str = "") -> None:
+    complete = sum(item.state in {"pr-open", "merged", "already-current"} for item in outcomes)
+    sys.stdout.write(
+        json.dumps(
+            {
+                "version": version,
+                "sourceSha": source_sha or None,
+                "complete": complete == len(outcomes),
+                "count": f"{complete}/{len(outcomes)}",
+                "consumers": [item.as_dict() for item in outcomes],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description=__doc__)
+    result.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    commands = result.add_subparsers(dest="command", required=True)
+    for name in ("plan", "apply", "status"):
+        command = commands.add_parser(name)
+        command.add_argument("--version", required=True)
+        if name == "apply":
+            command.add_argument("--dry-run", action="store_true")
+    reconcile = commands.add_parser("reconcile")
+    reconcile.add_argument("--version", help="default: latest published version")
+    reconcile.add_argument("--dry-run", action="store_true")
+    return result
+
+
+def execute(args: RolloutArgs, runner: CommandRunner) -> int:
+    consumers = load_registry(args.registry)
+    version = validate_version(args.version) if args.version else latest_version(runner)
+    if args.command == "plan":
+        rollout_plan = plan(version, consumers, runner)
+        outcomes = rollout_plan.outcomes
+        print_outcomes(version, outcomes, source_sha=rollout_plan.source_sha)
+    elif args.command == "status":
+        outcomes = status(version, consumers, runner)
+        print_outcomes(version, outcomes)
+        return 0 if all(item.state in {"pr-open", "merged", "already-current"} for item in outcomes) else 1
+    else:
+        outcomes = apply(version, consumers, runner, dry_run=args.dry_run)
+        print_outcomes(version, outcomes)
+        if any(item.state in {"blocked", "error"} for item in outcomes):
+            return 1
+    return 0
+
+
+def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = None) -> int:
+    args = RolloutArgs()
+    _ = parser().parse_args(argv, namespace=args)
+    try:
+        return execute(args, runner or SubprocessRunner())
+    except subprocess.CalledProcessError as exc:
+        stdout: object = exc.stdout  # pyright: ignore[reportAny] - subprocess exception boundary
+        stderr: object = exc.stderr  # pyright: ignore[reportAny] - subprocess exception boundary
+        if isinstance(stdout, str) and stdout:
+            sys.stderr.write(stdout.rstrip() + "\n")
+        if isinstance(stderr, str) and stderr:
+            sys.stderr.write(stderr.rstrip() + "\n")
+        sys.stderr.write(f"standards-rollout: {exc}\n")
+        return 2
+    except (OSError, RolloutError) as exc:
+        sys.stderr.write(f"standards-rollout: {exc}\n")
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

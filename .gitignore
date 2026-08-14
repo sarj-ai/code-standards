@@ -37,3 +37,4 @@ Thumbs.db
 !.claude/settings.json
 .worktrees/
 .sarj-private-refs.toml
+.sarj-standards-rollout.toml
