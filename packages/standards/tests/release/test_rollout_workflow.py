@@ -104,6 +104,7 @@ def test_rollout_token_is_installation_scoped_and_never_persisted_by_checkout() 
     assert "permission-issues" not in workflow
     assert "permission-contents\nwrite" in workflow
     assert "permission-pull-requests\nwrite" in workflow
+    assert "permission-workflows\nwrite" in workflow
     assert "issues\nwrite" in workflow
     assert "git push" not in workflow
     assert {"GH_TOKEN", "GITHUB_TOKEN"}.issubset(controller_literals)

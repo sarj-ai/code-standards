@@ -35,6 +35,7 @@ PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyrigh
 VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed -->"
 RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
 SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".sql"})
+MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
 
 
 class RolloutError(RuntimeError):
@@ -432,7 +433,7 @@ def reject_unsafe_diff(paths: Sequence[str], *, allowed_source_paths: frozenset[
     for rendered in paths:
         path = Path(rendered)
         lowered = rendered.lower()
-        workflow_is_unsafe = rendered.startswith(".github/workflows/") and rendered != ".github/workflows/standards.yml"
+        workflow_is_unsafe = rendered.startswith(".github/workflows/") and rendered not in MANAGED_WORKFLOW_PATHS
         source_is_unsafe = (
             rendered not in allowed_source_paths
             and path.suffix in SOURCE_SUFFIXES

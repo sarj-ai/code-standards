@@ -80,6 +80,7 @@ jobs:
           owner: sarj-ai
           permission-contents: write
           permission-pull-requests: write
+          permission-workflows: write
       - name: Apply or reconcile the deterministic rollout
         id: rollout
         env:
