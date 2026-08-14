@@ -14,3 +14,7 @@ Use this skill when the user asks to strengthen existing lint severities.
 5. Report promoted rules, retained warnings and their counts, files changed, and verification commands.
 
 Do not remove suppressions, fix violations, commit, or push unless the user separately asks for those actions. Recommend `ratchet-lint` for warning classes that still have findings.
+
+When the task includes publishing or propagating the promoted bundle, hand off
+to `rollout-standards-release` after publication. Do not claim the promotion's
+fleet rollout complete until that skill's status gate passes.

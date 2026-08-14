@@ -54,8 +54,12 @@ running or reporting a corpus evaluation.
 
 Before opening the PR, run
 `sarj-standards --root . maintain rules changes --before origin/main --after HEAD`
-and `make verify`. Fleet calibration is automatic after exact-commit approval;
-do not manually clone or modify consumer repositories during rule authoring.
+and `make verify`. Do not manually clone or modify consumer repositories during
+rule authoring; downstream propagation starts only after publication through
+the rollout controller.
+When the task also includes publishing or propagating the resulting Standards
+bundle, hand off to `rollout-standards-release` after publication. Do not claim
+the release or propagation complete until that skill's fleet status gate passes.
 
 ## Promotion gate
 

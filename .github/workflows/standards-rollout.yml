@@ -1,0 +1,183 @@
+name: Standards rollout
+
+# This workflow is intentionally downstream of publication and tagging. A
+# rollout failure is visible here and in a durable issue, but can never change
+# the conclusion of the release or release-tags workflows.
+on:
+  workflow_run:
+    workflows: [release-tags]
+    types: [completed]
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact Standards bundle version; defaults to the current manifest
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: standards-rollout
+  cancel-in-progress: false
+
+jobs:
+  rollout:
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.12.3'
+      - name: Resolve the exact bundle version
+        id: version
+        env:
+          REQUESTED_VERSION: ${{ inputs.version || '' }}
+        run: |
+          set -euo pipefail
+          version="$REQUESTED_VERSION"
+          if [[ -z "$version" ]]; then
+            version="$(python3 - <<'PY'
+          import tomllib
+
+          with open("packages/standards/pyproject.toml", "rb") as manifest:
+              value = tomllib.load(manifest)["project"]["version"]
+          if not isinstance(value, str) or not value or any(character.isspace() for character in value):
+              raise ValueError("invalid Standards package version")
+          print(value)
+          PY
+          )"
+          fi
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.-]+)?$ ]]; then
+            echo "::error::invalid Standards bundle version: $version"
+            exit 2
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Mint the fleet rollout token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
+          private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
+          owner: sarj-ai
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Apply or reconcile the deterministic rollout
+        id: rollout
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          REGISTRY_TOML: ${{ vars.STANDARDS_ROLLOUT_REGISTRY_TOML }}
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/standards-rollout.log"
+          registry="$RUNNER_TEMP/standards-rollout.toml"
+          : > "$log"
+          install -m 600 /dev/null "$registry"
+          printf '%s' "$REGISTRY_TOML" > "$registry"
+
+          run_and_log() {
+            "$@" 2>&1 | tee -a "$log"
+            return "${PIPESTATUS[0]}"
+          }
+
+          operation_status=0
+          if [[ -z "$REGISTRY_TOML" ]]; then
+            echo "rollout consumer registry is not configured" | tee -a "$log"
+            operation_status=1
+          elif [[ -z "$GH_TOKEN" ]]; then
+            echo "rollout App token was not minted" | tee -a "$log"
+            operation_status=1
+          else
+            gh auth setup-git
+            git config --global user.name "sarj-standards-rollout[bot]"
+            git config --global user.email "sarj-standards-rollout[bot]@users.noreply.github.com"
+            if [[ "$EVENT_NAME" == schedule ]]; then
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile --version "$VERSION" || operation_status=$?
+            else
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" plan --version "$VERSION" || operation_status=$?
+              if (( operation_status == 0 )); then
+                run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" apply --version "$VERSION" || operation_status=$?
+              fi
+            fi
+          fi
+
+          status_status=0
+          run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" status --version "$VERSION" || status_status=$?
+          if (( operation_status != 0 || status_status != 0 )); then
+            result=failure
+          else
+            result=success
+          fi
+          {
+            echo "result=$result"
+            echo "operation_status=$operation_status"
+            echo "status_status=$status_status"
+          } >> "$GITHUB_OUTPUT"
+      - name: Publish durable rollout status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          RESULT: ${{ steps.rollout.outputs.result }}
+          OPERATION_STATUS: ${{ steps.rollout.outputs.operation_status }}
+          STATUS_STATUS: ${{ steps.rollout.outputs.status_status }}
+        run: |
+          set -euo pipefail
+          title="[Standards rollout] $VERSION"
+          log="$RUNNER_TEMP/standards-rollout.log"
+          body="$RUNNER_TEMP/standards-rollout-issue.md"
+          issues="$(gh issue list --repo "$GITHUB_REPOSITORY" --state all --limit 100 --json number,title,state)"
+          issue_number="$(jq -r --arg title "$title" '[.[] | select(.title == $title)][0].number // empty' <<< "$issues")"
+          issue_state="$(jq -r --arg title "$title" '[.[] | select(.title == $title)][0].state // empty' <<< "$issues")"
+
+          # The backticks below are intentional Markdown literals.
+          # shellcheck disable=SC2016
+          {
+            printf 'Automated rollout of `sarj-standards==%s` is **%s**.\n\n' "$VERSION" "$RESULT"
+            printf -- '- Workflow: %s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            printf -- '- Operation exit status: `%s`\n' "$OPERATION_STATUS"
+            printf -- '- Fleet status exit status: `%s`\n\n' "$STATUS_STATUS"
+            printf '```text\n'
+            tail -c 40000 "$log"
+            printf '\n```\n'
+          } > "$body"
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+
+          if [[ "$RESULT" == success ]]; then
+            if [[ -n "$issue_number" && "$issue_state" == OPEN ]]; then
+              gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                --body "Rollout reached 5/5 terminal outcomes in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+              gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY" --reason completed
+            fi
+          elif [[ -n "$issue_number" ]]; then
+            gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+            if [[ "$issue_state" == CLOSED ]]; then
+              gh issue reopen "$issue_number" --repo "$GITHUB_REPOSITORY"
+            fi
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$body"
+          fi
+      - name: Enforce the rollout result
+        if: steps.rollout.outputs.result != 'success'
+        run: |
+          echo "::error::Standards rollout is incomplete; see the durable rollout issue"
+          exit 1

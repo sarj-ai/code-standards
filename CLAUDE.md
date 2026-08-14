@@ -46,3 +46,10 @@ shipped `eslint.strict.mjs`, run `sarj-standards maintain docs sync`, and update
 the tests in the same change. Never let a shipped name vanish unrecorded: it is
 not a lint failure downstream, it is `ESLint: exit 2` on the whole repo, and a
 consumer's shrink-only baseline reads a vanished key and a new key as growth.
+
+After a Standards bundle is published, use `make rollout VERSION=<version>` through
+the repository-owned `rollout-standards-release` skill. Do not claim a release
+or rule-promotion rollout complete until `status --version VERSION` reports
+every registered consumer as `pr-open`, `merged`, or `already-current`. Do not
+approve the agent's own PR, bypass branch protection, or replace a
+human-modified rollout branch; GitHub auto-merge owns eligible final merges.

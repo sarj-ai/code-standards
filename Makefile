@@ -4,13 +4,23 @@ MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/standards/src/sarj_standards/configs
 STANDARDS := uv run --project packages/standards --frozen sarj-standards
+ROLLOUT := uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout
+VERSION ?=
+REGISTRY ?= .sarj-standards-rollout.toml
 
-.PHONY: help setup build verify doctor docs-artifacts-check docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger
+.PHONY: help setup build verify doctor docs-artifacts-check docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
+	@echo "         rollout VERSION=<published-version>"
 	@echo "Releases are published only after a version-changing merge to main."
+
+rollout:
+	@test -n "$(VERSION)" || { echo "usage: make rollout VERSION=<published-version>" >&2; exit 2; }
+	$(ROLLOUT) --registry "$(REGISTRY)" plan --version "$(VERSION)"
+	$(ROLLOUT) --registry "$(REGISTRY)" apply --version "$(VERSION)"
+	$(ROLLOUT) --registry "$(REGISTRY)" status --version "$(VERSION)"
 
 setup:
 	$(STANDARDS) --root . maintain setup

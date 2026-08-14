@@ -1,0 +1,4 @@
+interface:
+  display_name: "Roll Out Standards Release"
+  short_description: "Propagate a Standards release safely"
+  default_prompt: "Use $rollout-standards-release to propagate and verify a published Standards version."
