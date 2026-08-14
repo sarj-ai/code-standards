@@ -3,6 +3,9 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules.created_at_order_requires_tiebreaker import (
+    CreatedAtOrderRequiresTiebreaker,
+)
 from sarj_python_lint.rules.defect_xfail_requires_strict import DefectXfailRequiresStrict
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
@@ -23,6 +26,9 @@ from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyCo
 from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
+)
+from sarj_python_lint.rules.no_apirouter_root_trailing_slash import (
+    NoApirouterRootTrailingSlash,
 )
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
@@ -58,6 +64,9 @@ from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
 from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
+from sarj_python_lint.rules.no_unique_violation_message_match import (
+    NoUniqueViolationMessageMatch,
+)
 from sarj_python_lint.rules.opaque_parametrize_case_needs_id import OpaqueParametrizeCaseNeedsId
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
@@ -125,6 +134,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        CreatedAtOrderRequiresTiebreaker.id: CreatedAtOrderRequiresTiebreaker,
         NoStringConcatInLoop.id: NoStringConcatInLoop,
         PreferClassRow.id: PreferClassRow,
         PreferStrEnum.id: PreferStrEnum,
@@ -144,6 +154,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         SourceCoupledTest.id: SourceCoupledTest,
         NoQueryWithManyJoins.id: NoQueryWithManyJoins,
         NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
+        NoApirouterRootTrailingSlash.id: NoApirouterRootTrailingSlash,
         NoSelectStar.id: NoSelectStar,
         NoGenericSingleExportModule.id: NoGenericSingleExportModule,
         Stepdown.id: Stepdown,
@@ -196,6 +207,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoLongComment.id: NoLongComment,
         NoTypedDocSections.id: NoTypedDocSections,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
+        NoUniqueViolationMessageMatch.id: NoUniqueViolationMessageMatch,
     }
 )
 

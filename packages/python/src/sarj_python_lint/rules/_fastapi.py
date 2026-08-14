@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 
 if TYPE_CHECKING:
@@ -41,6 +41,7 @@ class Route:
     receiver: str
     method: str
     path: str | None
+    receiver_kind: Literal["FastAPI", "APIRouter"]
     inherited_hidden: bool = False
 
     @property
@@ -114,6 +115,7 @@ class FastapiIndex:
         self.type_aliases: dict[str, ast.expr] = {}
         self.receivers: set[tuple[int, str]] = set()
         self.receiver_origins: dict[tuple[int, str], tuple[int, str]] = {}
+        self.receiver_kinds: dict[tuple[int, str], Literal["FastAPI", "APIRouter"]] = {}
         self.hidden_receivers: set[tuple[int, str]] = set()
         self.decorators: dict[tuple[int, str], tuple[str, str]] = {}
         self.bound_names: set[tuple[int, str]] = set()
@@ -228,10 +230,20 @@ class FastapiIndex:
                 if key in self.receivers or key in self.decorators:
                     continue
                 source = self._receiver_key(scope, _binding_name(value))
-                if self._is_constructor_call(value) or source is not None:
+                constructor_kind = self._constructor_kind(value)
+                if constructor_kind is not None:
                     self.receivers.add(key)
-                    self.receiver_origins[key] = key if source is None else self.receiver_origins[source]
-                    if self._constructor_is_hidden(value) or (source is not None and source in self.hidden_receivers):
+                    self.receiver_origins[key] = key
+                    self.receiver_kinds[key] = constructor_kind
+                    if self._constructor_is_hidden(value):
+                        self.hidden_receivers.add(key)
+                    changed = True
+                    continue
+                if source is not None:
+                    self.receivers.add(key)
+                    self.receiver_origins[key] = self.receiver_origins[source]
+                    self.receiver_kinds[key] = self.receiver_kinds[source]
+                    if source in self.hidden_receivers:
                         self.hidden_receivers.add(key)
                     changed = True
                     continue
@@ -276,16 +288,26 @@ class FastapiIndex:
         return isinstance(value, ast.Constant) and value.value is False
 
     def _is_constructor_call(self, node: ast.expr) -> bool:
+        return self._constructor_kind(node) is not None
+
+    def _constructor_kind(self, node: ast.expr) -> Literal["FastAPI", "APIRouter"] | None:
         if not isinstance(node, ast.Call):
-            return False
+            return None
         if isinstance(node.func, ast.Name):
-            return node.func.id in self.constructors
-        return (
+            canonical = self.symbols.get(node.func.id)
+            if canonical == "FastAPI":
+                return "FastAPI"
+            if canonical == "APIRouter":
+                return "APIRouter"
+            return None
+        if (
             isinstance(node.func, ast.Attribute)
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id in self.modules
             and node.func.attr in {"FastAPI", "APIRouter"}
-        )
+        ):
+            return "FastAPI" if node.func.attr == "FastAPI" else "APIRouter"
+        return None
 
     def routes(self, function: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[Route, ...]:
         routes: list[Route] = []
@@ -321,6 +343,7 @@ class FastapiIndex:
                     receiver=f"{origin_scope}:{origin_name}",
                     method=route_method,
                     path=path,
+                    receiver_kind=self.receiver_kinds[receiver_key],
                     inherited_hidden=receiver_key in self.hidden_receivers,
                 )
                 for route_method in route_methods
