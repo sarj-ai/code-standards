@@ -94,7 +94,7 @@ class TestSafety:
 
     def test_sensitive_and_source_diffs_are_rejected(self) -> None:
         for path in (
-            ".github/workflows/ci.yml",
+            ".github/workflows/deploy.yml",
             "diagnostic-baseline.json",
             "config/exclusions.toml",
             "apps/web/src/index.ts",
@@ -103,7 +103,9 @@ class TestSafety:
                 rollout.reject_unsafe_diff((MANIFEST, path))
 
     def test_expected_generated_diff_is_allowed(self) -> None:
-        rollout.reject_unsafe_diff((MANIFEST, "uv.lock", "eslint.config.mjs", ".github/workflows/standards.yml"))
+        rollout.reject_unsafe_diff(
+            (MANIFEST, "uv.lock", "eslint.config.mjs", ".github/workflows/standards.yml", ".github/workflows/ci.yml")
+        )
 
     def test_only_prevalidated_retired_suppression_source_is_allowed(self) -> None:
         source = "apps/web/src/index.ts"
