@@ -27,9 +27,6 @@ from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
 )
-from sarj_python_lint.rules.no_apirouter_root_trailing_slash import (
-    NoApirouterRootTrailingSlash,
-)
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
@@ -154,7 +151,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         SourceCoupledTest.id: SourceCoupledTest,
         NoQueryWithManyJoins.id: NoQueryWithManyJoins,
         NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
-        NoApirouterRootTrailingSlash.id: NoApirouterRootTrailingSlash,
         NoSelectStar.id: NoSelectStar,
         NoGenericSingleExportModule.id: NoGenericSingleExportModule,
         Stepdown.id: Stepdown,

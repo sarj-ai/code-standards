@@ -36,7 +36,6 @@
       "kwarg-heavy-construction-in-test",
       "mock-without-spec",
       "no-aggregation-in-store-query",
-      "no-apirouter-root-trailing-slash",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
       "no-duplicate-dunder-all-entry",
@@ -267,7 +266,6 @@
       "SARJ401",
       "SARJ402",
       "SARJ404",
-      "SARJ405",
       "SARJ407"
     ],
     "sql": [
@@ -572,6 +570,13 @@
       "note": "Delete SARJ090 suppressions and baseline keys. A three-repository audit measured 20% precision: sentence count does not distinguish durable rationale from noise."
     },
     {
+      "id": "SARJ405",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ405 suppressions and baseline keys. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
+    },
+    {
       "id": "add-constraint-not-valid",
       "kind": "sql",
       "status": "renamed",
@@ -612,6 +617,13 @@
       "status": "renamed",
       "replacement": "require-keyword-only-swap-prone-params",
       "note": "Replace sarj-kwonly-same-type-params with sarj-require-keyword-only-swap-prone-params before upgrading."
+    },
+    {
+      "id": "no-apirouter-root-trailing-slash",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete no-apirouter-root-trailing-slash configuration. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
     },
     {
       "id": "no-fat-try-blocks",
