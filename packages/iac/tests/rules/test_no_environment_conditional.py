@@ -73,6 +73,150 @@ locals {
     assert "contains([...], var.environment)" in diags[0].message
 
 
+def test_flags_a_parenthesized_identity_operand():
+    src = """
+locals {
+  on = (var.environment) == "prod"
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert 'var.environment == "prod"' in diags[0].message
+
+
+def test_flags_a_doubly_parenthesized_identity_in_a_ternary():
+    src = """
+resource "google_storage_bucket" "b" {
+  count = ((var.environment)) == "prod" ? 1 : 0
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_a_parenthesized_literal_operand():
+    src = """
+locals {
+  on = var.environment == ("prod")
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_function_result_compared_to_a_literal_is_not_flagged():
+    """`upper(var.environment)` is a call's value, not the bare environment name."""
+    src = """
+locals {
+  on = upper(var.environment) == "PROD"
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_a_parenthesized_operand_inside_a_list_for_expression():
+    """`if` heads an expression, so `if (…)` is a grouping paren, not a call result."""
+    src = """
+locals {
+  subnets = [for e in var.subnets : e if (var.environment) == "prod"]
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_a_parenthesized_operand_inside_a_map_for_expression():
+    src = """
+locals {
+  tags = { for k, v in var.tags : k => v if (var.environment) == "prod" }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_call_result_inside_a_for_expression_stays_exempt():
+    src = """
+locals {
+  subnets = [for e in var.subnets : e if upper(var.environment) == "PROD"]
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_an_index_keyed_by_the_environment():
+    """`local.tiers[var.environment]` is lookup() spelled as native indexing."""
+    src = """
+locals {
+  tier = local.tiers[var.environment]
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "...[var.environment]" in diags[0].message
+
+
+def test_flags_an_environment_index_on_a_chained_subject():
+    src = """
+locals {
+  tier = local.cfg["tiers"][var.environment]
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_an_environment_index_inside_a_call_argument():
+    src = """
+locals {
+  on = tobool(local.flags[var.environment])
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_list_literal_holding_the_identity_is_not_an_index():
+    src = """
+locals {
+  on = contains([var.environment], "prod")
+}
+"""
+    assert _check(src) == []
+
+
+def test_an_index_by_a_plain_string_key_is_not_flagged():
+    src = """
+locals {
+  env = local.cfg["env"]
+}
+"""
+    assert _check(src) == []
+
+
+def test_a_parenthesized_empty_string_sentinel_stays_exempt():
+    src = """
+locals {
+  host = (var.environment) != "" ? var.environment : "local"
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_contains_with_a_parenthesized_needle():
+    src = """
+locals {
+  on = contains(["preview", "prod"], (var.environment)) ? 1 : 0
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "contains([...], var.environment)" in diags[0].message
+
+
+def test_contains_with_a_parenthesized_call_needle_is_not_flagged():
+    src = """
+locals {
+  on = contains(["preview", "prod"], (upper(var.environment)))
+}
+"""
+    assert _check(src) == []
+
+
 def test_flags_lookup_keyed_by_the_environment():
     src = """
 resource "google_privileged_access_manager_entitlement" "access" {
@@ -237,10 +381,31 @@ resource "google_secret_manager_secret" "s" {
     assert _check(src) == []
 
 
-def test_contains_with_a_non_literal_haystack_is_not_flagged():
+def test_flags_contains_with_a_non_literal_haystack():
+    """Membership via an intermediate list is the same branch; the needle is the anchor."""
+    src = """
+locals {
+  on = contains(local.prod_like, var.environment)
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "contains(..., var.environment)" in diags[0].message
+
+
+def test_flags_contains_even_when_the_haystack_is_itself_an_identity():
     src = """
 locals {
   on = contains(var.environments, var.environment)
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_contains_with_a_non_identity_needle_is_not_flagged():
+    src = """
+locals {
+  on = contains(local.prod_like, var.service_key)
 }
 """
     assert _check(src) == []
@@ -349,7 +514,8 @@ module "iam" {
     diags = _check(src)
     assert len(diags) == 2
     assert [d.line for d in diags] == [4, 5]
-    assert "pass the value in per environment from tfvars" in diags[0].message
+    assert "typed variable set per environment in tfvars" in diags[0].message
+    assert "`enable_<thing>` bool" in diags[0].message
 
 
 def test_does_not_flag_a_module_input_passed_straight_through():
@@ -461,8 +627,39 @@ resource "google_storage_bucket" "b" {
     assert _check(src, name="values.yaml") == []
 
 
+def test_flags_a_terragrunt_top_level_attribute():
+    """Terragrunt keeps its configuration in file-level attributes, not blocks."""
+    src = 'top_level = var.environment == "prod"\n'
+    diags = _check(src, name="terragrunt.hcl")
+    assert len(diags) == 1
+    assert "`top_level` in the file root" in diags[0].message
+
+
+def test_flags_a_conditional_inside_a_terragrunt_inputs_map():
+    src = """
+inputs = {
+  enabled = local.environment == "prod" ? 1 : 0
+}
+"""
+    diags = _check(src, name="terragrunt.hcl")
+    assert len(diags) == 1
+    assert diags[0].line == 2
+
+
+def test_top_level_and_block_diagnostics_stay_in_source_order():
+    src = """
+top_level = var.environment == "prod"
+
+locals {
+  on = var.environment == "dev" ? 1 : 0
+}
+"""
+    diags = _check(src, name="terragrunt.hcl")
+    assert [d.line for d in diags] == [2, 5]
+
+
 def test_ignores_tfvars():
-    """blocks() drops file-level attributes, so .tfvars is deliberately out of scope."""
+    """The suffix filter keeps .tfvars deliberately out of scope."""
     assert _check('environment = "prod"\n', name="prod.tfvars") == []
 
 
