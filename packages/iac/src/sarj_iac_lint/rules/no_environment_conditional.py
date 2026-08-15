@@ -68,6 +68,9 @@ _MIN_CALL_ARGS = 2
 _OPEN = frozenset({"(", "[", "{"})
 _CLOSE = frozenset({")", "]", "}"})
 
+# Words that read like identifiers but head expressions: `if (x)` groups, `foo(x)` calls.
+_EXPRESSION_KEYWORDS = frozenset({"if", "for", "in"})
+
 _HCL_SUFFIXES = (".tf", ".hcl")
 # Checked first: `.tftest.hcl` also ends in `.hcl`, and asserting on the environment
 # is the entire purpose of a Terraform test file.
@@ -105,11 +108,9 @@ class NoEnvironmentConditional(Rule):
             "that environment's tfvars instead."
         ),
         remediation=(
-            "If the branch selects a value (a tier, size, count, or address), declare a typed variable carrying "
-            "that value and set it per environment in tfvars (`tier = var.redis_tier`) — do not introduce a "
-            "boolean for value selection. Only if the branch decides whether a resource exists, declare one "
-            "`enable_<thing>` bool consumed by count/for_each, gated once at the module boundary. Never compute "
-            "that variable's value from the environment name."
+            "Declare a typed variable carrying the selected value, set per environment in tfvars "
+            "(`tier = var.redis_tier`); use one `enable_<thing>` bool consumed by count/for_each only when the "
+            "branch gates existence, never computed from the environment name."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -119,7 +120,16 @@ class NoEnvironmentConditional(Rule):
                 "inputs are legal and is exempt, as is a .tftest.hcl file."
             ),
             "Comparison against the empty string is an unset-input test, not an environment branch, and is ignored.",
-            'An interpolated value such as "cache-${var.environment}" names a resource and is not a branch.',
+            (
+                'An interpolated value such as "cache-${var.environment}" names a resource and is not a branch. '
+                'A branch written inside a template — "${var.environment == \\"prod\\" ? ... }", a %{ if } '
+                "directive, or a heredoc body — goes unscanned: strings tokenize opaquely and heredoc bodies "
+                "are masked."
+            ),
+            (
+                "A function result such as upper(var.environment) is not treated as the environment identity, "
+                "so a comparison against it is exempt."
+            ),
             "Only .tf and .hcl are read: the suffix filter keeps .tfvars out of scope.",
             (
                 "A diagnostic is reported at the attribute's line. In a multi-line value the comparison itself "
@@ -241,6 +251,8 @@ def _environment_use(value: str) -> _Use | None:
             use = _comparison(toks, index)
         elif tok in {_CONTAINS, _LOOKUP} and index + 1 < len(toks) and toks[index + 1] == "(":
             use = _call(toks, index)
+        elif tok == "[":
+            use = _index(toks, index)
         else:
             continue
         if use is not None:
@@ -272,7 +284,7 @@ def _left_operand(toks: tuple[str, ...], index: int) -> str | None:
         return None
     # A group closing a call — `upper(var.environment)` — is that function's
     # result, not the bare identity, so it never reads as the environment name.
-    if open_index > 0 and _is_call_name(toks[open_index - 1]):
+    if open_index > 0 and _is_reference(toks[open_index - 1]):
         return None
     return _single_token(toks[open_index + 1 : index - 1])
 
@@ -373,9 +385,29 @@ def _matching_open(toks: Sequence[str], close_index: int) -> int | None:
     return None
 
 
-def _is_call_name(tok: str) -> bool:
-    """Report whether a token directly before `(` names a function being called."""
-    return tok[:1].isalpha() or tok[:1] == "_"
+def _index(toks: tuple[str, ...], index: int) -> _Use | None:
+    """Read `<expr>[identity]`: indexing by the environment is lookup() by another spelling."""
+    if index == 0 or index + 2 >= len(toks):
+        return None
+    # An index needs a subject; a `[` after an operator, comma, or another
+    # opener starts a list literal, so `contains([var.environment], "prod")`
+    # holds the identity rather than branching on it.
+    subject = toks[index - 1]
+    if subject not in {")", "]"} and not _is_reference(subject):
+        return None
+    key = toks[index + 1]
+    if toks[index + 2] != "]" or not _is_environment_identity(key):
+        return None
+    return _Use(key, f"...[{key}]")
+
+
+def _is_reference(tok: str) -> bool:
+    """Report whether a token is an identifier reference, not a keyword or operator.
+
+    Before `(` a reference names a function being called; before `[` it is the
+    subject of an index rather than the start of a list literal.
+    """
+    return tok not in _EXPRESSION_KEYWORDS and (tok[:1].isalpha() or tok[:1] == "_")
 
 
 def _is_literal_list(arg: list[str]) -> bool:
@@ -425,6 +457,6 @@ def _message(owner: Block, attr: Attribute, use: _Use) -> str:
     return (
         f"`{attr.name}` in {where} branches on the environment name ({use.shape}) — "
         "adding an environment means editing this expression, and the decision is code rather than "
-        f"configuration. Declare `{attr.name}` as its own variable and pass the value in per "
-        "environment from tfvars."
+        "configuration. Replace it with a typed variable set per environment in tfvars — the value "
+        "itself, or one `enable_<thing>` bool when the branch gates whether the resource exists."
     )

@@ -112,6 +112,82 @@ locals {
     assert _check(src) == []
 
 
+def test_flags_a_parenthesized_operand_inside_a_list_for_expression():
+    """`if` heads an expression, so `if (…)` is a grouping paren, not a call result."""
+    src = """
+locals {
+  subnets = [for e in var.subnets : e if (var.environment) == "prod"]
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_a_parenthesized_operand_inside_a_map_for_expression():
+    src = """
+locals {
+  tags = { for k, v in var.tags : k => v if (var.environment) == "prod" }
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_call_result_inside_a_for_expression_stays_exempt():
+    src = """
+locals {
+  subnets = [for e in var.subnets : e if upper(var.environment) == "PROD"]
+}
+"""
+    assert _check(src) == []
+
+
+def test_flags_an_index_keyed_by_the_environment():
+    """`local.tiers[var.environment]` is lookup() spelled as native indexing."""
+    src = """
+locals {
+  tier = local.tiers[var.environment]
+}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "...[var.environment]" in diags[0].message
+
+
+def test_flags_an_environment_index_on_a_chained_subject():
+    src = """
+locals {
+  tier = local.cfg["tiers"][var.environment]
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_flags_an_environment_index_inside_a_call_argument():
+    src = """
+locals {
+  on = tobool(local.flags[var.environment])
+}
+"""
+    assert len(_check(src)) == 1
+
+
+def test_a_list_literal_holding_the_identity_is_not_an_index():
+    src = """
+locals {
+  on = contains([var.environment], "prod")
+}
+"""
+    assert _check(src) == []
+
+
+def test_an_index_by_a_plain_string_key_is_not_flagged():
+    src = """
+locals {
+  env = local.cfg["env"]
+}
+"""
+    assert _check(src) == []
+
+
 def test_a_parenthesized_empty_string_sentinel_stays_exempt():
     src = """
 locals {
@@ -438,7 +514,8 @@ module "iam" {
     diags = _check(src)
     assert len(diags) == 2
     assert [d.line for d in diags] == [4, 5]
-    assert "pass the value in per environment from tfvars" in diags[0].message
+    assert "typed variable set per environment in tfvars" in diags[0].message
+    assert "`enable_<thing>` bool" in diags[0].message
 
 
 def test_does_not_flag_a_module_input_passed_straight_through():
