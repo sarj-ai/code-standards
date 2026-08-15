@@ -6,7 +6,7 @@ import pytest
 
 # `_hcl` is package-private by design; the walker is exercised directly because
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
-from sarj_iac_lint._hcl import blocks, tokens
+from sarj_iac_lint._hcl import blocks, document, tokens
 
 
 def test_tokens_keeps_an_interpolated_string_whole():
@@ -184,6 +184,25 @@ resource "aws_db_instance" "a" {
 }
 """
     assert [b.type for b in blocks(src)] == ["terraform", "removed", "resource"]
+
+
+def test_document_exposes_file_level_attributes_and_owns_the_block_tree():
+    """Terragrunt keeps configuration in top-level attributes, which blocks() cannot carry."""
+    src = 'top_level = "x"\n\ninclude "root" {\n  path = "../root.hcl"\n}\n'
+    root = document(src)
+    assert not root.type
+    assert root.labels == ()
+    attr = root.attribute("top_level")
+    assert attr is not None
+    assert (attr.line, attr.col) == (1, 1)
+    assert root.blocks == blocks(src)
+    assert [b.type for b in root.blocks] == ["include"]
+
+
+def test_document_of_an_empty_source_is_an_empty_root():
+    root = document("")
+    assert root.attributes == ()
+    assert root.blocks == ()
 
 
 def test_empty_and_unbalanced_sources_degrade_without_raising():

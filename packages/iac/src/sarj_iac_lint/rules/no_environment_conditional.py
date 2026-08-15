@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import blocks, tokens
+from sarj_iac_lint._hcl import document, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -19,7 +19,7 @@ from sarj_iac_lint.rule_base import (
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
     from pathlib import Path
 
     from sarj_iac_lint._hcl import Attribute, Block
@@ -74,6 +74,8 @@ _HCL_SUFFIXES = (".tf", ".hcl")
 _TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
 
 _LIST_TOKENS = 3
+# A parenthesized group is at least its two parens around one token.
+_GROUP_TOKENS = 3
 # A string literal is at least its two quotes.
 _MIN_QUOTED_LENGTH = 2
 
@@ -103,8 +105,11 @@ class NoEnvironmentConditional(Rule):
             "that environment's tfvars instead."
         ),
         remediation=(
-            "Declare the behaviour as its own variable and set its value per environment in tfvars, so the "
-            "environment selects configuration rather than the code selecting behaviour."
+            "If the branch selects a value (a tier, size, count, or address), declare a typed variable carrying "
+            "that value and set it per environment in tfvars (`tier = var.redis_tier`) — do not introduce a "
+            "boolean for value selection. Only if the branch decides whether a resource exists, declare one "
+            "`enable_<thing>` bool consumed by count/for_each, gated once at the module boundary. Never compute "
+            "that variable's value from the environment name."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -115,7 +120,7 @@ class NoEnvironmentConditional(Rule):
             ),
             "Comparison against the empty string is an unset-input test, not an environment branch, and is ignored.",
             'An interpolated value such as "cache-${var.environment}" names a resource and is not a branch.',
-            "Only .tf and .hcl are read: blocks() drops file-level attributes, so .tfvars is out of scope.",
+            "Only .tf and .hcl are read: the suffix filter keeps .tfvars out of scope.",
             (
                 "A diagnostic is reported at the attribute's line. In a multi-line value the comparison itself "
                 "may sit further down, so `# sarj-noqa: SARJ204` belongs on the attribute line."
@@ -212,7 +217,7 @@ class NoEnvironmentConditional(Rule):
                 code=self.code,
                 message=_message(owner, attr, use),
             )
-            for owner, attr in _attributes(blocks(source))
+            for owner, attr in _attributes((document(source),))
             if (use := _environment_use(attr.value)) is not None
         ]
         return sorted(diags, key=lambda d: (d.line, d.col))
@@ -244,10 +249,12 @@ def _environment_use(value: str) -> _Use | None:
 
 
 def _comparison(toks: tuple[str, ...], index: int) -> _Use | None:
-    """Read `<identity> == "literal"` in either operand order."""
+    """Read `<identity> == "literal"` in either operand order, through grouping parens."""
     if index == 0 or index + 1 >= len(toks):
         return None
-    left, right = toks[index - 1], toks[index + 1]
+    left, right = _left_operand(toks, index), _right_operand(toks, index)
+    if left is None or right is None:
+        return None
     shape = f"{left} {toks[index]} {right}"
     if _is_environment_identity(left) and _is_literal_string(right):
         return _Use(left, shape)
@@ -256,20 +263,47 @@ def _comparison(toks: tuple[str, ...], index: int) -> _Use | None:
     return None
 
 
+def _left_operand(toks: tuple[str, ...], index: int) -> str | None:
+    """Resolve the operand before a comparison, or None when it is not one token."""
+    if toks[index - 1] != ")":
+        return toks[index - 1]
+    open_index = _matching_open(toks, index - 1)
+    if open_index is None:
+        return None
+    # A group closing a call — `upper(var.environment)` — is that function's
+    # result, not the bare identity, so it never reads as the environment name.
+    if open_index > 0 and _is_call_name(toks[open_index - 1]):
+        return None
+    return _single_token(toks[open_index + 1 : index - 1])
+
+
+def _right_operand(toks: tuple[str, ...], index: int) -> str | None:
+    """Resolve the operand after a comparison, or None when it is not one token."""
+    if toks[index + 1] != "(":
+        return toks[index + 1]
+    close_index = _matching_close(toks, index + 1)
+    if close_index is None:
+        return None
+    return _single_token(toks[index + 2 : close_index])
+
+
 def _call(toks: tuple[str, ...], index: int) -> _Use | None:
-    """Read `contains([literals], identity)` and `lookup(map, identity, default)`."""
+    """Read `contains(list, identity)` and `lookup(map, identity, default)`."""
     args = _call_arguments(toks, index + 1)
     if len(args) < _MIN_CALL_ARGS:
         return None
     if toks[index] == _CONTAINS:
-        haystack, needle = args[0], args[1]
-        if not _is_literal_list(haystack) or not _is_single_identity(needle):
+        needle = _single_identity(args[1])
+        if needle is None:
             return None
-        return _Use(needle[0], f"contains([...], {needle[0]})")
-    key = args[1]
-    if not _is_single_identity(key):
+        # Membership via an intermediate list is the same branch, so the haystack
+        # only shapes the message; the needle is the anchor, as with lookup's map.
+        listing = "[...]" if _is_literal_list(args[0]) else "..."
+        return _Use(needle, f"contains({listing}, {needle})")
+    key = _single_identity(args[1])
+    if key is None:
         return None
-    return _Use(key[0], f"lookup(..., {key[0]}, ...)")
+    return _Use(key, f"lookup(..., {key}, ...)")
 
 
 def _call_arguments(toks: tuple[str, ...], open_index: int) -> list[list[str]]:
@@ -294,9 +328,54 @@ def _call_arguments(toks: tuple[str, ...], open_index: int) -> list[list[str]]:
     return args
 
 
-def _is_single_identity(arg: list[str]) -> bool:
-    """Report whether an argument is exactly one environment-identity token."""
-    return len(arg) == 1 and _is_environment_identity(arg[0])
+def _single_identity(arg: Sequence[str]) -> str | None:
+    """Resolve an argument to its lone environment-identity token, or None."""
+    tok = _single_token(arg)
+    return tok if tok is not None and _is_environment_identity(tok) else None
+
+
+def _single_token(group: Sequence[str]) -> str | None:
+    """Reduce a token span to its lone token, peeling grouping parens, or None."""
+    peeled = _peel(group)
+    return peeled[0] if len(peeled) == 1 else None
+
+
+def _peel(group: Sequence[str]) -> Sequence[str]:
+    """Strip parens that wrap the whole token span, however deeply they nest."""
+    while len(group) >= _GROUP_TOKENS and group[0] == "(" and _matching_close(group, 0) == len(group) - 1:
+        group = group[1:-1]
+    return group
+
+
+def _matching_close(toks: Sequence[str], open_index: int) -> int | None:
+    """Find the index of the bracket closing the one at `open_index`."""
+    depth = 0
+    for index in range(open_index, len(toks)):
+        if toks[index] in _OPEN:
+            depth += 1
+        elif toks[index] in _CLOSE:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _matching_open(toks: Sequence[str], close_index: int) -> int | None:
+    """Find the index of the bracket opening the one at `close_index`."""
+    depth = 0
+    for index in range(close_index, -1, -1):
+        if toks[index] in _CLOSE:
+            depth += 1
+        elif toks[index] in _OPEN:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _is_call_name(tok: str) -> bool:
+    """Report whether a token directly before `(` names a function being called."""
+    return tok[:1].isalpha() or tok[:1] == "_"
 
 
 def _is_literal_list(arg: list[str]) -> bool:
@@ -339,7 +418,10 @@ def _is_literal_string(tok: str) -> bool:
 
 def _message(owner: Block, attr: Attribute, use: _Use) -> str:
     """Name the branch, where it sits, and the input that should replace it."""
-    where = " ".join([owner.type, *(f'"{label}"' for label in owner.labels)])
+    # The synthetic root block has no type: its attributes sit at the file's top
+    # level, which is where Terragrunt keeps `inputs`.
+    labelled = " ".join([owner.type, *(f'"{label}"' for label in owner.labels)])
+    where = labelled if owner.type else "the file root"
     return (
         f"`{attr.name}` in {where} branches on the environment name ({use.shape}) — "
         "adding an environment means editing this expression, and the decision is code rather than "

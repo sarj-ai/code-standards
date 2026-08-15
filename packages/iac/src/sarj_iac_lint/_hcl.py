@@ -223,16 +223,25 @@ class Block:
 
 
 @lru_cache(maxsize=32)
-def blocks(source: str) -> tuple[Block, ...]:
-    """Parse `source` into a tree of top-level HCL blocks."""
+def document(source: str) -> Block:
+    """Parse `source` into a synthetic root block whose type is the empty string.
+
+    The root carries the file-level attributes a Terragrunt `.hcl` file keeps at
+    the top level, plus every top-level block; no real HCL block has an empty type.
+    """
     lines = [strip_inline_comment(line) for line in masked_hcl_lines(source)]
     toks = [
         _Tok(m.group(0), lineno, m.start() + 1)
         for lineno, line in enumerate(lines, start=1)
         for m in _TOKEN_RE.finditer(line)
     ]
-    _attrs, found, _i = _parse_body(toks, 0, 0, lines)
-    return found
+    attrs, found, _i = _parse_body(toks, 0, 0, lines)
+    return Block("", (), 0, 1, 1, max(len(lines), 1), attrs, found)
+
+
+def blocks(source: str) -> tuple[Block, ...]:
+    """Parse `source` into a tree of top-level HCL blocks."""
+    return document(source).blocks
 
 
 def _parse_body(
