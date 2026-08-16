@@ -1,1 +1,1 @@
-{"rules":["python:created-at-order-requires-tiebreaker","python:no-unique-violation-message-match"],"schemaVersion":1}
+{"rules":["iac:no-dead-environment-input","python:created-at-order-requires-tiebreaker","python:no-unique-violation-message-match"],"schemaVersion":1}
