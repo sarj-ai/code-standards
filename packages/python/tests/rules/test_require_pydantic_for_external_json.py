@@ -110,6 +110,7 @@ def test_flags_structural_record_helper_call() -> None:
         "import json\ndef parse(payload):\n raw=json.loads(payload)\n return raw",
         "def parse(table):\n return table.get('id')",
         "import json\ndef parse(payload):\n raw=json.loads(payload)",
+        "import httpx, json\ndef send(request: httpx.Request):\n body=json.loads(request.content)\n return body.get('tools')",
     ],
 )
 def test_accepts_non_record_or_validated_json_use(source: str) -> None:
