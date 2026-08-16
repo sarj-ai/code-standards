@@ -16,7 +16,9 @@ import sys
 import threading
 import time
 import tomllib
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from sarj_standards.libs.adoption import manifest, packagemanager
 from sarj_standards.libs.adoption.lifecycle import select_eslint_commands
@@ -54,7 +56,6 @@ _MAX_ESLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
-_REACT_DOCTOR_SCHEMA_VERSION = 3
 _REACT_RUNTIME_PACKAGES = frozenset(
     {
         "@astrojs/react",
@@ -96,6 +97,44 @@ _SAFE_ENVIRONMENT_KEYS = frozenset(
         "WINDIR",
     }
 )
+
+
+class _ReactDoctorProtocolModel(BaseModel):
+    """Strictly type every React Doctor field consumed by the adapter."""
+
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+
+class _ReactDoctorFailure(_ReactDoctorProtocolModel):
+    message: str = Field(min_length=1)
+
+
+class _ReactDoctorDiagnostic(_ReactDoctorProtocolModel):
+    file_path: str = Field(alias="filePath", min_length=1)
+    plugin: str = Field(min_length=1)
+    rule: str = Field(min_length=1)
+    severity: Literal["error", "warning"]
+    message: str = Field(min_length=1)
+    line: int = Field(ge=1)
+    column: int = Field(ge=1)
+    end_line: int | None = Field(default=None, alias="endLine", ge=1)
+    end_column: int | None = Field(default=None, alias="endColumn", ge=1)
+    url: str | None = None
+
+
+class _ReactDoctorProject(_ReactDoctorProtocolModel):
+    directory: str = Field(min_length=1)
+    complete: bool
+    diagnostics: tuple[_ReactDoctorDiagnostic, ...] = ()
+
+
+class _ReactDoctorReport(_ReactDoctorProtocolModel):
+    schema_version: Literal[3] = Field(alias="schemaVersion")
+    version: str = Field(min_length=1)
+    ok: bool
+    projects: tuple[_ReactDoctorProject, ...]
+    skipped_projects: tuple[object, ...] = Field(alias="skippedProjects")
+    error: _ReactDoctorFailure | None
 
 
 class _ExternalSeverity(StrEnum):
@@ -990,67 +1029,52 @@ def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
     return tuple(diagnostics)
 
 
-def parse_react_doctor(  # ruff: ignore[too-many-locals] -- protocol normalization keeps fields explicit.
-    payload: str, *, root: Path
-) -> tuple[Diagnostic, ...]:
+def parse_react_doctor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     """Normalize React Doctor v3 JSON while keeping the pilot advisory."""
-    report = _table(_loads(payload), "React Doctor report")
-    if report.get("schemaVersion") != _REACT_DOCTOR_SCHEMA_VERSION:
-        msg = f"unsupported React Doctor schema version: {report.get('schemaVersion')!r}"
-        raise ValueError(msg)
+    report = _ReactDoctorReport.model_validate_json(payload)
     expected_version = manifest.eslint_peers()["react-doctor"]
-    if report.get("version") != expected_version:
-        msg = f"React Doctor reported version {report.get('version')!r}; expected {expected_version!r}"
+    if report.version != expected_version:
+        msg = f"React Doctor reported version {report.version!r}; expected {expected_version!r}"
         raise ValueError(msg)
-    error = report.get("error")
-    if error is not None:
-        failure = _table(error, "React Doctor error")
-        msg = f"React Doctor scan failed: {_text(failure, 'message')}"
+    if report.error is not None:
+        msg = f"React Doctor scan failed: {report.error.message}"
         raise ValueError(msg)
-    if report.get("ok") is not True:
+    if not report.ok:
         msg = "React Doctor report did not complete successfully"
         raise ValueError(msg)
-    skipped = _array(report.get("skippedProjects", []), "React Doctor skipped projects")
-    if skipped:
-        msg = f"React Doctor skipped {len(skipped)} project(s) before analysis"
+    if report.skipped_projects:
+        msg = f"React Doctor skipped {len(report.skipped_projects)} project(s) before analysis"
         raise ValueError(msg)
 
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
-    for raw_project in _array(report.get("projects"), "React Doctor projects"):
-        project = _table(raw_project, "React Doctor project")
-        if project.get("complete") is not True:
-            directory = project.get("directory")
-            msg = f"React Doctor project did not complete: {directory!r}"
+    for project in report.projects:
+        if not project.complete:
+            msg = f"React Doctor project did not complete: {project.directory!r}"
             raise ValueError(msg)
         directory = _contained_report_directory(project, root)
-        for raw_diagnostic in _array(project.get("diagnostics"), "React Doctor diagnostics"):
-            item = _table(raw_diagnostic, "React Doctor diagnostic")
+        for item in project.diagnostics:
             path = _react_doctor_path(item, directory, root)
             location = _react_doctor_location(item, path, root, documents)
-            plugin = _text(item, "plugin")
-            rule_name = _text(item, "rule")
-            rule = f"{plugin}/{rule_name}"
-            url_value = item.get("url")
+            rule = f"{item.plugin}/{item.rule}"
             diagnostics.append(
                 Diagnostic(
                     rule,
-                    _redact_message(_text(item, "message"), root),
+                    _redact_message(item.message, root),
                     # React Doctor is deliberately observation-only in its first
                     # Standards release. Execution/protocol failures still fail.
                     Severity.WARNING,
                     "react-doctor",
                     location,
                     rule_id=rule,
-                    help_url=url_value if isinstance(url_value, str) else None,
+                    help_url=item.url,
                 )
             )
     return tuple(diagnostics)
 
 
-def _contained_report_directory(project: dict[str, object], root: Path) -> Path:
-    value = _text(project, "directory")
-    directory = Path(value)
+def _contained_report_directory(project: _ReactDoctorProject, root: Path) -> Path:
+    directory = Path(project.directory)
     resolved = (directory if directory.is_absolute() else root / directory).resolve()
     try:
         resolved.relative_to(root.resolve())
@@ -1060,8 +1084,8 @@ def _contained_report_directory(project: dict[str, object], root: Path) -> Path:
     return resolved
 
 
-def _react_doctor_path(item: dict[str, object], directory: Path, root: Path) -> Path:
-    raw_path = Path(_text(item, "filePath"))
+def _react_doctor_path(item: _ReactDoctorDiagnostic, directory: Path, root: Path) -> Path:
+    raw_path = Path(item.file_path)
     resolved = (raw_path if raw_path.is_absolute() else directory / raw_path).resolve()
     try:
         resolved.relative_to(root.resolve())
@@ -1072,21 +1096,19 @@ def _react_doctor_path(item: dict[str, object], directory: Path, root: Path) -> 
 
 
 def _react_doctor_location(
-    item: dict[str, object],
+    item: _ReactDoctorDiagnostic,
     path: Path,
     root: Path,
     documents: dict[Path, SourceDocument | None],
 ) -> Location:
     start = _one_based_position(
-        {"row": _integer(item, "line"), "column": _integer(item, "column")},
+        {"row": item.line, "column": item.column},
         path,
         documents,
     )
-    end_line = item.get("endLine")
-    end_column = item.get("endColumn")
-    if type(end_line) is int and type(end_column) is int:
+    if item.end_line is not None and item.end_column is not None:
         try:
-            end = _one_based_position({"row": end_line, "column": end_column}, path, documents)
+            end = _one_based_position({"row": item.end_line, "column": item.end_column}, path, documents)
         except ValueError:
             end = None
         if end is not None and (end.line, end.character) >= (start.line, start.character):
