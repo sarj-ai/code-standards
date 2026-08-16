@@ -137,6 +137,36 @@ class _ReactDoctorReport(_ReactDoctorProtocolModel):
     error: _ReactDoctorFailure | None
 
 
+class _BasedPyrightPosition(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    line: int = Field(ge=0)
+    character: int = Field(ge=0)
+
+
+class _BasedPyrightRange(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    start: _BasedPyrightPosition
+    end: _BasedPyrightPosition
+
+
+class _BasedPyrightDiagnostic(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    file: str = Field(min_length=1)
+    severity: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    rule: str | None = None
+    range: _BasedPyrightRange
+
+
+class _BasedPyrightReport(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    general_diagnostics: tuple[_BasedPyrightDiagnostic, ...] = Field(alias="generalDiagnostics")
+
+
 class _ExternalSeverity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
@@ -953,23 +983,19 @@ def parse_ruff(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
 
 
 def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
-    document = _table(_loads(payload), "BasedPyright output")
-    values = _array(document.get("generalDiagnostics"), "BasedPyright diagnostics")
+    report = _BasedPyrightReport.model_validate_json(payload)
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
-    for value in values:
-        item = _table(value, "BasedPyright diagnostic")
-        path = _path(item, "file", root)
-        range_value = _table(item.get("range"), "BasedPyright range")
-        start = _zero_based_position(_table(range_value.get("start"), "BasedPyright start"), path, documents)
-        end = _zero_based_position(_table(range_value.get("end"), "BasedPyright end"), path, documents)
-        rule_value = item.get("rule")
-        rule = rule_value if isinstance(rule_value, str) else "basedpyright"
+    for item in report.general_diagnostics:
+        path = _reported_path(item.file, root)
+        start = _basedpyright_position(item.range.start, path, documents)
+        end = _basedpyright_position(item.range.end, path, documents)
+        rule = item.rule or "basedpyright"
         diagnostics.append(
             Diagnostic(
                 rule,
-                _redact_message(_text(item, "message"), root),
-                _severity_text(_text(item, "severity")),
+                _redact_message(item.message, root),
+                _severity_text(item.severity),
                 "basedpyright",
                 Location(_relative(path, root), region=Region(start, end)),
                 rule_id=rule,
@@ -1210,7 +1236,11 @@ def _integer(table: dict[str, object], key: str) -> int:
 
 
 def _path(table: dict[str, object], key: str, root: Path) -> Path:
-    path = Path(_text(table, key))
+    return _reported_path(_text(table, key), root)
+
+
+def _reported_path(value: str, root: Path) -> Path:
+    path = Path(value)
     resolved = (path if path.is_absolute() else root / path).resolve()
     try:
         resolved.relative_to(root.resolve())
@@ -1239,8 +1269,10 @@ def _one_based_position(value: dict[str, object], path: Path, cache: dict[Path, 
     return position
 
 
-def _zero_based_position(value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]) -> Position:
-    position = _document(path, cache).utf16_point(line=_integer(value, "line"), character=_integer(value, "character"))
+def _basedpyright_position(
+    value: _BasedPyrightPosition, path: Path, cache: dict[Path, SourceDocument | None]
+) -> Position:
+    position = _document(path, cache).utf16_point(line=value.line, character=value.character)
     if position is None:
         msg = "analyzer position is outside source"
         raise ValueError(msg)
@@ -1274,6 +1306,14 @@ def _eslint_start_position(
     if value.get("line") == 0:
         return None
     return _eslint_position(value, path, cache, line_key="line", column_key="column")
+
+
+def _zero_based_position(value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]) -> Position:
+    position = _document(path, cache).utf16_point(line=_integer(value, "line"), character=_integer(value, "character"))
+    if position is None:
+        msg = "analyzer position is outside source"
+        raise ValueError(msg)
+    return position
 
 
 def _severity_text(value: str) -> Severity:

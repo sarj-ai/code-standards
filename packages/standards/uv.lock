@@ -459,7 +459,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.67.14"
+version = "0.68.0"
 source = { editable = "../python" }
 
 [package.metadata]

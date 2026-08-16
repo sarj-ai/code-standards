@@ -122,5 +122,6 @@
   "SARJ407": "created-at-order-requires-tiebreaker",
   "SARJ408": "negative-only-http-status-assertion",
   "SARJ409": "production-derived-test-cases",
-  "SARJ410": "uncontrolled-randomness-in-test"
+  "SARJ410": "uncontrolled-randomness-in-test",
+  "SARJ411": "require-pydantic-for-external-json"
 }
