@@ -35,6 +35,7 @@
       "invalid-pydantic-field-default",
       "kwarg-heavy-construction-in-test",
       "mock-without-spec",
+      "negative-only-http-status-assertion",
       "no-aggregation-in-store-query",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
@@ -83,6 +84,7 @@
       "prefer-walrus-comprehension-filter",
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
+      "production-derived-test-cases",
       "pydantic-at-boundaries",
       "redundant-class-docstring",
       "redundant-docstring",
@@ -96,6 +98,7 @@
       "test-phase-label-comment",
       "trailing-value-narration",
       "trivially-true-assertion",
+      "uncontrolled-randomness-in-test",
       "unused-mock-setup"
     ],
     "sql": [
@@ -159,6 +162,7 @@
       "no-union-in-comment",
       "no-unnecessary-use-client",
       "no-unsafe-mock-casting",
+      "no-vague-suppression-description",
       "no-zod-native-enum",
       "prefer-await-in-async-return",
       "prefer-constant-time-secret-compare",
@@ -267,7 +271,10 @@
       "SARJ401",
       "SARJ402",
       "SARJ404",
-      "SARJ407"
+      "SARJ407",
+      "SARJ408",
+      "SARJ409",
+      "SARJ410"
     ],
     "sql": [
       "SARJ101",

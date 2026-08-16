@@ -119,5 +119,8 @@
   "SARJ402": "source-coupled-test",
   "SARJ404": "no-unique-violation-message-match",
   "SARJ405": "no-apirouter-root-trailing-slash",
-  "SARJ407": "created-at-order-requires-tiebreaker"
+  "SARJ407": "created-at-order-requires-tiebreaker",
+  "SARJ408": "negative-only-http-status-assertion",
+  "SARJ409": "production-derived-test-cases",
+  "SARJ410": "uncontrolled-randomness-in-test"
 }
