@@ -253,6 +253,7 @@ class Standards:
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
         rules: Sequence[str | RuleSelector] | None = None,
+        staged: bool = False,
     ) -> AnalysisReport:
         """Return source findings and execution failures through the versioned diagnostic protocol."""
         try:
@@ -369,6 +370,8 @@ class Standards:
                     policy=selection_policy,
                     capabilities=(frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.configs)),
                     grouped=selected_groups,
+                    include_react_doctor=(paths is None or staged) and rule_selection is None,
+                    react_doctor_staged=staged,
                 )
                 if adopted is not None
                 else analyze_external(
@@ -376,6 +379,8 @@ class Standards:
                     root=self.root,
                     trust=normalized_trust,
                     grouped=selected_groups,
+                    include_react_doctor=(paths is None or staged) and rule_selection is None,
+                    react_doctor_staged=staged,
                 )
             )
             if run_eslint
@@ -406,9 +411,10 @@ class Standards:
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
         rules: Sequence[str | RuleSelector] | None = None,
+        staged: bool = False,
     ) -> AnalysisReport:
         """Run the canonical structured analysis engine."""
-        return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules)
+        return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules, staged=staged)
 
     def fix(self) -> Result:
         from .libs.adoption import (  # ruff: ignore[import-outside-top-level] -- selected operation only
@@ -585,6 +591,8 @@ def _without_baselined_diagnostics(report: AnalysisReport, counts: dict[str, int
     remaining = counts.copy()
 
     def active(diagnostic: Diagnostic) -> bool:
+        if not diagnostic_baseline.is_baselineable(diagnostic):
+            return True
         fingerprint = diagnostic.fingerprint
         budget = 0 if fingerprint is None else remaining.get(fingerprint, 0)
         if budget < 1 or fingerprint is None:

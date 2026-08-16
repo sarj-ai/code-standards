@@ -1,7 +1,7 @@
 {
   "$comment": [
-    "Every npm package `eslint.strict.mjs` imports, at the exact versions this repo",
-    "installs and tests. The set was a hidden contract: a consumer following the",
+    "Every npm package the TypeScript quality gate imports or executes, at the exact",
+    "versions this repo installs and tests. The set was a hidden contract: a consumer following the",
     "README hit `Cannot find package 'typescript-eslint'`, installed it, hit the next",
     "one, and after nine rounds discovered the set does not resolve at all.",
     "",
@@ -28,6 +28,7 @@
     "eslint-plugin-simple-import-sort": "14.0.0",
     "eslint-plugin-unicorn": "73.0.0",
     "eslint-plugin-zod": "4.9.1",
+    "react-doctor": "0.9.12",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0"
   },

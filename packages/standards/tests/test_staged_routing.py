@@ -62,10 +62,12 @@ def test_staged_check_routes_additions_renames_and_only_requested_files(
         *,
         raw: bool = False,
         trusted: bool = False,
+        staged: bool = False,
     ) -> int:
         assert root == repository.resolve()
         assert not raw
         assert not trusted
+        assert staged
         routed.append(tuple(paths or ()))
         return 0
 
@@ -95,10 +97,12 @@ def test_staged_check_uses_repository_relative_hook_paths_from_a_nested_cwd(
         *,
         raw: bool = False,
         trusted: bool = False,
+        staged: bool = False,
     ) -> int:
         assert root == repository.resolve()
         assert not raw
         assert not trusted
+        assert staged
         routed.append(tuple(paths or ()))
         return 0
 

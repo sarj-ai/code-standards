@@ -9,7 +9,8 @@ from sarj_standards import api
 from sarj_standards.cli.main import main as cli_main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.adoption.manifest import load as load_manifest
-from sarj_standards.libs.diagnostics import baseline
+from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Severity, ToolReport, baseline
+from sarj_standards.libs.linting.analysis import report_from_tools
 
 
 if TYPE_CHECKING:
@@ -93,6 +94,39 @@ def test_diagnostic_baseline_rejects_duplicate_fingerprints(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="repeats fingerprint"):
         baseline.load(path)
+
+
+def test_react_doctor_findings_are_never_recorded_in_a_baseline() -> None:
+    finding = Diagnostic(
+        "react-doctor/no-array-index-as-key",
+        "Do not use an array index as a key.",
+        Severity.WARNING,
+        "react-doctor",
+        Location("app.tsx"),
+        rule_id="react-doctor/no-array-index-as-key",
+        fingerprint="a" * 64,
+    )
+
+    assert json.loads(baseline.render((finding,))) == {"schemaVersion": 1, "diagnostics": []}
+
+
+def test_existing_baseline_fingerprint_never_hides_react_doctor(tmp_path: Path) -> None:
+    finding = Diagnostic(
+        "react-doctor/no-array-index-as-key",
+        "Do not use an array index as a key.",
+        Severity.WARNING,
+        "react-doctor",
+        Location("app.tsx"),
+        rule_id="react-doctor/no-array-index-as-key",
+        fingerprint="a" * 64,
+    )
+    report = report_from_tools(tmp_path, (ToolReport("react-doctor", Completion.COMPLETE, (finding,)),))
+
+    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        report, {"a" * 64: 1}
+    )
+
+    assert visible.diagnostics == (finding,)
 
 
 def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) -> None:

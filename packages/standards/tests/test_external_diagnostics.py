@@ -16,6 +16,7 @@ from sarj_standards.libs.linting.external import (
     analyze_external,
     parse_basedpyright,
     parse_eslint,
+    parse_react_doctor,
     parse_ruff,
 )
 
@@ -48,6 +49,159 @@ def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
     assert finding.location.region is not None
     assert finding.location.region.start.byte_offset == 0
     assert finding.location.region.end.byte_offset == 6
+
+
+def test_react_doctor_v3_json_becomes_an_advisory_canonical_region(tmp_path: Path) -> None:
+    source = tmp_path / "src" / "button.tsx"
+    source.parent.mkdir()
+    source.write_text("export const Button = () => <button />;\n", encoding="utf-8")
+    diagnostic: dict[str, object] = {
+        "filePath": "src/button.tsx",
+        "plugin": "react-doctor",
+        "rule": "button-has-type",
+        "severity": "error",
+        "message": "Button needs an explicit type.",
+        "help": "Add type=button.",
+        "line": 1,
+        "column": 28,
+        "endLine": 1,
+        "endColumn": 36,
+        "category": "Bugs",
+        "id": "stable-id",
+        "normalizedFilePath": "src/button.tsx",
+        "tags": [],
+    }
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "mode": "full",
+            "reactDetected": True,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "directory": str(tmp_path),
+            "diff": None,
+            "projects": [
+                {
+                    "directory": str(tmp_path),
+                    "packageRoot": str(tmp_path),
+                    "framework": "react",
+                    "project": {},
+                    "diagnostics": [diagnostic],
+                    "score": None,
+                    "skippedChecks": [],
+                    "analyzedFiles": ["src/button.tsx"],
+                    "analyzedFileCount": 1,
+                    "complete": True,
+                    "scannedFileCount": 1,
+                    "elapsedMilliseconds": 1,
+                }
+            ],
+            "skippedProjects": [],
+            "diagnostics": [diagnostic],
+            "summary": {
+                "errorCount": 1,
+                "warningCount": 0,
+                "affectedFileCount": 1,
+                "totalDiagnosticCount": 1,
+                "score": None,
+                "scoreLabel": None,
+            },
+            "elapsedMilliseconds": 1,
+            "error": None,
+        }
+    )
+
+    finding = parse_react_doctor(payload, root=tmp_path)[0]
+
+    assert finding.code == "react-doctor/button-has-type"
+    assert finding.rule_id == "react-doctor/button-has-type"
+    assert finding.severity is Severity.WARNING
+    assert finding.location.path == "src/button.tsx"
+    assert finding.location.region is not None
+
+
+def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [{"directory": str(tmp_path), "complete": False}],
+            "skippedProjects": [],
+            "error": None,
+        }
+    )
+
+    with pytest.raises(ValueError, match="did not complete"):
+        parse_react_doctor(payload, root=tmp_path)
+
+
+def test_react_doctor_discovers_independent_react_projects(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"private": true}\n', encoding="utf-8")
+    react_project = tmp_path / "apps" / "react-app"
+    next_project = tmp_path / "demos" / "next-app"
+    ignored_project = tmp_path / "node_modules" / "third-party"
+    for project, package in (
+        (react_project, "react"),
+        (next_project, "next"),
+        (ignored_project, "react"),
+    ):
+        project.mkdir(parents=True)
+        (project / "package.json").write_text(
+            json.dumps({"dependencies": {package: "1.0.0"}}),
+            encoding="utf-8",
+        )
+
+    assert external_module._react_project_roots(tmp_path) == (  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        react_project.resolve(),
+        next_project.resolve(),
+    )
+
+
+def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"packageManager":"npm@11.5.2","dependencies":{"react":"19.0.0"}}\n',
+        encoding="utf-8",
+    )
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "projects": [
+                        {
+                            "directory": str(tmp_path),
+                            "complete": True,
+                            "diagnostics": [],
+                        }
+                    ],
+                    "skippedProjects": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(tmp_path,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=True,
+    )
+
+    assert report.completion is Completion.COMPLETE
+    assert "--staged" in seen[0]
+    assert "--scope" not in seen[0]
 
 
 def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
