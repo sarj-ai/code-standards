@@ -1,4 +1,4 @@
-"""SARJ408 — Validate external JSON before reading fixed fields.
+"""SARJ411 — Validate external JSON before reading fixed fields.
 
 Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_pydantic_for_external_json.py
 """

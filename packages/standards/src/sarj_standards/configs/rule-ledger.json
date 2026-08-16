@@ -91,6 +91,7 @@
       "redundant-module-docstring",
       "require-keyword-only-swap-prone-params",
       "require-port-for-service",
+      "require-pydantic-for-external-json",
       "restated-test-docstring",
       "source-coupled-test",
       "stepdown",
@@ -274,7 +275,8 @@
       "SARJ407",
       "SARJ408",
       "SARJ409",
-      "SARJ410"
+      "SARJ410",
+      "SARJ411"
     ],
     "sql": [
       "SARJ101",
