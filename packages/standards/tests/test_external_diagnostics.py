@@ -6,6 +6,7 @@ import json
 import sys
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
 import pytest
 
 from sarj_standards.libs.adoption import manifest
@@ -133,6 +134,54 @@ def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="did not complete"):
+        parse_react_doctor(payload, root=tmp_path)
+
+
+def test_react_doctor_protocol_rejects_coerced_schema_types(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": "3",
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [],
+            "skippedProjects": [],
+            "error": None,
+        }
+    )
+
+    with pytest.raises(ValidationError, match="schemaVersion"):
+        parse_react_doctor(payload, root=tmp_path)
+
+
+def test_react_doctor_protocol_rejects_boolean_coordinates(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [
+                {
+                    "directory": str(tmp_path),
+                    "complete": True,
+                    "diagnostics": [
+                        {
+                            "filePath": "app.tsx",
+                            "plugin": "react-doctor",
+                            "rule": "example",
+                            "severity": "error",
+                            "message": "example",
+                            "line": True,
+                            "column": 1,
+                        }
+                    ],
+                }
+            ],
+            "skippedProjects": [],
+            "error": None,
+        }
+    )
+
+    with pytest.raises(ValidationError, match="line"):
         parse_react_doctor(payload, root=tmp_path)
 
 

@@ -21,6 +21,7 @@ dependencies = [
   "lefthook==2.1.10",
   "packaging==26.2",
   "pre-commit==4.6.1",
+  "pydantic==2.13.4",
   "PyYAML==6.0.3",
   "ruff==0.16.1",
   "sarj-iac-lint==0.12.0",
