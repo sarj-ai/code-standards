@@ -114,6 +114,7 @@
     ],
     "iac": [
       "no-comment-cruft",
+      "no-dead-environment-input",
       "no-environment-conditional",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
@@ -286,7 +287,8 @@
       "SARJ201",
       "SARJ202",
       "SARJ203",
-      "SARJ204"
+      "SARJ204",
+      "SARJ205"
     ],
     "text": [
       "SARJ300",

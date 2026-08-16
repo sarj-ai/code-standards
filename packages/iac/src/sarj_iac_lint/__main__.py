@@ -31,7 +31,10 @@ SKIP_DIR_NAMES = frozenset(
 )
 
 # YAML files are included for banner checks while HCL rules self-filter by extension.
-_SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml"})
+# `.json` is collected so that a root whose inputs are JSON-only still reaches a
+# rule: no rule parses JSON, and the ones that care report that they are blind
+# rather than passing a tree they never read.
+_SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml", ".json"})
 
 _MAX_FILE_BYTES = 500_000
 
