@@ -17,6 +17,7 @@ import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-bounds.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
 import noLongComment from "./rules/no-long-comment.js";
+import noVagueSuppressionDescription from "./rules/no-vague-suppression-description.js";
 import noGenericSingleExportModule from "./rules/no-generic-single-export-module.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
@@ -86,6 +87,7 @@ const rules = {
   "no-impossible-zod-literal-bounds": noImpossibleZodLiteralBounds,
   "no-log-only-catch": noLogOnlyCatch,
   "no-long-comment": noLongComment,
+  "no-vague-suppression-description": noVagueSuppressionDescription,
   "no-generic-single-export-module": noGenericSingleExportModule,
   "no-offset-pagination": noOffsetPagination,
   "no-positional-tuple-return": noPositionalTupleReturn,
@@ -140,7 +142,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.6.8",
+  version: "15.6.9",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -151,7 +153,7 @@ const applicationOnlyRules = [
 ] as const;
 
 /** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
-const advisoryRules = ["source-coupled-test"] as const;
+const advisoryRules = ["no-vague-suppression-description", "source-coupled-test"] as const;
 
 const recommendedRules = {
   "@sarj/duplicate-test-body": "error",
@@ -168,6 +170,7 @@ const recommendedRules = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-long-comment": "error",
+  "@sarj/no-vague-suppression-description": "warn",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
@@ -230,6 +233,7 @@ const strictRules = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-long-comment": "error",
+  "@sarj/no-vague-suppression-description": "warn",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",

@@ -1,0 +1,69 @@
+from pathlib import Path
+import textwrap
+
+import pytest
+
+from sarj_python_lint.rules.negative_only_http_status_assertion import (
+    NegativeOnlyHttpStatusAssertion,
+)
+
+
+TEST_PATH = Path("tests/test_router.py")
+
+
+def _check(source: str, path: Path = TEST_PATH):
+    return NegativeOnlyHttpStatusAssertion().check(path, textwrap.dedent(source))
+
+
+@pytest.mark.parametrize(
+    "assertion",
+    [
+        "assert response.status_code != 500",
+        "assert 500 != response.status_code",
+        "assert response.status_code < 500",
+        "assert response.status_code <= 499",
+        "assert response.status_code not in range(500, 600)",
+        "assert response.status_code not in {500, 502, 503}",
+    ],
+)
+def test_flags_negative_only_status_contracts(assertion: str) -> None:
+    [diag] = _check(f"def test_route(client):\n    response = client.get('/x')\n    {assertion}\n")
+    assert diag.code == "SARJ408"
+    assert diag.line == 3
+
+
+@pytest.mark.parametrize(
+    "assertion",
+    [
+        "assert response.status_code == 200",
+        "assert response.status_code == 401",
+        "assert response.status_code in {200, 201}",
+        "assert response.status_code != 404",
+        "assert result.status != 500",
+        "assert response.status_code < 600",
+        "assert response.status_code not in {400, 404}",
+    ],
+)
+def test_allows_specific_or_non_http_contracts(assertion: str) -> None:
+    assert _check(f"def test_route():\n    {assertion}\n") == []
+
+
+def test_skips_non_test_files_and_uncollected_helpers() -> None:
+    source = "def test_route():\n    assert response.status_code != 500\n"
+    assert _check(source, Path("src/router.py")) == []
+    assert _check("def helper():\n    assert response.status_code != 500\n") == []
+
+
+def test_does_not_attribute_a_nested_helper_assertion_to_the_test() -> None:
+    source = """
+    def test_route():
+        def helper():
+            assert response.status_code != 500
+        helper()
+        assert response.status_code == 200
+    """
+    assert _check(source) == []
+
+
+def test_malformed_input_is_silent() -> None:
+    assert _check("def test_broken(") == []

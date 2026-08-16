@@ -989,6 +989,7 @@ export function createConfig(options = {}) {
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-long-comment": "error",
+      "@sarj/no-vague-suppression-description": "warn",
       "@sarj/no-generic-single-export-module": "error",
       "@sarj/no-insecure-random-id": "error",
       "@sarj/no-json-stringify-error": "error",

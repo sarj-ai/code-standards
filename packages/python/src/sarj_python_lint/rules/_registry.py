@@ -24,6 +24,9 @@ from sarj_python_lint.rules.invalid_pydantic_field_default import (
 )
 from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyConstructionInTest
 from sarj_python_lint.rules.mock_without_spec import MockWithoutSpec
+from sarj_python_lint.rules.negative_only_http_status_assertion import (
+    NegativeOnlyHttpStatusAssertion,
+)
 from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
 )
@@ -105,6 +108,7 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
 )
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
+from sarj_python_lint.rules.production_derived_test_cases import ProductionDerivedTestCases
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
@@ -121,6 +125,7 @@ from sarj_python_lint.rules.store_insert_requires_on_conflict import (
 )
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
+from sarj_python_lint.rules.uncontrolled_randomness_in_test import UncontrolledRandomnessInTest
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
 
 
@@ -204,6 +209,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoTypedDocSections.id: NoTypedDocSections,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
         NoUniqueViolationMessageMatch.id: NoUniqueViolationMessageMatch,
+        NegativeOnlyHttpStatusAssertion.id: NegativeOnlyHttpStatusAssertion,
+        ProductionDerivedTestCases.id: ProductionDerivedTestCases,
+        UncontrolledRandomnessInTest.id: UncontrolledRandomnessInTest,
     }
 )
 
