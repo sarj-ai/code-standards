@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards"
-version = "5.11.1"
+version = "5.12.0"
 description = "One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -24,8 +24,8 @@ dependencies = [
   "pydantic==2.13.4",
   "PyYAML==6.0.3",
   "ruff==0.16.1",
-  "sarj-iac-lint==0.12.0",
-  "sarj-python-lint==0.68.0",
+  "sarj-iac-lint==0.13.0",
+  "sarj-python-lint==0.69.0",
   "sarj-sql-lint==0.13.3",
   "sqlfluff==4.2.2",
 ]

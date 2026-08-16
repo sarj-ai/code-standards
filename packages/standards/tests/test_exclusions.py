@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_standards import api
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption import exclusions, manifest
 
@@ -28,6 +30,56 @@ def _adopt(root: Path, *, verify_paths: tuple[str, ...] = (".",), auxiliary_poli
     path = manifest.manifest_path(root)
     path.write_text(adopted.render(), encoding="utf-8")
     return path
+
+
+def test_terraform_test_ban_cannot_be_excluded_by_path_rule_or_override(tmp_path: Path) -> None:
+    source = tmp_path / "vendor" / "routing.tftest.hcl"
+    source.parent.mkdir()
+    source.write_text('# sarj-noqa: SARJ206\nrun "routing" {}\n', encoding="utf-8")
+    adopted = manifest.Manifest(
+        version=api.__version__,
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        excluded_paths=("vendor/**",),
+        excluded_rules=("iac:no-terraform-test-file",),
+        exclusion_overrides=(
+            manifest.ExclusionOverride(
+                ("vendor/**",),
+                ("iac:no-terraform-test-file",),
+                "Prove categorical bans ignore scoped exclusions.",
+            ),
+        ),
+    )
+    manifest.manifest_path(tmp_path).write_text(adopted.render(), encoding="utf-8")
+
+    report = api.Standards(tmp_path).analyze([str(source)])
+
+    assert [item.code for item in report.diagnostics] == ["SARJ206"]
+
+
+def test_tracked_terraform_test_is_checked_outside_verify_paths(tmp_path: Path) -> None:
+    source = tmp_path / "outside" / "ROUTING.TFTEST.JSON"
+    source.parent.mkdir()
+    source.write_text("{}\n", encoding="utf-8")
+    selected = tmp_path / "src"
+    selected.mkdir()
+    adopted = manifest.Manifest(
+        version=api.__version__,
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        verify_paths=("src",),
+    )
+    manifest.manifest_path(tmp_path).write_text(adopted.render(), encoding="utf-8")
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", "outside/ROUTING.TFTEST.JSON"), cwd=tmp_path, check=True)
+
+    report = api.Standards(tmp_path).analyze()
+
+    assert [item.code for item in report.diagnostics] == ["SARJ206"]
 
 
 def test_add_and_remove_are_atomic_idempotent_manifest_operations(tmp_path: Path) -> None:

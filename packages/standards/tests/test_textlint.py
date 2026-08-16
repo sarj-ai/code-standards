@@ -5,11 +5,176 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from sarj_standards.libs.linting import textlint
-from sarj_standards.libs.rules.contracts import ExampleFile, ExpectedOutcome, RuleExample
+from sarj_standards.libs.rules.contracts import (
+    EvaluationCase,
+    ExampleFile,
+    ExpectedOutcome,
+    Language,
+    RuleExample,
+)
+
+
+SHELL_IAC_EVALUATION_CASES = (
+    EvaluationCase(
+        "grep-pattern-looks-like-terraform-path",
+        Language.CONFIG,
+        "grep -q main.tf audit.log\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "rg-pattern-looks-like-terraform-path",
+        Language.CONFIG,
+        "rg main.tf audit.log\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "sed-expression-looks-like-terraform-path",
+        Language.CONFIG,
+        "sed -e main.tf audit.log\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "awk-program-looks-like-terraform-path",
+        Language.CONFIG,
+        "awk main.tf audit.log\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "pipeline-prints-terraform-filename",
+        Language.CONFIG,
+        "printf main.tf | grep -q main\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "terraform-path-variable-input",
+        Language.CONFIG,
+        'source_path=iac/main.tf\ngrep -q resource "$source_path"\n',
+        ExpectedOutcome.MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "continued-terraform-input",
+        Language.CONFIG,
+        "grep -q resource \\\n  iac/main.tf\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "terraform-path-variable-content-flow",
+        Language.CONFIG,
+        'source_path=iac/main.tf\nsource_text="$(cat "$source_path")"\n[[ "$source_text" == *resource* ]]\n',
+        ExpectedOutcome.MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "direct-command-substitution-in-double-bracket",
+        Language.CONFIG,
+        "[[ $(cat iac/main.tf) == *resource* ]]\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "direct-command-substitution-in-test",
+        Language.CONFIG,
+        'test -n "$(cat iac/main.tf)"\n',
+        ExpectedOutcome.MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "unrelated-command-substitution-with-iac-looking-pattern",
+        Language.CONFIG,
+        "[[ $(cat audit.log) == *main.tf* ]]\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "structured-plan-command-substitution",
+        Language.CONFIG,
+        'test -n "$(terraform show -json plan.out)"\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+)
 
 
 def _codes(path: Path, *, root: Path | None = None) -> list[str]:
     return [finding.code for finding in textlint.check_paths([str(path)], root=root)]
+
+
+@pytest.mark.parametrize(
+    "case",
+    SHELL_IAC_EVALUATION_CASES,
+    ids=tuple(case.case_id for case in SHELL_IAC_EVALUATION_CASES),
+)
+def test_shell_iac_labeled_evaluation_cases(case: EvaluationCase, tmp_path: Path) -> None:
+    path = tmp_path / case.path
+    path.parent.mkdir(parents=True)
+    path.write_text(case.source, encoding="utf-8")
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ304"]
+
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "grep -q resource iac/main.tf",
+        "rg resource iac/main.hcl",
+        "sed -n /resource/p iac/main.tfvars",
+        "awk /resource/ iac/main.tf.json",
+        "cat iac/main.tf | grep -q resource",
+    ],
+)
+def test_shell_iac_source_rule_flags_direct_labeled_cases(tmp_path: Path, command: str) -> None:
+    path = tmp_path / "tests" / "policy.test.sh"
+    path.parent.mkdir()
+    path.write_text(f"#!/bin/sh\n{command}\n", encoding="utf-8")
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ304"]
+    assert [(finding.line, finding.code) for finding in findings] == [(2, "SARJ304")]
+
+
+def test_shell_iac_source_rule_follows_local_cat_to_assertion_flow(tmp_path: Path) -> None:
+    path = tmp_path / "tests" / "policy.test.sh"
+    path.parent.mkdir()
+    path.write_text(
+        '#!/bin/sh\nsource_text="$(cat iac/main.tf)"\n[[ "$source_text" == *resource* ]]\n',
+        encoding="utf-8",
+    )
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ304"]
+    assert [(finding.line, finding.code) for finding in findings] == [(3, "SARJ304")]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "terraform show -json plan.out | jq -e '.resource_changes | length > 0'\n",
+        "curl -fsS https://service.test/health | jq -e '.healthy == true'\n",
+        "grep -q permissions workflow.yml\n",
+        "# grep -q resource iac/main.tf\n",
+    ],
+)
+def test_shell_iac_source_rule_allows_structured_runtime_near_misses(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "tests" / "policy.test.sh"
+    path.parent.mkdir()
+    path.write_text(source, encoding="utf-8")
+    assert "SARJ304" not in _codes(path, root=tmp_path)
+
+
+def test_shell_iac_source_rule_ignores_non_test_and_malformed_shell(tmp_path: Path) -> None:
+    helper = tmp_path / "scripts" / "deploy.sh"
+    helper.parent.mkdir()
+    helper.write_text("grep resource iac/main.tf\n", encoding="utf-8")
+    malformed = tmp_path / "tests" / "bad.test.sh"
+    malformed.parent.mkdir()
+    malformed.write_text("grep 'unterminated iac/main.tf\n", encoding="utf-8")
+    assert "SARJ304" not in _codes(helper, root=tmp_path)
+    assert "SARJ304" not in _codes(malformed, root=tmp_path)
 
 
 def test_registry_exposes_complete_neutral_rule_metadata() -> None:
@@ -17,6 +182,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "commented-out-config",
         "config-comment-wall",
         "ephemeral-execution-artifact",
+        "iac-source-coupled-test",
         "unpinned-github-action",
     }
 

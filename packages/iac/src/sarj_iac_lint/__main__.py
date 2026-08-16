@@ -82,7 +82,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         source_lines = source.splitlines()
         for rule in rules:
             for d in rule.check(p, source):
-                if is_suppressed(source_lines, d.line, d.code):
+                if d.suppressible and is_suppressed(source_lines, d.line, d.code):
                     continue
                 diags.append(d)
     return diags
@@ -148,7 +148,7 @@ def apply_baseline(
             baseline.get(path_key, {}).get(d.code, 0),
             baseline.get(str(d.path), {}).get(d.code, 0),
         )
-        if seen[key] > allowance:
+        if not d.baselineable or seen[key] > allowance:
             out.append(d)
     return out
 

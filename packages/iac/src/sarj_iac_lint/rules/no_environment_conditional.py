@@ -72,8 +72,7 @@ _CLOSE = frozenset({")", "]", "}"})
 _EXPRESSION_KEYWORDS = frozenset({"if", "for", "in"})
 
 _HCL_SUFFIXES = (".tf", ".hcl")
-# Checked first: `.tftest.hcl` also ends in `.hcl`, and asserting on the environment
-# is the entire purpose of a Terraform test file.
+# Checked first to avoid duplicate diagnostics: SARJ206 categorically owns these files.
 _TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
 
 _LIST_TOKENS = 3
@@ -117,7 +116,7 @@ class NoEnvironmentConditional(Rule):
         limitations=(
             (
                 "A comparison inside validation, precondition, postcondition, check, or assert asserts which "
-                "inputs are legal and is exempt, as is a .tftest.hcl file."
+                "inputs are legal and is exempt. Terraform test files are rejected separately by SARJ206."
             ),
             "Comparison against the empty string is an unset-input test, not an environment branch, and is ignored.",
             (

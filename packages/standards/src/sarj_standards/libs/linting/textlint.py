@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 import sys
 import tomllib
 from types import MappingProxyType
@@ -401,6 +402,40 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             blocking=False,
         ),
+        "iac-source-coupled-test": RuleMeta(
+            code="SARJ304",
+            summary="shell test asserts on raw IaC source text",
+            rationale=(
+                "Text searches can pass on comments, formatting, or unreachable Terraform configuration without proving provider or runtime behavior."
+            ),
+            remediation="Inspect rendered plan JSON, provider state, or deployed runtime behavior instead of grepping IaC source.",
+            category=RuleCategory.TESTING,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=("**/*.sh", "**/*.bash", "**/*.zsh"),
+            examples=(
+                _public_example(
+                    example_id="terraform-source-grep",
+                    title="Do not grep Terraform source in a shell test",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="tests/observability.test.sh",
+                    source="#!/bin/sh\ngrep -q 'alert_policy' iac/alerts.tf\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="rendered-plan-query",
+                    title="Query structured rendered plan output",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="tests/observability.test.sh",
+                    source="#!/bin/sh\nterraform show -json plan.out | jq -e '.resource_changes | length > 0'\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "The scanner tokenizes shell quoting, comments, pipelines, direct command substitutions, and local variable flows; sourced helpers and eval remain unreported.",
+                "Only test-named shell files or shell files below a tests directory are checked.",
+            ),
+            blocking=False,
+        ),
     }
 )
 
@@ -435,6 +470,7 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
         path_findings = [
             *_workflow_action_findings(path, relative, source),
             *_artifact_findings(path, relative, source, durable_patterns),
+            *_shell_iac_source_findings(path, relative, source),
             *_comment_findings(path, source),
         ]
         suppressed: frozenset[str] = (
@@ -466,6 +502,266 @@ def _markdown_suppressions(source: str) -> frozenset[str]:
         for match in _MARKDOWN_SUPPRESSION_RE.finditer(prose)
         for code in match.group("codes").split(",")
     )
+
+
+_SHELL_SUFFIXES: Final = frozenset({".bash", ".sh", ".zsh"})
+_IAC_SOURCE_SUFFIXES: Final = (".hcl", ".tf", ".tf.json", ".tfvars", ".tftest.hcl", ".tftest.json")
+_SHELL_SOURCE_ASSERT_COMMANDS: Final = frozenset({"awk", "grep", "rg", "sed"})
+_SHELL_SOURCE_READ_COMMANDS: Final = frozenset({"cat", "read"})
+_SHELL_ASSERT_TOKENS: Final = frozenset({"[", "[[", "assert", "grep", "rg", "test"})
+_SHELL_SEPARATORS: Final = frozenset({"&&", ";", "|", "||"})
+_GREP_VALUE_OPTIONS: Final = frozenset(
+    {
+        "--after-context",
+        "--before-context",
+        "--context",
+        "--file",
+        "--max-count",
+        "--regexp",
+        "-A",
+        "-B",
+        "-C",
+        "-e",
+        "-f",
+        "-m",
+    }
+)
+_SED_VALUE_OPTIONS: Final = frozenset({"--expression", "--file", "-e", "-f"})
+_AWK_VALUE_OPTIONS: Final = frozenset({"--assign", "--field-separator", "--file", "-F", "-f", "-v"})
+
+
+def _shell_iac_source_findings(path: Path, relative: str, source: str) -> list[Finding]:
+    """Find direct and local-flow IaC text assertions in shell test programs."""
+    if path.suffix.casefold() not in _SHELL_SUFFIXES or not _shell_test_path(relative):
+        return []
+    findings: list[Finding] = []
+    tainted: set[str] = set()
+    path_names: set[str] = set()
+    for number, line in _shell_logical_lines(source):
+        tokens = _shell_tokens(line)
+        if not tokens:
+            continue
+        assignment = _shell_assignment(tokens)
+        has_iac = _shell_has_iac_path(tokens, path_names)
+        if assignment is not None:
+            path_names.discard(assignment)
+            tainted.discard(assignment)
+            if has_iac and not _shell_has_source_read(tokens):
+                path_names.add(assignment)
+            elif has_iac and _shell_has_source_read(tokens):
+                tainted.add(assignment)
+            continue
+
+        direct_assert = False
+        pipeline_iac = False
+        for separator, segment in _shell_segments(tokens):
+            if separator != "|":
+                pipeline_iac = False
+            command = _shell_command(segment[0]) if segment else ""
+            if command in _SHELL_SOURCE_ASSERT_COMMANDS and (
+                _shell_assertion_reads_iac(segment, path_names) or pipeline_iac
+            ):
+                direct_assert = True
+            if command in _SHELL_ASSERT_TOKENS and any(_shell_uses_variable(segment, name) for name in tainted):
+                direct_assert = True
+            if command in _SHELL_ASSERT_TOKENS and _shell_embeds_iac_read(segment, path_names):
+                direct_assert = True
+            pipeline_iac = _shell_reads_iac(segment, path_names) or pipeline_iac
+
+        if direct_assert:
+            findings.append(
+                Finding(
+                    path,
+                    number,
+                    "SARJ304",
+                    "Raw IaC source text is the shell test oracle — inspect rendered plan JSON, provider state, or runtime behavior.",
+                )
+            )
+            continue
+        read_target = _shell_read_target(tokens) if has_iac else None
+        if read_target is not None:
+            tainted.add(read_target)
+    return findings
+
+
+def _shell_test_path(relative: str) -> bool:
+    parts = PurePosixPath(relative).parts
+    name = parts[-1].casefold() if parts else ""
+    return (
+        any(part.casefold() in {"test", "tests"} for part in parts[:-1]) or name.startswith("test_") or ".test." in name
+    )
+
+
+def _shell_tokens(line: str) -> list[str]:
+    try:
+        lexer = shlex.shlex(line, posix=True, punctuation_chars="|;&()<>[]")
+        lexer.commenters = "#"
+        lexer.whitespace_split = True
+        return list(lexer)
+    except ValueError:
+        return []
+
+
+def _shell_logical_lines(source: str) -> list[tuple[int, str]]:
+    """Join ordinary backslash continuations while retaining the first source line."""
+    logical: list[tuple[int, str]] = []
+    pending: list[str] = []
+    start = 1
+    for number, line in enumerate(source.splitlines(), start=1):
+        stripped = line.rstrip()
+        slash_count = len(stripped) - len(stripped.rstrip("\\"))
+        continued = slash_count % 2 == 1
+        if not pending:
+            start = number
+        pending.append(stripped[:-1] if continued else line)
+        if continued:
+            continue
+        logical.append((start, " ".join(pending)))
+        pending = []
+    if pending:
+        logical.append((start, " ".join(pending)))
+    return logical
+
+
+def _shell_segments(tokens: Sequence[str]) -> list[tuple[str | None, list[str]]]:
+    segments: list[tuple[str | None, list[str]]] = []
+    current: list[str] = []
+    separator: str | None = None
+    for token in tokens:
+        if token in _SHELL_SEPARATORS:
+            if current:
+                segments.append((separator, current))
+                current = []
+            separator = token
+            continue
+        current.append(token)
+    if current:
+        segments.append((separator, current))
+    return segments
+
+
+def _shell_command(token: str) -> str:
+    return PurePosixPath(token.casefold()).name
+
+
+def _shell_has_iac_path(tokens: Sequence[str], path_names: set[str]) -> bool:
+    return any(_iac_source_token(token) for token in tokens) or any(
+        _shell_uses_variable(tokens, name) for name in path_names
+    )
+
+
+def _iac_source_token(token: str) -> bool:
+    return token.strip("'\"),;:[]{}>").casefold().endswith(_IAC_SOURCE_SUFFIXES)
+
+
+def _shell_assertion_reads_iac(tokens: Sequence[str], path_names: set[str]) -> bool:
+    if not tokens:
+        return False
+    command = _shell_command(tokens[0])
+    redirected = [tokens[index + 1] for index, item in enumerate(tokens[:-1]) if item == "<"]
+    if command in {"grep", "rg"}:
+        operands, explicit_pattern = _shell_operands(
+            tokens[1:], _GREP_VALUE_OPTIONS, {"--regexp", "-e", "--file", "-f"}
+        )
+        inputs = operands if explicit_pattern else operands[1:]
+    elif command == "sed":
+        operands, explicit_pattern = _shell_operands(
+            tokens[1:], _SED_VALUE_OPTIONS, {"--expression", "-e", "--file", "-f"}
+        )
+        inputs = operands if explicit_pattern else operands[1:]
+    elif command == "awk":
+        operands, explicit_pattern = _shell_operands(tokens[1:], _AWK_VALUE_OPTIONS, {"--file", "-f"})
+        inputs = operands if explicit_pattern else operands[1:]
+    else:
+        return False
+    return _shell_has_iac_path([*inputs, *redirected], path_names)
+
+
+def _shell_operands(
+    tokens: Sequence[str], value_options: frozenset[str], pattern_options: set[str]
+) -> tuple[list[str], bool]:
+    operands: list[str] = []
+    explicit_pattern = False
+    consume_value = False
+    options = True
+    for item in tokens:
+        if consume_value:
+            consume_value = False
+            continue
+        if options and item == "--":
+            options = False
+            continue
+        option, separator, _value = item.partition("=")
+        if options and option in value_options:
+            explicit_pattern = explicit_pattern or option in pattern_options
+            consume_value = not separator
+            continue
+        if options and item.startswith("-") and item != "-":
+            if any(
+                item.startswith(prefix) and len(item) > len(prefix)
+                for prefix in value_options
+                if prefix.startswith("-")
+            ):
+                explicit_pattern = explicit_pattern or any(
+                    item.startswith(prefix) and len(item) > len(prefix) for prefix in pattern_options
+                )
+            continue
+        operands.append(item)
+    return operands, explicit_pattern
+
+
+def _shell_reads_iac(tokens: Sequence[str], path_names: set[str]) -> bool:
+    if not tokens:
+        return False
+    command = _shell_command(tokens[0])
+    if command not in _SHELL_SOURCE_READ_COMMANDS:
+        return False
+    return _shell_has_iac_path(tokens[1:], path_names)
+
+
+def _shell_embeds_iac_read(tokens: Sequence[str], path_names: set[str]) -> bool:
+    """Recognize a simple ``$(cat source.tf)`` inside a shell test predicate."""
+    for index, item in enumerate(tokens):
+        if item == "$" and tokens[index + 1 : index + 3] == ["(", "cat"]:
+            try:
+                end = tokens.index(")", index + 3)
+            except ValueError:
+                continue
+            if _shell_has_iac_path(tokens[index + 3 : end], path_names):
+                return True
+        match = re.search(r"\$\(cat\s+(?P<input>[^)]+)\)", item)
+        if match is not None and _shell_has_iac_path(_shell_tokens(match.group("input")), path_names):
+            return True
+    return False
+
+
+def _shell_assignment(tokens: Sequence[str]) -> str | None:
+    if not tokens:
+        return None
+    match = re.match(r"^(?:local\s+)?([A-Za-z_][A-Za-z0-9_]*)=", " ".join(tokens))
+    return match.group(1) if match is not None else None
+
+
+def _shell_has_source_read(tokens: Sequence[str]) -> bool:
+    if any(_shell_command(token) in _SHELL_SOURCE_READ_COMMANDS for token in tokens):
+        return True
+    return bool(re.search(r"(?:^|[$(])(?:cat|read)\s", " ".join(tokens)))
+
+
+def _shell_read_target(tokens: Sequence[str]) -> str | None:
+    try:
+        index = next(index for index, token in enumerate(tokens) if _shell_command(token) == "read")
+    except StopIteration:
+        return None
+    for token in tokens[index + 1 :]:
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", token):
+            return token
+    return None
+
+
+def _shell_uses_variable(tokens: Sequence[str], name: str) -> bool:
+    patterns = {f"${name}", f"${{{name}}}"}
+    return any(token in patterns or any(pattern in token for pattern in patterns) for token in tokens)
 
 
 def _workflow_action_findings(path: Path, relative: str, source: str) -> list[Finding]:

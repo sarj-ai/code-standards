@@ -32,6 +32,7 @@
       "duplicated-override-docstring",
       "fastapi-openapi-contract",
       "fixture-returns-bare-tuple",
+      "iac-source-coupled-test",
       "invalid-pydantic-field-default",
       "kwarg-heavy-construction-in-test",
       "mock-without-spec",
@@ -120,12 +121,14 @@
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-environment-conditional",
+      "no-terraform-test-file",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
     ],
     "eslint": [
       "duplicate-test-body",
       "enforce-file-structure",
+      "iac-source-coupled-test",
       "no-client-side-data-fetching",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
@@ -195,6 +198,7 @@
       "commented-out-config",
       "config-comment-wall",
       "ephemeral-execution-artifact",
+      "iac-source-coupled-test",
       "unpinned-github-action"
     ]
   },
@@ -276,7 +280,8 @@
       "SARJ408",
       "SARJ409",
       "SARJ410",
-      "SARJ411"
+      "SARJ411",
+      "SARJ412"
     ],
     "sql": [
       "SARJ101",
@@ -297,13 +302,15 @@
       "SARJ202",
       "SARJ203",
       "SARJ204",
-      "SARJ205"
+      "SARJ205",
+      "SARJ206"
     ],
     "text": [
       "SARJ300",
       "SARJ301",
       "SARJ302",
-      "SARJ303"
+      "SARJ303",
+      "SARJ304"
     ]
   },
   "retired": [

@@ -68,6 +68,7 @@ _SUFFIX_TO_TOOL = MappingProxyType(
         ".yml": _Tool.IAC,
     }
 )
+_TERRAFORM_TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
 _IGNORED_DIRS = frozenset(
     {
         ".build",
@@ -386,7 +387,11 @@ def _has_generated_header(path: Path) -> bool:
 
 def _owns_path(path: Path) -> bool:
     """Return whether any bundled checker can handle the path."""
-    return path.suffix.lower() in _SUFFIX_TO_TOOL or textlint.is_text_path(path)
+    return (
+        path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
+        or path.suffix.lower() in _SUFFIX_TO_TOOL
+        or textlint.is_text_path(path)
+    )
 
 
 def _route_unique_path(grouped: GroupedPaths, path: Path, raw_path: str, seen: set[Path]) -> None:
@@ -406,7 +411,12 @@ def _path_key(path: Path) -> Path:
 
 def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
     """Route one path; YAML intentionally belongs to both IaC and text checks."""
-    _append_path(grouped, _SUFFIX_TO_TOOL.get(path.suffix.lower()), raw_path)
+    tool = (
+        _Tool.IAC
+        if path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
+        else _SUFFIX_TO_TOOL.get(path.suffix.lower())
+    )
+    _append_path(grouped, tool, raw_path)
     if textlint.is_text_path(path):
         grouped.text.append(raw_path)
 

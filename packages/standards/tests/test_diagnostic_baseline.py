@@ -45,6 +45,19 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     assert [item.code for item in raw_again.diagnostics] == ["SARJ052"]
 
 
+def test_terraform_test_ban_cannot_be_diagnostic_baselined(tmp_path: Path) -> None:
+    source = tmp_path / "routing.tftest.json"
+    source.write_text("{}\n", encoding="utf-8")
+    raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(baseline.render(raw.diagnostics), encoding="utf-8")
+    (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
+
+    policy = api.Standards(tmp_path).analyze([str(source)])
+
+    assert [item.code for item in policy.diagnostics] == ["SARJ206"]
+
+
 def test_missing_diagnostic_baseline_is_an_execution_failure(tmp_path: Path) -> None:
     (tmp_path / MANIFEST_NAME).write_text(_manifest("missing.json").render(), encoding="utf-8")
 

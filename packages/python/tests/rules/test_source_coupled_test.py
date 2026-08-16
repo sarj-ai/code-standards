@@ -10,13 +10,13 @@ def check(source: str, path: str = "tests/test_policy.py"):
     return SourceCoupledTest().check(Path(path), textwrap.dedent(source))
 
 
-def test_flags_raw_terraform_membership():
+def test_flags_raw_workflow_membership():
     assert (
         len(
             check("""
         def test_policy():
-            source = (ROOT / "iac/main.tf").read_text()
-            assert "prevent_destroy = true" in source
+            source = (ROOT / "workflow.yml").read_text()
+            assert "permissions:" in source
     """)
         )
         == 1
@@ -55,7 +55,7 @@ def test_reports_once_for_multiple_assertions_on_one_source():
         len(
             check("""
         def test_policy():
-            source = Path("main.tf").read_text()
+            source = Path("workflow.yml").read_text()
             assert "resource" in source
             assert "prevent_destroy" in source
     """)
@@ -67,8 +67,8 @@ def test_reports_once_for_multiple_assertions_on_one_source():
 def test_reports_each_independent_source_in_one_test():
     diagnostics = check("""
         def test_policy():
-            terraform = Path("main.tf").read_text()
-            assert "resource" in terraform
+            workflow = Path("workflow.yml").read_text()
+            assert "permissions" in workflow
             workflow = Path("workflow.yml").read_text()
             assert "permissions:" in workflow
     """)
@@ -134,7 +134,7 @@ def test_flags_inline_read_and_chained_transform():
 def test_flags_path_alias():
     diagnostics = check("""
         def test_policy():
-            policy = Path("main.tf")
+            policy = Path("workflow.yml")
             source = policy.read_text()
             assert source.find("resource") >= 0
     """)
@@ -144,7 +144,7 @@ def test_flags_path_alias():
 def test_flags_source_path_collection_loop():
     diagnostics = check("""
         def test_policy():
-            paths = ("main.tf", "workflow.yml")
+            paths = ("deploy.sh", "workflow.yml")
             for path in paths:
                 source = (ROOT / path).read_text()
                 assert "resource" in source
@@ -165,7 +165,7 @@ def test_reassignment_kills_taint():
     assert (
         check("""
         def test_policy():
-            source = Path("main.tf").read_text()
+            source = Path("workflow.yml").read_text()
             source = render_runtime_value()
             assert "resource" in source
     """)
@@ -179,7 +179,7 @@ def test_nested_scope_does_not_inherit_or_leak_taint():
         def test_policy():
             source = render_runtime_value()
             def helper():
-                source = Path("main.tf").read_text()
+                source = Path("workflow.yml").read_text()
                 assert "resource" in source
             assert "resource" in source
     """)
@@ -191,7 +191,7 @@ def test_flags_unittest_method_and_async_test():
     diagnostics = check("""
         class TestPolicy:
             def test_sync(self):
-                assert "resource" in Path("main.tf").read_text()
+                assert "permissions" in Path("workflow.yml").read_text()
 
             async def test_async(self):
                 source = Path("workflow.yml").read_text()
@@ -204,7 +204,7 @@ def test_allows_direct_validator_execution():
     assert (
         check("""
         def test_policy():
-            source = Path("main.tf").read_text()
+            source = Path("workflow.yml").read_text()
             assert validate(source) == []
     """)
         == []
@@ -212,7 +212,7 @@ def test_allows_direct_validator_execution():
 
 
 def test_skips_non_test_and_generated_paths():
-    source = "source = Path('main.tf').read_text()\nassert 'x' in source\n"
+    source = "source = Path('workflow.yml').read_text()\nassert 'x' in source\n"
     assert check(source, "src/policy.py") == []
     assert check(f"# @generated\n{source}", "tests/test_generated.py") == []
 
