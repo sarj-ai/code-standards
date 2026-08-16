@@ -117,6 +117,9 @@ from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
     RequireKeywordOnlySwapProneParams,
 )
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
+from sarj_python_lint.rules.require_pydantic_for_external_json import (
+    RequirePydanticForExternalJson,
+)
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
 from sarj_python_lint.rules.stepdown import Stepdown
@@ -162,6 +165,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
         PreferMatchAssertNever.id: PreferMatchAssertNever,
         RequireKeywordOnlySwapProneParams.id: RequireKeywordOnlySwapProneParams,
+        RequirePydanticForExternalJson.id: RequirePydanticForExternalJson,
         NoFileLevelSuppression.id: NoFileLevelSuppression,
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,

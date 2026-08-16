@@ -13,13 +13,14 @@ import sys
 import time
 import tomllib
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, Literal, Protocol
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, Protocol
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from packaging.utils import InvalidSdistFilename, InvalidWheelFilename, parse_sdist_filename, parse_wheel_filename
 from packaging.version import InvalidVersion, Version
+from pydantic import BaseModel, ConfigDict, Field
 
 from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
 from sarj_standards.libs.release.tags import RELEASE_TARGETS, read_manifest_version
@@ -39,6 +40,18 @@ class RegistryRequirement:
     registry: RegistryKind
     name: str
     version: str
+
+
+class _PypiSimpleFile(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    filename: str = Field(min_length=1)
+
+
+class _PypiSimpleResponse(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    files: tuple[_PypiSimpleFile, ...]
 
 
 class PublicationChecker(Protocol):
@@ -106,24 +119,9 @@ def _request_publication(request: Request, requirement: RegistryRequirement) -> 
             return False
         if requirement.registry == "npm":
             return True
-        payload: object = json.loads(response.read())  # pyright: ignore[reportAny]
-    document = string_object_dict(payload, label="PyPI Simple response")
-    files = document.get("files")
-    if not is_object_list(files):
-        msg = "PyPI Simple response has no files list"
-        raise ValueError(msg)
-    return any(
-        _pypi_filename_has_version(filename, requirement.version)
-        for item in files
-        if (filename := _pypi_item_filename(item)) is not None
-    )
-
-
-def _pypi_item_filename(value: object) -> str | None:
-    if not is_object_dict(value):
-        return None
-    filename = string_object_dict(value, label="PyPI Simple file").get("filename")
-    return filename if isinstance(filename, str) else None
+        payload: bytes = response.read()  # pyright: ignore[reportAny] -- urllib response is untyped.
+        document = _PypiSimpleResponse.model_validate_json(payload)
+    return any(_pypi_filename_has_version(item.filename, requirement.version) for item in document.files)
 
 
 def _pypi_filename_has_version(filename: str, version: str) -> bool:
