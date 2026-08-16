@@ -222,9 +222,10 @@ def _function_findings(
     parameters = frozenset(
         name for name, position in _parameter_positions(function).items() if position not in local_positions
     )
+    outbound_requests = _outbound_request_parameters(function, imports)
     response_names = _http_response_names(scope, imports)
     bindings = _unique_bindings(scope)
-    resolver = _OriginResolver(imports, summaries, parameters, response_names, bindings)
+    resolver = _OriginResolver(imports, summaries, parameters, outbound_requests, response_names, bindings)
     findings: list[tuple[ast.expr, ast.Call]] = []
     for node in scope:
         access = _record_access(node)
@@ -243,6 +244,7 @@ class _OriginResolver:
     imports: ImportIndex
     summaries: _ModuleSummaries
     parameters: frozenset[str]
+    outbound_request_parameters: frozenset[str]
     response_names: frozenset[str]
     bindings: dict[str, ast.expr]
 
@@ -292,6 +294,8 @@ class _OriginResolver:
         match expression:
             case ast.Name(id=name):
                 return name in self.parameters
+            case ast.Attribute(value=ast.Name(id=owner), attr=attribute) if owner in self.outbound_request_parameters:
+                return False
             case ast.Attribute(attr=attribute):
                 return attribute in {"content", "stderr", "stdout", "text"}
             case ast.Subscript(value=value):
@@ -359,6 +363,18 @@ def _http_response_names(scope: tuple[ast.AST, ...], imports: ImportIndex) -> fr
         targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
         names.update(target.id for target in targets if isinstance(target, ast.Name))
     return frozenset(names)
+
+
+def _outbound_request_parameters(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex
+) -> frozenset[str]:
+    arguments = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+    return frozenset(
+        argument.arg
+        for argument in arguments
+        if argument.annotation is not None
+        and imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol="Request")
+    )
 
 
 def _is_json_loads(call: ast.Call, imports: ImportIndex) -> bool:
