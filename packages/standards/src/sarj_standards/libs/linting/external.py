@@ -1,4 +1,4 @@
-"""Safe structured adapters for Ruff, BasedPyright, and trusted ESLint."""
+"""Safe structured adapters for bundled and repository-local analyzers."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ import time
 import tomllib
 from typing import TYPE_CHECKING, Protocol
 
-from sarj_standards.libs.adoption import manifest
+from sarj_standards.libs.adoption import manifest, packagemanager
 from sarj_standards.libs.adoption.lifecycle import select_eslint_commands
 from sarj_standards.libs.diagnostics import (
     AnalyzerId,
@@ -53,6 +53,36 @@ _READ_BYTES = 64 * 1024
 _MAX_ESLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
+_REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
+_REACT_DOCTOR_SCHEMA_VERSION = 3
+_REACT_RUNTIME_PACKAGES = frozenset(
+    {
+        "@astrojs/react",
+        "@vitejs/plugin-react",
+        "@vitejs/plugin-react-swc",
+        "expo",
+        "next",
+        "preact",
+        "react",
+        "react-dom",
+        "react-native",
+    }
+)
+_JAVASCRIPT_SCAN_SKIP_DIRS = frozenset(
+    {
+        ".git",
+        ".next",
+        ".open-next",
+        ".turbo",
+        ".yarn",
+        "build",
+        "coverage",
+        "dist",
+        "node_modules",
+        "out",
+        "vendor",
+    }
+)
 _SAFE_ENVIRONMENT_KEYS = frozenset(
     {
         "HOME",
@@ -100,6 +130,8 @@ def analyze_external(
     policy: Policy | None = None,
     capabilities: frozenset[str] | None = None,
     grouped: GroupedPaths | None = None,
+    include_react_doctor: bool = False,
+    react_doctor_staged: bool = False,
 ) -> tuple[ToolReport, ...]:
     """Run installed analyzers; executable repository config requires explicit trust."""
     execute = run_process if runner is None else runner
@@ -204,6 +236,25 @@ def analyze_external(
                 file_count=_argv_file_count(command.argv),
             )
         )
+    react_selection = _selected_react_doctor_projects(
+        root,
+        enabled=include_react_doctor,
+        has_typescript=bool(routed.typescript),
+        capabilities=capabilities,
+    )
+    if react_selection is not None:
+        react_root, react_projects = react_selection
+        reports.append(
+            _invoke_react_doctor(
+                react_root,
+                projects=react_projects,
+                root=root,
+                runner=execute,
+                use_local_binary=runner is None,
+                file_count=len(routed.typescript),
+                staged=react_doctor_staged,
+            )
+        )
     if policy is None:
         return tuple(reports)
     return tuple(
@@ -268,6 +319,147 @@ def _local_eslint_argv(argv: Sequence[str], project: Path, root: Path) -> tuple[
     # this branch means the filesystem changed between preflight and launch.
     relative = project.resolve().relative_to(root.resolve()).as_posix() or "."
     msg = f"local ESLint disappeared before execution for {relative}"
+    raise OSError(msg)
+
+
+def _selected_react_doctor_projects(
+    root: Path,
+    *,
+    enabled: bool,
+    has_typescript: bool,
+    capabilities: frozenset[str] | None,
+) -> tuple[Path, tuple[Path, ...]] | None:
+    if not enabled or not has_typescript or (capabilities is not None and "eslint" not in capabilities):
+        return None
+    project = _react_doctor_root(root)
+    if project is None or not (projects := _react_project_roots(project)):
+        return None
+    return project, projects
+
+
+def _react_doctor_root(root: Path) -> Path | None:
+    adopted = manifest.load(root)
+    candidate = root if adopted is None else (root / adopted.typescript_dest).resolve()
+    return candidate if candidate.is_dir() else None
+
+
+def _react_project_roots(root: Path) -> tuple[Path, ...]:
+    """Find authored packages that directly declare a React runtime or framework."""
+    projects: list[Path] = []
+    for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        directories[:] = sorted(name for name in directories if name not in _JAVASCRIPT_SCAN_SKIP_DIRS)
+        if "package.json" not in filenames:
+            continue
+        package_json = Path(parent) / "package.json"
+        try:
+            parsed: object = json.loads(package_json.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        except OSError, ValueError:
+            continue
+        document = manifest.as_table(parsed)
+        declared: set[str] = set()
+        for field in ("dependencies", "devDependencies", "peerDependencies"):
+            declared.update(manifest.table_field(document, field))
+        if declared.intersection(_REACT_RUNTIME_PACKAGES):
+            projects.append(Path(parent).resolve())
+    return tuple(projects)
+
+
+def _invoke_react_doctor(
+    project: Path,
+    *,
+    projects: Sequence[Path],
+    root: Path,
+    runner: ProcessRunner,
+    use_local_binary: bool,
+    file_count: int,
+    staged: bool,
+) -> ToolReport:
+    name = "react-doctor"
+    if use_local_binary and (issue := _missing_local_binary_issue(name, project, root)) is not None:
+        return ToolReport(
+            name,
+            Completion.FAILED,
+            issues=(issue,),
+            analyzer_id=AnalyzerId(name),
+            invocation_id=InvocationId(name),
+            file_count=file_count,
+        )
+    install_root = packagemanager.workspace_root(project, root)
+    client = packagemanager.detect(install_root)
+    scope_args = ("--staged",) if staged else ("--scope", "full")
+    argv = packagemanager.exec_argv(
+        client,
+        name,
+        ".",
+        "--project",
+        ",".join(item.relative_to(project).as_posix() or "." for item in projects),
+        *scope_args,
+        "--blocking",
+        "none",
+        "--no-dead-code",
+        "--no-supply-chain",
+        "--no-score",
+        "--no-cache",
+        "--max-duration",
+        str(int(_REACT_DOCTOR_MAX_DURATION.total_seconds())),
+        "--json",
+        "--json-compact",
+        "--no-color",
+    )
+    return _invoke(
+        name,
+        _local_node_binary_argv(name, argv, project, root) if use_local_binary else argv,
+        cwd=project,
+        root=root,
+        runner=runner,
+        parser=parse_react_doctor,
+        invocation_id=project.relative_to(root).as_posix() or None,
+        file_count=file_count,
+    )
+
+
+def _missing_local_binary_issue(name: str, project: Path, root: Path) -> ExecutionIssue | None:
+    """Return an actionable failure when a repository-local Node binary is absent."""
+    current = project.resolve()
+    repository = root.resolve()
+    while current.is_relative_to(repository):
+        if (current / ".pnp.cjs").is_file() or (current / ".pnp.loader.mjs").is_file():
+            return None
+        binaries = current / "node_modules" / ".bin"
+        if (binaries / name).is_file() or (binaries / f"{name}.cmd").is_file():
+            return None
+        if current == repository:
+            break
+        current = current.parent
+    relative = project.relative_to(repository).as_posix() or "."
+    message = (
+        f"{name} is not installed locally for {relative}; node_modules/.bin/{name} is missing. "
+        "Run the repository's locked package install or rerun `sarj-standards setup`, then retry."
+    )
+    return ExecutionIssue(name, "missing-dependency", message)
+
+
+def _local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...]:
+    """Resolve a Node analyzer from the locked project without registry fallback."""
+    current = project.resolve()
+    repository = root.resolve()
+    while current.is_relative_to(repository):
+        if (current / ".pnp.cjs").is_file() or (current / ".pnp.loader.mjs").is_file():
+            return tuple(argv)
+        binary = current / "node_modules" / ".bin" / (f"{name}.cmd" if os.name == "nt" else name)
+        if binary.is_file():
+            try:
+                tail = tuple(argv[argv.index(name) + 1 :])
+            except ValueError as exc:
+                msg = f"analyzer command does not contain {name!r}"
+                raise ValueError(msg) from exc
+            if os.name == "nt":
+                return ("cmd.exe", "/d", "/s", "/c", str(binary), *tail)
+            return (str(binary), *tail)
+        if current == repository:
+            break
+        current = current.parent
+    msg = f"local {name} disappeared before execution"
     raise OSError(msg)
 
 
@@ -796,6 +988,110 @@ def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
                 )
             )
     return tuple(diagnostics)
+
+
+def parse_react_doctor(  # ruff: ignore[too-many-locals] -- protocol normalization keeps fields explicit.
+    payload: str, *, root: Path
+) -> tuple[Diagnostic, ...]:
+    """Normalize React Doctor v3 JSON while keeping the pilot advisory."""
+    report = _table(_loads(payload), "React Doctor report")
+    if report.get("schemaVersion") != _REACT_DOCTOR_SCHEMA_VERSION:
+        msg = f"unsupported React Doctor schema version: {report.get('schemaVersion')!r}"
+        raise ValueError(msg)
+    expected_version = manifest.eslint_peers()["react-doctor"]
+    if report.get("version") != expected_version:
+        msg = f"React Doctor reported version {report.get('version')!r}; expected {expected_version!r}"
+        raise ValueError(msg)
+    error = report.get("error")
+    if error is not None:
+        failure = _table(error, "React Doctor error")
+        msg = f"React Doctor scan failed: {_text(failure, 'message')}"
+        raise ValueError(msg)
+    if report.get("ok") is not True:
+        msg = "React Doctor report did not complete successfully"
+        raise ValueError(msg)
+    skipped = _array(report.get("skippedProjects", []), "React Doctor skipped projects")
+    if skipped:
+        msg = f"React Doctor skipped {len(skipped)} project(s) before analysis"
+        raise ValueError(msg)
+
+    documents: dict[Path, SourceDocument | None] = {}
+    diagnostics: list[Diagnostic] = []
+    for raw_project in _array(report.get("projects"), "React Doctor projects"):
+        project = _table(raw_project, "React Doctor project")
+        if project.get("complete") is not True:
+            directory = project.get("directory")
+            msg = f"React Doctor project did not complete: {directory!r}"
+            raise ValueError(msg)
+        directory = _contained_report_directory(project, root)
+        for raw_diagnostic in _array(project.get("diagnostics"), "React Doctor diagnostics"):
+            item = _table(raw_diagnostic, "React Doctor diagnostic")
+            path = _react_doctor_path(item, directory, root)
+            location = _react_doctor_location(item, path, root, documents)
+            plugin = _text(item, "plugin")
+            rule_name = _text(item, "rule")
+            rule = f"{plugin}/{rule_name}"
+            url_value = item.get("url")
+            diagnostics.append(
+                Diagnostic(
+                    rule,
+                    _redact_message(_text(item, "message"), root),
+                    # React Doctor is deliberately observation-only in its first
+                    # Standards release. Execution/protocol failures still fail.
+                    Severity.WARNING,
+                    "react-doctor",
+                    location,
+                    rule_id=rule,
+                    help_url=url_value if isinstance(url_value, str) else None,
+                )
+            )
+    return tuple(diagnostics)
+
+
+def _contained_report_directory(project: dict[str, object], root: Path) -> Path:
+    value = _text(project, "directory")
+    directory = Path(value)
+    resolved = (directory if directory.is_absolute() else root / directory).resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        msg = "React Doctor reported a project outside the repository root"
+        raise ValueError(msg) from exc
+    return resolved
+
+
+def _react_doctor_path(item: dict[str, object], directory: Path, root: Path) -> Path:
+    raw_path = Path(_text(item, "filePath"))
+    resolved = (raw_path if raw_path.is_absolute() else directory / raw_path).resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as exc:
+        msg = "React Doctor reported a path outside the repository root"
+        raise ValueError(msg) from exc
+    return resolved
+
+
+def _react_doctor_location(
+    item: dict[str, object],
+    path: Path,
+    root: Path,
+    documents: dict[Path, SourceDocument | None],
+) -> Location:
+    start = _one_based_position(
+        {"row": _integer(item, "line"), "column": _integer(item, "column")},
+        path,
+        documents,
+    )
+    end_line = item.get("endLine")
+    end_column = item.get("endColumn")
+    if type(end_line) is int and type(end_column) is int:
+        try:
+            end = _one_based_position({"row": end_line, "column": end_column}, path, documents)
+        except ValueError:
+            end = None
+        if end is not None and (end.line, end.character) >= (start.line, start.character):
+            return Location(_relative(path, root), region=Region(start, end))
+    return Location(_relative(path, root), position=start)
 
 
 def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:

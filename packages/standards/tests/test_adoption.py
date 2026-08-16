@@ -133,6 +133,21 @@ def test_peer_pins_are_exact_versions() -> None:
         assert re.fullmatch(r"\d+\.\d+\.\d+", pin), f"{name} must be pinned exactly, got {pin}"
 
 
+def test_react_doctor_config_is_offline_advisory_and_non_overlapping() -> None:
+    parsed: object = json.loads((CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    config = manifest.as_table(parsed)
+
+    assert config["blocking"] == "none"
+    assert config["deadCode"] is False
+    assert config["noScore"] is True
+    assert config["share"] is False
+    assert config["adoptExistingLintConfig"] is False
+    assert manifest.table_field(config, "supplyChain") == {"enabled": False}
+    assert manifest.table_field(config, "buckets") == {"compiler-cleanup": "off"}
+    assert manifest.table_field(config, "ignore") == {"tags": ["design", "test-noise"]}
+    assert config["serverAuthFunctionNames"] == ["forRequest"]
+
+
 def test_peers_manifest_carries_the_overrides_that_make_it_installable() -> None:
     overrides = manifest.eslint_overrides()
     assert "eslint-plugin-react" in overrides
@@ -726,6 +741,9 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     assert "repo-specific overrides" in entrypoint
     assert "unicorn/filename-case" in entrypoint
     assert (tmp_path / "eslint.strict.mjs").is_file()
+    assert json.loads((tmp_path / "doctor.config.json").read_text(encoding="utf-8")) == json.loads(
+        (CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8")
+    )
     assert not (tmp_path / ".ruff-strict.toml").exists()
 
 

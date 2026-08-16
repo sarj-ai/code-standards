@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 SCHEMA_VERSION = 1
 _MAX_BYTES = 16 * 1024 * 1024
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
+_NON_BASELINEABLE_SOURCES = frozenset({"react-doctor"})
+
+
+def is_baselineable(diagnostic: Diagnostic) -> bool:
+    """Return whether a finding may be hidden as pre-existing repository debt."""
+    return diagnostic.source not in _NON_BASELINEABLE_SOURCES
 
 
 def load(path: Path) -> dict[str, int]:
@@ -82,7 +88,7 @@ def render(diagnostics: Iterable[Diagnostic]) -> str:
     """Render stable review metadata for every baselined fingerprint."""
     entries: dict[str, dict[str, object]] = {}
     for item in diagnostics:
-        if item.fingerprint is None:
+        if item.fingerprint is None or not is_baselineable(item):
             continue
         entry = entries.setdefault(
             item.fingerprint,

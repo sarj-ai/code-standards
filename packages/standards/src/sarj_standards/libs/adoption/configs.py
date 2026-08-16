@@ -20,6 +20,15 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
         "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml"),
     }
 )
+
+# These files travel with an existing capability instead of adding another
+# manifest switch. React Doctor is an advisory companion to the TypeScript
+# gate, so every ESLint consumer receives the same data-only configuration.
+TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
+    {
+        "react-doctor": ("doctor.config.json", "doctor.config.json"),
+    }
+)
 APPLICATION_CONFIG_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "ruff": "ruff.application.toml",

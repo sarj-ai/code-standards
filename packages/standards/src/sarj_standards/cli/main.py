@@ -836,10 +836,17 @@ def cmd_check(args: _Args) -> int:
         return cmd_analyze(args)
     if not args.files:
         return cmd_verify(args)
-    return _run_canonical_check(root, list(args.files), trusted=args.trust_repository_code)
+    return _run_canonical_check(root, list(args.files), trusted=args.trust_repository_code, staged=args.staged)
 
 
-def _run_canonical_check(root: Path, paths: Sequence[str] | None, *, raw: bool = False, trusted: bool = False) -> int:
+def _run_canonical_check(
+    root: Path,
+    paths: Sequence[str] | None,
+    *,
+    raw: bool = False,
+    trusted: bool = False,
+    staged: bool = False,
+) -> int:
     """Run every engine through one policy-aware diagnostic boundary."""
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
@@ -849,6 +856,7 @@ def _run_canonical_check(root: Path, paths: Sequence[str] | None, *, raw: bool =
         external=True,
         trust=TrustMode.TRUSTED if trusted else TrustMode.SAFE,
         mode=AnalysisMode.RAW if raw else AnalysisMode.POLICY,
+        staged=staged,
     )
     rendered = to_text(report)
     if rendered:
@@ -871,6 +879,7 @@ def cmd_analyze(args: _Args) -> int:
         external=args.external,
         trust=args.trust,
         mode=AnalysisMode(args.analysis_mode),
+        staged=args.staged,
     )
     return _emit_analysis_report(args, root, report)
 
@@ -1549,14 +1558,15 @@ def cmd_baseline(args: _Args) -> int:
         for issue in blocked:
             print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
         return 2
-    rendered = baseline.render(report.diagnostics)
+    eligible = tuple(item for item in report.diagnostics if baseline.is_baselineable(item))
+    rendered = baseline.render(eligible)
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(rendered, encoding="utf-8")
     except OSError as exc:
         print(f"error: cannot write diagnostic baseline {output}: {exc}", file=sys.stderr)
         return 2
-    recorded = len(report.diagnostics)
+    recorded = len(eligible)
     print(f"baseline written: {output} ({recorded} diagnostic(s) recorded)")
     adopted = manifest.load(root)
     if adopted is None or adopted.diagnostic_baseline is None:
