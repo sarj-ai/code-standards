@@ -543,7 +543,7 @@ def _named_literal_builder_diags(path: Path, tree: ast.Module, code: str) -> lis
                     f"`{_trailing_name(call.func) or ast.unparse(call.func)}`; export named aliases from the model owner "
                     "and reuse them here so the accepted values have one source of truth."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
         )
     return findings

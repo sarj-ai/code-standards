@@ -3,6 +3,7 @@ import textwrap
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
 
 
@@ -11,16 +12,12 @@ def check(source: str, path: str = "tests/test_policy.py"):
 
 
 def test_flags_raw_workflow_membership():
-    assert (
-        len(
-            check("""
+    [diagnostic] = check("""
         def test_policy():
             source = (ROOT / "workflow.yml").read_text()
             assert "permissions:" in source
     """)
-        )
-        == 1
-    )
+    assert diagnostic.severity is Severity.ERROR
 
 
 def test_flags_alias_and_normalization():

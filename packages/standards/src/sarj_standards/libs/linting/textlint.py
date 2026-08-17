@@ -366,7 +366,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             blocking=False,
         ),
-        # Supply-chain rules start as warnings so existing consumers can ratchet deliberately.
         "unpinned-github-action": RuleMeta(
             code="SARJ303",
             summary="remote GitHub Action or container action without an immutable digest",
@@ -400,7 +399,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             references=(
                 "https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions",
             ),
-            blocking=False,
         ),
         "iac-source-coupled-test": RuleMeta(
             code="SARJ304",
@@ -434,7 +432,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "The scanner tokenizes shell quoting, comments, pipelines, direct command substitutions, and local variable flows; sourced helpers and eval remain unreported.",
                 "Only test-named shell files or shell files below a tests directory are checked.",
             ),
-            blocking=False,
         ),
     }
 )

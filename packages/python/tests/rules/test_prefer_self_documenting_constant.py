@@ -44,7 +44,7 @@ def test_warns_when_comment_is_the_only_source_of_a_scalar_unit(comment: str, va
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ097"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert unit in findings[0].message
     assert "preserving non-obvious rationale" in findings[0].message
 
@@ -261,7 +261,7 @@ def test_warns_for_bare_integers_in_status_code_collections(value: str) -> None:
 
     assert len(findings) == 1
     assert "http.HTTPStatus" in findings[0].message
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(
@@ -352,12 +352,12 @@ def test_inline_unit_narration_remains_owned_by_sarj051() -> None:
     assert [finding.code for finding in findings] == ["SARJ051"]
 
 
-def test_cli_reports_the_new_rule_as_a_non_blocking_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_reports_the_rule_as_a_blocking_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "limits.py"
     target.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")
 
-    assert main(["check", "--rule", "prefer-self-documenting-constant", str(target)]) == 0
-    assert "SARJ097 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", "prefer-self-documenting-constant", str(target)]) == 1
+    assert "SARJ097 warning:" not in capsys.readouterr().out
 
 
 def test_exact_code_suppression_is_honored_on_the_constant_line(

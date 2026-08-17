@@ -148,7 +148,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.8.0",
+  version: "15.8.1",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -161,7 +161,6 @@ const applicationOnlyRules = [
 /** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
 const advisoryRules = [
   "no-bare-return-from-test-catch",
-  "no-vague-suppression-description",
   "iac-source-coupled-test",
   "repeated-static-call-cases",
   "source-coupled-test",
@@ -184,7 +183,7 @@ const recommendedRules = {
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "warn",
   "@sarj/no-long-comment": "error",
-  "@sarj/no-vague-suppression-description": "warn",
+  "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
@@ -250,7 +249,7 @@ const strictRules = {
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "warn",
   "@sarj/no-long-comment": "error",
-  "@sarj/no-vague-suppression-description": "warn",
+  "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",

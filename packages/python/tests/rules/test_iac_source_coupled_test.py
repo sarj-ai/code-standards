@@ -3,6 +3,7 @@ import textwrap
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.iac_source_coupled_test import IacSourceCoupledTest
 from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
 
@@ -32,6 +33,7 @@ def test_follows_alias_normalization_regex_and_context_manager() -> None:
                 assert re.search("prevent_destroy", normalized)
     """)
     assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(

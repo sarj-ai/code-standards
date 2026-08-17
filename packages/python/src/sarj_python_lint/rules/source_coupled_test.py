@@ -130,7 +130,7 @@ class SourceCoupledTest(Rule):
                 line=assertion.lineno,
                 col=assertion.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     "raw repository source text is the test oracle; parse or execute the artifact so comments, formatting, and unreachable blocks cannot satisfy the contract."
                 ),

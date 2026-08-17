@@ -25,7 +25,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 def test_plain_eight_sentence_module_docstring_is_a_prose_wall() -> None:
     findings = NoLongComment().check(Path("app.py"), f'"""{EIGHT_SENTENCES}"""\n')
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 def test_untyped_function_docstring_can_be_a_prose_wall() -> None:

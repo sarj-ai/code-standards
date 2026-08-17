@@ -89,7 +89,7 @@ class NoLongComment(Rule):
                 group.col,
                 self.code,
                 self.description,
-                Severity.WARNING,
+                Severity.ERROR,
                 column_encoding=group.column_encoding,
             )
             for group in groups(path, source)

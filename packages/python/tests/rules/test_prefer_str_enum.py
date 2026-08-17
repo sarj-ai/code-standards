@@ -983,7 +983,7 @@ def build_sarj_beneficiary(
     [diagnostic] = _check(src, "python/common/testing/builders.py")
 
     assert diagnostic.code == "SARJ006"
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert "3 inline Literal domains" in diagnostic.message
     assert "named aliases" in diagnostic.message
 
