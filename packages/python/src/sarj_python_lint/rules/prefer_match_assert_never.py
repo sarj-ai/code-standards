@@ -8,7 +8,7 @@ from __future__ import annotations
 import ast
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -39,6 +39,18 @@ _DICT_GROWING_METHODS = frozenset({"update", "setdefault"})
 # Imported settings/configuration objects expose attributes, but do not define
 # a closed value domain merely because those attributes appear in patterns.
 _OPEN_MEMBER_OWNER_RE = re.compile(r"(?:Settings|Config|Configuration|Options)$", re.IGNORECASE)
+
+
+class _DispatchShortfall(NamedTuple):
+    enum_name: str
+    covered: int
+    total: int
+    missing: str
+
+
+class _EnumComparison(NamedTuple):
+    target: ast.expr
+    enum_name: str
 
 
 @final
@@ -146,7 +158,6 @@ class PreferMatchAssertNever(Rule):
             else:
                 shortfall = _incomplete_dispatch_map(node, enum_members, map_usage)
                 if shortfall is not None:
-                    enum_name, covered, total, missing = shortfall
                     diags.append(
                         Diagnostic(
                             path=path,
@@ -154,8 +165,8 @@ class PreferMatchAssertNever(Rule):
                             col=node.col_offset + 1,
                             code=self.code,
                             message=(
-                                f"dispatch map covers {covered} of `{enum_name}`'s {total} "
-                                f"members (missing {missing}) — a new member falls through to "
+                                f"dispatch map covers {shortfall.covered} of `{shortfall.enum_name}`'s "
+                                f"{shortfall.total} members (missing {shortfall.missing}) — a new member falls through to "
                                 "a KeyError or a silent None; cover every member and "
                                 "`assert_never` (or raise) on a lookup miss."
                             ),
@@ -224,7 +235,7 @@ def _incomplete_dispatch_map(
     node: ast.Assign | ast.AnnAssign,
     enum_members: dict[str, frozenset[str]],
     map_usage: tuple[frozenset[str], frozenset[str]],
-) -> tuple[str, int, int, str] | None:
+) -> _DispatchShortfall | None:
     """Return the shortfall when `node` binds a handler dict that misses enum members."""
     target = _single_name_target(node)
     grown_maps, called_maps = map_usage
@@ -249,7 +260,7 @@ def _incomplete_dispatch_map(
     if len(covered) != len(mapping.keys) or not covered < declared:
         return None
     missing = ", ".join(f"{owner}.{name}" for name in sorted(declared - covered))
-    return owner, len(covered), len(declared), missing
+    return _DispatchShortfall(owner, len(covered), len(declared), missing)
 
 
 def _single_name_target(node: ast.Assign | ast.AnnAssign) -> str | None:
@@ -392,7 +403,8 @@ def _silent_enum_chain(head: ast.If, local_enums: frozenset[str], consumed_elifs
         parsed = _enum_comparison(current.test, local_enums)
         if parsed is None:
             return None
-        target, cls_name = parsed
+        target = parsed.target
+        cls_name = parsed.enum_name
         if first_target is None:
             first_target = target
             enum_name = cls_name
@@ -413,7 +425,7 @@ def _silent_enum_chain(head: ast.If, local_enums: frozenset[str], consumed_elifs
         return enum_name
 
 
-def _enum_comparison(test: ast.expr, local_enums: frozenset[str]) -> tuple[ast.expr, str] | None:
+def _enum_comparison(test: ast.expr, local_enums: frozenset[str]) -> _EnumComparison | None:
     """Parse `test` as `x == Cls.MEMBER` or `x in (Cls.A, Cls.B, ...)`."""
     if not (isinstance(test, ast.Compare) and len(test.ops) == 1):
         return None
@@ -428,7 +440,7 @@ def _enum_comparison(test: ast.expr, local_enums: frozenset[str]) -> tuple[ast.e
             return None
     if cls_name is None:
         return None
-    return target, cls_name
+    return _EnumComparison(target, cls_name)
 
 
 def _enum_member_class(expr: ast.expr, local_enums: frozenset[str]) -> str | None:

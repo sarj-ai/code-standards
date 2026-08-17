@@ -314,15 +314,21 @@ class _CommentScan[T](NamedTuple):
     first_code_line: int
 
 
-_Scan = tuple[list[tuple[int, int, str]], list[tuple[int, int, str]], set[int], int, _Ordered]
+class _Scan(NamedTuple):
+    standalone: list[tuple[int, int, str]]
+    trailing: list[tuple[int, int, str]]
+    nested: set[int]
+    first_code_line: int
+    ordered: _Ordered
+
 
 _last_scan: tuple[str, _Scan] | None = None
 
 
 def all_comments(source: str) -> _CommentScan[_Ordered]:
     """Return every comment as `(line, col0, body, standalone)`, plus the first code line."""
-    _, _, _, first_code_line, ordered = _scan_memo(source)
-    return _CommentScan(ordered, first_code_line)
+    scan = _scan_memo(source)
+    return _CommentScan(scan.ordered, scan.first_code_line)
 
 
 def _scan_memo(source: str) -> _Scan:
@@ -361,23 +367,23 @@ def _scan(source: str) -> _Scan:
             prev_end_row = tok.end[0]
         if tok.type not in _NON_CODE_TOKENS:
             first_code_line = min(first_code_line, tok.start[0])
-    return standalone, trailing, nested, first_code_line, ordered
+    return _Scan(standalone, trailing, nested, first_code_line, ordered)
 
 
 def trailing_comments(source: str) -> list[tuple[int, int, str]]:
     """Return every comment that shares its line with code, as `(line, col, body)`."""
-    return _scan_memo(source)[1]
+    return _scan_memo(source).trailing
 
 
 def nested_comment_lines(source: str) -> set[int]:
     """Return the lines of comments sitting INSIDE a bracketed expression."""
-    return _scan_memo(source)[2]
+    return _scan_memo(source).nested
 
 
 def standalone_comments(source: str) -> _CommentScan[list[tuple[int, int, str]]]:
     """Return every own-line comment as `(line, col, body)`, plus the first code line."""
-    standalone, _, _, first_code_line, _ = _scan_memo(source)
-    return _CommentScan(standalone, first_code_line)
+    scan = _scan_memo(source)
+    return _CommentScan(scan.standalone, scan.first_code_line)
 
 
 def comment_runs(standalone: Sequence[tuple[int, int, str]]) -> list[list[tuple[int, int, str]]]:

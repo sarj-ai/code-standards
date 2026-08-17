@@ -6,11 +6,17 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
+from typing import NamedTuple
 
 import pytest
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+class _PreflightResult(NamedTuple):
+    process: subprocess.CompletedProcess[str]
+    output: str
 
 
 def _release_tag_preflight_script() -> str:
@@ -30,7 +36,7 @@ def _run_release_tag_preflight(
     git_mode: str = "existing",
     http_status: str = "200",
     malformed_manifest: bool = False,
-) -> tuple[subprocess.CompletedProcess[str], str]:
+) -> _PreflightResult:
     versions = {
         "typescript": "1.0.0",
         "python": "2.0.0",
@@ -117,7 +123,7 @@ def _run_release_tag_preflight(
         text=True,
     )
     github_output = output.read_text(encoding="utf-8") if output.exists() else ""
-    return result, github_output
+    return _PreflightResult(result, github_output)
 
 
 def test_lint_config_release_waits_for_typescript_and_preflights_registry() -> None:

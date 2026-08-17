@@ -155,3 +155,102 @@ def test_does_not_follow_rebound_decoder_import() -> None:
     """)
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        import httpx
+        def request() -> httpx.Response: ...
+        def load():
+            response = request()
+            return response.json()["id"]
+        """,
+        """
+        import httpx
+        class Client:
+            async def _request(self) -> httpx.Response: ...
+            async def load(self):
+                response = await self._request()
+                return response.json().get("id")
+        """,
+        """
+        import httpx
+        async def load(client: httpx.AsyncClient):
+            response = await client.get("https://example.test")
+            return response.json()["id"]
+        """,
+        """
+        import httpx
+        class DAO:
+            def __init__(self, client: httpx.AsyncClient) -> None:
+                self.client = client
+            async def load(self):
+                response = await self.client.get("/items")
+                return response.json()["id"]
+        """,
+    ],
+)
+def test_flags_json_from_typed_http_response_helpers(source: str) -> None:
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+
+
+def test_arbitrary_local_json_method_is_not_treated_as_http() -> None:
+    assert (
+        _check("""
+        class Document:
+            def json(self) -> dict[str, object]: ...
+        def load(document: Document):
+            return document.json()["id"]
+    """)
+        == []
+    )
+
+
+def test_ambiguous_same_named_helper_is_not_treated_as_http() -> None:
+    assert (
+        _check("""
+        import httpx
+        class Remote:
+            def request(self) -> httpx.Response: ...
+        class Local:
+            def request(self) -> object: ...
+        def load(client: Local):
+            response = client.request()
+            return response.json()["id"]
+    """)
+        == []
+    )
+
+
+def test_unrelated_receiver_method_is_not_treated_as_typed_http_helper() -> None:
+    assert (
+        _check("""
+        import httpx
+        class Remote:
+            def request(self) -> httpx.Response: ...
+        class Local: ...
+        def load(client: Local):
+            response = client.request()
+            return response.json()["id"]
+    """)
+        == []
+    )
+
+
+def test_unrelated_owner_attribute_is_not_treated_as_typed_http_client() -> None:
+    assert (
+        _check("""
+        import httpx
+        class Remote:
+            def __init__(self, client: httpx.AsyncClient) -> None:
+                self.client = client
+        class Local:
+            async def load(self):
+                response = await self.client.get("/items")
+                return response.json()["id"]
+    """)
+        == []
+    )

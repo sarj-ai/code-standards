@@ -9,7 +9,7 @@ import ast
 from io import StringIO
 from pathlib import PurePosixPath
 import tokenize
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -37,6 +37,16 @@ _MIN_DISTINCT_CASES = 2
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _ACCESSOR_CALLEES = frozenset({"get"})
 _UNSAFE_CALLEE_PARTS = frozenset({"mock", "snapshot", "spy"})
+
+
+class _AssertionShape(NamedTuple):
+    skeleton: object
+    values: str
+
+
+class _ParsedCall(NamedTuple):
+    call: ast.Call
+    awaited: bool
 
 
 @final
@@ -184,19 +194,18 @@ def _runs(test: ast.FunctionDef | ast.AsyncFunctionDef, comments: frozenset[int]
                 yield current
             current, current_shape, current_values = [], None, set()
             continue
-        shape, values = parsed
-        if current and (shape != current_shape or _has_intervening_comment(current[-1], statement, comments)):
+        if current and (parsed.skeleton != current_shape or _has_intervening_comment(current[-1], statement, comments)):
             if len(current) >= _MIN_CASES and len(current_values) >= _MIN_DISTINCT_CASES:
                 yield current
             current, current_values = [], set()
         current.append(statement)
-        current_shape = shape
-        current_values.add(values)
+        current_shape = parsed.skeleton
+        current_values.add(parsed.values)
     if len(current) >= _MIN_CASES and len(current_values) >= _MIN_DISTINCT_CASES:
         yield current
 
 
-def _assertion_shape(node: ast.Assert) -> tuple[object, str] | None:
+def _assertion_shape(node: ast.Assert) -> _AssertionShape | None:
     expression = node.test
     polarity = "truthy"
     expectation: ast.expr | None = None
@@ -213,26 +222,30 @@ def _assertion_shape(node: ast.Assert) -> tuple[object, str] | None:
     parsed = _call(call_expr)
     if parsed is None or (expectation is not None and not _static(expectation)):
         return None
-    call, awaited = parsed
-    callee = _dotted_name(call.func)
+    callee = _dotted_name(parsed.call.func)
     if (
         callee is None
         or not _eligible_callee(callee)
-        or not call.args
-        or any(isinstance(arg, ast.Starred) or not _static(arg) for arg in call.args)
-        or any(keyword.arg is None or not _static(keyword.value) for keyword in call.keywords)
+        or not parsed.call.args
+        or any(isinstance(arg, ast.Starred) or not _static(arg) for arg in parsed.call.args)
+        or any(keyword.arg is None or not _static(keyword.value) for keyword in parsed.call.keywords)
     ):
         return None
     skeleton = (
         callee,
-        awaited,
+        parsed.awaited,
         polarity,
-        tuple(_static_shape(arg) for arg in call.args),
-        tuple((keyword.arg, _static_shape(keyword.value)) for keyword in call.keywords),
+        tuple(_static_shape(arg) for arg in parsed.call.args),
+        tuple((keyword.arg, _static_shape(keyword.value)) for keyword in parsed.call.keywords),
         None if expectation is None else _static_shape(expectation),
     )
-    values = _static_value(ast.Tuple(elts=[*call.args, *(keyword.value for keyword in call.keywords)], ctx=ast.Load()))
-    return skeleton, values
+    values = _static_value(
+        ast.Tuple(
+            elts=[*parsed.call.args, *(keyword.value for keyword in parsed.call.keywords)],
+            ctx=ast.Load(),
+        )
+    )
+    return _AssertionShape(skeleton, values)
 
 
 def _eligible_callee(callee: tuple[str, ...]) -> bool:
@@ -249,10 +262,10 @@ def _has_attached_comment(statement: ast.Assert, comments: frozenset[int]) -> bo
     return any(statement.lineno <= line <= (statement.end_lineno or statement.lineno) for line in comments)
 
 
-def _call(node: ast.expr) -> tuple[ast.Call, bool] | None:
+def _call(node: ast.expr) -> _ParsedCall | None:
     awaited = isinstance(node, ast.Await)
     candidate = node.value if awaited else node
-    return (candidate, awaited) if isinstance(candidate, ast.Call) else None
+    return _ParsedCall(candidate, awaited) if isinstance(candidate, ast.Call) else None
 
 
 def _static(node: ast.expr) -> bool:

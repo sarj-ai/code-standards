@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import blocks
 from sarj_iac_lint.rule_base import (
@@ -58,6 +58,11 @@ _GOOGLE_DELETION_POLICY_TYPES = frozenset(
 _GOOGLE_DELETION_PROTECTION_TYPES = frozenset({"google_secret_manager_secret"})
 
 _HCL_SUFFIXES = (".tf", ".hcl")
+
+
+class _ProviderGuardResult(NamedTuple):
+    protected: bool
+    problem: str | None
 
 
 @final
@@ -156,15 +161,15 @@ def _violation(block: Block) -> str | None:
     if force is not None and _literal(force.value) == "true":
         # A literal true is an explicit declaration that the store is disposable.
         return None
-    provider_protected, provider_problem = _provider_guard(block)
-    if provider_protected:
+    provider_guard = _provider_guard(block)
+    if provider_guard.protected:
         return None
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is None:
         if force is not None and _literal(force.value) != "false":
             return f"has force_destroy = {force.value.strip()}, but force_destroy is not literal true"
-        if provider_problem is not None:
-            return provider_problem
+        if provider_guard.problem is not None:
+            return provider_guard.problem
         if block.labels[0] in _GOOGLE_DELETION_POLICY_TYPES:
             return "has no provider-side deletion guard and no lifecycle block"
         return "has no lifecycle block"
@@ -178,7 +183,7 @@ def _violation(block: Block) -> str | None:
     )
 
 
-def _provider_guard(block: Block) -> tuple[bool, str | None]:
+def _provider_guard(block: Block) -> _ProviderGuardResult:
     """Resolve only provider guards documented for the exact Google resource type."""
     resource_type = block.labels[0]
     problems: list[str] = []
@@ -186,15 +191,15 @@ def _provider_guard(block: Block) -> tuple[bool, str | None]:
         policy = block.attribute(_DELETION_POLICY)
         if policy is not None:
             if _quoted_literal(policy.value) == "PREVENT":
-                return True, None
+                return _ProviderGuardResult(protected=True, problem=None)
             problems.append(f"sets deletion_policy = {policy.value.strip()}, which is not literal PREVENT")
     if resource_type in _GOOGLE_DELETION_PROTECTION_TYPES:
         protection = block.attribute(_DELETION_PROTECTION)
         if protection is not None:
             if _literal(protection.value) == "true":
-                return True, None
+                return _ProviderGuardResult(protected=True, problem=None)
             problems.append(f"sets deletion_protection = {protection.value.strip()}, which is not literal true")
-    return False, "; and ".join(problems) if problems else None
+    return _ProviderGuardResult(protected=False, problem="; and ".join(problems) if problems else None)
 
 
 def _literal(value: str) -> str:

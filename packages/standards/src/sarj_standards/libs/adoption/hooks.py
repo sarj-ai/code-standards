@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path, PurePath
 import re
 import shlex
@@ -13,8 +14,6 @@ from . import launcher, manifest
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from .manifest import HookManager
 
 
@@ -51,6 +50,23 @@ class PrecommitRepoBlock(NamedTuple):
     indent: int
     repository: str | None
     text: str
+
+
+class _PrecommitRepoSection(NamedTuple):
+    header: int
+    section_end: int
+    item_indent: int
+
+
+class _LefthookEntries(NamedTuple):
+    text: str
+    layout: str
+    entries: Mapping[str, object]
+
+
+class _LocatedBlock(NamedTuple):
+    match: re.Match[str]
+    section_end: int
 
 
 def precommit_repo_blocks(text: str) -> tuple[PrecommitRepoBlock, ...]:
@@ -93,7 +109,7 @@ def _repository_scalar(raw: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def _precommit_repo_section(lines: list[str]) -> tuple[int, int, int] | None:
+def _precommit_repo_section(lines: list[str]) -> _PrecommitRepoSection | None:
     """Locate direct sequence children of the top-level ``repos`` key."""
     header = next((index for index, line in enumerate(lines) if re.match(r"^repos:\s*(?:#.*)?(?:\r?\n)?$", line)), None)
     if header is None:
@@ -118,7 +134,7 @@ def _precommit_repo_section(lines: list[str]) -> tuple[int, int, int] | None:
         ),
         None,
     )
-    return None if item_indent is None else (header, section_end, item_indent)
+    return None if item_indent is None else _PrecommitRepoSection(header, section_end, item_indent)
 
 
 def yaml_list_item_end(lines: list[str], start: int, indent: int) -> int:
@@ -238,7 +254,7 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
     return LefthookWrite(path, contents)
 
 
-def _load_lefthook_entries(path: Path) -> tuple[str, str, Mapping[str, object]]:
+def _load_lefthook_entries(path: Path) -> _LefthookEntries:
     try:
         text = path.read_text(encoding="utf-8")
         parsed: object = yaml.safe_load(text)  # pyright: ignore[reportAny] -- narrowed immediately below.
@@ -248,18 +264,18 @@ def _load_lefthook_entries(path: Path) -> tuple[str, str, Mapping[str, object]]:
         msg = f"cannot safely wire {path.name}: expected valid pre-commit commands or jobs"
         raise ValueError(msg) from exc
     if "commands" in pre_commit:
-        return text, "commands", manifest.as_table(pre_commit.get("commands"))
+        return _LefthookEntries(text, "commands", manifest.as_table(pre_commit.get("commands")))
     jobs = manifest.list_field(pre_commit, "jobs")
     if "jobs" in pre_commit:
         names = {
             str(job.get("name")): job for value in jobs if (job := manifest.as_table(value)).get("name") is not None
         }
-        return text, "jobs", names
+        return _LefthookEntries(text, "jobs", names)
     msg = f"cannot safely wire {path.name}: expected block-style pre-commit commands or jobs"
     raise ValueError(msg)
 
 
-def _locate_block(path: Path, text: str, layout: str) -> tuple[re.Match[str], int]:
+def _locate_block(path: Path, text: str, layout: str) -> _LocatedBlock:
     pre_commit_match = re.search(r"(?m)^pre-commit:\s*(?:#.*)?$", text)
     if pre_commit_match is None:
         msg = f"cannot safely wire {path.name}: expected a block-style pre-commit.commands mapping"
@@ -271,7 +287,7 @@ def _locate_block(path: Path, text: str, layout: str) -> tuple[re.Match[str], in
     if block_match is None:
         msg = f"cannot safely wire {path.name}: expected block-style pre-commit {layout}"
         raise ValueError(msg)
-    return block_match, section_end
+    return _LocatedBlock(block_match, section_end)
 
 
 def _insert_staged_job(

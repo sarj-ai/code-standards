@@ -177,6 +177,12 @@ class _Scope:
     nested: set[int]
 
 
+@dataclass(frozen=True, slots=True)
+class _BindingCandidate:
+    target: ast.Name
+    value: ast.expr
+
+
 def _iter_functions(tree: ast.Module) -> Iterator[_Function]:
     """Walk the module for every `def` / `async def`, nested ones included."""
     yield from nodes(tree, *_FUNCTION_NODES)
@@ -193,12 +199,11 @@ def _hoistable_bindings(func: _Function) -> Iterator[tuple[ast.stmt, str, _Candi
         binding = _candidate_binding(node)
         if binding is None:
             continue
-        target, value = binding
-        candidate = _classify(value)
+        candidate = _classify(binding.value)
         if candidate is None or not _is_large_enough(candidate):
             continue
-        if _is_safely_hoistable(scope, func, target, _safe_methods_for(candidate)):
-            yield node, target.id, candidate
+        if _is_safely_hoistable(scope, func, binding.target, _safe_methods_for(candidate)):
+            yield node, binding.target.id, candidate
 
 
 def _scope_of(func: _Function) -> _Scope:
@@ -229,14 +234,14 @@ def _reads_frame_locals(scope: _Scope) -> bool:
     return False
 
 
-def _candidate_binding(node: ast.stmt) -> tuple[ast.Name, ast.expr] | None:
+def _candidate_binding(node: ast.stmt) -> _BindingCandidate | None:
     """Match a single-target `x = <value>` / `x: T = <value>` statement."""
     match node:
         case (
             ast.Assign(targets=[ast.Name() as target], value=value)
             | ast.AnnAssign(target=ast.Name() as target, value=ast.expr() as value)
         ):
-            return target, value
+            return _BindingCandidate(target, value)
         case _:
             return None
 

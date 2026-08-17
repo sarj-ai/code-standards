@@ -23,6 +23,7 @@ tester.run("source-coupled-test", rule, {
     { filename: "/repo/shadow.test.ts", code: `${namedFs} test('shadow', () => { const source = readFileSync('main.tf', 'utf8'); return () => { const source = render(); expect(source).toContain('resource'); }; });` },
     { filename: "/repo/shadow-reader.test.ts", code: `${namedFs} test('shadow', (readFileSync) => { const source = readFileSync('main.tf'); expect(source).toContain('resource'); });` },
     { filename: "/repo/shadow-fs.test.ts", code: `${fsObject} test('shadow', () => { const fs = client; const source = fs.readFileSync('main.tf'); expect(source).toContain('resource'); });` },
+    { filename: "/repo/config.test.ts", code: `${namedFs} import { parse } from 'jsonc-parser'; test('parsed', () => { const config = parse(readFileSync('wrangler.jsonc', 'utf8')); expect(validate(config)).toEqual([]); });` },
   ],
   invalid: [
     { filename: "/repo/policy.test.ts", code: `${namedFs} test('raw', () => { const source = readFileSync('workflow.yml', 'utf8'); expect(source).toMatch(/permissions/); });`, errors: [{ messageId: "rawSourceOracle" }] },
@@ -46,6 +47,18 @@ tester.run("source-coupled-test", rule, {
       filename: "/repo/independent.test.mjs",
       code: `${namedFs} test('raw', () => { const script = readFileSync('deploy.sh', 'utf8'); expect(script).toContain('deploy'); const workflow = readFileSync('workflow.yml', 'utf8'); expect(workflow).toContain('permissions:'); });`,
       errors: [{ messageId: "rawSourceOracle" }, { messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "reports a direct raw JSONC assertion",
+      filename: "/repo/config.test.ts",
+      code: `${namedFs} test('raw', () => { const source = readFileSync('wrangler.jsonc', 'utf8'); expect(source).toMatch(/NEXT_PUBLIC_ENVIRONMENT/); });`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "reports regex extraction from raw JSONC before array transforms",
+      filename: "/repo/config.test.ts",
+      code: `${namedFs} import { fileURLToPath } from 'node:url'; test('raw', () => { const source = readFileSync(fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)), 'utf8'); const values = source.matchAll(/NEXT_PUBLIC_ENVIRONMENT/g).map((match) => match[0]).toArray(); expect(values).toEqual(['dev']); });`,
+      errors: [{ messageId: "rawSourceOracle" }],
     },
   ],
 });

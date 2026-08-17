@@ -22,7 +22,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children
-from sarj_python_lint.rules._comments import is_protected
+from sarj_python_lint.rules._comments import is_protected, stem
 from sarj_python_lint.rules._docstrings import (
     PROMPT_DECORATOR_MARKERS,
     VALUE_MARKER_RE,
@@ -156,7 +156,10 @@ class RedundantDocstring(Rule):
             return
         if _numeric_content(node, docstring, class_name):
             return
-        if not restates(docstring, signature_stems(node, class_name)):
+        known_stems = signature_stems(node, class_name)
+        if node.name.startswith("set_"):
+            known_stems.add(stem("update"))
+        if not restates(docstring, known_stems):
             return
         expr = node.body[0]
         diags.append(

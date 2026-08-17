@@ -10,7 +10,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import document
 from sarj_iac_lint.rule_base import (
@@ -75,12 +75,32 @@ _AUTO_ENVIRONMENT = "(auto-loaded)"
 _NUMBER_RE = re.compile(r"-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?")
 _IDENT_RE = re.compile(r"[A-Za-z_][\w-]*")
 
-# One comparable value: a tagged tuple so `"false"` and `false` canonicalize
-# identically while `true` and `1` stay distinct, mirroring HCL's conversions.
-type _Canon = tuple[str, object]
 
-_BOOL_SCALARS: Mapping[str, _Canon] = MappingProxyType({"true": ("bool", True), "false": ("bool", False)})
-_KEYWORD_SCALARS: Mapping[str, _Canon] = MappingProxyType({**_BOOL_SCALARS, "null": ("null", None)})
+# One comparable value: a tagged record so `"false"` and `false` canonicalize
+# identically while `true` and `1` stay distinct, mirroring HCL's conversions.
+@dataclass(frozen=True, slots=True)
+class _Canon:
+    tag: str
+    value: object
+
+
+class _ValueParseResult(NamedTuple):
+    value: _Canon | None
+    next_index: int
+
+
+class _MapKeyParseResult(NamedTuple):
+    key: str | None
+    next_index: int
+
+
+_BOOL_SCALARS: Mapping[str, _Canon] = MappingProxyType(
+    {
+        "true": _Canon(tag="bool", value=True),
+        "false": _Canon(tag="bool", value=False),
+    }
+)
+_KEYWORD_SCALARS: Mapping[str, _Canon] = MappingProxyType({**_BOOL_SCALARS, "null": _Canon("null", None)})
 
 
 @final
@@ -421,7 +441,7 @@ def _display(canon: _Canon | None, value: str) -> str:
     echoing `database_password` into a build log.
     """
     text = " ".join(value.split())
-    if canon is None or canon[0] not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
+    if canon is None or canon.tag not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
         return ""
     return f" ({text})" if len(text) <= _MAX_VALUE_DISPLAY else ""
 
@@ -748,8 +768,8 @@ def _canonical(text: str) -> _Canon | None:
     """
     if "${" in text or "<<" in text:
         return None
-    value, index = _parse_value(text, _skip_ws(text, 0))
-    return value if value is not None and _skip_ws(text, index) == len(text) else None
+    parsed = _parse_value(text, _skip_ws(text, 0))
+    return parsed.value if parsed.value is not None and _skip_ws(text, parsed.next_index) == len(text) else None
 
 
 def _skip_ws(text: str, index: int) -> int:
@@ -758,9 +778,9 @@ def _skip_ws(text: str, index: int) -> int:
     return index
 
 
-def _parse_value(text: str, index: int) -> tuple[_Canon | None, int]:
+def _parse_value(text: str, index: int) -> _ValueParseResult:
     if index >= len(text):
-        return None, index
+        return _ValueParseResult(None, index)
     char = text[index]
     if char == '"':
         return _parse_string(text, index)
@@ -769,15 +789,15 @@ def _parse_value(text: str, index: int) -> tuple[_Canon | None, int]:
     if char == "{":
         return _parse_map(text, index)
     if (number := _NUMBER_RE.match(text, index)) is not None:
-        return ("num", Decimal(number.group(0))), number.end()
+        return _ValueParseResult(_Canon("num", Decimal(number.group(0))), number.end())
     if (ident := _IDENT_RE.match(text, index)) is not None and (
         keyword := _KEYWORD_SCALARS.get(ident.group(0))
     ) is not None:
-        return keyword, ident.end()
-    return None, index
+        return _ValueParseResult(keyword, ident.end())
+    return _ValueParseResult(None, index)
 
 
-def _parse_string(text: str, index: int) -> tuple[_Canon | None, int]:
+def _parse_string(text: str, index: int) -> _ValueParseResult:
     """Read one quoted string, coercing "true"/"false"/numeric text like HCL would."""
     cursor = index + 1
     while cursor < len(text):
@@ -786,9 +806,9 @@ def _parse_string(text: str, index: int) -> tuple[_Canon | None, int]:
             cursor += 2
             continue
         if char == '"':
-            return _string_scalar(text[index + 1 : cursor]), cursor + 1
+            return _ValueParseResult(_string_scalar(text[index + 1 : cursor]), cursor + 1)
         cursor += 1
-    return None, index
+    return _ValueParseResult(None, index)
 
 
 def _string_scalar(inner: str) -> _Canon:
@@ -796,54 +816,61 @@ def _string_scalar(inner: str) -> _Canon:
     if (bool_scalar := _BOOL_SCALARS.get(inner)) is not None:
         return bool_scalar
     if _NUMBER_RE.fullmatch(inner) is not None:
-        return ("num", Decimal(inner))
-    return ("str", inner)
+        return _Canon("num", Decimal(inner))
+    return _Canon("str", inner)
 
 
-def _parse_list(text: str, index: int) -> tuple[_Canon | None, int]:
+def _parse_list(text: str, index: int) -> _ValueParseResult:
     items: list[_Canon] = []
     cursor = _skip_ws(text, index + 1)
     while cursor < len(text):
         if text[cursor] == "]":
-            return ("list", tuple(items)), cursor + 1
-        value, cursor = _parse_value(text, cursor)
-        if value is None:
-            return None, cursor
-        items.append(value)
+            return _ValueParseResult(_Canon("list", tuple(items)), cursor + 1)
+        parsed = _parse_value(text, cursor)
+        cursor = parsed.next_index
+        if parsed.value is None:
+            return _ValueParseResult(None, cursor)
+        items.append(parsed.value)
         cursor = _skip_ws(text, cursor)
         if cursor < len(text) and text[cursor] == ",":
             cursor = _skip_ws(text, cursor + 1)
-    return None, cursor
+    return _ValueParseResult(None, cursor)
 
 
-def _parse_map(text: str, index: int) -> tuple[_Canon | None, int]:
+def _parse_map(text: str, index: int) -> _ValueParseResult:
     entries: dict[str, _Canon] = {}
     cursor = _skip_ws(text, index + 1)
     while cursor < len(text):
         if text[cursor] == "}":
-            return ("map", tuple(sorted(entries.items()))), cursor + 1
-        key, cursor = _parse_map_key(text, cursor)
-        if key is None:
-            return None, cursor
+            return _ValueParseResult(_Canon("map", tuple(sorted(entries.items()))), cursor + 1)
+        parsed_key = _parse_map_key(text, cursor)
+        cursor = parsed_key.next_index
+        if parsed_key.key is None:
+            return _ValueParseResult(None, cursor)
         cursor = _skip_ws(text, cursor)
         if cursor >= len(text) or text[cursor] not in {"=", ":"}:
-            return None, cursor
-        value, cursor = _parse_value(text, _skip_ws(text, cursor + 1))
-        if value is None:
-            return None, cursor
-        entries[key] = value
+            return _ValueParseResult(None, cursor)
+        parsed_value = _parse_value(text, _skip_ws(text, cursor + 1))
+        cursor = parsed_value.next_index
+        if parsed_value.value is None:
+            return _ValueParseResult(None, cursor)
+        entries[parsed_key.key] = parsed_value.value
         cursor = _skip_ws(text, cursor)
         if cursor < len(text) and text[cursor] == ",":
             cursor = _skip_ws(text, cursor + 1)
-    return None, cursor
+    return _ValueParseResult(None, cursor)
 
 
-def _parse_map_key(text: str, index: int) -> tuple[str | None, int]:
+def _parse_map_key(text: str, index: int) -> _MapKeyParseResult:
     if text[index] == '"':
         cursor = index + 1
         while cursor < len(text) and text[cursor] != '"':
             cursor += 2 if text[cursor] == "\\" else 1
-        return (text[index + 1 : cursor], cursor + 1) if cursor < len(text) else (None, index)
+        return (
+            _MapKeyParseResult(text[index + 1 : cursor], cursor + 1)
+            if cursor < len(text)
+            else _MapKeyParseResult(None, index)
+        )
     if (ident := _IDENT_RE.match(text, index)) is not None:
-        return ident.group(0), ident.end()
-    return None, index
+        return _MapKeyParseResult(ident.group(0), ident.end())
+    return _MapKeyParseResult(None, index)

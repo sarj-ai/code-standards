@@ -45,7 +45,7 @@ export const preferWholeObjectAssertionDocumentation = {
 
 /** How a run reaches into its receiver: `o.name`, or `xs[0]`. */
 type AssertionKey =
-  | { readonly kind: "property"; readonly name: string }
+  | { readonly kind: "property"; readonly path: readonly string[] }
   | { readonly kind: "index"; readonly index: number };
 
 interface Assertion {
@@ -99,6 +99,23 @@ function literalIndex(node: TSESTree.Node): number | null {
     return null;
   }
   return Number.isInteger(node.value) && node.value >= 0 ? node.value : null;
+}
+
+function propertyAccess(
+  node: TSESTree.MemberExpression,
+): { readonly receiver: TSESTree.Expression; readonly path: readonly string[] } | null {
+  const path: string[] = [];
+  let current: TSESTree.Expression = node;
+  while (current.type === AST_NODE_TYPES.MemberExpression && !current.computed && !current.optional) {
+    if (
+      current.property.type !== AST_NODE_TYPES.Identifier ||
+      COLLECTION_PROPERTIES.has(current.property.name) ||
+      LITERAL_KEY_HAZARDS.has(current.property.name)
+    ) return null;
+    path.unshift(current.property.name);
+    current = current.object;
+  }
+  return path.length > 0 && isPureReceiver(current) ? { receiver: current, path } : null;
 }
 
 export default createRule<Options, MessageIds>({
@@ -161,26 +178,24 @@ export default createRule<Options, MessageIds>({
       }
 
       let key: AssertionKey;
+      let receiver: TSESTree.Expression;
       if (actual.computed) {
         const index = literalIndex(actual.property);
         if (index === null) {
           return null;
         }
         key = { kind: "index", index };
+        receiver = actual.object;
       } else {
-        if (
-          actual.property.type !== AST_NODE_TYPES.Identifier ||
-          COLLECTION_PROPERTIES.has(actual.property.name) ||
-          LITERAL_KEY_HAZARDS.has(actual.property.name)
-        ) {
-          return null;
-        }
-        key = { kind: "property", name: actual.property.name };
+        const access = propertyAccess(actual);
+        if (access === null) return null;
+        key = { kind: "property", path: access.path };
+        receiver = access.receiver;
       }
 
       const synthetic = SYNTHETIC_LITERAL_MATCHERS.get(matcher);
       if (synthetic !== undefined && call.arguments.length === 0) {
-        return { statement, receiver: actual.object, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
+        return { statement, receiver, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
       }
       if (!MERGEABLE_MATCHERS.has(matcher)) {
         return null;
@@ -192,7 +207,7 @@ export default createRule<Options, MessageIds>({
       const literal = literalText(expected, (node) => sourceCode.getText(node));
       return {
         statement,
-        receiver: actual.object,
+        receiver,
         key,
         matcher,
         expectedText: literal ?? sourceCode.getText(expected),
@@ -215,7 +230,9 @@ export default createRule<Options, MessageIds>({
      * duplicate object property.
      */
     function reportPropertyRun(run: readonly Assertion[]): void {
-      const names = new Set<string>();
+      type ObjectTree = Map<string, string | ObjectTree>;
+      const tree: ObjectTree = new Map();
+      const paths: string[][] = [];
       for (const assertion of run) {
         if (assertion.key.kind !== "property" || !assertion.expectedIsLiteral) {
           return;
@@ -223,21 +240,46 @@ export default createRule<Options, MessageIds>({
         if (!MERGEABLE_MATCHERS.has(assertion.matcher) && !SYNTHETIC_LITERAL_MATCHERS.has(assertion.matcher)) {
           return;
         }
-        if (names.has(assertion.key.name)) {
-          return;
+        paths.push([...assertion.key.path]);
+      }
+      const commonPrefix: string[] = [];
+      for (let index = 0; ; index += 1) {
+        const candidate = paths[0]?.[index];
+        if (candidate === undefined || paths.some((path) => path[index] !== candidate || path.length === index + 1)) {
+          break;
         }
-        names.add(assertion.key.name);
+        commonPrefix.push(candidate);
+      }
+      for (const [assertionIndex, assertion] of run.entries()) {
+        if (assertion.key.kind !== "property") return;
+        let branch = tree;
+        const relativePath = paths[assertionIndex]?.slice(commonPrefix.length) ?? [];
+        for (const [index, name] of relativePath.entries()) {
+          const leaf = index === relativePath.length - 1;
+          const existing = branch.get(name);
+          if (leaf) {
+            if (existing !== undefined) return;
+            branch.set(name, assertion.expectedText);
+          } else if (existing === undefined) {
+            const nested: ObjectTree = new Map();
+            branch.set(name, nested);
+            branch = nested;
+          } else if (existing instanceof Map) {
+            branch = existing;
+          } else {
+            return;
+          }
+        }
       }
       const first = run[0];
       if (first === undefined) {
         return;
       }
-      const receiverText = sourceCode.getText(first.receiver);
-      const properties = run
-        .map((assertion) =>
-          assertion.key.kind === "property" ? `${assertion.key.name}: ${assertion.expectedText}` : "",
-        )
+      const receiverText = `${sourceCode.getText(first.receiver)}${commonPrefix.map((name) => `.${name}`).join("")}`;
+      const renderTree = (value: ObjectTree): string => [...value.entries()]
+        .map(([name, child]) => `${name}: ${child instanceof Map ? `{ ${renderTree(child)} }` : child}`)
         .join(", ");
+      const properties = renderTree(tree);
       context.report({
         node: first.statement,
         messageId: "combineAssertions",

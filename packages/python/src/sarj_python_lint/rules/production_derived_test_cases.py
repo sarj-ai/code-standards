@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -31,6 +31,11 @@ if TYPE_CHECKING:
 _COLLECTION_WRAPPERS = frozenset({"sorted", "set", "tuple"})
 _PARAMETRIZE_CASES_INDEX = 1
 _PARAMETRIZE_MIN_ARGS = 2
+
+
+class _PytestBindings(NamedTuple):
+    modules: set[str]
+    marks: set[str]
 
 
 def _scope_binding_counts(statements: list[ast.stmt]) -> dict[str, int]:
@@ -95,7 +100,7 @@ def _imported_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> set[
     return bindings
 
 
-def _pytest_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> tuple[set[str], set[str]]:
+def _pytest_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> _PytestBindings:
     modules: set[str] = set()
     marks: set[str] = set()
     for node in tree.body:
@@ -111,7 +116,7 @@ def _pytest_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> tuple[
                 for alias in node.names
                 if alias.name == "mark" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
             )
-    return modules, marks
+    return _PytestBindings(modules, marks)
 
 
 def _direct_imported_collection(node: ast.expr, imported: set[str]) -> ast.Name | None:
@@ -261,12 +266,17 @@ class ProductionDerivedTestCases(Rule):
             return []
         binding_counts = _scope_binding_counts(tree.body)
         imported = _imported_bindings(tree, binding_counts)
-        pytest_modules, pytest_marks = _pytest_bindings(tree, binding_counts)
+        pytest_bindings = _pytest_bindings(tree, binding_counts)
         independently_asserted = _independently_asserted_collections(tree, imported)
         findings: list[Diagnostic] = []
         for node, blocked in _collected_tests(tree):
             for decorator in node.decorator_list:
-                cases = _parametrize_cases(decorator, pytest_modules, pytest_marks, blocked)
+                cases = _parametrize_cases(
+                    decorator,
+                    pytest_bindings.modules,
+                    pytest_bindings.marks,
+                    blocked,
+                )
                 if cases is None:
                     continue
                 collection = _direct_imported_collection(cases, imported)

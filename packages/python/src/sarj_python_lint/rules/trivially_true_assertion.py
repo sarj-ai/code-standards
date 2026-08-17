@@ -74,6 +74,13 @@ _UNITTEST_ECHO_ASSERTS = frozenset({"assertEqual", "assertIs"})
 
 _UNITTEST_ISINSTANCE_ASSERT = "assertIsInstance"
 
+
+@dataclass(frozen=True, slots=True)
+class _EchoOperands:
+    left: ast.expr
+    right: ast.expr
+
+
 type _Assertion = ast.Assert | ast.Call
 
 _KWARG_DIAGNOSIS = (
@@ -369,8 +376,7 @@ def _kwarg_echo(
     operands = _echo_operands(node)
     if operands is None:
         return None
-    left, right = operands
-    for attribute, literal in ((left, right), (right, left)):
+    for attribute, literal in ((operands.left, operands.right), (operands.right, operands.left)):
         if not isinstance(attribute, ast.Attribute) or not isinstance(attribute.value, ast.Name):
             continue
         if attribute.attr.startswith(_DUNDER_PREFIX):
@@ -398,18 +404,18 @@ def _uses_imported_binding(func: ast.expr, imported_names: frozenset[str]) -> bo
     return isinstance(current, ast.Name) and current.id in imported_names
 
 
-def _echo_operands(node: _Assertion) -> tuple[ast.expr, ast.expr] | None:
+def _echo_operands(node: _Assertion) -> _EchoOperands | None:
     if isinstance(node, ast.Assert):
         test = node.test
         if not isinstance(test, ast.Compare) or len(test.ops) != 1 or not isinstance(test.ops[0], _ECHO_OPS):
             return None
-        return test.left, test.comparators[0]
+        return _EchoOperands(test.left, test.comparators[0])
     if (
         isinstance(node.func, ast.Attribute)
         and node.func.attr in _UNITTEST_ECHO_ASSERTS
         and len(node.args) >= _ISINSTANCE_ARITY
     ):
-        return node.args[0], node.args[1]
+        return _EchoOperands(node.args[0], node.args[1])
     return None
 
 

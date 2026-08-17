@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
 from fnmatch import fnmatch
 from itertools import pairwise
@@ -177,7 +178,7 @@ _SKILL_ARTIFACT_ROOTS: Final = frozenset({".agents", ".claude"})
 _GIT_SAFE_ENV: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
-_GIT_DISCOVERY_TIMEOUT_SECONDS: Final = 5.0
+_GIT_DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)
 
 
 def _git_environment() -> dict[str, str]:
@@ -368,7 +369,7 @@ def _git_worktree(root: Path) -> bool:
             capture_output=True,
             env=_git_environment(),
             text=True,
-            timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
+            timeout=_GIT_DISCOVERY_TIMEOUT.total_seconds(),
         )
     except OSError, subprocess.TimeoutExpired:
         return False
@@ -388,7 +389,7 @@ def _installed_hook_managers(root: Path) -> frozenset[str]:
             capture_output=True,
             env=_git_environment(),
             text=True,
-            timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
+            timeout=_GIT_DISCOVERY_TIMEOUT.total_seconds(),
         )
     except OSError, subprocess.TimeoutExpired:
         return frozenset()
@@ -1189,7 +1190,7 @@ def _walk(root: Path) -> tuple[Path, ...]:
                 capture_output=True,
                 env=_git_environment(),
                 shell=False,
-                timeout=_GIT_DISCOVERY_TIMEOUT_SECONDS,
+                timeout=_GIT_DISCOVERY_TIMEOUT.total_seconds(),
             )
             if git is not None
             else None

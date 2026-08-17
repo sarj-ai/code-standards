@@ -141,22 +141,33 @@ def test_explicit_non_tuple_contract_wins_over_tuple_implementation():
     assert _check("def f() -> object:\n    return 1, 'a'\n") == []
 
 
-def test_private_owning_class_is_not_a_public_boundary():
-    assert _check("class _Internal:\n    def pair(self) -> tuple[int, str]: ...\n") == []
+def test_private_owning_class_is_checked():
+    assert len(_check("class _Internal:\n    def pair(self) -> tuple[int, str]: ...\n")) == 1
 
 
-def test_does_not_fire_on_private_function():
-    assert _check("def _helper() -> tuple[int, str]: ...\n") == []
-    assert _check("def __dunder__() -> tuple[int, str]: ...\n") == []
+def test_fires_on_private_function():
+    assert len(_check("def _helper() -> tuple[int, str]: ...\n")) == 1
+    assert len(_check("def __dunder__() -> tuple[int, str]: ...\n")) == 1
 
 
-def test_does_not_fire_on_private_async():
-    assert _check("async def _helper() -> tuple[int, str]: ...\n") == []
-
-
-def test_does_not_fire_on_private_method():
-    src = "class C:\n    def _m(self) -> tuple[int, str]: ...\n"
+@pytest.mark.parametrize("method", ["__reduce__", "__reduce_ex__"])
+def test_pickle_protocol_positional_returns_are_exempt(method: str):
+    argument = ", protocol: int" if method == "__reduce_ex__" else ""
+    src = (
+        "class Record:\n"
+        f"    def {method}(self{argument}) -> tuple[object, tuple[str]]:\n"
+        "        return Record, ('value',)\n"
+    )
     assert _check(src) == []
+
+
+def test_fires_on_private_async():
+    assert len(_check("async def _helper() -> tuple[int, str]: ...\n")) == 1
+
+
+def test_fires_on_private_method():
+    src = "class C:\n    def _m(self) -> tuple[int, str]: ...\n"
+    assert len(_check(src)) == 1
 
 
 def test_reports_at_function_def_line_and_col():
@@ -189,11 +200,9 @@ def test_syntax_error_returns_empty():
     assert _check("def f( -> tuple[int, str]\n") == []
 
 
-def test_nested_function_is_exempt():
-    # A closure has no callers outside its enclosing frame, so its pair never
-    # crosses the boundary this rule guards.
+def test_nested_function_is_checked():
     src = "def outer():\n    def inner() -> tuple[int, str]: ...\n    return inner\n"
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_suppression_recognized():
@@ -203,11 +212,68 @@ def test_suppression_recognized():
     assert is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 
 
-def test_test_file_is_exempt():
-    # Minimized from trio's test helpers: an ad-hoc pair from a test fixture is
-    # local scaffolding, not a public boundary.
+def test_test_helper_is_checked():
     src = "async def make_pipe() -> tuple[PipeSendStream, PipeReceiveStream]:\n    return a, b\n"
-    assert _check(src, path="src/trio/_tests/test_windows_pipes.py") == []
+    assert len(_check(src, path="src/trio/_tests/test_windows_pipes.py")) == 1
+
+
+def test_pytest_fixture_remains_owned_by_fixture_rule():
+    src = "@pytest.fixture\ndef pair() -> tuple[int, str]:\n    return 1, 'a'\n"
+    assert _check(src, path="tests/test_pair.py") == []
+
+
+def test_aliased_pytest_fixture_remains_owned_by_fixture_rule():
+    src = "from pytest import fixture as fx\n\n@fx\ndef pair() -> tuple[int, str]:\n    return 1, 'a'\n"
+    assert _check(src, path="tests/test_pair.py") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def _key(value: str) -> tuple[str, str]:\n    return value, value.casefold()\n\ncache.get(_key('a'))\n",
+        "def _key(value: str) -> tuple[str, str]:\n    return value, value.casefold()\n\nkey = _key('a')\ncache[key] = 1\n",
+        "def _position(value: str) -> tuple[str, str]:\n    return value, value.casefold()\n\nposition = _position('a')\nif current < position:\n    pass\n",
+    ],
+)
+def test_private_tuple_consumed_only_as_opaque_key_is_exempt(source: str):
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        "left, right = _key('a')",
+        "first = _key('a')[0]",
+        "return_value = consume(_key('a'))",
+    ],
+)
+def test_private_tuple_with_positional_or_unconstrained_use_still_fires(use: str):
+    src = f"def _key(value: str) -> tuple[str, str]:\n    return value, value.casefold()\n\n{use}\n"
+    assert len(_check(src)) == 1
+
+
+def test_frozen_dataclass_composite_key_property_is_exempt():
+    src = """
+@dataclass(frozen=True)
+class Route:
+    file: str
+    method: str
+
+    @property
+    def key(self) -> tuple[str, str]:
+        return self.file, self.method
+"""
+    assert _check(src) == []
+
+
+def test_unproven_key_property_still_fires():
+    src = """
+class Result:
+    @property
+    def key(self) -> tuple[str, str]:
+        return self.left, self.right
+"""
+    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize("path", ["docs_src/tutorial.py", "docs/examples/tutorial.py"])
@@ -292,18 +358,18 @@ def render_scope(scope):
     assert _check(src) == []
 
 
-def test_method_nested_in_a_function_is_exempt():
+def test_method_nested_in_a_function_is_checked():
     src = """
 def build():
     class Inner:
         def pair(self) -> tuple[int, str]: ...
     return Inner
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_module_level_function_still_fires_after_a_nested_one():
-    # The closure skip must not swallow the functions that follow it.
+    # Nested coverage must not swallow the module functions that follow it.
     src = """
 def outer():
     def inner() -> tuple[int, str]: ...
@@ -313,8 +379,7 @@ def outer():
 def public() -> tuple[bytes, str]: ...
 """
     diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].line == 7
+    assert [diag.line for diag in diags] == [3, 7]
 
 
 def test_override_decorated_method_is_exempt():
@@ -396,6 +461,68 @@ class B(Base):
     def pair(self) -> tuple[int, str]: ...
 """
     assert len(_check(src)) == 2
+
+
+def test_local_contract_reports_once_at_owning_declaration():
+    src = """
+class Store:
+    def get(self) -> tuple[str, int]: ...
+
+
+class PsqlStore(Store):
+    def get(self) -> tuple[str, int]: ...
+"""
+    diagnostics = _check(src)
+    assert [diagnostic.line for diagnostic in diagnostics] == [3]
+
+
+def test_imported_contract_implementation_in_test_support_is_exempt():
+    src = """
+class FakeStore(Store):
+    def get(self) -> tuple[str, int]: ...
+"""
+    assert _check(src, "tests/fakes/store.py") == []
+
+
+def test_private_test_helper_on_a_foreign_subclass_still_fires():
+    src = """
+class FakeStore(Store):
+    def _make_pair(self) -> tuple[str, int]: ...
+"""
+    assert len(_check(src, "tests/fakes/store.py")) == 1
+
+
+def test_nested_adapter_that_only_feeds_an_inherited_return_is_exempt():
+    src = """
+class Store:
+    def get(self) -> tuple[str, int]: ...
+
+
+class PsqlStore(Store):
+    def get(self) -> tuple[str, int]:
+        def _read() -> tuple[str, int]:
+            return 'value', 1
+        return run(_read)
+"""
+    diagnostics = _check(src)
+    assert [diagnostic.line for diagnostic in diagnostics] == [3]
+
+
+def test_nested_adapter_that_escapes_an_override_still_fires():
+    src = """
+class Store:
+    def get(self) -> tuple[str, int]: ...
+
+
+class PsqlStore(Store):
+    def get(self) -> tuple[str, int]:
+        def _read() -> tuple[str, int]:
+            return 'value', 1
+        register(_read)
+        return run(_read)
+"""
+    diagnostics = _check(src)
+    assert [diagnostic.line for diagnostic in diagnostics] == [3, 8]
 
 
 def test_single_class_with_a_foreign_base_still_fires():

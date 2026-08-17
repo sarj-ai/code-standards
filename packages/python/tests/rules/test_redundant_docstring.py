@@ -60,6 +60,15 @@ def test_one_novel_word_keeps_the_docstring():
     assert _fn("update_message(task_id: str)", "Update the task message, clobbering any draft.") == []
 
 
+@pytest.mark.parametrize("provider", ["LLM", "STT", "TTS"])
+def test_update_is_filler_for_setter_docstrings(provider: str):
+    assert len(_fn(f"set_{provider.lower()}_provider(provider: str)", f"Update {provider} provider.")) == 1
+
+
+def test_setter_docstring_with_lifecycle_detail_is_kept():
+    assert _fn("set_llm_provider(provider: str)", "Update LLM provider after model creation.") == []
+
+
 def test_negation_counts_as_content():
     # `not` is a stopword for the comment rules and deliberately NOT one here:
     # contradicting the obvious reading of a name is the most useful thing a

@@ -5,6 +5,7 @@
  */
 
 import {
+  ASTUtils,
   ESLintUtils,
   type ParserServicesWithTypeInformation,
   type TSESTree,
@@ -29,6 +30,7 @@ export const preferAwaitInAsyncReturnDocumentation = {
   limitations: [
     "Only a single directly returned `.then` call with an inline callback is checked.",
     "The receiver must be proven Promise-like by TypeScript; untyped files and larger chains are intentionally ignored.",
+    "Direct loader callbacks passed to resolved `React.lazy` and `next/dynamic` imports are excluded because returning the module Promise is their framework contract.",
   ],
   examples: [
     {
@@ -66,26 +68,26 @@ type RuntimeFunction =
   | TSESTree.FunctionExpression;
 
 /** A direct return owned by an ordinary async function, never an async generator. */
-function isDirectAsyncReturn(node: TSESTree.CallExpression): boolean {
+function directAsyncReturnOwner(node: TSESTree.CallExpression): RuntimeFunction | null {
   const parent = node.parent;
   if (
     parent.type === AST_NODE_TYPES.ArrowFunctionExpression &&
     parent.body === node
   ) {
-    return parent.async && !parent.generator;
+    return parent.async && !parent.generator ? parent : null;
   }
   if (
     parent.type !== AST_NODE_TYPES.ReturnStatement ||
     parent.argument !== node
   ) {
-    return false;
+    return null;
   }
 
   let owner: TSESTree.Node | undefined = parent.parent;
   while (owner !== undefined && !isRuntimeFunction(owner)) {
     owner = owner.parent;
   }
-  return owner !== undefined && owner.async && !owner.generator;
+  return owner !== undefined && owner.async && !owner.generator ? owner : null;
 }
 
 function isRuntimeFunction(node: TSESTree.Node): node is RuntimeFunction {
@@ -178,10 +180,44 @@ export default createRule<Options, MessageIds>({
       services = null;
     }
     if (services === null) return {};
+    type ScopeVariable = NonNullable<ReturnType<typeof ASTUtils.findVariable>>;
+    const frameworkLoaders = new Set<ScopeVariable>();
+    const rememberFrameworkLoader = (identifier: TSESTree.Identifier): void => {
+      const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+      if (variable !== null) frameworkLoaders.add(variable);
+    };
+    const isFrameworkLoaderCallback = (owner: RuntimeFunction): boolean => {
+      const parent = owner.parent;
+      if (
+        parent.type !== AST_NODE_TYPES.CallExpression ||
+        parent.arguments[0] !== owner ||
+        parent.callee.type !== AST_NODE_TYPES.Identifier
+      ) return false;
+      const variable = ASTUtils.findVariable(context.sourceCode.getScope(parent.callee), parent.callee.name);
+      return variable !== null && frameworkLoaders.has(variable);
+    };
 
     return {
+      ImportDeclaration(node): void {
+        if (node.source.value === "react") {
+          for (const specifier of node.specifiers) {
+            if (
+              specifier.type === AST_NODE_TYPES.ImportSpecifier &&
+              (specifier.imported.type === AST_NODE_TYPES.Identifier
+                ? specifier.imported.name
+                : specifier.imported.value) === "lazy"
+            ) rememberFrameworkLoader(specifier.local);
+          }
+        }
+        if (node.source.value === "next/dynamic") {
+          for (const specifier of node.specifiers) {
+            if (specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier) rememberFrameworkLoader(specifier.local);
+          }
+        }
+      },
       CallExpression(node): void {
-        if (!isDirectAsyncReturn(node)) return;
+        const owner = directAsyncReturnOwner(node);
+        if (owner === null || isFrameworkLoaderCallback(owner)) return;
         const receiver = promiseThenReceiver(node);
         if (receiver === null || !isProvenPromiseLike(receiver, services)) {
           return;

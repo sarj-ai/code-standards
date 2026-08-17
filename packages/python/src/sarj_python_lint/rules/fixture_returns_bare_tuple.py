@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -32,6 +32,11 @@ _FIXTURE = "fixture"
 _MIN_FIELDS = 2
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+class _FixtureDecorators(NamedTuple):
+    names: frozenset[str]
+    roots: frozenset[str]
 
 
 class FixtureReturnsBareTuple(Rule):
@@ -132,7 +137,7 @@ def _bare_tuple_results(tree: ast.Module) -> list[tuple[ast.expr, int]]:
     return hits
 
 
-def _fixture_decorator_names(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
+def _fixture_decorator_names(tree: ast.Module) -> _FixtureDecorators:
     names: set[str] = set()
     roots: set[str] = set()
     for statement in tree.body:
@@ -144,15 +149,14 @@ def _fixture_decorator_names(tree: ast.Module) -> tuple[frozenset[str], frozense
             for alias in statement.names:
                 if alias.name == "fixture":
                     names.add(alias.asname or alias.name)
-    return frozenset(names), frozenset(roots)
+    return _FixtureDecorators(frozenset(names), frozenset(roots))
 
 
 def _is_fixture(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
-    fixture_imports: tuple[frozenset[str], frozenset[str]],
+    fixture_imports: _FixtureDecorators,
 ) -> bool:
-    names, roots = fixture_imports
-    return any(_names_fixture(dec, names, roots) for dec in node.decorator_list)
+    return any(_names_fixture(dec, fixture_imports.names, fixture_imports.roots) for dec in node.decorator_list)
 
 
 def _names_fixture(dec: ast.expr, fixture_names: frozenset[str], fixture_roots: frozenset[str]) -> bool:

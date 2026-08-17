@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import re
 import tomllib
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 
 Ecosystem = Literal["python", "typescript"]
 Category = Literal["obsolete", "platform-redundant", "preferred-stack"]
+
+
+class _Location(NamedTuple):
+    line: int
+    column: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -680,9 +685,9 @@ def _requirements_dependencies(
     return tuple(result)
 
 
-def _location(text: str, package: str) -> tuple[int, int]:
+def _location(text: str, package: str) -> _Location:
     pattern = re.compile(re.escape(package), re.IGNORECASE)
     match = pattern.search(text)
     if match is None:
-        return 1, 1
-    return text.count("\n", 0, match.start()) + 1, match.start() - text.rfind("\n", 0, match.start())
+        return _Location(1, 1)
+    return _Location(text.count("\n", 0, match.start()) + 1, match.start() - text.rfind("\n", 0, match.start()))

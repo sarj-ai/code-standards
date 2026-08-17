@@ -6,6 +6,7 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -31,6 +32,13 @@ if TYPE_CHECKING:
 
 _PRNG_FUNCTIONS = frozenset({"choice", "choices", "randint", "random", "randrange", "sample", "shuffle", "uniform"})
 _REPEAT_NODES = (ast.For, ast.AsyncFor, ast.While, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
+@dataclass(frozen=True, slots=True)
+class _RandomAliases:
+    modules: set[str]
+    functions: set[str]
+    seeds: set[str]
 
 
 def _bound_target_names(node: ast.AST) -> set[str]:
@@ -88,7 +96,7 @@ def _module_binding_counts(tree: ast.Module) -> dict[str, int]:
     return counts
 
 
-def _random_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
+def _random_aliases(tree: ast.Module) -> _RandomAliases:
     modules: set[str] = set()
     functions: set[str] = set()
     seeds: set[str] = set()
@@ -109,7 +117,7 @@ def _random_aliases(tree: ast.Module) -> tuple[set[str], set[str], set[str]]:
                     functions.add(local)
                 elif alias.name == "seed":
                     seeds.add(local)
-    return modules, functions, seeds
+    return _RandomAliases(modules, functions, seeds)
 
 
 def _is_prng_call(node: ast.Call, modules: set[str], functions: set[str]) -> bool:
@@ -230,8 +238,8 @@ class UncontrolledRandomnessInTest(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        modules, functions, seeds = _random_aliases(tree)
-        if not modules and not functions:
+        aliases = _random_aliases(tree)
+        if not aliases.modules and not aliases.functions:
             return []
         findings: list[Diagnostic] = []
         for test in _collected_tests(tree):
@@ -242,9 +250,9 @@ class UncontrolledRandomnessInTest(Rule):
                 local_bindings.add(test.args.vararg.arg)
             if test.args.kwarg is not None:
                 local_bindings.add(test.args.kwarg.arg)
-            test_modules = modules - local_bindings
-            test_functions = functions - local_bindings
-            test_seeds = seeds - local_bindings
+            test_modules = aliases.modules - local_bindings
+            test_functions = aliases.functions - local_bindings
+            test_seeds = aliases.seeds - local_bindings
             if not test_modules and not test_functions:
                 continue
             nodes = list(_test_nodes(test))

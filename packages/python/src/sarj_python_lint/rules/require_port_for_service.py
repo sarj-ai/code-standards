@@ -6,6 +6,7 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path, PurePosixPath
 import re
@@ -27,6 +28,13 @@ from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_su
 
 # Name tails that mark a class as a service in this codebase's own vocabulary.
 _SERVICE_NAME_RE = re.compile(r"(?:Service|Store|DAO|Dao|Gateway|Provider)$")
+
+
+@dataclass(frozen=True, slots=True)
+class _StoredParameters:
+    fields_by_parameter: dict[str, frozenset[str]]
+    fallback_stored: frozenset[str]
+
 
 # Classes named as the base of a family are the port being asked for, not a missing one.
 _BASE_NAME_RE = re.compile(r"^(?:Base|Abstract)[A-Z_]")
@@ -445,7 +453,7 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
     init = next((method for method in _methods(node) if method.name == "__init__"), None)
     if init is None:
         return None
-    stored, fallback_stored = _self_stored_parameters(init)
+    stored_parameters = _self_stored_parameters(init)
     candidates: list[tuple[str, frozenset[str]]] = []
     for param, default in _params_with_defaults(init):
         if param.arg == "self":
@@ -460,10 +468,10 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
             continue
         if _WEAK_COLLABORATOR_RE.search(annotation):
             continue
-        fields = stored.get(param.arg)
+        fields = stored_parameters.fields_by_parameter.get(param.arg)
         if fields is None or default is not None or _annotation_allows_none(param.annotation):
             continue
-        if param.arg in fallback_stored:
+        if param.arg in stored_parameters.fallback_stored:
             continue
         if _PERSISTENCE_DEPENDENCY_RE.search(annotation):
             return None
@@ -476,7 +484,7 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
 
 def _self_stored_parameters(
     init: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> tuple[dict[str, frozenset[str]], frozenset[str]]:
+) -> _StoredParameters:
     """Map constructor parameters to fields, recording fallback storage."""
     fields_by_parameter: dict[str, set[str]] = {}
     fallback_stored: set[str] = set()
@@ -506,7 +514,7 @@ def _self_stored_parameters(
         for parameter in _stored_parameter_names(value):
             fields_by_parameter.setdefault(parameter, set()).update(fields)
         fallback_stored.update(_fallback_parameter_names(value))
-    return (
+    return _StoredParameters(
         {parameter: frozenset(fields) for parameter, fields in fields_by_parameter.items()},
         frozenset(fallback_stored),
     )

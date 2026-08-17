@@ -101,6 +101,20 @@ typedRuleTester.run("prefer-await-in-async-return", rule, {
         return Promise.resolve(1).then((value) => value + 1);
       }`,
     },
+    {
+      name: "allows a resolved React lazy named-export adapter",
+      code: `
+        import { lazy as reactLazy } from "react";
+        reactLazy(async () => Promise.resolve({ Page: 1 }).then((module) => ({ default: module.Page })));
+      `,
+    },
+    {
+      name: "allows a resolved next dynamic named-export adapter",
+      code: `
+        import loadDynamic from "next/dynamic";
+        loadDynamic(async () => Promise.resolve({ Page: 1 }).then((module) => module.Page));
+      `,
+    },
   ],
   invalid: [
     {
@@ -125,6 +139,25 @@ typedRuleTester.run("prefer-await-in-async-return", rule, {
       code: `
         declare const value: PromiseLike<number>;
         async function load() { return value.then((input) => input + 1); }
+      `,
+      errors: [{ messageId: "preferAwait" }],
+    },
+    {
+      name: "reports an unrelated local lazy helper",
+      code: `
+        declare function lazy(loader: () => Promise<number>): void;
+        lazy(async () => Promise.resolve(1).then((value) => value + 1));
+      `,
+      errors: [{ messageId: "preferAwait" }],
+    },
+    {
+      name: "reports a shadowed next dynamic binding",
+      code: `
+        import dynamic from "next/dynamic";
+        function configure(): void {
+          const dynamic = (loader: () => Promise<number>): void => { void loader; };
+          dynamic(async () => Promise.resolve(1).then((value) => value + 1));
+        }
       `,
       errors: [{ messageId: "preferAwait" }],
     },

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 import os
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, final, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -66,6 +66,16 @@ class _Binding:
 class _HiddenParameter:
     parameter: ast.arg
     uses_boolean_or: bool
+
+
+class _LoadedModule(NamedTuple):
+    tree: ast.Module
+    path: Path
+
+
+class _CanonicalSymbol(NamedTuple):
+    module: str
+    symbol: str
 
 
 @final
@@ -379,7 +389,8 @@ class _RuntimeConfigResolver:
         if loaded is None:
             self._settings_cache[key] = False
             return False
-        tree, module_path = loaded
+        tree = loaded.tree
+        module_path = loaded.path
         imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
         classes = _base_settings_classes(tree, imports)
         factory = _assigned_factory(tree, symbol)
@@ -419,7 +430,8 @@ class _RuntimeConfigResolver:
         if loaded is None:
             self._settings_class_cache[key] = False
             return False
-        tree, module_path = loaded
+        tree = loaded.tree
+        module_path = loaded.path
         imports = _imports(tree, module, is_package=module_path.name == "__init__.py")
         if symbol in _base_settings_classes(tree, imports):
             self._settings_class_cache[key] = True
@@ -441,13 +453,13 @@ class _RuntimeConfigResolver:
         self._settings_class_cache[key] = result
         return result
 
-    def _load_module(self, module: str) -> tuple[ast.Module, Path] | None:
+    def _load_module(self, module: str) -> _LoadedModule | None:
         if module == self._module:
-            return self._tree, self._path
+            return _LoadedModule(self._tree, self._path)
         path = _module_path(module, self._root)
         if path is None:
             return None
-        return _read_module(path), path
+        return _LoadedModule(_read_module(path), path)
 
 
 def _imports(tree: ast.Module, current_module: str | None, *, is_package: bool = False) -> dict[str, _Binding]:
@@ -635,13 +647,13 @@ def _distribution_calls_class(root: Path, target_module: str, class_name: str) -
                 if called_symbol != class_name:
                     continue
                 canonical = _canonical_symbol(root, called_module, called_symbol)
-                if canonical == (target_module, class_name):
+                if canonical == _CanonicalSymbol(target_module, class_name):
                     return True
     return False
 
 
 @lru_cache(maxsize=4096)
-def _canonical_symbol(root: Path, module: str, symbol: str) -> tuple[str, str]:
+def _canonical_symbol(root: Path, module: str, symbol: str) -> _CanonicalSymbol:
     return _canonical_symbol_inner(root, module, symbol, frozenset())
 
 
@@ -650,16 +662,16 @@ def _canonical_symbol_inner(
     module: str,
     symbol: str,
     seen: frozenset[tuple[str, str]],
-) -> tuple[str, str]:
+) -> _CanonicalSymbol:
     key = (module, symbol)
     if key in seen:
-        return key
+        return _CanonicalSymbol(module, symbol)
     path = _module_path(module, root)
     if path is None:
-        return key
+        return _CanonicalSymbol(module, symbol)
     binding = _imports(_read_module(path), module, is_package=path.name == "__init__.py").get(symbol)
     if binding is None or binding.symbol is None:
-        return key
+        return _CanonicalSymbol(module, symbol)
     return _canonical_symbol_inner(root, binding.module, binding.symbol, seen | {key})
 
 

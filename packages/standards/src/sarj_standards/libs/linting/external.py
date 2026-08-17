@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 import tomllib
-from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
+from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Protocol
 
 from pathspec import PathSpec
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,6 +46,17 @@ if TYPE_CHECKING:
     from typing import BinaryIO
 
     from .policy import Policy
+
+
+class _ReactDoctorSelection(NamedTuple):
+    project: Path
+    projects: tuple[Path, ...]
+
+
+class _PreparedInputs(NamedTuple):
+    repository: Path
+    selected: tuple[str, ...]
+    grouped: GroupedPaths
 
 
 _TIMEOUT = timedelta(seconds=120)
@@ -398,7 +409,7 @@ def _selected_react_doctor_projects(
     enabled: bool,
     has_typescript: bool,
     capabilities: frozenset[str] | None,
-) -> tuple[Path, tuple[Path, ...]] | None:
+) -> _ReactDoctorSelection | None:
     if not enabled or not has_typescript or (capabilities is not None and "eslint" not in capabilities):
         return None
     adopted = manifest.load(root)
@@ -406,7 +417,7 @@ def _selected_react_doctor_projects(
     excluded = () if adopted is None else adopted.doctor_excluded_paths
     if project is None or not (projects := _react_project_roots(project, repository=root, excluded=excluded)):
         return None
-    return project, projects
+    return _ReactDoctorSelection(project, projects)
 
 
 def _react_doctor_root(root: Path, *, adopted: manifest.Manifest | None = None) -> Path | None:
@@ -1204,11 +1215,13 @@ def _prepare_inputs(
     *,
     policy: Policy | None = None,
     grouped: GroupedPaths | None = None,
-) -> tuple[Path, tuple[str, ...], GroupedPaths]:
+) -> _PreparedInputs:
     repository = root.resolve()
     contained = tuple(_contained_path(item, repository) for item in files)
     selected = contained if policy is None else policy.filter_paths(contained)
-    return repository, selected, grouped if grouped is not None else group_paths(selected, policy=policy)
+    return _PreparedInputs(
+        repository, selected, grouped if grouped is not None else group_paths(selected, policy=policy)
+    )
 
 
 def _contained_path(value: str, root: Path) -> str:

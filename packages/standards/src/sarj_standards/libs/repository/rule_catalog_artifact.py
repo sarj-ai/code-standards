@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 import json
 from pathlib import Path, PurePosixPath
 import shutil
@@ -60,7 +61,7 @@ _TYPESCRIPT_EXAMPLE_FIELDS: Final = frozenset(
     {"expectedCount", "files", "fixedFiles", "focusPath", "id", "outcome", "scenarioId", "title"}
 )
 _TYPESCRIPT_FILE_FIELDS: Final = frozenset({"path", "source"})
-_PROCESS_TIMEOUT_SECONDS: Final = 120
+_PROCESS_TIMEOUT: Final = timedelta(seconds=120)
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,7 +453,7 @@ def _typescript_specs(root: Path) -> tuple[RuleSpec, ...]:
         (npm, "run", "build", "--silent"),
         cwd=package,
         check=True,
-        timeout=_PROCESS_TIMEOUT_SECONDS,
+        timeout=_PROCESS_TIMEOUT.total_seconds(),
     )
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved executable and fixed projection.
         (node, "--input-type=module", "--eval", _NODE_PROJECTION),
@@ -460,7 +461,7 @@ def _typescript_specs(root: Path) -> tuple[RuleSpec, ...]:
         check=True,
         capture_output=True,
         text=True,
-        timeout=_PROCESS_TIMEOUT_SECONDS,
+        timeout=_PROCESS_TIMEOUT.total_seconds(),
     )
     payload: object = json.loads(completed.stdout)  # pyright: ignore[reportAny]
     return parse_typescript_projection(payload)

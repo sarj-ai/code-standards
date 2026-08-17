@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import tarfile
+from typing import NamedTuple
 
 import pytest
 
@@ -50,14 +51,19 @@ class FakeRunner:
         return ProcessResult(0, f"build output\n{json.dumps(report)}\n")
 
 
-def _package(tmp_path: Path) -> tuple[Path, FakeRunner]:
+class _PackageFixture(NamedTuple):
+    package: Path
+    runner: FakeRunner
+
+
+def _package(tmp_path: Path) -> _PackageFixture:
     root = tmp_path / "package"
     root.mkdir()
     (root / "package.json").write_text(
         '{"name":"example","version":"1.0.0","main":"./dist/index.js"}',
         encoding="utf-8",
     )
-    return root, FakeRunner(root)
+    return _PackageFixture(root, FakeRunner(root))
 
 
 def test_pack_typescript_uses_argv_and_verifies_archive(tmp_path: Path) -> None:

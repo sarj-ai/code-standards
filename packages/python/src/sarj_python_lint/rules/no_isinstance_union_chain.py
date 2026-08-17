@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -33,6 +33,12 @@ _MIN_CHAIN_LENGTH = 2
 
 # `isinstance(x, T)` takes exactly two positional arguments.
 _ISINSTANCE_ARG_COUNT = 2
+
+
+class _IsinstanceTypeTest(NamedTuple):
+    subject: ast.expr
+    type_expression: ast.expr
+
 
 # Exclude builtins and ABCs even when a same-named local class shadows them.
 _EXCLUDED_TYPE_NAMES = frozenset(
@@ -218,7 +224,8 @@ def _qualifying_chain_length(head: ast.If, local_classes: frozenset[str]) -> int
         parsed = _isinstance_single_type(current.test)
         if parsed is None:
             return 0
-        target, type_node = parsed
+        target = parsed.subject
+        type_node = parsed.type_expression
         if not isinstance(target, ast.Name):
             # Match evaluates its subject once, while an isinstance ladder
             # repeats attributes, subscriptions, and calls for every arm.
@@ -299,7 +306,7 @@ def _ast_equal(a: ast.expr, b: ast.expr) -> bool:
     return ast.dump(a) == ast.dump(b)
 
 
-def _isinstance_single_type(test: ast.expr) -> tuple[ast.expr, ast.expr] | None:
+def _isinstance_single_type(test: ast.expr) -> _IsinstanceTypeTest | None:
     """Parse `test` as `isinstance(x, T)` with a single (non-tuple) type argument."""
     if not isinstance(test, ast.Call):
         return None
@@ -308,4 +315,4 @@ def _isinstance_single_type(test: ast.expr) -> tuple[ast.expr, ast.expr] | None:
     if len(test.args) != _ISINSTANCE_ARG_COUNT or test.keywords:
         return None
     target, type_node = test.args
-    return target, type_node
+    return _IsinstanceTypeTest(target, type_node)

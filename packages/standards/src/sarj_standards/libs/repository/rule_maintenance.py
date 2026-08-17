@@ -8,7 +8,7 @@ from importlib import import_module
 import json
 from operator import itemgetter
 import re
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, NamedTuple, Protocol
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.linting import textlint
@@ -37,6 +37,12 @@ class Rule(Protocol):
 
 class RuleDocumentation(Protocol):
     aliases: tuple[str, ...]
+
+
+class _NativeLedgerState(NamedTuple):
+    rules: dict[str, list[str]]
+    codes: dict[str, list[str]]
+    renames: dict[tuple[str, str], str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +138,7 @@ def sync_ledger(root: Path, *, check: bool) -> SyncResult:
     return SyncResult(status, f"wrote: {path}")
 
 
-def _native_ledger_state() -> tuple[dict[str, list[str]], dict[str, list[str]], dict[tuple[str, str], str]]:
+def _native_ledger_state() -> _NativeLedgerState:
     rules: dict[str, list[str]] = {}
     codes: dict[str, list[str]] = {}
     renames: dict[tuple[str, str], str] = {}
@@ -145,7 +151,7 @@ def _native_ledger_state() -> tuple[dict[str, list[str]], dict[str, list[str]], 
                 continue
             for old_id in rule.documentation.aliases:
                 renames[family, old_id] = rule_id
-    return rules, codes, renames
+    return _NativeLedgerState(rules, codes, renames)
 
 
 def repository_table(value: object) -> dict[str, object]:

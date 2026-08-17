@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
-from typing import TYPE_CHECKING, Protocol, Self
+from typing import TYPE_CHECKING, NamedTuple, Protocol, Self
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -18,6 +18,11 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _SCOPED_PACKAGE_PARTS = 2
+
+
+class _PublicationTime(NamedTuple):
+    available: bool
+    published: datetime | None
 
 
 def load_exact_exclusions(path: Path) -> frozenset[str]:
@@ -213,15 +218,18 @@ def _check_identity(
     return None
 
 
-def _publication_time(packument: Mapping[str, object], version: str) -> tuple[bool, datetime | None]:
+def _publication_time(packument: Mapping[str, object], version: str) -> _PublicationTime:
     time_value = packument.get("time")
     if not is_object_dict(time_value):
-        return False, None
+        return _PublicationTime(available=False, published=None)
     published = string_object_dict(time_value, label="npm publication times").get(version)
     if not isinstance(published, str):
-        return False, None
+        return _PublicationTime(available=False, published=None)
     try:
         parsed = datetime.fromisoformat(published)
     except ValueError:
-        return True, None
-    return True, parsed.astimezone(UTC) if parsed.tzinfo is not None else None
+        return _PublicationTime(available=True, published=None)
+    return _PublicationTime(
+        available=True,
+        published=parsed.astimezone(UTC) if parsed.tzinfo is not None else None,
+    )

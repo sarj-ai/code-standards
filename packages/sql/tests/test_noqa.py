@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_sql_lint.__main__ import main
 from sarj_sql_lint.rule_base import is_suppressed
@@ -20,38 +20,43 @@ def _write(tmp_path: Path, text: str) -> Path:
     return f
 
 
-def _run(rule: str, f: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, list[str]]:
+class _RunResult(NamedTuple):
+    exit_code: int
+    lines: list[str]
+
+
+def _run(rule: str, f: Path, capsys: pytest.CaptureFixture[str]) -> _RunResult:
     code = main(["check", "--rule", rule, str(f)])
     out = capsys.readouterr().out
-    return code, [line for line in out.splitlines() if line]
+    return _RunResult(code, [line for line in out.splitlines() if line])
 
 
 def test_bare_noqa_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL -- sarj-noqa\n")
-    code, lines = _run("enforce-timestamptz", f, capsys)
-    assert code == 0
-    assert lines == []
+    result = _run("enforce-timestamptz", f, capsys)
+    assert result.exit_code == 0
+    assert result.lines == []
 
 
 def test_noqa_with_matching_code_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL -- sarj-noqa: SARJ101\n")
-    code, lines = _run("enforce-timestamptz", f, capsys)
-    assert code == 0
-    assert lines == []
+    result = _run("enforce-timestamptz", f, capsys)
+    assert result.exit_code == 0
+    assert result.lines == []
 
 
 def test_noqa_with_other_code_does_not_suppress(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL -- sarj-noqa: SARJ999\n")
-    code, lines = _run("enforce-timestamptz", f, capsys)
-    assert code == 1
-    assert len(lines) == 1
+    result = _run("enforce-timestamptz", f, capsys)
+    assert result.exit_code == 1
+    assert len(result.lines) == 1
 
 
 def test_no_noqa_reports(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL\n")
-    code, lines = _run("enforce-timestamptz", f, capsys)
-    assert code == 1
-    assert len(lines) == 1
+    result = _run("enforce-timestamptz", f, capsys)
+    assert result.exit_code == 1
+    assert len(result.lines) == 1
 
 
 def test_noqa_only_suppresses_its_own_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
@@ -59,10 +64,10 @@ def test_noqa_only_suppresses_its_own_line(tmp_path: Path, capsys: pytest.Captur
         tmp_path,
         "CREATE TABLE a (id INT); -- sarj-noqa: SARJ102\nCREATE TABLE b (id INT);\n",
     )
-    code, lines = _run("idempotent-ddl", f, capsys)
-    assert code == 1
-    assert len(lines) == 1
-    assert ":2:" in lines[0]
+    result = _run("idempotent-ddl", f, capsys)
+    assert result.exit_code == 1
+    assert len(result.lines) == 1
+    assert ":2:" in result.lines[0]
 
 
 def test_is_suppressed_unit():

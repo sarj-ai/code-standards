@@ -10,7 +10,12 @@ import re
 import shlex
 import textwrap
 import tomllib
-from typing import TYPE_CHECKING, Final, cast  # ruff: ignore[banned-api] -- narrow untyped YAML at one boundary.
+from typing import (
+    TYPE_CHECKING,
+    Final,
+    NamedTuple,
+    cast,  # ruff: ignore[banned-api] -- narrow untyped YAML at one boundary.
+)
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
@@ -24,6 +29,16 @@ from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+
+class _JsonObjectResult(NamedTuple):
+    document: dict[str, object] | None
+    error: str | None
+
+
+class _HookMigration(NamedTuple):
+    migrated: str | None
+    error: str | None
 
 
 @dataclass(frozen=True)
@@ -727,17 +742,17 @@ def _extend_ruff_replacement_policy(text: str) -> str:
     return _RUFF_LINT_SECTION.sub(rewrite_section, text)
 
 
-def _json_object(path: Path) -> tuple[dict[str, object] | None, str | None]:
+def _json_object(path: Path) -> _JsonObjectResult:
     try:
         parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
             path.read_text(encoding="utf-8")
         )
     except (OSError, ValueError) as exc:
-        return None, str(exc)
+        return _JsonObjectResult(None, str(exc))
     if not isinstance(parsed, dict):
-        return None, "expected a JSON object"
+        return _JsonObjectResult(None, "expected a JSON object")
     document = manifest.as_table(parsed)  # pyright: ignore[reportUnknownArgumentType] -- isinstance establishes the JSON object boundary; as_table narrows its leaves
-    return document, None
+    return _JsonObjectResult(document, None)
 
 
 def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
@@ -1161,25 +1176,25 @@ def _plan_retire_precommit_staged_check(root: Path, plan: Plan) -> None:
     plan.notes.append("removed the generated Standards pre-commit hook because Lefthook is authoritative")
 
 
-def _migrate_official_remote_hook(text: str, runner_prefix: str) -> tuple[str | None, str | None]:
+def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigration:
     """Replace a plain official umbrella hook while retaining every unrelated byte."""
     official = tuple(
         block for block in hooks.precommit_repo_blocks(text) if hooks.is_official_standards_repo(block.repository)
     )
     if not official:
-        return None, None
+        return _HookMigration(None, None)
     for block in official:
         try:
             parsed: object = yaml.safe_load(f"repos:\n{block.text}")  # pyright: ignore[reportAny] -- narrowed below.
         except yaml.YAMLError as exc:
-            return None, f"official Standards hook contains invalid YAML: {exc}"
+            return _HookMigration(None, f"official Standards hook contains invalid YAML: {exc}")
         repos = manifest.list_field(manifest.as_table(parsed), "repos")
         if len(repos) != 1:
-            return None, "official Standards repository block is not a single YAML list item"
+            return _HookMigration(None, "official Standards repository block is not a single YAML list item")
         repository = manifest.as_table(repos[0])
         hook_values = manifest.list_field(repository, "hooks")
         if not hook_values:
-            return None, "official Standards repository block has no hooks"
+            return _HookMigration(None, "official Standards repository block has no hooks")
         for hook_value in hook_values:
             hook = manifest.as_table(hook_value)
             hook_id = hook.get("id")
@@ -1191,17 +1206,17 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> tuple[str | 
                     if custom_keys
                     else f"hook {hook_id!r} is not owned by Standards"
                 )
-                return None, f"{detail}; preserve its scope manually before replacing the remote block"
+                return _HookMigration(None, f"{detail}; preserve its scope manually before replacing the remote block")
     first = official[0].start
     removed = text
     for block in reversed(official):
         removed = removed[: block.start] + removed[block.end :]
     item_indents = {block.indent for block in official}
     if len(item_indents) != 1:
-        return None, "official Standards repository blocks use inconsistent indentation"
+        return _HookMigration(None, "official Standards repository blocks use inconsistent indentation")
     insertion = _precommit_check_block(runner_prefix, item_indent=item_indents.pop())
     migrated = removed[:first] + insertion + removed[first:]
-    return _canonicalize_owned_hooks(migrated, runner_prefix), None
+    return _HookMigration(_canonicalize_owned_hooks(migrated, runner_prefix), None)
 
 
 def _precommit_item_indent(text: str) -> int:
