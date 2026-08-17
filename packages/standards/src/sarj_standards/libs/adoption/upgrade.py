@@ -15,7 +15,7 @@ from packaging.version import Version
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 
-from . import doctor, hooks, lifecycle, manifest, retired_suppressions, scaffold, transaction
+from . import doctor, hooks, lifecycle, manifest, retired_suppressions, scaffold, transaction, uvtool
 
 
 if TYPE_CHECKING:
@@ -84,6 +84,7 @@ class UpgradePlan:
     changes: list[Change]
     config_writes: list[tuple[Path, Path]]
     pin_writes: list[tuple[Path, str]]
+    lockfiles: tuple[Path, ...]
     suppression_writes: list[tuple[Path, str]]
     manifest_text: str
     preconditions: dict[Path, bytes | None]
@@ -145,6 +146,12 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     ]
     scaffold_write_paths = {path for path, _contents in scaffold_plan.writes}
     pin_writes = [(update.path, update.contents) for update in pin_updates if update.path not in scaffold_write_paths]
+    lockfile_candidates: set[Path] = set()
+    for update in pin_updates:
+        sibling_lock = update.path.with_name("uv.lock")
+        if update.path.name == "pyproject.toml" and sibling_lock.is_file():
+            lockfile_candidates.add(sibling_lock)
+    lockfiles = tuple(sorted(lockfile_candidates))
 
     if not _BUNDLE_LINE.search(current_text):
         msg = f"{path} has no replaceable top-level bundle field"
@@ -197,12 +204,14 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         if target != path:
             changes.append(Change(target, "repair adoption wiring"))
     changes.extend(Change(update.path, f"refresh {'/'.join(update.packages)} version pin") for update in pin_updates)
+    changes.extend(Change(lockfile, "refresh Python lockfile") for lockfile in lockfiles)
     changes.extend(Change(path, "migrate retired source suppression") for path, _contents in suppression_writes)
     planned_paths = tuple(
         dict.fromkeys(
             [path]
             + [target for _source, target in config_writes]
             + [target for target, _contents in pin_writes]
+            + list(lockfiles)
             + [target for target, _contents in suppression_writes]
             + [target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)]
         )
@@ -220,6 +229,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         changes,
         config_writes,
         pin_writes,
+        lockfiles,
         suppression_writes,
         manifest_text,
         preconditions,
@@ -294,6 +304,7 @@ def apply(
         [manifest.manifest_path(plan.root)]
         + [target for _source, target in plan.config_writes]
         + [path for path, _contents in plan.pin_writes]
+        + list(plan.lockfiles)
         + [path for path, _contents in plan.suppression_writes]
         + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
     )
@@ -359,11 +370,17 @@ def _apply_and_validate(
     _write_plan(plan, file_transaction)
     if install:
         status = lifecycle.execute(
-            lifecycle.install_commands(
-                plan.root,
-                plan.ecosystems,
-                hook_manager=plan.adopted.hook_manager,
-            )
+            [
+                *(
+                    lifecycle.Command("Python lockfile", uvtool.lock_argv(lockfile.parent), lockfile.parent)
+                    for lockfile in plan.lockfiles
+                ),
+                *lifecycle.install_commands(
+                    plan.root,
+                    plan.ecosystems,
+                    hook_manager=plan.adopted.hook_manager,
+                ),
+            ]
         )
         _mark_installer_writes(file_transaction)
         if status:

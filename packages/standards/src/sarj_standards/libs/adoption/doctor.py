@@ -715,7 +715,16 @@ def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
 
 def _is_pin_site(path: Path) -> bool:
     name = path.name.lower()
-    if name in {"pyproject.toml", ".pre-commit-config.yaml", ".pre-commit-config.yml", "package.json"}:
+    if name in {
+        "pyproject.toml",
+        ".pre-commit-config.yaml",
+        ".pre-commit-config.yml",
+        "package.json",
+        "makefile",
+        "gnumakefile",
+        "lefthook.yml",
+        "lefthook.yaml",
+    }:
         return True
     if name.startswith("requirements") and path.suffix.lower() in {"", ".in", ".txt"}:
         return True

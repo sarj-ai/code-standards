@@ -14,7 +14,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- centralized a
 import sys
 import tempfile
 import tomllib
-from typing import TYPE_CHECKING, Protocol, TypeGuard
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 
 
 if TYPE_CHECKING:
@@ -26,6 +26,7 @@ VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.-]+)?\Z")
 BOT_COMMIT_PREFIX = "chore(standards): adopt "
 MANIFEST = ".sarj-standards.toml"
 LS_REMOTE_FIELDS = 2
+COMMIT_WITH_PARENT_FIELDS = 2
 PORCELAIN_RECORD_MINIMUM = 4
 MANAGED_TRAILER = "Standards-Rollout: managed/v1"
 PR_MARKER_PREFIX = "<!-- sarj-standards-rollout:managed/v1"
@@ -35,6 +36,8 @@ VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed --
 RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
 SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".sql"})
 MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
+MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
+COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
 
 
 class RolloutError(RuntimeError):
@@ -138,7 +141,11 @@ class Plan:
 class BranchPreparation:
     branch: str
     previous_sha: str | None
-    amend: bool = False
+
+
+class ProvisionedTools(NamedTuple):
+    environment: dict[str, str]
+    command_prefix: tuple[str, ...]
 
 
 def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-locals] -- schema fields stay explicit
@@ -474,6 +481,11 @@ def remote_branch_sha(repo: Path, branch: str, runner: CommandRunner) -> str | N
     return fields[0] if len(fields) == LS_REMOTE_FIELDS else None
 
 
+def force_with_lease(branch: str, previous_sha: str | None) -> str:
+    """Bind a rolling-branch push to the exact remote head validated earlier."""
+    return f"--force-with-lease=refs/heads/{branch}:{previous_sha or ''}"
+
+
 def unauthenticated_environment() -> dict[str, str]:
     environment = dict(os.environ)  # ruff: ignore[banned-api] — copy before scrubbing auth
     environment.pop("GH_TOKEN", None)
@@ -482,6 +494,61 @@ def unauthenticated_environment() -> dict[str, str]:
         if name.startswith("STANDARDS_ROLLOUT_"):
             environment.pop(name)
     return environment
+
+
+def provision_consumer_tools(
+    repo: Path,
+    shim_directory: Path,
+    runner: CommandRunner,
+    environment: Mapping[str, str],
+) -> ProvisionedTools:
+    """Provision repository-declared tools and an isolated Corepack shim directory."""
+    prepared = dict(environment)
+    mise_prefix: tuple[str, ...] = ()
+    if any((repo / relative).is_file() for relative in MISE_CONFIG_PATHS):
+        prepared["MISE_YES"] = "1"
+        prepared["MISE_TRUSTED_CONFIG_PATHS"] = str(repo.resolve())
+        installed = runner.run(("mise", "install"), cwd=repo, env=prepared, check=False)
+        if installed.returncode != 0:
+            msg = "could not provision repository-declared mise tools:\n" + verification_detail(installed)
+            raise RolloutError(msg)
+        mise_prefix = ("mise", "exec", "--")
+
+    manager = _declared_corepack_manager(repo)
+    if manager is not None:
+        shim_directory.mkdir(parents=True, exist_ok=True)
+        enabled = runner.run(
+            (*mise_prefix, "corepack", "enable", "--install-directory", str(shim_directory)),
+            cwd=repo,
+            env=prepared,
+            check=False,
+        )
+        if enabled.returncode != 0:
+            msg = f"could not provision isolated Corepack shims for {manager}:\n" + verification_detail(enabled)
+            raise RolloutError(msg)
+        current_path = prepared.get("PATH", "")
+        prepared["PATH"] = f"{shim_directory}{os.pathsep}{current_path}" if current_path else str(shim_directory)
+    return ProvisionedTools(prepared, mise_prefix)
+
+
+def _declared_corepack_manager(repo: Path) -> str | None:
+    """Return the first package manager whose repository pin needs Corepack shims."""
+    for manifest in sorted(repo.glob("**/package.json")):
+        if any(part in {"node_modules", ".git"} for part in manifest.parts):
+            continue
+        try:
+            parsed: object = json.loads(manifest.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        except OSError, json.JSONDecodeError:
+            continue
+        if not is_object(parsed):
+            continue
+        declared = parsed.get("packageManager")
+        if not isinstance(declared, str):
+            continue
+        manager = declared.partition("@")[0]
+        if manager in COREPACK_MANAGERS:
+            return manager
+    return None
 
 
 def synchronize_repository_pin(repo: Path, version: str) -> bool:
@@ -562,24 +629,44 @@ def process_failure_detail(error: subprocess.CalledProcessError) -> str:
     return ("\n".join(values)[-4000:] or str(error)).strip()
 
 
-def prepare_branch(repo: Path, consumer: Consumer, version: str, runner: CommandRunner) -> BranchPreparation:
+def prepare_branch(
+    repo: Path,
+    version: str,
+    base_sha: str,
+    runner: CommandRunner,
+) -> BranchPreparation:
+    """Validate remote ownership, then rebuild the rolling branch from the captured base."""
     branch = rollout_branch(version)
     previous_sha = remote_branch_sha(repo, branch, runner)
     if previous_sha is None:
-        runner.run(("git", "switch", "-c", branch), cwd=repo)
+        runner.run(("git", "switch", "-c", branch, base_sha), cwd=repo)
         return BranchPreparation(branch, None)
     runner.run(("git", "fetch", "origin", branch), cwd=repo)
     message = stdout(runner.run(("git", "show", "-s", "--format=%B", "FETCH_HEAD"), cwd=repo))
-    commit_count = stdout(runner.run(("git", "rev-list", "--count", f"origin/{consumer.branch}..FETCH_HEAD"), cwd=repo))
-    if MANAGED_TRAILER not in message or not message.startswith(BOT_COMMIT_PREFIX) or commit_count not in {"0", "1"}:
+    fetched_commit = stdout(runner.run(("git", "rev-list", "--parents", "-n", "1", "FETCH_HEAD"), cwd=repo)).split()
+    valid_commit_shape = (
+        len(fetched_commit) == COMMIT_WITH_PARENT_FIELDS
+        and fetched_commit[0] == previous_sha
+        and all(re.fullmatch(r"[0-9a-f]{40}", sha) is not None for sha in fetched_commit)
+    )
+    parent_is_base_ancestor = False
+    if valid_commit_shape:
+        ancestry = runner.run(
+            ("git", "merge-base", "--is-ancestor", fetched_commit[1], base_sha),
+            cwd=repo,
+            check=False,
+        )
+        parent_is_base_ancestor = ancestry.returncode == 0
+    if (
+        MANAGED_TRAILER not in message
+        or not message.startswith(BOT_COMMIT_PREFIX)
+        or not valid_commit_shape
+        or not parent_is_base_ancestor
+    ):
         msg = f"refusing human-modified rollout branch {branch}"
         raise RolloutError(msg)
-    if commit_count == "0":
-        runner.run(("git", "switch", "-C", branch, f"origin/{consumer.branch}"), cwd=repo)
-        return BranchPreparation(branch, previous_sha)
-    runner.run(("git", "switch", "-C", branch, "FETCH_HEAD"), cwd=repo)
-    runner.run(("git", "rebase", f"origin/{consumer.branch}"), cwd=repo)
-    return BranchPreparation(branch, previous_sha, amend=True)
+    runner.run(("git", "switch", "-C", branch, base_sha), cwd=repo)
+    return BranchPreparation(branch, previous_sha)
 
 
 def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verification and mutation state bound
@@ -612,10 +699,13 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 consumer.branch,
             )
         )
-        preparation = prepare_branch(repo, consumer, version, runner)
+        base_sha = stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+        if re.fullmatch(r"[0-9a-f]{40}", base_sha) is None:
+            msg = f"{consumer.name}: cloned base did not resolve to a full commit SHA"
+            raise RolloutError(msg)
+        preparation = prepare_branch(repo, version, base_sha, runner)
         branch = preparation.branch
         previous_sha = preparation.previous_sha
-        amend = preparation.amend
         tool = (
             "uvx",
             "--isolated",
@@ -627,22 +717,30 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             "--root",
             ".",
         )
-        unauthenticated = unauthenticated_environment()
+        unauthenticated, tool_prefix = provision_consumer_tools(
+            repo,
+            Path(temporary) / "corepack-bin",
+            runner,
+            unauthenticated_environment(),
+        )
         failures: list[str] = []
         try:
-            runner.run((*tool, "update", "--to", version), cwd=repo, env=unauthenticated)
+            runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=unauthenticated)
         except subprocess.CalledProcessError as exc:
             failures.append("dependency installation failed:\n" + process_failure_detail(exc))
             repair = runner.run(
-                (*tool, "doctor", "--repair", "--no-install"), cwd=repo, env=unauthenticated, check=False
+                (*tool_prefix, *tool, "doctor", "--repair", "--no-install"),
+                cwd=repo,
+                env=unauthenticated,
+                check=False,
             )
             if repair.returncode != 0:
                 failures.append("pre-update safe repair reported drift:\n" + verification_detail(repair))
-            runner.run((*tool, "update", "--to", version, "--no-install"), cwd=repo, env=unauthenticated)
-        doctor = runner.run((*tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
+            runner.run((*tool_prefix, *tool, "update", "--to", version, "--no-install"), cwd=repo, env=unauthenticated)
+        doctor = runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
-        verification = runner.run(consumer.verify, cwd=repo, env=unauthenticated, check=False)
+        verification = runner.run((*tool_prefix, *consumer.verify), cwd=repo, env=unauthenticated, check=False)
         if verification.returncode != 0:
             failures.append("consumer verification failed:\n" + verification_detail(verification))
         verification_failure = "\n\n".join(failures)[-4000:]
@@ -652,8 +750,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             reject_git_metadata(repo, worktree_paths, runner)
             runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
             message = f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}"
-            commit_args = ("--amend", "-m", message) if amend else ("-m", message)
-            runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", *commit_args), cwd=repo)
+            runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", "-m", message), cwd=repo)
         else:
             branch_paths = committed_paths(repo, consumer.branch, runner)
             reject_unsafe_diff(branch_paths)
@@ -663,7 +760,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 runner,
                 comparison=f"origin/{consumer.branch}...HEAD",
             )
-        lease = f"--force-with-lease=refs/heads/{branch}:{previous_sha or ''}"
+        lease = force_with_lease(branch, previous_sha)
         runner.run(("git", "push", lease, "-u", "origin", branch), cwd=repo)
     pull = pull_request(consumer, version, runner)
     body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"

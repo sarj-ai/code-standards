@@ -125,6 +125,21 @@ def test_pin_rewrite_isolates_custom_uvx_launcher_from_consumer_config() -> None
     assert rewritten.packages == ("sarj-standards",)
 
 
+def test_pin_rewrite_migrates_a_multiline_shell_launcher() -> None:
+    text = (
+        "          uvx --no-config --isolated --python 3.14 --from sarj-standards==5.14.1 \\\n"
+        '            sarj-standards check --staged --trust-repository-code --format github -- "${changed_files[@]}"\n'
+    )
+
+    rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": "5.16.1"})
+
+    assert rewritten.contents == (
+        "          uv run --no-config --no-project --python 3.14 python .sarj/standards"
+        ' check --staged --trust-repository-code --format github -- "${changed_files[@]}"\n'
+    )
+    assert rewritten.packages == ("sarj-standards",)
+
+
 def test_upgrade_migrates_legacy_generated_ci_hooks_and_scripts_to_one_launcher(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     workflows = tmp_path / ".github" / "workflows"
@@ -168,6 +183,92 @@ def test_upgrade_migrates_legacy_generated_ci_hooks_and_scripts_to_one_launcher(
     assert "sarj-standards==" not in workflow + hook + script
     assert hook.count("sarj-standards-staged:") == 1
     assert scaffold.standards_check_workflows(tmp_path) == (workflows / "standards.yml",)
+
+
+def test_generated_ci_uses_the_nested_python_projects_uv_version_file(tmp_path: Path) -> None:
+    python = tmp_path / "backend"
+    python.mkdir()
+    _outdated_python_repo(python)
+    (python / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
+    adopted = manifest.Manifest(
+        version="0.0.1",
+        configs=("ruff", "pyright"),
+        python_dest="backend",
+        typescript_dest=".",
+        hook_manager="none",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    workflow = scaffold.github_ci_workflow(tmp_path)
+
+    assert 'version-file: "backend/uv.toml"' in workflow
+    assert "version: '0.12.3'" not in workflow
+
+
+def test_upgrade_refreshes_the_python_lockfile_with_the_consumers_uv_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _outdated_python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            'version = "0.1.0"',
+            'version = "0.1.0"\ndependencies = ["sarj-python-lint==0.1.0"]',
+        ),
+        encoding="utf-8",
+    )
+    lockfile = tmp_path / "uv.lock"
+    lockfile.write_text("stale lock\n", encoding="utf-8")
+    (tmp_path / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
+    commands: list[lifecycle.Command] = []
+
+    def execute(planned: object) -> int:
+        commands.extend(planned)  # type: ignore[arg-type] -- exercise the command boundary
+        lockfile.write_text("fresh lock\n", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(lifecycle, "execute", execute)
+
+    plan = upgrade.build_plan(tmp_path)
+    assert lockfile in plan.lockfiles
+    assert upgrade.apply(plan) == 0
+
+    [lock_command] = [command for command in commands if command.label == "Python lockfile"]
+    assert lock_command.cwd == tmp_path
+    assert tuple(lock_command.argv) == (
+        "uvx",
+        "--no-config",
+        "--isolated",
+        "--from",
+        "uv==0.11.32",
+        "uv",
+        "lock",
+    )
+    assert lockfile.read_text(encoding="utf-8") == "fresh lock\n"
+
+
+@pytest.mark.parametrize("filename", ["Makefile", "GNUmakefile"])
+def test_upgrade_scans_make_and_lefthook_pin_sites(tmp_path: Path, filename: str) -> None:
+    _outdated_python_repo(tmp_path)
+    legacy = "uvx --no-config --isolated --python 3.14 --from sarj-standards==0.0.1 sarj-standards"
+    makefile = tmp_path / filename
+    makefile.write_text(f"standards-check:\n\t{legacy} check --trust-repository-code\n", encoding="utf-8")
+    lefthook = tmp_path / "lefthook.yml"
+    lefthook.write_text(
+        "pre-commit:\n"
+        "  jobs:\n"
+        "    - name: sarj-standards\n"
+        f"      run: {legacy} check --staged --trust-repository-code -- {{staged_files}}\n",
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.1"})
+
+    by_name = {update.path.name: update.contents for update in updates}
+    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    assert launcher_command in by_name[filename]
+    assert launcher_command in by_name["lefthook.yml"]
+    assert all("sarj-standards==" not in contents for contents in by_name.values())
 
 
 def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
