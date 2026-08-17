@@ -358,9 +358,13 @@ def _is_managed_workflow(path: Path) -> bool:
         first_line = path.read_text(encoding="utf-8").splitlines()[0]
     except OSError, IndexError:
         return False
-    return first_line == (
-        "# Managed by sarj-standards; regenerate with "
-        "`sarj-standards show ci --output .github/workflows/standards.yml`."
+    return (
+        re.fullmatch(
+            r"# Managed by sarj-standards(?: [0-9]+\.[0-9]+\.[0-9]+)?; regenerate with "
+            r"`sarj-standards show ci --output \.github/workflows/standards\.yml`\.",
+            first_line,
+        )
+        is not None
     )
 
 
