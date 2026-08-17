@@ -121,6 +121,20 @@ def test_react_doctor_v3_json_becomes_an_advisory_canonical_region(tmp_path: Pat
     assert finding.location.region is not None
 
 
+def test_react_doctor_accepts_omitted_empty_skipped_projects(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [],
+            "error": None,
+        }
+    )
+
+    assert parse_react_doctor(payload, root=tmp_path) == ()
+
+
 def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
     payload = json.dumps(
         {
