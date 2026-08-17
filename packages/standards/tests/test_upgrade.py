@@ -155,7 +155,7 @@ def test_upgrade_installs_only_ecosystems_adopted_by_the_manifest(tmp_path: Path
     assert plan.ecosystems.python_root is None
     assert plan.ecosystems.typescript_install_root is None
     precommit = next(contents for path, contents in plan.scaffold_plan.writes if path.name == ".pre-commit-config.yaml")
-    assert f"uvx --isolated --python 3.14 --from sarj-standards=={manifest.adopted_version()}" in precommit
+    assert f"uvx --no-config --isolated --python 3.14 --from sarj-standards=={manifest.adopted_version()}" in precommit
     assert "uv run --frozen sarj-standards" not in precommit
 
 
@@ -702,7 +702,7 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (workflows / "standards.yml").read_text(encoding="utf-8")
     package_json = (tmp_path / "package.json").read_text(encoding="utf-8")
-    assert f"uvx --isolated --python 3.14 --from sarj-standards=={lint_configs}" in precommit
+    assert f"uvx --no-config --isolated --python 3.14 --from sarj-standards=={lint_configs}" in precommit
     assert "sarj-standards-drift" not in precommit
     assert f"sarj-standards=={lint_configs}" in workflow
     assert f"sarj-standards=={lint_configs}" in package_json

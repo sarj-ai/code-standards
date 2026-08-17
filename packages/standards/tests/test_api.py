@@ -332,6 +332,7 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
     assert commands == [
         [
             "/usr/bin/uvx",
+            "--no-config",
             "--isolated",
             "--python",
             "3.14",
