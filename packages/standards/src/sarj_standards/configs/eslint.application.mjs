@@ -896,10 +896,10 @@ export function createConfig(options = {}) {
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
 
-      // Every suppression must say WHY. `require-description` already covers
-      // eslint-disable comments and `@typescript-eslint/ban-ts-comment` (from
-      // strictTypeChecked) covers `@ts-expect-error`, so a bespoke rule would be
-      // a duplicate.
+      // Upstream rules require a description on eslint-disable and
+      // @ts-expect-error directives. @sarj/no-vague-suppression-description
+      // separately owns descriptions that exist but do not explain why;
+      // ban-ts-comment remains the sole owner of forbidden @ts-ignore usage.
       "@eslint-community/eslint-comments/require-description": [
         "error",
         { ignore: [] },
@@ -1059,6 +1059,7 @@ export function createConfig(options = {}) {
       "@sarj/no-raw-env": "error",
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
+      "@sarj/no-bare-return-from-test-catch": "warn",
       "@sarj/no-long-comment": "error",
       "@sarj/no-vague-suppression-description": "warn",
       "@sarj/no-generic-single-export-module": "error",
@@ -1095,6 +1096,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/iac-source-coupled-test": "warn",
+      "@sarj/repeated-static-call-cases": "warn",
       "@sarj/source-coupled-test": "warn",
       "@sarj/no-positional-tuple-return": "error",
       "@sarj/no-restated-comment": "error",

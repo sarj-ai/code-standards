@@ -10,8 +10,7 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "vagueDescription";
 type Options = readonly [];
 
-const DIRECTIVE_RE = /(?:eslint-(?:disable|disable-next-line|disable-line)|@ts-(?:expect-error|ignore))\b/iu;
-const DESCRIPTION_RE = /(?::|--)\s*(.+?)\s*$/u;
+const DIRECTIVE_WITH_DESCRIPTION_RE = /^(?:eslint-(?:disable|disable-next-line|disable-line)\b[^:\n]*?|@ts-expect-error\b)\s*(?::|--)\s*(.+?)\s*$/iu;
 const VAGUE_RE = /^(?:needed|required|intentional(?:ly)?|ignore(?:d)?|false positive|type error|typescript|to satisfy (?:the )?(?:linter|typescript|type checker))\.?$/iu;
 
 export const noVagueSuppressionDescriptionDocumentation = {
@@ -23,7 +22,7 @@ export const noVagueSuppressionDescriptionDocumentation = {
     "Name the exact type/runtime mismatch, external contract, or safety invariant that makes this suppression acceptable.",
   category: "maintainability",
   limitations: [
-    "Only ESLint disable comments and TypeScript expect-error/ignore directives are checked.",
+    "Only ESLint disable comments and TypeScript expect-error directives are checked.",
     "The rule uses a small anchored vocabulary and does not score prose quality generally.",
     "Generated files and descriptions containing any concrete context are excluded.",
   ],
@@ -84,8 +83,7 @@ export default createRule<Options, MessageIds>({
       Program(): void {
         for (const comment of context.sourceCode.getAllComments()) {
           const text = comment.value.trim();
-          if (!DIRECTIVE_RE.test(text)) continue;
-          const description = DESCRIPTION_RE.exec(text)?.[1]?.trim();
+          const description = DIRECTIVE_WITH_DESCRIPTION_RE.exec(text)?.[1]?.trim();
           if (description === undefined || !VAGUE_RE.test(description)) continue;
           context.report({
             loc: comment.loc,

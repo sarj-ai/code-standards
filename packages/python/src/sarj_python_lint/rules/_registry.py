@@ -114,6 +114,7 @@ from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDocstring
+from sarj_python_lint.rules.repeated_static_call_cases import RepeatedStaticCallCases
 from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
     RequireKeywordOnlySwapProneParams,
 )
@@ -218,6 +219,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NegativeOnlyHttpStatusAssertion.id: NegativeOnlyHttpStatusAssertion,
         ProductionDerivedTestCases.id: ProductionDerivedTestCases,
         UncontrolledRandomnessInTest.id: UncontrolledRandomnessInTest,
+        RepeatedStaticCallCases.id: RepeatedStaticCallCases,
     }
 )
 

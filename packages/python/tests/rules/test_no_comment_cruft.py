@@ -240,10 +240,16 @@ def test_header_keywords_without_body_are_not_code(body: str):
     assert _standalone(body) == [], body
 
 
-def test_inline_trailing_comment_is_never_flagged():
-    assert _check("x = compute()  # return x + 1\n") == []
-    assert _check("y = 1  # ====================\n") == []
-    assert _check("z = 2  # region helpers\n") == []
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("x = compute()  # return x + 1\n", id="prose"),
+        pytest.param("y = 1  # ====================\n", id="separator"),
+        pytest.param("z = 2  # region helpers\n", id="region"),
+    ],
+)
+def test_inline_trailing_comment_is_never_flagged(source: str) -> None:
+    assert _check(source) == []
 
 
 def test_hash_inside_string_is_not_a_comment():
@@ -678,18 +684,33 @@ def test_explicit_editorial_placeholders_are_cruft(body: str) -> None:
     assert "Placeholder implementation" in diags[0].message
 
 
-def test_placeholder_domain_language_and_owned_debt_are_preserved() -> None:
-    assert _standalone("placeholder color is required by the design system") == []
-    assert _standalone("in a real implementation this changes; see PROJ-123") == []
-    assert _standalone("in a real application, rotate this key before deployment") == []
-    assert _standalone("for demonstration purposes only; never use this key in production") == []
-    assert _standalone("the pool is process-wide in a real application") == []
-    assert _standalone("same as above, but input must be converted to a string") == []
-    assert _standalone("the placeholder implementation preserves ABI compatibility") == []
-    assert _standalone("in a real implementation this would call the API, but offline mode avoids the network") == []
-    assert _standalone("in a real implementation this would call the API because offline mode uses a fake") == []
-    assert _standalone("in a real app this would fetch the API see PROJ-123") == []
-    assert _standalone("in a real app this would fetch the API; tracked at https://example.com/PROJ-123") == []
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param("placeholder color is required by the design system", id="domain-placeholder"),
+        pytest.param("in a real implementation this changes; see PROJ-123", id="owned-debt"),
+        pytest.param("in a real application, rotate this key before deployment", id="operational-guidance"),
+        pytest.param("for demonstration purposes only; never use this key in production", id="safety-warning"),
+        pytest.param("the pool is process-wide in a real application", id="runtime-constraint"),
+        pytest.param("same as above, but input must be converted to a string", id="comparison-rationale"),
+        pytest.param("the placeholder implementation preserves ABI compatibility", id="compatibility-rationale"),
+        pytest.param(
+            "in a real implementation this would call the API, but offline mode avoids the network",
+            id="offline-rationale",
+        ),
+        pytest.param(
+            "in a real implementation this would call the API because offline mode uses a fake",
+            id="fake-rationale",
+        ),
+        pytest.param("in a real app this would fetch the API see PROJ-123", id="inline-ticket"),
+        pytest.param(
+            "in a real app this would fetch the API; tracked at https://example.com/PROJ-123",
+            id="ticket-url",
+        ),
+    ],
+)
+def test_placeholder_domain_language_and_owned_debt_are_preserved(body: str) -> None:
+    assert _standalone(body) == []
 
 
 def test_ai_attribution_does_not_exempt_actual_comment_cruft() -> None:

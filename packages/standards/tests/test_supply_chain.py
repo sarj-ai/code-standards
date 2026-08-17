@@ -154,16 +154,23 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
 
 
-def test_pypi_publishers_exclude_checksum_manifests() -> None:
+@pytest.mark.parametrize(
+    ("needle", "expected_count"),
+    [
+        ("path: verified-dist", 4),
+        ("verified-dist/SHA256SUMS", 4),
+        ("Stage verified distributions for publication", 4),
+        ("cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/", 4),
+        ("packages-dir: publish-dist/", 4),
+    ],
+    ids=["staged-path", "checksums", "staging-step", "wheel-copy", "publish-path"],
+)
+def test_pypi_publishers_exclude_checksum_manifests(needle: str, expected_count: int) -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
     assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-        release.count("path: verified-dist") == 4
+        release.count(needle) == expected_count
     )
-    assert release.count("verified-dist/SHA256SUMS") == 4
-    assert release.count("Stage verified distributions for publication") == 4
-    assert release.count("cp verified-dist/*.whl verified-dist/*.tar.gz publish-dist/") == 4
-    assert release.count("packages-dir: publish-dist/") == 4
 
 
 def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_free() -> None:

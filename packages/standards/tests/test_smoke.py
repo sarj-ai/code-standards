@@ -143,6 +143,85 @@ def test_requested_ruff_families_remain_globally_enabled() -> None:
     assert {"PLC0415", "BLE001"}.isdisjoint(ignored)
 
 
+@pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
+def test_s311_is_owned_by_sarj410_in_every_supported_python_test_path(config: Path) -> None:
+    data = manifest.as_table(tomllib.loads(config.read_text(encoding="utf-8")))
+    lint = manifest.table_field(data, "lint")
+    per_file = manifest.table_field(lint, "per-file-ignores")
+    patterns = {
+        "**/tests/**",
+        "**/test/**",
+        "**/integration_tests/**",
+        "**/test_*.py",
+        "**/*_test.py",
+        "**/conftest.py",
+    }
+    assert all("S311" in manifest.list_field(per_file, pattern) for pattern in patterns)
+    assert "S311" not in manifest.list_field(lint, "ignore")
+
+
+def test_random_sampling_has_one_owner_in_tests_and_production(tmp_path: Path) -> None:
+    test_file = tmp_path / "tests" / "test_sampling.py"
+    production_file = tmp_path / "src" / "sampling.py"
+    test_file.parent.mkdir()
+    production_file.parent.mkdir()
+    test_file.write_text(
+        "import random\n\n\ndef test_sampling() -> None:\n"
+        "    samples = [random.random() for _ in range(10)]\n"
+        "    assert len(samples) == 10\n",
+        encoding="utf-8",
+    )
+    production_file.write_text(
+        "import random\n\n\ndef sample() -> float:\n    return random.random()\n",
+        encoding="utf-8",
+    )
+
+    ruff = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--output-format",
+            "json",
+            "--select",
+            "S311",
+            "--config",
+            str(RUFF_STRICT),
+            str(test_file),
+            str(production_file),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    sarj = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "sarj_python_lint",
+            "check",
+            "--rule",
+            "uncontrolled-randomness-in-test",
+            str(test_file),
+            str(production_file),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert ruff.returncode == 1, ruff.stdout + ruff.stderr
+    assert ruff.stdout.count('"code": "S311"') == 1
+    assert str(production_file) in ruff.stdout
+    assert str(test_file) not in ruff.stdout
+    assert sarj.returncode == 0, sarj.stdout + sarj.stderr
+    assert sarj.stdout.count("SARJ410") == 1
+    assert str(test_file) in sarj.stdout
+    assert str(production_file) not in sarj.stdout
+
+
 def test_ruff_formatter_does_not_rewrite_markdown() -> None:
     data = tomllib.loads(RUFF_STRICT.read_text())
     assert data["format"]["exclude"] == ["*.md"]

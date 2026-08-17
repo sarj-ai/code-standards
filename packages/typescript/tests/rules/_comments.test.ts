@@ -103,10 +103,12 @@ describe("stem: the inflection fold is symmetric", () => {
 
   // The length floor stops the fold eating short words whole: three characters
   // must survive the suffix, and three must survive the trailing-`e` strip.
-  it("leaves a word too short to survive the suffix alone", () => {
-    expect(stem("is")).toBe("is");
-    expect(stem("ads")).toBe("ads");
-    expect(stem("ties")).toBe("tie");
+  it.each([
+    { expected: "is", name: "two-letter word", word: "is" },
+    { expected: "ads", name: "three-letter plural", word: "ads" },
+    { expected: "tie", name: "short -ies word", word: "ties" },
+  ])("leaves $name stable", ({ expected, word }) => {
+    expect(stem(word)).toBe(expected);
   });
 });
 

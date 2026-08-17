@@ -21,7 +21,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -33,7 +33,53 @@ _PARAMETRIZE_CASES_INDEX = 1
 _PARAMETRIZE_MIN_ARGS = 2
 
 
-def _imported_bindings(tree: ast.Module) -> set[str]:
+def _scope_binding_counts(statements: list[ast.stmt]) -> dict[str, int]:
+    """Count bindings in one scope without attributing nested scopes to it."""
+    counts: dict[str, int] = {}
+    stack: list[ast.AST] = [*reversed(statements)]
+    while stack:
+        node = stack.pop()
+        names: set[str] = set()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, (ast.Assign, ast.Delete)):
+            names.update(*(_bound_target_names(target) for target in node.targets))
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor)):
+            names.update(_bound_target_names(node.target))
+        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
+            names.add(node.name)
+        elif isinstance(node, ast.MatchMapping) and node.rest is not None:
+            names.add(node.rest)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            names.update(
+                *(_bound_target_names(item.optional_vars) for item in node.items if item.optional_vars is not None)
+            )
+        for name in names:
+            counts[name] = counts.get(name, 0) + 1
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        stack.extend(reversed(list(ast.iter_child_nodes(node))))
+    return counts
+
+
+def _bound_target_names(node: ast.AST) -> set[str]:
+    match node:
+        case ast.Name(id=name):
+            return {name}
+        case ast.Tuple() | ast.List():
+            names: set[str] = set()
+            for element in node.elts:
+                names.update(_bound_target_names(element))
+            return names
+        case ast.Starred(value=value):
+            return _bound_target_names(value)
+        case _:
+            return set()
+
+
+def _imported_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> set[str]:
     bindings: set[str] = set()
     for node in tree.body:
         if (
@@ -41,8 +87,31 @@ def _imported_bindings(tree: ast.Module) -> set[str]:
             and node.module is not None
             and not node.module.startswith(("test", "tests"))
         ):
-            bindings.update(alias.asname or alias.name for alias in node.names if alias.name != "*")
+            bindings.update(
+                local
+                for alias in node.names
+                if alias.name != "*" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
+            )
     return bindings
+
+
+def _pytest_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> tuple[set[str], set[str]]:
+    modules: set[str] = set()
+    marks: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            modules.update(
+                local
+                for alias in node.names
+                if alias.name == "pytest" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
+            )
+        elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
+            marks.update(
+                local
+                for alias in node.names
+                if alias.name == "mark" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
+            )
+    return modules, marks
 
 
 def _direct_imported_collection(node: ast.expr, imported: set[str]) -> ast.Name | None:
@@ -79,13 +148,43 @@ def _is_imported_collection_wrapper(node: ast.Call, imported: set[str]) -> bool:
     )
 
 
-def _parametrize_cases(decorator: ast.expr) -> ast.expr | None:
+def _parametrize_cases(
+    decorator: ast.expr,
+    pytest_modules: set[str],
+    pytest_marks: set[str],
+    blocked: set[str],
+) -> ast.expr | None:
     if not isinstance(decorator, ast.Call) or len(decorator.args) < _PARAMETRIZE_MIN_ARGS:
         return None
     func = decorator.func
     if not isinstance(func, ast.Attribute) or func.attr != "parametrize":
         return None
+    owner = func.value
+    module_owned = (
+        isinstance(owner, ast.Attribute)
+        and owner.attr == "mark"
+        and isinstance(owner.value, ast.Name)
+        and owner.value.id in pytest_modules - blocked
+    )
+    mark_owned = isinstance(owner, ast.Name) and owner.id in pytest_marks - blocked
+    if not module_owned and not mark_owned:
+        return None
     return decorator.args[_PARAMETRIZE_CASES_INDEX]
+
+
+def _collected_tests(tree: ast.Module) -> list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, set[str]]]:
+    tests: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, set[str]]] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+            tests.append((node, set()))
+        elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
+            class_bindings = set(_scope_binding_counts(node.body))
+            tests.extend(
+                (child, class_bindings)
+                for child in node.body
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test_")
+            )
+    return tests
 
 
 def _independently_asserted_collections(tree: ast.Module, imported: set[str]) -> set[str]:
@@ -128,7 +227,7 @@ class ProductionDerivedTestCases(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_models.py",
-                        "EXPECTED_MODELS = ('a', 'b')\n\n@pytest.mark.parametrize('model', EXPECTED_MODELS)\ndef test_model(model):\n    assert build(model).tier == 'priority'\n",
+                        "import pytest\n\nEXPECTED_MODELS = ('a', 'b')\n\n@pytest.mark.parametrize('model', EXPECTED_MODELS)\ndef test_model(model):\n    assert build(model).tier == 'priority'\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_models.py"),
@@ -142,7 +241,7 @@ class ProductionDerivedTestCases(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_models.py",
-                        "from app.models import ELIGIBLE_MODELS\n\n@pytest.mark.parametrize('model', ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model).tier == 'priority'\n",
+                        "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\n@pytest.mark.parametrize('model', ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model).tier == 'priority'\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_models.py"),
@@ -155,19 +254,19 @@ class ProductionDerivedTestCases(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path):
+        if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        imported = _imported_bindings(tree)
+        binding_counts = _scope_binding_counts(tree.body)
+        imported = _imported_bindings(tree, binding_counts)
+        pytest_modules, pytest_marks = _pytest_bindings(tree, binding_counts)
         independently_asserted = _independently_asserted_collections(tree, imported)
         findings: list[Diagnostic] = []
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test_"):
-                continue
+        for node, blocked in _collected_tests(tree):
             for decorator in node.decorator_list:
-                cases = _parametrize_cases(decorator)
+                cases = _parametrize_cases(decorator, pytest_modules, pytest_marks, blocked)
                 if cases is None:
                     continue
                 collection = _direct_imported_collection(cases, imported)

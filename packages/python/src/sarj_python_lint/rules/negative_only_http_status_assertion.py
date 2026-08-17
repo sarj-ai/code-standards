@@ -21,7 +21,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -138,7 +138,7 @@ class NegativeOnlyHttpStatusAssertion(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path):
+        if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:

@@ -412,15 +412,20 @@ raises-require-match-for = [
 # packages (adding `__init__.py` changes conftest/module resolution), and this
 # repo's own 97 INP001 findings are all in test trees. In shipped code the rule
 # is a genuine packaging check, so it is no longer globally ignored.
+# S311 is also test-only: standard-library PRNG draws in tests are not security
+# tokens. SARJ410 owns the narrower repeated-unseeded-sampling determinism risk.
 #
 # RUF076 was removed from this list because ruff REMOVED the rule: `--select
 # RUF076` now fails with "Rule `RUF076` was removed and cannot be selected", so
 # the entry silenced nothing.
-"**/tests/**"     = ["S101", "S105", "S106", "INP001", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "PLR6301"]
-# A `test_*.py` or `conftest.py` outside a tests/ tree is still test code; one
-# consumer has such a module, carrying 7 asserts and 1 INP001.
-"**/test_*.py"    = ["ANN201", "ANN202", "S101", "S105", "S106", "INP001"]
-"**/conftest.py"  = ["S101", "S105", "S106", "INP001"]
+"**/tests/**"             = ["S101", "S105", "S106", "S311", "INP001", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "PLR6301"]
+"**/test/**"              = ["S311"]
+"**/integration_tests/**" = ["S311"]
+# A test-named module outside a test tree is still test code; one consumer has
+# such a module, carrying 7 asserts and 1 INP001.
+"**/test_*.py"            = ["ANN201", "ANN202", "S101", "S105", "S106", "S311", "INP001"]
+"**/*_test.py"            = ["S311"]
+"**/conftest.py"          = ["S101", "S105", "S106", "S311", "INP001"]
 # Standalone scripts are not importable packages, hence INP001 (7 sites in
 # repo A, 4 in repo B, all under a top-level scripts/).
 "scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]

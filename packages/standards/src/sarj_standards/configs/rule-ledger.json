@@ -90,6 +90,7 @@
       "redundant-class-docstring",
       "redundant-docstring",
       "redundant-module-docstring",
+      "repeated-static-call-cases",
       "require-keyword-only-swap-prone-params",
       "require-port-for-service",
       "require-pydantic-for-external-json",
@@ -129,6 +130,7 @@
       "duplicate-test-body",
       "enforce-file-structure",
       "iac-source-coupled-test",
+      "no-bare-return-from-test-catch",
       "no-client-side-data-fetching",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
@@ -183,6 +185,7 @@
       "prefer-shadcn-primitives",
       "prefer-whole-object-assertion",
       "prefer-zod-infer",
+      "repeated-static-call-cases",
       "require-assert-never",
       "require-fetch-timeout",
       "require-port-for-service",
@@ -281,7 +284,8 @@
       "SARJ409",
       "SARJ410",
       "SARJ411",
-      "SARJ412"
+      "SARJ412",
+      "SARJ413"
     ],
     "sql": [
       "SARJ101",

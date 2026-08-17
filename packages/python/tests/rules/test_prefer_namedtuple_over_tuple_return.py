@@ -117,10 +117,16 @@ def test_does_not_fire_on_bare_tuple():
     assert _check("def f() -> tuple: ...\n") == []
 
 
-def test_does_not_fire_on_non_tuple_return():
-    assert _check("def f() -> list[int]: ...\n") == []
-    assert _check("def f() -> dict[str, int]: ...\n") == []
-    assert _check("def f() -> int: ...\n") == []
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        pytest.param("list[int]", id="list"),
+        pytest.param("dict[str, int]", id="dict"),
+        pytest.param("int", id="scalar"),
+    ],
+)
+def test_does_not_fire_on_non_tuple_return(annotation: str) -> None:
+    assert _check(f"def f() -> {annotation}: ...\n") == []
 
 
 def test_does_not_fire_without_annotation():
