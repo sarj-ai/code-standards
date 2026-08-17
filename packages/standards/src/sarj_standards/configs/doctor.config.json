@@ -7,19 +7,14 @@
   },
   "deadCode": false,
   "ignore": {
-    "tags": [
-      "design",
-      "test-noise"
-    ]
+    "tags": ["design", "test-noise"]
   },
   "noScore": true,
   "rules": {
     "react-doctor/no-array-index-as-key": "error",
     "react-hooks-js/todo": "off"
   },
-  "serverAuthFunctionNames": [
-    "forRequest"
-  ],
+  "serverAuthFunctionNames": ["forRequest"],
   "share": false,
   "supplyChain": {
     "enabled": false
