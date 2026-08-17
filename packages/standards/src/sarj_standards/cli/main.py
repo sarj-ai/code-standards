@@ -84,6 +84,9 @@ class _Args(argparse.Namespace):
     roots: list[Path]
     include_text: Path | None = None
     rules_cmd: str = ""
+    rule_category: str = ""
+    rule_summary: str = ""
+    apply_rule: bool = False
     reference_cmd: str = ""
     docs_cmd: str = ""
     hooks_cmd: str = ""
@@ -1457,7 +1460,7 @@ def cmd_show(args: _Args) -> int:
             from sarj_standards.libs.adoption import scaffold  # ruff: ignore[import-outside-top-level]
 
             root = _resolve_dest(args.dest)
-            rendered = scaffold.github_ci_workflow(root, version=__version__)
+            rendered = scaffold.github_ci_workflow(root)
             if args.output is None:
                 print(rendered, end="")
             else:
@@ -2088,12 +2091,55 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             return 0
         if args.rules_cmd == "evaluate":
             return cmd_rule_evaluate(args)
-        if args.rules_cmd == "stage-warning":
+        if args.rules_cmd == "new":
+            from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
+
+            if args.selector is None:  # pragma: no cover - argparse requires the positional value
+                msg = "new requires a rule selector"
+                raise TypeError(msg)
+            try:
+                plan = rule_authoring.plan_new(
+                    _resolve_dest(args.dest), args.selector, category=args.rule_category, summary=args.rule_summary
+                )
+                if args.apply_rule:
+                    rule_authoring.apply(plan, _resolve_dest(args.dest))
+            except (OSError, TypeError, ValueError) as exc:
+                print(f"error: cannot scaffold rule: {exc}", file=sys.stderr)
+                return 2
+            print(plan.render(_resolve_dest(args.dest)))
+            return 0
+        if args.rules_cmd == "verify":
+            from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
+
+            if args.selector is None:  # pragma: no cover - argparse requires the positional value
+                msg = "verify requires a rule selector"
+                raise TypeError(msg)
+            try:
+                result = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
+            except (OSError, TypeError, ValueError, RuntimeError) as exc:
+                print(f"error: cannot verify rule: {exc}", file=sys.stderr)
+                return 2
+            print(result.message)
+            return result.status
+        if args.rules_cmd in {"stage-warning", "prepare"}:
             from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level]
 
             if args.selector is None:  # pragma: no cover - argparse requires the positional value
-                msg = "stage-warning requires a rule selector"
+                msg = f"{args.rules_cmd} requires a rule selector"
                 raise TypeError(msg)
+            if args.rules_cmd == "prepare":
+                from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
+                    rule_authoring,
+                )
+
+                try:
+                    verified = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
+                except (OSError, TypeError, ValueError, RuntimeError) as exc:
+                    print(f"error: cannot verify rule before preparation: {exc}", file=sys.stderr)
+                    return 2
+                if verified.status != 0:
+                    print(verified.message)
+                    return verified.status
             try:
                 result = rule_lifecycle.stage_warning(_resolve_dest(args.dest), args.selector, check=args.check)
             except (OSError, TypeError, ValueError, RuntimeError) as exc:
@@ -2244,11 +2290,30 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     rule_commands.add_parser("manifest", help="print the shipped rule inventory")
     rule_commands.add_parser("check", help="verify the shipped rule inventory matches live registries")
     rule_commands.add_parser("sync", help="update the shipped rule inventory from live registries")
+    rule_new = rule_commands.add_parser("new", help="plan or create author-owned rule and test skeletons")
+    rule_new.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
+    rule_new.add_argument(
+        "--category",
+        dest="rule_category",
+        choices=("architecture", "correctness", "maintainability", "performance", "security", "style", "testing"),
+        required=True,
+    )
+    rule_new.add_argument("--summary", dest="rule_summary", required=True)
+    rule_new.add_argument("--apply", dest="apply_rule", action="store_true", help="create the planned files")
     stage_warning = rule_commands.add_parser(
         "stage-warning", help="prepare one registered rule for warning-first publication"
     )
     stage_warning.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
     stage_warning.add_argument("--check", action="store_true", help="report required staging without writing")
+    prepare_rule = rule_commands.add_parser(
+        "prepare", help="validate and prepare one registered rule for warning-first publication"
+    )
+    prepare_rule.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
+    prepare_rule.add_argument("--check", action="store_true", help="report required preparation without writing")
+    verify_rule = rule_commands.add_parser(
+        "verify", help="validate one registered rule's authored files and public examples"
+    )
+    verify_rule.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
     rule_changes = rule_commands.add_parser(
         "changes", help="compare rule inventory and policy between two Git revisions"
     )

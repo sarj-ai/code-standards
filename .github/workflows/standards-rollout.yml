@@ -50,9 +50,13 @@ jobs:
         id: version
         env:
           REQUESTED_VERSION: ${{ inputs.version || '' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           version="$REQUESTED_VERSION"
+          if [[ -z "$version" && "$EVENT_NAME" == schedule ]]; then
+            version="$(uvx --no-config --isolated --python 3.14 --from sarj-standards sarj-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
+          fi
           if [[ -z "$version" ]]; then
             version="$(python3 - <<'PY'
           import tomllib
@@ -113,7 +117,7 @@ jobs:
             git config --global user.name "sarj-standards-rollout[bot]"
             git config --global user.email "sarj-standards-rollout[bot]@users.noreply.github.com"
             if [[ "$EVENT_NAME" == schedule ]]; then
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile --version "$VERSION" || operation_status=$?
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile || operation_status=$?
             else
               run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" plan --version "$VERSION" || operation_status=$?
               if (( operation_status == 0 )); then
@@ -124,7 +128,7 @@ jobs:
 
           status_status=0
           run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" status --version "$VERSION" || status_status=$?
-          if (( operation_status != 0 || status_status != 0 )); then
+          if (( operation_status != 0 )); then
             result=failure
           else
             result=success
@@ -163,10 +167,10 @@ jobs:
           } > "$body"
           cat "$body" >> "$GITHUB_STEP_SUMMARY"
 
-          if [[ "$RESULT" == success ]]; then
+          if [[ "$RESULT" == success && "$STATUS_STATUS" == 0 ]]; then
             if [[ -n "$issue_number" && "$issue_state" == OPEN ]]; then
               gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
-                --body "Rollout reached 5/5 terminal outcomes in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+                --body "Every registered consumer has adopted the release in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
               gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY" --reason completed
             fi
           elif [[ -n "$issue_number" ]]; then

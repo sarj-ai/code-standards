@@ -444,13 +444,15 @@ class Standards:
     def update(
         self,
         *,
+        version: str | None = None,
+        offline: bool = False,
         install: bool = True,
         check_only: bool = False,
     ) -> Result:
-        """Resolve and apply the latest coherent Standards bundle."""
-        return self._update_latest(install=install, check_only=check_only)
+        """Resolve and apply an exact or the latest coherent Standards bundle."""
+        return self._update_target(version=version, offline=offline, install=install, check_only=check_only)
 
-    def _update_latest(self, *, install: bool, check_only: bool) -> Result:
+    def _update_target(self, *, version: str | None, offline: bool, install: bool, check_only: bool) -> Result:
         executable = shutil.which("uvx")
         if executable is None:
             finding = Finding(
@@ -459,13 +461,20 @@ class Standards:
                 "uvx is required to resolve the latest Standards release; install uv and retry",
             )
             return Result(Status.FAILED, findings=(finding,), exit_code=_INVALID_EXIT)
+        try:
+            launch_argv = launcher.argv(executable=executable, version=version, refresh=not offline)
+        except ValueError as exc:
+            finding = Finding("update.version.invalid", "error", str(exc))
+            return Result(Status.INVALID, findings=(finding,), exit_code=_INVALID_EXIT)
         command = [
-            *launcher.argv(executable=executable, refresh=True),
+            *launch_argv,
             "--root",
             str(self.root),
             "update",
             "--offline",
         ]
+        if version is not None:
+            command.extend(("--to", version))
         if check_only:
             command.append("--check")
         if not install:

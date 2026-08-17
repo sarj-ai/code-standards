@@ -145,7 +145,7 @@ def test_git_discovery_timeouts_are_nonfatal(
     timed_out_argument: str,
 ) -> None:
     (tmp_path / ".pre-commit-config.yaml").write_text(
-        f"repos:\n{scaffold.precommit_block(python=True, version=manifest.adopted_version())}",
+        f"repos:\n{scaffold.precommit_block()}",
         encoding="utf-8",
     )
 

@@ -25,7 +25,6 @@ SOURCE_REPOSITORY = "https://github.com/sarj-ai/standards.git"
 VERSION_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.-]+)?\Z")
 BOT_COMMIT_PREFIX = "chore(standards): adopt "
 MANIFEST = ".sarj-standards.toml"
-EXPECTED_CONSUMERS = 5
 LS_REMOTE_FIELDS = 2
 PORCELAIN_RECORD_MINIMUM = 4
 MANAGED_TRAILER = "Standards-Rollout: managed/v1"
@@ -108,6 +107,7 @@ class Consumer:
     verify: tuple[str, ...]
     requires_approval: bool = False
     auto_merge: bool = False
+    channel: str = "stable"
 
 
 @dataclass(frozen=True)
@@ -138,9 +138,10 @@ class Plan:
 class BranchPreparation:
     branch: str
     previous_sha: str | None
+    amend: bool = False
 
 
-def load_registry(path: Path) -> tuple[Consumer, ...]:
+def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-locals] -- schema fields stay explicit
     with path.open("rb") as stream:
         parsed: object = tomllib.load(stream)
     if not is_object(parsed):
@@ -151,8 +152,8 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:
         msg = f"unsupported registry schema in {path}"
         raise RolloutError(msg)
     entries_value = raw.get("consumer")
-    if not is_array(entries_value) or len(entries_value) != EXPECTED_CONSUMERS:
-        msg = "the rollout registry must contain exactly five consumers"
+    if not is_array(entries_value) or not entries_value:
+        msg = "the rollout registry must contain at least one consumer"
         raise RolloutError(msg)
     consumers: list[Consumer] = []
     for entry_value in entries_value:
@@ -163,6 +164,7 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:
             "verify",
             "requires_approval",
             "auto_merge",
+            "channel",
         }:
             msg = f"invalid registry entry keys: {entry_value!r}"
             raise RolloutError(msg)
@@ -173,6 +175,10 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:
         verify_value = entry.get("verify")
         requires_approval = optional_bool(entry, "requires_approval")
         auto_merge = optional_bool(entry, "auto_merge")
+        channel_value = entry.get("channel", "stable")
+        if not isinstance(channel_value, str) or re.fullmatch(r"[a-z0-9][a-z0-9-]*", channel_value) is None:
+            msg = f"invalid rollout channel: {channel_value!r}"
+            raise RolloutError(msg)
         if not is_array(verify_value) or not verify_value:
             msg = f"invalid registry verification command: {entry!r}"
             raise RolloutError(msg)
@@ -187,10 +193,11 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:
             verify=verify,
             requires_approval=requires_approval,
             auto_merge=auto_merge,
+            channel=channel_value,
         )
         consumers.append(consumer)
     identities = tuple((item.repository, item.branch) for item in consumers)
-    if len(set(identities)) != EXPECTED_CONSUMERS:
+    if len(set(identities)) != len(consumers):
         msg = "registry consumers must have unique repository and branch identities"
         raise RolloutError(msg)
     if sum(item.auto_merge for item in consumers) > 1:
@@ -207,14 +214,24 @@ def validate_version(version: str) -> str:
 
 
 def rollout_branch(version: str) -> str:
-    return f"standards-rollout/v{validate_version(version)}"
+    """Return the durable per-consumer rollout branch.
+
+    ``version`` remains accepted for source compatibility; release identity now
+    lives in the managed commit and PR body rather than creating one branch per
+    patch release.
+    """
+    validate_version(version)
+    return "standards-rollout/current"
 
 
 def pr_marker(consumer: Consumer, version: str) -> str:
-    return (
-        f"{PR_MARKER_PREFIX} repository={consumer.repository} "
-        f"base={consumer.branch} version={validate_version(version)} -->"
-    )
+    validate_version(version)
+    return f"{PR_MARKER_PREFIX} repository={consumer.repository} base={consumer.branch} channel={consumer.channel} -->"
+
+
+def desired_marker(version: str) -> str:
+    """Bind a durable rolling PR to its currently materialized release."""
+    return f"<!-- sarj-standards-rollout:desired={validate_version(version)} -->"
 
 
 def stdout(result: subprocess.CompletedProcess[str]) -> str:
@@ -308,7 +325,7 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
             "--repo",
             consumer.repository,
             "--state",
-            "all",
+            "open",
             "--head",
             rollout_branch(version),
             "--json",
@@ -342,15 +359,20 @@ def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outco
                 str(pull.get("url", "")),
                 "rollout PR ownership marker, head, or base does not match",
             )
+        if desired_marker(version) not in str(pull.get("body", "")):
+            return Outcome(
+                consumer,
+                "missing",
+                str(pull.get("url", "")),
+                "open managed PR targets an older Standards release",
+            )
         if VERIFICATION_FAILED_MARKER in str(pull.get("body", "")):
             return Outcome(
                 consumer,
                 "blocked",
                 str(pull.get("url", "")),
-                "consumer verification failed; remediation is required in this rollout PR",
+                "consumer verification failed; reconcile will retry this managed PR",
             )
-        if pull.get("state") == "CLOSED" and not pull.get("mergedAt"):
-            return Outcome(consumer, "blocked", str(pull.get("url", "")), "rollout PR was closed without merge")
         state = "merged" if pull.get("mergedAt") else "pr-open"
         return Outcome(consumer, state, str(pull.get("url", "")))
     adopted = manifest_version(base_manifest(consumer, runner) or "")
@@ -549,12 +571,15 @@ def prepare_branch(repo: Path, consumer: Consumer, version: str, runner: Command
     runner.run(("git", "fetch", "origin", branch), cwd=repo)
     message = stdout(runner.run(("git", "show", "-s", "--format=%B", "FETCH_HEAD"), cwd=repo))
     commit_count = stdout(runner.run(("git", "rev-list", "--count", f"origin/{consumer.branch}..FETCH_HEAD"), cwd=repo))
-    if MANAGED_TRAILER not in message or not message.startswith(BOT_COMMIT_PREFIX + version) or commit_count != "1":
+    if MANAGED_TRAILER not in message or not message.startswith(BOT_COMMIT_PREFIX) or commit_count not in {"0", "1"}:
         msg = f"refusing human-modified rollout branch {branch}"
         raise RolloutError(msg)
+    if commit_count == "0":
+        runner.run(("git", "switch", "-C", branch, f"origin/{consumer.branch}"), cwd=repo)
+        return BranchPreparation(branch, previous_sha)
     runner.run(("git", "switch", "-C", branch, "FETCH_HEAD"), cwd=repo)
     runner.run(("git", "rebase", f"origin/{consumer.branch}"), cwd=repo)
-    return BranchPreparation(branch, previous_sha)
+    return BranchPreparation(branch, previous_sha, amend=True)
 
 
 def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verification and mutation state bound
@@ -565,12 +590,11 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
     dry_run: bool = False,
 ) -> Outcome:
     existing = status_one(consumer, version, runner)
-    if existing.state == "blocked":
-        if existing.detail.startswith("consumer verification failed"):
-            return existing
+    retry_verification = existing.state == "blocked" and existing.detail.startswith("consumer verification failed")
+    if existing.state == "blocked" and not retry_verification:
         msg = f"{consumer.name}: {existing.detail}: {existing.url}"
         raise RolloutError(msg)
-    if existing.state != "missing":
+    if existing.state != "missing" and not retry_verification:
         return existing
     if dry_run:
         return Outcome(consumer, "would-create", detail=rollout_branch(version))
@@ -591,6 +615,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         preparation = prepare_branch(repo, consumer, version, runner)
         branch = preparation.branch
         previous_sha = preparation.previous_sha
+        amend = preparation.amend
         tool = (
             "uvx",
             "--isolated",
@@ -603,7 +628,6 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             ".",
         )
         unauthenticated = unauthenticated_environment()
-        migrated_source_paths = remove_retired_eslint_suppressions(repo, runner)
         failures: list[str] = []
         try:
             runner.run((*tool, "update", "--to", version), cwd=repo, env=unauthenticated)
@@ -615,8 +639,6 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             if repair.returncode != 0:
                 failures.append("pre-update safe repair reported drift:\n" + verification_detail(repair))
             runner.run((*tool, "update", "--to", version, "--no-install"), cwd=repo, env=unauthenticated)
-        _ = synchronize_repository_pin(repo, version)
-        _ = synchronize_repository_checker(repo)
         doctor = runner.run((*tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
@@ -626,17 +648,11 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         verification_failure = "\n\n".join(failures)[-4000:]
         worktree_paths = changed_paths(repo, runner)
         if worktree_paths:
-            reject_unsafe_diff(worktree_paths, allowed_source_paths=migrated_source_paths)
+            reject_unsafe_diff(worktree_paths)
             reject_git_metadata(repo, worktree_paths, runner)
             runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
-            commit_args = (
-                ("--amend", "--no-edit")
-                if previous_sha
-                else (
-                    "-m",
-                    f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}",
-                )
-            )
+            message = f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}"
+            commit_args = ("--amend", "-m", message) if amend else ("-m", message)
             runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", *commit_args), cwd=repo)
         else:
             branch_paths = committed_paths(repo, consumer.branch, runner)
@@ -650,14 +666,14 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         lease = f"--force-with-lease=refs/heads/{branch}:{previous_sha or ''}"
         runner.run(("git", "push", lease, "-u", "origin", branch), cwd=repo)
     pull = pull_request(consumer, version, runner)
+    body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
+    if verification_failure:
+        body += (
+            f"{VERIFICATION_FAILED_MARKER}\n\n"
+            f"Consumer verification is blocked:\n\n```text\n{verification_failure}\n```\n\n"
+        )
+    body += f"Desired bundle: `sarj-standards=={version}`.\n\nGenerated by `make rollout`."
     if pull is None:
-        body = f"{pr_marker(consumer, version)}\n\n"
-        if verification_failure:
-            body += (
-                f"{VERIFICATION_FAILED_MARKER}\n\n"
-                f"Consumer verification is blocked:\n\n```text\n{verification_failure}\n```\n\n"
-            )
-        body += f"Deterministic rollout of `sarj-standards=={version}`.\n\nGenerated by `make rollout`."
         created = runner.run(
             (
                 "gh",
@@ -678,9 +694,20 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         url = stdout(created)
     else:
         url = str(pull.get("url", ""))
-        if pull.get("state") == "CLOSED" and not pull.get("mergedAt"):
-            msg = f"refusing to reopen closed rollout PR {url}"
-            raise RolloutError(msg)
+        runner.run(
+            (
+                "gh",
+                "pr",
+                "edit",
+                "--repo",
+                consumer.repository,
+                url,
+                "--title",
+                BOT_COMMIT_PREFIX + version,
+                "--body",
+                body,
+            )
+        )
     if consumer.auto_merge and not verification_failure:
         runner.run(("gh", "pr", "merge", "--repo", consumer.repository, "--auto", "--squash", url), check=False)
     if verification_failure:
@@ -724,14 +751,18 @@ def latest_version(runner: CommandRunner) -> str:
 
 
 def print_outcomes(version: str, outcomes: Sequence[Outcome], *, source_sha: str = "") -> None:
-    complete = sum(item.state in {"pr-open", "merged", "already-current"} for item in outcomes)
+    adopted = sum(item.state in {"merged", "already-current"} for item in outcomes)
+    distributed = sum(item.state in {"pr-open", "merged", "already-current"} for item in outcomes)
     sys.stdout.write(
         json.dumps(
             {
                 "version": version,
                 "sourceSha": source_sha or None,
-                "complete": complete == len(outcomes),
-                "count": f"{complete}/{len(outcomes)}",
+                "complete": adopted == len(outcomes),
+                "count": f"{adopted}/{len(outcomes)}",
+                "distributed": distributed == len(outcomes),
+                "distributedCount": f"{distributed}/{len(outcomes)}",
+                "adoptedCount": f"{adopted}/{len(outcomes)}",
                 "consumers": [item.as_dict() for item in outcomes],
             },
             indent=2,
@@ -766,7 +797,7 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
     elif args.command == "status":
         outcomes = status(version, consumers, runner)
         print_outcomes(version, outcomes)
-        return 0 if all(item.state in {"pr-open", "merged", "already-current"} for item in outcomes) else 1
+        return 0 if all(item.state in {"merged", "already-current"} for item in outcomes) else 1
     else:
         outcomes = apply(version, consumers, runner, dry_run=args.dry_run)
         print_outcomes(version, outcomes)

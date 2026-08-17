@@ -1,0 +1,71 @@
+# Managed by sarj-standards launcher protocol 1; do not edit.
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tomllib
+
+
+PROTOCOL = 1
+TOOL_PYTHON = '3.14'
+VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
+ROOT = Path(__file__).resolve().parents[1]
+MANIFEST = ROOT / ".sarj-standards.toml"
+
+
+def fail(message: str) -> int:
+    print(f"sarj-standards launcher: {message}", file=sys.stderr)
+    return 2
+
+
+def main() -> int:
+    try:
+        with MANIFEST.open("rb") as stream:
+            document = tomllib.load(stream)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        return fail(f"cannot read {MANIFEST}: {exc}")
+    schema = document.get("schema")
+    bundle = document.get("bundle")
+    if schema != 3:
+        return fail(f"unsupported manifest schema {schema!r}")
+    if not isinstance(bundle, str) or VERSION.fullmatch(bundle) is None:
+        return fail("manifest bundle must be one exact canonical release")
+    uvx = shutil.which("uvx")
+    if uvx is None:
+        return fail("uvx is required; install uv and retry")
+    environment = dict(os.environ)
+    for name in (
+        "PIP_EXTRA_INDEX_URL",
+        "PIP_INDEX_URL",
+        "UV_CONFIG_FILE",
+        "UV_EXTRA_INDEX_URL",
+        "UV_INDEX_URL",
+        "UV_PROJECT",
+        "VIRTUAL_ENV",
+    ):
+        environment.pop(name, None)
+    command = (
+        uvx,
+        "--no-config",
+        "--isolated",
+        "--python",
+        TOOL_PYTHON,
+        "--from",
+        f"sarj-standards=={bundle}",
+        "sarj-standards",
+        "--root",
+        str(ROOT),
+        *sys.argv[1:],
+    )
+    try:
+        return subprocess.run(command, check=False, env=environment, shell=False).returncode  # noqa: S603
+    except OSError as exc:
+        return fail(f"could not execute standards {bundle}: {exc}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

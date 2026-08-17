@@ -3,7 +3,9 @@ import ReferencePage from '../../components/ReferencePage.astro';
 import { Code } from '@astrojs/starlight/components';
 
 const prepare = [
-  'sarj-standards --root . maintain rules stage-warning python:no-example-rule',
+  "sarj-standards --root . maintain rules new python:no-example-rule --category correctness --summary 'Describe the rule claim'",
+  "sarj-standards --root . maintain rules new python:no-example-rule --category correctness --summary 'Describe the rule claim' --apply",
+  'sarj-standards --root . maintain rules prepare python:no-example-rule',
   'sarj-standards --root . maintain rules changes --before origin/main --after HEAD',
   'make verify',
 ].join('\n');
@@ -17,12 +19,13 @@ const prepare = [
     <div>
       <h1>Propose a rule</h1>
       <p>
-        Implement the rule and its focused positive, negative, and near-miss tests in the owning engine, register it,
-        and complete its source-owned rule metadata. Then run the preparation sequence below.
+        Preview the deterministic scaffold first, apply it explicitly, then replace every TODO with conservative detection,
+        focused positive, negative, and near-miss cases, and complete source-owned metadata. Register the finished module,
+        then run the warning-first preparation sequence below.
       </p>
       <Code code={prepare} lang="bash" frame="terminal" wrap />
       <p>
-        <code>stage-warning</code> validates the live registry and documentation, records the warning-first lifecycle,
+        <code>prepare</code> validates the live registry and documentation, records the warning-first lifecycle,
         and synchronizes the ledger, inventory, and public catalog together. It is safe to rerun.
       </p>
       <p>
