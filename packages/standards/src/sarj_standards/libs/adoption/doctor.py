@@ -79,6 +79,12 @@ _PIN = re.compile(
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
 )
 
+#: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
+#: particular, ``exclude-newer`` can make a just-published exact bundle appear
+#: unavailable in CI for days. Keep custom pin-bearing launchers isolated too;
+#: fully managed hooks/workflows are rendered through ``launcher.pinned``.
+_UVX_STANDARDS = re.compile(r"\buvx(?P<args>[^\n]*?--from\s+sarj-standards(?:==[^\s]+)?)")
+
 #: `rev: python-v0.19.0`, `rev: "standards-v0.10.0"`, `rev: 9d073e83b2...`.
 #:
 #: Raw commit pins can silently become stale, so report them as unverifiable.
@@ -687,6 +693,12 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
     """Refresh recognized Sarj pins and normalize them to the required exact operator."""
     changed: set[str] = set()
 
+    def isolate_launcher(match: re.Match[str]) -> str:
+        if "--no-config" in match.group("args").split():
+            return match.group(0)
+        changed.add("sarj-standards")
+        return f"uvx --no-config{match.group('args')}"
+
     def replacement(match: re.Match[str]) -> str:
         name = match.group("name")
         current = installed.get(name)
@@ -697,7 +709,8 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
         relative_end = match.end("version") - match.start()
         return f"{match.group(0)[:relative_start]}=={current}{match.group(0)[relative_end:]}"
 
-    return VersionPinRewrite(_PIN.sub(replacement, text), tuple(sorted(changed)))
+    isolated = _UVX_STANDARDS.sub(isolate_launcher, text)
+    return VersionPinRewrite(_PIN.sub(replacement, isolated), tuple(sorted(changed)))
 
 
 def plan_version_pin_updates(

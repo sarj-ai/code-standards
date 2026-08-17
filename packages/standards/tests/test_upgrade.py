@@ -115,6 +115,18 @@ def test_pin_rewrite_does_not_accept_a_version_suffix_as_the_installed_release(s
     assert rewritten.packages == ("sarj-standards",)
 
 
+def test_pin_rewrite_isolates_custom_uvx_launcher_from_consumer_config() -> None:
+    current = manifest.installed_versions()["sarj-standards"]
+    text = f"run: uvx --isolated --python 3.14 --from sarj-standards=={current} sarj-standards check\n"
+
+    rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": current})
+
+    assert rewritten.contents == (
+        f"run: uvx --no-config --isolated --python 3.14 --from sarj-standards=={current} sarj-standards check\n"
+    )
+    assert rewritten.packages == ("sarj-standards",)
+
+
 def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     path = tmp_path / manifest.MANIFEST_NAME
@@ -704,8 +716,8 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     package_json = (tmp_path / "package.json").read_text(encoding="utf-8")
     assert f"uvx --no-config --isolated --python 3.14 --from sarj-standards=={lint_configs}" in precommit
     assert "sarj-standards-drift" not in precommit
-    assert f"sarj-standards=={lint_configs}" in workflow
-    assert f"sarj-standards=={lint_configs}" in package_json
+    assert f"uvx --no-config --from sarj-standards=={lint_configs}" in workflow
+    assert f"uvx --no-config --from sarj-standards=={lint_configs}" in package_json
     assert "verbose: true" not in (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in pyproject.read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in (tmp_path / "requirements-dev.txt").read_text(encoding="utf-8")
