@@ -346,21 +346,95 @@ class TestRelease:
 
     def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
         old_sha = "a" * 40
+        base_sha = "b" * 40
+        parent_sha = "c" * 40
         runner = FakeRunner(
             [
                 (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
                 (0, ""),
                 (0, f"{rollout.BOT_COMMIT_PREFIX}5.8.0\n\n{rollout.MANAGED_TRAILER}"),
-                (0, "0"),
+                (0, f"{old_sha} {parent_sha}"),
+                (0, ""),
                 (0, ""),
             ]
         )
 
-        prepared = rollout.prepare_branch(tmp_path, consumer(), "5.8.1", runner)
+        prepared = rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
 
         assert prepared.previous_sha == old_sha
-        assert not prepared.amend
-        assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", "origin/main")
+        assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", base_sha)
+
+    def test_base_advancement_discards_previous_bot_patch_and_rebuilds_from_captured_base(self, tmp_path: Path) -> None:
+        old_sha = "a" * 40
+        base_sha = "b" * 40
+        old_base_sha = "c" * 40
+        runner = FakeRunner(
+            [
+                (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
+                (0, ""),
+                (0, f"{rollout.BOT_COMMIT_PREFIX}5.8.0\n\n{rollout.MANAGED_TRAILER}"),
+                (0, f"{old_sha} {old_base_sha}"),
+                (0, ""),
+                (0, ""),
+            ]
+        )
+
+        prepared = rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
+
+        assert prepared.previous_sha == old_sha
+        assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", base_sha)
+        assert ("git", "merge-base", "--is-ancestor", old_base_sha, base_sha) in runner.commands
+        assert not any(command[:2] == ("git", "rebase") for command in runner.commands)
+        assert rollout.force_with_lease(prepared.branch, prepared.previous_sha) == (
+            f"--force-with-lease=refs/heads/standards-rollout/current:{old_sha}"
+        )
+
+    def test_refuses_extra_commits_on_a_managed_rollout_branch(self, tmp_path: Path) -> None:
+        old_sha = "a" * 40
+        base_sha = "b" * 40
+        stacked_parent_sha = "d" * 40
+        runner = FakeRunner(
+            [
+                (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
+                (0, ""),
+                (0, f"{rollout.BOT_COMMIT_PREFIX}5.8.0\n\n{rollout.MANAGED_TRAILER}"),
+                (0, f"{old_sha} {stacked_parent_sha}"),
+                (1, ""),
+            ]
+        )
+
+        with pytest.raises(rollout.RolloutError, match="human-modified"):
+            rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
+
+    def test_provisions_mise_and_isolated_corepack_shims(self, tmp_path: Path) -> None:
+        (tmp_path / ".mise.toml").write_text('[tools]\nnode = "24"\n', encoding="utf-8")
+        (tmp_path / "package.json").write_text('{"packageManager":"pnpm@10.0.0"}\n', encoding="utf-8")
+        shim_directory = tmp_path / "outside" / "bin"
+        runner = FakeRunner([(0, "mise installed"), (0, "corepack enabled")])
+
+        environment, prefix = rollout.provision_consumer_tools(tmp_path, shim_directory, runner, {"PATH": "/usr/bin"})
+
+        assert prefix == ("mise", "exec", "--")
+        assert runner.commands == [
+            ("mise", "install"),
+            ("mise", "exec", "--", "corepack", "enable", "--install-directory", str(shim_directory)),
+        ]
+        assert environment["PATH"].split(":", maxsplit=1) == [str(shim_directory), "/usr/bin"]
+        assert environment["MISE_YES"] == "1"
+        assert environment["MISE_TRUSTED_CONFIG_PATHS"] == str(tmp_path.resolve())
+
+    def test_corepack_shims_do_not_modify_the_global_node_installation(self, tmp_path: Path) -> None:
+        (tmp_path / "package.json").write_text('{"packageManager":"yarn@4.9.2"}\n', encoding="utf-8")
+        shim_directory = tmp_path / "isolated-bin"
+        runner = FakeRunner([(0, "")])
+
+        environment, prefix = rollout.provision_consumer_tools(tmp_path, shim_directory, runner, {"PATH": ""})
+
+        assert prefix == ()
+        assert runner.commands == [
+            ("corepack", "enable", "--install-directory", str(shim_directory)),
+        ]
+        assert environment["PATH"].startswith(str(shim_directory))
 
     def test_existing_verification_block_does_not_stop_later_consumers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         blocked = rollout.Outcome(consumer(), "blocked", "https://pr/1", "consumer verification failed; fix it")

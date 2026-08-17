@@ -14,10 +14,11 @@ COMMAND: Final = "sarj-standards"
 REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
 LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
+_SHELL_WHITESPACE: Final = r"(?:\s|\\\r?\n)+"
 _LEGACY_REPOSITORY_INVOCATION: Final = re.compile(
-    r"\buvx\s+(?:(?!--from\b)[^\s;&|]+\s+)*"
-    r"--from\s+sarj-standards==[^\s;&|]+\s+sarj-standards"
-    r"(?:\s+--root(?:\s+|=)(?:\.|['\"]\.['\"]))?"
+    rf"\buvx{_SHELL_WHITESPACE}(?:(?!--from\b)[^\s;&|\\]+{_SHELL_WHITESPACE})*"
+    rf"--from{_SHELL_WHITESPACE}sarj-standards==[^\s;&|\\]+{_SHELL_WHITESPACE}sarj-standards"
+    rf"(?:{_SHELL_WHITESPACE}--root(?:{_SHELL_WHITESPACE}|=)(?:\.|['\"]\.['\"]))?"
 )
 
 

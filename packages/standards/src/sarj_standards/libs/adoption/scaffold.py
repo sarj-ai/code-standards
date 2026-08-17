@@ -23,7 +23,7 @@ import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
 
-from . import hooks, launcher, manifest, packagemanager
+from . import hooks, launcher, manifest, packagemanager, uvtool
 from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
 
 
@@ -1486,7 +1486,7 @@ def github_ci_workflow(root: Path) -> str:
         "          persist-credentials: false",
         "      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0",
         "        with:",
-        "          version: '0.12.3'",
+        _setup_uv_version(root, ecosystems.python_root),
         "          enable-cache: true",
         "          cache-dependency-glob: |",
         "            .sarj-standards.toml",
@@ -1542,6 +1542,14 @@ def github_ci_workflow(root: Path) -> str:
         )
     )
     return "\n".join(lines) + "\n"
+
+
+def _setup_uv_version(root: Path, python_root: Path | None) -> str:
+    """Make generated CI honor a consumer's explicit uv compatibility contract."""
+    source = uvtool.version_file(python_root)
+    if source is None:
+        return "          version: '0.12.3'"
+    return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 
 def _is_uv_workspace(project: Path) -> bool:
