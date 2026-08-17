@@ -350,6 +350,9 @@ def _insert_staged_command(
 def _runs_staged_check(value: object) -> bool:
     if not isinstance(value, str) or re.search(r"(?:&&|\|\||[;|`]|\$\()", value):
         return False
+    migrated, count = launcher.rewrite_legacy_repository_invocations(value)
+    if count:
+        value = migrated
     try:
         tokens = shlex.split(value)
     except ValueError:

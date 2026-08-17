@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import doctor, lifecycle, manifest, transaction, upgrade
+from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold, transaction, upgrade
 
 
 class _LaterWriteError(OSError):
@@ -121,10 +121,53 @@ def test_pin_rewrite_isolates_custom_uvx_launcher_from_consumer_config() -> None
 
     rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": current})
 
-    assert rewritten.contents == (
-        f"run: uvx --no-config --isolated --python 3.14 --from sarj-standards=={current} sarj-standards check\n"
-    )
+    assert rewritten.contents == ("run: uv run --no-config --no-project --python 3.14 python .sarj/standards check\n")
     assert rewritten.packages == ("sarj-standards",)
+
+
+def test_upgrade_migrates_legacy_generated_ci_hooks_and_scripts_to_one_launcher(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    legacy = "uvx --no-config --isolated --python 3.14 --from sarj-standards==0.0.1 sarj-standards"
+    (workflows / "standards.yml").write_text(
+        "# Managed by sarj-standards 0.0.1; regenerate with "
+        "`sarj-standards show ci --output .github/workflows/standards.yml`.\n"
+        f"jobs:\n  standards:\n    steps:\n      - run: {legacy} check --trust-repository-code\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    sarj-standards-staged:\n"
+        f"      run: {legacy} check --staged --trust-repository-code -- {{staged_files}}\n",
+        encoding="utf-8",
+    )
+    package = tmp_path / "package.json"
+    package.write_text(
+        '{"scripts":{"standards":"' + legacy + ' --root . check --trust-repository-code"}}\n',
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8").replace(
+            'manager = "pre-commit"',
+            'manager = "lefthook"',
+        ),
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+    assert upgrade.apply(plan, install=False) == 0
+
+    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    workflow = (workflows / "standards.yml").read_text(encoding="utf-8")
+    hook = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+    script = package.read_text(encoding="utf-8")
+    assert launcher_command in workflow
+    assert launcher_command in hook
+    assert launcher_command in script
+    assert "sarj-standards==" not in workflow + hook + script
+    assert hook.count("sarj-standards-staged:") == 1
+    assert scaffold.standards_check_workflows(tmp_path) == (workflows / "standards.yml",)
 
 
 def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
@@ -670,7 +713,6 @@ def test_upgrade_rolls_back_new_lockfile_and_interrupt(tmp_path: Path, monkeypat
 
 def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
-    lint_configs = manifest.installed_versions()["sarj-standards"]
     python_lint = manifest.installed_versions()["sarj-python-lint"]
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
@@ -716,14 +758,14 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     package_json = (tmp_path / "package.json").read_text(encoding="utf-8")
     assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in precommit
     assert "sarj-standards-drift" not in precommit
-    assert f"uvx --no-config --from sarj-standards=={lint_configs}" in workflow
-    assert f"uvx --no-config --from sarj-standards=={lint_configs}" in package_json
+    repository_launcher = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    assert repository_launcher in workflow
+    assert repository_launcher in package_json
+    assert "sarj-standards==" not in workflow + package_json
     assert "verbose: true" not in (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in pyproject.read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in (tmp_path / "requirements-dev.txt").read_text(encoding="utf-8")
-    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == {
-        "doctor.ci.gate"
-    }
+    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == set()
 
 
 def test_upgrade_migrates_plain_official_remote_umbrella_hook(tmp_path: Path) -> None:

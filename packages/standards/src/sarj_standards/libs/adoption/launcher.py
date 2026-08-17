@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import shlex
-from typing import Final
+from typing import Final, NamedTuple
 
 
 TOOL_PYTHON: Final = "3.14"
@@ -14,6 +14,18 @@ COMMAND: Final = "sarj-standards"
 REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
 LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
+_LEGACY_REPOSITORY_INVOCATION: Final = re.compile(
+    r"\buvx\s+(?:(?!--from\b)[^\s;&|]+\s+)*"
+    r"--from\s+sarj-standards==[^\s;&|]+\s+sarj-standards"
+    r"(?:\s+--root(?:\s+|=)(?:\.|['\"]\.['\"]))?"
+)
+
+
+class LegacyInvocationRewrite(NamedTuple):
+    """A legacy-launcher rewrite and the number of replacements made."""
+
+    contents: str
+    replacements: int
 
 
 def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool = False) -> tuple[str, ...]:
@@ -54,6 +66,12 @@ def repository_argv(*arguments: str, executable: str = "uv") -> tuple[str, ...]:
 def repository_command(*arguments: str) -> str:
     """Render the stable consumer invocation shared by hooks, CI, and scripts."""
     return shlex.join(repository_argv(*arguments))
+
+
+def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
+    """Replace exact legacy uvx launchers with the manifest-driven repository launcher."""
+    contents, count = _LEGACY_REPOSITORY_INVOCATION.subn(repository_command(), text)
+    return LegacyInvocationRewrite(contents, count)
 
 
 def repository_script() -> str:

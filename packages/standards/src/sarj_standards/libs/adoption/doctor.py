@@ -725,6 +725,9 @@ def _is_pin_site(path: Path) -> bool:
 def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinRewrite:
     """Refresh recognized Sarj pins and normalize them to the required exact operator."""
     changed: set[str] = set()
+    text, migrated_launchers = launcher.rewrite_legacy_repository_invocations(text)
+    if migrated_launchers:
+        changed.add("sarj-standards")
 
     def isolate_launcher(match: re.Match[str]) -> str:
         if "--no-config" in match.group("args").split():
