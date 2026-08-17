@@ -7,10 +7,11 @@
 import { type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { trailingCommentRemovalRange } from "./_comment-edits.js";
 import { codeTokens, hasExternalReference, stem } from "./_comments.js";
 import { isGeneratedFile } from "./_paths.js";
 
-type MessageIds = "deleteNarration" | "narratesValue";
+type MessageIds = "deleteNarration" | "narratesValue" | "removeNarration";
 type Options = readonly [];
 
 export const noTrailingValueNarrationDocumentation = {
@@ -18,6 +19,7 @@ export const noTrailingValueNarrationDocumentation = {
   rationale: "A repeated value can disagree with the expression after either the code or comment changes.",
   remediation: "Put the unit in the identifier and keep comments only when they explain a constraint or non-obvious conversion.",
   category: "maintainability",
+  autofix: "suggestion",
   aliases: ["trailing-value-narration"],
   limitations: ["Only trailing comments with numeric values and recognized unit words are inspected."],
   examples: [
@@ -104,6 +106,7 @@ export default createRule<Options, MessageIds>({
   documentation: noTrailingValueNarrationDocumentation,
   meta: {
     type: "suggestion",
+    hasSuggestions: true,
     docs: {
       description:
         "Flag a trailing comment that repeats the line's numeric value only to name its unit.",
@@ -114,6 +117,7 @@ export default createRule<Options, MessageIds>({
         "Trailing comment restates the literal and the identifier already names its unit — delete the comment so it cannot drift.",
       narratesValue:
         "Trailing comment restates the literal on this line — put the unit in the name (STALE_TIME_MS) so it cannot drift.",
+      removeNarration: "Delete the redundant trailing narration.",
     },
   },
   defaultOptions: [],
@@ -152,9 +156,21 @@ export default createRule<Options, MessageIds>({
           const code = line.slice(0, comment.loc.start.column);
           const body = comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim();
           if (narratesValue(body, code)) {
+            const canDelete = nameAlreadyCarriesUnit(code);
+            const removal = canDelete
+              ? trailingCommentRemovalRange(sourceCode.text, comment)
+              : null;
             context.report({
               node: comment,
-              messageId: nameAlreadyCarriesUnit(code) ? "deleteNarration" : "narratesValue",
+              messageId: canDelete ? "deleteNarration" : "narratesValue",
+              suggest: removal === null
+                ? null
+                : [
+                    {
+                      messageId: "removeNarration",
+                      fix: (fixer) => fixer.removeRange(removal.range),
+                    },
+                  ],
             });
           }
         }

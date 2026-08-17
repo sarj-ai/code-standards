@@ -14,10 +14,11 @@ import {
   restates,
   restatesStatementHead,
 } from "./_comments.js";
+import { wholeLineRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
-type MessageIds = "restatesLineBelow";
+type MessageIds = "deleteComment" | "restatesLineBelow";
 type Options = readonly [];
 
 const MAX_WORDS = 8;
@@ -48,6 +49,7 @@ export const noRestatedCommentDocumentation = {
   rationale: "A comment that only repeats code adds no context and can become stale independently.",
   remediation: "Delete the comment or replace it with the reason, constraint, or consequence absent from the code.",
   category: "maintainability",
+  autofix: "suggestion",
   limitations: ["Directives, protected references, questions, multi-line prose, comments with novel content, and generated files are excluded."],
   examples: [
     { id: "reason-comment", title: "Keep the reason the code cannot express", outcome: "no-match", files: [{ path: "src/cache.ts", source: "// Serialize because the cache key is stable across deploys.\nconst key = serialize(input);" }], focusPath: "src/cache.ts", expectedCount: 0, public: true },
@@ -87,12 +89,14 @@ export default createRule<Options, MessageIds>({
   documentation: noRestatedCommentDocumentation,
   meta: {
     type: "suggestion",
+    hasSuggestions: true,
     docs: {
       description:
         "Flag a single-line comment whose every word already appears on the statement below it.",
     },
     schema: [],
     messages: {
+      deleteComment: "Delete the redundant comment.",
       restatesLineBelow:
         "Comment restates the statement below it — delete it, or replace it with the *why*; the code already carries the *what*.",
     },
@@ -185,7 +189,19 @@ export default createRule<Options, MessageIds>({
           if (labelsASiblingRun(comment)) continue;
 
           if (restates(tokens, codeTokens(line))) {
-            context.report({ node: comment, messageId: "restatesLineBelow" });
+            const removal = wholeLineRemovalRange(sourceCode.text, comment);
+            context.report({
+              node: comment,
+              messageId: "restatesLineBelow",
+              suggest: removal === null
+                ? null
+                : [
+                    {
+                      messageId: "deleteComment",
+                      fix: (fixer) => fixer.removeRange(removal.range),
+                    },
+                  ],
+            });
           }
         }
       },

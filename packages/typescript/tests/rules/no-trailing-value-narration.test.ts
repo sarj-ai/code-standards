@@ -14,6 +14,7 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-trailing-value-narration", rule, {
   valid: [
+    { name: "accepts the result of the deletion suggestion", code: "const DEFAULT_TTL_MS = 5 * 60 * 1000;" },
     // A conversion the reader cannot do in their head is the comment worth having.
     { code: "const timeout = 300000; // ~3.5 days" },
     { code: "const window = 60 * 60 * 24 * 5; // about a working week" },
@@ -55,16 +56,50 @@ ruleTester.run("no-trailing-value-narration", rule, {
     {
       name: "unit-bearing constant advice only asks to delete the narration",
       code: "const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes",
-      errors: [{ messageId: "deleteNarration" }],
+      output: null,
+      errors: [
+        {
+          messageId: "deleteNarration",
+          suggestions: [
+            {
+              messageId: "removeNarration",
+              output: "const DEFAULT_TTL_MS = 5 * 60 * 1000;",
+            },
+          ],
+        },
+      ],
     },
     {
       name: "short unit-bearing constant advice only asks to delete the narration",
       code: "const POLL_MS = 3 * 60 * 1000; // 3 min",
-      errors: [{ messageId: "deleteNarration" }],
+      errors: [{ messageId: "deleteNarration", suggestions: 1 }],
+    },
+    {
+      name: "preserves CRLF after deleting trailing block narration",
+      code: "const POLL_MS = 3 * 60 * 1000;\t/* 3 min */  \r\nnext();",
+      output: null,
+      errors: [
+        {
+          messageId: "deleteNarration",
+          suggestions: [
+            {
+              messageId: "removeNarration",
+              output: "const POLL_MS = 3 * 60 * 1000;\r\nnext();",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      name: "does not suggest deleting a block comment followed by code",
+      code: "const POLL_MS = 3 * 60 * 1000; /* 3 min */ next();",
+      output: null,
+      errors: [{ messageId: "deleteNarration", suggestions: 0 }],
     },
     {
       code: "const payload = {\n  value: 60, // 60 seconds\n};",
-      errors: [{ messageId: "narratesValue" }],
+      output: null,
+      errors: [{ messageId: "narratesValue", suggestions: 0 }],
     },
     {
       code: noTrailingValueNarrationDocumentation.examples[1].files[0].source,
@@ -72,7 +107,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
     },
     {
       code: "export const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 90; // 90 days",
-      errors: [{ messageId: "deleteNarration" }],
+      errors: [{ messageId: "deleteNarration", suggestions: 1 }],
     },
     {
       code: "const options = { gcTime: 1000 * 60 * 60 * 24 }; // 24 hours",
@@ -84,7 +119,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
     },
     {
       code: "const announcementTimeoutSec = 5 * 60; // 5 minutes",
-      errors: [{ messageId: "deleteNarration" }],
+      errors: [{ messageId: "deleteNarration", suggestions: 1 }],
     },
     {
       code: "function configure() {\n  const timeout = 5 * 60; // 5 minutes\n}",
