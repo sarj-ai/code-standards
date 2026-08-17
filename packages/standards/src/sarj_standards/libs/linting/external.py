@@ -115,10 +115,10 @@ class _ReactDoctorDiagnostic(_ReactDoctorProtocolModel):
     rule: str = Field(min_length=1)
     severity: Literal["error", "warning"]
     message: str = Field(min_length=1)
-    line: int = Field(ge=1)
-    column: int = Field(ge=1)
-    end_line: int | None = Field(default=None, alias="endLine", ge=1)
-    end_column: int | None = Field(default=None, alias="endColumn", ge=1)
+    line: int = Field(ge=0)
+    column: int = Field(ge=0)
+    end_line: int | None = Field(default=None, alias="endLine", ge=0)
+    end_column: int | None = Field(default=None, alias="endColumn", ge=0)
     url: str | None = None
 
 
@@ -1129,6 +1129,11 @@ def _react_doctor_location(
     root: Path,
     documents: dict[Path, SourceDocument | None],
 ) -> Location:
+    relative_path = _relative(path, root)
+    # React Doctor uses the protocol sentinel (0, 0) for project-level
+    # diagnostics that truthfully identify a file but no source position.
+    if item.line == 0 or item.column == 0:
+        return Location(relative_path)
     start = _one_based_position(
         {"row": item.line, "column": item.column},
         path,
@@ -1140,8 +1145,8 @@ def _react_doctor_location(
         except ValueError:
             end = None
         if end is not None and (end.line, end.character) >= (start.line, start.character):
-            return Location(_relative(path, root), region=Region(start, end))
-    return Location(_relative(path, root), position=start)
+            return Location(relative_path, region=Region(start, end))
+    return Location(relative_path, position=start)
 
 
 def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:
