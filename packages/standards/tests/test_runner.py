@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
@@ -14,7 +15,12 @@ from sarj_standards.libs.linting import runner
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Mapping, Sequence
+    from collections.abc import Iterator, Sequence
+
+
+class _LoadedTool(NamedTuple):
+    checker: Callable[[list[str]], int]
+    registry: Mapping[str, type[object]]
 
 
 def test_directories_expand_by_suffix_and_skip_generated_trees(tmp_path: Path) -> None:
@@ -284,8 +290,8 @@ def test_checker_file_list_is_protected_from_option_injection(
 
     def fake_load_tool(
         _package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
-        return fake_checker, {"example-rule": object}
+    ) -> _LoadedTool:
+        return _LoadedTool(fake_checker, {"example-rule": object})
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     monkeypatch.chdir(tmp_path)
@@ -303,9 +309,12 @@ def test_run_imports_only_registries_with_routed_files(
 
     def fake_load_tool(
         package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+    ) -> _LoadedTool:
+        def checker(_argv: list[str]) -> int:
+            return 0
+
         loaded.append(package)
-        return lambda _argv: 0, {"example-rule": object}
+        return _LoadedTool(checker, {"example-rule": object})
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     migration = tmp_path / "migration.sql"
@@ -321,7 +330,7 @@ def test_noise_only_does_not_import_registry_with_no_selected_rules(
 ) -> None:
     def fail_load(
         _package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+    ) -> _LoadedTool:
         pytest.fail("SQL registry has no noise rules")
 
     monkeypatch.setattr(
@@ -343,12 +352,12 @@ def test_python_baseline_is_forwarded_only_to_python_checker(
 
     def fake_load_tool(
         package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+    ) -> _LoadedTool:
         def checker(argv: list[str]) -> int:
             argv_by_package[package] = argv
             return 0
 
-        return checker, {"example-rule": object}
+        return _LoadedTool(checker, {"example-rule": object})
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     monkeypatch.chdir(tmp_path)
@@ -380,12 +389,12 @@ def test_create_python_baseline_uses_all_python_rules_and_update_mode(
 
     def fake_load_tool(
         _package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+    ) -> _LoadedTool:
         def checker(argv: list[str]) -> int:
             argv_seen.extend(argv)
             return 0
 
-        return checker, {"rule-b": object, "rule-a": object}
+        return _LoadedTool(checker, {"rule-b": object, "rule-a": object})
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     source = tmp_path / "app.py"
@@ -439,8 +448,8 @@ def test_empty_rule_selection_skips_checker(
 
     def fake_load_tool(
         _package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
-        return checker, {}
+    ) -> _LoadedTool:
+        return _LoadedTool(checker, {})
 
     monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
     monkeypatch.chdir(tmp_path)
@@ -453,7 +462,10 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
 
     def fake_load_tool(
         package: str,
-    ) -> tuple[Callable[[list[str]], int], Mapping[str, type[object]]]:
+    ) -> _LoadedTool:
+        def checker(_argv: list[str]) -> int:
+            return 0
+
         if package == "sarj_python_lint":
             registry = {
                 "no-comment-cruft": object,
@@ -464,7 +476,7 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
             registry = {"no-comment-cruft": object, "require-deletion-protection": object}
         else:
             registry = {"idempotent-ddl": object}
-        return lambda _argv: 0, registry
+        return _LoadedTool(checker, registry)
 
     def capture_rules(
         _checker: Callable[[list[str]], int],

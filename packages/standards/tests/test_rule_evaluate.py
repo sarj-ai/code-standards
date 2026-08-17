@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, NamedTuple, TypeGuard
 
 import pytest
 
@@ -20,6 +20,11 @@ if TYPE_CHECKING:
 
 
 _SELECTOR = "python:no-string-concat-in-loop"
+
+
+class _EvaluationResult(NamedTuple):
+    status: int
+    payload: dict[str, object]
 
 
 def _source(root: Path) -> Path:
@@ -43,7 +48,7 @@ def _manifest(*, excluded: bool = False, baseline: str | None = None) -> Manifes
     )
 
 
-def _evaluate(root: Path, scope: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict[str, object]]:
+def _evaluate(root: Path, scope: str, capsys: pytest.CaptureFixture[str]) -> _EvaluationResult:
     status = main(
         [
             "--root",
@@ -61,7 +66,7 @@ def _evaluate(root: Path, scope: str, capsys: pytest.CaptureFixture[str]) -> tup
         ]
     )
     payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
-    return status, payload
+    return _EvaluationResult(status, payload)
 
 
 def _diagnostic(value: object) -> TypeGuard[dict[str, object]]:

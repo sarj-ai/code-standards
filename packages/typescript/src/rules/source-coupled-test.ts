@@ -12,7 +12,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "rawSourceOracle";
 type Options = readonly [];
 
-const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|py|[cm]?[jt]s)$/iu;
+const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc|py|[cm]?[jt]s)$/iu;
 const FS_MODULES = new Set(["fs", "node:fs", "fs/promises", "node:fs/promises"]);
 const FS_READERS = new Set(["readFile", "readFileSync"]);
 const TEXT_TRANSFORMS = new Set([
@@ -239,6 +239,17 @@ export function createSourceCoupledRule(
       if (receiver.type !== AST_NODE_TYPES.Identifier || receiver.name !== "assert" || !ASSERT_MATCHERS.has(matcher)) return new Set();
       return new Set(node.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
     };
+    const rawRegexExtractionOrigins = (node: TSESTree.CallExpression): Set<string> => {
+      const callee = unwrap(node.callee);
+      if (
+        callee.type !== AST_NODE_TYPES.MemberExpression ||
+        staticMemberName(callee) !== "matchAll" ||
+        node.arguments.length !== 1
+      ) return new Set();
+      const argument = node.arguments[0];
+      if (argument?.type !== AST_NODE_TYPES.Literal || !(argument.value instanceof RegExp)) return new Set();
+      return rawOrigins(callee.object);
+    };
     const declare = (name: string, state: { collection?: boolean; fsObject?: boolean; fsReader?: boolean; path?: boolean; rawOrigins?: Set<string> }): void => {
       const scope = currentScope();
       scope.declared.add(name);
@@ -317,7 +328,10 @@ export function createSourceCoupledRule(
         if (collection && left?.type === AST_NODE_TYPES.Identifier) declare(left.name, { path: true });
       },
       CallExpression(node): void {
-        const origins = rawAssertionOrigins(node);
+        const origins = new Set([
+          ...rawAssertionOrigins(node),
+          ...rawRegexExtractionOrigins(node),
+        ]);
         if (origins.size === 0 || [...origins].every((origin) => reportedOrigins.has(origin))) return;
         for (const origin of origins) reportedOrigins.add(origin);
         context.report({ node, messageId: "rawSourceOracle" });

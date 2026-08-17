@@ -10,7 +10,7 @@ import shlex
 import sys
 import tomllib
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.rules.contracts import (
@@ -29,6 +29,21 @@ from sarj_standards.libs.rules.contracts import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+
+class _ShellOperands(NamedTuple):
+    operands: list[str]
+    explicit_pattern: bool
+
+
+class _TextPolicy(NamedTuple):
+    durable: tuple[str, ...]
+    excluded: tuple[str, ...]
+
+
+class _StandaloneComment(NamedTuple):
+    indent: int
+    body: str
 
 
 _TEXT_SUFFIXES: Final = frozenset(
@@ -674,9 +689,7 @@ def _shell_assertion_reads_iac(tokens: Sequence[str], path_names: set[str]) -> b
     return _shell_has_iac_path([*inputs, *redirected], path_names)
 
 
-def _shell_operands(
-    tokens: Sequence[str], value_options: frozenset[str], pattern_options: set[str]
-) -> tuple[list[str], bool]:
+def _shell_operands(tokens: Sequence[str], value_options: frozenset[str], pattern_options: set[str]) -> _ShellOperands:
     operands: list[str] = []
     explicit_pattern = False
     consume_value = False
@@ -704,7 +717,7 @@ def _shell_operands(
                 )
             continue
         operands.append(item)
-    return operands, explicit_pattern
+    return _ShellOperands(operands, explicit_pattern)
 
 
 def _shell_reads_iac(tokens: Sequence[str], path_names: set[str]) -> bool:
@@ -932,15 +945,15 @@ def _has_word_count(source: str, minimum: int) -> bool:
     return next((True for index, _match in enumerate(_WORD_RE.finditer(source), start=1) if index >= minimum), False)
 
 
-def _text_policy(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+def _text_policy(root: Path) -> _TextPolicy:
     """Load the text policy once per run instead of parsing its manifest twice."""
     manifest = root / ".sarj-standards.toml"
     if not manifest.is_file():
-        return _DURABLE_MARKDOWN, ()
+        return _TextPolicy(_DURABLE_MARKDOWN, ())
     try:
         parsed: object = tomllib.loads(manifest.read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError:
-        return _DURABLE_MARKDOWN, ()
+        return _TextPolicy(_DURABLE_MARKDOWN, ())
     table = as_table(parsed)
     configured_durable = list_field(table_field(table, "artifacts"), "durable")
     durable = (
@@ -954,7 +967,7 @@ def _text_policy(root: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
         if configured_excluded and all(isinstance(item, str) for item in configured_excluded)
         else ()
     )
-    return durable, excluded
+    return _TextPolicy(durable, excluded)
 
 
 def _comment_findings(path: Path, source: str) -> list[Finding]:
@@ -1051,17 +1064,17 @@ def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
     return leaders
 
 
-def _standalone_comment(path: Path, line: str) -> tuple[int, str] | None:
+def _standalone_comment(path: Path, line: str) -> _StandaloneComment | None:
     stripped = line.lstrip()
     if path.suffix.lower() == ".jsonc":
         for marker in ("//", "/*", "*"):
             if stripped.startswith(marker):
                 body = stripped.removeprefix(marker).removesuffix("*/").strip()
-                return len(line) - len(stripped), body
+                return _StandaloneComment(len(line) - len(stripped), body)
         return None
     if not stripped.startswith("#"):
         return None
-    return len(line) - len(stripped), stripped.removeprefix("#").strip()
+    return _StandaloneComment(len(line) - len(stripped), stripped.removeprefix("#").strip())
 
 
 def _looks_commented_config(path: Path, body: str) -> bool:

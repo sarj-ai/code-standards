@@ -9,7 +9,7 @@ import ast
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, final, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -23,6 +23,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
 _JSON_MODULES = frozenset({"json", "orjson", "rapidjson", "ujson"})
 _HTTP_MODULES = frozenset({"httpx", "requests"})
 _HTTP_METHODS = frozenset({"delete", "get", "head", "options", "patch", "post", "put", "request"})
+_HTTP_CLIENT_TYPES = frozenset({"AsyncClient", "Client", "Session"})
 _OBJECT_VALIDATORS = frozenset({"model_validate", "parse_obj"})
 _ADAPTER_VALIDATORS = frozenset({"validate_python"})
 _RECORD_METHODS = frozenset({"get", "items", "keys", "values"})
@@ -46,6 +48,26 @@ class _ModuleSummaries:
     decoder_parameters: dict[str, int]
     record_parameters: dict[str, frozenset[int]]
     local_parameters: dict[str, frozenset[int]]
+    response_functions: frozenset[str]
+    response_methods: frozenset[tuple[int, str]]
+    function_owners: dict[int, int]
+    http_client_attributes: frozenset[tuple[int, str]]
+
+
+class _RecordAccess(NamedTuple):
+    sink: ast.expr
+    receiver: ast.expr
+
+
+class _NamedBinding(NamedTuple):
+    name: str
+    value: ast.expr
+
+
+class _ResponseCallables(NamedTuple):
+    functions: frozenset[str]
+    methods: frozenset[tuple[int, str]]
+    function_owners: dict[int, int]
 
 
 @final
@@ -65,7 +87,7 @@ class RequirePydanticForExternalJson(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The rule follows common JSON decoders and simple module-local helpers through single-assignment names.",
+            "The rule follows common JSON decoders, typed HTTP response helpers and clients, and simple module-local helpers through single-assignment names.",
             "It diagnoses literal-key record access; dynamic JSON documents without fixed-field access remain out of scope.",
             "Repository-local JSON, json.load file handles, tests, generated files, and documentation examples are excluded.",
         ),
@@ -169,7 +191,82 @@ def _module_summaries(tree: ast.Module, imports: ImportIndex) -> _ModuleSummarie
                 consumed.add(parameters[receiver.id])
         if consumed:
             records[function.name] = frozenset(consumed)
-    return _ModuleSummaries(decoders, records, _locally_sourced_parameters(functions))
+    response_callables = _response_callables(tree, imports)
+    return _ModuleSummaries(
+        decoders,
+        records,
+        _locally_sourced_parameters(functions),
+        response_callables.functions,
+        response_callables.methods,
+        response_callables.function_owners,
+        _http_client_attribute_names(tree, imports),
+    )
+
+
+def _response_callables(tree: ast.Module, imports: ImportIndex) -> _ResponseCallables:
+    module_declarations: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
+    for statement in tree.body:
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            module_declarations.setdefault(statement.name, []).append(statement)
+    response_functions = frozenset(
+        name
+        for name, functions in module_declarations.items()
+        if all(_returns_http_response(function, imports) for function in functions)
+    )
+
+    response_methods: set[tuple[int, str]] = set()
+    function_owners: dict[int, int] = {}
+    for class_node in nodes(tree, ast.ClassDef):
+        owner = id(class_node)
+        declarations: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
+        for statement in class_node.body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                function_owners[id(statement)] = owner
+                declarations.setdefault(statement.name, []).append(statement)
+        response_methods.update(
+            (owner, name)
+            for name, functions in declarations.items()
+            if all(_returns_http_response(function, imports) for function in functions)
+        )
+    return _ResponseCallables(response_functions, frozenset(response_methods), function_owners)
+
+
+def _returns_http_response(function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
+    return function.returns is not None and imports.resolves(function.returns, sources=_HTTP_MODULES, symbol="Response")
+
+
+def _http_client_attribute_names(tree: ast.Module, imports: ImportIndex) -> frozenset[tuple[int, str]]:
+    owned_attributes: set[tuple[int, str]] = set()
+    for class_node in nodes(tree, ast.ClassDef):
+        assignments: dict[str, list[bool]] = {}
+        for function in class_node.body:
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            typed_parameters = {
+                argument.arg
+                for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+                if argument.annotation is not None
+                and any(
+                    imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=symbol)
+                    for symbol in _HTTP_CLIENT_TYPES
+                )
+            }
+            for node in _own_scope(function):
+                if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+                    continue
+                targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+                for target in targets:
+                    if (
+                        isinstance(target, ast.Attribute)
+                        and isinstance(target.value, ast.Name)
+                        and target.value.id == "self"
+                    ):
+                        assignments.setdefault(target.attr, []).append(
+                            isinstance(node.value, ast.Name) and node.value.id in typed_parameters
+                        )
+        owner = id(class_node)
+        owned_attributes.update((owner, name) for name, values in assignments.items() if values and all(values))
+    return frozenset(owned_attributes)
 
 
 def _locally_sourced_parameters(
@@ -223,15 +320,14 @@ def _function_findings(
         name for name, position in _parameter_positions(function).items() if position not in local_positions
     )
     outbound_requests = _outbound_request_parameters(function, imports)
-    response_names = _http_response_names(scope, imports)
+    response_names = _http_response_names(scope, imports, summaries, function)
     bindings = _unique_bindings(scope)
     resolver = _OriginResolver(imports, summaries, parameters, outbound_requests, response_names, bindings)
     findings: list[tuple[ast.expr, ast.Call]] = []
     for node in scope:
         access = _record_access(node)
         if access is not None:
-            sink, receiver = access
-            findings.extend((sink, origin) for origin in resolver.origins(receiver))
+            findings.extend((access.sink, origin) for origin in resolver.origins(access.receiver))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             for position in summaries.record_parameters.get(node.func.id, frozenset()):
                 if position < len(node.args):
@@ -304,11 +400,11 @@ class _OriginResolver:
                 return not _is_local_json_text(expression)
 
 
-def _record_access(node: ast.AST) -> tuple[ast.expr, ast.expr] | None:
+def _record_access(node: ast.AST) -> _RecordAccess | None:
     if isinstance(node, ast.Subscript) and _literal_string(node.slice) is not None:
-        return node, node.value
+        return _RecordAccess(node, node.value)
     if isinstance(node, ast.Call) and (receiver := _fixed_record_call_receiver(node)) is not None:
-        return node, receiver
+        return _RecordAccess(node, receiver)
     return None
 
 
@@ -337,32 +433,83 @@ def _unique_bindings(scope: tuple[ast.AST, ...]) -> dict[str, ast.expr]:
                 if isinstance(target, ast.Name):
                     candidates.setdefault(target.id, []).append(node.value)
         elif (binding := _single_named_binding(node)) is not None:
-            name, value = binding
-            candidates.setdefault(name, []).append(value)
+            candidates.setdefault(binding.name, []).append(binding.value)
     return {name: values[0] for name, values in candidates.items() if len(values) == 1}
 
 
-def _single_named_binding(node: ast.AST) -> tuple[str, ast.expr] | None:
+def _single_named_binding(node: ast.AST) -> _NamedBinding | None:
     if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-        return node.target.id, node.value
+        return _NamedBinding(node.target.id, node.value)
     if isinstance(node, ast.NamedExpr):
-        return node.target.id, node.value
+        return _NamedBinding(node.target.id, node.value)
     return None
 
 
-def _http_response_names(scope: tuple[ast.AST, ...], imports: ImportIndex) -> frozenset[str]:
+def _http_response_names(
+    scope: tuple[ast.AST, ...],
+    imports: ImportIndex,
+    summaries: _ModuleSummaries,
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> frozenset[str]:
     names: set[str] = set()
+    typed_clients = {
+        argument.arg
+        for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+        if argument.annotation is not None
+        and any(
+            imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=symbol) for symbol in _HTTP_CLIENT_TYPES
+        )
+    }
     for node in scope:
         if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
             continue
         call = _unwrap_await(node.value)
-        if not isinstance(call, ast.Call) or not any(
-            imports.resolves(call.func, sources=_HTTP_MODULES, symbol=method) for method in _HTTP_METHODS
+        if not isinstance(call, ast.Call) or not _is_http_response_call(
+            call,
+            imports,
+            summaries,
+            typed_clients,
+            function,
         ):
             continue
         targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
         names.update(target.id for target in targets if isinstance(target, ast.Name))
     return frozenset(names)
+
+
+def _is_http_response_call(
+    call: ast.Call,
+    imports: ImportIndex,
+    summaries: _ModuleSummaries,
+    typed_clients: set[str],
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    if any(imports.resolves(call.func, sources=_HTTP_MODULES, symbol=method) for method in _HTTP_METHODS):
+        return True
+    if isinstance(call.func, ast.Name):
+        return call.func.id in summaries.response_functions
+    if not isinstance(call.func, ast.Attribute):
+        return False
+    owner = summaries.function_owners.get(id(function))
+    if (
+        owner is not None
+        and isinstance(call.func.value, ast.Name)
+        and call.func.value.id == "self"
+        and (owner, call.func.attr) in summaries.response_methods
+    ):
+        return True
+    if call.func.attr not in (_HTTP_METHODS | {"send"}):
+        return False
+    receiver = call.func.value
+    if isinstance(receiver, ast.Name):
+        return receiver.id in typed_clients
+    return (
+        isinstance(receiver, ast.Attribute)
+        and isinstance(receiver.value, ast.Name)
+        and receiver.value.id == "self"
+        and owner is not None
+        and (owner, receiver.attr) in summaries.http_client_attributes
+    )
 
 
 def _outbound_request_parameters(

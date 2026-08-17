@@ -222,6 +222,17 @@ class Block:
         return next((b for b in self.blocks if b.type == block_type), None)
 
 
+class _BodyParseResult(NamedTuple):
+    attributes: tuple[Attribute, ...]
+    blocks: tuple[Block, ...]
+    next_index: int
+
+
+class _ValueParseResult(NamedTuple):
+    value: str
+    next_index: int
+
+
 @lru_cache(maxsize=32)
 def document(source: str) -> Block:
     """Parse `source` into a synthetic root block whose type is the empty string.
@@ -235,8 +246,8 @@ def document(source: str) -> Block:
         for lineno, line in enumerate(lines, start=1)
         for m in _TOKEN_RE.finditer(line)
     ]
-    attrs, found, _i = _parse_body(toks, 0, 0, lines)
-    return Block("", (), 0, 1, 1, max(len(lines), 1), attrs, found)
+    parsed = _parse_body(toks, 0, 0, lines)
+    return Block("", (), 0, 1, 1, max(len(lines), 1), parsed.attributes, parsed.blocks)
 
 
 def blocks(source: str) -> tuple[Block, ...]:
@@ -244,9 +255,7 @@ def blocks(source: str) -> tuple[Block, ...]:
     return document(source).blocks
 
 
-def _parse_body(
-    toks: list[_Tok], i: int, depth: int, lines: list[str]
-) -> tuple[tuple[Attribute, ...], tuple[Block, ...], int]:
+def _parse_body(toks: list[_Tok], i: int, depth: int, lines: list[str]) -> _BodyParseResult:
     if depth > _MAX_BLOCK_DEPTH:
         msg = f"HCL nesting exceeds the supported depth of {_MAX_BLOCK_DEPTH}"
         raise ValueError(msg)
@@ -261,24 +270,37 @@ def _parse_body(
             continue
         j = i + 1
         if j < len(toks) and toks[j].text == "=":
-            value, i = _read_value(toks, j + 1, lines)
-            attrs.append(Attribute(head.text, value, head.line, head.col))
+            parsed_value = _read_value(toks, j + 1, lines)
+            i = parsed_value.next_index
+            attrs.append(Attribute(head.text, parsed_value.value, head.line, head.col))
             continue
         labels: list[str] = []
         while j < len(toks) and (toks[j].text[:1].isalnum() or toks[j].text[:1] in {'"', "_"}):
             labels.append(toks[j].text.strip('"'))
             j += 1
         if j < len(toks) and toks[j].text == "{":
-            sub_attrs, sub_blocks, i = _parse_body(toks, j + 1, depth + 1, lines)
+            parsed_body = _parse_body(toks, j + 1, depth + 1, lines)
+            i = parsed_body.next_index
             end = toks[i].line if i < len(toks) else toks[-1].line
-            found.append(Block(head.text, tuple(labels), depth, head.line, head.col, end, sub_attrs, sub_blocks))
+            found.append(
+                Block(
+                    head.text,
+                    tuple(labels),
+                    depth,
+                    head.line,
+                    head.col,
+                    end,
+                    parsed_body.attributes,
+                    parsed_body.blocks,
+                )
+            )
             i += 1
             continue
         i += 1
-    return tuple(attrs), tuple(found), i
+    return _BodyParseResult(tuple(attrs), tuple(found), i)
 
 
-def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> tuple[str, int]:
+def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> _ValueParseResult:
     """Consume one attribute value, which may span lines inside `(`/`[`/`{`."""
     start, nest = i, 0
     while i < len(toks):
@@ -294,7 +316,7 @@ def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> tuple[str, int]:
         # `deletion_protection = (\n  var.env == "prod"\n)` is one value.
         if nest == 0 and (i >= len(toks) or toks[i].line != tok.line):
             break
-    return _rejoin(toks, start, i, lines), i
+    return _ValueParseResult(_rejoin(toks, start, i, lines), i)
 
 
 def _rejoin(toks: list[_Tok], start: int, end: int, lines: list[str]) -> str:

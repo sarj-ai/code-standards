@@ -9,7 +9,7 @@ import ast
 from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -39,6 +39,17 @@ _MIN_TYPE_ALIAS_ARGS = 2
 _CHOICE_PAIR_ARITY = 2
 _CAST_FUNCTION = "cast"
 _STR_CONSTRUCTOR = "str"
+
+
+class _LiteralAliases(NamedTuple):
+    names: frozenset[str]
+    value_sets: list[frozenset[str]]
+
+
+class _ExtractedCompare(NamedTuple):
+    key: str
+    literals: list[str]
+    operator: str
 
 
 #: Sibling class attributes whose presence marks all raw-str fields as choice-like.
@@ -239,7 +250,9 @@ class PreferStrEnum(Rule):
             return []
         test_path = is_test_path(path)
         check_clusters = not test_path
-        alias_names, alias_valuesets = _module_literal_aliases(tree)
+        literal_aliases = _module_literal_aliases(tree)
+        alias_names = literal_aliases.names
+        alias_valuesets = literal_aliases.value_sets
         raw_string_aliases = _module_raw_string_aliases(tree)
         literal_funcs = _literal_returning_functions(tree)
         module_func_names = frozenset(
@@ -624,7 +637,7 @@ def _cluster_is_already_closed(
     return any(literals <= vs for vs in alias_valuesets)
 
 
-def _module_literal_aliases(tree: ast.Module) -> tuple[frozenset[str], list[frozenset[str]]]:
+def _module_literal_aliases(tree: ast.Module) -> _LiteralAliases:
     """Collect module-level `X = Literal[...]` aliases."""
     names: set[str] = set()
     valuesets: list[frozenset[str]] = []
@@ -646,7 +659,7 @@ def _module_literal_aliases(tree: ast.Module) -> tuple[frozenset[str], list[froz
         names.add(name)
         if members:
             valuesets.append(frozenset(members))
-    return frozenset(names), valuesets
+    return _LiteralAliases(frozenset(names), valuesets)
 
 
 def _module_raw_string_aliases(tree: ast.Module) -> frozenset[str]:
@@ -808,7 +821,7 @@ def _fallback_consumed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> fr
                     open_names.add(bare_key)
                 extracted = _extract_compare(current.test) if isinstance(current.test, ast.Compare) else None
                 if extracted is not None:
-                    compared.add(extracted[0])
+                    compared.add(extracted.key)
                 if len(current.orelse) != 1 or not isinstance(current.orelse[0], ast.If):
                     break
                 current = current.orelse[0]
@@ -1284,8 +1297,13 @@ def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare) -
     extracted = _extract_compare(node)
     if extracted is None:
         return
-    key, literals, operator = extracted
-    _merge_cluster(clusters, key, literals, (node.lineno, node.col_offset + 1), operator=operator)
+    _merge_cluster(
+        clusters,
+        extracted.key,
+        extracted.literals,
+        (node.lineno, node.col_offset + 1),
+        operator=extracted.operator,
+    )
 
 
 def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match) -> None:
@@ -1367,7 +1385,7 @@ def _choice_binding_field(binding: str) -> str | None:
     return CHOICE_COLLECTION_FIELDS.get(binding)
 
 
-def _extract_compare(node: ast.Compare) -> tuple[str, list[str], str] | None:
+def _extract_compare(node: ast.Compare) -> _ExtractedCompare | None:
     """Return (variable key, string literals, operator kind) for an enum-shaped compare."""
     if len(node.ops) != 1 or len(node.comparators) != 1:
         return None
@@ -1384,7 +1402,7 @@ def _extract_compare(node: ast.Compare) -> tuple[str, list[str], str] | None:
         value = _str_const(lit)
         if key is None or value is None:  # pragma: no cover — guarded above
             return None
-        return key, [value], _EQ if isinstance(op, ast.Eq) else _NE
+        return _ExtractedCompare(key, [value], _EQ if isinstance(op, ast.Eq) else _NE)
     if isinstance(op, (ast.In, ast.NotIn)):
         key = _name_key(left)
         if key is None:
@@ -1397,7 +1415,7 @@ def _extract_compare(node: ast.Compare) -> tuple[str, list[str], str] | None:
             if value is None:
                 return None
             values.append(value)
-        return key, values, _MEMBERSHIP
+        return _ExtractedCompare(key, values, _MEMBERSHIP)
     return None
 
 

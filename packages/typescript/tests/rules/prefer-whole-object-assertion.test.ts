@@ -103,6 +103,22 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
         expect(obj.a).toBe(2);
       `,
     },
+    {
+      name: "ignores overlapping leaf paths",
+      filename,
+      code: `
+        expect(config.tts).toBeNull();
+        expect(config.tts.model).toBe("voice");
+      `,
+    },
+    {
+      name: "ignores dynamic computed path segments",
+      filename,
+      code: `
+        expect(config[provider].model).toBe("voice");
+        expect(config[provider].region).toBe("me-central2");
+      `,
+    },
     // Non-literal expected value: `toBe` is Object.is, `toMatchObject` is
     // recursive structural equality. There is no equivalent merged form.
     {
@@ -336,6 +352,26 @@ ruleTester.run("prefer-whole-object-assertion", rule, {
     },
   ],
   invalid: [
+    {
+      name: "combines distinct literal leaf paths under their pure common ancestor",
+      filename,
+      code: `expect(config.tts.model).toBe("eleven");
+expect(config.tts.voice).toBe("sarah");
+expect(config.stt.model).toBe("nova");`,
+      output: `expect(config).toMatchObject({ tts: { model: "eleven", voice: "sarah" }, stt: { model: "nova" } });
+
+`,
+      errors: [{ messageId: "combineAssertions" }],
+    },
+    {
+      name: "reports but does not autofix distinct leaf paths across a rationale comment",
+      filename,
+      code: `expect(config.tts.model).toBe("eleven");
+// STT intentionally uses a separate provider.
+expect(config.stt.model).toBe("nova");`,
+      output: null,
+      errors: [{ messageId: "combineAssertions" }],
+    },
     {
       name: "combines undefined property assertions",
       filename: "/repo/src/user.test.ts",

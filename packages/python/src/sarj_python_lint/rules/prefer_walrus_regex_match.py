@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -26,6 +26,11 @@ from sarj_python_lint.rules._ast_index import nodes, walk
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+class _RegexImports(NamedTuple):
+    modules: frozenset[str]
+    compile_functions: frozenset[str]
 
 
 def _is_regex_call(node: ast.AST, *, compiled_names: frozenset[str]) -> bool:
@@ -151,8 +156,12 @@ class PreferWalrusRegexMatch(Rule):
             for call in nodes(tree, ast.Call)
         ):
             return []
-        regex_modules, compile_functions = _regex_imports(tree)
-        module_compiled = _compiled_bindings(tree.body, regex_modules, compile_functions)
+        regex_imports = _regex_imports(tree)
+        module_compiled = _compiled_bindings(
+            tree.body,
+            regex_imports.modules,
+            regex_imports.compile_functions,
+        )
 
         for node in walk(tree):
             raw_body = getattr(node, "body", None)
@@ -166,8 +175,8 @@ class PreferWalrusRegexMatch(Rule):
             )
             compiled_names = (module_compiled - shadowed) | _compiled_bindings(
                 body,
-                regex_modules,
-                compile_functions,
+                regex_imports.modules,
+                regex_imports.compile_functions,
             )
 
             for i in range(len(body) - 1):
@@ -201,7 +210,7 @@ class PreferWalrusRegexMatch(Rule):
         return sorted(diags, key=lambda d: (d.line, d.col))
 
 
-def _regex_imports(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
+def _regex_imports(tree: ast.Module) -> _RegexImports:
     """Resolve local names that statically denote stdlib ``re`` or ``re.compile``."""
     modules: set[str] = set()
     functions: set[str] = set()
@@ -213,7 +222,7 @@ def _regex_imports(tree: ast.Module) -> tuple[frozenset[str], frozenset[str]]:
                 functions.update(alias.asname or alias.name for alias in names if alias.name == "compile")
             case _:
                 continue
-    return frozenset(modules), frozenset(functions)
+    return _RegexImports(frozenset(modules), frozenset(functions))
 
 
 def _compiled_bindings(

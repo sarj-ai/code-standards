@@ -128,6 +128,29 @@ def test_flags_unannotated_numeric_duration_constant(assignment: str) -> None:
     assert len(_check(f"{assignment}\n")) == 1
 
 
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "REQUEST_TIMEOUT_SECONDS: Final = 30",
+        "_POLL_INTERVAL_MS: Final = 250.0",
+        "TOKEN_TTL_SECONDS: typing.Final = 5 * 60",
+    ],
+)
+def test_flags_bare_final_numeric_duration_constant(assignment: str) -> None:
+    assert len(_check(f"import typing\nfrom typing import Final\n{assignment}\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        'REQUEST_TIMEOUT_SECONDS: Final = "30"',
+        "REQUEST_LIMIT: Final = 30",
+    ],
+)
+def test_allows_bare_final_without_numeric_duration_contract(assignment: str) -> None:
+    assert _check(f"from typing import Final\n{assignment}\n") == []
+
+
 def test_allows_duration_constant_used_only_in_typed_wire_result() -> None:
     source = """
 from typing import TypedDict

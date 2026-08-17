@@ -19,10 +19,6 @@ ruleTester.run("no-positional-tuple-return", rule, {
   valid: [
     { name: "accepts the documented named object", code: noPositionalTupleReturnDocumentation.examples[0].files[0].source },
     {
-      name: "allows private tuple-returning implementation details inside an exported class",
-      code: "export class Loader { private load(): [string, number] { return impl(); } public run(): void {} }",
-    },
-    {
       name: "does not collide a nested interface name with an exported top-level interface",
       code: "export interface Loader {} namespace Internal { interface Loader { load(): [string, number]; } }",
     },
@@ -30,50 +26,80 @@ ruleTester.run("no-positional-tuple-return", rule, {
     {
       code: "export function download(): { body: string; contentType: string | null } { return impl(); }",
     },
-    // --- Not exported: the call sites live in this file. ---
-    {
-      code: "function split(): [string, number] { return impl(); }",
-    },
-    {
-      name: "does not inherit an inline export through an enclosing function",
-      code: "export function outer(): void { function local(): [string, number] { return impl(); } local(); }",
-    },
-    {
-      name: "does not inherit a detached export through an enclosing function",
-      code: "function outer(): void { const local = (): [string, number] => impl(); local(); } export { outer };",
-    },
-    {
-      name: "does not crash on tuple-returning functions nested in an exported class heritage expression",
-      code: "export class Rollup extends factory({ make() { const pair = (): [string, number] => impl(); return pair; } }) {}",
-    },
     {
       name: "ignores generated declaration files when the rule is used standalone",
       filename: "/repo/src/__generated__/api.ts",
       code: "export function pair(): [string, number] { return impl(); }",
-    },
-    {
-      name: "keeps detached export matching scoped to the exported binding",
-      code: "function split(): [string, number] { return impl(); }\nconst other = 1;\nexport { other };",
-    },
-    // A same-named binding exported from ANOTHER module is not this function.
-    {
-      code: "function split(): [string, number] { return impl(); }\nexport { split } from './other.js';",
-    },
-    // A type-only export does not put the value on the public surface.
-    {
-      code: "function split(): [string, number] { return impl(); }\nexport type { split };",
-    },
-    {
-      code: "function split(): [string, number] { return impl(); }\nexport { type split };",
     },
     // --- Single-element tuple and array types are not positional records. ---
     { code: "export function one(): [string] { return impl(); }" },
     { code: "export function many(): Array<[string, number]> { return impl(); }" },
     // --- No return annotation to judge. ---
     { code: "export function inferred() { return ['a', 1]; }" },
+    { name: "allows an anonymous inline const-tuple callback", code: "items.map(() => ['a', 1] as const);" },
+    {
+      name: "allows an opaque TanStack Query key factory",
+      code: "export const userKeys = { all: ['users'] as const, detail: (id: string) => [...userKeys.all, id] as const } as const;",
+    },
+    { name: "explicit non-tuple contract wins over const implementation", code: "function pair(): unknown { return ['a', 1] as const; }" },
   ],
   invalid: [
     { name: "reports the documented tuple return", code: noPositionalTupleReturnDocumentation.examples[1].files[0].source, errors: [{ messageId: "noPositionalTupleReturn" }] },
+    {
+      name: "rejects a private method",
+      code: "export class Loader { private load(): [string, number] { return impl(); } public run(): void {} }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a non-exported function",
+      code: "function split(): [string, number] { return impl(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an inferred const tuple from a named function",
+      code: "function split() { return ['a', 1] as const; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not exempt an arbitrary Keys-suffixed object without an all-key anchor",
+      code: "const resultKeys = { pair: () => ['a', 1] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an inferred tuple assertion from a named arrow",
+      code: "const split = () => ['a', 1] as [string, number];",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects an inferred tuple satisfies expression",
+      code: "function split() { return ['a', 1] satisfies [string, number]; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "reports one inferred tuple boundary even with multiple tuple returns",
+      code: "function split(value: boolean) { if (value) return ['a', 1] as const; return ['b', 2] as const; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a nested named inferred const tuple",
+      code: "function outer() { function split() { return ['a', 1] as const; } return split; }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a nested declaration",
+      code: "export function outer(): void { function local(): [string, number] { return impl(); } local(); }",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a nested named arrow",
+      code: "function outer(): void { const local = (): [string, number] => impl(); local(); } export { outer };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "rejects a named tuple callback inside class heritage setup",
+      code: "export class Rollup extends factory({ make() { const pair = (): [string, number] => impl(); return pair; } }) {}",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
     {
       name: "rejects an anonymous default function",
       code: "export default function (): [string, number] { return impl(); }",
@@ -279,10 +305,13 @@ ruleTester.run("no-positional-tuple-return", rule, {
       code: "const resolve = (): [User, boolean] => impl();\nexport { resolve };",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Only the exported declarator of a multi-declarator statement is public.
+    // Every named declarator is checked, regardless of export status.
     {
       code: "const resolve = (): [User, boolean] => impl(), local = (): [User, boolean] => impl();\nexport { resolve };",
-      errors: [{ messageId: "noPositionalTupleReturn" }],
+      errors: [
+        { messageId: "noPositionalTupleReturn", data: { name: "resolve", count: "2" } },
+        { messageId: "noPositionalTupleReturn", data: { name: "local", count: "2" } },
+      ],
     },
     // A method of a class exported later — the class name carries the export.
     {

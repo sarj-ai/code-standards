@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import sys
 from types import MappingProxyType
+from typing import NamedTuple
 
 from sarj_python_lint import __version__
 from sarj_python_lint._filesystem import atomic_write_text
@@ -120,6 +121,11 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
 )
 
 
+class _OwnerLocation(NamedTuple):
+    line: int
+    column: int
+
+
 def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
     """Keep the most specific remediation at a source location."""
     codes = frozenset(diagnostic.code for diagnostic in diags)
@@ -130,15 +136,17 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
         _function_signature_owner_locations(source) if source is not None and needs_signature_owners else {}
     )
 
-    def owner_location(diagnostic: Diagnostic) -> tuple[int, int]:
+    def owner_location(diagnostic: Diagnostic) -> _OwnerLocation:
         if diagnostic.code in {"SARJ034", "SARJ093"}:
-            return signature_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
-        return docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
+            line, column = signature_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
+        else:
+            line, column = docstring_owners.get(diagnostic.line, (diagnostic.line, diagnostic.col))
+        return _OwnerLocation(line, column)
 
     present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
     for diagnostic in diags:
-        line, col = owner_location(diagnostic)
-        by_code = present.setdefault((diagnostic.path, line, col), {})
+        location = owner_location(diagnostic)
+        by_code = present.setdefault((diagnostic.path, location.line, location.column), {})
         by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
     suppressed = {
         (location, generic, generic_severity)
@@ -156,7 +164,8 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
             (
                 (
                     diagnostic.path,
-                    *owner_location(diagnostic),
+                    owner_location(diagnostic).line,
+                    owner_location(diagnostic).column,
                 ),
                 diagnostic.code,
                 diagnostic.severity,

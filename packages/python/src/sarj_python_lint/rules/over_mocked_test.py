@@ -79,6 +79,12 @@ _TEST_CASE_RECEIVERS = frozenset({"self", "cls"})
 # `self.client` is a collaborator hung off the test case; `self` alone is not.
 _TEST_CASE_DEPTH = 2
 
+
+class _MockReceiver(NamedTuple):
+    target: str
+    owner: str
+
+
 # Tokens naming test-infrastructure knobs rather than collaborators: the
 # environment, configuration, logging, the clock, and the retry/timeout dials.
 _INFRA_TOKENS = frozenset(
@@ -572,25 +578,29 @@ def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> li
     if subform in {"object", "multiple"}:
         if not call.args:
             return []
-        base, owning = _receiver(call.args[0], names)
+        receiver = _receiver(call.args[0], names)
         attrs = (
             [_target_text(call.args[1]) if len(call.args) > 1 else _keyword_text(call, "attribute")]
             if subform == "object"
             else _replaced_attributes(call)
         )
-        return [(f"{base}.{attr}", owning) for attr in attrs] if attrs else [(base, owning)]
+        return (
+            [(f"{receiver.target}.{attr}", receiver.owner) for attr in attrs]
+            if attrs
+            else [(receiver.target, receiver.owner)]
+        )
     if not call.args:
         return []
     target = _target_text(call.args[0])
     return [(target, _owner_of(target))]
 
 
-def _receiver(node: ast.expr, names: _MockNames) -> tuple[str, str]:
+def _receiver(node: ast.expr, names: _MockNames) -> _MockReceiver:
     """Render the object a `patch.object` / `monkeypatch.setattr` call targets."""
     text = _target_text(node)
     if isinstance(node, ast.Constant):
-        return text, _owner_of(text)
-    return text, _object_of(node, names) or text
+        return _MockReceiver(text, _owner_of(text))
+    return _MockReceiver(text, _object_of(node, names) or text)
 
 
 def _owner_of(target: str) -> str:
@@ -612,13 +622,13 @@ def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[tuple[str, str]
         return []
     if not call.args:
         return []
-    base, owning = _receiver(call.args[0], names)
+    receiver = _receiver(call.args[0], names)
     # `monkeypatch.setattr(mod, "attr", value)` vs `setattr("mod.attr", value)`:
     # in the two-argument form the second argument is the replacement, and
     # reading it as an attribute name would key the target off the stub.
     if len(call.args) >= _SETATTR_SPLIT_ARITY:
-        return [(f"{base}.{_target_text(call.args[1])}", owning)]
-    return [(base, _owner_of(base))]
+        return [(f"{receiver.target}.{_target_text(call.args[1])}", receiver.owner)]
+    return [(receiver.target, _owner_of(receiver.target))]
 
 
 def _mock_parameters(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: int) -> list[str]:

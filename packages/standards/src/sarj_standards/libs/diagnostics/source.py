@@ -7,13 +7,20 @@ from bisect import bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from .models import Position, Region
 
 
 if TYPE_CHECKING:
     from typing import Self
+
+
+class _Utf16Index(NamedTuple):
+    starts: array[int]
+    ends: array[int]
+    unit_extras: array[int]
+    byte_extras: array[int]
 
 
 @dataclass(slots=True)
@@ -25,7 +32,7 @@ class SourceDocument:
     _lines: tuple[str, ...] = field(init=False, repr=False)
     _line_byte_offsets: tuple[int, ...] = field(init=False, repr=False)
     _byte_length: int = field(init=False, repr=False)
-    _utf16_indexes: dict[int, tuple[array[int], array[int], array[int], array[int]]] = field(init=False, repr=False)
+    _utf16_indexes: dict[int, _Utf16Index] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         lines = tuple(re.findall(r".*?(?:\r\n|\r|\n)|.+\Z", self.text, flags=re.DOTALL)) or ("",)
@@ -95,7 +102,7 @@ class SourceDocument:
         )
 
     @staticmethod
-    def _build_utf16_index(content: str) -> tuple[array[int], array[int], array[int], array[int]]:
+    def _build_utf16_index(content: str) -> _Utf16Index:
         starts = array("I")
         ends = array("I")
         unit_extras = array("I")
@@ -113,7 +120,7 @@ class SourceDocument:
                 byte_extras.append(byte_offset + byte_length - codepoint_index - 1)
             utf16_offset += units
             byte_offset += byte_length
-        return starts, ends, unit_extras, byte_extras
+        return _Utf16Index(starts, ends, unit_extras, byte_extras)
 
     def byte_point(self, *, line: int, column: int) -> Position | None:
         """Convert a one-based line and UTF-8 byte column without guessing."""

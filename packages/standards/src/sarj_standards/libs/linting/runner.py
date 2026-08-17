@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from importlib import import_module
@@ -10,7 +11,7 @@ import os
 from pathlib import Path
 import stat
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from sarj_standards.libs.filesystem import is_link_like
 
@@ -18,7 +19,7 @@ from . import textlint
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Mapping, Sequence
+    from collections.abc import Iterable, Sequence
 
     from .policy import Policy
 
@@ -39,6 +40,11 @@ class _RegistryModule(Protocol):
     """Importable rule-registry module."""
 
     REGISTRY: Mapping[str, type[_Rule]]
+
+
+class _LoadedTool(NamedTuple):
+    checker: Callable[[list[str]], int]
+    registry: Mapping[str, type[_Rule]]
 
 
 class _Tool(StrEnum):
@@ -218,14 +224,14 @@ def _select_rules(registry: Mapping[str, type[_Rule]], selected: frozenset[str])
 
 def _load_tool(
     package: str,
-) -> tuple[Callable[[list[str]], int], Mapping[str, type[_Rule]]]:
+) -> _LoadedTool:
     """Load one checker when the all-rules command needs it."""
     checker_module = import_module(f"{package}.__main__")
     registry_module = import_module(f"{package}.rules")
     if not isinstance(checker_module, _CheckerModule) or not isinstance(registry_module, _RegistryModule):
         msg = f"{package} does not expose the expected lint API"
         raise TypeError(msg)
-    return checker_module.main, registry_module.REGISTRY
+    return _LoadedTool(checker_module.main, registry_module.REGISTRY)
 
 
 def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> GroupedPaths:

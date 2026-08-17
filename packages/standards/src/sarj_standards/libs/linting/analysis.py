@@ -6,7 +6,7 @@ from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
 import time
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from sarj_standards.libs.diagnostics import (
     AnalysisReport,
@@ -75,6 +75,11 @@ class _CheckerModule(Protocol):
 @runtime_checkable
 class _RegistryModule(Protocol):
     REGISTRY: Mapping[str, type[_RuleMetadata]]
+
+
+class _LoadedNative(NamedTuple):
+    checker: _CheckerModule
+    registry: _RegistryModule
 
 
 def analyze(
@@ -289,13 +294,13 @@ def _run_native(
     )
 
 
-def _load_native(package: str) -> tuple[_CheckerModule, _RegistryModule]:
+def _load_native(package: str) -> _LoadedNative:
     checker_module = import_module(f"{package}.__main__")
     registry_module = import_module(f"{package}.rules")
     if not isinstance(checker_module, _CheckerModule) or not isinstance(registry_module, _RegistryModule):
         msg = f"{package} does not expose the expected in-process analysis API"
         raise TypeError(msg)
-    return checker_module, registry_module
+    return _LoadedNative(checker_module, registry_module)
 
 
 def _metadata(registry: Mapping[str, type[_RuleMetadata]]) -> dict[str, tuple[str, str]]:

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, final, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -34,6 +34,17 @@ _MIN_TYPE_DISPATCH_BRANCHES = 2
 _ERROR_TYPE_DISPATCH_BRANCHES = 3
 _ISINSTANCE_ARG_COUNT = 2
 _PAIR_COUNT = 2
+
+
+class _IsinstanceLadder(NamedTuple):
+    subject: str
+    branch_count: int
+
+
+class _NameContexts(NamedTuple):
+    loaded: bool
+    rebound: bool
+
 
 # Lowercase builtins are valid class-pattern heads; other lowercase names may be runtime tuples or aliases.
 _MATCHABLE_BUILTIN_TYPES = frozenset(
@@ -289,7 +300,7 @@ def _isinstance_ladder(
     node: ast.If,
     runtime_tuple_aliases: frozenset[str],
     ast_module_names: frozenset[str],
-) -> tuple[str, int] | None:
+) -> _IsinstanceLadder | None:
     """Recognize a complete if/elif chain dispatching one name by runtime type."""
     branches = _if_ladder(node)
     branch_count = len(branches)
@@ -316,7 +327,7 @@ def _isinstance_ladder(
         return None
     if subject is None:
         return None
-    return subject, branch_count
+    return _IsinstanceLadder(subject, branch_count)
 
 
 def _if_ladder(node: ast.If) -> tuple[ast.If, ...]:
@@ -534,8 +545,7 @@ def _repeated_match_attribute_captures(node: ast.Match, path: Path, code: str) -
         class_captures = [captures for captures in capture_maps if captures is not None]
         if subject in _bound_pattern_names(case.pattern):
             continue
-        _, subject_rebound = _body_name_contexts(case.body, subject)
-        if subject_rebound:
+        if _body_name_contexts(case.body, subject).rebound:
             continue
 
         shared = set(class_captures[0].items())
@@ -544,8 +554,12 @@ def _repeated_match_attribute_captures(node: ast.Match, path: Path, code: str) -
 
         used_shared: list[tuple[str, str]] = []
         for attribute, capture in sorted(shared):
-            loaded, rebound = _body_name_contexts(case.body, capture)
-            if loaded and not rebound and not _unsafe_direct_attribute_use(case.body, subject, capture):
+            contexts = _body_name_contexts(case.body, capture)
+            if (
+                contexts.loaded
+                and not contexts.rebound
+                and not _unsafe_direct_attribute_use(case.body, subject, capture)
+            ):
                 used_shared.append((attribute, capture))
         if not used_shared:
             continue
@@ -604,7 +618,7 @@ def _bound_pattern_names(pattern: ast.pattern) -> set[str]:
     return names
 
 
-def _body_name_contexts(body: list[ast.stmt], name: str) -> tuple[bool, bool]:
+def _body_name_contexts(body: list[ast.stmt], name: str) -> _NameContexts:
     """Report whether a case body loads and rebinds one name."""
     loaded = False
     rebound = False
@@ -616,7 +630,7 @@ def _body_name_contexts(body: list[ast.stmt], name: str) -> tuple[bool, bool]:
                 loaded = True
             else:
                 rebound = True
-    return loaded, rebound
+    return _NameContexts(loaded, rebound)
 
 
 def _unsafe_direct_attribute_use(body: list[ast.stmt], subject: str, capture: str) -> bool:
@@ -782,16 +796,15 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
                 self.ladder_continuations.add(id(continuation))
             ladder = _isinstance_ladder(node, self.runtime_tuple_aliases, self.ast_module_names)
             if ladder is not None:
-                subject, branch_count = ladder
                 self.diags.append(
                     Diagnostic(
                         path=self.path,
                         line=node.lineno,
                         col=node.col_offset + 1,
                         code=self.code,
-                        severity=_type_dispatch_severity(branch_count),
+                        severity=_type_dispatch_severity(ladder.branch_count),
                         message=(
-                            f"{branch_count}-branch isinstance dispatch on '{subject}' — use match/case "
+                            f"{ladder.branch_count}-branch isinstance dispatch on '{ladder.subject}' — use match/case "
                             "class patterns (combining tuple members with `|`) so the type dispatch is explicit."
                         ),
                     )

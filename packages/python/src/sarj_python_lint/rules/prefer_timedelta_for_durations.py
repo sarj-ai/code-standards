@@ -172,6 +172,19 @@ class PreferTimedeltaForDurations(Rule):
                     if _is_constant_reference(name) and name not in serialized_constants:
                         numeric = "float" if _contains_float(value) else "int"
                         self._consider(name, ast.Name(id=numeric), statement, diags, path)
+                case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=value) if (
+                    value is not None
+                    and _is_numeric_expression(value)
+                    and _is_constant_reference(name)
+                    and name not in serialized_constants
+                    and imports.resolves(
+                        annotation,
+                        sources=frozenset({"typing", "typing_extensions"}),
+                        symbol="Final",
+                    )
+                ):
+                    numeric = "float" if _contains_float(value) else "int"
+                    self._consider(name, ast.Name(id=numeric), statement, diags, path)
                 case _:
                     pass
         return diags
@@ -249,13 +262,9 @@ def _contains_float(node: ast.AST) -> bool:
 def _exclusively_serialized_duration_constants(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
     """Find numeric constants whose reads are proven wire-model construction only."""
     definitions = {
-        statement.targets[0].id: statement.targets[0]
+        target.id: target
         for statement in tree.body
-        if isinstance(statement, ast.Assign)
-        and len(statement.targets) == 1
-        and isinstance(statement.targets[0], ast.Name)
-        and _is_numeric_expression(statement.value)
-        and _is_constant_reference(statement.targets[0].id)
+        if (target := _numeric_constant_target(statement, imports)) is not None
     }
     if not definitions:
         return frozenset()
@@ -275,6 +284,30 @@ def _exclusively_serialized_duration_constants(tree: ast.Module, imports: Import
         if loads and all(_is_wire_model_value(load, parent, wire_models) for load in loads):
             serialized.add(name)
     return frozenset(serialized)
+
+
+def _numeric_constant_target(statement: ast.stmt, imports: ImportIndex) -> ast.Name | None:
+    if (
+        isinstance(statement, ast.Assign)
+        and len(statement.targets) == 1
+        and isinstance(statement.targets[0], ast.Name)
+        and _is_numeric_expression(statement.value)
+        and _is_constant_reference(statement.targets[0].id)
+    ):
+        return statement.targets[0]
+    if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
+        return None
+    if statement.value is None or not _is_numeric_expression(statement.value):
+        return None
+    if not _is_constant_reference(statement.target.id):
+        return None
+    if imports.resolves(
+        statement.annotation,
+        sources=frozenset({"typing", "typing_extensions"}),
+        symbol="Final",
+    ):
+        return statement.target
+    return None
 
 
 def _has_competing_binding(tree: ast.Module, name: str, definition: ast.Name) -> bool:

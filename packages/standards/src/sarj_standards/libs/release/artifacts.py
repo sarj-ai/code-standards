@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path, PurePosixPath
 import tarfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 import zipfile
 
 from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
@@ -17,6 +17,11 @@ if TYPE_CHECKING:
 
 type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 _INSTALL_LIFECYCLE_SCRIPTS = frozenset({"preinstall", "install", "postinstall", "prepare"})
+
+
+class _InspectedMembers(NamedTuple):
+    found: set[str]
+    identity_verified: bool
 
 
 def _json_value(value: object) -> JsonValue:
@@ -149,7 +154,7 @@ def _inspect_members(
     *,
     expected_name: str | None,
     expected_version: str | None,
-) -> tuple[set[str], bool]:
+) -> _InspectedMembers:
     found: set[str] = set()
     identity_verified = False
     for member in archive.getmembers():
@@ -190,4 +195,4 @@ def _inspect_members(
                 msg = f"packed entry point is missing, empty, or not a regular file: {member.name}"
                 raise ValueError(msg)
             found.add(member.name)
-    return found, identity_verified
+    return _InspectedMembers(found, identity_verified)

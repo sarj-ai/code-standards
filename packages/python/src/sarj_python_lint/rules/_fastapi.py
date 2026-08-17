@@ -74,6 +74,16 @@ class ParameterMarker(NamedTuple):
     call: ast.Call
 
 
+class _ReceiverKey(NamedTuple):
+    scope: int
+    name: str
+
+
+class _DecoratorBinding(NamedTuple):
+    receiver: str
+    method: str
+
+
 @dataclass(frozen=True, slots=True)
 class _ImportedReference:
     module: str
@@ -113,12 +123,12 @@ class FastapiIndex:
         self.annotated: set[str] = set()
         self.symbols: dict[str, str] = {}
         self.type_aliases: dict[str, ast.expr] = {}
-        self.receivers: set[tuple[int, str]] = set()
-        self.receiver_origins: dict[tuple[int, str], tuple[int, str]] = {}
-        self.receiver_kinds: dict[tuple[int, str], Literal["FastAPI", "APIRouter"]] = {}
-        self.hidden_receivers: set[tuple[int, str]] = set()
-        self.decorators: dict[tuple[int, str], tuple[str, str]] = {}
-        self.bound_names: set[tuple[int, str]] = set()
+        self.receivers: set[_ReceiverKey] = set()
+        self.receiver_origins: dict[_ReceiverKey, _ReceiverKey] = {}
+        self.receiver_kinds: dict[_ReceiverKey, Literal["FastAPI", "APIRouter"]] = {}
+        self.hidden_receivers: set[_ReceiverKey] = set()
+        self.decorators: dict[_ReceiverKey, _DecoratorBinding] = {}
+        self.bound_names: set[_ReceiverKey] = set()
         self._node_scopes: dict[int, int] = {}
         self._node_classes: dict[int, int | None] = {}
         self._route_scopes: dict[int, int] = {}
@@ -182,31 +192,37 @@ class FastapiIndex:
         assignments: list[tuple[int, str, ast.expr]] = []
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self.bound_names.add((self._node_scopes[id(node)], node.name))
+                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
                 arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
                 if node.args.vararg is not None:
                     arguments.append(node.args.vararg)
                 if node.args.kwarg is not None:
                     arguments.append(node.args.kwarg)
-                self.bound_names.update((node.lineno, argument.arg) for argument in arguments)
+                self.bound_names.update(_ReceiverKey(node.lineno, argument.arg) for argument in arguments)
             elif isinstance(node, ast.ClassDef):
-                self.bound_names.add((self._node_scopes[id(node)], node.name))
+                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
             elif isinstance(node, (ast.Import, ast.ImportFrom)):
                 self.bound_names.update(
-                    (self._node_scopes[id(node)], alias.asname or alias.name.split(".")[0]) for alias in node.names
+                    _ReceiverKey(self._node_scopes[id(node)], alias.asname or alias.name.split(".")[0])
+                    for alias in node.names
                 )
             elif isinstance(node, (ast.For, ast.AsyncFor)):
-                self.bound_names.update((self._node_scopes[id(node)], name) for name in self._target_names(node.target))
+                self.bound_names.update(
+                    _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
+                )
             elif isinstance(node, ast.With):
                 for item in node.items:
                     if item.optional_vars is not None:
                         self.bound_names.update(
-                            (self._node_scopes[id(node)], name) for name in self._target_names(item.optional_vars)
+                            _ReceiverKey(self._node_scopes[id(node)], name)
+                            for name in self._target_names(item.optional_vars)
                         )
             elif isinstance(node, ast.ExceptHandler) and node.name is not None:
-                self.bound_names.add((self._node_scopes[id(node)], node.name))
+                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
             elif isinstance(node, ast.NamedExpr):
-                self.bound_names.update((self._node_scopes[id(node)], name) for name in self._target_names(node.target))
+                self.bound_names.update(
+                    _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
+                )
             if isinstance(node, ast.Assign) and len(node.targets) == 1:
                 name = _binding_name(node.targets[0])
                 if name:
@@ -219,12 +235,12 @@ class FastapiIndex:
                 assignments.append((self._node_scopes[id(node)], node.name.id, node.value))
 
         changed = True
-        counts = Counter((scope, name) for scope, name, _value in assignments)
+        counts = Counter(_ReceiverKey(scope, name) for scope, name, _value in assignments)
         self.bound_names.update(counts)
         while changed:
             changed = False
             for scope, name, value in assignments:
-                key = (scope, name)
+                key = _ReceiverKey(scope, name)
                 if counts[key] != 1:
                     continue
                 if key in self.receivers or key in self.decorators:
@@ -250,7 +266,7 @@ class FastapiIndex:
                 if isinstance(value, ast.Attribute) and value.attr in HTTP_METHODS:
                     receiver = _binding_name(value.value)
                     if self._receiver_key(scope, receiver) is not None:
-                        self.decorators[key] = (receiver, value.attr)
+                        self.decorators[key] = _DecoratorBinding(receiver, value.attr)
                         changed = True
                         continue
                 if self._is_annotated(value) or (isinstance(value, ast.Name) and value.id in self.type_aliases):
@@ -268,12 +284,12 @@ class FastapiIndex:
             return self._node_classes[id(node)] or self._node_scopes[id(node)]
         return self._node_scopes[id(node)]
 
-    def _receiver_key(self, scope: int, name: str) -> tuple[int, str] | None:
+    def _receiver_key(self, scope: int, name: str) -> _ReceiverKey | None:
         if not name:
             return None
         current: int | None = scope
         while current is not None:
-            binding = (current, name)
+            binding = _ReceiverKey(current, name)
             if binding in self.receivers:
                 return binding
             if binding in self.bound_names:
@@ -325,7 +341,8 @@ class FastapiIndex:
                 if receiver_key is not None:
                     method = decorator.func.attr
             elif isinstance(decorator.func, ast.Name) and (resolved := self._decorator(scope, decorator.func.id)):
-                receiver, method = resolved
+                receiver = resolved.receiver
+                method = resolved.method
                 receiver_key = self._receiver_key(scope, receiver)
             if method not in HTTP_METHODS or receiver_key is None:
                 continue
@@ -336,11 +353,11 @@ class FastapiIndex:
             )
             path = path_node.value if isinstance(path_node, ast.Constant) and isinstance(path_node.value, str) else None
             route_methods = self._route_methods(decorator) if method == "api_route" else (method,)
-            origin_scope, origin_name = self.receiver_origins[receiver_key]
+            origin = self.receiver_origins[receiver_key]
             routes.extend(
                 Route(
                     decorator=decorator,
-                    receiver=f"{origin_scope}:{origin_name}",
+                    receiver=f"{origin.scope}:{origin.name}",
                     method=route_method,
                     path=path,
                     receiver_kind=self.receiver_kinds[receiver_key],
@@ -350,10 +367,10 @@ class FastapiIndex:
             )
         return tuple(routes)
 
-    def _decorator(self, scope: int, name: str) -> tuple[str, str] | None:
+    def _decorator(self, scope: int, name: str) -> _DecoratorBinding | None:
         current: int | None = scope
         while current is not None:
-            binding = (current, name)
+            binding = _ReceiverKey(current, name)
             if binding in self.decorators:
                 return self.decorators[binding]
             if binding in self.bound_names:
@@ -473,7 +490,7 @@ class FastapiIndex:
         # it, so begin with that function's parent scope.
         scope: int | None = self._scope_parents.get(node_scope)
         while scope is not None and scope != 0:
-            if (scope, root) in self.bound_names:
+            if _ReceiverKey(scope, root) in self.bound_names:
                 return True
             scope = self._scope_parents.get(scope)
         return False

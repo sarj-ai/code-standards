@@ -6,6 +6,7 @@ Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/r
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, override
@@ -29,6 +30,12 @@ if TYPE_CHECKING:
 
 
 type ParentMap = dict[ast.AST, ast.AST]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _FlowProps:
+    unlogged: bool
+    logged: bool
 
 
 class NoSentinelReturnOnExcept(Rule):
@@ -435,32 +442,31 @@ def _is_sentinel(value: ast.expr) -> bool:
 
 def _handler_logs_before_return(handler: ast.ExceptHandler) -> bool:
     """Report whether some logging call can reach the handler's final sentinel return."""
-    _, logged_fallthrough = _list_props(handler.body[:-1])
-    return logged_fallthrough
+    return _list_props(handler.body[:-1]).logged
 
 
-def _list_props(stmts: list[ast.stmt]) -> tuple[bool, bool]:
+def _list_props(stmts: list[ast.stmt]) -> _FlowProps:
     """Compute fall-through reachability for a statement list, ignoring the exit target."""
     reach_unlogged = True
     reach_logged = False
     for stmt in stmts:
-        stmt_unlogged, stmt_logged = _stmt_props(stmt)
-        stmt_falls = stmt_unlogged or stmt_logged
-        new_logged = (reach_logged and stmt_falls) or (reach_unlogged and stmt_logged)
-        new_unlogged = reach_unlogged and stmt_unlogged
+        props = _stmt_props(stmt)
+        stmt_falls = props.unlogged or props.logged
+        new_logged = (reach_logged and stmt_falls) or (reach_unlogged and props.logged)
+        new_unlogged = reach_unlogged and props.unlogged
         reach_logged, reach_unlogged = new_logged, new_unlogged
         if not reach_logged and not reach_unlogged:
             break
-    return reach_unlogged, reach_logged
+    return _FlowProps(unlogged=reach_unlogged, logged=reach_logged)
 
 
-def _stmt_props(stmt: ast.stmt) -> tuple[bool, bool]:
+def _stmt_props(stmt: ast.stmt) -> _FlowProps:
     """Compute `(unlogged, logged)` fall-through reachability for one statement."""
     match stmt:
         case ast.Return() | ast.Raise() | ast.Break() | ast.Continue():
-            return False, False
+            return _FlowProps(unlogged=False, logged=False)
         case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-            return True, False
+            return _FlowProps(unlogged=True, logged=False)
         case ast.If():
             return _if_props(stmt)
         case ast.For() | ast.AsyncFor() | ast.While():
@@ -473,54 +479,62 @@ def _stmt_props(stmt: ast.stmt) -> tuple[bool, bool]:
             return _match_props(stmt)
         case _:
             logs = _contains_logging_call(stmt)
-            return not logs, logs
+            return _FlowProps(unlogged=not logs, logged=logs)
 
 
-def _if_props(node: ast.If) -> tuple[bool, bool]:
-    body_unlogged, body_logged = _list_props(node.body)
-    else_unlogged, else_logged = _list_props(node.orelse) if node.orelse else (True, False)
+def _if_props(node: ast.If) -> _FlowProps:
+    body = _list_props(node.body)
+    otherwise = _list_props(node.orelse) if node.orelse else _FlowProps(unlogged=True, logged=False)
     if _contains_logging_call(node.test):
-        return False, (body_unlogged or body_logged or else_unlogged or else_logged)
-    return body_unlogged or else_unlogged, body_logged or else_logged
+        return _FlowProps(
+            unlogged=False,
+            logged=body.unlogged or body.logged or otherwise.unlogged or otherwise.logged,
+        )
+    return _FlowProps(
+        unlogged=body.unlogged or otherwise.unlogged,
+        logged=body.logged or otherwise.logged,
+    )
 
 
-def _loop_props(node: ast.For | ast.AsyncFor | ast.While) -> tuple[bool, bool]:
-    _, body_logged = _list_props(node.body)
-    else_unlogged, else_logged = _list_props(node.orelse) if node.orelse else (True, False)
-    return else_unlogged, body_logged or else_logged
+def _loop_props(node: ast.For | ast.AsyncFor | ast.While) -> _FlowProps:
+    body = _list_props(node.body)
+    otherwise = _list_props(node.orelse) if node.orelse else _FlowProps(unlogged=True, logged=False)
+    return _FlowProps(unlogged=otherwise.unlogged, logged=body.logged or otherwise.logged)
 
 
-def _try_props(node: ast.Try | ast.TryStar) -> tuple[bool, bool]:
-    fall_unlogged, fall_logged = _list_props([*node.body, *node.orelse])
+def _try_props(node: ast.Try | ast.TryStar) -> _FlowProps:
+    fallthrough = _list_props([*node.body, *node.orelse])
+    fall_unlogged = fallthrough.unlogged
+    fall_logged = fallthrough.logged
     for handler in node.handlers:
-        handler_unlogged, handler_logged = _list_props(handler.body)
-        fall_unlogged = fall_unlogged or handler_unlogged
-        fall_logged = fall_logged or handler_logged
+        handler_props = _list_props(handler.body)
+        fall_unlogged = fall_unlogged or handler_props.unlogged
+        fall_logged = fall_logged or handler_props.logged
     if node.finalbody:
-        final_unlogged, final_logged = _list_props(node.finalbody)
-        if not final_unlogged and not final_logged:
-            return False, False
-        if final_logged and not final_unlogged:
-            return False, fall_unlogged or fall_logged
-        fall_logged = fall_logged or (final_logged and (fall_unlogged or fall_logged))
-    return fall_unlogged, fall_logged
+        final_props = _list_props(node.finalbody)
+        if not final_props.unlogged and not final_props.logged:
+            return _FlowProps(unlogged=False, logged=False)
+        if final_props.logged and not final_props.unlogged:
+            return _FlowProps(unlogged=False, logged=fall_unlogged or fall_logged)
+        fall_logged = fall_logged or (final_props.logged and (fall_unlogged or fall_logged))
+    return _FlowProps(unlogged=fall_unlogged, logged=fall_logged)
 
 
-def _match_props(node: ast.Match) -> tuple[bool, bool]:
+def _match_props(node: ast.Match) -> _FlowProps:
     any_unlogged = False
     any_logged = False
     exhaustive = False
     for case in node.cases:
-        case_unlogged, case_logged = _list_props(case.body)
-        any_unlogged = any_unlogged or case_unlogged
-        any_logged = any_logged or case_logged
+        case_props = _list_props(case.body)
+        any_unlogged = any_unlogged or case_props.unlogged
+        any_logged = any_logged or case_props.logged
         if _is_irrefutable_case(case):
             exhaustive = True
     if not exhaustive:
         any_unlogged = True
     if _contains_logging_call(node.subject):
-        return False, (any_unlogged or any_logged)
-    return any_unlogged, any_logged
+        return _FlowProps(unlogged=False, logged=any_unlogged or any_logged)
+    return _FlowProps(unlogged=any_unlogged, logged=any_logged)
 
 
 def _is_irrefutable_case(case: ast.match_case) -> bool:

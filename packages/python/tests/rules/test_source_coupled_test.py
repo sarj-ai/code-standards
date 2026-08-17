@@ -47,6 +47,54 @@ def test_flags_regex_over_raw_python_source():
     )
 
 
+@pytest.mark.parametrize("suffix", ["tsx", "jsx"])
+def test_flags_raw_component_source(suffix: str):
+    diagnostics = check(f"""
+        def test_component_contract():
+            source = Path("component.{suffix}").read_text()
+            assert re.search(r"MAX_DURATION", source)
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_flags_open_of_module_file_source():
+    diagnostics = check("""
+        def test_removed_proxy():
+            source = open(proxy_router.__file__).read()
+            assert "ProxyRouter" not in source
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_flags_inspect_getfile_source_read():
+    diagnostics = check("""
+        def test_strategy_source():
+            source = Path(inspect.getfile(TransferStrategy)).read_text()
+            assert "legacy_transfer" not in source
+    """)
+    assert len(diagnostics) == 1
+
+
+def test_allows_module_file_path_without_raw_content_assertion():
+    assert (
+        check("""
+        def test_module_location():
+            assert Path(proxy_router.__file__).exists()
+    """)
+        == []
+    )
+
+
+def test_allows_inspect_getfile_without_source_read():
+    assert (
+        check("""
+        def test_module_location():
+            assert Path(inspect.getfile(TransferStrategy)).exists()
+    """)
+        == []
+    )
+
+
 def test_reports_once_for_multiple_assertions_on_one_source():
     assert (
         len(

@@ -8,7 +8,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -84,7 +84,17 @@ _MISSING = object()
 
 @dataclass(frozen=True, slots=True)
 class _LiteralDomain:
-    values: frozenset[tuple[type[object], object]]
+    values: frozenset[_LiteralKey]
+
+
+class _LiteralKey(NamedTuple):
+    value_type: type[object]
+    value: object
+
+
+class _BoundViolation(NamedTuple):
+    bound_name: str
+    bound: object
 
 
 @final
@@ -221,7 +231,7 @@ def _invalid_default_message(
 
     domain = _literal_domain(annotation, imports)
     if domain is not None and not isinstance(literal, float) and _literal_key(literal) not in domain.values:
-        allowed = ", ".join(sorted(repr(value) for _, value in domain.values))
+        allowed = ", ".join(sorted(repr(item.value) for item in domain.values))
         return (
             f"`{field_name}` defaults to {literal!r}, outside its direct `Literal` domain ({allowed}); "
             "use one of the declared literal values."
@@ -229,7 +239,8 @@ def _invalid_default_message(
 
     violation = _bound_violation(literal, call)
     if violation is not None:
-        bound_name, bound = violation
+        bound_name = violation.bound_name
+        bound = violation.bound
         return (
             f"`{field_name}` defaults to {literal!r}, which violates `Field({bound_name}={bound!r})`; "
             "choose a default inside the declared bounds."
@@ -249,8 +260,8 @@ def _literal_value(node: ast.expr) -> object:
             return _MISSING
 
 
-def _literal_key(value: object) -> tuple[type[object], object]:
-    return type(value), value
+def _literal_key(value: object) -> _LiteralKey:
+    return _LiteralKey(type(value), value)
 
 
 def _literal_domain(node: ast.expr, imports: ImportIndex) -> _LiteralDomain | None:
@@ -273,7 +284,7 @@ def _literal_domain(node: ast.expr, imports: ImportIndex) -> _LiteralDomain | No
         return _merge_domains(tuple(_literal_domain(member, imports) for member in _slice_members(node.slice)))
     if not imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Literal"):
         return None
-    values: set[tuple[type[object], object]] = set()
+    values: set[_LiteralKey] = set()
     for member in _slice_members(node.slice):
         value = _literal_value(member)
         if value is _MISSING or isinstance(value, float):
@@ -285,7 +296,7 @@ def _literal_domain(node: ast.expr, imports: ImportIndex) -> _LiteralDomain | No
 def _merge_domains(domains: tuple[_LiteralDomain | None, ...]) -> _LiteralDomain | None:
     if not domains or any(domain is None for domain in domains):
         return None
-    values: set[tuple[type[object], object]] = set()
+    values: set[_LiteralKey] = set()
     for domain in domains:
         if domain is not None:
             values.update(domain.values)
@@ -318,7 +329,7 @@ def _provably_non_null(node: ast.expr, imports: ImportIndex) -> bool:
     )
 
 
-def _bound_violation(default: object, call: ast.Call) -> tuple[str, object] | None:
+def _bound_violation(default: object, call: ast.Call) -> _BoundViolation | None:
     bounds = {keyword.arg: _literal_value(keyword.value) for keyword in call.keywords if keyword.arg is not None}
     if isinstance(default, (int, float)) and not isinstance(default, bool):
         for name in ("gt", "ge", "lt", "le"):
@@ -326,7 +337,7 @@ def _bound_violation(default: object, call: ast.Call) -> tuple[str, object] | No
             if not isinstance(bound, (int, float)) or isinstance(bound, bool):
                 continue
             if _numeric_bound_is_violated(name, default, bound):
-                return name, bound
+                return _BoundViolation(name, bound)
         return None
     if isinstance(default, (str, bytes)):
         for name in ("min_length", "max_length"):
@@ -334,7 +345,7 @@ def _bound_violation(default: object, call: ast.Call) -> tuple[str, object] | No
             if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
                 continue
             if (name == "min_length" and len(default) < bound) or (name == "max_length" and len(default) > bound):
-                return name, bound
+                return _BoundViolation(name, bound)
     return None
 
 

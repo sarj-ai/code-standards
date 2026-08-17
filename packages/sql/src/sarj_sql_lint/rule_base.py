@@ -22,6 +22,11 @@ class SourceLocation(NamedTuple):
     column: int
 
 
+class _ScanResult(NamedTuple):
+    masked_source: str
+    executable_spans: list[tuple[int, int]]
+
+
 class RuleCategory(StrEnum):
     """Small cross-engine taxonomy used by generated rule directories."""
 
@@ -490,7 +495,7 @@ def _closing_depth(  # sarj-noqa: SARJ023 — scanner primitive stays above the 
 
 @lru_cache(maxsize=32)
 # ruff: ignore[too-many-locals] -- single-pass scanner state is kept local for speed and isolation.
-def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
+def _scan(source: str) -> _ScanResult:
     # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
     out: list[str] = []
     open_tags: list[str] = []
@@ -561,18 +566,17 @@ def _scan(source: str) -> tuple[str, list[tuple[int, int]]]:
 
     if open_tags:
         spans.append((body_start, n))
-    return "".join(out), spans
+    return _ScanResult("".join(out), spans)
 
 
 def mask_sql(source: str) -> str:
     r"""Blank SQL noise without shifting offsets or hiding executable dollar-quoted bodies."""
-    masked, _ = _scan(source)
-    return masked
+    return _scan(source).masked_source
 
 
 def dollar_quoted_lines(source: str) -> frozenset[int]:
     """Locate dollar bodies for rules with an explicit procedural-migration exemption."""
-    _, spans = _scan(source)
+    spans = _scan(source).executable_spans
     if not spans:
         return frozenset()
     inside: set[int] = set()
