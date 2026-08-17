@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -29,7 +30,8 @@ if TYPE_CHECKING:
 
 _GENERIC_EXCEPTIONS = frozenset({"Exception", "BaseException"})
 _MIN_SENTINEL_COUNT = 2
-_MIN_TYPE_DISPATCH_BRANCHES = 3
+_MIN_TYPE_DISPATCH_BRANCHES = 2
+_ERROR_TYPE_DISPATCH_BRANCHES = 3
 _ISINSTANCE_ARG_COUNT = 2
 _PAIR_COUNT = 2
 
@@ -238,7 +240,7 @@ def _matchable_class_reference(
         case ast.Name(id=name):
             if name in runtime_tuple_aliases:
                 return False
-            return name in _MATCHABLE_BUILTIN_TYPES or (name[:1].isupper() and not name.isupper())
+            return name in _MATCHABLE_BUILTIN_TYPES or _looks_like_class_name(name)
         case ast.Attribute(value=value, attr=attribute):
             lowercase_ast_type = (
                 isinstance(value, ast.Name)
@@ -246,13 +248,17 @@ def _matchable_class_reference(
                 and attribute in _MATCHABLE_LOWERCASE_AST_TYPES
             )
             matchable_leaf = (
-                attribute in _MATCHABLE_BUILTIN_TYPES
-                or (attribute[:1].isupper() and not attribute.isupper())
-                or lowercase_ast_type
+                attribute in _MATCHABLE_BUILTIN_TYPES or _looks_like_class_name(attribute) or lowercase_ast_type
             )
             return matchable_leaf and _is_dotted_name(value)
         case _:
             return False
+
+
+def _looks_like_class_name(name: str) -> bool:
+    """Recognize ordinary and private CamelCase runtime class references."""
+    unprefixed = name.lstrip("_")
+    return bool(unprefixed) and unprefixed[:1].isupper() and not unprefixed.isupper()
 
 
 def _is_dotted_name(node: ast.expr) -> bool:
@@ -279,13 +285,17 @@ def _is_matchable_raise_guard(test: ast.expr, runtime_tuple_aliases: frozenset[s
     )
 
 
-def _isinstance_ladder(node: ast.If, runtime_tuple_aliases: frozenset[str]) -> tuple[str, int] | None:
+def _isinstance_ladder(
+    node: ast.If,
+    runtime_tuple_aliases: frozenset[str],
+    ast_module_names: frozenset[str],
+) -> tuple[str, int] | None:
     """Recognize a complete if/elif chain dispatching one name by runtime type."""
     subject: str | None = None
     branch_count = 0
     current = node
     while True:
-        branch_subject = _matchable_isinstance_test(current.test, runtime_tuple_aliases)
+        branch_subject = _matchable_isinstance_dispatch(current.test, runtime_tuple_aliases, ast_module_names)
         if branch_subject is None or (subject is not None and branch_subject != subject):
             return None
         subject = branch_subject
@@ -300,7 +310,45 @@ def _isinstance_ladder(node: ast.If, runtime_tuple_aliases: frozenset[str]) -> t
 
     if branch_count < _MIN_TYPE_DISPATCH_BRANCHES:
         return None
+    if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES and any(
+        _dispatch_uses_stdlib_ast(branch.test, ast_module_names) for branch in _if_ladder(node)
+    ):
+        return None
     return subject, branch_count
+
+
+def _if_ladder(node: ast.If) -> tuple[ast.If, ...]:
+    """Return the complete maximal if/elif chain rooted at ``node``."""
+    branches = [node]
+    current = node
+    while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
+        current = current.orelse[0]
+        branches.append(current)
+    return tuple(branches)
+
+
+def _dispatch_uses_stdlib_ast(test: ast.expr, ast_module_names: frozenset[str]) -> bool:
+    """Report whether a dispatch arm directly names a proven stdlib ``ast`` class."""
+    call = _leading_isinstance(test)
+    if call is None or len(call.args) != _ISINSTANCE_ARG_COUNT:
+        return False
+    return any(
+        isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in ast_module_names
+        for node in ast.walk(call.args[1])
+    )
+
+
+def _leading_isinstance(test: ast.expr) -> ast.Call | None:
+    """Return the leading isinstance call from a plain or guarded dispatch arm."""
+    candidate = test.values[0] if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And) else test
+    if isinstance(candidate, ast.Call) and isinstance(candidate.func, ast.Name) and candidate.func.id == "isinstance":
+        return candidate
+    return None
+
+
+def _type_dispatch_severity(branch_count: int) -> Severity:
+    """Keep newly expanded two-arm findings advisory while 3+ remains blocking."""
+    return Severity.WARNING if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES else Severity.ERROR
 
 
 def _sequential_isinstance_dispatches(
@@ -336,15 +384,28 @@ def _sequential_isinstance_dispatches(
                         break
                     end += 1
                 branch_count = end - index
+                adjacent_if = (index > 0 and isinstance(statements[index - 1], ast.If)) or (
+                    end < len(statements) and isinstance(statements[end], ast.If)
+                )
                 guards = [_passthrough_guard_var(statement) for statement in statements[index:end]]
                 owned_by_sentinel_arm = guards[:_MIN_SENTINEL_COUNT] == [subject] * _MIN_SENTINEL_COUNT
-                if branch_count >= _MIN_TYPE_DISPATCH_BRANCHES and not owned_by_sentinel_arm:
+                exact_two_ast_dispatch = branch_count < _ERROR_TYPE_DISPATCH_BRANCHES and any(
+                    isinstance(statement, ast.If) and _dispatch_uses_stdlib_ast(statement.test, ast_module_names)
+                    for statement in statements[index:end]
+                )
+                if (
+                    branch_count >= _MIN_TYPE_DISPATCH_BRANCHES
+                    and not adjacent_if
+                    and not owned_by_sentinel_arm
+                    and not exact_two_ast_dispatch
+                ):
                     findings.append(
                         Diagnostic(
                             path=path,
                             line=first.lineno,
                             col=first.col_offset + 1,
                             code=code,
+                            severity=_type_dispatch_severity(branch_count),
                             message=(
                                 f"{branch_count}-branch terminating isinstance dispatch on '{subject}' — use "
                                 "match/case class patterns so the exclusive type dispatch is explicit."
@@ -396,14 +457,25 @@ def _matchable_isinstance_dispatch(
 ) -> str | None:
     """Extract a type-dispatch subject, preserving any trailing ``and`` terms as a case guard."""
     match test:
-        case ast.BoolOp(op=ast.And(), values=[leading_isinstance, *_guard_terms]):
-            return _matchable_isinstance_test(
+        case ast.BoolOp(op=ast.And(), values=[leading_isinstance, *guard_terms]):
+            subject = _matchable_isinstance_test(
                 leading_isinstance,
                 runtime_tuple_aliases,
                 ast_module_names=ast_module_names,
             )
+            if subject is None or any(_rebinds_name(term, subject) for term in guard_terms):
+                return None
+            return subject
         case _:
             return _matchable_isinstance_test(test, runtime_tuple_aliases)
+
+
+def _rebinds_name(node: ast.AST, name: str) -> bool:
+    """Reject guards that change the dispatch subject after ``match`` would snapshot it."""
+    return any(
+        isinstance(candidate, ast.NamedExpr) and candidate.target.id == name
+        for candidate in ast.walk(node)
+    )
 
 
 def _body_terminates(body: list[ast.stmt]) -> bool:
@@ -419,6 +491,13 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
             return bool(orelse) and _body_terminates(body) and _body_terminates(orelse)
         case ast.With() | ast.AsyncWith():
             return _body_terminates(last.body)
+        case ast.Try() | ast.TryStar():
+            if last.finalbody and _body_terminates(last.finalbody):
+                return True
+            normal_path_terminates = _body_terminates(last.body) or (
+                bool(last.orelse) and _body_terminates(last.orelse)
+            )
+            return normal_path_terminates and all(_body_terminates(handler.body) for handler in last.handlers)
         case _:
             return False
 
@@ -683,12 +762,14 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
         report_control_flow_raise: bool,
         report_isinstance_ladder: bool,
         runtime_tuple_aliases: frozenset[str],
+        ast_module_names: frozenset[str],
     ) -> None:
         self.path: Path = path
         self.code: str = code
         self.report_control_flow_raise: bool = report_control_flow_raise
         self.report_isinstance_ladder: bool = report_isinstance_ladder
         self.runtime_tuple_aliases: frozenset[str] = runtime_tuple_aliases
+        self.ast_module_names: frozenset[str] = ast_module_names
         self.diags: list[Diagnostic] = []
         self.try_stack: list[ast.Try | ast.TryStar] = []
         self.if_stack: list[ast.If] = []
@@ -700,7 +781,7 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
             while len(continuation.orelse) == 1 and isinstance(continuation.orelse[0], ast.If):
                 continuation = continuation.orelse[0]
                 self.ladder_continuations.add(id(continuation))
-            ladder = _isinstance_ladder(node, self.runtime_tuple_aliases)
+            ladder = _isinstance_ladder(node, self.runtime_tuple_aliases, self.ast_module_names)
             if ladder is not None:
                 subject, branch_count = ladder
                 self.diags.append(
@@ -709,6 +790,7 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
                         line=node.lineno,
                         col=node.col_offset + 1,
                         code=self.code,
+                        severity=_type_dispatch_severity(branch_count),
                         message=(
                             f"{branch_count}-branch isinstance dispatch on '{subject}' — use match/case "
                             "class patterns (combining tuple members with `|`) so the type dispatch is explicit."
@@ -815,14 +897,14 @@ class PreferMatchTypeDispatch(Rule):
     id: str = "prefer-match-type-dispatch"
     code: str = "SARJ080"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Use `match` for explicit runtime type dispatch instead of branching parser machinery.",
+        summary="Use `match` for explicit runtime type dispatch instead of repeated `isinstance` branches or parser machinery.",
         rationale="Pattern matching makes type cases and sentinel cases explicit without control-flow exceptions or repeated dispatch checks.",
         remediation="Replace the detected guard or exception-driven dispatch with `match` arms for each supported value shape.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The rule targets several measured shapes, including control-flow raises, sequential guards, and repeated `isinstance` dispatch.",
-            "Generated files, runtime tuple aliases, idiomatic None/Unset prologues, and code that shadows `isinstance` are excluded; test files omit the control-flow-raise check.",
+            "Safe two-branch `isinstance` dispatch is advisory; dispatch with three or more branches and the rule's established parser shapes remain blocking.",
+            "Generated files, runtime tuple aliases, two-arm stdlib AST visitors, subject-rebinding guards, idiomatic None/Unset prologues, and code that shadows `isinstance` are excluded; test files omit the control-flow-raise check.",
         ),
         examples=(
             RuleExample(
@@ -881,6 +963,7 @@ class PreferMatchTypeDispatch(Rule):
         if tree is None:
             return []
         runtime_tuple_aliases = _runtime_tuple_aliases(tree)
+        ast_module_names = _stdlib_ast_module_names(tree)
 
         visitor = _TypeDispatchVisitor(
             path,
@@ -888,6 +971,7 @@ class PreferMatchTypeDispatch(Rule):
             report_control_flow_raise=not is_test_path(path),
             report_isinstance_ladder=not _shadows_isinstance(tree),
             runtime_tuple_aliases=runtime_tuple_aliases,
+            ast_module_names=ast_module_names,
         )
         visitor.visit(tree)
         if not _shadows_isinstance(tree):
