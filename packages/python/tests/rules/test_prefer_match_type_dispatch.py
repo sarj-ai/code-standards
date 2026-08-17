@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
@@ -654,6 +655,92 @@ def test_flags_isinstance_ladder_with_default_else():
     assert "3-branch isinstance dispatch" in diags[0].message
 
 
+def test_two_branch_ladder_is_an_advisory_sarj080_finding():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, bytes):
+            return value.decode()
+        return None
+    """
+    diags = _check(source)
+    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.WARNING)]
+    assert "2-branch isinstance dispatch" in diags[0].message
+
+
+def test_four_branch_ladder_reports_one_blocking_root_finding():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, bytes):
+            return value.decode()
+        elif isinstance(value, int):
+            return str(value)
+        elif isinstance(value, float):
+            return str(value)
+        return None
+    """
+    diags = _check(source)
+    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.ERROR)]
+    assert "4-branch isinstance dispatch" in diags[0].message
+
+
+def test_flags_guarded_two_branch_ladder_as_advisory():
+    source = """
+    def render(value):
+        if isinstance(value, Text) and value.visible:
+            return value.text
+        elif isinstance(value, Binary) and value.complete:
+            return value.decode()
+        return None
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].severity is Severity.WARNING
+
+
+def test_skips_guard_that_rebinds_dispatch_subject():
+    source = """
+    def render(value):
+        if isinstance(value, Text) and ((value := Binary()) and False):
+            return value.text
+        elif isinstance(value, Binary):
+            return value.decode()
+        return None
+    """
+    assert _check(source) == []
+
+
+def test_two_branch_stdlib_ast_visitor_remains_excluded():
+    source = """
+    import ast
+
+    def name(node):
+        if isinstance(node, ast.Name):
+            return node.id
+        elif isinstance(node, ast.Attribute):
+            return node.attr
+        return None
+    """
+    assert _check(source) == []
+
+
+def test_two_branch_private_class_dispatch_is_advisory():
+    source = """
+    def consume(value):
+        if isinstance(value, str):
+            return value
+        elif isinstance(value, self._FlushSentinel):
+            return ""
+        return None
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].severity is Severity.WARNING
+
+
 def test_flags_terminating_sibling_isinstance_dispatch():
     source = """
     def render(value):
@@ -668,6 +755,56 @@ def test_flags_terminating_sibling_isinstance_dispatch():
     diags = _check(source)
     assert len(diags) == 1
     assert "3-branch terminating isinstance dispatch" in diags[0].message
+
+
+def test_two_terminating_sibling_branches_are_advisory():
+    source = """
+    def render(value):
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bytes):
+            return value.decode()
+        raise TypeError(value)
+    """
+    diags = _check(source)
+    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.WARNING)]
+    assert "2-branch terminating isinstance dispatch" in diags[0].message
+
+
+def test_sequential_dispatch_never_reports_an_unsafe_tail_fragment():
+    source = """
+    def render(value):
+        if not isinstance(value, object):
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bytes):
+            return value.decode()
+        if isinstance(value, Path):
+            return value.read_text()
+        return None
+    """
+    assert _check(source) == []
+
+
+def test_two_terminating_try_branches_are_advisory():
+    source = """
+    def coerce(value):
+        if isinstance(value, Text):
+            try:
+                return value.text
+            except ValueError:
+                return None
+        if isinstance(value, Binary):
+            try:
+                return value.decode()
+            except ValueError:
+                return None
+        return None
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].severity is Severity.WARNING
 
 
 def test_flags_terminating_sibling_isinstance_dispatch_with_case_guards():
@@ -756,7 +893,7 @@ def test_flags_terminating_sibling_isinstance_dispatch_with_case_guards():
     ids=(
         "unproven-lowercase-ast-binding",
         "shadowed-stdlib-ast-binding",
-        "guarded-ladder-without-sibling-evidence",
+        "three-arm-guarded-ladder-remains-outside-the-advisory",
         "isinstance-is-not-leading-and-operand",
         "or-conditions-do-not-map-to-guards",
     ),
@@ -793,7 +930,7 @@ def test_skips_cumulative_sibling_isinstance_checks():
     assert _check(source) == []
 
 
-def test_skips_sibling_checks_separated_by_subject_mutation():
+def test_reports_dispatch_after_subject_mutation_as_a_new_stable_run():
     source = """
     def render(value):
         if isinstance(value, str):
@@ -804,7 +941,10 @@ def test_skips_sibling_checks_separated_by_subject_mutation():
         if isinstance(value, Path):
             return value.read_text()
     """
-    assert _check(source) == []
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].line == 6
+    assert diags[0].severity is Severity.WARNING
 
 
 def test_sequential_passthrough_guards_report_once():
@@ -1054,7 +1194,7 @@ def test_unrecognized_ladder_head_never_reports_a_tail_fragment():
     assert _check(source) == []
 
 
-def test_skips_two_branch_isinstance_choice():
+def test_flags_two_branch_isinstance_choice_as_warning():
     source = """
     def render(value):
         if isinstance(value, str):
@@ -1062,7 +1202,9 @@ def test_skips_two_branch_isinstance_choice():
         elif isinstance(value, bytes):
             return value.decode()
     """
-    assert _check(source) == []
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].severity is Severity.WARNING
 
 
 def test_skips_isinstance_ladder_on_different_subjects():
