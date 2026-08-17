@@ -13,6 +13,7 @@ const ruleTester = new RuleTester();
 ruleTester.run("no-restated-comment", rule, {
   valid: [
     { name: "accepts the documented reason comment", code: noRestatedCommentDocumentation.examples[0].files[0].source },
+    { name: "accepts the result of the deletion suggestion", code: "const key = serialize(input);" },
     // One unmatched word means the comment carries something the code does not.
     {
       name: "keeps a comment when one content word is absent from the code",
@@ -83,29 +84,60 @@ ruleTester.run("no-restated-comment", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented restatement", code: noRestatedCommentDocumentation.examples[1].files[0].source, errors: [{ messageId: "restatesLineBelow" }] },
+    {
+      name: "offers whole-line deletion without applying an autofix",
+      code: noRestatedCommentDocumentation.examples[1].files[0].source,
+      output: null,
+      errors: [
+        {
+          messageId: "restatesLineBelow",
+          suggestions: [
+            {
+              messageId: "deleteComment",
+              output: "const key = serialize(input);",
+            },
+          ],
+        },
+      ],
+    },
     {
       code: "// Serialize key\nconst [key] = serialize(_k);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow" }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     {
       code: "// issue path length\nconst issues = sortByPathLength(error.issues);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow" }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+    },
+    {
+      name: "preserves CRLF while deleting an indented comment line",
+      code: "function collect() {\r\n\t// issue path length\r\n\treturn sortByPathLength(error.issues);\r\n}",
+      output: null,
+      errors: [
+        {
+          messageId: "restatesLineBelow",
+          suggestions: [
+            {
+              messageId: "deleteComment",
+              output: "function collect() {\r\n\treturn sortByPathLength(error.issues);\r\n}",
+            },
+          ],
+        },
+      ],
     },
     {
       code: "// Get the cached page data\nconst pageData = pageKey ? getCache().data : undefined;\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow" }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     // The trailing-`e` strip makes the inflection fold symmetric, so
     // `serialized` and `serialize` land on the same stem.
     {
       code: "// serialized values\nconst out = serializeValues(input);\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow" }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     {
       name: "reports a restatement at the eight-word budget",
       code: "// cached page data result output value item record\nconst cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;",
-      errors: [{ messageId: "restatesLineBelow" }],
+      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
   ],
 });
