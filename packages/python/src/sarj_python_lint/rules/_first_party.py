@@ -126,6 +126,16 @@ def has_first_party_source(module: str, path: Path) -> bool:
     )
 
 
+def project_root(path: Path) -> Path | None:
+    """Return the conservative repository/workspace root used by project-aware rules."""
+    return _project_root(path)
+
+
+def first_party_packages(root: Path) -> tuple[tuple[str, Path], ...]:
+    """Return importable package roots for bounded project-aware indexing."""
+    return _first_party_packages(root)
+
+
 def _declares_module(package_dir: Path, segments: list[str]) -> bool:
     target = package_dir.joinpath(*segments)
     try:

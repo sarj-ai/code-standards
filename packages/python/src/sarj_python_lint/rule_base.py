@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, ClassVar, Final, Self
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sarj_python_lint.rules._project_index import ProjectIndexSet
+
 
 # Each rule points directly to its executable examples.
 REPO_BLOB: Final = "https://github.com/sarj-ai/standards/blob/main"
@@ -307,6 +309,16 @@ class Rule(ABC):
         """Return the rule's explicitly publishable canonical fixtures."""
         spec = cls.native_spec()
         return () if spec is None else spec.public_examples
+
+
+class ProjectRule(Rule):
+    """A rule that may resolve first-party symbols prepared once per CLI run."""
+
+    _project_indexes: ProjectIndexSet | None = None
+
+    def prepare(self, indexes: ProjectIndexSet) -> None:
+        """Attach immutable project symbols before checking the selected files."""
+        self._project_indexes = indexes
 
 
 _last_parse: tuple[str, str, ast.Module | None] | None = None
