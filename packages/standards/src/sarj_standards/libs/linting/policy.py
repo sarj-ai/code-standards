@@ -35,6 +35,8 @@ _SOURCE_ENGINES: Final[Mapping[str, str]] = MappingProxyType(
         "eslint": "eslint",
     }
 )
+_NON_EXCLUDABLE_CODE: Final = "SARJ206"
+_TERRAFORM_TEST_SUFFIXES: Final = (".tftest.hcl", ".tftest.json")
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,9 +89,13 @@ class Policy:
         relative = self.relative(path)
         if relative == MANIFEST_NAME:
             return True
+        if relative.casefold().endswith(_TERRAFORM_TEST_SUFFIXES):
+            return True
         return not self.excluded_paths.match_file(relative)
 
     def allows_rule(self, diagnostic: Diagnostic) -> bool:
+        if diagnostic.code == _NON_EXCLUDABLE_CODE:
+            return True
         engine = _SOURCE_ENGINES.get(diagnostic.source, diagnostic.source)
         selectors = frozenset(
             {

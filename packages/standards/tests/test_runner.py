@@ -37,6 +37,14 @@ def test_directories_expand_by_suffix_and_skip_generated_trees(tmp_path: Path) -
     )
 
 
+@pytest.mark.parametrize("name", ["routing.tftest.hcl", "routing.tftest.json"])
+def test_terraform_test_files_route_to_iac(name: str, tmp_path: Path) -> None:
+    source = tmp_path / name
+    source.write_text("{}\n", encoding="utf-8")
+
+    assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
+
+
 def test_directory_walk_prunes_ignored_directories(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

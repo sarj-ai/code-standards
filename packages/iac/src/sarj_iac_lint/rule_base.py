@@ -221,6 +221,8 @@ class Diagnostic:
     col: int
     code: str
     message: str
+    suppressible: bool = True
+    baselineable: bool = True
 
     def format(self) -> str:
         return f"{self.path}:{self.line}:{self.col}: {self.code} {self.message}"

@@ -591,7 +591,7 @@ def _without_baselined_diagnostics(report: AnalysisReport, counts: dict[str, int
     remaining = counts.copy()
 
     def active(diagnostic: Diagnostic) -> bool:
-        if not diagnostic_baseline.is_baselineable(diagnostic):
+        if not diagnostic_baseline.is_baselineable(diagnostic) or diagnostic.code == "SARJ206":
             return True
         fingerprint = diagnostic.fingerprint
         budget = 0 if fingerprint is None else remaining.get(fingerprint, 0)
@@ -630,12 +630,33 @@ def _with_coverage(report: AnalysisReport, coverage: Sequence[CoverageNotice]) -
 
 def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisMode = AnalysisMode.POLICY) -> list[str]:
     if paths is not None:
-        return _contained_paths(root, paths)
+        selected = _contained_paths(root, paths)
+        return selected if mode is AnalysisMode.RAW else _with_tracked_terraform_tests(root, selected)
     if mode is AnalysisMode.RAW:
         return [str(root)]
     adopted = load_manifest(root)
     verify_paths = adopted.verify_paths if adopted is not None else (".",)
-    return [str(root / path) for path in verify_paths]
+    return _with_tracked_terraform_tests(root, [str(root / path) for path in verify_paths])
+
+
+def _with_tracked_terraform_tests(root: Path, selected: list[str]) -> list[str]:
+    """Add categorical Terraform-test violations even outside configured verification scope."""
+    git = shutil.which("git")
+    if git is None:
+        return selected
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed git argv.
+        (git, "-C", str(root), "ls-files", "-z"),
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        return selected
+    tracked = [
+        str(root / item)
+        for item in completed.stdout.decode("utf-8", errors="replace").split("\0")
+        if item.casefold().endswith((".tftest.hcl", ".tftest.json"))
+    ]
+    return list(dict.fromkeys((*selected, *tracked)))
 
 
 def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelection | None:

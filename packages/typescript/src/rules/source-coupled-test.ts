@@ -12,7 +12,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "rawSourceOracle";
 type Options = readonly [];
 
-const SOURCE_SUFFIX_RE = /\.(?:bash|hcl|sh|tf|tfvars|ya?ml|py|[cm]?[jt]s)$/iu;
+const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|py|[cm]?[jt]s)$/iu;
 const FS_MODULES = new Set(["fs", "node:fs", "fs/promises", "node:fs/promises"]);
 const FS_READERS = new Set(["readFile", "readFileSync"]);
 const TEXT_TRANSFORMS = new Set([
@@ -27,6 +27,7 @@ const TEXT_TRANSFORMS = new Set([
   "trimStart",
   "replace",
   "replaceAll",
+  "split",
 ]);
 const TEXT_PREDICATES = new Set(["endsWith", "includes", "indexOf", "lastIndexOf", "match", "matchAll", "search", "startsWith"]);
 const REGEXP_PREDICATES = new Set(["exec", "test"]);
@@ -61,7 +62,7 @@ interface LexicalScope {
 export const sourceCoupledTestDocumentation = {
   summary: "Disallow raw repository source text as a test oracle; parse or execute the artifact instead.",
   rationale: "Substring and regex checks can pass on comments or unreachable configuration and fail after behavior-preserving formatting changes.",
-  remediation: "Parse the artifact, execute its validator, or assert on Terraform plan JSON or another runtime contract.",
+  remediation: "Parse the artifact, execute its validator, or assert on another runtime contract.",
   category: "testing",
   limitations: [
     "The rule follows lexical aliases, source-path collections, awaited reads, and common text operations; interprocedural flows remain unreported.",
@@ -78,10 +79,10 @@ export const sourceCoupledTestDocumentation = {
       public: true,
     },
     {
-      id: "terraform-substring-contract",
-      title: "Do not prove Terraform behavior with a regex",
+      id: "workflow-substring-contract",
+      title: "Do not prove workflow behavior with a regex",
       outcome: "match",
-      files: [{ path: "src/policy.test.ts", source: "import { readFileSync } from 'node:fs'; test('policy', () => { const source = readFileSync('main.tf', 'utf8'); expect(source).toMatch(/prevent_destroy/); });" }],
+      files: [{ path: "src/policy.test.ts", source: "import { readFileSync } from 'node:fs'; test('policy', () => { const source = readFileSync('workflow.yml', 'utf8'); expect(source).toMatch(/permissions/); });" }],
       focusPath: "src/policy.test.ts",
       expectedCount: 1,
       public: true,
@@ -133,12 +134,17 @@ function newScope(): LexicalScope {
   return { collections: new Set(), declared: new Set(), fsObjects: new Set(), fsReaders: new Set(), paths: new Set(), rawOrigins: new Map() };
 }
 
-export default createRule<Options, MessageIds>({
-  name: "source-coupled-test",
-  documentation: sourceCoupledTestDocumentation,
+export function createSourceCoupledRule(
+  name: string,
+  documentation: RuleDocumentation,
+  sourceSuffixRe: RegExp,
+) {
+  return createRule<Options, MessageIds>({
+  name,
+  documentation,
   meta: {
     type: "suggestion",
-    docs: { description: sourceCoupledTestDocumentation.summary },
+    docs: { description: documentation.summary },
     schema: [],
     messages: { rawSourceOracle: "Raw repository source text is the oracle. Parse or execute the artifact so comments, formatting, and unreachable blocks cannot satisfy the contract." },
   },
@@ -166,7 +172,7 @@ export default createRule<Options, MessageIds>({
     const sourcePath = (node: TSESTree.Node): boolean => {
       const current = unwrap(node);
       const value = stringValue(current);
-      if (value !== null) return SOURCE_SUFFIX_RE.test(value);
+      if (value !== null) return sourceSuffixRe.test(value);
       if (current.type === AST_NODE_TYPES.Identifier) return visible("paths", current.name);
       if (current.type === AST_NODE_TYPES.BinaryExpression && current.operator === "+") {
         return sourcePath(current.left) || sourcePath(current.right);
@@ -195,6 +201,7 @@ export default createRule<Options, MessageIds>({
       if (current.type === AST_NODE_TYPES.Identifier) return visibleRawOrigins(current.name);
       if (rawRead(current)) return new Set([`${current.range[0]}:${current.range[1]}`]);
       if (current.type === AST_NODE_TYPES.BinaryExpression && current.operator === "+") return new Set([...rawOrigins(current.left), ...rawOrigins(current.right)]);
+      if (current.type === AST_NODE_TYPES.MemberExpression && staticMemberName(current) === "length") return rawOrigins(current.object);
       if (current.type !== AST_NODE_TYPES.CallExpression) return new Set();
       const callee = unwrap(current.callee);
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return new Set();
@@ -317,4 +324,11 @@ export default createRule<Options, MessageIds>({
       },
     };
   },
-});
+  });
+}
+
+export default createSourceCoupledRule(
+  "source-coupled-test",
+  sourceCoupledTestDocumentation,
+  GENERAL_SOURCE_SUFFIX_RE,
+);

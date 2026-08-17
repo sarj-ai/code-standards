@@ -67,11 +67,13 @@ import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 import stepdown from "./rules/stepdown.js";
 import sourceCoupledTest from "./rules/source-coupled-test.js";
+import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
 import { renamedRules } from "./rules/_renames.js";
 import { retiredRules } from "./rules/_retired.js";
 
 const rules = {
+  "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
   "enforce-file-structure": enforceFileStructure,
   "no-client-side-data-fetching": noClientSideDataFetching,
@@ -142,7 +144,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.6.9",
+  version: "15.7.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -153,9 +155,10 @@ const applicationOnlyRules = [
 ] as const;
 
 /** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
-const advisoryRules = ["no-vague-suppression-description", "source-coupled-test"] as const;
+const advisoryRules = ["no-vague-suppression-description", "iac-source-coupled-test", "source-coupled-test"] as const;
 
 const recommendedRules = {
+  "@sarj/iac-source-coupled-test": "warn",
   "@sarj/duplicate-test-body": "error",
   "@sarj/enforce-file-structure": "error",
   "@sarj/no-client-side-data-fetching": "error",
@@ -218,6 +221,7 @@ const recommendedRules = {
 } as const;
 
 const strictRules = {
+  "@sarj/iac-source-coupled-test": "warn",
   "@sarj/duplicate-test-body": "error",
   "@sarj/enforce-file-structure": "error",
   "@sarj/no-client-side-data-fetching": "error",

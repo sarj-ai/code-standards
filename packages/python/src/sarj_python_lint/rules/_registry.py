@@ -19,6 +19,7 @@ from sarj_python_lint.rules.duplicated_override_docstring import (
 )
 from sarj_python_lint.rules.fastapi_openapi_contract import FastapiOpenapiContract
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
+from sarj_python_lint.rules.iac_source_coupled_test import IacSourceCoupledTest
 from sarj_python_lint.rules.invalid_pydantic_field_default import (
     InvalidPydanticFieldDefault,
 )
@@ -157,6 +158,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoCommentCruft.id: NoCommentCruft,
         StoreInsertRequiresOnConflict.id: StoreInsertRequiresOnConflict,
         SourceCoupledTest.id: SourceCoupledTest,
+        IacSourceCoupledTest.id: IacSourceCoupledTest,
         NoQueryWithManyJoins.id: NoQueryWithManyJoins,
         NoAggregationInStoreQuery.id: NoAggregationInStoreQuery,
         NoSelectStar.id: NoSelectStar,

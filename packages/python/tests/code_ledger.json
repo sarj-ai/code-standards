@@ -123,5 +123,6 @@
   "SARJ408": "negative-only-http-status-assertion",
   "SARJ409": "production-derived-test-cases",
   "SARJ410": "uncontrolled-randomness-in-test",
-  "SARJ411": "require-pydantic-for-external-json"
+  "SARJ411": "require-pydantic-for-external-json",
+  "SARJ412": "iac-source-coupled-test"
 }

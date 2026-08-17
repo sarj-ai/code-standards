@@ -27,15 +27,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_SOURCE_SUFFIXES = (
+GENERAL_SOURCE_SUFFIXES = (
     ".bash",
-    ".hcl",
     ".js",
     ".mjs",
     ".py",
     ".sh",
-    ".tf",
-    ".tfvars",
     ".ts",
     ".yaml",
     ".yml",
@@ -46,6 +43,26 @@ _TEXT_TRANSFORMS = frozenset(
 _TEXT_ASSERTIONS = frozenset({"count", "endswith", "find", "index", "startswith"})
 _REGEX_ASSERTIONS = frozenset({"findall", "finditer", "fullmatch", "match", "search"})
 _TEMP_PATH_NAMES = frozenset({"tmp_path", "tmpdir", "temp_dir", "temporary_directory"})
+_UNITTEST_ASSERTIONS = frozenset(
+    {
+        "assertEqual",
+        "assertFalse",
+        "assertGreater",
+        "assertGreaterEqual",
+        "assertIn",
+        "assertIs",
+        "assertIsNone",
+        "assertIsNot",
+        "assertIsNotNone",
+        "assertNotEqual",
+        "assertNotIn",
+        "assertNotRegex",
+        "assertRegex",
+        "assertLess",
+        "assertLessEqual",
+        "assertTrue",
+    }
+)
 
 
 @final
@@ -55,7 +72,7 @@ class SourceCoupledTest(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Test asserts on raw repository source text instead of parsed or executable behavior.",
         rationale="Substring and regex checks can pass on comments or unreachable configuration and fail after behavior-preserving formatting changes.",
-        remediation="Parse the artifact, execute its validator, or assert on Terraform plan JSON or another runtime contract.",
+        remediation="Parse the artifact, execute its validator, or assert on a runtime contract.",
         category=RuleCategory.TESTING,
         limitations=(
             "The rule follows local aliases, path aliases, context-managed reads, and common text normalization; interprocedural flows remain unreported.",
@@ -64,13 +81,13 @@ class SourceCoupledTest(Rule):
         ),
         examples=(
             RuleExample(
-                example_id="parsed-terraform-contract",
-                title="Assert on parsed plan behavior",
+                example_id="parsed-workflow-contract",
+                title="Assert on parsed workflow behavior",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_policy.py",
-                        "def test_policy():\n    plan = json.loads(Path('plan.json').read_text())\n    assert verify(plan) == []\n",
+                        "def test_policy():\n    workflow = yaml.safe_load(Path('workflow.yml').read_text())\n    assert verify(workflow) == []\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_policy.py"),
@@ -78,13 +95,13 @@ class SourceCoupledTest(Rule):
                 public=True,
             ),
             RuleExample(
-                example_id="terraform-substring-contract",
-                title="Do not prove Terraform behavior with a substring",
+                example_id="workflow-substring-contract",
+                title="Do not prove workflow behavior with a substring",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_policy.py",
-                        "def test_policy():\n    source = Path('main.tf').read_text()\n    assert 'prevent_destroy = true' in source\n",
+                        "def test_policy():\n    source = Path('workflow.yml').read_text()\n    assert 'permissions:' in source\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_policy.py"),
@@ -104,8 +121,8 @@ class SourceCoupledTest(Rule):
             return []
         assertions = [
             assertion
-            for function in _top_level_test_functions(tree)
-            for assertion in _FunctionAnalyzer().analyze(function)
+            for function, unittest_style in top_level_test_functions(tree)
+            for assertion in FunctionAnalyzer(GENERAL_SOURCE_SUFFIXES, unittest_style=unittest_style).analyze(function)
         ]
         return [
             Diagnostic(
@@ -122,33 +139,43 @@ class SourceCoupledTest(Rule):
         ]
 
 
-def _top_level_test_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+def top_level_test_functions(tree: ast.Module) -> list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, bool]]:
+    functions: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, bool]] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name.startswith("test"):
-            functions.append(statement)
+            functions.append((statement, False))
         elif isinstance(statement, ast.ClassDef):
+            unittest_style = any(
+                (isinstance(base, ast.Name) and base.id == "TestCase")
+                or (isinstance(base, ast.Attribute) and base.attr == "TestCase")
+                for base in statement.bases
+            )
             functions.extend(
-                child
+                (child, unittest_style)
                 for child in statement.body
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test")
             )
     return functions
 
 
-class _FunctionAnalyzer(ast.NodeVisitor):
+class FunctionAnalyzer(ast.NodeVisitor):
     """Track raw text inside one test without leaking into nested lexical scopes."""
 
-    def __init__(self) -> None:
+    _source_suffixes: tuple[str, ...]
+    _unittest_style: bool
+
+    def __init__(self, source_suffixes: tuple[str, ...], *, unittest_style: bool = False) -> None:
+        self._source_suffixes = source_suffixes
+        self._unittest_style = unittest_style
         self._collections: set[str] = set()
         self._ephemeral_paths: set[str] = set()
         self._paths: set[str] = set()
         self._raw: set[str] = set()
         self._raw_origins: dict[str, set[int]] = {}
         self._reported_origins: set[int] = set()
-        self._assertions: list[ast.Assert] = []
+        self._assertions: list[ast.Assert | ast.Call] = []
 
-    def analyze(self, function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Assert]:
+    def analyze(self, function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Assert | ast.Call]:
         arguments = [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
         self._ephemeral_paths.update(argument.arg for argument in arguments if argument.arg in _TEMP_PATH_NAMES)
         for statement in function.body:
@@ -194,7 +221,7 @@ class _FunctionAnalyzer(ast.NodeVisitor):
         for item in node.items:
             self.visit(item.context_expr)
             if isinstance(item.optional_vars, ast.Name) and _is_source_open(
-                item.context_expr, self._paths, self._ephemeral_paths
+                item.context_expr, self._paths, self._ephemeral_paths, self._source_suffixes
             ):
                 self._raw.add(item.optional_vars.id)
                 self._raw_origins[item.optional_vars.id] = {item.context_expr.lineno}
@@ -207,10 +234,23 @@ class _FunctionAnalyzer(ast.NodeVisitor):
 
     @override
     def visit_Assert(self, node: ast.Assert) -> None:
-        if _raw_text_oracle(node.test, self._raw, self._paths, self._ephemeral_paths):
-            origins = _expression_origins(node.test, self._raw_origins, self._paths, self._ephemeral_paths) or {
-                node.lineno
-            }
+        if _raw_text_oracle(node.test, self._raw, self._paths, self._ephemeral_paths, self._source_suffixes):
+            origins = _expression_origins(
+                node.test, self._raw_origins, self._paths, self._ephemeral_paths, self._source_suffixes
+            ) or {node.lineno}
+            if not origins.issubset(self._reported_origins):
+                self._assertions.append(node)
+                self._reported_origins.update(origins)
+        self.generic_visit(node)
+
+    @override
+    def visit_Call(self, node: ast.Call) -> None:
+        if self._unittest_style and _unittest_raw_text_oracle(
+            node, self._raw, self._paths, self._ephemeral_paths, self._source_suffixes
+        ):
+            origins = _expression_origins(
+                node, self._raw_origins, self._paths, self._ephemeral_paths, self._source_suffixes
+            ) or {node.lineno}
             if not origins.issubset(self._reported_origins):
                 self._assertions.append(node)
                 self._reported_origins.update(origins)
@@ -234,7 +274,9 @@ class _FunctionAnalyzer(ast.NodeVisitor):
     def _record_target(self, target: ast.expr, value: ast.expr) -> None:
         if not isinstance(target, ast.Name):
             return
-        raw_origins = _expression_origins(value, self._raw_origins, self._paths, self._ephemeral_paths)
+        raw_origins = _expression_origins(
+            value, self._raw_origins, self._paths, self._ephemeral_paths, self._source_suffixes
+        )
         # Reassignment kills stale taint before adding the new value's state.
         self._paths.discard(target.id)
         self._raw.discard(target.id)
@@ -243,36 +285,43 @@ class _FunctionAnalyzer(ast.NodeVisitor):
         self._ephemeral_paths.discard(target.id)
         if _ephemeral_path_expression(value, self._ephemeral_paths):
             self._ephemeral_paths.add(target.id)
-        if _source_path_collection(value, self._paths):
+        if _source_path_collection(value, self._paths, self._source_suffixes):
             self._collections.add(target.id)
-        if _source_path_expression(value, self._paths):
+        if _source_path_expression(value, self._paths, self._source_suffixes):
             self._paths.add(target.id)
-        if _raw_text_expression(value, self._raw, self._paths, self._ephemeral_paths):
+        if _raw_text_expression(value, self._raw, self._paths, self._ephemeral_paths, self._source_suffixes):
             self._raw.add(target.id)
             self._raw_origins[target.id] = raw_origins or {value.lineno}
 
 
-def _is_source_open(node: ast.expr, path_names: set[str], ephemeral_path_names: set[str]) -> bool:
+def _is_source_open(
+    node: ast.expr,
+    path_names: set[str],
+    ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
+) -> bool:
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "open"
         and bool(node.args)
-        and _source_path_expression(node.args[0], path_names)
+        and _source_path_expression(node.args[0], path_names, source_suffixes)
         and not _ephemeral_path_expression(node.args[0], ephemeral_path_names)
     )
 
 
-def _source_path_expression(node: ast.AST, path_names: set[str]) -> bool:
+def _source_path_expression(node: ast.AST, path_names: set[str], source_suffixes: tuple[str, ...]) -> bool:
     match node:
         case ast.Name(id=name):
             return name in path_names
         case ast.Constant(value=str(value)):
-            return value.lower().endswith(_SOURCE_SUFFIXES)
+            return value.lower().endswith(source_suffixes)
         case ast.JoinedStr(values=values):
-            return any(_source_path_expression(value, path_names) for value in values)
+            return any(_source_path_expression(value, path_names, source_suffixes) for value in values)
         case ast.BinOp() | ast.Call() | ast.Attribute() | ast.Subscript():
-            return any(_source_path_expression(child, path_names) for child in ast.iter_child_nodes(node))
+            return any(
+                _source_path_expression(child, path_names, source_suffixes) for child in ast.iter_child_nodes(node)
+            )
         case _:
             return False
 
@@ -281,64 +330,154 @@ def _ephemeral_path_expression(node: ast.AST, ephemeral_path_names: set[str]) ->
     return any(isinstance(child, ast.Name) and child.id in ephemeral_path_names for child in ast.walk(node))
 
 
-def _source_path_collection(node: ast.AST, path_names: set[str]) -> bool:
+def _source_path_collection(node: ast.AST, path_names: set[str], source_suffixes: tuple[str, ...]) -> bool:
     return (
         isinstance(node, (ast.List, ast.Set, ast.Tuple))
         and bool(node.elts)
-        and all(_source_path_expression(element, path_names) for element in node.elts)
+        and all(_source_path_expression(element, path_names, source_suffixes) for element in node.elts)
     )
 
 
-def _raw_source_read(node: ast.expr, path_names: set[str], ephemeral_path_names: set[str]) -> bool:
+def _raw_source_read(
+    node: ast.expr,
+    path_names: set[str],
+    ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
+) -> bool:
     if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
         return False
     if node.func.attr == "read_text":
-        return _source_path_expression(node.func.value, path_names) and not _ephemeral_path_expression(
+        return _source_path_expression(node.func.value, path_names, source_suffixes) and not _ephemeral_path_expression(
             node.func.value, ephemeral_path_names
         )
-    return node.func.attr == "read" and _is_source_open(node.func.value, path_names, ephemeral_path_names)
+    return node.func.attr == "read" and _is_source_open(
+        node.func.value, path_names, ephemeral_path_names, source_suffixes
+    )
 
 
 def _raw_text_expression(
-    node: ast.expr, raw_names: set[str], path_names: set[str], ephemeral_path_names: set[str]
+    node: ast.expr,
+    raw_names: set[str],
+    path_names: set[str],
+    ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
 ) -> bool:
     if isinstance(node, ast.Name):
         return node.id in raw_names
-    if _raw_source_read(node, path_names, ephemeral_path_names):
+    if _raw_source_read(node, path_names, ephemeral_path_names, source_suffixes):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         if node.func.attr == "read" and isinstance(node.func.value, ast.Name):
             return node.func.value.id in raw_names
         return node.func.attr in _TEXT_TRANSFORMS and _raw_text_expression(
-            node.func.value, raw_names, path_names, ephemeral_path_names
+            node.func.value, raw_names, path_names, ephemeral_path_names, source_suffixes
         )
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        return _raw_text_expression(node.left, raw_names, path_names, ephemeral_path_names) or _raw_text_expression(
-            node.right, raw_names, path_names, ephemeral_path_names
-        )
+        return _raw_text_expression(
+            node.left, raw_names, path_names, ephemeral_path_names, source_suffixes
+        ) or _raw_text_expression(node.right, raw_names, path_names, ephemeral_path_names, source_suffixes)
     return False
 
 
-def _raw_text_oracle(node: ast.expr, raw_names: set[str], path_names: set[str], ephemeral_path_names: set[str]) -> bool:
+def _raw_text_oracle(
+    node: ast.expr,
+    raw_names: set[str],
+    path_names: set[str],
+    ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
+) -> bool:
     if isinstance(node, ast.Compare):
         operands = [node.left, *node.comparators]
         if any(
-            _raw_text_expression(operand, raw_names, path_names, ephemeral_path_names) for operand in operands
+            _raw_text_measurement(operand, raw_names, path_names, ephemeral_path_names, source_suffixes)
+            for operand in operands
+        ) and any(isinstance(operator, (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)) for operator in node.ops):
+            return True
+        if any(
+            _raw_text_expression(operand, raw_names, path_names, ephemeral_path_names, source_suffixes)
+            for operand in operands
         ) and any(isinstance(operator, (ast.In, ast.NotIn, ast.Eq, ast.NotEq)) for operator in node.ops):
             return True
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"all", "any"}
+        and any(
+            isinstance(argument, ast.GeneratorExp)
+            and any(
+                _raw_text_line_iteration(item.iter, raw_names, path_names, ephemeral_path_names, source_suffixes)
+                for item in argument.generators
+            )
+            for argument in node.args
+        )
+    ):
+        return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         if node.func.attr in _TEXT_ASSERTIONS and _raw_text_expression(
-            node.func.value, raw_names, path_names, ephemeral_path_names
+            node.func.value, raw_names, path_names, ephemeral_path_names, source_suffixes
         ):
             return True
         if node.func.attr in _REGEX_ASSERTIONS and any(
-            _raw_text_expression(argument, raw_names, path_names, ephemeral_path_names) for argument in node.args
+            _raw_text_expression(argument, raw_names, path_names, ephemeral_path_names, source_suffixes)
+            for argument in node.args
         ):
             return True
     return any(
-        _raw_text_oracle(child, raw_names, path_names, ephemeral_path_names)
+        _raw_text_oracle(child, raw_names, path_names, ephemeral_path_names, source_suffixes)
         for child in ast.iter_child_nodes(node)
         if isinstance(child, ast.expr)
+    )
+
+
+def _raw_text_measurement(
+    node: ast.expr,
+    raw_names: set[str],
+    path_names: set[str],
+    ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
+) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "len"
+        and len(node.args) == 1
+        and _raw_text_expression(node.args[0], raw_names, path_names, ephemeral_path_names, source_suffixes)
+    )
+
+
+def _raw_text_line_iteration(
+    node: ast.expr,
+    raw_names: set[str],
+    path_names: set[str],
+    ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
+) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "splitlines"
+        and _raw_text_expression(node.func.value, raw_names, path_names, ephemeral_path_names, source_suffixes)
+    )
+
+
+def _unittest_raw_text_oracle(
+    node: ast.Call,
+    raw_names: set[str],
+    path_names: set[str],
+    ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
+) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in {"self", "cls"}
+        and node.func.attr in _UNITTEST_ASSERTIONS
+        and any(
+            _raw_text_expression(argument, raw_names, path_names, ephemeral_path_names, source_suffixes)
+            or _raw_text_measurement(argument, raw_names, path_names, ephemeral_path_names, source_suffixes)
+            or _raw_text_oracle(argument, raw_names, path_names, ephemeral_path_names, source_suffixes)
+            for argument in node.args
+        )
     )
 
 
@@ -347,11 +486,12 @@ def _expression_origins(
     raw_origins: dict[str, set[int]],
     path_names: set[str],
     ephemeral_path_names: set[str],
+    source_suffixes: tuple[str, ...],
 ) -> set[int]:
     origins: set[int] = set()
     for child in ast.walk(node):
         if isinstance(child, ast.Name):
             origins.update(raw_origins.get(child.id, set()))
-        elif isinstance(child, ast.Call) and _raw_source_read(child, path_names, ephemeral_path_names):
+        elif isinstance(child, ast.Call) and _raw_source_read(child, path_names, ephemeral_path_names, source_suffixes):
             origins.add(child.lineno)
     return origins
