@@ -1469,6 +1469,7 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         "    steps:",
         "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
         "        with:",
+        "          fetch-depth: 0",
         "          persist-credentials: false",
         "      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0",
         "        with:",
@@ -1519,6 +1520,8 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
     lines.extend(
         (
             "      - name: Run standards",
+            "        env:",
+            "          SARJ_REACT_DOCTOR_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}",
             f"        run: {runner} check --trust-repository-code --format github",
         )
     )
