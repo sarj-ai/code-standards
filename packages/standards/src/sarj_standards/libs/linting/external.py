@@ -464,7 +464,7 @@ def _invoke_react_doctor(
         ",".join(item.relative_to(project).as_posix() or "." for item in projects),
         *scope_args,
         "--blocking",
-        "none",
+        "warning",
         "--no-dead-code",
         "--no-supply-chain",
         "--no-score",
@@ -1056,7 +1056,7 @@ def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
 
 
 def parse_react_doctor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
-    """Normalize React Doctor v3 JSON while keeping the pilot advisory."""
+    """Normalize React Doctor v3 JSON as blocking Standards diagnostics."""
     report = _ReactDoctorReport.model_validate_json(payload)
     expected_version = manifest.eslint_peers()["react-doctor"]
     if report.version != expected_version:
@@ -1087,9 +1087,7 @@ def parse_react_doctor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
                 Diagnostic(
                     rule,
                     _redact_message(item.message, root),
-                    # React Doctor is deliberately observation-only in its first
-                    # Standards release. Execution/protocol failures still fail.
-                    Severity.WARNING,
+                    Severity.ERROR,
                     "react-doctor",
                     location,
                     rule_id=rule,

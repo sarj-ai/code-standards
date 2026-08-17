@@ -12,6 +12,7 @@ import pytest
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
 from sarj_standards.libs.linting import external as external_module
+from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.external import (
     ProcessOutput,
     analyze_external,
@@ -52,7 +53,7 @@ def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
     assert finding.location.region.end.byte_offset == 6
 
 
-def test_react_doctor_v3_json_becomes_an_advisory_canonical_region(tmp_path: Path) -> None:
+def test_react_doctor_v3_json_becomes_a_blocking_canonical_region(tmp_path: Path) -> None:
     source = tmp_path / "src" / "button.tsx"
     source.parent.mkdir()
     source.write_text("export const Button = () => <button />;\n", encoding="utf-8")
@@ -116,7 +117,7 @@ def test_react_doctor_v3_json_becomes_an_advisory_canonical_region(tmp_path: Pat
 
     assert finding.code == "react-doctor/button-has-type"
     assert finding.rule_id == "react-doctor/button-has-type"
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert finding.location.path == "src/button.tsx"
     assert finding.location.region is not None
 
@@ -226,13 +227,15 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> 
         '{"packageManager":"npm@11.5.2","dependencies":{"react":"19.0.0"}}\n',
         encoding="utf-8",
     )
+    source = tmp_path / "component.tsx"
+    source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         seen.append(tuple(argv))
         return ProcessOutput(
-            0,
+            1,
             json.dumps(
                 {
                     "schemaVersion": 3,
@@ -242,7 +245,17 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> 
                         {
                             "directory": str(tmp_path),
                             "complete": True,
-                            "diagnostics": [],
+                            "diagnostics": [
+                                {
+                                    "filePath": str(source),
+                                    "plugin": "react-doctor",
+                                    "rule": "button-has-type",
+                                    "severity": "warning",
+                                    "message": "Button needs an explicit type.",
+                                    "line": 1,
+                                    "column": 32,
+                                }
+                            ],
                         }
                     ],
                     "skippedProjects": [],
@@ -263,8 +276,12 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> 
     )
 
     assert report.completion is Completion.COMPLETE
+    assert report.diagnostics[0].severity is Severity.ERROR
+    assert report_from_tools(tmp_path, (report,)).exit_code == 1
     assert "--staged" in seen[0]
     assert "--scope" not in seen[0]
+    blocking_index = seen[0].index("--blocking")
+    assert seen[0][blocking_index + 1] == "warning"
 
 
 def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
