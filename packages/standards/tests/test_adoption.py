@@ -145,6 +145,10 @@ def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
     assert manifest.table_field(config, "supplyChain") == {"enabled": False}
     assert manifest.table_field(config, "buckets") == {"compiler-cleanup": "off"}
     assert manifest.table_field(config, "ignore") == {"tags": ["design", "test-noise"]}
+    assert manifest.table_field(config, "rules") == {
+        "react-doctor/no-array-index-as-key": "error",
+        "react-hooks-js/todo": "off",
+    }
     assert config["serverAuthFunctionNames"] == ["forRequest"]
 
 

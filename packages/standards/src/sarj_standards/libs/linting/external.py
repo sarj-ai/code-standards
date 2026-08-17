@@ -455,7 +455,11 @@ def _invoke_react_doctor(
         )
     install_root = packagemanager.workspace_root(project, root)
     client = packagemanager.detect(install_root)
-    scope_args = ("--staged",) if staged else ("--scope", "full")
+    # React Doctor is introduced as a no-baseline ratchet: hooks inspect the
+    # index, while whole-repository Standards runs block only diagnostics that
+    # are new relative to the detected merge base. A standalone React Doctor
+    # full scan remains available for deliberate debt cleanup.
+    scope_args = ("--staged",) if staged else ("--scope", "changed")
     argv = packagemanager.exec_argv(
         client,
         name,
