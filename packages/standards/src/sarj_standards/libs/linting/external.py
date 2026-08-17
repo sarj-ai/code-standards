@@ -133,7 +133,7 @@ class _ReactDoctorReport(_ReactDoctorProtocolModel):
     version: str = Field(min_length=1)
     ok: bool
     projects: tuple[_ReactDoctorProject, ...]
-    skipped_projects: tuple[object, ...] = Field(alias="skippedProjects")
+    skipped_projects: tuple[object, ...] = Field(default=(), alias="skippedProjects")
     error: _ReactDoctorFailure | None
 
 
