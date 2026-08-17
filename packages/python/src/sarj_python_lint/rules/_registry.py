@@ -109,6 +109,8 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
 )
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
+from sarj_python_lint.rules.preserve_declared_nominal_id import PreserveDeclaredNominalId
+from sarj_python_lint.rules.preserve_enum_types import PreserveEnumTypes
 from sarj_python_lint.rules.production_derived_test_cases import ProductionDerivedTestCases
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
@@ -122,8 +124,13 @@ from sarj_python_lint.rules.require_port_for_service import RequirePortForServic
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
     RequirePydanticForExternalJson,
 )
+from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
+    RequirePydanticOrdinalLowerBound,
+)
+from sarj_python_lint.rules.require_validated_row_factory import RequireValidatedRowFactory
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
+from sarj_python_lint.rules.sql_requires_injected_pool_owner import SqlRequiresInjectedPoolOwner
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
     StoreInsertRequiresOnConflict,
@@ -220,6 +227,11 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         ProductionDerivedTestCases.id: ProductionDerivedTestCases,
         UncontrolledRandomnessInTest.id: UncontrolledRandomnessInTest,
         RepeatedStaticCallCases.id: RepeatedStaticCallCases,
+        RequireValidatedRowFactory.id: RequireValidatedRowFactory,
+        SqlRequiresInjectedPoolOwner.id: SqlRequiresInjectedPoolOwner,
+        PreserveDeclaredNominalId.id: PreserveDeclaredNominalId,
+        PreserveEnumTypes.id: PreserveEnumTypes,
+        RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
     }
 )
 

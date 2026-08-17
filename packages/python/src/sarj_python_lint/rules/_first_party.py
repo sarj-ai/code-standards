@@ -126,6 +126,11 @@ def has_first_party_source(module: str, path: Path) -> bool:
     )
 
 
+def project_root(path: Path) -> Path | None:
+    """Return the conservative repository/workspace root used by project-aware rules."""
+    return _project_root(path)
+
+
 def _declares_module(package_dir: Path, segments: list[str]) -> bool:
     target = package_dir.joinpath(*segments)
     try:

@@ -13,9 +13,10 @@ from typing import NamedTuple
 
 from sarj_python_lint import __version__
 from sarj_python_lint._filesystem import atomic_write_text
-from sarj_python_lint.rule_base import Diagnostic, Severity, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._paths import clear_path_caches
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -80,12 +81,19 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     rules = [REGISTRY[rid]() for rid in rule_ids]
     clear_path_caches()
     expanded = _expand_paths(paths)
-    diags: list[Diagnostic] = []
-    for p in expanded:
+    loaded: dict[Path, str] = {}
+    for path in expanded:
         try:
-            source = p.read_text(encoding="utf-8", errors="replace")
+            loaded[path] = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+    project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
+    if project_rules:
+        indexes = ProjectIndexSet.build(expanded, loaded)
+        for rule in project_rules:
+            rule.prepare(indexes)
+    diags: list[Diagnostic] = []
+    for p, source in loaded.items():
         source_lines = source.splitlines()
         raw = [diagnostic for rule in rules for diagnostic in rule.check(p, source)]
         diags.extend(
