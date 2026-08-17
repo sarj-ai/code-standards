@@ -486,7 +486,7 @@ def _invoke_react_doctor(
     # index, while whole-repository Standards runs block only diagnostics that
     # are new relative to the detected merge base. A standalone React Doctor
     # full scan remains available for deliberate debt cleanup.
-    scope_args = ("--staged",) if staged else ("--scope", "changed")
+    scope_args = _react_doctor_scope_args(staged=staged)
     argv = packagemanager.exec_argv(
         client,
         name,
@@ -516,6 +516,18 @@ def _invoke_react_doctor(
         invocation_id=project.relative_to(root).as_posix() or None,
         file_count=file_count,
     )
+
+
+def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
+    """Select an explicit CI merge base so detached checkouts stay incremental."""
+    if staged:
+        return ("--staged",)
+    base = os.environ.get(  # ruff: ignore[banned-api] -- explicit GitHub workflow boundary, not application settings.
+        "SARJ_REACT_DOCTOR_BASE", ""
+    ).strip()
+    if base:
+        return ("--scope", "changed", "--base", base)
+    return ("--scope", "changed")
 
 
 def _missing_local_binary_issue(name: str, project: Path, root: Path) -> ExecutionIssue | None:

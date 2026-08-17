@@ -287,7 +287,7 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
     assert selection == (tmp_path, (included.resolve(),))
 
 
-def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> None:
+def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text(
         '{"packageManager":"npm@11.5.2","dependencies":{"react":"19.0.0"}}\n',
         encoding="utf-8",
@@ -361,6 +361,22 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> 
     assert changed_report.completion is Completion.COMPLETE
     scope_index = seen[1].index("--scope")
     assert seen[1][scope_index + 1] == "changed"
+    assert "--base" not in seen[1]
+
+    monkeypatch.setenv("SARJ_REACT_DOCTOR_BASE", "0123456789abcdef")
+    ci_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(tmp_path,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert ci_report.completion is Completion.COMPLETE
+    base_index = seen[2].index("--base")
+    assert seen[2][base_index + 1] == "0123456789abcdef"
 
 
 def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
