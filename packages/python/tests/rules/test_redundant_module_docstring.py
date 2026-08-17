@@ -47,7 +47,7 @@ def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ099"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert (findings[0].line, findings[0].col) == (1, 1)
     assert "file path" in findings[0].message
 
@@ -155,12 +155,12 @@ def test_class_docstrings_are_out_of_scope() -> None:
     assert _check(source) == []
 
 
-def test_cli_reports_warning_without_failing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_reports_blocking_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "element.py"
     target.write_text('"""Element class for element operations."""\n\nVALUE = 1\n', encoding="utf-8")
 
-    assert main(["check", "--rule", "redundant-module-docstring", str(target)]) == 0
-    assert "SARJ099 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", "redundant-module-docstring", str(target)]) == 1
+    assert "SARJ099 warning:" not in capsys.readouterr().out
 
 
 def test_exact_suppression_is_honored(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

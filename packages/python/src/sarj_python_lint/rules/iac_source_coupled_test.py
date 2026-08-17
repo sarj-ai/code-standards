@@ -45,7 +45,7 @@ class IacSourceCoupledTest(Rule):
         limitations=(
             "The rule follows local aliases, path collections, context-managed reads, and common normalization; interprocedural flows remain unreported.",
             "Files produced beneath recognized temporary-directory fixtures are generated outputs and remain unreported.",
-            "The warning-stage rule remains suppressible for calibration; promotion may make the locked policy non-suppressible.",
+            "The rule remains suppressible for exceptional compatibility boundaries.",
         ),
         examples=(
             RuleExample(
@@ -98,7 +98,7 @@ class IacSourceCoupledTest(Rule):
                 line=assertion.lineno,
                 col=assertion.col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     "raw IaC source text is the test oracle; inspect rendered plan JSON, provider state, or runtime behavior instead."
                 ),

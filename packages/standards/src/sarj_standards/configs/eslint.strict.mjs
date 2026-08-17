@@ -990,7 +990,7 @@ export function createConfig(options = {}) {
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-bare-return-from-test-catch": "warn",
       "@sarj/no-long-comment": "error",
-      "@sarj/no-vague-suppression-description": "warn",
+      "@sarj/no-vague-suppression-description": "error",
       "@sarj/no-generic-single-export-module": "error",
       "@sarj/no-insecure-random-id": "error",
       "@sarj/no-json-stringify-error": "error",

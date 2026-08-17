@@ -121,6 +121,18 @@ def test_shell_iac_labeled_evaluation_cases(case: EvaluationCase, tmp_path: Path
     assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
 
 
+def test_shell_iac_source_rule_blocks(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "tests" / "policy.test.sh"
+    path.parent.mkdir(parents=True)
+    path.write_text("grep -q resource iac/main.tf\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert textlint.run(["tests/policy.test.sh"]) == 1
+    assert "SARJ304 warning:" not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     "command",
     [
@@ -614,7 +626,7 @@ def test_workflow_action_rule_reports_each_mutable_use(tmp_path: Path) -> None:
     assert [(finding.code, finding.line) for finding in findings] == [("SARJ303", 2), ("SARJ303", 3)]
 
 
-def test_new_workflow_action_rule_warns_without_blocking(
+def test_workflow_action_rule_blocks(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     workflow = tmp_path / ".github/workflows/ci.yml"
@@ -622,8 +634,8 @@ def test_new_workflow_action_rule_warns_without_blocking(
     workflow.write_text("- uses: actions/checkout@v4\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    assert textlint.run([str(workflow.relative_to(tmp_path))]) == 0
-    assert "SARJ303 warning:" in capsys.readouterr().out
+    assert textlint.run([str(workflow.relative_to(tmp_path))]) == 1
+    assert "SARJ303 warning:" not in capsys.readouterr().out
 
 
 def test_flags_change_diary_inside_readme(tmp_path: Path) -> None:

@@ -277,7 +277,7 @@ class UncontrolledRandomnessInTest(Rule):
                         line=call.lineno,
                         col=call.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=(
                             "this test repeatedly samples an unseeded PRNG, so the same code can pass or fail across "
                             "runs; inject a deterministic RNG, set an explicit seed, or use a property-testing "
