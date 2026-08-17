@@ -382,6 +382,15 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
     return found
 
 
+def duplicate_test_owner_ids(tree: ast.Module, source: str) -> frozenset[int]:
+    """Return the identities of tests participating in a SARJ066 group."""
+    try:
+        groups = _duplicate_groups(tree, source)
+    except tokenize.TokenError, IndentationError, SyntaxError, RecursionError:
+        return frozenset()
+    return frozenset(id(member.node) for group in groups for member in group)
+
+
 def _consecutive_embedded_source_groups(members: list[_Shape], positions: dict[int, int]) -> list[list[_Shape]]:
     """Keep only long uninterrupted runs of embedded-source checker tests."""
     ordered = sorted(members, key=lambda member: positions[id(member.node)])

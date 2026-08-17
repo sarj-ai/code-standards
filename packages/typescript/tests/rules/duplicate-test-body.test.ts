@@ -105,6 +105,16 @@ it('infers status 401', () => { const req = client.posts.$post; type Actual = In
 run('two', () => { const x = parse('b'); save(x); return x; });`,
     },
     {
+      name: "ignores generated test paths",
+      filename: "/repo/src/generated/user.test.ts",
+      code: duplicateTestBodyDocumentation.examples[1].files[0].source,
+    },
+    {
+      name: "ignores generated test headers",
+      filename: TEST_FILE,
+      code: `// @generated\n${duplicateTestBodyDocumentation.examples[1].files[0].source}`,
+    },
+    {
       name: "ignores a locally defined function named test",
       filename: TEST_FILE,
       code: `function test(_name: string, callback: () => void) { callback(); }

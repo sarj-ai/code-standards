@@ -16,6 +16,7 @@ import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-bounds.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
+import noBareReturnFromTestCatch from "./rules/no-bare-return-from-test-catch.js";
 import noLongComment from "./rules/no-long-comment.js";
 import noVagueSuppressionDescription from "./rules/no-vague-suppression-description.js";
 import noGenericSingleExportModule from "./rules/no-generic-single-export-module.js";
@@ -58,6 +59,7 @@ import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js"
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
+import repeatedStaticCallCases from "./rules/repeated-static-call-cases.js";
 import preferZodInfer from "./rules/prefer-zod-infer.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
@@ -88,6 +90,7 @@ const rules = {
   "no-json-stringify-error": noJsonStringifyError,
   "no-impossible-zod-literal-bounds": noImpossibleZodLiteralBounds,
   "no-log-only-catch": noLogOnlyCatch,
+  "no-bare-return-from-test-catch": noBareReturnFromTestCatch,
   "no-long-comment": noLongComment,
   "no-vague-suppression-description": noVagueSuppressionDescription,
   "no-generic-single-export-module": noGenericSingleExportModule,
@@ -130,6 +133,7 @@ const rules = {
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
+  "repeated-static-call-cases": repeatedStaticCallCases,
   "prefer-zod-infer": preferZodInfer,
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
@@ -144,7 +148,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.7.0",
+  version: "15.8.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -155,7 +159,13 @@ const applicationOnlyRules = [
 ] as const;
 
 /** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
-const advisoryRules = ["no-vague-suppression-description", "iac-source-coupled-test", "source-coupled-test"] as const;
+const advisoryRules = [
+  "no-bare-return-from-test-catch",
+  "no-vague-suppression-description",
+  "iac-source-coupled-test",
+  "repeated-static-call-cases",
+  "source-coupled-test",
+] as const;
 
 const recommendedRules = {
   "@sarj/iac-source-coupled-test": "warn",
@@ -172,6 +182,7 @@ const recommendedRules = {
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
+  "@sarj/no-bare-return-from-test-catch": "warn",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "warn",
   "@sarj/no-generic-single-export-module": "error",
@@ -208,6 +219,7 @@ const recommendedRules = {
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
   "@sarj/prefer-whole-object-assertion": "error",
+  "@sarj/repeated-static-call-cases": "warn",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
@@ -236,6 +248,7 @@ const strictRules = {
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
+  "@sarj/no-bare-return-from-test-catch": "warn",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "warn",
   "@sarj/no-generic-single-export-module": "error",
@@ -275,6 +288,7 @@ const strictRules = {
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
   "@sarj/prefer-whole-object-assertion": "error",
+  "@sarj/repeated-static-call-cases": "warn",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
