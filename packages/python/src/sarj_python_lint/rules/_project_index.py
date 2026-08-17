@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
-from sarj_python_lint.rules._first_party import first_party_packages, project_root
+from sarj_python_lint.rules._first_party import project_root
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterator, Sequence
     from typing import Self
 
 
@@ -37,9 +39,11 @@ _SKIP_DIRS = frozenset(
     }
 )
 _MAX_ROOTS = 8
+_MAX_DIRS_PER_ROOT = 3_000
 _MAX_FILES_PER_ROOT = 10_000
 _MAX_FILE_BYTES = 500_000
 _NEW_TYPE_MIN_ARGS = 2
+_MATCH_CLASS_RE: re.Pattern[str] = re.compile(r"\bcase\s+([A-Z][A-Za-z0-9_]*)\s*\(")
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,20 +108,30 @@ class ProjectIndexSet:
 
     @classmethod
     def build(cls, paths: Sequence[Path], loaded: Mapping[Path, str]) -> Self:
-        roots = sorted({root for path in paths if (root := project_root(path)) is not None})[:_MAX_ROOTS]
-        package_roots = tuple(package for root in roots for package in first_party_packages(root))
-        sources: dict[Path, str] = dict(loaded)
+        roots = _project_roots(paths)
+        sources: dict[Path, str] = {}
+        for path, source in loaded.items():
+            try:
+                sources[path.resolve()] = source
+            except OSError:
+                continue
         for root in roots:
             count = 0
-            for path in root.rglob("*.py"):
-                if count >= _MAX_FILES_PER_ROOT or any(part in _SKIP_DIRS for part in path.parts):
+            for path in _python_files(root):
+                if count >= _MAX_FILES_PER_ROOT:
+                    break
+                try:
+                    if path.resolve() in sources:
+                        count += 1
+                        continue
+                except OSError:
                     continue
                 loaded_source = _read_bounded_source(root, path)
                 if loaded_source is None:
                     continue
                 sources.setdefault(loaded_source.path, loaded_source.source)
                 count += 1
-        return cls(_units(sources, package_roots))
+        return cls(_units(sources, roots))
 
     @classmethod
     def single(cls, path: Path, source: str) -> Self:
@@ -166,14 +180,21 @@ class ProjectIndexSet:
         return self._by_module.get(module)
 
 
-def _units(sources: Mapping[Path, str], package_roots: Sequence[tuple[str, Path]] = ()) -> dict[Path, SourceUnit]:
+def _units(sources: Mapping[Path, str], roots: Sequence[Path] = ()) -> dict[Path, SourceUnit]:
+    matched_classes = {
+        match.group(1)
+        for source in sources.values()
+        if "match " in source and "str(" in source
+        for match in _MATCH_CLASS_RE.finditer(source)
+    }
     parsed: dict[Path, tuple[str | None, str, ast.Module | None]] = {}
     for path, source in sources.items():
-        try:
+        if not _is_index_candidate(source, matched_classes):
+            continue
+        tree: ast.Module | None = None
+        with suppress(SyntaxError):
             tree = ast.parse(source, filename=str(path))
-        except SyntaxError:
-            tree = None
-        parsed[path] = (_module_name(path, package_roots), source, tree)
+        parsed[path] = (_module_name(path, roots), source, tree)
     return {
         path: SourceUnit(
             path=path,
@@ -186,15 +207,32 @@ def _units(sources: Mapping[Path, str], package_roots: Sequence[tuple[str, Path]
     }
 
 
-def _module_name(path: Path, package_roots: Sequence[tuple[str, Path]]) -> str | None:
+def _is_index_candidate(source: str, matched_classes: set[str]) -> bool:
+    return (
+        "NewType(" in source
+        or ("class " in source and any(marker in source for marker in ("Enum", "IntEnum", "StrEnum")))
+        or ("match " in source and "str(" in source)
+        or any(f"class {name}" in source for name in matched_classes)
+    )
+
+
+def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
     resolved = path.resolve()
-    for package_name, package_dir in sorted(package_roots, key=lambda item: len(item[1].parts), reverse=True):
-        try:
-            relative = resolved.relative_to(package_dir.resolve())
-        except OSError, ValueError:
-            continue
-        suffix = relative.parts[:-1] if relative.name == "__init__.py" else (*relative.parts[:-1], relative.stem)
-        return ".".join((package_name, *suffix))
+    root = next((candidate for candidate in roots if resolved == candidate or candidate in resolved.parents), None)
+    if root is not None:
+        package_dir: Path | None = None
+        for ancestor in resolved.parents:
+            if ancestor == root:
+                break
+            try:
+                if (ancestor / "__init__.py").is_file():
+                    package_dir = ancestor
+            except OSError:
+                return None
+        if package_dir is not None:
+            relative = resolved.relative_to(package_dir)
+            suffix = relative.parts[:-1] if relative.name == "__init__.py" else (*relative.parts[:-1], relative.stem)
+            return ".".join((package_dir.name, *suffix))
     parts: list[str] = []
     parent = path.parent
     try:
@@ -216,6 +254,38 @@ def _module_name(path: Path, package_roots: Sequence[tuple[str, Path]]) -> str |
     if path.name != "__init__.py":
         parts.append(path.stem)
     return ".".join(parts)
+
+
+def _project_roots(paths: Sequence[Path]) -> tuple[Path, ...]:
+    roots: list[Path] = []
+    for path in paths:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        if any(resolved == root or root in resolved.parents for root in roots):
+            continue
+        root = project_root(path)
+        if root is not None and root not in roots:
+            roots.append(root)
+        if len(roots) >= _MAX_ROOTS:
+            break
+    return tuple(sorted(roots))
+
+
+def _python_files(root: Path) -> Iterator[Path]:
+    for scanned, (directory, dir_names, file_names) in enumerate(os.walk(root), start=1):
+        if scanned > _MAX_DIRS_PER_ROOT:
+            return
+        parent = Path(directory)
+        dir_names[:] = [
+            name
+            for name in sorted(dir_names)
+            if not name.startswith(".") and name not in _SKIP_DIRS and not (parent / name / ".git").exists()
+        ]
+        for name in sorted(file_names):
+            if name.endswith(".py"):
+                yield parent / name
 
 
 def _imports(module: str | None, tree: ast.Module | None, *, is_package: bool) -> dict[str, SymbolRef]:

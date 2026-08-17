@@ -77,6 +77,8 @@ class PreserveEnumTypes(ProjectRule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if "match " not in source or "str(" not in source:
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []

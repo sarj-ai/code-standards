@@ -21,7 +21,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -43,6 +43,7 @@ class RequireValidatedRowFactory(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only cursors bound by a with statement and fetched in the same function are inspected.",
+            "Test files are excluded, and `dict_row` remains exclusively owned by SARJ013.",
             "Dynamic/ad-hoc result shapes require an exact local suppression.",
         ),
         examples=(
@@ -79,7 +80,7 @@ class RequireValidatedRowFactory(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or "migrations" in {part.lower() for part in path.parts}:
+        if is_generated(path, source) or is_test_path(path) or "migrations" in {part.lower() for part in path.parts}:
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -88,7 +89,7 @@ class RequireValidatedRowFactory(Rule):
         for function in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
             fetched = _fetched_names(function)
             for cursor_call, name in _bound_cursors(function):
-                if name not in fetched or _uses_class_row(cursor_call):
+                if name not in fetched or _uses_class_row(cursor_call) or _uses_dict_row(cursor_call):
                     continue
                 diagnostics.append(
                     Diagnostic(
@@ -145,3 +146,14 @@ def _uses_class_row(call: ast.Call) -> bool:
         ):
             return bool(value.args)
     return False
+
+
+def _uses_dict_row(call: ast.Call) -> bool:
+    return any(
+        keyword.arg == "row_factory"
+        and (
+            (isinstance(keyword.value, ast.Name) and keyword.value.id == "dict_row")
+            or (isinstance(keyword.value, ast.Attribute) and keyword.value.attr == "dict_row")
+        )
+        for keyword in call.keywords
+    )

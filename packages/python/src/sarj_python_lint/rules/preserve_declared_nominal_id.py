@@ -78,14 +78,17 @@ class PreserveDeclaredNominalId(ProjectRule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or "migrations" in {part.lower() for part in path.parts}:
+        if (
+            ("@override" not in source and ".override" not in source)
+            or is_generated(path, source)
+            or not is_test_path(path)
+            or "migrations" in {part.lower() for part in path.parts}
+        ):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
         indexes = self._project_indexes or ProjectIndexSet.single(path, source)
-        if not is_test_path(path):
-            return []
         diagnostics: list[Diagnostic] = []
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):

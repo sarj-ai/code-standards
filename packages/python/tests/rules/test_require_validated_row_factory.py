@@ -42,9 +42,19 @@ def save(conn):
     assert _check(source) == []
 
 
+def test_leaves_dict_row_exclusively_to_sarj013() -> None:
+    source = """
+def load(conn):
+    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        return cur.fetchone()
+"""
+    assert _check(source) == []
+
+
 def test_excludes_migrations_and_generated_code() -> None:
     source = "def load(conn):\n    with conn.cursor() as cur:\n        return cur.fetchone()\n"
     assert _check(source, "migrations/001.py") == []
+    assert _check(source, "tests/test_store.py") == []
     assert _check(f"# @generated\n{source}") == []
 
 

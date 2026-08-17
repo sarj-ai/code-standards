@@ -131,11 +131,6 @@ def project_root(path: Path) -> Path | None:
     return _project_root(path)
 
 
-def first_party_packages(root: Path) -> tuple[tuple[str, Path], ...]:
-    """Return importable package roots for bounded project-aware indexing."""
-    return _first_party_packages(root)
-
-
 def _declares_module(package_dir: Path, segments: list[str]) -> bool:
     target = package_dir.joinpath(*segments)
     try:
