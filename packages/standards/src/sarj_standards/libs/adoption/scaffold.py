@@ -1573,7 +1573,7 @@ def _tokens_execute_standards_check(tokens: tuple[str, ...]) -> bool:
         and Path(prefix[0]).name == "uvx"
         and _launcher_options_are_valid(
             prefix[1:],
-            flags=frozenset({"--isolated", "--no-cache"}),
+            flags=frozenset({"--isolated", "--no-cache", "--no-config"}),
             valued=frozenset({"--python", "--from", "--with"}),
         )
     )

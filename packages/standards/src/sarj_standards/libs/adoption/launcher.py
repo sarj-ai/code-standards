@@ -17,6 +17,7 @@ def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool =
     refresh_args = ("--refresh",) if refresh else ()
     return (
         executable,
+        "--no-config",
         "--isolated",
         "--python",
         TOOL_PYTHON,

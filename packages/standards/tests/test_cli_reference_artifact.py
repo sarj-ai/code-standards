@@ -36,7 +36,7 @@ def test_reference_contains_nested_commands_and_arguments() -> None:
     assert any(argument["names"] == ["--root"] for argument in options)
     assert reference["launcher"] == {
         "install": "uv tool install --python 3.14 sarj-standards",
-        "runLatest": "uvx --isolated --python 3.14 --from sarj-standards sarj-standards",
+        "runLatest": "uvx --no-config --isolated --python 3.14 --from sarj-standards sarj-standards",
     }
 
 

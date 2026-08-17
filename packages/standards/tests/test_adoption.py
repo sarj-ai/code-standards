@@ -565,7 +565,7 @@ def test_init_separates_the_tool_runtime_from_an_older_consumer_target(tmp_path:
     assert pyright["pythonVersion"] == "3.10"
     assert "target-version" not in (tmp_path / ".ruff-strict.toml").read_text(encoding="utf-8")
     hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "uvx --isolated --python 3.14" in hook
+    assert "uvx --no-config --isolated --python 3.14" in hook
 
 
 def test_init_application_profile_selects_application_artifacts(tmp_path: Path) -> None:
@@ -910,7 +910,7 @@ def test_nested_python_project_uses_the_same_isolated_launcher(tmp_path: Path) -
     hook = next(contents for path, contents in plan.writes if path.name == ".pre-commit-config.yaml")
     snippet = scaffold.ci_snippet(plan, version=manifest.adopted_version())
 
-    expected = f"uvx --isolated --python 3.14 --from sarj-standards=={manifest.adopted_version()}"
+    expected = f"uvx --no-config --isolated --python 3.14 --from sarj-standards=={manifest.adopted_version()}"
     assert expected in hook
     assert expected in snippet
     assert "--project python" not in hook
@@ -1188,7 +1188,7 @@ def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = config.read_text(encoding="utf-8")
     assert original_job in updated
-    assert "- name: sarj-standards\n      run: uvx --isolated" in updated
+    assert "- name: sarj-standards\n      run: uvx --no-config --isolated" in updated
     assert "sarj-standards check --staged --trust-repository-code -- {staged_files}" in updated
     assert "pre-push:\n  commands: {}" in updated
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
@@ -1388,7 +1388,7 @@ def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> Non
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  jobs:\n    - name: standards\n"
-        f"      run: uvx --isolated --python 3.14 --from sarj-standards=={__version__} "
+        f"      run: uvx --no-config --isolated --python 3.14 --from sarj-standards=={__version__} "
         "sarj-standards check --staged --trust-repository-code -- {staged_files}\n",
         encoding="utf-8",
     )
@@ -1691,7 +1691,7 @@ def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path)
 
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "uv run --frozen" not in generated
-    assert f"uvx --isolated --python 3.14 --from sarj-standards=={__version__}" in generated
+    assert f"uvx --no-config --isolated --python 3.14 --from sarj-standards=={__version__}" in generated
     # `check` runs the Python/SQL/IaC registries; a TypeScript repo has nothing
     # to feed them, and a hook that lints nothing is a hook that hides.
     assert "sarj-standards check" in generated
