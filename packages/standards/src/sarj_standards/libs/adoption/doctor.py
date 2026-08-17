@@ -21,7 +21,7 @@ from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
 
-from . import hooks, manifest, packagemanager, retired_suppressions, scaffold
+from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
 
 
 if TYPE_CHECKING:
@@ -82,8 +82,7 @@ _PIN = re.compile(
 
 #: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
 #: particular, ``exclude-newer`` can make a just-published exact bundle appear
-#: unavailable in CI for days. Keep custom pin-bearing launchers isolated too;
-#: fully managed hooks/workflows are rendered through ``launcher.pinned``.
+#: unavailable in CI for days. Keep custom pin-bearing launchers isolated too.
 _UVX_STANDARDS = re.compile(r"\buvx(?P<args>[^\n]*?--from\s+sarj-standards(?:==[^\s]+)?)")
 
 #: `rev: python-v0.19.0`, `rev: "standards-v0.10.0"`, `rev: 9d073e83b2...`.
@@ -195,6 +194,7 @@ def diagnose(root: Path) -> list[Finding]:
     installed = manifest.installed_versions()
     files = authored_files(root)
     findings = [*_check_manifest(root)]
+    findings.extend(_check_repository_launcher(root))
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
     findings.extend(_check_legacy_in_project_launcher(root))
@@ -224,6 +224,7 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     installed = manifest.installed_versions()
     files = _adoption_health_files(root, selected)
     findings = [*_check_manifest(root)]
+    findings.extend(_check_repository_launcher(root))
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
     findings.extend(_check_legacy_in_project_launcher(root))
@@ -235,6 +236,37 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     findings.extend(_check_adoption_wiring(root))
     findings.extend(_check_ci_gate(root))
     return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def _check_repository_launcher(root: Path) -> Iterator[Finding]:
+    """Require the stable launcher bytes that make the manifest operational."""
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        return
+    if adopted is None:
+        return
+    path = root / launcher.REPOSITORY_LAUNCHER
+    where = launcher.REPOSITORY_LAUNCHER.as_posix()
+    if not path.is_file():
+        yield Finding(
+            Level.DRIFT,
+            where,
+            "manifest-driven launcher is absent",
+            "doctor.launcher.absent",
+            "run `sarj-standards setup`",
+        )
+        return
+    if path.read_text(encoding="utf-8") != launcher.repository_script():
+        yield Finding(
+            Level.DRIFT,
+            where,
+            "launcher differs from the supported bootstrap protocol",
+            "doctor.launcher.drift",
+            "run `sarj-standards setup`",
+        )
+        return
+    yield Finding(Level.OK, where, f"launcher protocol {launcher.LAUNCHER_PROTOCOL}", "doctor.launcher.current")
 
 
 def _adoption_health_files(root: Path, selected: Sequence[Path]) -> tuple[Path, ...]:

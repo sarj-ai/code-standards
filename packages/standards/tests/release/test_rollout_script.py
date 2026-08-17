@@ -78,13 +78,19 @@ class TestRegistry:
         assert [item.repository for item in consumers if item.auto_merge] == ["example/consumer-1"]
         assert consumers[1].verify == ("make", "check")
 
-    def test_registry_rejects_wrong_count(self) -> None:
+    def test_registry_accepts_a_dynamic_fleet_size(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "registry.toml"
             path.write_text('schema = 1\n[[consumer]]\nname="one"\nrepository="r"\nbranch="main"\nverify=["true"]\n')
 
-            with pytest.raises(rollout.RolloutError, match="exactly five"):
-                rollout.load_registry(path)
+            assert len(rollout.load_registry(path)) == 1
+
+    def test_registry_rejects_an_empty_fleet(self, tmp_path: Path) -> None:
+        path = tmp_path / "registry.toml"
+        path.write_text("schema = 1\n", encoding="utf-8")
+
+        with pytest.raises(rollout.RolloutError, match="at least one"):
+            rollout.load_registry(path)
 
 
 class TestSafety:
@@ -188,9 +194,9 @@ class TestStatus:
                     "state": "OPEN",
                     "mergedAt": None,
                     "url": "https://pr/1",
-                    "headRefName": "standards-rollout/v5.8.1",
+                    "headRefName": "standards-rollout/current",
                     "baseRefName": "main",
-                    "body": marker,
+                    "body": marker + "\n" + rollout.desired_marker("5.8.1"),
                 }
             ]
         )
@@ -210,9 +216,9 @@ class TestStatus:
                     "state": "MERGED",
                     "mergedAt": "now",
                     "url": "https://pr/1",
-                    "headRefName": "standards-rollout/v5.8.1",
+                    "headRefName": "standards-rollout/current",
                     "baseRefName": "main",
-                    "body": marker,
+                    "body": marker + "\n" + rollout.desired_marker("5.8.1"),
                 }
             ]
         )
@@ -220,26 +226,33 @@ class TestStatus:
 
         assert rollout.status_one(consumer(), "5.8.1", runner).state == "merged"
 
-    def test_closed_unmerged_pr_blocks_rollout(self) -> None:
-        marker = rollout.pr_marker(consumer(), "5.8.1")
+    def test_open_rolling_pr_is_superseded_when_desired_release_changes(self) -> None:
         payload = json.dumps(
             [
                 {
-                    "state": "CLOSED",
+                    "state": "OPEN",
                     "mergedAt": None,
                     "url": "https://pr/1",
-                    "headRefName": "standards-rollout/v5.8.1",
+                    "headRefName": "standards-rollout/current",
                     "baseRefName": "main",
-                    "body": marker,
+                    "body": rollout.pr_marker(consumer(), "5.8.0") + "\n" + rollout.desired_marker("5.8.0"),
                 }
             ]
         )
-        runner = FakeRunner([(0, payload)])
+
+        result = rollout.status_one(consumer(), "5.8.1", FakeRunner([(0, payload)]))
+
+        assert result.state == "missing"
+        assert result.url == "https://pr/1"
+        assert "older" in result.detail
+
+    def test_closed_historical_pr_does_not_block_a_new_rollout(self) -> None:
+        runner = FakeRunner([(0, "[]"), (1, "")])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
 
-        assert result.state == "blocked"
-        assert "closed without merge" in result.detail
+        assert result.state == "missing"
+        assert runner.commands[0][5:7] == ("--state", "open")
 
     def test_foreign_pr_cannot_satisfy_rollout(self) -> None:
         payload = json.dumps(
@@ -331,6 +344,24 @@ class TestRelease:
         clone = next(command for command in runner.commands if command[:3] == ("gh", "repo", "clone"))
         assert "--single-branch" not in clone
 
+    def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
+        old_sha = "a" * 40
+        runner = FakeRunner(
+            [
+                (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
+                (0, ""),
+                (0, f"{rollout.BOT_COMMIT_PREFIX}5.8.0\n\n{rollout.MANAGED_TRAILER}"),
+                (0, "0"),
+                (0, ""),
+            ]
+        )
+
+        prepared = rollout.prepare_branch(tmp_path, consumer(), "5.8.1", runner)
+
+        assert prepared.previous_sha == old_sha
+        assert not prepared.amend
+        assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", "origin/main")
+
     def test_existing_verification_block_does_not_stop_later_consumers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         blocked = rollout.Outcome(consumer(), "blocked", "https://pr/1", "consumer verification failed; fix it")
 
@@ -341,4 +372,6 @@ class TestRelease:
 
         monkeypatch.setattr(rollout, "status_one", blocked_status)
 
-        assert rollout.apply_one(consumer(), "5.8.1", FakeRunner()) == blocked
+        result = rollout.apply_one(consumer(), "5.8.1", FakeRunner(), dry_run=True)
+
+        assert result.state == "would-create"

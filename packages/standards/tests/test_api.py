@@ -349,6 +349,41 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
     ]
 
 
+def test_standards_facade_update_exposes_exact_offline_target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[list[str]] = []
+
+    def run(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "upgraded", "")
+
+    def which(_name: str) -> str:
+        return "/usr/bin/uvx"
+
+    monkeypatch.setattr("sarj_standards.api.shutil.which", which)
+    monkeypatch.setattr("sarj_standards.api.subprocess.run", run)
+
+    result = api.Standards(tmp_path).update(version="5.14.1", offline=True, install=False)
+
+    assert result.status is api.Status.CHANGED
+    assert "sarj-standards==5.14.1" in commands[0]
+    assert "--refresh" not in commands[0]
+    assert commands[0][-4:] == ["--offline", "--to", "5.14.1", "--no-install"]
+
+
+def test_standards_facade_update_rejects_noncanonical_exact_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def which(_name: str) -> str:
+        return "/usr/bin/uvx"
+
+    monkeypatch.setattr("sarj_standards.api.shutil.which", which)
+
+    result = api.Standards(tmp_path).update(version="latest")
+
+    assert result.status is api.Status.INVALID
+    assert result.findings[0].id == "update.version.invalid"
+
+
 @pytest.mark.parametrize(
     ("check_only", "expected_status", "expected_finding"),
     [

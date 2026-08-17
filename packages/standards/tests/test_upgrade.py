@@ -167,7 +167,7 @@ def test_upgrade_installs_only_ecosystems_adopted_by_the_manifest(tmp_path: Path
     assert plan.ecosystems.python_root is None
     assert plan.ecosystems.typescript_install_root is None
     precommit = next(contents for path, contents in plan.scaffold_plan.writes if path.name == ".pre-commit-config.yaml")
-    assert f"uvx --no-config --isolated --python 3.14 --from sarj-standards=={manifest.adopted_version()}" in precommit
+    assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in precommit
     assert "uv run --frozen sarj-standards" not in precommit
 
 
@@ -714,14 +714,16 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (workflows / "standards.yml").read_text(encoding="utf-8")
     package_json = (tmp_path / "package.json").read_text(encoding="utf-8")
-    assert f"uvx --no-config --isolated --python 3.14 --from sarj-standards=={lint_configs}" in precommit
+    assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in precommit
     assert "sarj-standards-drift" not in precommit
     assert f"uvx --no-config --from sarj-standards=={lint_configs}" in workflow
     assert f"uvx --no-config --from sarj-standards=={lint_configs}" in package_json
     assert "verbose: true" not in (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in pyproject.read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in (tmp_path / "requirements-dev.txt").read_text(encoding="utf-8")
-    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == set()
+    assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == {
+        "doctor.ci.gate"
+    }
 
 
 def test_upgrade_migrates_plain_official_remote_umbrella_hook(tmp_path: Path) -> None:

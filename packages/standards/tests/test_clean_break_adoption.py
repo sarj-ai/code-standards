@@ -62,7 +62,7 @@ def test_explicit_hands_off_generated_client_is_ignored(tmp_path: Path) -> None:
     assert runner.group_paths([str(generated)]) == runner.GroupedPaths()
 
 
-def test_setup_preserves_an_existing_semantic_standards_workflow(tmp_path: Path) -> None:
+def test_setup_does_not_treat_a_direct_standards_command_as_canonical_ci(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '1'\n", encoding="utf-8")
     workflow = tmp_path / ".github" / "workflows" / "quality.yml"
     workflow.parent.mkdir(parents=True)
@@ -74,8 +74,7 @@ def test_setup_preserves_an_existing_semantic_standards_workflow(tmp_path: Path)
     plan = scaffold.build_plan(tmp_path, force=False)
 
     generated = tmp_path / ".github" / "workflows" / "standards.yml"
-    assert not any(path == generated for path, _contents in plan.writes)
-    assert any(path == generated and "quality.yml" in reason for path, reason in plan.skips)
+    assert any(path == generated for path, _contents in plan.writes)
 
 
 def test_setup_generates_ci_when_workflow_only_mentions_standards(tmp_path: Path) -> None:
@@ -91,7 +90,7 @@ def test_setup_generates_ci_when_workflow_only_mentions_standards(tmp_path: Path
     assert any(path.name == "standards.yml" for path, _contents in plan.writes)
 
 
-def test_doctor_and_setup_agree_on_existing_ci_gate(tmp_path: Path) -> None:
+def test_doctor_rejects_a_direct_standards_command_as_noncanonical_ci(tmp_path: Path) -> None:
     workflow = tmp_path / ".github" / "workflows" / "standards-ci.yml"
     workflow.parent.mkdir(parents=True)
     workflow.write_text(
@@ -111,7 +110,7 @@ def test_doctor_and_setup_agree_on_existing_ci_gate(tmp_path: Path) -> None:
 
     gates = [finding for finding in findings if finding.id == "doctor.ci.gate"]
     assert len(gates) == 1
-    assert gates[0].level is doctor.Level.OK
+    assert gates[0].level is doctor.Level.DRIFT
 
 
 def test_doctor_reports_missing_ci_gate(tmp_path: Path) -> None:

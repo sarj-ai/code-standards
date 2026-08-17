@@ -287,6 +287,7 @@ def build_plan(
         plan.notes.append("no Python or TypeScript project found; adopting repository-wide shared configs only")
 
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
+    _plan_repository_launcher(root, plan)
     if (
         ecosystems.python
         and ecosystems.python_root is not None
@@ -322,11 +323,11 @@ def build_plan(
     else:
         plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
     workflow = root / ".github" / "workflows" / "standards.yml"
-    workflow_contents = github_ci_workflow(root, version=manifest.adopted_version())
+    workflow_contents = github_ci_workflow(root)
     existing_gates = standards_check_workflows(root)
     if workflow.is_file() and _is_managed_workflow(workflow):
         if workflow.read_text(encoding="utf-8") == workflow_contents:
-            plan.skips.append((workflow, "already runs the canonical pinned Standards gate"))
+            plan.skips.append((workflow, "already runs the canonical manifest-driven Standards gate"))
         else:
             plan.writes.append((workflow, workflow_contents))
     elif existing_gates:
@@ -336,7 +337,7 @@ def build_plan(
         plan.writes.append((workflow, migrated))
         plan.notes.append("migrated the removed Standards `verify` CI command to the canonical check")
     elif workflow.is_file() and workflow.read_text(encoding="utf-8") == workflow_contents:
-        plan.skips.append((workflow, "already runs the canonical pinned Standards gate"))
+        plan.skips.append((workflow, "already runs the canonical manifest-driven Standards gate"))
     else:
         _record(
             plan,
@@ -357,9 +358,9 @@ def _is_managed_workflow(path: Path) -> bool:
         first_line = path.read_text(encoding="utf-8").splitlines()[0]
     except OSError, IndexError:
         return False
-    return (
-        first_line.startswith("# Managed by sarj-standards ")
-        and "regenerate with `sarj-standards show ci" in first_line
+    return first_line == (
+        "# Managed by sarj-standards; regenerate with "
+        "`sarj-standards show ci --output .github/workflows/standards.yml`."
     )
 
 
@@ -492,6 +493,19 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
             plan.notes.append("updated the manifest to match the requested capabilities and profile")
             return
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
+
+
+def _plan_repository_launcher(root: Path, plan: Plan) -> None:
+    """Create or converge the stable manifest-driven consumer launcher."""
+    path = root / launcher.REPOSITORY_LAUNCHER
+    contents = launcher.repository_script()
+    if path.is_file() and path.read_text(encoding="utf-8") == contents:
+        plan.skips.append((path, "already uses the current launcher protocol"))
+        return
+    if path.exists() and not path.is_file():
+        plan.errors.append(f"launcher target must be a regular file: {path}")
+        return
+    plan.writes.append((path, contents))
 
 
 def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
@@ -1108,15 +1122,10 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
         )
         return
     path = existing[0] if existing else root / _PRECOMMIT_CONFIG_NAMES[0]
-    owns_python = plan.ecosystems.python and any(name in plan.configs for name in manifest.PYTHON_CONFIGS)
-    block = precommit_block(
-        python=owns_python,
-        version=manifest.adopted_version(),
-        python_dest=dest_of(root, plan.ecosystems.python_root),
-    )
+    block = precommit_block()
     if path.is_file():
         text = path.read_text(encoding="utf-8")
-        runner_prefix = _runner_prefix(version=manifest.adopted_version())
+        runner_prefix = launcher.repository_command()
         migrated, migration_error = _migrate_official_remote_hook(text, runner_prefix)
         if migration_error is not None:
             plan.errors.append(f"cannot safely migrate {path}: {migration_error}")
@@ -1360,11 +1369,9 @@ def _canonicalize_local_hook_block(
     return "".join(output)
 
 
-def precommit_block(*, python: bool, version: str, python_dest: str = ".") -> str:
-    """Render one staged-file orchestrator, deliberately without a second version pin."""
-    _ = python, python_dest
-    runner_prefix = _runner_prefix(version=version)
-    return _precommit_check_block(runner_prefix)
+def precommit_block() -> str:
+    """Render the single manifest-driven staged-file orchestrator."""
+    return _precommit_check_block(launcher.repository_command())
 
 
 def _precommit_check_block(runner_prefix: str, *, item_indent: int = 2) -> str:
@@ -1418,19 +1425,17 @@ def apply(plan: Plan, *, preconditions: Mapping[Path, bytes | None] | None = Non
         transaction.atomic_write_text(plan.root, path, current + addition)
 
 
-def ci_snippet(plan: Plan, *, version: str) -> str:
+def ci_snippet() -> str:
     """Render the CI job that keeps a repo honest between upgrades."""
-    _ = plan  # Retain the public call shape for compatibility with existing integrations.
-    runner_prefix = _runner_prefix(version=version)
     lines = [
         "      - name: sarj standards",
-        f"        run: {runner_prefix} check --trust-repository-code",
+        f"        run: {launcher.repository_command()} check --trust-repository-code",
     ]
     return "\n".join(lines) + "\n"
 
 
-def github_ci_workflow(root: Path, *, version: str) -> str:
-    """Render a complete, pinned GitHub Actions workflow for an adopted repository."""
+def github_ci_workflow(root: Path) -> str:
+    """Render a complete manifest-pinned GitHub Actions workflow."""
     root = root.resolve()
     adopted = manifest.load_for_setup(root)
     python_dest = "." if adopted is None else adopted.python_dest
@@ -1446,9 +1451,9 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
     )
     ecosystems = detect(root, python_dest=python_override, typescript_dest=typescript_override)
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
-    runner = _runner_prefix(version=version)
+    runner = launcher.repository_command()
     lines = [
-        f"# Managed by sarj-standards {version}; regenerate with `sarj-standards show ci --output .github/workflows/standards.yml`.",
+        "# Managed by sarj-standards; regenerate with `sarj-standards show ci --output .github/workflows/standards.yml`.",
         "name: Standards",
         "",
         "on:",
@@ -1467,6 +1472,10 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         "    runs-on: ubuntu-latest",
         "    timeout-minutes: 15",
         "    steps:",
+        "      - name: Harden the runner",
+        "        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1",
+        "        with:",
+        "          egress-policy: audit",
         "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
         "        with:",
         "          fetch-depth: 0",
@@ -1475,7 +1484,10 @@ def github_ci_workflow(root: Path, *, version: str) -> str:
         "        with:",
         "          version: '0.12.3'",
         "          enable-cache: true",
-        "          cache-dependency-glob: '**/uv.lock'",
+        "          cache-dependency-glob: |",
+        "            .sarj-standards.toml",
+        "            .sarj/standards",
+        "            **/uv.lock",
     ]
     if ecosystems.typescript:
         if ecosystems.client is PackageManager.BUN:
@@ -1545,23 +1557,29 @@ def standards_check_workflows(root: Path) -> tuple[Path, ...]:
     directory = root / ".github" / "workflows"
     if not directory.is_dir():
         return ()
+    source_checkout = (root / "packages" / "standards" / "src" / "sarj_standards").resolve() == Path(__file__).parents[
+        2
+    ]
     return tuple(
         path
         for path in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml")))
-        if _workflow_runs_standards_check(path)
+        if _workflow_runs_standards_check(path, source_checkout=source_checkout)
     )
 
 
-def _workflow_runs_standards_check(path: Path) -> bool:
+def _workflow_runs_standards_check(path: Path, *, source_checkout: bool) -> bool:
     """Inspect only YAML ``run`` values, so comments and step names cannot suppress CI generation."""
     try:
         parsed = cast("object", yaml.safe_load(path.read_text(encoding="utf-8")))
     except OSError, yaml.YAMLError:
         return False
-    return any(_run_value_executes_standards_check(command) for command in _workflow_run_commands(parsed))
+    return any(
+        _run_value_executes_standards_check(command, source_checkout=source_checkout)
+        for command in _workflow_run_commands(parsed)
+    )
 
 
-def _run_value_executes_standards_check(command: str) -> bool:
+def _run_value_executes_standards_check(command: str, *, source_checkout: bool) -> bool:
     """Recognize a direct Standards invocation, not inert shell text mentioning one."""
     logical = command.replace("\\\n", " ")
     for line in logical.splitlines():
@@ -1572,40 +1590,34 @@ def _run_value_executes_standards_check(command: str) -> bool:
             tokens = tuple(lexer)
         except ValueError:
             continue
-        if _tokens_execute_standards_check(tokens):
+        if _tokens_execute_standards_check(tokens, source_checkout=source_checkout):
             return True
     return False
 
 
-def _tokens_execute_standards_check(tokens: tuple[str, ...]) -> bool:
+def _tokens_execute_standards_check(tokens: tuple[str, ...], *, source_checkout: bool) -> bool:
     if not tokens or any(token in {";", "&&", "||", "|", "&"} for token in tokens):
+        return False
+    prefix = launcher.repository_argv()
+    if tokens[: len(prefix)] == prefix:
+        arguments = tokens[len(prefix) :]
+        return bool(arguments) and arguments[0] == "check"
+    if not source_checkout:
         return False
     try:
         executable_index = next(index for index, token in enumerate(tokens) if Path(token).name == "sarj-standards")
     except StopIteration:
         return False
-    prefix = tokens[:executable_index]
-    direct = not prefix
-    uvx = (
-        bool(prefix)
-        and Path(prefix[0]).name == "uvx"
+    command_prefix = tokens[:executable_index]
+    if command_prefix and not (
+        Path(command_prefix[0]).name == "uv"
+        and command_prefix[1:2] == ("run",)
         and _launcher_options_are_valid(
-            prefix[1:],
-            flags=frozenset({"--isolated", "--no-cache", "--no-config"}),
-            valued=frozenset({"--python", "--from", "--with"}),
-        )
-    )
-    uv_run = (
-        bool(prefix)
-        and Path(prefix[0]).name == "uv"
-        and prefix[1:2] == ("run",)
-        and _launcher_options_are_valid(
-            prefix[2:],
-            flags=frozenset({"--frozen", "--isolated", "--no-project", "--no-sync"}),
+            command_prefix[2:],
+            flags=frozenset({"--frozen", "--isolated", "--no-config", "--no-project", "--no-sync"}),
             valued=frozenset({"--directory", "--project", "--python", "--with"}),
         )
-    )
-    if not (direct or uvx or uv_run):
+    ):
         return False
     arguments = tokens[executable_index + 1 :]
     while arguments and (arguments[0] == "--root" or arguments[0].startswith("--root=")):
@@ -1675,7 +1687,3 @@ def _ci_javascript_install(client: PackageManager, yarn: YarnVariant) -> str:
         PackageManager.PNPM: "pnpm install --frozen-lockfile --ignore-scripts",
         PackageManager.BUN: "bun install --frozen-lockfile --ignore-scripts",
     }[client]
-
-
-def _runner_prefix(*, version: str) -> str:
-    return launcher.pinned(version)

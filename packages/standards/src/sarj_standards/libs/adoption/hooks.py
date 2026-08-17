@@ -355,7 +355,7 @@ def _runs_staged_check(value: object) -> bool:
     except ValueError:
         return False
     executable = next(
-        (index for index, token in enumerate(tokens) if PurePath(token).name == "sarj-standards"),
+        (index for index, token in enumerate(tokens) if PurePath(token).name == launcher.REPOSITORY_LAUNCHER.name),
         None,
     )
     if executable is None:
@@ -374,7 +374,7 @@ def _canonical_lefthook_command(root: Path | None = None) -> str:
             "uv run --project packages/standards --frozen sarj-standards check --staged "
             "--trust-repository-code -- {staged_files}"
         )
-    return f"{launcher.pinned(manifest.adopted_version())} check --staged --trust-repository-code -- {{staged_files}}"
+    return f"{launcher.repository_command()} check --staged --trust-repository-code -- {{staged_files}}"
 
 
 def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None = None) -> list[str]:

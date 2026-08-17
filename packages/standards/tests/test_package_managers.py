@@ -204,11 +204,11 @@ def test_only_the_berry_note_mentions_berry_only_configuration() -> None:
 def test_ci_workflow_speaks_the_detected_yarn_dialect(tmp_path: Path) -> None:
     _ = _project(tmp_path, "yarn.lock")
 
-    classic = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    classic = scaffold.github_ci_workflow(tmp_path)
     _ = (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "packageManager": "yarn@4.15.0"}) + "\n", encoding="utf-8"
     )
-    berry = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    berry = scaffold.github_ci_workflow(tmp_path)
 
     assert "yarn install --frozen-lockfile" in classic
     assert "--immutable" not in classic
@@ -221,7 +221,7 @@ def test_ci_installs_nested_javascript_project_from_its_install_root(tmp_path: P
     _ = (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
     _ = (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
 
-    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    workflow = scaffold.github_ci_workflow(tmp_path)
 
     assert "run: npm ci --no-audit --no-fund" in workflow
     assert "npm install --global" not in workflow
@@ -234,7 +234,7 @@ def test_ci_yaml_quotes_a_nested_install_root_with_shell_metacharacters(tmp_path
     _ = (web / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
     _ = (web / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
 
-    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    workflow = scaffold.github_ci_workflow(tmp_path)
 
     assert 'working-directory: "services/web # production"' in workflow
 
@@ -249,7 +249,7 @@ def test_ci_yaml_quotes_a_nested_install_root_with_shell_metacharacters(tmp_path
 def test_ci_activates_the_exact_declared_npm_version(tmp_path: Path, declaration: str) -> None:
     _ = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": declaration})
 
-    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    workflow = scaffold.github_ci_workflow(tmp_path)
 
     activation = "run: npm install --global npm@12.0.2 --ignore-scripts"
     assert activation in workflow
@@ -260,13 +260,13 @@ def test_ci_rejects_a_non_exact_declared_npm_version(tmp_path: Path) -> None:
     _ = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "npm@latest"})
 
     with pytest.raises(ValueError, match="must pin an exact semantic version"):
-        scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+        scaffold.github_ci_workflow(tmp_path)
 
 
 def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> None:
     _ = _project(tmp_path, "bun.lock")
 
-    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    workflow = scaffold.github_ci_workflow(tmp_path)
 
     assert "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6" in workflow
     assert "actions/setup-node" not in workflow
@@ -277,16 +277,16 @@ def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> 
 def test_ci_only_runs_locked_uv_sync_for_a_uv_project(tmp_path: Path) -> None:
     _ = (tmp_path / "pyproject.toml").write_text('[project]\nname="demo"\nversion="0.1.0"\n', encoding="utf-8")
 
-    unlocked = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    unlocked = scaffold.github_ci_workflow(tmp_path)
     _ = (tmp_path / "uv.lock").write_text("version = 1\n", encoding="utf-8")
-    locked = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    locked = scaffold.github_ci_workflow(tmp_path)
 
     assert "uv sync" not in unlocked
     assert "run: uv sync --locked" in locked
 
 
 def test_ci_emits_first_class_github_annotations(tmp_path: Path) -> None:
-    workflow = scaffold.github_ci_workflow(tmp_path, version="0.0.0")
+    workflow = scaffold.github_ci_workflow(tmp_path)
 
     assert "check --trust-repository-code --format github" in workflow
 
