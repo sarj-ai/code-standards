@@ -291,28 +291,30 @@ def _isinstance_ladder(
     ast_module_names: frozenset[str],
 ) -> tuple[str, int] | None:
     """Recognize a complete if/elif chain dispatching one name by runtime type."""
+    branches = _if_ladder(node)
+    branch_count = len(branches)
+    if branch_count < _MIN_TYPE_DISPATCH_BRANCHES:
+        return None
+
     subject: str | None = None
-    branch_count = 0
-    current = node
-    while True:
-        branch_subject = _matchable_isinstance_dispatch(current.test, runtime_tuple_aliases, ast_module_names)
+    for branch in branches:
+        # Guarded ladders are part of the newly calibrated two-arm advisory.
+        # Preserve SARJ080's established 3+ ladder boundary to avoid promoting
+        # an uncalibrated population directly to blocking diagnostics.
+        branch_subject = (
+            _matchable_isinstance_dispatch(branch.test, runtime_tuple_aliases, frozenset())
+            if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES
+            else _matchable_isinstance_test(branch.test, runtime_tuple_aliases)
+        )
         if branch_subject is None or (subject is not None and branch_subject != subject):
             return None
         subject = branch_subject
-        branch_count += 1
 
-        if not current.orelse:
-            break
-        if len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
-            current = current.orelse[0]
-            continue
-        break
-
-    if branch_count < _MIN_TYPE_DISPATCH_BRANCHES:
-        return None
     if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES and any(
-        _dispatch_uses_stdlib_ast(branch.test, ast_module_names) for branch in _if_ladder(node)
+        _dispatch_uses_stdlib_ast(branch.test, ast_module_names) for branch in branches
     ):
+        return None
+    if subject is None:
         return None
     return subject, branch_count
 
@@ -472,10 +474,7 @@ def _matchable_isinstance_dispatch(
 
 def _rebinds_name(node: ast.AST, name: str) -> bool:
     """Reject guards that change the dispatch subject after ``match`` would snapshot it."""
-    return any(
-        isinstance(candidate, ast.NamedExpr) and candidate.target.id == name
-        for candidate in ast.walk(node)
-    )
+    return any(isinstance(candidate, ast.NamedExpr) and candidate.target.id == name for candidate in ast.walk(node))
 
 
 def _body_terminates(body: list[ast.stmt]) -> bool:

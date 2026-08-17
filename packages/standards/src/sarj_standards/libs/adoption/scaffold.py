@@ -1628,19 +1628,21 @@ def _migrate_legacy_workflow_gate(path: Path) -> str | None:
 
 
 def _workflow_run_commands(value: object) -> tuple[str, ...]:
-    if isinstance(value, dict):
-        commands: list[str] = []
-        table = cast("dict[object, object]", value)
-        for key, item in table.items():
-            if key == "run" and isinstance(item, str):
-                commands.append(item)
-            else:
-                commands.extend(_workflow_run_commands(item))
-        return tuple(commands)
-    if isinstance(value, list):
-        items = cast("list[object]", value)
-        return tuple(command for item in items for command in _workflow_run_commands(item))
-    return ()
+    match value:
+        case dict():
+            commands: list[str] = []
+            table = cast("dict[object, object]", value)
+            for key, item in table.items():
+                if key == "run" and isinstance(item, str):
+                    commands.append(item)
+                else:
+                    commands.extend(_workflow_run_commands(item))
+            return tuple(commands)
+        case list():
+            items = cast("list[object]", value)
+            return tuple(command for item in items for command in _workflow_run_commands(item))
+        case _:
+            return ()
 
 
 def _ci_javascript_install(client: PackageManager, yarn: YarnVariant) -> str:

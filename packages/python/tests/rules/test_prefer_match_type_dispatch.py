@@ -861,6 +861,16 @@ def test_flags_terminating_sibling_isinstance_dispatch_with_case_guards():
         """,
         """
         def render(value):
+            if isinstance(value, Text) and value.visible:
+                return value.text
+            elif isinstance(value, Binary) and value.complete:
+                return value.decode()
+            elif isinstance(value, PathValue) and value.exists():
+                return value.read_text()
+            return None
+        """,
+        """
+        def render(value):
             if feature_enabled() and isinstance(value, Text):
                 return value.text
             if feature_enabled() and isinstance(value, Binary):
@@ -883,6 +893,7 @@ def test_flags_terminating_sibling_isinstance_dispatch_with_case_guards():
     ids=(
         "unproven-lowercase-ast-binding",
         "shadowed-stdlib-ast-binding",
+        "three-arm-guarded-ladder-remains-outside-the-advisory",
         "isinstance-is-not-leading-and-operand",
         "or-conditions-do-not-map-to-guards",
     ),
