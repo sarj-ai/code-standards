@@ -18,6 +18,7 @@ import time
 import tomllib
 from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 
+from pathspec import PathSpec
 from pydantic import BaseModel, ConfigDict, Field
 
 from sarj_standards.libs.adoption import manifest, packagemanager
@@ -400,26 +401,41 @@ def _selected_react_doctor_projects(
 ) -> tuple[Path, tuple[Path, ...]] | None:
     if not enabled or not has_typescript or (capabilities is not None and "eslint" not in capabilities):
         return None
-    project = _react_doctor_root(root)
-    if project is None or not (projects := _react_project_roots(project)):
+    adopted = manifest.load(root)
+    project = _react_doctor_root(root, adopted=adopted)
+    excluded = () if adopted is None else adopted.doctor_excluded_paths
+    if project is None or not (projects := _react_project_roots(project, repository=root, excluded=excluded)):
         return None
     return project, projects
 
 
-def _react_doctor_root(root: Path) -> Path | None:
-    adopted = manifest.load(root)
+def _react_doctor_root(root: Path, *, adopted: manifest.Manifest | None = None) -> Path | None:
+    if adopted is None:
+        adopted = manifest.load(root)
     candidate = root if adopted is None else (root / adopted.typescript_dest).resolve()
     return candidate if candidate.is_dir() else None
 
 
-def _react_project_roots(root: Path) -> tuple[Path, ...]:
+def _react_project_roots(
+    root: Path,
+    *,
+    repository: Path | None = None,
+    excluded: Sequence[str] = (),
+) -> tuple[Path, ...]:
     """Find authored packages that directly declare a React runtime or framework."""
+    repository_root = root.resolve() if repository is None else repository.resolve()
+    exclusions = PathSpec.from_lines("gitignore", excluded)
     projects: list[Path] = []
     for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        directory = Path(parent).resolve()
+        relative = directory.relative_to(repository_root).as_posix()
+        if relative and exclusions.match_file(relative):
+            directories[:] = []
+            continue
         directories[:] = sorted(name for name in directories if name not in _JAVASCRIPT_SCAN_SKIP_DIRS)
         if "package.json" not in filenames:
             continue
-        package_json = Path(parent) / "package.json"
+        package_json = directory / "package.json"
         try:
             parsed: object = json.loads(package_json.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
         except OSError, ValueError:
@@ -429,7 +445,7 @@ def _react_project_roots(root: Path) -> tuple[Path, ...]:
         for field in ("dependencies", "devDependencies", "peerDependencies"):
             declared.update(manifest.table_field(document, field))
         if declared.intersection(_REACT_RUNTIME_PACKAGES):
-            projects.append(Path(parent).resolve())
+            projects.append(directory)
     return tuple(projects)
 
 

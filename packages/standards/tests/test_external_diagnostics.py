@@ -261,6 +261,32 @@ def test_react_doctor_discovers_independent_react_projects(tmp_path: Path) -> No
     )
 
 
+def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text('{"private": true}\n', encoding="utf-8")
+    included = tmp_path / "apps" / "web"
+    excluded = tmp_path / "demos" / "historical"
+    for project in (included, excluded):
+        project.mkdir(parents=True)
+        (project / "package.json").write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
+    adopted = manifest.Manifest(
+        "5.13.5",
+        ("eslint",),
+        ".",
+        ".",
+        doctor_excluded_paths=("demos/**",),
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    selection = external_module._selected_react_doctor_projects(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        enabled=True,
+        has_typescript=True,
+        capabilities=frozenset({"eslint"}),
+    )
+
+    assert selection == (tmp_path, (included.resolve(),))
+
+
 def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> None:
     (tmp_path / "package.json").write_text(
         '{"packageManager":"npm@11.5.2","dependencies":{"react":"19.0.0"}}\n',
