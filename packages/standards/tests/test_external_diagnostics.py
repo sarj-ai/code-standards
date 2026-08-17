@@ -283,6 +283,20 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(tmp_path: Path) -> 
     blocking_index = seen[0].index("--blocking")
     assert seen[0][blocking_index + 1] == "warning"
 
+    changed_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(tmp_path,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert changed_report.completion is Completion.COMPLETE
+    scope_index = seen[1].index("--scope")
+    assert seen[1][scope_index + 1] == "changed"
+
 
 def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SARJ_AUDIT_SECRET", "must-not-leak")
