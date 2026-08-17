@@ -136,6 +136,45 @@ def test_react_doctor_accepts_omitted_empty_skipped_projects(tmp_path: Path) -> 
     assert parse_react_doctor(payload, root=tmp_path) == ()
 
 
+def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Path) -> None:
+    source = tmp_path / "package.json"
+    source.write_text('{"private": true}\n', encoding="utf-8")
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [
+                {
+                    "directory": str(tmp_path),
+                    "complete": True,
+                    "diagnostics": [
+                        {
+                            "filePath": "package.json",
+                            "plugin": "react-doctor",
+                            "rule": "project-configuration",
+                            "severity": "warning",
+                            "message": "Project configuration needs attention.",
+                            "line": 0,
+                            "column": 0,
+                            "endLine": 0,
+                            "endColumn": 0,
+                        }
+                    ],
+                }
+            ],
+            "skippedProjects": [],
+            "error": None,
+        }
+    )
+
+    finding = parse_react_doctor(payload, root=tmp_path)[0]
+
+    assert finding.location.path == "package.json"
+    assert finding.location.position is None
+    assert finding.location.region is None
+
+
 def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
     payload = json.dumps(
         {
