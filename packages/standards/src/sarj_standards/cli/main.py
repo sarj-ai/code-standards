@@ -82,7 +82,12 @@ class _Args(argparse.Namespace):
     private_refs_file: str | None = None
     quiet: bool = False
     roots: list[Path]
+    github_org: str | None = None
+    limit: int = 5000
+    changes: frozenset[str] = frozenset({"added", "deleted"})
+    cache_dir: Path | None = None
     include_text: Path | None = None
+    manifest: Path | None = None
     rules_cmd: str = ""
     reference_cmd: str = ""
     docs_cmd: str = ""
@@ -2052,6 +2057,28 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
     if args.repo_cmd == "comment-corpus":
         from sarj_standards.libs.repository import comment_corpus  # ruff: ignore[import-outside-top-level]
 
+        if args.github_org is not None:
+            if args.include_text is None:
+                msg = "--include-text is required with --github-org"
+                raise ValueError(msg)
+            from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
+                pr_comment_corpus,
+            )
+
+            config = pr_comment_corpus.CollectionConfig(
+                organization=args.github_org,
+                limit=args.limit,
+                changes=args.changes,
+                cache_dir=args.cache_dir,
+                output=args.include_text,
+                manifest=args.manifest,
+            )
+            summary = pr_comment_corpus.collect(config)
+            print(summary.render())
+            return 0
+        if args.cache_dir is not None or args.manifest is not None:
+            msg = "--cache-dir and --manifest require --github-org"
+            raise ValueError(msg)
         if args.include_text is not None:
             return comment_corpus.write_records(args.roots, args.include_text)
         return comment_corpus.emit_summary(args.roots, sys.stdout)
@@ -2227,12 +2254,38 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     for action in ("check", "sync"):
         docs_commands.add_parser(action)
     corpus = commands.add_parser("comment-corpus", help="extract comments for calibration")
-    corpus.add_argument("roots", nargs="+", type=Path)
+    corpus_source = corpus.add_mutually_exclusive_group(required=True)
+    corpus_source.add_argument("roots", nargs="*", type=Path)
+    corpus_source.add_argument(
+        "--github-org",
+        metavar="ORGANIZATION",
+        help="collect changed comments from merged pull requests in a GitHub organization",
+    )
+    corpus.add_argument("--limit", type=int, default=5000, help="maximum PR comment groups to collect")
+    corpus.add_argument(
+        "--changes",
+        type=_parse_comment_changes,
+        default=frozenset({"added", "deleted"}),
+        metavar="SIDES",
+        help="comma-separated diff sides to collect: added,deleted (default: both)",
+    )
+    corpus.add_argument(
+        "--cache-dir",
+        type=Path,
+        metavar="PRIVATE_DIRECTORY",
+        help="private Git object cache for organization collection",
+    )
     corpus.add_argument(
         "--include-text",
         type=Path,
         metavar="PRIVATE_JSONL",
-        help="write sensitive comment text to a new owner-readable file",
+        help="write sensitive comment text to a new owner-readable file (required with --github-org)",
+    )
+    corpus.add_argument(
+        "--manifest",
+        type=Path,
+        metavar="PRIVATE_JSON",
+        help="write a private organization-corpus reproduction manifest",
     )
     hook_commands = commands.add_parser("hooks", help="manage the pinned repository hooks").add_subparsers(
         dest="hooks_cmd", required=True
@@ -2299,6 +2352,23 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     ).add_subparsers(dest="reference_cmd", required=True)
     reference_commands.add_parser("check", help="verify the shipped reference matches the parser graph")
     reference_commands.add_parser("sync", help="update the shipped reference from the parser graph")
+
+
+def _parse_comment_changes(value: str) -> frozenset[str]:
+    """Parse the selected PR diff sides at the argparse boundary."""
+    parts: list[str] = []
+    for part in value.split(","):
+        normalized = part.strip()
+        if normalized:
+            parts.append(normalized)
+    changes = frozenset(parts)
+    supported = frozenset({"added", "deleted"})
+    unsupported = changes - supported
+    if not changes or unsupported:
+        expected = ",".join(sorted(supported))
+        msg = f"expected a comma-separated subset of {expected}"
+        raise argparse.ArgumentTypeError(msg)
+    return changes
 
 
 if __name__ == "__main__":
