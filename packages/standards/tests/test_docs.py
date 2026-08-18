@@ -13,6 +13,7 @@ from sarj_standards.libs.repository import docs
 REPO_ROOT = Path(__file__).resolve().parents[3]
 GENERATED_READMES = (
     Path("README.md"),
+    Path("packages/bootstrap/README.md"),
     Path("packages/standards/README.md"),
     Path("packages/python/README.md"),
     Path("packages/sql/README.md"),
@@ -43,6 +44,14 @@ def _repository(root: Path) -> None:
                 '[project]\nname = "sarj-standards"\nversion = "1.0.0"\ndescription = "Repository standards."\n'
                 'license = "MIT"\nrequires-python = ">=3.14"\n[project.scripts]\n'
                 'sarj-standards = "sarj_standards.__main__:main"\n'
+            ),
+        ),
+        "bootstrap": (
+            "pyproject.toml",
+            (
+                '[project]\nname = "sarj-standards-bootstrap"\nversion = "1.0.0"\n'
+                'description = "Standards bootstrap."\nlicense = "MIT"\nrequires-python = ">=3.14"\n'
+                '[project.scripts]\nsarj-standards = "sarj_standards_bootstrap:main"\n'
             ),
         ),
         "python": (

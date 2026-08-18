@@ -492,7 +492,7 @@ dev = [
 
 [[package]]
 name = "sarj-standards"
-version = "5.16.5"
+version = "5.16.6"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },

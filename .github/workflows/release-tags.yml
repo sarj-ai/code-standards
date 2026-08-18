@@ -109,6 +109,7 @@ jobs:
           for specification in \
             'repo-ci.yml|release-ready' \
             'private-refs.yml|private references' \
+            'bootstrap-ci.yml|bootstrap CI' \
             'python-ci.yml|python CI' \
             'typescript-ci.yml|typescript CI' \
             'sql-ci.yml|sql CI' \
@@ -193,7 +194,7 @@ jobs:
           PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: >-
           uv run --project packages/standards --frozen sarj-standards --root .
-          maintain release create-tags typescript python sql iac standards tsconfig
+          maintain release create-tags typescript bootstrap python sql iac standards tsconfig
           --commit "$PUBLISHED_SHA"
       - name: Publish the Standards GitHub Release
         env:

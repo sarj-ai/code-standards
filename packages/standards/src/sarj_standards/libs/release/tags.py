@@ -35,6 +35,7 @@ class ReleaseTargetId(StrEnum):
     """Stable package identities shared by release manifests and tags."""
 
     TYPESCRIPT = "typescript"
+    BOOTSTRAP = "bootstrap"
     PYTHON = "python"
     SQL = "sql"
     IAC = "iac"
@@ -71,6 +72,7 @@ class TagSyncResult:
 RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
     {
         ReleaseTargetId.TYPESCRIPT: ReleaseTarget(Path("packages/typescript/package.json"), "json"),
+        ReleaseTargetId.BOOTSTRAP: ReleaseTarget(Path("packages/bootstrap/pyproject.toml"), "toml"),
         ReleaseTargetId.PYTHON: ReleaseTarget(Path("packages/python/pyproject.toml"), "toml"),
         ReleaseTargetId.SQL: ReleaseTarget(Path("packages/sql/pyproject.toml"), "toml"),
         ReleaseTargetId.IAC: ReleaseTarget(Path("packages/iac/pyproject.toml"), "toml"),
@@ -80,6 +82,7 @@ RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
 )
 RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
     {
+        ReleaseTargetId.BOOTSTRAP: ("packages/bootstrap/src/",),
         ReleaseTargetId.PYTHON: ("packages/python/src/",),
         ReleaseTargetId.SQL: ("packages/sql/src/",),
         ReleaseTargetId.IAC: ("packages/iac/src/",),

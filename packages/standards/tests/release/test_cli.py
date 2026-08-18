@@ -108,6 +108,23 @@ def test_release_process_failure_is_a_clean_cli_error(
     assert capsys.readouterr().err == "error: uv publish failed with exit code 1\n"
 
 
+def test_release_cli_accepts_bootstrap_as_a_publish_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[Path, release.PublishTarget]] = []
+
+    def publish(root: Path, target: release.PublishTarget) -> None:
+        calls.append((root, target))
+
+    monkeypatch.setattr(release, "publish_target", publish)
+
+    status = cli.main(["--root", str(tmp_path), "maintain", "release", "publish", "bootstrap"])
+
+    assert status == 0
+    assert calls == [(tmp_path.resolve(), "bootstrap")]
+
+
 def test_verify_tags_without_commit_preserves_missing_tag_mode(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

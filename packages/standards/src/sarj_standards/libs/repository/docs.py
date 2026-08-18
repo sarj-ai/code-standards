@@ -26,6 +26,7 @@ _WALK_EXCLUDES: Final = frozenset(
 )
 _GENERATED_READMES: Final = (
     Path("README.md"),
+    Path("packages/bootstrap/README.md"),
     Path("packages/standards/README.md"),
     Path("packages/python/README.md"),
     Path("packages/sql/README.md"),
@@ -37,6 +38,7 @@ _GENERATED_READMES: Final = (
 _EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("CLAUDE.md"),)
 _PACKAGE_DEFINITIONS: Final = (
     ("packages/standards/pyproject.toml", "PyPI", "text"),
+    ("packages/bootstrap/pyproject.toml", "PyPI", None),
     ("packages/python/pyproject.toml", "PyPI", "python"),
     ("packages/sql/pyproject.toml", "PyPI", "sql"),
     ("packages/iac/pyproject.toml", "PyPI", "iac"),

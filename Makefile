@@ -42,6 +42,7 @@ docs-check: docs-artifacts-check
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \
+	  packages/bootstrap/src packages/bootstrap/tests \
 	  packages/python/src packages/python/tests \
 	  packages/sql/src packages/sql/tests \
 	  packages/iac/src packages/iac/tests \
@@ -50,6 +51,7 @@ format-check:
 build:
 	cd packages/typescript     && npm run build
 	cd apps/docs               && npm run build
+	cd packages/bootstrap      && uv build
 	cd packages/python         && uv build
 	cd packages/sql            && uv build
 	cd packages/iac            && uv build
@@ -57,6 +59,7 @@ build:
 
 test: check-versions-synced
 	cd packages/typescript     && npm test
+	cd packages/bootstrap      && uv run pytest -q
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
@@ -78,6 +81,7 @@ test: check-versions-synced
 # Each package runs its native type-aware lint gate.
 lint:
 	cd packages/typescript     && npm run lint
+	cd packages/bootstrap      && uv run ruff check src/ tests/
 	cd packages/python         && uv run ruff check src/ tests/
 	cd packages/sql            && uv run ruff check src/ tests/
 	cd packages/iac            && uv run ruff check src/ tests/
@@ -115,6 +119,7 @@ dogfood-typescript:
 	cd packages/typescript && npm run dogfood
 
 typecheck:
+	cd packages/bootstrap      && uv run basedpyright
 	cd packages/python         && uv run basedpyright
 	cd packages/sql            && uv run basedpyright
 	cd packages/iac            && uv run basedpyright
