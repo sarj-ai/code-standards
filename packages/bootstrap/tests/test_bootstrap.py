@@ -89,17 +89,16 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
     monkeypatch.setattr(shutil, "which", fake_which)
     captured: dict[str, object] = {}
 
-    def fake_exec(executable: str, arguments: tuple[str, ...], environment: dict[str, str]) -> None:
-        captured.update(executable=executable, arguments=arguments, environment=environment)
+    def fake_execute(arguments: tuple[str, ...], environment: dict[str, str]) -> None:
+        captured.update(arguments=arguments, environment=environment)
         message = "exec sentinel"
         raise RuntimeError(message)
 
-    monkeypatch.setattr(os, "execvpe", fake_exec)
+    monkeypatch.setattr(bootstrap, "execute", fake_execute)
 
     with pytest.raises(RuntimeError, match="exec sentinel"):
         bootstrap.run(("check", "src"), cwd=nested)
 
-    assert captured["executable"] == "/tools/uvx"
     assert captured["arguments"] == (
         "/tools/uvx",
         "--no-config",
