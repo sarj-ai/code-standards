@@ -525,6 +525,35 @@ class TestRelease:
         assert failure.returncode == 7
         assert runner.commands == [("uv", "sync", "--locked", "--project", "backend")]
 
+    def test_consumer_bootstrap_honors_the_python_projects_uv_version(self, tmp_path: Path) -> None:
+        backend = tmp_path / "backend"
+        backend.mkdir()
+        (backend / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+        (backend / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "6.0.2"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(0, "synced")])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, (), runner, {})
+
+        assert failure is None
+        assert runner.commands == [
+            (
+                "uvx",
+                "--no-config",
+                "--isolated",
+                "--from",
+                "uv==0.11.32",
+                "uv",
+                "sync",
+                "--locked",
+                "--project",
+                "backend",
+            )
+        ]
+
     def test_stops_consumer_bootstrap_at_first_failure(self, tmp_path: Path) -> None:
         (tmp_path / ".sarj-standards.toml").write_text(
             'schema = 3\nbundle = "5.16.5"\n\n[ci]\nbootstrap = ["first", "second"]\n',

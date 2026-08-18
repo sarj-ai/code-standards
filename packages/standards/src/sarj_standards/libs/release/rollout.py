@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 from sarj_standards.libs.adoption import launcher
 from sarj_standards.libs.adoption import manifest as adoption_manifest
 from sarj_standards.libs.adoption import scaffold as adoption_scaffold
+from sarj_standards.libs.adoption import uvtool as adoption_uvtool
 
 
 if TYPE_CHECKING:
@@ -558,7 +559,9 @@ def run_consumer_bootstrap(
         return None
     python_install = adoption_scaffold.python_ci_install_argv(repo, adopted.python_dest)
     if python_install:
-        result = runner.run((*tool_prefix, *python_install), cwd=repo, env=environment, check=False)
+        python_root = repo / adopted.python_dest
+        compatible_install = adoption_uvtool.argv(python_root, *python_install[1:])
+        result = runner.run((*tool_prefix, *compatible_install), cwd=repo, env=environment, check=False)
         if result.returncode != 0:
             return result
     for command in adopted.ci_bootstrap:
