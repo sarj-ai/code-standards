@@ -496,6 +496,15 @@ class TestRelease:
         ]
         assert environment["PATH"].startswith(str(shim_directory))
 
+    def test_consumer_verification_is_scoped_to_the_captured_base(self) -> None:
+        original = {"PATH": "/tools", "SARJ_REACT_DOCTOR_BASE": "stale"}
+        base_sha = "b" * 40
+
+        prepared = rollout.consumer_verification_environment(original, base_sha)
+
+        assert prepared == {"PATH": "/tools", "SARJ_REACT_DOCTOR_BASE": base_sha}
+        assert original["SARJ_REACT_DOCTOR_BASE"] == "stale"
+
     def test_provisions_consumer_declared_uv_on_path_for_nested_verification(self, tmp_path: Path) -> None:
         backend = tmp_path / "backend"
         backend.mkdir()

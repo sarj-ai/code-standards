@@ -518,6 +518,12 @@ def unauthenticated_environment() -> dict[str, str]:
     return environment
 
 
+def consumer_verification_environment(environment: Mapping[str, str], base_sha: str) -> dict[str, str]:
+    prepared = dict(environment)
+    prepared["SARJ_REACT_DOCTOR_BASE"] = base_sha
+    return prepared
+
+
 def provision_consumer_tools(
     repo: Path,
     shim_directory: Path,
@@ -808,7 +814,12 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         if bootstrap is not None:
             failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
         else:
-            verification = runner.run((*tool_prefix, *consumer.verify), cwd=repo, env=unauthenticated, check=False)
+            verification = runner.run(
+                (*tool_prefix, *consumer.verify),
+                cwd=repo,
+                env=consumer_verification_environment(unauthenticated, base_sha),
+                check=False,
+            )
             if verification.returncode != 0:
                 failures.append("consumer verification failed:\n" + verification_detail(verification))
         verification_failure = "\n\n".join(failures)[-4000:]
