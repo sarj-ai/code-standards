@@ -410,6 +410,38 @@ def test_upgrade_preserves_workspace_plugin_ranges(tmp_path: Path) -> None:
     assert package.read_text(encoding="utf-8") == original
 
 
+def test_upgrade_refreshes_a_secondary_javascript_lock_after_rewriting_its_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _outdated_python_repo(tmp_path)
+    secondary = tmp_path / "secondary-app"
+    secondary.mkdir()
+    (secondary / "package.json").write_text(
+        '{"devDependencies":{"@sarj/eslint-plugin":"0.0.1"}}\n',
+        encoding="utf-8",
+    )
+    lockfile = secondary / "package-lock.json"
+    lockfile.write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    commands: list[lifecycle.Command] = []
+
+    def execute(planned: object) -> int:
+        commands.extend(planned)  # type: ignore[arg-type] -- exercise the command boundary
+        lockfile.write_text('{"lockfileVersion":3,"fresh":true}\n', encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(lifecycle, "execute", execute)
+
+    plan = upgrade.build_plan(tmp_path)
+    assert plan.javascript_install_roots == (secondary,)
+    assert plan.javascript_lockfiles == (lockfile,)
+    assert upgrade.apply(plan) == 0
+
+    [lock_command] = [command for command in commands if command.label == "JavaScript lockfile"]
+    assert lock_command.cwd == secondary
+    assert tuple(lock_command.argv) == ("npm", "install", "--ignore-scripts", "--no-audit", "--no-fund")
+    assert lockfile.read_text(encoding="utf-8") == '{"lockfileVersion":3,"fresh":true}\n'
+
+
 def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     makefile = tmp_path / "Makefile"
