@@ -277,7 +277,7 @@ def test_upgrade_scans_make_and_lefthook_pin_sites(tmp_path: Path, filename: str
 def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     makefile = tmp_path / "Makefile"
-    makefile.write_text(
+    original = (
         "STANDARDS_VERSION := 5.14.1\n"
         "STANDARDS_RUN := uvx --isolated --python 3.14 --from 'sarj-standards==$(STANDARDS_VERSION)'\n"
         ".PHONY: sync-standards check-standards-sync print-standards-version\n\n"
@@ -286,9 +286,9 @@ def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_
         "check-standards-sync:\n"
         "\t$(STANDARDS_RUN) sarj-standards --root . update --check --offline --no-install\n\n"
         "print-standards-version:\n"
-        "\t@printf '%s\\n' '$(STANDARDS_VERSION)'\n",
-        encoding="utf-8",
+        "\t@printf '%s\\n' '$(STANDARDS_VERSION)'\n"
     )
+    makefile.write_text(original, encoding="utf-8")
 
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
 
@@ -300,6 +300,7 @@ def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_
     assert f"\t{launcher_command} update --check --offline --no-install" in updated
     assert f"\t@{launcher_command} --version" in updated
     assert "sarj-standards==" not in updated
+    assert updated.count("\n") == original.count("\n")
 
 
 def test_upgrade_preserves_dynamic_make_version_consumers(tmp_path: Path) -> None:
