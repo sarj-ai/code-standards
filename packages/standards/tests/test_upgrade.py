@@ -143,6 +143,15 @@ def test_pin_rewrite_migrates_a_multiline_shell_launcher() -> None:
     assert rewritten.packages == ("sarj-standards",)
 
 
+def test_pin_rewrite_migrates_repository_owned_launcher_expectation() -> None:
+    text = 'required = (\n    "python .sarj/standards check",\n)\n'
+
+    rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": "6.0.1"})
+
+    assert rewritten.contents == (f'required = (\n    "{BOOTSTRAP_COMMAND} check",\n)\n')
+    assert rewritten.packages == ("sarj-standards",)
+
+
 def test_upgrade_migrates_legacy_generated_ci_hooks_and_scripts_to_one_launcher(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     workflows = tmp_path / ".github" / "workflows"

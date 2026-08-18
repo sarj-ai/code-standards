@@ -1532,13 +1532,9 @@ def github_ci_workflow(root: Path) -> str:
             relative_install_root = install_root.relative_to(root).as_posix()
             lines.append(f"        working-directory: {json.dumps(relative_install_root)}")
     if ecosystems.python:
-        python_root = root / python_dest
-        if (python_root / "uv.lock").is_file():
-            project = "" if python_dest == "." else f" --project {shlex.quote(python_dest)}"
-            workspace = " --all-packages" if _is_uv_workspace(python_root) else ""
-            lines.extend(
-                ("      - name: Install Python dependencies", f"        run: uv sync --locked{project}{workspace}")
-            )
+        python_install = python_ci_install_argv(root, python_dest)
+        if python_install:
+            lines.extend(("      - name: Install Python dependencies", f"        run: {shlex.join(python_install)}"))
     for index, command in enumerate(() if adopted is None else adopted.ci_bootstrap, start=1):
         label = "Bootstrap analysis inputs" if index == 1 else f"Bootstrap analysis inputs ({index})"
         lines.extend((f"      - name: {label}", f"        run: {json.dumps(command)}"))
@@ -1559,6 +1555,16 @@ def _setup_uv_version(root: Path, python_root: Path | None) -> str:
     if source is None:
         return "          version: '0.12.3'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
+
+
+def python_ci_install_argv(root: Path, python_dest: str) -> tuple[str, ...]:
+    """Return the locked Python install used by generated CI and rollout preflight."""
+    python_root = root / python_dest
+    if not (python_root / "uv.lock").is_file():
+        return ()
+    project = () if python_dest == "." else ("--project", python_dest)
+    workspace = ("--all-packages",) if _is_uv_workspace(python_root) else ()
+    return ("uv", "sync", "--locked", *project, *workspace)
 
 
 def _is_uv_workspace(project: Path) -> bool:

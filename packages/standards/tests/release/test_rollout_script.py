@@ -459,12 +459,15 @@ class TestRelease:
         assert environment["PATH"].startswith(str(shim_directory))
 
     def test_runs_declared_consumer_bootstrap_in_order(self, tmp_path: Path) -> None:
+        backend = tmp_path / "backend"
+        backend.mkdir()
+        (backend / "uv.lock").write_text("version = 1\n", encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "5.16.5"\n\n[ci]\n'
+            'schema = 3\nbundle = "5.16.5"\n\n[dest]\npython = "backend"\ntypescript = "."\n\n[ci]\n'
             'bootstrap = ["npm --prefix frontend run generate:api", "npm --prefix frontend run typegen"]\n',
             encoding="utf-8",
         )
-        runner = FakeRunner([(0, "generated"), (0, "typed")])
+        runner = FakeRunner([(0, "synced"), (0, "generated"), (0, "typed")])
 
         failure = rollout.run_consumer_bootstrap(
             tmp_path,
@@ -475,6 +478,7 @@ class TestRelease:
 
         assert failure is None
         assert runner.commands == [
+            ("mise", "exec", "--", "uv", "sync", "--locked", "--project", "backend"),
             (
                 "mise",
                 "exec",
@@ -502,7 +506,24 @@ class TestRelease:
                 "npm --prefix frontend run typegen",
             ),
         ]
-        assert runner.environments == [{"PATH": "/tools"}, {"PATH": "/tools"}]
+        assert runner.environments == [{"PATH": "/tools"}, {"PATH": "/tools"}, {"PATH": "/tools"}]
+
+    def test_stops_consumer_bootstrap_when_locked_python_install_fails(self, tmp_path: Path) -> None:
+        backend = tmp_path / "backend"
+        backend.mkdir()
+        (backend / "uv.lock").write_text("version = 1\n", encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "5.16.5"\n\n[dest]\npython = "backend"\ntypescript = "."\n\n'
+            '[ci]\nbootstrap = ["generate"]\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(7, "sync failed")])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, (), runner, {})
+
+        assert failure is not None
+        assert failure.returncode == 7
+        assert runner.commands == [("uv", "sync", "--locked", "--project", "backend")]
 
     def test_stops_consumer_bootstrap_at_first_failure(self, tmp_path: Path) -> None:
         (tmp_path / ".sarj-standards.toml").write_text(

@@ -28,6 +28,9 @@ _REPOSITORY_LAUNCHER_INVOCATION: Final = re.compile(
     rf"{_SHELL_WHITESPACE}3\.14{_SHELL_WHITESPACE}python"
     rf"{_SHELL_WHITESPACE}(?:\./)?\.sarj/standards"
 )
+_BARE_REPOSITORY_LAUNCHER_INVOCATION: Final = re.compile(
+    rf"(?<![\w./-])python{_SHELL_WHITESPACE}(?:\./)?\.sarj/standards"
+)
 _LEGACY_MAKE_RUN: Final = re.compile(
     r"(?m)^(?P<indent>\t?)(?:@)?\$\(STANDARDS_RUN\)[ \t]+sarj-standards"
     r"(?:[ \t]+--root(?:[ \t]+|=)(?:\.|['\"]\.['\"]))?"
@@ -116,6 +119,8 @@ def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
     contents, count = _LEGACY_REPOSITORY_INVOCATION.subn(repository_command(), text)
     contents, repository_count = _REPOSITORY_LAUNCHER_INVOCATION.subn(repository_command(), contents)
     count += repository_count
+    contents, bare_repository_count = _BARE_REPOSITORY_LAUNCHER_INVOCATION.subn(repository_command(), contents)
+    count += bare_repository_count
     update_target = re.compile(
         rf"{re.escape(repository_command())}{_SHELL_WHITESPACE}update"
         rf"{_SHELL_WHITESPACE}--to(?:{_SHELL_WHITESPACE}|=)[^\s;&|\\'\"]+"
@@ -139,7 +144,9 @@ def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
         )
         contents = _LEGACY_MAKE_VERSION_PRINT.sub(f"\t@{repository_command('--version')}", contents)
         contents = _LEGACY_MAKE_RUN_ASSIGNMENT.sub(
-            lambda match: "\r\n" if match.group(0).endswith("\r\n") else ("\n" if match.group(0).endswith("\n") else ""),
+            lambda match: (
+                "\r\n" if match.group(0).endswith("\r\n") else ("\n" if match.group(0).endswith("\n") else "")
+            ),
             contents,
         )
         contents = _LEGACY_MAKE_VERSION_ASSIGNMENT.sub(
