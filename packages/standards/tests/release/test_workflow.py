@@ -39,6 +39,7 @@ def _run_release_tag_preflight(
 ) -> _PreflightResult:
     versions = {
         "typescript": "1.0.0",
+        "bootstrap": "1.5.0",
         "python": "2.0.0",
         "sql": "3.0.0",
         "iac": "4.0.0",
@@ -131,6 +132,8 @@ def test_lint_config_release_waits_for_typescript_and_preflights_registry() -> N
     lint_config_job = workflow.split("  build-standards:", 1)[1].split("  publish-standards:", 1)[0]
 
     assert "- publish-typescript" in lint_config_job
+    assert "- publish-bootstrap" in lint_config_job
+    assert "needs.publish-bootstrap.result == 'success'" in lint_config_job
     assert "maintain release verify-publications" in lint_config_job
 
 
@@ -152,6 +155,7 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     for specification in (
         "repo-ci.yml|release-ready",
         "private-refs.yml|private references",
+        "bootstrap-ci.yml|bootstrap CI",
         "python-ci.yml|python CI",
         "typescript-ci.yml|typescript CI",
         "sql-ci.yml|sql CI",
@@ -163,7 +167,7 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     assert "head_repository.full_name == $repo" in workflow
     assert "actions/runs/$run_id/jobs" in workflow
     assert "pending_jobs == 0 && successful_jobs > 0" in workflow
-    assert "maintain release create-tags typescript python sql iac standards tsconfig" in workflow
+    assert "maintain release create-tags typescript bootstrap python sql iac standards tsconfig" in workflow
     assert '--commit "$PUBLISHED_SHA"' in workflow
     assert 'maintain release verify-tags --commit "$TARGET_SHA"' in workflow
 

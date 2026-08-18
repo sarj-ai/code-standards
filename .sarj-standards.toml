@@ -1,5 +1,5 @@
 schema = 3
-bundle = "5.16.5"
+bundle = "5.16.6"
 rule_profile = "all"
 
 profile = "standard"
@@ -114,12 +114,19 @@ glob = "packages/*/pyrightconfig.json"
 pattern = '"extends": "([^"]+)"'
 
 [repository.versions]
+bootstrap = ["packages/bootstrap/pyproject.toml"]
 python = ["pyproject.toml", "packages/python/pyproject.toml"]
 sql = ["packages/sql/pyproject.toml"]
 iac = ["packages/iac/pyproject.toml"]
 standards = ["packages/standards/pyproject.toml"]
 typescript = ["packages/typescript/package.json"]
 tsconfig = ["packages/tsconfig/package.json"]
+
+[[repository.version_references]]
+path = "packages/bootstrap/uv.lock"
+format = "uv-lock"
+version = "bootstrap"
+selector = "sarj-standards-bootstrap"
 
 [[repository.version_references]]
 path = "uv.lock"
@@ -207,6 +214,7 @@ selector = "/peers/@sarj~1eslint-plugin"
 
 [repository.version_coverage]
 manifests = [
+  "packages/bootstrap/pyproject.toml",
   "packages/python/pyproject.toml",
   "packages/sql/pyproject.toml",
   "packages/iac/pyproject.toml",
@@ -216,6 +224,7 @@ manifests = [
 ]
 locks = [
   "apps/docs/package-lock.json",
+  "packages/bootstrap/uv.lock",
   "uv.lock",
   "packages/python/uv.lock",
   "packages/sql/uv.lock",

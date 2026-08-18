@@ -103,7 +103,7 @@ def test_missing_remote_release_tags_derives_names_from_manifests(tmp_path: Path
 
     assert "python-v1.2.3" not in missing
     assert "typescript-v1.2.3" in missing
-    assert len(missing) == 5
+    assert len(missing) == 6
 
 
 def test_verify_remote_release_tags_accepts_exact_and_unchanged_existing_tags(tmp_path: Path) -> None:

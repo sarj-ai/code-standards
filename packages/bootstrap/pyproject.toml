@@ -1,0 +1,61 @@
+[project]
+name = "sarj-standards-bootstrap"
+version = "1.0.0"
+description = "Manifest-driven launcher for an exact Sarj Standards bundle."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "sarj-ai" }]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = []
+
+[project.scripts]
+sarj-standards = "sarj_standards_bootstrap:main"
+
+[project.urls]
+Homepage = "https://code-standards.sarj.ai/"
+Documentation = "https://code-standards.sarj.ai/cli/"
+Changelog = "https://github.com/sarj-ai/standards/releases"
+Repository = "https://github.com/sarj-ai/standards"
+Issues = "https://github.com/sarj-ai/standards/issues"
+
+[dependency-groups]
+dev = [
+  "basedpyright>=1.39",
+  "pytest>=9.0",
+  "ruff>=0.16.1",
+]
+
+[build-system]
+requires = ["hatchling==1.31.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sarj_standards_bootstrap"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
+exclude = [
+  "tests/",
+  "**/__pycache__/",
+  "**/*.pyc",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+extend = "../../.ruff-strict.toml"

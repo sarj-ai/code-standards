@@ -31,6 +31,23 @@ def test_python_publish_builds_then_publishes_without_shell(tmp_path: Path) -> N
     assert build[1] == publish[1] == tmp_path / "packages" / "python"
 
 
+def test_bootstrap_publish_uses_the_python_artifact_path(tmp_path: Path) -> None:
+    calls: list[tuple[tuple[str, ...], Path]] = []
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = capture_output
+        calls.append((argv, cwd))
+        if argv[:2] == ("uv", "build"):
+            destination = Path(argv[-1])
+            with zipfile.ZipFile(destination / "bootstrap-1.0.0-py3-none-any.whl", "w") as wheel:
+                wheel.writestr("bootstrap-1.0.0.dist-info/licenses/LICENSE", "MIT")
+        return ProcessResult(0)
+
+    publish_target(tmp_path, "bootstrap", runner=runner)
+
+    assert {cwd for _argv, cwd in calls} == {tmp_path / "packages" / "bootstrap"}
+
+
 def test_tsconfig_publish_uses_exact_native_command(tmp_path: Path) -> None:
     calls: list[tuple[tuple[str, ...], Path]] = []
 

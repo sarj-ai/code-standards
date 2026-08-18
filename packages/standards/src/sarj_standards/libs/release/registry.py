@@ -69,6 +69,7 @@ class _Args(argparse.Namespace):
 _TARGET_PACKAGES: Final[Mapping[str, tuple[RegistryKind, str]]] = MappingProxyType(
     {
         "typescript": ("npm", "@sarj/eslint-plugin"),
+        "bootstrap": ("pypi", "sarj-standards-bootstrap"),
         "python": ("pypi", "sarj-python-lint"),
         "sql": ("pypi", "sarj-sql-lint"),
         "iac": ("pypi", "sarj-iac-lint"),

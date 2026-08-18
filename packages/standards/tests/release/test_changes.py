@@ -31,6 +31,8 @@ def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: P
         manifest = argv[-1]
         if manifest == "packages/typescript/package.json":
             return ProcessResult(0, '+  "version": "9.12.0"\n')
+        if manifest == "packages/bootstrap/pyproject.toml":
+            return ProcessResult(0, '+version = "1.0.0"\n')
         if manifest == "packages/python/pyproject.toml":
             return ProcessResult(0, '+description = "version unchanged"\n')
         return ProcessResult(0, "")
@@ -38,6 +40,7 @@ def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: P
     changed = changed_release_targets(tmp_path, before="before", after="after", runner=runner)
 
     assert changed["typescript"] is True
+    assert changed["bootstrap"] is True
     assert changed["python"] is False
 
 

@@ -66,6 +66,14 @@ def test_target_requirement_uses_authoritative_manifest_version(tmp_path: Path) 
     assert target_requirement(tmp_path, "python") == RegistryRequirement("pypi", "sarj-python-lint", "2.3.4")
 
 
+def test_bootstrap_requirement_uses_its_authoritative_manifest(tmp_path: Path) -> None:
+    manifest = tmp_path / "packages/bootstrap/pyproject.toml"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('[project]\nname = "sarj-standards-bootstrap"\nversion = "1.0.0"\n', encoding="utf-8")
+
+    assert target_requirement(tmp_path, "bootstrap") == RegistryRequirement("pypi", "sarj-standards-bootstrap", "1.0.0")
+
+
 def test_lint_config_preflight_waits_for_registry_propagation(tmp_path: Path) -> None:
     _bundle(tmp_path)
     python_attempts = iter((False, False, True))
