@@ -13,7 +13,7 @@ from packaging.version import Version
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 
-from . import doctor, hooks, lifecycle, manifest, retired_suppressions, scaffold, transaction, uvtool
+from . import doctor, hooks, lifecycle, manifest, packagemanager, retired_suppressions, scaffold, transaction, uvtool
 
 
 if TYPE_CHECKING:
@@ -80,6 +80,8 @@ class UpgradePlan:
     config_writes: list[tuple[Path, Path]]
     pin_writes: list[tuple[Path, str]]
     lockfiles: tuple[Path, ...]
+    javascript_install_roots: tuple[Path, ...]
+    javascript_lockfiles: tuple[Path, ...]
     suppression_writes: list[tuple[Path, str]]
     manifest_text: str
     preconditions: dict[Path, bytes | None]
@@ -146,6 +148,26 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         if update.path.name == "pyproject.toml" and sibling_lock.is_file():
             lockfile_candidates.add(sibling_lock)
     lockfiles = tuple(sorted(lockfile_candidates))
+    primary_javascript_root = ecosystems.typescript_install_root or ecosystems.typescript_root
+    javascript_install_roots = tuple(
+        sorted(
+            {
+                install_root
+                for update in pin_updates
+                if update.path.name == "package.json"
+                and (install_root := packagemanager.workspace_root(update.path.parent, root)) != primary_javascript_root
+                and any((install_root / name).is_file() for name, _manager in packagemanager.LOCKFILES)
+            }
+        )
+    )
+    javascript_lockfiles = tuple(
+        sorted(
+            lockfile
+            for install_root in javascript_install_roots
+            for name, _manager in packagemanager.LOCKFILES
+            if (lockfile := install_root / name).is_file()
+        )
+    )
 
     if not _BUNDLE_LINE.search(current_text):
         msg = f"{path} has no replaceable top-level bundle field"
@@ -203,6 +225,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     changes.extend(Change(target, "remove retired repository launcher") for target in scaffold_plan.deletes)
     changes.extend(Change(update.path, f"refresh {'/'.join(update.packages)} version pin") for update in pin_updates)
     changes.extend(Change(lockfile, "refresh Python lockfile") for lockfile in lockfiles)
+    changes.extend(Change(lockfile, "refresh JavaScript lockfile") for lockfile in javascript_lockfiles)
     changes.extend(Change(path, "migrate retired source suppression") for path, _contents in suppression_writes)
     planned_paths = tuple(
         dict.fromkeys(
@@ -210,6 +233,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
             + [target for _source, target in config_writes]
             + [target for target, _contents in pin_writes]
             + list(lockfiles)
+            + list(javascript_lockfiles)
             + [target for target, _contents in suppression_writes]
             + [target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)]
             + list(scaffold_plan.deletes)
@@ -229,6 +253,8 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         config_writes,
         pin_writes,
         lockfiles,
+        javascript_install_roots,
+        javascript_lockfiles,
         suppression_writes,
         manifest_text,
         preconditions,
@@ -315,6 +341,7 @@ def apply(
         + [target for _source, target in plan.config_writes]
         + [path for path, _contents in plan.pin_writes]
         + list(plan.lockfiles)
+        + list(plan.javascript_lockfiles)
         + [path for path, _contents in plan.suppression_writes]
         + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
         + list(plan.scaffold_plan.deletes)
@@ -384,6 +411,21 @@ def _apply_and_validate(
                 *(
                     lifecycle.Command("Python lockfile", uvtool.lock_argv(lockfile.parent), lockfile.parent)
                     for lockfile in plan.lockfiles
+                ),
+                *(
+                    lifecycle.Command(
+                        "JavaScript lockfile",
+                        packagemanager.install_argv(
+                            (manager := packagemanager.detect(install_root)),
+                            workspace=(
+                                manager is packagemanager.PackageManager.PNPM
+                                or (install_root / "pnpm-workspace.yaml").is_file()
+                            ),
+                            yarn=packagemanager.yarn_variant(install_root),
+                        ),
+                        install_root,
+                    )
+                    for install_root in plan.javascript_install_roots
                 ),
                 *lifecycle.install_commands(
                     plan.root,
