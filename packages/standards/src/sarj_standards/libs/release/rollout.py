@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 
 from sarj_standards.libs.adoption import launcher
 from sarj_standards.libs.adoption import manifest as adoption_manifest
+from sarj_standards.libs.adoption import scaffold as adoption_scaffold
 
 
 if TYPE_CHECKING:
@@ -555,6 +556,11 @@ def run_consumer_bootstrap(
     adopted = adoption_manifest.load(repo)
     if adopted is None:
         return None
+    python_install = adoption_scaffold.python_ci_install_argv(repo, adopted.python_dest)
+    if python_install:
+        result = runner.run((*tool_prefix, *python_install), cwd=repo, env=environment, check=False)
+        if result.returncode != 0:
+            return result
     for command in adopted.ci_bootstrap:
         result = runner.run(
             (*tool_prefix, "bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command),
