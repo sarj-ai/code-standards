@@ -23,6 +23,7 @@ class FakeRunner:
         self.responses: list[tuple[int, str]] = list(responses or [])
         self.commands: list[tuple[str, ...]] = []
         self.environments: list[Mapping[str, str] | None] = []
+        self.working_directories: list[Path | None] = []
 
     def run(
         self,
@@ -32,10 +33,10 @@ class FakeRunner:
         check: bool = True,
         env: Mapping[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        del cwd
         rendered = tuple(command)
         self.commands.append(rendered)
         self.environments.append(env)
+        self.working_directories.append(cwd)
         returncode, stdout = self.responses.pop(0) if self.responses else (0, "")
         result = subprocess.CompletedProcess(rendered, returncode, stdout, "")
         if check and returncode:
@@ -323,7 +324,7 @@ class TestStatus:
         assert "5.7.0" in result.detail
 
 
-class TestRelease:
+class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-machine cases share one fake runner
     def test_latest_version_refreshes_the_registry_backed_tool(self) -> None:
         runner = FakeRunner([(0, "sarj-standards 6.0.5")])
 
@@ -704,6 +705,59 @@ class TestRelease:
         assert failure is not None
         assert failure.returncode == 9
         assert runner.commands == [("bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "first")]
+
+    def test_installs_secondary_javascript_lock_roots_before_verification(self, tmp_path: Path) -> None:
+        primary = tmp_path / "typescript" / "dashboard"
+        primary.mkdir(parents=True)
+        (primary / "package.json").write_text('{"packageManager":"pnpm@11.20.0"}\n', encoding="utf-8")
+        (primary / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8")
+        secondary = tmp_path / "secondary-app" / "web"
+        secondary.mkdir(parents=True)
+        (secondary / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        fixture = tmp_path / "tests" / "fixture"
+        fixture.mkdir(parents=True)
+        (fixture / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript/dashboard"\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(0, "installed")])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, ("mise", "exec", "--"), runner, {})
+
+        assert failure is None
+        assert runner.commands == [
+            (
+                "mise",
+                "exec",
+                "--",
+                "npm",
+                "ci",
+                "--ignore-scripts",
+                "--no-audit",
+                "--no-fund",
+            )
+        ]
+        assert runner.working_directories == [secondary]
+
+    def test_stops_when_a_secondary_javascript_install_fails(self, tmp_path: Path) -> None:
+        primary = tmp_path / "typescript"
+        primary.mkdir()
+        secondary = tmp_path / "web"
+        secondary.mkdir()
+        (secondary / "package-lock.json").write_text("{}\n", encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript"\n\n'
+            '[ci]\nbootstrap = ["must-not-run"]\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(8, "npm failed")])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, (), runner, {})
+
+        assert failure is not None
+        assert failure.returncode == 8
+        assert runner.commands == [("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund")]
 
     def test_existing_verification_block_does_not_stop_later_consumers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         blocked = rollout.Outcome(consumer(), "blocked", "https://pr/1", "consumer verification failed; fix it")

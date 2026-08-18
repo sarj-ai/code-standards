@@ -376,6 +376,40 @@ def test_upgrade_does_not_rewrite_the_plugin_outside_an_age_preapproval_section(
     assert policy.read_text(encoding="utf-8") == original
 
 
+def test_upgrade_advances_exact_plugin_pins_in_nested_workspace_manifests(tmp_path: Path) -> None:
+    package = tmp_path / "typescript" / "packages" / "client" / "package.json"
+    package.parent.mkdir(parents=True)
+    package.write_text(
+        "{\n"
+        '  "name": "client",\n'
+        '  "dependencies": {"@sarj/eslint-plugin": "15.9.0"},\n'
+        '  "devDependencies": {\n'
+        '    "@sarj/eslint-plugin": "15.9.0",\n'
+        '    "other": "1.0.0"\n'
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.1"})
+
+    assert [(update.path, update.packages) for update in updates] == [(package, ("@sarj/eslint-plugin",))]
+    assert updates[0].contents.count('"@sarj/eslint-plugin": "15.10.1"') == 2
+    assert '"other": "1.0.0"' in updates[0].contents
+
+
+def test_upgrade_preserves_workspace_plugin_ranges(tmp_path: Path) -> None:
+    package = tmp_path / "typescript" / "packages" / "legacy" / "package.json"
+    package.parent.mkdir(parents=True)
+    original = '{"devDependencies":{"@sarj/eslint-plugin":"^15.9.0"}}\n'
+    package.write_text(original, encoding="utf-8")
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.1"})
+
+    assert updates == ()
+    assert package.read_text(encoding="utf-8") == original
+
+
 def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     makefile = tmp_path / "Makefile"
