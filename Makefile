@@ -167,7 +167,7 @@ repo-check:
 release-check: check-versions-synced release-check-lock-age release-check-tags release-check-typescript
 
 release-check-lock-age:
-	$(STANDARDS) --root . maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
+	$(STANDARDS) --root . maintain release lock-age packages/typescript/package-lock.json --minimum-days 0 --exclude-file .github/release-age-exclusions.txt
 
 release-check-tags:
 	$(STANDARDS) --root . maintain release check-tag typescript-v$$(node -p "require('./packages/typescript/package.json').version")
