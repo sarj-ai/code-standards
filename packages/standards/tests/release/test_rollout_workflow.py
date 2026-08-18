@@ -92,6 +92,16 @@ def test_rollout_uses_one_deterministic_interface_for_every_entrypoint() -> None
     assert 'git config --global user.name "sarj-standards-rollout[bot]"' in workflow
 
 
+def test_rollout_bootstrap_obeys_the_selected_action_policy() -> None:
+    workflow = _rendered_workflow()
+
+    assert "jdx/mise-action" not in workflow
+    assert "mise-v${MISE_VERSION}-linux-x64" in workflow
+    assert "2026.8.8" in workflow
+    assert "1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3" in workflow
+    assert "sha256sum --check --strict" in workflow
+
+
 def test_rollout_token_is_installation_scoped_and_never_persisted_by_checkout() -> None:
     workflow = _rendered_workflow()
     controller_literals = _controller_literals()
