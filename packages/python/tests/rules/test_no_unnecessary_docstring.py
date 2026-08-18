@@ -5,6 +5,7 @@ import pytest
 
 from sarj_python_lint.__main__ import deduplicate_diagnostics
 from sarj_python_lint.rule_base import Rule, Severity
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
@@ -60,9 +61,23 @@ async def stop() -> None:
     [
         'def explain() -> None:\n    """>>> 1 + 1\n    2\n    """\n    return None\n',
         'from pydantic import BaseModel\n\nclass Payload(BaseModel):\n    """Published in JSON Schema."""\n    value: str\n',
+        'from pydantic import BaseModel\n\nclass Payload(BaseModel):\n    value: str\n\nclass Event(Payload):\n    """Published by inherited Pydantic schema generation."""\n    kind: str\n',
+        'from enum import StrEnum\n\nclass Status(StrEnum):\n    """May be published by a schema consumer in another module."""\n    READY = "ready"\n',
+        'import pydantic\n\n@pydantic.computed_field\ndef total(self) -> int:\n    """Published in JSON Schema."""\n    return 1\n',
         'import strawberry\n\n@strawberry.type\nclass Payload:\n    """Published in GraphQL schema."""\n    value: str\n',
         'from agents import function_tool\n\n@function_tool\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n',
+        'from livekit.agents import function_tool\n\n@function_tool()\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n',
+        'from livekit.agents.llm import function_tool as tool\n\n@tool()\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n',
+        'import livekit.agents.llm as llm\n\n@llm.function_tool()\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n',
+        'import livekit.agents.llm\n\n@livekit.agents.llm.function_tool()\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n',
+        'from livekit.agents.llm import function_tool\n\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n\ntool = function_tool(lookup)\n',
+        'from fastapi import APIRouter\n\ndef mount(router: APIRouter) -> None:\n    @router.get("/health")\n    def health() -> str:\n        """Published in OpenAPI."""\n        return "ok"\n',
+        'import fastapi as api\n\ndef mount() -> None:\n    router = api.APIRouter()\n\n    @router.post("/items")\n    def create() -> str:\n        """Published in OpenAPI."""\n        return "ok"\n',
+        'from fastapi import APIRouter\n\ndef mount() -> None:\n    Router = APIRouter\n    router = Router()\n\n    @router.get("/items")\n    def read() -> str:\n        """Published in OpenAPI."""\n        return "ok"\n',
+        'from agents import function_tool\n\n@function_tool\ndef consumed() -> str:\n    """Published tool description."""\n    return "ok"\n\nfunction_tool = custom_tool\n',
+        'from pydantic import BaseModel\n\ndef build() -> None:\n    class Base(BaseModel):\n        value: str\n\n    class Child(Base):\n        """Published by inherited Pydantic schema generation."""\n        other: str\n',
         'import pytest\n\n@pytest.fixture\ndef account() -> object:\n    """Description shown by pytest --fixtures."""\n    return object()\n',
+        'import pytest_asyncio as pa\n\n@pa.fixture\nasync def account() -> object:\n    """Description shown by pytest --fixtures."""\n    return object()\n',
         '@property\ndef value(self) -> str:\n    """Published as the property descriptor doc."""\n    return self._value\n',
     ],
 )
@@ -70,13 +85,39 @@ def test_doctest_schema_and_framework_consumers_are_exempt(source: str) -> None:
     assert _check(source) == []
 
 
+def test_livekit_raw_schema_does_not_exempt_an_unused_docstring() -> None:
+    source = '''from livekit.agents.llm import function_tool
+
+@function_tool(raw_schema={"name": "lookup", "parameters": {}})
+def lookup() -> str:
+    """Not used by the raw tool schema."""
+    return "x"
+'''
+
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Router:\n    def get(self, path: str): ...\n\nrouter = Router()\n\n@router.get("/health")\ndef health() -> str:\n    """Human-only notes."""\n    return "ok"\n',
+        'from fastapi import APIRouter\n\nrouter = APIRouter()\n\n@router.get("/health", description="Published explicitly")\ndef health() -> str:\n    """Human-only notes."""\n    return "ok"\n',
+        'from fastapi import APIRouter\n\nrouter = APIRouter()\nrouter = custom_router\n\n@router.get("/health")\ndef health() -> str:\n    """Human-only notes."""\n    return "ok"\n',
+    ],
+)
+def test_unproven_or_overridden_fastapi_routes_do_not_exempt_docstrings(source: str) -> None:
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
+
+
 @pytest.mark.parametrize(
     "source",
     [
         '"""CLI help."""\n\nparser = Parser(description=__doc__)\n',
+        '"""CLI help."""\n\ndef main() -> None:\n    parser = Parser(description=__doc__)\n',
         'def operation() -> None:\n    """Plugin description."""\n    return None\n\nregister(operation.__doc__)\n',
         'class Plugin:\n    """Plugin description."""\n    value = 1\n\nhelp(Plugin)\n',
         'import inspect\n\ndef operation() -> None:\n    """Plugin description."""\n    return None\n\ninspect.getdoc(operation)\n',
+        'class Plugin:\n    """Plugin description."""\n    value = 1\n\ndef publish() -> None:\n    help(Plugin)\n',
     ],
 )
 def test_explicit_runtime_reads_are_exempt(source: str) -> None:
@@ -131,6 +172,10 @@ publish(callback.__doc__)
     "source",
     [
         '@get\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n',
+        'from .agents import function_tool\n\n@function_tool\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n',
+        'from .pydantic import BaseModel\n\nclass Payload(BaseModel):\n    """Human-only notes."""\n    value: str\n',
+        'from agents import function_tool\n\n@function_tool(use_docstring_info=False)\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n',
+        'import pydantic\n\n@pydantic.computed_field(description="Published explicitly")\ndef operation() -> int:\n    """Human-only notes."""\n    return 1\n',
         'class BaseModel:\n    pass\n\nclass Payload(BaseModel):\n    """Human-only notes."""\n    value: str\n',
         'def getdoc(value: object) -> str:\n    return "x"\n\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n\npublish(getdoc(operation))\n',
         'from inspect import getdoc\n\ndef getdoc(value: object) -> str:\n    return "local"\n\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n\npublish(getdoc(operation))\n',
@@ -139,6 +184,26 @@ publish(callback.__doc__)
 )
 def test_unproven_framework_and_consumer_names_do_not_exempt(source: str) -> None:
     assert [finding.code for finding in _check(source)] == ["SARJ420"]
+
+
+def test_cross_module_pydantic_inheritance_is_exempt(tmp_path: Path) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    base_path = package / "base.py"
+    base_source = "from pydantic import BaseModel\n\nclass Record(BaseModel):\n    value: str\n"
+    base_path.write_text(base_source, encoding="utf-8")
+    response_path = package / "response.py"
+    response_source = (
+        'from app.base import Record\n\nclass SaveResponse(Record):\n    """Published in OpenAPI."""\n    saved: bool\n'
+    )
+    response_path.write_text(response_source, encoding="utf-8")
+    rule = NoUnnecessaryDocstring()
+    rule.prepare(
+        ProjectIndexSet.build([base_path, response_path], {base_path: base_source, response_path: response_source})
+    )
+
+    assert rule.check(response_path, response_source) == []
 
 
 def test_syntax_required_class_and_function_docstrings_are_exempt_but_a_module_is_not() -> None:

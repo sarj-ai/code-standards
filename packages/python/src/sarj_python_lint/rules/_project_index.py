@@ -40,6 +40,7 @@ _MAX_ROOTS = 8
 _MAX_DIRS_PER_ROOT = 3_000
 _MAX_FILES_PER_ROOT = 10_000
 _MAX_FILE_BYTES = 500_000
+_MAX_SOURCE_CHARS_PER_ROOT = 50_000_000
 _NEW_TYPE_MIN_ARGS = 2
 _MATCH_CLASS_RE: re.Pattern[str] = re.compile(r"\bcase\s+([A-Z][A-Za-z0-9_]*)\s*\(")
 
@@ -54,6 +55,7 @@ class SymbolRef:
 class ClassSummary:
     symbol: SymbolRef
     fields: Mapping[str, ast.expr]
+    bases: tuple[SymbolRef, ...]
     is_enum: bool
 
 
@@ -94,6 +96,12 @@ class ProjectIndexSet:
                     classes[symbol] = ClassSummary(
                         symbol=symbol,
                         fields=MappingProxyType(fields),
+                        bases=tuple(
+                            resolved
+                            for base in statement.bases
+                            if (resolved := _resolve(unit, base.value if isinstance(base, ast.Subscript) else base))
+                            is not None
+                        ),
                         is_enum=any(_tail(base) in {"Enum", "IntEnum", "StrEnum"} for base in statement.bases),
                     )
                 nominal = _new_type(statement, unit.module)
@@ -113,8 +121,9 @@ class ProjectIndexSet:
                 continue
         for root in roots:
             count = 0
+            source_chars = 0
             for path in _python_files(root):
-                if count >= _MAX_FILES_PER_ROOT:
+                if count >= _MAX_FILES_PER_ROOT or source_chars >= _MAX_SOURCE_CHARS_PER_ROOT:
                     break
                 try:
                     if path.resolve() in sources:
@@ -125,7 +134,10 @@ class ProjectIndexSet:
                 loaded_source = _read_bounded_source(root, path)
                 if loaded_source is None:
                     continue
+                if source_chars + len(loaded_source.source) > _MAX_SOURCE_CHARS_PER_ROOT:
+                    break
                 sources.setdefault(loaded_source.path, loaded_source.source)
+                source_chars += len(loaded_source.source)
                 count += 1
         return cls(_units(sources, roots))
 
@@ -175,6 +187,25 @@ class ProjectIndexSet:
     def source_unit(self, module: str) -> SourceUnit | None:
         return self._by_module.get(module)
 
+    def class_inherits_from(self, unit: SourceUnit, name: str, qualified_bases: frozenset[str]) -> bool:
+        if unit.module is None:
+            return False
+        pending = [SymbolRef(unit.module, name)]
+        seen: set[SymbolRef] = set()
+        while pending:
+            symbol = pending.pop()
+            if symbol in seen:
+                continue
+            seen.add(symbol)
+            summary = self._classes.get(symbol)
+            if summary is None:
+                continue
+            for base in summary.bases:
+                if f"{base.module}.{base.name}" in qualified_bases:
+                    return True
+                pending.append(base)
+        return False
+
 
 def _units(sources: Mapping[Path, str], roots: Sequence[Path] = ()) -> dict[Path, SourceUnit]:
     matched_classes = {
@@ -206,7 +237,7 @@ def _units(sources: Mapping[Path, str], roots: Sequence[Path] = ()) -> dict[Path
 def _is_index_candidate(source: str, matched_classes: set[str]) -> bool:
     return (
         "NewType(" in source
-        or ("class " in source and any(marker in source for marker in ("Enum", "IntEnum", "StrEnum")))
+        or "class " in source
         or ("match " in source and "str(" in source)
         or any(f"class {name}" in source for name in matched_classes)
     )
@@ -253,20 +284,22 @@ def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
 
 
 def _project_roots(paths: Sequence[Path]) -> tuple[Path, ...]:
-    roots: list[Path] = []
+    candidates: set[Path] = set()
     for path in paths:
         try:
-            resolved = path.resolve()
+            root = project_root(path.resolve())
         except OSError:
             continue
-        if any(resolved == root or root in resolved.parents for root in roots):
+        if root is not None:
+            candidates.add(root)
+    roots: list[Path] = []
+    for candidate in sorted(candidates):
+        if any(candidate == root or root in candidate.parents for root in roots):
             continue
-        root = project_root(path)
-        if root is not None and root not in roots:
-            roots.append(root)
+        roots.append(candidate)
         if len(roots) >= _MAX_ROOTS:
             break
-    return tuple(sorted(roots))
+    return tuple(roots)
 
 
 def _python_files(root: Path) -> Iterator[Path]:
@@ -298,8 +331,9 @@ def _imports(module: str | None, tree: ast.Module | None, *, is_package: bool) -
                 result[alias.asname or alias.name] = SymbolRef(target, alias.name)
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.asname:
-                    result[alias.asname] = SymbolRef(alias.name, "")
+                local_name = alias.asname or alias.name.partition(".")[0]
+                module = alias.name if alias.asname else local_name
+                result[local_name] = SymbolRef(module, "")
     return result
 
 
@@ -349,6 +383,18 @@ def _tail(node: ast.expr) -> str:
             return name
         case _:
             return ""
+
+
+def _resolve(unit: SourceUnit, expression: ast.expr) -> SymbolRef | None:
+    if unit.module is None:
+        return None
+    if isinstance(expression, ast.Name):
+        return unit.imports.get(expression.id) or SymbolRef(unit.module, expression.id)
+    if isinstance(expression, ast.Attribute) and isinstance(expression.value, ast.Name):
+        root = unit.imports.get(expression.value.id)
+        if root is not None and not root.name:
+            return SymbolRef(root.module, expression.attr)
+    return None
 
 
 def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:

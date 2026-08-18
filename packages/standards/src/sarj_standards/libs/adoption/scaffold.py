@@ -1506,7 +1506,6 @@ def _setup_uv_version(root: Path, python_root: Path | None) -> str:
 
 
 def python_ci_install_argv(root: Path, python_dest: str) -> tuple[str, ...]:
-    """Return the locked Python install used by generated CI and rollout preflight."""
     python_root = root / python_dest
     if not (python_root / "uv.lock").is_file():
         return ()
