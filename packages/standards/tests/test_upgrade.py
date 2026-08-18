@@ -281,6 +281,60 @@ def test_upgrade_scans_make_and_lefthook_pin_sites(tmp_path: Path, filename: str
     assert all("sarj-standards==" not in contents for contents in by_name.values())
 
 
+def test_upgrade_gives_a_custom_standards_workflow_full_history_for_change_scoping(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github" / "workflows" / "standards.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "steps:\n"
+        "  - uses: actions/checkout@0123456789abcdef\n"
+        "    with:\n"
+        "      persist-credentials: false\n"
+        f"  - run: {BOOTSTRAP_COMMAND} check --format github\n",
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "6.1.3"})
+
+    [updated] = [update.contents for update in updates if update.path == workflow]
+    assert "      persist-credentials: false\n      fetch-depth: 0\n" in updated
+
+
+@pytest.mark.parametrize(
+    ("relative", "heading"),
+    [
+        ("typescript/.yarnrc.yml", "npmPreapprovedPackages"),
+        ("pnpm-workspace.yaml", "minimumReleaseAgeExclude"),
+    ],
+)
+def test_upgrade_advances_an_existing_package_age_preapproval_for_the_tested_plugin(
+    tmp_path: Path,
+    relative: str,
+    heading: str,
+) -> None:
+    policy = tmp_path / relative
+    policy.parent.mkdir(parents=True, exist_ok=True)
+    policy.write_text(
+        f'{heading}:\n  - "@sarj/eslint-plugin@15.9.0" # internal\n',
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.0"})
+
+    assert [(update.path, update.packages) for update in updates] == [(policy, ("@sarj/eslint-plugin",))]
+    assert updates[0].contents == f'{heading}:\n  - "@sarj/eslint-plugin@15.10.0" # internal\n'
+
+
+def test_upgrade_does_not_rewrite_the_plugin_outside_an_age_preapproval_section(tmp_path: Path) -> None:
+    policy = tmp_path / ".yarnrc.yml"
+    original = 'otherPackages:\n  - "@sarj/eslint-plugin@15.9.0"\n'
+    policy.write_text(original, encoding="utf-8")
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.0"})
+
+    assert updates == ()
+    assert policy.read_text(encoding="utf-8") == original
+
+
 def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     makefile = tmp_path / "Makefile"

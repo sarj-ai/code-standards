@@ -767,9 +767,11 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
 
 
 def cmd_check(args: _Args) -> int:
-    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting import external, runner  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
+    repository_wide = not args.files
+    pull_request_scoped = False
     if args.staged:
         try:
             staged_names = _staged_file_names(root)
@@ -805,8 +807,24 @@ def cmd_check(args: _Args) -> int:
                 return _emit_analysis_report(args, root, _machine_input_error(root, str(exc)))
             print(f"error: {exc}", file=sys.stderr)
             return 2
+    elif (root / ".git").exists() and (base := external.change_scope_base()):
+        try:
+            args.files = [
+                path for path in _changed_file_paths(root, base) if runner.accepts_hook_path(Path(path))
+            ]
+            pull_request_scoped = True
+        except (OSError, subprocess.SubprocessError) as exc:
+            if args.output_format != "text":
+                return _emit_analysis_report(
+                    args,
+                    root,
+                    _machine_input_error(root, f"cannot read pull-request changes: {exc}"),
+                )
+            print(f"error: cannot read pull-request changes: {exc}", file=sys.stderr)
+            return 2
     if len(args.files) == 1 and Path(args.files[0]).resolve() == root:
         args.files = []
+        repository_wide = True
     if args.staged:
         health_status = _check_staged_adoption_health(root, args.files, args=args)
         if health_status:
@@ -820,11 +838,31 @@ def cmd_check(args: _Args) -> int:
         args.external = True
         args.trust = "trusted" if args.trust_repository_code else "safe"
         args.analysis_mode = "policy"
-        if not args.files:
+        if repository_wide:
             adoption_report = _machine_adoption_gate(root)
             if adoption_report is not None:
                 return _emit_analysis_report(args, root, adoption_report)
+        if pull_request_scoped and not args.files:
+            from sarj_standards.api import (  # ruff: ignore[import-outside-top-level]
+                AnalysisMode,
+                Standards,
+                TrustMode,
+            )
+
+            report = Standards(root).analyze(
+                (),
+                external=True,
+                trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
+                mode=AnalysisMode.POLICY,
+            )
+            return _emit_analysis_report(args, root, report)
         return cmd_analyze(args)
+    if pull_request_scoped:
+        adoption_report = _machine_adoption_gate(root)
+        if adoption_report is not None:
+            return _emit_analysis_report(args, root, adoption_report)
+        if not args.files:
+            return _run_canonical_check(root, (), trusted=args.trust_repository_code)
     if not args.files:
         return cmd_verify(args)
     return _run_canonical_check(root, list(args.files), trusted=args.trust_repository_code, staged=args.staged)
@@ -1262,6 +1300,22 @@ def _staged_file_names(root: Path) -> list[str]:
     )
     names = [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
     return list(dict.fromkeys(names))
+
+
+def _changed_file_paths(root: Path, base: str) -> list[str]:
+    git = shutil.which("git")
+    if git is None:
+        msg = "git is required for pull-request change scoping"
+        raise OSError(msg)
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+        [git, "diff", "--name-only", "--diff-filter=ACMR", "-z", f"{base}...HEAD", "--"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env=_git_environment(),
+    )
+    names = [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
+    return _safe_staged_paths(root, names)
 
 
 def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:

@@ -520,9 +520,7 @@ def _filter_react_doctor_to_changed_paths(
 ) -> ToolReport:
     if staged:
         return report
-    base = os.environ.get(  # ruff: ignore[banned-api] -- explicit GitHub workflow boundary, not application settings.
-        "SARJ_REACT_DOCTOR_BASE", ""
-    ).strip()
+    base = change_scope_base()
     if not base:
         return report
     changed = runner(
@@ -541,12 +539,31 @@ def _filter_react_doctor_to_changed_paths(
 def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
     if staged:
         return ("--staged",)
-    base = os.environ.get(  # ruff: ignore[banned-api] -- explicit GitHub workflow boundary, not application settings.
-        "SARJ_REACT_DOCTOR_BASE", ""
-    ).strip()
+    base = change_scope_base()
     if base:
         return ("--scope", "changed", "--base", base)
     return ("--scope", "changed")
+
+
+def change_scope_base() -> str:
+    explicit = os.environ.get(  # ruff: ignore[banned-api] -- explicit CI workflow boundary, not application settings.
+        "SARJ_REACT_DOCTOR_BASE", ""
+    ).strip()
+    if explicit:
+        return explicit
+    event_path = os.environ.get(  # ruff: ignore[banned-api] -- GitHub owns this path in Actions.
+        "GITHUB_EVENT_PATH", ""
+    ).strip()
+    if not event_path:
+        return ""
+    try:
+        payload: object = json.loads(Path(event_path).read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    except OSError, json.JSONDecodeError:
+        return ""
+    pull_request = manifest.as_table(manifest.as_table(payload).get("pull_request"))
+    base = manifest.as_table(pull_request.get("base"))
+    sha = manifest.text_field(base, "sha")
+    return sha if sha is not None and re.fullmatch(r"[0-9a-f]{40}", sha) else ""
 
 
 def _missing_local_binary_issue(name: str, project: Path, root: Path) -> ExecutionIssue | None:
