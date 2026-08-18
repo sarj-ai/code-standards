@@ -530,6 +530,25 @@ def provision_consumer_tools(
             raise RolloutError(msg)
         mise_prefix = ("mise", "exec", "--")
 
+    adopted = adoption_manifest.load(repo)
+    python_root = None if adopted is None else repo / adopted.python_dest
+    uv_source = adoption_uvtool.version_file(python_root)
+    uv_required = None if uv_source is None else adoption_uvtool.required_version(uv_source)
+    if uv_required is not None:
+        shim_directory.mkdir(parents=True, exist_ok=True)
+        install_environment = dict(prepared)
+        install_environment["UV_TOOL_DIR"] = str(shim_directory.parent / "uv-tools")
+        install_environment["UV_TOOL_BIN_DIR"] = str(shim_directory)
+        installed = runner.run(
+            ("uv", "--no-config", "tool", "install", "--force", f"uv{uv_required}"),
+            cwd=repo,
+            env=install_environment,
+            check=False,
+        )
+        if installed.returncode != 0:
+            msg = "could not provision repository-declared uv:\n" + verification_detail(installed)
+            raise RolloutError(msg)
+
     manager = _declared_corepack_manager(repo)
     if manager is not None:
         shim_directory.mkdir(parents=True, exist_ok=True)
@@ -542,6 +561,7 @@ def provision_consumer_tools(
         if enabled.returncode != 0:
             msg = f"could not provision isolated Corepack shims for {manager}:\n" + verification_detail(enabled)
             raise RolloutError(msg)
+    if uv_required is not None or manager is not None:
         current_path = prepared.get("PATH", "")
         prepared["PATH"] = f"{shim_directory}{os.pathsep}{current_path}" if current_path else str(shim_directory)
     return ProvisionedTools(prepared, mise_prefix)

@@ -458,6 +458,48 @@ class TestRelease:
         ]
         assert environment["PATH"].startswith(str(shim_directory))
 
+    def test_provisions_consumer_declared_uv_on_path_for_nested_verification(self, tmp_path: Path) -> None:
+        backend = tmp_path / "backend"
+        backend.mkdir()
+        (backend / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "6.0.4"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
+            encoding="utf-8",
+        )
+        shim_directory = tmp_path / "outside" / "bin"
+        runner = FakeRunner([(0, "installed")])
+
+        environment, prefix = rollout.provision_consumer_tools(
+            tmp_path,
+            shim_directory,
+            runner,
+            {"PATH": "/usr/bin"},
+        )
+
+        assert prefix == ()
+        assert runner.commands == [("uv", "--no-config", "tool", "install", "--force", "uv==0.11.32")]
+        assert runner.environments == [
+            {
+                "PATH": "/usr/bin",
+                "UV_TOOL_DIR": str(shim_directory.parent / "uv-tools"),
+                "UV_TOOL_BIN_DIR": str(shim_directory),
+            }
+        ]
+        assert environment["PATH"] == f"{shim_directory}:/usr/bin"
+
+    def test_declared_uv_provision_failure_is_actionable(self, tmp_path: Path) -> None:
+        backend = tmp_path / "backend"
+        backend.mkdir()
+        (backend / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "6.0.4"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(7, "registry unavailable")])
+
+        with pytest.raises(rollout.RolloutError, match="could not provision repository-declared uv"):
+            rollout.provision_consumer_tools(tmp_path, tmp_path / "bin", runner, {"PATH": "/usr/bin"})
+
     def test_runs_declared_consumer_bootstrap_in_order(self, tmp_path: Path) -> None:
         backend = tmp_path / "backend"
         backend.mkdir()
