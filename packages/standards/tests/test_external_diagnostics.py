@@ -286,6 +286,7 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
 
 
 def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
     (tmp_path / "package.json").write_text(
         '{"packageManager":"npm@11.5.2","dependencies":{"react":"19.0.0"}}\n',
         encoding="utf-8",
@@ -376,6 +377,24 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     assert seen[1][scope_index + 1] == "changed"
     assert "--base" not in seen[1]
 
+    event_base = "f" * 40
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps({"pull_request": {"base": {"sha": event_base}}}), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+    github_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(tmp_path,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert tuple(item.location.path for item in github_report.diagnostics) == ("component.tsx",)
+    github_base_index = seen[2].index("--base")
+    assert seen[2][github_base_index + 1] == event_base
+
     monkeypatch.setenv("SARJ_REACT_DOCTOR_BASE", "0123456789abcdef")
     ci_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
         tmp_path,
@@ -389,9 +408,18 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 
     assert ci_report.completion is Completion.COMPLETE
     assert tuple(item.location.path for item in ci_report.diagnostics) == ("component.tsx",)
-    base_index = seen[2].index("--base")
-    assert seen[2][base_index + 1] == "0123456789abcdef"
+    base_index = seen[3].index("--base")
+    assert seen[3][base_index + 1] == "0123456789abcdef"
     assert git_seen == [
+        (
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "-z",
+            f"{event_base}...HEAD",
+            "--",
+        ),
         (
             "git",
             "diff",
@@ -400,7 +428,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
             "-z",
             "0123456789abcdef...HEAD",
             "--",
-        )
+        ),
     ]
 
 

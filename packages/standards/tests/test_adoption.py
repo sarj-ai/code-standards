@@ -1234,6 +1234,50 @@ def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None
     assert written["name"] == "web", "the consumer's own keys must survive the merge"
 
 
+def test_init_preserves_tab_indented_package_json(tmp_path: Path) -> None:
+    package = tmp_path / "package.json"
+    package.write_text('{\n\t"name": "web",\n\t"private": true\n}\n', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = package.read_text(encoding="utf-8")
+    assert '\n\t"devDependencies": {' in updated
+    assert '\n\t\t"@sarj/eslint-plugin":' in updated
+    assert '\n  "devDependencies": {' not in updated
+
+
+def test_pull_request_change_scope_selects_only_files_changed_from_the_exact_base(tmp_path: Path) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.email", "test@example.com"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.name", "Test"), cwd=tmp_path, check=True)
+    changed = tmp_path / "changed.py"
+    unchanged = tmp_path / "unchanged.py"
+    changed.write_text("before\n", encoding="utf-8")
+    unchanged.write_text("same\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=tmp_path, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True)
+    base = subprocess.run(
+        ("git", "rev-parse", "HEAD"),
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    changed.write_text("after\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=tmp_path, check=True)
+    subprocess.run(("git", "commit", "-qm", "change"), cwd=tmp_path, check=True)
+
+    selected = cli._changed_file_paths(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        base,
+    )
+
+    assert selected == [str(changed.resolve())]
+    assert str(unchanged.resolve()) not in selected
+
+
 def test_init_does_not_clobber_a_consumers_existing_overrides(tmp_path: Path) -> None:
     _ = (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "overrides": {"left-pad": "1.3.0"}}, indent=2) + "\n"

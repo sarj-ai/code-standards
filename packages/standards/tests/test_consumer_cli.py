@@ -290,6 +290,86 @@ def test_full_machine_check_runs_doctor_and_config_sync_gates(
     assert any(item.get("source") == "sarj-standards-doctor" for item in diagnostics)
 
 
+def test_empty_pull_request_scope_does_not_expand_to_the_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
+        encoding="utf-8",
+    )
+    git_environment = _git_environment()
+    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    _ = capsys.readouterr()
+    monkeypatch.setenv("SARJ_REACT_DOCTOR_BASE", "f" * 40)
+
+    def no_changed_files(_root: Path, _base: str) -> list[str]:
+        return []
+
+    monkeypatch.setattr(cli, "_changed_file_paths", no_changed_files)
+    seen: list[tuple[str, ...] | None] = []
+    original = Standards.analyze
+
+    def capture_paths(self: Standards, paths: tuple[str, ...] | None = None, **kwargs: object) -> object:
+        seen.append(paths)
+        return original(self, paths, **kwargs)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(Standards, "analyze", capture_paths)
+
+    status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
+
+    assert status == 0
+    assert seen == [()]
+    assert json.loads(capsys.readouterr().out)["diagnostics"] == []
+
+
+def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
+        encoding="utf-8",
+    )
+    git_environment = _git_environment()
+    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    _ = capsys.readouterr()
+    monkeypatch.setenv("SARJ_REACT_DOCTOR_BASE", "f" * 40)
+
+    def changed_metadata(_root: Path, _base: str) -> list[str]:
+        return ["pyproject.toml", "packages/standards/uv.lock"]
+
+    monkeypatch.setattr(cli, "_changed_file_paths", changed_metadata)
+
+    status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
+
+    assert status == 0
+    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    assert as_table(payload).get("diagnostics") == []
+
+
+def test_explicit_repository_root_keeps_the_machine_adoption_gate(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
+        encoding="utf-8",
+    )
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    _ = capsys.readouterr()
+    (tmp_path / ".ruff-strict.toml").write_text("# stale\n", encoding="utf-8")
+
+    status = cli.main(["--root", str(tmp_path), "check", "--format", "json", str(tmp_path)])
+
+    assert status == 1
+    assert "sarj-standards-doctor" in capsys.readouterr().out
+
+
 def test_check_rejects_output_outside_repository_before_analysis(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

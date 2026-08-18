@@ -1044,9 +1044,9 @@ def _set_path(data: dict[str, object], key_path: Sequence[str], value: object) -
     table[key_path[-1]] = value
 
 
-def _indent_of(text: str) -> int:
-    match = re.search(r"\n(?P<indent> +)\S", text)
-    return len(match.group("indent")) if match else 2
+def _indent_of(text: str) -> int | str:
+    match = re.search(r"\n(?P<indent>[ \t]+)\S", text)
+    return match.group("indent") if match else 2
 
 
 def _eslint_entrypoint() -> str:

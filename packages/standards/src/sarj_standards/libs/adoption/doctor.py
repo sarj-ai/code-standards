@@ -68,11 +68,17 @@ _PIN = re.compile(
     r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards)\s*(?P<op>==|>=|~=)\s*"
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
 )
+_PREAPPROVED_ESLINT = re.compile(
+    r'(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n'
+    r'(?:[ \t]+-[^\n]*\n)*?[ \t]+-\s*["\']?@sarj/eslint-plugin@)'
+    r'(?P<version>[0-9][0-9A-Za-z._+\-]*)(?P<suffix>["\']?\s*(?:#.*)?)$'
+)
 
 #: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
 #: particular, ``exclude-newer`` can make a just-published exact bundle appear
 #: unavailable in CI for days. Keep custom pin-bearing launchers isolated too.
 _UVX_STANDARDS = re.compile(r"\buvx(?P<args>[^\n]*?--from\s+sarj-standards(?:==[^\s]+)?)")
+_PERSISTED_CREDENTIALS_OFF = re.compile(r"(?m)^(?P<indent>[ \t]*)persist-credentials:\s*false\s*$")
 
 #: `rev: python-v0.19.0`, `rev: "standards-v0.10.0"`, `rev: 9d073e83b2...`.
 #:
@@ -179,6 +185,7 @@ def _git_environment() -> dict[str, str]:
 
 def diagnose(root: Path) -> list[Finding]:
     installed = manifest.installed_versions()
+    installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = authored_files(root)
     findings = [*_check_manifest(root)]
     findings.extend(_check_repository_launcher(root))
@@ -207,6 +214,7 @@ def authored_files(root: Path) -> tuple[Path, ...]:
 
 def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
     installed = manifest.installed_versions()
+    installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = _adoption_health_files(root, selected)
     findings = [*_check_manifest(root)]
     findings.extend(_check_repository_launcher(root))
@@ -649,6 +657,27 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                     "doctor.version.pin",
                     "run `sarj-standards update`",
                 )
+        for match in _PREAPPROVED_ESLINT.finditer(_read(path)):
+            pinned = match.group("version")
+            current = installed.get(_ESLINT_PLUGIN)
+            where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
+            if current is None:
+                yield Finding(
+                    Level.WARN,
+                    where,
+                    "the preapproved internal package version is unverified",
+                    "doctor.version.unverified",
+                )
+            elif pinned == current:
+                yield Finding(Level.OK, where, "matches the tested peer set", "doctor.version.pin")
+            else:
+                yield Finding(
+                    Level.DRIFT,
+                    where,
+                    f"the tested internal plugin is {_ESLINT_PLUGIN}@{current}",
+                    "doctor.version.pin",
+                    "run `sarj-standards update`",
+                )
 
 
 def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
@@ -686,6 +715,9 @@ def _is_pin_site(path: Path) -> bool:
         "gnumakefile",
         "lefthook.yml",
         "lefthook.yaml",
+        ".yarnrc.yml",
+        ".yarnrc.yaml",
+        "pnpm-workspace.yaml",
     }:
         return True
     if name.startswith("requirements") and path.suffix.lower() in {"", ".in", ".txt"}:
@@ -717,15 +749,33 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
         relative_end = match.end("version") - match.start()
         return f"{match.group(0)[:relative_start]}=={current}{match.group(0)[relative_end:]}"
 
+    def preapproved_eslint(match: re.Match[str]) -> str:
+        current = installed.get(_ESLINT_PLUGIN)
+        if current is None or match.group("version") == current:
+            return match.group(0)
+        changed.add(_ESLINT_PLUGIN)
+        return f"{match.group('prefix')}{current}{match.group('suffix')}"
+
     isolated = _UVX_STANDARDS.sub(isolate_launcher, text)
-    return VersionPinRewrite(_PIN.sub(replacement, isolated), tuple(sorted(changed)))
+    if "sarj-standards" in isolated and "actions/checkout@" in isolated and "fetch-depth:" not in isolated:
+        migrated = _PERSISTED_CREDENTIALS_OFF.sub(
+            r"\g<0>\n\g<indent>fetch-depth: 0",
+            isolated,
+            count=1,
+        )
+        if migrated != isolated:
+            changed.add("sarj-standards")
+            isolated = migrated
+    pinned = _PIN.sub(replacement, isolated)
+    return VersionPinRewrite(_PREAPPROVED_ESLINT.sub(preapproved_eslint, pinned), tuple(sorted(changed)))
 
 
 def plan_version_pin_updates(
     root: Path,
     installed: Mapping[str, str] | None = None,
 ) -> tuple[VersionPinUpdate, ...]:
-    versions = manifest.installed_versions() if installed is None else installed
+    versions = dict(manifest.installed_versions() if installed is None else installed)
+    versions.setdefault(_ESLINT_PLUGIN, manifest.eslint_peers()[_ESLINT_PLUGIN])
     exclusions = _doctor_exclusions(root)
     updates: list[VersionPinUpdate] = []
     for path in _walk(root):

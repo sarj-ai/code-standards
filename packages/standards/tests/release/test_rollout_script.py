@@ -404,6 +404,47 @@ class TestRelease:
         clone = next(command for command in runner.commands if command[:3] == ("gh", "repo", "clone"))
         assert "--single-branch" not in clone
 
+    def test_dependency_install_failure_never_falls_back_to_a_lockless_patch(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        base_sha = "b" * 40
+
+        class FixedTemporaryDirectory:
+            def __enter__(self) -> str:
+                return str(tmp_path)
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        def missing_status(*_args: object) -> rollout.Outcome:
+            return rollout.Outcome(consumer(), "missing")
+
+        def fresh_branch(*_args: object) -> rollout.BranchPreparation:
+            return rollout.BranchPreparation("standards-rollout/current", None)
+
+        def fixed_temporary_directory(**_kwargs: object) -> FixedTemporaryDirectory:
+            return FixedTemporaryDirectory()
+
+        def provisioned_tools(*_args: object) -> rollout.ProvisionedTools:
+            return rollout.ProvisionedTools({"PATH": "/tools"}, ())
+
+        monkeypatch.setattr(rollout, "status_one", missing_status)
+        monkeypatch.setattr(rollout, "prepare_branch", fresh_branch)
+        monkeypatch.setattr(tempfile, "TemporaryDirectory", fixed_temporary_directory)
+        monkeypatch.setattr(rollout, "provision_consumer_tools", provisioned_tools)
+        runner = FakeRunner([(0, ""), (0, base_sha), (7, "quarantined package")])
+
+        with pytest.raises(rollout.RolloutError, match="before a coherent rollout patch"):
+            rollout.apply_one(consumer(), "6.1.3", runner)
+
+        update_commands = [command for command in runner.commands if "update" in command]
+        assert len(update_commands) == 1
+        assert "--no-install" not in update_commands[0]
+
     def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
         old_sha = "a" * 40
         base_sha = "b" * 40

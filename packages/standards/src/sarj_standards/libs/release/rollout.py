@@ -797,16 +797,8 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         try:
             runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=unauthenticated)
         except subprocess.CalledProcessError as exc:
-            failures.append("dependency installation failed:\n" + process_failure_detail(exc))
-            repair = runner.run(
-                (*tool_prefix, *tool, "doctor", "--repair", "--no-install"),
-                cwd=repo,
-                env=unauthenticated,
-                check=False,
-            )
-            if repair.returncode != 0:
-                failures.append("pre-update safe repair reported drift:\n" + verification_detail(repair))
-            runner.run((*tool_prefix, *tool, "update", "--to", version, "--no-install"), cwd=repo, env=unauthenticated)
+            msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
+            raise RolloutError(msg + process_failure_detail(exc)) from exc
         doctor = runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
