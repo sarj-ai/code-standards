@@ -271,6 +271,106 @@ def test_upgrade_scans_make_and_lefthook_pin_sites(tmp_path: Path, filename: str
     assert all("sarj-standards==" not in contents for contents in by_name.values())
 
 
+def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    makefile = tmp_path / "Makefile"
+    makefile.write_text(
+        "STANDARDS_VERSION := 5.14.1\n"
+        "STANDARDS_RUN := uvx --isolated --python 3.14 --from 'sarj-standards==$(STANDARDS_VERSION)'\n"
+        ".PHONY: sync-standards check-standards-sync print-standards-version\n\n"
+        "sync-standards:\n"
+        "\t$(STANDARDS_RUN) sarj-standards --root . update\n\n"
+        "check-standards-sync:\n"
+        "\t$(STANDARDS_RUN) sarj-standards --root . update --check --offline --no-install\n\n"
+        "print-standards-version:\n"
+        "\t@printf '%s\\n' '$(STANDARDS_VERSION)'\n",
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
+
+    [updated] = [update.contents for update in updates if update.path == makefile]
+    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    assert "STANDARDS_VERSION" not in updated
+    assert "STANDARDS_RUN" not in updated
+    assert f"\t{launcher_command} update" in updated
+    assert f"\t{launcher_command} update --check --offline --no-install" in updated
+    assert f"\t@{launcher_command} --version" in updated
+    assert "sarj-standards==" not in updated
+
+
+def test_upgrade_preserves_ambiguous_make_variable_launcher(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    makefile = tmp_path / "Makefile"
+    original = (
+        "STANDARDS_VERSION := 5.14.1\n"
+        "STANDARDS_RUN := uvx --isolated --python 3.14 --from 'sarj-standards==$(STANDARDS_VERSION)'\n"
+        "sync-standards:\n"
+        "\t$(STANDARDS_RUN) sarj-standards --root . update\n"
+        "custom:\n"
+        "\t@echo $(STANDARDS_VERSION)\n"
+    )
+    makefile.write_text(original, encoding="utf-8")
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
+
+    assert all(update.path != makefile for update in updates)
+    assert makefile.read_text(encoding="utf-8") == original
+
+
+def test_upgrade_migrates_python_argv_launcher_in_scripts(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    script = tmp_path / "scripts" / "check-files.py"
+    script.parent.mkdir()
+    script.write_text(
+        "COMMAND = (\n"
+        '    "uvx",\n'
+        '    "--isolated",\n'
+        '    "--python",\n'
+        '    "3.14",\n'
+        '    "--from",\n'
+        '    "sarj-standards==5.14.1",\n'
+        '    "sarj-standards",\n'
+        '    "--root",\n'
+        '    ".",\n'
+        '    "check",\n'
+        ")\n",
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
+
+    [updated] = [update.contents for update in updates if update.path == script]
+    assert '    "uv",\n' in updated
+    assert '    "run",\n' in updated
+    assert '    ".sarj/standards",\n' in updated
+    assert '    "check",\n' in updated
+    assert "sarj-standards==" not in updated
+
+
+def test_upgrade_migrates_quoted_package_script_and_removes_duplicate_update_target(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    package = tmp_path / "package.json"
+    package.write_text(
+        '{"scripts":{'
+        '"lint:sarj":"uvx --isolated --python 3.14 --from \'sarj-standards==5.14.1\' '
+        'sarj-standards --root . check --trust-repository-code",'
+        '"standards:sync":"uvx --isolated --python 3.14 --from \'sarj-standards==5.14.1\' '
+        'sarj-standards --root . update --to 5.8.4 --offline --no-install"'
+        "}}\n",
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
+
+    [updated] = [update.contents for update in updates if update.path == package]
+    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    assert f"{launcher_command} check --trust-repository-code" in updated
+    assert f"{launcher_command} update --offline --no-install" in updated
+    assert "sarj-standards==" not in updated
+    assert "--to 5.8.4" not in updated
+
+
 def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     path = tmp_path / manifest.MANIFEST_NAME

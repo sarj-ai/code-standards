@@ -886,6 +886,7 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     assert "uv run --frozen" not in proc.stdout
     assert ".github/workflows/standards.yml" in proc.stdout
     assert "fetch-depth: 0" in workflow
+    assert "  push:\n    branches: [main]\n" in workflow
     assert "SARJ_REACT_DOCTOR_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}" in workflow
 
 

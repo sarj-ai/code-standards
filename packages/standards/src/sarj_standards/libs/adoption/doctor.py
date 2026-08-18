@@ -728,6 +728,8 @@ def _is_pin_site(path: Path) -> bool:
         return True
     if name.startswith("requirements") and path.suffix.lower() in {"", ".in", ".txt"}:
         return True
+    if "scripts" in path.parts and path.suffix.lower() in {".py", ".sh"}:
+        return True
     return ".github" in path.parts and "workflows" in path.parts and path.suffix.lower() in {".yml", ".yaml"}
 
 

@@ -17,8 +17,33 @@ _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][
 _SHELL_WHITESPACE: Final = r"(?:\s|\\\r?\n)+"
 _LEGACY_REPOSITORY_INVOCATION: Final = re.compile(
     rf"\buvx{_SHELL_WHITESPACE}(?:(?!--from\b)[^\s;&|\\]+{_SHELL_WHITESPACE})*"
-    rf"--from{_SHELL_WHITESPACE}sarj-standards==[^\s;&|\\]+{_SHELL_WHITESPACE}sarj-standards"
+    rf"--from{_SHELL_WHITESPACE}['\"]?sarj-standards==[^\s;&|\\'\"]+['\"]?"
+    rf"{_SHELL_WHITESPACE}sarj-standards"
     rf"(?:{_SHELL_WHITESPACE}--root(?:{_SHELL_WHITESPACE}|=)(?:\.|['\"]\.['\"]))?"
+)
+_LEGACY_MAKE_RUN: Final = re.compile(
+    r"(?m)^(?P<indent>\t?)(?:@)?\$\(STANDARDS_RUN\)[ \t]+sarj-standards"
+    r"(?:[ \t]+--root(?:[ \t]+|=)(?:\.|['\"]\.['\"]))?"
+)
+_LEGACY_MAKE_RUN_ASSIGNMENT: Final = re.compile(
+    r"(?m)^[ \t]*STANDARDS_RUN[ \t]*:?=[ \t]*uvx[^\r\n]*"
+    r"sarj-standards==(?:['\"])?\$\(STANDARDS_VERSION\)(?:['\"])?[^\r\n]*(?:\r?\n)?"
+)
+_LEGACY_MAKE_VERSION_ASSIGNMENT: Final = re.compile(r"(?m)^[ \t]*STANDARDS_VERSION[ \t]*:?=[ \t]*[^\r\n]+(?:\r?\n)?")
+_LEGACY_MAKE_VERSION_PRINT: Final = re.compile(
+    r"(?m)^\t@?printf[ \t]+['\"]%s\\n['\"][ \t]+['\"]?\$\(STANDARDS_VERSION\)['\"]?[ \t]*$"
+)
+_LEGACY_PYTHON_ARGV_INVOCATION: Final = re.compile(
+    r"(?m)^(?P<indent>[ \t]*)['\"]uvx['\"],[ \t]*\r?\n"
+    r"(?:(?P=indent)['\"]--no-config['\"],[ \t]*\r?\n)?"
+    r"(?P=indent)['\"]--isolated['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]--python['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]3\.14['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]--from['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]sarj-standards==[^'\"\r\n]+['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]sarj-standards['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]--root['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]\.['\"],[ \t]*\r?\n"
 )
 
 
@@ -72,7 +97,38 @@ def repository_command(*arguments: str) -> str:
 def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
     """Replace exact legacy uvx launchers with the manifest-driven repository launcher."""
     contents, count = _LEGACY_REPOSITORY_INVOCATION.subn(repository_command(), text)
+    update_target = re.compile(
+        rf"{re.escape(repository_command())}{_SHELL_WHITESPACE}update"
+        rf"{_SHELL_WHITESPACE}--to(?:{_SHELL_WHITESPACE}|=)[^\s;&|\\'\"]+"
+    )
+    contents, update_target_count = update_target.subn(f"{repository_command()} update", contents)
+    count += update_target_count
+    contents, python_argv_count = _LEGACY_PYTHON_ARGV_INVOCATION.subn(_python_repository_argv, contents)
+    count += python_argv_count
+    before_make = contents
+    make_invocations = tuple(_LEGACY_MAKE_RUN.finditer(contents))
+    if (
+        make_invocations
+        and _LEGACY_MAKE_RUN_ASSIGNMENT.search(contents) is not None
+        and _LEGACY_MAKE_VERSION_ASSIGNMENT.search(contents) is not None
+    ):
+        contents = _LEGACY_MAKE_RUN.sub(
+            lambda match: f"{match.group('indent')}{repository_command()}",
+            contents,
+        )
+        contents = _LEGACY_MAKE_VERSION_PRINT.sub(f"\t@{repository_command('--version')}", contents)
+        contents = _LEGACY_MAKE_RUN_ASSIGNMENT.sub("", contents)
+        contents = _LEGACY_MAKE_VERSION_ASSIGNMENT.sub("", contents)
+        if "$(STANDARDS_RUN)" not in contents and "$(STANDARDS_VERSION)" not in contents:
+            count += len(make_invocations)
+        else:
+            return LegacyInvocationRewrite(before_make, count)
     return LegacyInvocationRewrite(contents, count)
+
+
+def _python_repository_argv(match: re.Match[str]) -> str:
+    indent = match.group("indent")
+    return "".join(f'{indent}"{argument}",\n' for argument in repository_argv())
 
 
 def repository_script() -> str:
