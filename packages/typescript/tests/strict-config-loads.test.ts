@@ -125,6 +125,17 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(configured?.rules?.["@typescript-eslint/await-thenable"]).toEqual([0]);
   });
 
+  it.each(CONFIG_FACTORIES)("%s forbids direct React state mutation", async (_name, createConfig) => {
+    const eslint = new ESLint({
+      cwd: fileURLToPath(UNTYPED_ROOT),
+      overrideConfigFile: true,
+      overrideConfig: createConfig({ tsconfigRootDir: UNTYPED_ROOT }),
+    });
+    const configured = (await eslint.calculateConfigForFile("src/component.tsx")) as Linter.Config;
+
+    expect(severityOf(configured.rules?.["react/no-direct-mutation-state"])).toBe(2);
+  });
+
   it("honors explicit project-service options without mutating the default export", () => {
     const projectService = { allowDefaultProject: ["eslint.config.mjs"] };
     const configured = STRICT_CONFIG_FACTORY({

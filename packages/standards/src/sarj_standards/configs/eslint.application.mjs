@@ -748,6 +748,7 @@ export function createConfig(options = {}) {
         "error",
         { validStrategies: ["ternary", "coerce"] },
       ],
+      "react/no-direct-mutation-state": "error",
       "react/no-unstable-nested-components": "error",
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
