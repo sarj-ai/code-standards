@@ -1,5 +1,5 @@
 required-version = "==0.12.5"
-exclude-newer = "7 days"
+exclude-newer = "0 days"
 index-strategy = "first-index"
 preview-features = ["malware-check"]
 

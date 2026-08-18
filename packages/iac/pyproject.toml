@@ -1,6 +1,6 @@
 [project]
 name = "sarj-iac-lint"
-version = "0.14.1"
+version = "0.14.2"
 description = "Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -29,13 +29,13 @@ Issues = "https://github.com/sarj-ai/standards/issues"
 
 [dependency-groups]
 dev = [
-  "pytest>=9.0",
-  "ruff>=0.16.1",
-  "basedpyright>=1.39",
+  "pytest>=9.1.1",
+  "ruff>=0.16.3",
+  "basedpyright>=1.39.10",
 ]
 
 [build-system]
-requires = ["hatchling==1.31.0"]
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

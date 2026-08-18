@@ -13,7 +13,7 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold, transaction, upgrade
 
 
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.2 sarj-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.3 sarj-standards"
 
 
 class _LaterWriteError(OSError):
@@ -453,7 +453,7 @@ def test_upgrade_migrates_python_argv_launcher_in_scripts(tmp_path: Path) -> Non
     [updated] = [update.contents for update in updates if update.path == script]
     assert '    "uvx",\n' in updated
     assert '    "--from",\n' in updated
-    assert '    "sarj-standards-bootstrap==1.0.2",\n' in updated
+    assert '    "sarj-standards-bootstrap==1.0.3",\n' in updated
     assert '    "sarj-standards",\n' in updated
     assert '    "check",\n' in updated
     assert "sarj-standards==" not in updated

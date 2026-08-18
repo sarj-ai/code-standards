@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards"
-version = "6.1.5"
+version = "6.1.6"
 description = "One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -17,17 +17,17 @@ classifiers = [
 ]
 dependencies = [
   "pathspec==1.1.1",
-  "basedpyright==1.39.9",
+  "basedpyright==1.39.10",
   "lefthook==2.1.10",
-  "packaging==26.2",
-  "pre-commit==4.6.1",
+  "packaging==26.3",
+  "pre-commit==4.6.2",
   "pydantic==2.13.4",
   "PyYAML==6.0.3",
-  "ruff==0.16.1",
-  "sarj-iac-lint==0.14.1",
-  "sarj-python-lint==0.73.1",
-  "sarj-sql-lint==0.14.0",
-  "sqlfluff==4.2.2",
+  "ruff==0.16.3",
+  "sarj-iac-lint==0.14.2",
+  "sarj-python-lint==0.73.2",
+  "sarj-sql-lint==0.14.1",
+  "sqlfluff==4.3.0",
 ]
 
 [project.scripts]
@@ -41,7 +41,7 @@ Repository = "https://github.com/sarj-ai/standards"
 Issues = "https://github.com/sarj-ai/standards/issues"
 
 [build-system]
-requires = ["hatchling==1.31.0"]
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
@@ -57,7 +57,7 @@ include = [
 
 [dependency-groups]
 dev = [
-  "pytest>=9.0",
+  "pytest>=9.1.1",
 ]
 [tool.uv.sources]
 # Development uses the sibling packages while wheel smoke tests resolve the

@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.2 sarj-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.3 sarj-standards"
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
