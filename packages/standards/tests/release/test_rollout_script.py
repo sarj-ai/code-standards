@@ -546,6 +546,47 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         ]
         assert environment["PATH"].startswith(str(shim_directory))
 
+    def test_provisions_exact_tools_declared_by_consumer_workflows(self, tmp_path: Path) -> None:
+        workflows = tmp_path / ".github/workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "terraform.yml").write_text(
+            """jobs:
+  lint:
+    steps:
+      - uses: hashicorp/setup-terraform@0123456789012345678901234567890123456789
+        with:
+          terraform_version: 1.14.7
+""",
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(0, "installed")])
+
+        environment, prefix = rollout.provision_consumer_tools(
+            tmp_path,
+            tmp_path / "outside/bin",
+            runner,
+            {"PATH": "/usr/bin"},
+        )
+
+        assert prefix == ("mise", "exec", "terraform@1.14.7", "--")
+        assert runner.commands == [("mise", "install", "terraform@1.14.7")]
+        assert environment["MISE_YES"] == "1"
+        assert environment["MISE_TRUSTED_CONFIG_PATHS"] == str(tmp_path.resolve())
+
+    def test_conflicting_workflow_tool_versions_are_rejected(self, tmp_path: Path) -> None:
+        workflows = tmp_path / ".github/workflows"
+        workflows.mkdir(parents=True)
+        for name, version in (("one.yml", "1.14.7"), ("two.yml", "1.13.5")):
+            (workflows / name).write_text(
+                "jobs:\n  lint:\n    steps:\n"
+                "      - uses: hashicorp/setup-terraform@0123456789012345678901234567890123456789\n"
+                f"        with:\n          terraform_version: {version}\n",
+                encoding="utf-8",
+            )
+
+        with pytest.raises(rollout.RolloutError, match="conflicting terraform versions"):
+            rollout.declared_workflow_tools(tmp_path)
+
     def test_consumer_verification_is_scoped_to_the_captured_base(self) -> None:
         original = {"PATH": "/tools", "SARJ_REACT_DOCTOR_BASE": "stale"}
         base_sha = "b" * 40
