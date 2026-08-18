@@ -70,6 +70,7 @@ class Plan:
     hook_manager: manifest.HookManager = "pre-commit"
     writes: list[tuple[Path, str]] = field(default_factory=list)
     edits: list[tuple[Path, str]] = field(default_factory=list)
+    deletes: list[Path] = field(default_factory=list)
     skips: list[tuple[Path, str]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -287,7 +288,7 @@ def build_plan(
         plan.notes.append("no Python or TypeScript project found; adopting repository-wide shared configs only")
 
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
-    _plan_repository_launcher(root, plan)
+    _plan_retired_repository_launcher(root, plan)
     if (
         ecosystems.python
         and ecosystems.python_root is not None
@@ -499,17 +500,18 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
 
 
-def _plan_repository_launcher(root: Path, plan: Plan) -> None:
-    """Create or converge the stable manifest-driven consumer launcher."""
-    path = root / launcher.REPOSITORY_LAUNCHER
-    contents = launcher.repository_script()
-    if path.is_file() and path.read_text(encoding="utf-8") == contents:
-        plan.skips.append((path, "already uses the current launcher protocol"))
+def _plan_retired_repository_launcher(root: Path, plan: Plan) -> None:
+    """Remove only the exact protocol-1 launcher superseded by bootstrap."""
+    path = root / launcher.RETIRED_REPOSITORY_LAUNCHER
+    if not path.exists():
         return
-    if path.exists() and not path.is_file():
-        plan.errors.append(f"launcher target must be a regular file: {path}")
+    if not path.is_file():
+        plan.errors.append(f"retired launcher target must be a regular file: {path}")
         return
-    plan.writes.append((path, contents))
+    if path.read_bytes() != launcher.retired_repository_script().encode():
+        plan.errors.append(f"refusing to remove customized retired launcher: {path}")
+        return
+    plan.deletes.append(path)
 
 
 def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
@@ -1417,7 +1419,10 @@ def apply(plan: Plan, *, preconditions: Mapping[Path, bytes | None] | None = Non
     if plan.root is None:
         msg = "scaffold plan has no repository root"
         raise OSError(msg)
-    transaction.validate_targets(plan.root, tuple(path for path, _contents in (*plan.writes, *plan.edits)))
+    transaction.validate_targets(
+        plan.root,
+        tuple(path for path, _contents in (*plan.writes, *plan.edits)) + tuple(plan.deletes),
+    )
     for path, contents in plan.writes:
         if preconditions is not None and path in preconditions:
             transaction.assert_expected(plan.root, path, preconditions[path])
@@ -1427,6 +1432,10 @@ def apply(plan: Plan, *, preconditions: Mapping[Path, bytes | None] | None = Non
             transaction.assert_expected(plan.root, path, preconditions[path])
         current = path.read_text(encoding="utf-8")
         transaction.atomic_write_text(plan.root, path, current + addition)
+    for path in plan.deletes:
+        if preconditions is not None and path in preconditions:
+            transaction.assert_expected(plan.root, path, preconditions[path])
+        transaction.remove_file(plan.root, path)
 
 
 def ci_snippet() -> str:
@@ -1491,7 +1500,6 @@ def github_ci_workflow(root: Path) -> str:
         "          enable-cache: true",
         "          cache-dependency-glob: |",
         "            .sarj-standards.toml",
-        "            .sarj/standards",
         "            **/uv.lock",
     ]
     if ecosystems.typescript:

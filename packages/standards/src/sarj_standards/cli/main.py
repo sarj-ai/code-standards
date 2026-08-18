@@ -677,10 +677,13 @@ def cmd_setup(args: _Args) -> int:
 
     verb_write = "would write" if args.dry_run else "wrote"
     verb_edit = "would append to" if args.dry_run else "appended to"
+    verb_delete = "would remove" if args.dry_run else "removed"
     for path, _contents in plan.writes:
         print(f"{verb_write}: {path}")
     for path, _addition in plan.edits:
         print(f"{verb_edit}: {path}")
+    for path in plan.deletes:
+        print(f"{verb_delete}: {path}")
     for path, reason in plan.skips:
         print(f"skip:  {path}  ({reason})")
 

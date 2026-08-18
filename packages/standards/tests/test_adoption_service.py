@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sarj_standards.libs.adoption import lifecycle, manifest
+from sarj_standards.libs.adoption import launcher, lifecycle, manifest
 from sarj_standards.libs.adoption.service import (
     InitFailure,
     SyncOutcome,
@@ -66,8 +66,43 @@ def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> Non
     assert 'extend = ".ruff-strict.toml"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     assert (tmp_path / ".github" / "workflows" / "standards.yml").is_file()
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in precommit
+    assert (
+        "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.1 sarj-standards"
+    ) in precommit
     assert "verbose: true" not in precommit
+
+
+def test_init_service_deletes_the_retired_managed_launcher_idempotently(tmp_path: Path) -> None:
+    _python_project(tmp_path)
+    retired = tmp_path / launcher.RETIRED_REPOSITORY_LAUNCHER
+    retired.parent.mkdir()
+    retired.write_text(launcher.retired_repository_script(), encoding="utf-8")
+
+    first = plan_init(tmp_path)
+
+    assert first.scaffold.deletes == [retired]
+    assert apply_init(first, install=False).status == 0
+    assert not retired.exists()
+
+    second = plan_init(tmp_path)
+
+    assert second.scaffold.deletes == []
+    assert apply_init(second, install=False).status == 0
+    assert not retired.exists()
+
+
+def test_init_service_refuses_to_delete_a_custom_retired_launcher(tmp_path: Path) -> None:
+    _python_project(tmp_path)
+    retired = tmp_path / launcher.RETIRED_REPOSITORY_LAUNCHER
+    retired.parent.mkdir()
+    retired.write_text(f"{launcher.retired_repository_script()}\n# consumer edit\n", encoding="utf-8")
+
+    plan = plan_init(tmp_path)
+    result = apply_init(plan, install=False)
+
+    assert result.status == 2
+    assert plan.scaffold.errors == [f"refusing to remove customized retired launcher: {retired}"]
+    assert retired.read_text(encoding="utf-8").endswith("# consumer edit\n")
 
 
 def test_init_service_remains_python_only_after_adoption(tmp_path: Path) -> None:
@@ -103,6 +138,10 @@ def test_init_service_rolls_back_every_file_when_install_fails(
 ) -> None:
     _python_project(tmp_path)
     original = (tmp_path / "pyproject.toml").read_bytes()
+    retired = tmp_path / launcher.RETIRED_REPOSITORY_LAUNCHER
+    retired.parent.mkdir()
+    retired_bytes = launcher.retired_repository_script().encode()
+    retired.write_bytes(retired_bytes)
     plan = plan_init(tmp_path)
 
     def fail_install(_commands: Iterable[lifecycle.Command]) -> int:
@@ -117,3 +156,4 @@ def test_init_service_rolls_back_every_file_when_install_fails(
     assert (tmp_path / "pyproject.toml").read_bytes() == original
     assert not (tmp_path / ".ruff-strict.toml").exists()
     assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+    assert retired.read_bytes() == retired_bytes

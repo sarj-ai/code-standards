@@ -145,13 +145,13 @@ def _package_readme(
         f"# {name}",
         _string(metadata, "description"),
         f"```bash\n{_install_command(name, registry)}\n```",
-        _package_usage(name, engine),
+        _package_usage(name, engine, version=_string(metadata, "version")),
         f"[Documentation]({_homepage(metadata)}) · [Source]({_source_url(metadata)})",
     ]
     return "\n\n".join(sections) + "\n"
 
 
-def _package_usage(name: str, engine: str | None) -> str:
+def _package_usage(name: str, engine: str | None, *, version: str) -> str:
     if name == "sarj-standards":
         return (
             "Use it from pre-commit with a coding agent so violations are flagged and fixed before commit.\n\n"
@@ -162,6 +162,18 @@ def _package_usage(name: str, engine: str | None) -> str:
             "sarj-standards doctor\n"
             "sarj-standards update\n"
             "```"
+        )
+    if name == "sarj-standards-bootstrap":
+        return (
+            "Generated CI and hooks pin this protocol package exactly; ordinary Standards upgrades change only "
+            "`.sarj-standards.toml`.\n\n"
+            "```bash\n"
+            "uvx --no-config --isolated --python 3.14 --from "
+            f"sarj-standards-bootstrap=={version} sarj-standards check\n"
+            "```\n\n"
+            "The bootstrap deliberately inherits UV/PIP registry, proxy, certificate, cache, and offline environment "
+            "policy. `--no-config --isolated` prevents consumer project configuration and installed tools from "
+            "changing the selected bootstrap or Standards bundle."
         )
     executable = (
         None

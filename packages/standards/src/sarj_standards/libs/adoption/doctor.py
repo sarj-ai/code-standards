@@ -239,34 +239,23 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
 
 
 def _check_repository_launcher(root: Path) -> Iterator[Finding]:
-    """Require the stable launcher bytes that make the manifest operational."""
+    """Report the retired repository-local launcher when it remains."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
         return
     if adopted is None:
         return
-    path = root / launcher.REPOSITORY_LAUNCHER
-    where = launcher.REPOSITORY_LAUNCHER.as_posix()
-    if not path.is_file():
-        yield Finding(
-            Level.DRIFT,
-            where,
-            "manifest-driven launcher is absent",
-            "doctor.launcher.absent",
-            "run `sarj-standards setup`",
-        )
+    path = root / launcher.RETIRED_REPOSITORY_LAUNCHER
+    if not path.exists():
         return
-    if path.read_text(encoding="utf-8") != launcher.repository_script():
-        yield Finding(
-            Level.DRIFT,
-            where,
-            "launcher differs from the supported bootstrap protocol",
-            "doctor.launcher.drift",
-            "run `sarj-standards setup`",
-        )
-        return
-    yield Finding(Level.OK, where, f"launcher protocol {launcher.LAUNCHER_PROTOCOL}", "doctor.launcher.current")
+    yield Finding(
+        Level.DRIFT,
+        launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix(),
+        "repository-local launcher protocol 1 is retired; immutable bootstrap owns repository dispatch",
+        "doctor.launcher.retired",
+        "run `sarj-standards setup`",
+    )
 
 
 def _adoption_health_files(root: Path, selected: Sequence[Path]) -> tuple[Path, ...]:
@@ -768,7 +757,6 @@ def plan_version_pin_updates(
     versions = manifest.installed_versions() if installed is None else installed
     exclusions = _doctor_exclusions(root)
     updates: list[VersionPinUpdate] = []
-    migrated_repository_launcher = False
     for path in _walk(root):
         if not _is_pin_site(path):
             continue
@@ -779,24 +767,6 @@ def plan_version_pin_updates(
         contents, packages = rewrite_version_pins(original, versions)
         if packages:
             updates.append(VersionPinUpdate(path, contents, packages))
-            migrated_repository_launcher = migrated_repository_launcher or (
-                path.name == "package.json"
-                and contents.count(launcher.repository_command()) > original.count(launcher.repository_command())
-            )
-    if migrated_repository_launcher:
-        updated_paths = {update.path for update in updates}
-        path = root / "knip.json"
-        if path.is_file() and path not in updated_paths:
-            relative = path.relative_to(root).as_posix()
-            if not any(fnmatch(relative, pattern) for pattern in exclusions):
-                contents, count = re.subn(
-                    r'("ignoreBinaries"\s*:\s*\[\s*)"uvx"',
-                    r'\1"uv", "uvx"',
-                    _read(path),
-                    count=1,
-                )
-                if count:
-                    updates.append(VersionPinUpdate(path, contents, ("sarj-standards",)))
     return tuple(updates)
 
 

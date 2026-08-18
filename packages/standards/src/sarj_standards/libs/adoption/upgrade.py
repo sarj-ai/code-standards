@@ -193,6 +193,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         *(target for _source, target in config_writes),
         *(target for target, _contents in pin_writes),
         *(target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)),
+        *scaffold_plan.deletes,
     }
     suppression_writes = [
         (rewrite.path, rewrite.contents)
@@ -203,6 +204,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits):
         if target != path:
             changes.append(Change(target, "repair adoption wiring"))
+    changes.extend(Change(target, "remove retired repository launcher") for target in scaffold_plan.deletes)
     changes.extend(Change(update.path, f"refresh {'/'.join(update.packages)} version pin") for update in pin_updates)
     changes.extend(Change(lockfile, "refresh Python lockfile") for lockfile in lockfiles)
     changes.extend(Change(path, "migrate retired source suppression") for path, _contents in suppression_writes)
@@ -214,6 +216,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
             + list(lockfiles)
             + [target for target, _contents in suppression_writes]
             + [target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)]
+            + list(scaffold_plan.deletes)
         )
     )
     transaction.validate_targets(root, planned_paths)
@@ -307,6 +310,7 @@ def apply(
         + list(plan.lockfiles)
         + [path for path, _contents in plan.suppression_writes]
         + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
+        + list(plan.scaffold_plan.deletes)
     )
     file_transaction = transaction.FileTransaction.capture(plan.root, paths)
     environment = None if plan.ecosystems.python_root is None else plan.ecosystems.python_root / ".venv"
@@ -427,6 +431,7 @@ def _write_plan(plan: UpgradePlan, file_transaction: transaction.FileTransaction
             + [path for path, _contents in plan.pin_writes]
             + [path for path, _contents in plan.suppression_writes]
             + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
+            + list(plan.scaffold_plan.deletes)
         ),
     )
     manifest_target = manifest.manifest_path(plan.root)
@@ -450,6 +455,8 @@ def _write_plan(plan: UpgradePlan, file_transaction: transaction.FileTransaction
         _mark_direct_write(file_transaction, target)
     scaffold.apply(plan.scaffold_plan, preconditions=plan.preconditions)
     for target, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits):
+        _mark_direct_write(file_transaction, target)
+    for target in plan.scaffold_plan.deletes:
         _mark_direct_write(file_transaction, target)
 
 

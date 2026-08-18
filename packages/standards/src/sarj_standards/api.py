@@ -556,6 +556,7 @@ def _init_changes(plan: InitPlan, *, install: bool) -> tuple[Change, ...]:
     return (
         *(Change("create", "write adoption file", path) for path, _contents in scaffold.writes),
         *(Change("update", "extend adoption file", path) for path, _contents in scaffold.edits),
+        *(Change("delete", "remove retired repository launcher", path) for path in scaffold.deletes),
         *(
             Change(
                 "create" if not target.destination.exists() else "update",

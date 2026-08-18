@@ -111,6 +111,16 @@ def assert_expected(root: Path, path: Path, expected: bytes | None) -> None:
         raise OSError(msg)
 
 
+def remove_file(root: Path, path: Path) -> None:
+    """Remove one validated regular file without following links."""
+    validate_targets(root, (path,))
+    try:
+        path.unlink()
+    except FileNotFoundError as exc:
+        msg = f"planned deletion target changed concurrently: {path}; rerun the command"
+        raise OSError(msg) from exc
+
+
 def _write_temporary(descriptor: int, contents: bytes, mode: int) -> None:
     with os.fdopen(descriptor, "wb") as handle:
         os.fchmod(handle.fileno(), mode)

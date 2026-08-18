@@ -80,6 +80,8 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
     nested = tmp_path / "nested"
     nested.mkdir()
     monkeypatch.setenv("UV_OFFLINE", "1")
+    monkeypatch.setenv("UV_INDEX_URL", "https://packages.example/simple")
+    monkeypatch.setenv("SSL_CERT_FILE", "/certificates/enterprise.pem")
 
     def fake_which(_name: str) -> str:
         return "/tools/uvx"
@@ -87,17 +89,16 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
     monkeypatch.setattr(shutil, "which", fake_which)
     captured: dict[str, object] = {}
 
-    def fake_exec(executable: str, arguments: tuple[str, ...], environment: dict[str, str]) -> None:
-        captured.update(executable=executable, arguments=arguments, environment=environment)
+    def fake_execute(arguments: tuple[str, ...], environment: dict[str, str]) -> None:
+        captured.update(arguments=arguments, environment=environment)
         message = "exec sentinel"
         raise RuntimeError(message)
 
-    monkeypatch.setattr(os, "execvpe", fake_exec)
+    monkeypatch.setattr(bootstrap, "execute", fake_execute)
 
     with pytest.raises(RuntimeError, match="exec sentinel"):
         bootstrap.run(("check", "src"), cwd=nested)
 
-    assert captured["executable"] == "/tools/uvx"
     assert captured["arguments"] == (
         "/tools/uvx",
         "--no-config",
@@ -115,16 +116,49 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
     captured_environment = captured["environment"]
     assert isinstance(captured_environment, dict)
     assert captured_environment["UV_OFFLINE"] == "1"
+    assert captured_environment["UV_INDEX_URL"] == "https://packages.example/simple"
+    assert captured_environment["SSL_CERT_FILE"] == "/certificates/enterprise.pem"
+
+
+def test_windows_waits_for_standards_and_forwards_its_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_run(
+        arguments: tuple[str, ...],
+        *,
+        env: dict[str, str],
+        check: bool,
+        shell: bool,
+    ) -> subprocess.CompletedProcess[str]:
+        captured.update(arguments=arguments, environment=env, check=check, shell=shell)
+        return subprocess.CompletedProcess(arguments, 17)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    with pytest.raises(SystemExit) as raised:
+        bootstrap.execute(("C:/tools/uvx.exe", "check"), {"UV_OFFLINE": "1"}, platform="nt")
+
+    assert raised.value.code == 17
+    assert captured == {
+        "arguments": ("C:/tools/uvx.exe", "check"),
+        "environment": {"UV_OFFLINE": "1"},
+        "check": False,
+        "shell": False,
+    }
 
 
 @pytest.fixture
 def fake_uvx(tmp_path: Path) -> Path:
-    executable = tmp_path / "uvx"
-    executable.write_text(
-        "#!/bin/sh\nprintf 'cwd=%s\\n' \"$PWD\"\nprintf 'args=%s\\n' \"$*\"\nexit 7\n",
-        encoding="utf-8",
-    )
-    executable.chmod(0o755)
+    if os.name == "nt":
+        executable = tmp_path / "uvx.cmd"
+        executable.write_text("@echo off\r\necho cwd=%CD%\r\necho args=%*\r\nexit /b 7\r\n", encoding="utf-8")
+    else:
+        executable = tmp_path / "uvx"
+        executable.write_text(
+            "#!/bin/sh\nprintf 'cwd=%s\\n' \"$PWD\"\nprintf 'args=%s\\n' \"$*\"\nexit 7\n",
+            encoding="utf-8",
+        )
+        executable.chmod(0o755)
     return executable
 
 

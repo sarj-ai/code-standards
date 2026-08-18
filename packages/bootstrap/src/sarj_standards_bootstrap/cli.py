@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- Windows cannot replace the current process.
 import sys
 import tomllib
 from typing import TYPE_CHECKING, Final, NoReturn
@@ -134,6 +135,24 @@ def command(uvx: str, root: Path, selected_bundle: str, arguments: Sequence[str]
     )
 
 
+def execute(exact_command: Sequence[str], environment: Mapping[str, str], *, platform: str = os.name) -> NoReturn:
+    """Transfer control to Standards while preserving its process result on every OS."""
+    arguments = tuple(exact_command)
+    if platform == "nt":
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv; no consumer shell.
+            arguments,
+            env=environment,
+            check=False,
+            shell=False,
+        )
+        raise SystemExit(completed.returncode)
+    os.execvpe(  # ruff: ignore[start-process-with-no-shell] -- POSIX replacement preserves signals and exit status.
+        arguments[0],
+        arguments,
+        dict(environment),
+    )
+
+
 def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
     """Replace this bootstrap process with the exact Standards process."""
     parsed = explicit_root(arguments, cwd=cwd)
@@ -152,10 +171,9 @@ def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
         raise BootstrapError(message)
     exact_command = command(uvx, root, selected_bundle, parsed.forwarded)
     try:
-        os.execvpe(  # ruff: ignore[start-process-with-no-shell] — exec preserves the selected tool's signals and exit status.
-            uvx,
+        execute(
             exact_command,
-            os.environ.copy(),  # ruff: ignore[banned-api] — uv inherits registry, certificate, cache, and offline policy.
+            os.environ.copy(),  # ruff: ignore[banned-api] -- inherit registry, certificate, cache, proxy, and offline policy.
         )
     except OSError as exc:
         message = f"could not execute Standards {selected_bundle}: {exc}"
