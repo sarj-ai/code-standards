@@ -768,15 +768,35 @@ def plan_version_pin_updates(
     versions = manifest.installed_versions() if installed is None else installed
     exclusions = _doctor_exclusions(root)
     updates: list[VersionPinUpdate] = []
+    migrated_repository_launcher = False
     for path in _walk(root):
         if not _is_pin_site(path):
             continue
         relative = path.relative_to(root).as_posix()
         if any(fnmatch(relative, pattern) for pattern in exclusions):
             continue
-        contents, packages = rewrite_version_pins(_read(path), versions)
+        original = _read(path)
+        contents, packages = rewrite_version_pins(original, versions)
         if packages:
             updates.append(VersionPinUpdate(path, contents, packages))
+            migrated_repository_launcher = migrated_repository_launcher or (
+                path.name == "package.json"
+                and contents.count(launcher.repository_command()) > original.count(launcher.repository_command())
+            )
+    if migrated_repository_launcher:
+        updated_paths = {update.path for update in updates}
+        path = root / "knip.json"
+        if path.is_file() and path not in updated_paths:
+            relative = path.relative_to(root).as_posix()
+            if not any(fnmatch(relative, pattern) for pattern in exclusions):
+                contents, count = re.subn(
+                    r'("ignoreBinaries"\s*:\s*\[\s*)"uvx"',
+                    r'\1"uv", "uvx"',
+                    _read(path),
+                    count=1,
+                )
+                if count:
+                    updates.append(VersionPinUpdate(path, contents, ("sarj-standards",)))
     return tuple(updates)
 
 

@@ -291,7 +291,7 @@ def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_
 
     [updated] = [update.contents for update in updates if update.path == makefile]
     launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
-    assert "STANDARDS_VERSION" not in updated
+    assert f"STANDARDS_VERSION := $(shell {launcher_command} --version)" in updated
     assert "STANDARDS_RUN" not in updated
     assert f"\t{launcher_command} update" in updated
     assert f"\t{launcher_command} update --check --offline --no-install" in updated
@@ -299,7 +299,7 @@ def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_
     assert "sarj-standards==" not in updated
 
 
-def test_upgrade_preserves_ambiguous_make_variable_launcher(tmp_path: Path) -> None:
+def test_upgrade_preserves_dynamic_make_version_consumers(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     makefile = tmp_path / "Makefile"
     original = (
@@ -314,8 +314,12 @@ def test_upgrade_preserves_ambiguous_make_variable_launcher(tmp_path: Path) -> N
 
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
 
-    assert all(update.path != makefile for update in updates)
-    assert makefile.read_text(encoding="utf-8") == original
+    [updated] = [update.contents for update in updates if update.path == makefile]
+    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    assert f"STANDARDS_VERSION := $(shell {launcher_command} --version)" in updated
+    assert f"\t{launcher_command} update" in updated
+    assert "\t@echo $(STANDARDS_VERSION)" in updated
+    assert "STANDARDS_RUN" not in updated
 
 
 def test_upgrade_migrates_python_argv_launcher_in_scripts(tmp_path: Path) -> None:
@@ -369,6 +373,53 @@ def test_upgrade_migrates_quoted_package_script_and_removes_duplicate_update_tar
     assert f"{launcher_command} update --offline --no-install" in updated
     assert "sarj-standards==" not in updated
     assert "--to 5.8.4" not in updated
+
+
+def test_upgrade_keeps_uvx_ignored_and_adds_launcher_uv_to_knip(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    package = tmp_path / "package.json"
+    package.write_text(
+        '{"scripts":{"lint:sarj":"uvx --isolated --python 3.14 --from '
+        "'sarj-standards==5.14.1' sarj-standards check" + '"}}\n',
+        encoding="utf-8",
+    )
+    knip = tmp_path / "knip.json"
+    knip.write_text('{\n  "ignoreBinaries": ["uvx"]\n}\n', encoding="utf-8")
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.5"})
+
+    [updated] = [update.contents for update in updates if update.path == knip]
+    assert updated == '{\n  "ignoreBinaries": ["uv", "uvx"]\n}\n'
+
+
+def test_upgrade_does_not_touch_knip_without_a_repository_launcher_migration(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    knip = tmp_path / "knip.json"
+    original = '{\n  "ignoreBinaries": ["uvx"]\n}\n'
+    knip.write_text(original, encoding="utf-8")
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.5"})
+
+    assert all(update.path != knip for update in updates)
+    assert knip.read_text(encoding="utf-8") == original
+
+
+def test_upgrade_does_not_duplicate_existing_knip_uv_ignore(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    package = tmp_path / "package.json"
+    package.write_text(
+        '{"scripts":{"lint:sarj":"uvx --isolated --python 3.14 --from '
+        "'sarj-standards==5.14.1' sarj-standards check" + '"}}\n',
+        encoding="utf-8",
+    )
+    knip = tmp_path / "knip.json"
+    original = '{\n  "ignoreBinaries": ["uv", "uvx", "node"]\n}\n'
+    knip.write_text(original, encoding="utf-8")
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.5"})
+
+    assert all(update.path != knip for update in updates)
+    assert knip.read_text(encoding="utf-8") == original
 
 
 def test_upgrade_rejects_a_manifest_newer_than_the_executing_bundle_without_writes(tmp_path: Path) -> None:
