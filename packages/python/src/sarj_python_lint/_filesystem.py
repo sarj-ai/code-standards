@@ -1,5 +1,3 @@
-"""Small safe filesystem primitives shared by command-line workflows."""
-
 from __future__ import annotations
 
 import os
@@ -8,7 +6,6 @@ import tempfile
 
 
 def atomic_write_text(path: Path, contents: str) -> None:
-    """Replace an existing-parent destination atomically."""
     if not path.parent.is_dir():
         msg = f"baseline parent does not exist: {path.parent}"
         raise OSError(msg)

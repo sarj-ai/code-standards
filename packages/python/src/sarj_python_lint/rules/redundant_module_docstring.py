@@ -1,8 +1,3 @@
-"""SARJ099 — A module docstring that only re-spells its file path.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_module_docstring.py
-"""
-
 from __future__ import annotations
 
 import ast

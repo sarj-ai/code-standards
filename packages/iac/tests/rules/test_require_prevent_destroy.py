@@ -1,5 +1,3 @@
-"""SARJ203 — every guard pinned in both directions."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -301,7 +299,6 @@ resource "google_storage_bucket" "c" {
 
 @pytest.mark.parametrize("resource_type", sorted(IRREPLACEABLE_TYPES))
 def test_every_irreplaceable_type_is_wired_in(resource_type: str):
-    """Verify deleting any single row from IRREPLACEABLE_TYPES fails this test case."""
     src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -311,7 +308,6 @@ def test_every_irreplaceable_type_is_wired_in(resource_type: str):
 
 @pytest.mark.parametrize("resource_type", sorted(IRREPLACEABLE_TYPES))
 def test_prevent_destroy_guards_every_irreplaceable_type(resource_type: str):
-    """The other direction: the guard must be honoured for every row, not just the GCP ones."""
     src = f'resource "{resource_type}" "example" {{\n  name = "example"\n  lifecycle {{\n    prevent_destroy = true\n  }}\n}}\n'
     assert _check(src) == []
 
@@ -344,6 +340,5 @@ resource "aws_s3_bucket" "artifacts" {
 
 
 def test_an_uppercase_force_destroy_false_still_does_not_exempt():
-    """The other side: `FALSE` is the provider default, not a disposability statement."""
     src = 'resource "aws_s3_bucket" "blob" {\n  bucket        = "blob"\n  force_destroy = FALSE\n}\n'
     assert len(_check(src)) == 1

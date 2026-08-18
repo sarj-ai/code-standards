@@ -1,8 +1,3 @@
-"""SARJ032 — Silent fall-through on closed-set dispatch — prefer `assert_never`.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_assert_never.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -177,7 +172,6 @@ class PreferMatchAssertNever(Rule):
 
 
 def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
-    """Collect class definitions at module scope (including class-nested ones)."""
     found: list[ast.ClassDef] = []
     stack: list[ast.stmt] = list(tree.body)
     while stack:
@@ -189,7 +183,6 @@ def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
 
 
 def _enum_member_names(classdefs: list[ast.ClassDef], local_enums: frozenset[str]) -> dict[str, frozenset[str]]:
-    """Map each module-scope enum's name to the member names it declares."""
     members: dict[str, frozenset[str]] = {}
     for classdef in classdefs:
         if classdef.name not in local_enums:
@@ -214,7 +207,6 @@ def _enum_member_names(classdefs: list[ast.ClassDef], local_enums: frozenset[str
 
 
 def _grown_dict_names(tree: ast.Module) -> frozenset[str]:
-    """Collect names of dicts that are grown after their literal is written."""
     grown: set[str] = set()
     for node in nodes(tree, ast.Call, ast.Assign):
         match node:
@@ -236,7 +228,6 @@ def _incomplete_dispatch_map(
     enum_members: dict[str, frozenset[str]],
     map_usage: tuple[frozenset[str], frozenset[str]],
 ) -> _DispatchShortfall | None:
-    """Return the shortfall when `node` binds a handler dict that misses enum members."""
     target = _single_name_target(node)
     grown_maps, called_maps = map_usage
     if target is None or target in grown_maps or target not in called_maps or not isinstance(node.value, ast.Dict):
@@ -264,7 +255,6 @@ def _incomplete_dispatch_map(
 
 
 def _single_name_target(node: ast.Assign | ast.AnnAssign) -> str | None:
-    """Return the bound name when `node` assigns to exactly one plain name."""
     targets = node.targets if isinstance(node, ast.Assign) else [node.target]
     if len(targets) != 1:
         return None
@@ -273,12 +263,10 @@ def _single_name_target(node: ast.Assign | ast.AnnAssign) -> str | None:
 
 
 def _is_handler_value(value: ast.expr | None) -> bool:
-    """Report whether a dict value looks like a handler rather than data."""
     return isinstance(value, (ast.Name, ast.Attribute, ast.Lambda))
 
 
 def _called_mapping_names(tree: ast.Module) -> frozenset[str]:
-    """Collect mappings whose selected values are invoked as handlers."""
     return frozenset(
         name
         for node in nodes(tree, ast.Call)
@@ -289,7 +277,6 @@ def _called_mapping_names(tree: ast.Module) -> frozenset[str]:
 
 
 def _member_owner(key: ast.expr | None) -> str | None:
-    """Return the class name in a `Owner.MEMBER` dict key."""
     match key:
         case ast.Attribute(value=ast.Name(id=owner)):
             return owner
@@ -298,7 +285,6 @@ def _member_owner(key: ast.expr | None) -> str | None:
 
 
 def _importfrom_bound_names(tree: ast.Module) -> frozenset[str]:
-    """Collect imported names whose source and local spellings both look like classes."""
     return frozenset(
         bound
         for node in nodes(tree, ast.ImportFrom)
@@ -317,7 +303,6 @@ def _looks_like_class_name(name: str) -> bool:
 def _silent_closed_set_wildcard(
     node: ast.Match, local_classes: frozenset[str], member_owners: frozenset[str]
 ) -> ast.match_case | None:
-    """Return the final `case _:` when it silently swallows a closed-set dispatch."""
     if len(node.cases) < _MIN_ARMS + 1:
         return None
     last = node.cases[-1]
@@ -346,7 +331,6 @@ def _is_assignment_only(body: list[ast.stmt]) -> bool:
 
 
 def _is_silent_body(body: list[ast.stmt]) -> bool:
-    """Report whether `body` is exactly one None-shaped no-op statement."""
     if len(body) != 1:
         return False
     match body[0]:
@@ -357,7 +341,6 @@ def _is_silent_body(body: list[ast.stmt]) -> bool:
 
 
 def _all_one_owner_member_arms(cases: list[ast.match_case], member_owners: frozenset[str]) -> bool:
-    """Report whether every arm matches enum-member values of one owner class."""
     owners = {_member_pattern_owner(case.pattern) for case in cases}
     if len(owners) != 1 or None in owners:
         return False
@@ -366,7 +349,6 @@ def _all_one_owner_member_arms(cases: list[ast.match_case], member_owners: froze
 
 
 def _member_pattern_owner(pattern: ast.pattern) -> str | None:
-    """Resolve the owner class of a `Cls.MEMBER` value pattern (or an or-pattern of them)."""
     match pattern:
         case ast.MatchValue(value=ast.Attribute(value=ast.Name(id=owner))):
             return owner
@@ -392,7 +374,6 @@ def _is_local_class_pattern(pattern: ast.pattern, local_classes: frozenset[str])
 
 
 def _silent_enum_chain(head: ast.If, local_enums: frozenset[str], consumed_elifs: set[int]) -> str | None:
-    """Parse `head` as an ==/in chain over one local enum with a silent `else`."""
     if not local_enums:
         return None
     first_target: ast.expr | None = None
@@ -426,7 +407,6 @@ def _silent_enum_chain(head: ast.If, local_enums: frozenset[str], consumed_elifs
 
 
 def _enum_comparison(test: ast.expr, local_enums: frozenset[str]) -> _EnumComparison | None:
-    """Parse `test` as `x == Cls.MEMBER` or `x in (Cls.A, Cls.B, ...)`."""
     if not (isinstance(test, ast.Compare) and len(test.ops) == 1):
         return None
     target = test.left

@@ -1,5 +1,3 @@
-"""SARJ104: forbid `VARCHAR(n)` / `CHARACTER VARYING(n)` — use TEXT."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -35,8 +33,6 @@ PATTERN = re.compile(
 
 @final
 class PreferTextOverVarchar(Rule):
-    """VARCHAR(n) / CHARACTER VARYING(n) — use TEXT (+ CHECK length if needed)."""
-
     id = "prefer-text-over-varchar"
     code = "SARJ104"
     documentation = RuleDocumentation(

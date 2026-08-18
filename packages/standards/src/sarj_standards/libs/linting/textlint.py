@@ -1,5 +1,3 @@
-"""Deterministic comment and repository-noise checks for text/config files."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -54,6 +52,12 @@ class _MarkdownHtmlComment(NamedTuple):
 class _ConfigScalarEntry(NamedTuple):
     key: str
     value: str
+
+
+class _AttachedComment(NamedTuple):
+    line: int
+    owner_indent: int
+    weak: bool
 
 
 _TEXT_SUFFIXES: Final = frozenset(
@@ -213,23 +217,18 @@ _QUOTED_SCALAR_MIN_LENGTH: Final = 2
 
 @dataclass(frozen=True)
 class Finding:
-    """One stable, editor-friendly text diagnostic."""
-
     path: Path
     line: int
     code: str
     message: str
 
     def render(self) -> str:
-        """Render in the same path/line/column shape as the sibling linters."""
         rollout = " warning:" if not _META_BY_CODE[self.code].blocking else ""
         return f"{self.path}:{self.line}:1: {self.code}{rollout} {self.message}"
 
 
 @dataclass(frozen=True)
 class RuleMeta:
-    """Source-owned behavior, documentation, and compatibility metadata."""
-
     code: str
     summary: str
     rationale: str
@@ -257,7 +256,6 @@ class RuleMeta:
         return tuple(example for example in self.examples if example.public)
 
     def native_spec(self, rule_id: str) -> RuleSpec:
-        """Adapt this text-native record to the engine-neutral catalog contract."""
         return RuleSpec(
             engine=RuleEngine.TEXT,
             rule_id=RuleId(rule_id),
@@ -287,7 +285,6 @@ def _public_example(
     source: str,
     expected_count: int,
 ) -> RuleExample:
-    """Opt one reviewed single-file example into generated public documentation."""
     focus_path = PurePosixPath(path)
     return RuleExample(
         example_id=example_id,
@@ -542,7 +539,6 @@ _META_BY_CODE: Final[Mapping[str, RuleMeta]] = MappingProxyType({meta.code: meta
 
 
 def is_text_path(path: Path) -> bool:
-    """Return whether the cross-file checker owns this path."""
     name = path.name.lower()
     return (
         path.suffix.lower() in _TEXT_SUFFIXES
@@ -553,7 +549,6 @@ def is_text_path(path: Path) -> bool:
 
 
 def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Finding]:
-    """Check routed files, returning findings in stable path/line order."""
     base = (root or Path.cwd()).resolve()
     durable_patterns, excluded_patterns = _text_policy(base)
     findings: list[Finding] = []
@@ -581,7 +576,6 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
 
 
 def run(paths: Sequence[str]) -> int:
-    """Print all text findings and return a conventional lint status."""
     findings = check_paths(paths)
     for finding in findings:
         _ = sys.stdout.write(f"{finding.render()}\n")
@@ -631,7 +625,6 @@ _AWK_VALUE_OPTIONS: Final = frozenset({"--assign", "--field-separator", "--file"
 
 
 def _shell_iac_source_findings(path: Path, relative: str, source: str) -> list[Finding]:
-    """Find direct and local-flow IaC text assertions in shell test programs."""
     if path.suffix.casefold() not in _SHELL_SUFFIXES or not _shell_test_path(relative):
         return []
     findings: list[Finding] = []
@@ -703,7 +696,6 @@ def _shell_tokens(line: str) -> list[str]:
 
 
 def _shell_logical_lines(source: str) -> list[tuple[int, str]]:
-    """Join ordinary backslash continuations while retaining the first source line."""
     logical: list[tuple[int, str]] = []
     pending: list[str] = []
     start = 1
@@ -818,7 +810,6 @@ def _shell_reads_iac(tokens: Sequence[str], path_names: set[str]) -> bool:
 
 
 def _shell_embeds_iac_read(tokens: Sequence[str], path_names: set[str]) -> bool:
-    """Recognize a simple ``$(cat source.tf)`` inside a shell test predicate."""
     for index, item in enumerate(tokens):
         if item == "$" and tokens[index + 1 : index + 3] == ["(", "cat"]:
             try:
@@ -863,7 +854,6 @@ def _shell_uses_variable(tokens: Sequence[str], name: str) -> bool:
 
 
 def _workflow_action_findings(path: Path, relative: str, source: str) -> list[Finding]:
-    """Reject mutable remote refs in GitHub workflow ``uses`` entries."""
     if not relative.startswith(".github/workflows/") or path.suffix.lower() not in {".yaml", ".yml"}:
         return []
     lines = source.splitlines()
@@ -971,7 +961,6 @@ def _artifact_findings(
 
 
 def _markdown_prose_lines(source: str) -> list[str]:
-    """Blank fenced examples while preserving line numbers for diagnostics."""
     max_fence_indent = 3
     min_fence_length = 3
     indented_code_spaces = 4
@@ -1000,7 +989,6 @@ def _markdown_prose_lines(source: str) -> list[str]:
 
 
 def _markdown_hidden_comment_findings(path: Path, source: str) -> list[Finding]:
-    """Find disabled Markdown sections without interpreting ordinary HTML prose."""
     if path.suffix.casefold() not in {".md", ".mdx"}:
         return []
     return [
@@ -1016,7 +1004,6 @@ def _markdown_hidden_comment_findings(path: Path, source: str) -> list[Finding]:
 
 
 def _markdown_html_comments(source: str) -> list[_MarkdownHtmlComment]:
-    """Extract standalone, closed HTML comments after Markdown code has been blanked."""
     comments: list[_MarkdownHtmlComment] = []
     pending_line: int | None = None
     pending: list[str] = []
@@ -1084,12 +1071,10 @@ def _large_artifact(source: str, path: Path, lines: list[str]) -> bool:
 
 
 def _has_word_count(source: str, minimum: int) -> bool:
-    """Stop counting once the large-artifact threshold is known to be met."""
     return next((True for index, _match in enumerate(_WORD_RE.finditer(source), start=1) if index >= minimum), False)
 
 
 def _text_policy(root: Path) -> _TextPolicy:
-    """Load the text policy once per run instead of parsing its manifest twice."""
     manifest = root / ".sarj-standards.toml"
     if not manifest.is_file():
         return _TextPolicy(_DURABLE_MARKDOWN, ())
@@ -1117,7 +1102,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
     if path.suffix.lower() in {".md", ".mdx"}:
         return []
     lines = source.splitlines()
-    attached: list[tuple[int, int, bool]] = []
+    attached: list[_AttachedComment] = []
     findings: list[Finding] = []
     config_run_lines = _commented_config_runs(path, lines)
     if config_run_lines:
@@ -1169,7 +1154,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
         next_line = lines[next_index]
         if len(next_line) - len(next_line.lstrip()) != indent:
             continue
-        attached.append((index + 1, indent, False if protected else _weak_narration(body, next_line)))
+        attached.append(_AttachedComment(index + 1, indent, False if protected else _weak_narration(body, next_line)))
 
     for group in _attached_groups(attached):
         weak = [line for line, _indent, is_weak in group if is_weak]
@@ -1254,7 +1239,6 @@ def _looks_commented_config(path: Path, body: str) -> bool:
 
 
 def _exact_config_restatement(path: Path, body: str, lines: list[str], index: int) -> bool:
-    """Match one exact prose restatement of the immediately following scalar entry."""
     if path.suffix.casefold() not in {".toml", ".yaml", ".yml"} or index + 1 >= len(lines):
         return False
     if (
@@ -1312,9 +1296,9 @@ def _inside_yaml_block_scalar(lines: list[str], index: int, indent: int) -> bool
 
 
 def _attached_groups(
-    attached: list[tuple[int, int, bool]],
-) -> list[list[tuple[int, int, bool]]]:
-    groups: list[list[tuple[int, int, bool]]] = []
+    attached: list[_AttachedComment],
+) -> list[list[_AttachedComment]]:
+    groups: list[list[_AttachedComment]] = []
     for entry in attached:
         if (
             groups
@@ -1351,7 +1335,6 @@ def _weak_narration(body: str, statement: str) -> bool:
 
 
 def _words(text: str) -> list[str]:
-    """Extract typed word matches from regular-expression results."""
     words: list[str] = []
     for match in _WORD_RE.finditer(text):
         expanded = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", match.group(0))

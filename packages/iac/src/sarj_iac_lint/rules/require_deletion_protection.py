@@ -1,5 +1,3 @@
-"""SARJ201: Stateful Terraform resources must keep deletion_protection = true."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -100,8 +98,6 @@ _HCL_SUFFIXES = (".tf", ".hcl")
 
 @final
 class RequireDeletionProtection(Rule):
-    """Stateful resource without deletion_protection = true."""
-
     id = "require-deletion-protection"
     code = "SARJ201"
     documentation = RuleDocumentation(
@@ -158,7 +154,6 @@ class RequireDeletionProtection(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag protected-type resources whose own block declares no working guard."""
         if not str(path).endswith(_HCL_SUFFIXES):
             return []
         diags: list[Diagnostic] = []
@@ -189,14 +184,12 @@ class RequireDeletionProtection(Rule):
 
 
 def _is_bigquery_view(block: Block) -> bool:
-    """Report whether `block` is a `google_bigquery_table` that declares a view."""
     if block.labels[0] != _BIGQUERY_TABLE:
         return False
     return any(block.child(name) is not None for name in _VIEW_CHILDREN)
 
 
 def _violation(block: Block) -> str | None:
-    """Describe why `block` is unprotected, or None when it is protected."""
     lifecycle = block.child(_LIFECYCLE)
     if lifecycle is not None:
         guard = lifecycle.attribute(_PREVENT_DESTROY)
@@ -233,7 +226,6 @@ def _violation(block: Block) -> str | None:
 
 
 def _nested_protection(block: Block) -> str | None:
-    """Name the sub-block holding a protection flag that does not guard `block`."""
     for child in block.blocks:
         attr = child.attribute(*_PROTECTION_ATTRS)
         if attr is not None and _literal(attr.value) != "false":
@@ -245,7 +237,6 @@ def _nested_protection(block: Block) -> str | None:
 
 
 def _literal(value: str) -> str:
-    """Reduce an attribute value to its bare literal for a `true`/`false` test."""
     text = value.strip().rstrip(",").strip()
     while text.startswith("(") and text.endswith(")"):
         text = text[1:-1].strip()
@@ -253,7 +244,6 @@ def _literal(value: str) -> str:
 
 
 def _quoted_literal(value: str) -> str | None:
-    """Return an exact double-quoted string, excluding expressions and bare identifiers."""
     text = value.strip().rstrip(",").strip()
     while text.startswith("(") and text.endswith(")"):
         text = text[1:-1].strip()

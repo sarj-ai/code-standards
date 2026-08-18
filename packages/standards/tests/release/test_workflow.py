@@ -1,5 +1,3 @@
-"""Release orchestration preserves compatibility-bundle publication ordering."""
-
 from __future__ import annotations
 
 from pathlib import Path

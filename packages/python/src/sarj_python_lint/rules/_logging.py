@@ -1,5 +1,3 @@
-"""Shared logging-receiver detection for logging-aware rules."""
-
 from __future__ import annotations
 
 import ast
@@ -30,7 +28,6 @@ LOG_METHODS = frozenset(
 
 
 def is_logger_expr(expr: ast.expr) -> bool:
-    """Report whether `expr` evaluates to a logger."""
     match expr:
         case ast.Name(id=name):
             return name.lower() in _LOGGER_NAMES

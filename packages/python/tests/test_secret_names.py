@@ -1,5 +1,3 @@
-"""Contract tests for the secret-name vocabulary shared by SARJ011 and SARJ012."""
-
 from __future__ import annotations
 
 import pytest

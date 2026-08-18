@@ -1,8 +1,3 @@
-"""SARJ417 prevents explicit enum-to-string erasure in narrowed match branches.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_preserve_enum_types.py
-"""
-
 from __future__ import annotations
 
 import ast

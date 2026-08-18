@@ -1,5 +1,3 @@
-"""Plan and apply transactional standards synchronization and adoption."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -115,7 +113,6 @@ def plan_sync(
     typescript_dest: str | None = None,
     profile: manifest.Profile | None = None,
 ) -> SyncPlan:
-    """Resolve every bundled config source and repository-contained target."""
     resolved = root.resolve()
     if not resolved.is_dir():
         msg = f"destination {resolved} is not a directory"
@@ -168,7 +165,6 @@ def plan_sync(
 
 
 def apply_sync(plan: SyncPlan, *, force: bool = False, check: bool = False) -> SyncResult:
-    """Apply or check a config synchronization plan without producing output."""
     records = tuple(
         SyncRecord(target, _sync_one(target, root=plan.root, force=force, check=check)) for target in plan.targets
     )
@@ -185,7 +181,6 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     profile: manifest.Profile | None = None,
     hook_manager: manifest.HookManager | None = None,
 ) -> InitPlan:
-    """Plan the complete setup operation, including configs and installation."""
     if profile is not None and profile not in manifest.PROFILES:
         msg = f"profile must be one of: {', '.join(manifest.PROFILES)}"
         raise ValueError(msg)
@@ -259,7 +254,6 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
 
 
 def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
-    """Apply a complete setup plan atomically, rolling files back on failure."""
     if plan.sync is None:
         return InitResult(2, failure=InitFailure.APPLY, error="setup plan is not applicable")
     try:
@@ -374,7 +368,6 @@ def _apply_planned_sync(plan: SyncPlan, preconditions: dict[Path, bytes | None])
 
 
 def init_destination(root: Path, name: str, *, python_dest: str, typescript_dest: str) -> Path:
-    """Return the destination of one config in a planned adoption."""
     if name == "eslint":
         base = root / typescript_dest
     elif name in PYTHON_CONFIGS:

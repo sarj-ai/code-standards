@@ -1,8 +1,3 @@
-"""SARJ402 — tests must not use raw repository source text as behavioral proof.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_source_coupled_test.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -161,8 +156,6 @@ def top_level_test_functions(tree: ast.Module) -> list[tuple[ast.FunctionDef | a
 
 
 class FunctionAnalyzer(ast.NodeVisitor):
-    """Track raw text inside one test without leaking into nested lexical scopes."""
-
     _source_suffixes: tuple[str, ...]
     _unittest_style: bool
 

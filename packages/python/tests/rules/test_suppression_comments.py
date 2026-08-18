@@ -1,5 +1,3 @@
-"""Direct tests for the comment scanner shared by SARJ038 and SARJ054."""
-
 import tokenize
 
 import pytest
@@ -33,7 +31,6 @@ def test_a_comment_alone_on_its_line_is_standalone() -> None:
 
 
 def test_only_the_comment_above_the_first_statement_is_file_level() -> None:
-    """The module docstring is the first statement, so a directive below it is local."""
     first, second, third = scan_comments(_MODULE)
     assert first.before_first_statement
     assert not second.before_first_statement
@@ -47,7 +44,6 @@ def test_columns_are_one_based_for_diagnostics() -> None:
 
 
 def test_a_comment_trailing_the_first_statement_is_not_above_it() -> None:
-    """Strictly above, not on the same line -- `x = 1  # noqa` is a LOCAL suppression."""
     (comment,) = scan_comments("x = 1  # sarj-noqa: SARJ023\n")
     assert not comment.before_first_statement
 

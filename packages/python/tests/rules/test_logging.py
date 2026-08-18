@@ -1,5 +1,3 @@
-"""Direct tests for the logger-receiver resolver shared by logging-aware rules."""
-
 import ast
 
 import pytest
@@ -56,7 +54,6 @@ def test_a_non_logger_receiver_is_not_mistaken_for_one(source: str) -> None:
 
 
 def test_receiver_names_are_matched_case_insensitively() -> None:
-    """`getLogger` and `getlogger` must resolve the same way in every branch."""
     assert frozenset({"getlogger", "get_logger"}) == LOGGER_FACTORIES
     assert is_logger_expr(_expr('LOGGER.info("x")'))
     assert is_logger_expr(_expr('GetLogger().info("x")'))

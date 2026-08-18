@@ -1,5 +1,3 @@
-"""Selected-rule evaluation exposes raw corpus findings without baseline bypasses."""
-
 from __future__ import annotations
 
 import json

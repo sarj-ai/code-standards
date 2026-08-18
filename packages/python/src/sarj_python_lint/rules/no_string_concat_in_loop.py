@@ -1,8 +1,3 @@
-"""SARJ002 — O(n²) single-accumulator string growth inside loops.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_string_concat_in_loop.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -30,7 +25,6 @@ if TYPE_CHECKING:
 
 
 def _src(node: ast.expr) -> str:
-    """`ast.unparse` for the shapes this rule compares, without `ast.unparse`'s cost."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute) and isinstance(node.value, (ast.Name, ast.Attribute)):
@@ -110,8 +104,6 @@ class NoStringConcatInLoop(Rule):
 
 
 class _ConcatVisitor(ast.NodeVisitor):
-    """Single O(n) pass flagging each in-loop string accumulation exactly once."""
-
     def __init__(self) -> None:
         self._loop_depth: int = 0
         self._string_vars: list[frozenset[str]] = [frozenset()]
@@ -165,7 +157,6 @@ class _ConcatVisitor(ast.NodeVisitor):
         super().generic_visit(node)
 
     def _is_probe_target(self, node: ast.AugAssign | ast.Assign) -> bool:
-        """Report whether the concat target's intermediate values are consumed."""
         target_src = _src(self._accumulation_target(node))
         if any(target_src in names for names in self._while_probe_names):
             return True
@@ -174,7 +165,6 @@ class _ConcatVisitor(ast.NodeVisitor):
         return bool(self._loop_reads) and target_src in self._loop_reads[-1]
 
     def _is_loop_local_target(self, node: ast.AugAssign | ast.Assign) -> bool:
-        """Report whether the concat target is freshly rebound earlier this iteration."""
         target = self._accumulation_target(node)
         rebinds = self._loop_reassigns[-1].get(_src(target), ())
         return any(line < node.lineno for line in rebinds)
@@ -195,7 +185,6 @@ class _ConcatVisitor(ast.NodeVisitor):
         return False
 
     def _is_self_add_growth(self, target: ast.expr, value: ast.expr) -> bool:
-        """Report whether `s = s + <str>` rebinds the target to itself-plus-more."""
         if isinstance(value, ast.JoinedStr):
             return any(
                 isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in value.values
@@ -208,7 +197,6 @@ class _ConcatVisitor(ast.NodeVisitor):
         return self._is_string_growth(target, other)
 
     def _is_string_growth(self, target: ast.expr, rhs: ast.expr) -> bool:
-        """Report whether appending `rhs` to `target` is single-string accumulation."""
         if isinstance(target, ast.Subscript):
             return False
         if _looks_like_string(rhs):
@@ -219,12 +207,10 @@ class _ConcatVisitor(ast.NodeVisitor):
 
 
 def _test_names(test: ast.expr) -> set[str]:
-    """Collect the source text of every Name/Attribute read in a while test."""
     return {_src(n) for n in walk(test) if isinstance(n, (ast.Name, ast.Attribute))}
 
 
 def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]:
-    """Collect names READ in the loop body outside their own accumulation."""
     reads: set[str] = set()
     stack: list[ast.AST] = list(loop.body)
     while stack:
@@ -246,7 +232,6 @@ def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]
 
 
 def _loop_local_reassignments(loop: ast.For | ast.AsyncFor | ast.While) -> dict[str, list[int]]:
-    """Map each target rebound inside this loop's own body to the lines that rebind it."""
     reassigns: dict[str, list[int]] = {}
     for stmt in loop.body:
         _collect_reassignments(stmt, reassigns)
@@ -275,7 +260,6 @@ def _collect_reassignments(node: ast.AST, reassigns: dict[str, list[int]]) -> No
 
 
 def _iter_binding_targets(target: ast.expr) -> Iterator[ast.Name | ast.Attribute]:
-    """Yield the Name / Attribute leaves a binding target rebinds."""
     match target:
         case ast.Tuple() | ast.List():
             for elt in target.elts:
@@ -295,7 +279,6 @@ def _is_accumulation_assign(target: ast.expr, value: ast.expr) -> bool:
 
 
 def _other_add_operand(target: ast.expr, binop: ast.BinOp) -> ast.expr | None:
-    """Return the non-target operand of `target + x` / `x + target`."""
     target_src = _src(target)
     if _src(binop.left) == target_src:
         return binop.right
@@ -305,7 +288,6 @@ def _other_add_operand(target: ast.expr, binop: ast.BinOp) -> ast.expr | None:
 
 
 def _string_typed_locals(func: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> frozenset[str]:
-    """Collect names assigned a string-literal-ish value in this function's own body."""
     if isinstance(func, ast.Lambda):
         return frozenset()
     names: set[str] = set()
@@ -317,8 +299,6 @@ def _string_typed_locals(func: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lamb
 
 @final
 class _StringAnnotationCollector(ast.NodeVisitor):
-    """Find narrow string annotations that are not contradicted by a rebind."""
-
     def __init__(self, parameter_names: set[str]) -> None:
         self.parameter_names = parameter_names
         self.local_annotations: dict[str, int] = {}
@@ -461,7 +441,6 @@ def _collect_string_targets(node: ast.AST, names: set[str]) -> None:
 
 
 def _looks_like_string(node: ast.AST) -> bool:
-    """Report whether this expression is obviously a string at runtime."""
     match node:
         case ast.Constant(value=str()):
             return True

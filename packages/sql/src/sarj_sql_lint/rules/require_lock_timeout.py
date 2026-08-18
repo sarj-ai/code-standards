@@ -1,12 +1,10 @@
-"""SARJ110: Require lock_timeout or statement_timeout before migration DDL."""
-
 from __future__ import annotations
 
 from decimal import Decimal
 import operator
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
@@ -29,6 +27,12 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+class _SectionBoundaryEvent(NamedTuple):
+    offset: int
+    kind: str
+    match: re.Match[str]
+
+
 DDL_PATTERN = re.compile(
     r"\b(ALTER\s+(?:TABLE|TYPE)|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+(?:INDEX|TABLE)|REINDEX(?:\s+(?:DATABASE|INDEX|SCHEMA|SYSTEM|TABLE))?|TRUNCATE(?:\s+TABLE)?)\b",
     re.IGNORECASE,
@@ -48,16 +52,14 @@ POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?P<number>[0-9]*\.?[0-9]+)\s*(?:[
 
 
 def _positive_timeout(value: str) -> bool:
-    """Accept the deliberately small timeout grammar only when its number is positive."""
     match = POSITIVE_VAL_PATTERN.fullmatch(value)
     return match is not None and Decimal(match.group("number")) > 0
 
 
-def _section_boundary_events(source: str) -> list[tuple[int, str, re.Match[str]]]:
-    """Return live migration-runner section boundaries as state-machine events."""
+def _section_boundary_events(source: str) -> list[_SectionBoundaryEvent]:
     dollar_lines = dollar_quoted_lines(source)
     return [
-        (boundary_offset, "SECTION_BOUNDARY", match)
+        _SectionBoundaryEvent(boundary_offset, "SECTION_BOUNDARY", match)
         for match in SECTION_BOUNDARY_PATTERN.finditer(source)
         if source.count("\n", 0, (boundary_offset := match.start())) + 1 not in dollar_lines
     ]
@@ -65,8 +67,6 @@ def _section_boundary_events(source: str) -> list[tuple[int, str, re.Match[str]]
 
 @final
 class RequireLockTimeout(Rule):
-    """DDL migration missing statement or lock timeout setting prior to DDL."""
-
     id = "require-lock-timeout"
     code = "SARJ110"
     documentation = RuleDocumentation(

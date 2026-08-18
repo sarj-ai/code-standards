@@ -1,5 +1,3 @@
-"""Shared comment tokenizer for the suppression-directive rules (SARJ038, SARJ054)."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,8 +8,6 @@ from sarj_python_lint.rules._comments import all_comments
 
 @dataclass(frozen=True, slots=True)
 class Comment:
-    """One comment token, with the context that decides whether it is file-level."""
-
     line: int
     col: int
     body: str
@@ -20,7 +16,6 @@ class Comment:
 
 
 def scan_comments(source: str) -> list[Comment]:
-    """Describe every comment in `source`, in source order."""
     ordered, first_statement_line = all_comments(source)
     return [
         Comment(
@@ -35,7 +30,6 @@ def scan_comments(source: str) -> list[Comment]:
 
 
 def scan_comments_or_none(source: str) -> list[Comment] | None:
-    """Return `None` when malformed source cannot be tokenized."""
     try:
         return scan_comments(source)
     except tokenize.TokenError, SyntaxError:

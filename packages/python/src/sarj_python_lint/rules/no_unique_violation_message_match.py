@@ -1,8 +1,3 @@
-"""SARJ404 — Classify unique violations by structured constraint identity.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_unique_violation_message_match.py
-"""
-
 from __future__ import annotations
 
 import ast

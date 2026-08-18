@@ -1,8 +1,3 @@
-"""SARJ089 — A bare Arrange/Act/Assert (or Given/When/Then) phase label in a test.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_phase_label_comment.py
-"""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath

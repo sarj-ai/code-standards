@@ -1,5 +1,3 @@
-"""Packaged paths for versioned public artifacts."""
-
 from pathlib import Path
 
 

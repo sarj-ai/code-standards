@@ -32,7 +32,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def _fn(signature: str, docstring: str) -> list[Diagnostic]:
-    """Check a docstring inside a function with a nonempty body."""
     return _check(f'def {signature}:\n    """{docstring}"""\n    return None\n')
 
 
@@ -207,19 +206,16 @@ def test_fastapi_route_docstring_is_the_openapi_description():
     ],
 )
 def test_a_literal_value_the_signature_does_not_carry_is_content(docstring: str):
-    """Keep literal values that the word-based restatement check cannot see."""
     assert _fn("test_retry_limit_valid(retry_limit: int)", docstring) == []
 
 
 def test_a_number_the_signature_already_carries_still_fires():
-    """Flag the number when the signature already exposes it."""
     diags = _fn("test_retry_limit_5_valid(retry_limit: int)", "Test that retry_limit=5 is valid.")
     assert len(diags) == 1
     assert diags[0].code == "SARJ050"
 
 
 def test_an_annotation_carrying_the_number_counts_as_the_signature():
-    """Treat numeric annotations as visible signature content."""
     assert len(_fn("cap(value: Literal[5], flag: bool)", "Cap the value at 5.")) == 1
 
 

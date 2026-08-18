@@ -353,7 +353,6 @@ def test_plus_concat_runtime_value_between_keywords_is_missed() -> None:
     ],
 )
 def test_test_files_are_not_store_modules(path: str) -> None:
-    """Evidence: a first-party store test that seeds one row per test."""
     src = 'q = "INSERT INTO phone_provider (provider_name) VALUES (%s) RETURNING id::text"'
     assert _count(src, path) == 0
 
@@ -388,17 +387,14 @@ ALREADY_IDEMPOTENT = [
 
 @pytest.mark.parametrize("source", ALREADY_IDEMPOTENT)
 def test_every_idempotent_insert_form_is_excused(source: str) -> None:
-    """A MySQL upsert used to fire here and be clean in TS — the same write, two verdicts."""
     assert _count(source) == 0
 
 
 def test_insert_or_abort_is_not_excused() -> None:
-    """`OR IGNORE`/`OR REPLACE` survive replay; `OR ABORT` does not, so it still fires."""
     assert _count('q = "INSERT OR ABORT INTO t (a) VALUES (?)"') == 1
 
 
 def test_prose_mentioning_insert_into_and_values_does_not_fire() -> None:
-    """The old `.*?` under DOTALL matched `insert into ..."""
     src = 'msg = "failed to insert into the queue: values were rejected by the broker"'
     assert _count(src) == 0
 

@@ -1,5 +1,3 @@
-"""Stable public facade for Sarj Standards."""
-
 from sarj_standards._meta import __version__
 from sarj_standards.api import (
     AnalysisReport,

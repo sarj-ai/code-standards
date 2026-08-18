@@ -1,5 +1,3 @@
-"""SARJ111: Enforce NOT VALID on ADD CONSTRAINT (CHECK/FK) in table alterations."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -41,14 +39,11 @@ NOT_VALID_PATTERN = re.compile(r"\bNOT\s+VALID\b", re.IGNORECASE)
 
 
 def _table_key(raw: str) -> str:
-    """Normalize an unambiguous qualified identifier for same-file comparison."""
     return ".".join(part.strip('"').lower() for part in raw.split("."))
 
 
 @final
 class AddConstraintRequiresNotValid(Rule):
-    """ADD CONSTRAINT (CHECK / FK) on existing table missing NOT VALID."""
-
     id = "add-constraint-requires-not-valid"
     code = "SARJ111"
     documentation = RuleDocumentation(

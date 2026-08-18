@@ -80,7 +80,6 @@ def test_flags_a_bare_phase_label(label: str) -> None:
 
 
 def test_a_phase_word_carrying_a_sentence_is_left_alone() -> None:
-    """`# then the retry loop spins forever` is a why, not a signpost."""
     diags = _check("""
         def test_it():
             # then the retry loop would spin forever
@@ -90,7 +89,6 @@ def test_a_phase_word_carrying_a_sentence_is_left_alone() -> None:
 
 
 def test_setup_and_teardown_belong_to_sarj016() -> None:
-    """SARJ016 owns those two through its section-label vocabulary; one deletion, one finding."""
     diags = _check("""
         def test_it():
             # Setup
@@ -102,7 +100,6 @@ def test_setup_and_teardown_belong_to_sarj016() -> None:
 
 
 def test_a_trailing_comment_is_not_a_phase_label() -> None:
-    """A phase label owns its line; `x = 1  # act` is annotating the value."""
     diags = _check("""
         def test_it():
             result = act()  # act
@@ -112,7 +109,6 @@ def test_a_trailing_comment_is_not_a_phase_label() -> None:
 
 
 def test_a_label_inside_a_bracketed_expression_is_left_alone() -> None:
-    """At bracket depth the word is labelling an element of the literal, not a phase."""
     diags = _check("""
         def test_it():
             cases = [

@@ -1,8 +1,3 @@
-"""SARJ049 — A one-line comment that only re-spells the statement beneath it.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_restated_comment.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -25,6 +20,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._comments import (
+    PositionedComment,
     code_tokens,
     comment_runs,
     content_tokens,
@@ -106,7 +102,6 @@ def _indent_of(line: str) -> int:
 
 
 def _statement_end(lines: list[str], index: int) -> int:
-    """Return the final line of a statement using bracket balance."""
     balance = 0
     cursor = index
     while cursor < len(lines):
@@ -120,7 +115,6 @@ def _statement_end(lines: list[str], index: int) -> int:
 
 
 def _is_group_label(lines: list[str], index: int) -> bool:
-    """Report whether the statement at `index` is the head of a run of siblings."""
     first = lines[index]
     shape = _statement_shape(first)
     if shape is None:
@@ -151,7 +145,6 @@ def _statement_shape(line: str) -> str | None:
 
 
 def _region_size(lines: list[str], index: int) -> int:
-    """Count logical same-indent lines until a blank, dedent, or next label."""
     indent = _indent_of(lines[index])
     size = 0
     cursor = index
@@ -172,7 +165,6 @@ def _has_non_ascii_prose(body: str) -> bool:
 
 
 def _is_commented_out_code(body: str) -> bool:
-    """Report whether the comment body is a disabled line of Python."""
     if _CODEY_RE.match(body):
         return True
     if not _CODE_KEYWORD_RE.match(body) or not _CODE_SIGNAL_RE.search(body):
@@ -185,7 +177,6 @@ def _is_commented_out_code(body: str) -> bool:
 
 
 def _is_action_assignment(node: ast.stmt | None) -> bool:
-    """Recognize an assignment whose value is produced by an action."""
     match node:
         case ast.AnnAssign(value=ast.Call() | ast.Await()) | ast.Assign(value=ast.Call() | ast.Await()):
             return True
@@ -195,9 +186,8 @@ def _is_action_assignment(node: ast.stmt | None) -> bool:
 
 def _numbered_walkthrough_lines(
     tree: ast.Module,
-    standalone: list[tuple[int, int, str]],
+    standalone: list[PositionedComment],
 ) -> frozenset[int]:
-    """Collect monotonic numbered comment runs within one syntax owner."""
     owners = [*nodes(tree, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)]
 
     def owner_of(line: int) -> int:

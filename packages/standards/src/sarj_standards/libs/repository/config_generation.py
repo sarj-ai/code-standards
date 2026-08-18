@@ -1,5 +1,3 @@
-"""Generate the standalone application-profile configs from canonical inputs."""
-
 from __future__ import annotations
 
 import json
@@ -23,7 +21,6 @@ _ESLINT_CONFIG_END: Final = "\n  ];\n}\n\nconst config = createConfig();\nexport
 
 
 def render_ruff_application() -> str:
-    """Return a complete Ruff config with application-only import policy merged in."""
     standard = (CONFIGS_DIR / "ruff.strict.toml").read_text(encoding="utf-8")
     entries = "".join(
         f"{json.dumps(name)}.msg = {json.dumps(message)}\n" for name, message in sorted(_python_bans().items())
@@ -36,12 +33,10 @@ def render_ruff_application() -> str:
 
 
 def _python_bans() -> Mapping[str, str]:
-    """Read the catalog's Ruff adapter."""
     return library_policy.python_banned_api()
 
 
 def render_eslint_application() -> str:
-    """Return a complete ESLint config with application-only import policy merged in."""
     standard = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
     bans = _typescript_bans()
     entries = "".join(f"            {json.dumps(dict(entry), sort_keys=True)},\n" for entry in bans)
@@ -111,14 +106,12 @@ def render_eslint_application() -> str:
 
 
 def _typescript_bans() -> Sequence[Mapping[str, object]]:
-    """Read the catalog's ESLint adapter."""
     return tuple(
         {"name": entry.name, "message": entry.message} for entry in library_policy.typescript_restricted_imports()
     )
 
 
 def _typescript_runtime_bans() -> list[dict[str, str]]:
-    """Translate TypeScript catalog entries to the custom runtime-loader rule schema."""
     restrictions: list[dict[str, str]] = []
     for entry in library_policy.catalog():
         if entry.ecosystem != "typescript":
@@ -136,7 +129,6 @@ def _typescript_runtime_bans() -> list[dict[str, str]]:
 
 
 def generated_configs() -> Mapping[Path, str]:
-    """Return every generated application artifact and its expected content."""
     return {
         _RUFF_APPLICATION: render_ruff_application(),
         _ESLINT_APPLICATION: render_eslint_application(),
@@ -144,7 +136,6 @@ def generated_configs() -> Mapping[Path, str]:
 
 
 def sync(*, check: bool) -> bool:
-    """Write generated artifacts, or report whether committed copies are current."""
     expected = generated_configs()
     if check:
         return all(

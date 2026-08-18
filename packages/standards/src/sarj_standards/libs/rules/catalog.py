@@ -1,5 +1,3 @@
-"""Deterministic lookup over known upstream and Sarj rules."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,8 +22,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class RuleCatalog:
-    """An immutable rule catalog with exact, explainable filters."""
-
     rules: tuple[CatalogRule, ...]
 
     @classmethod
@@ -38,7 +34,6 @@ class RuleCatalog:
         return cls(tuple(sorted(collected, key=lambda rule: rule.identifier)))
 
     def get(self, identifier: str) -> CatalogRule | None:
-        """Return one exact rule without fuzzy or model-dependent matching."""
         return next((rule for rule in self.rules if rule.identifier == identifier), None)
 
     def filter(
@@ -48,7 +43,6 @@ class RuleCatalog:
         origin: RuleOrigin | None = None,
         configurable: bool | None = None,
     ) -> tuple[CatalogRule, ...]:
-        """Return rules matching every explicit filter."""
         return tuple(
             rule
             for rule in self.rules
@@ -60,8 +54,6 @@ class RuleCatalog:
 
 @dataclass(frozen=True, slots=True)
 class DocumentedRule:
-    """One live rule plus only the derived state needed by public consumers."""
-
     spec: RuleSpec
     default_level: DefaultLevel
     source: PurePosixPath
@@ -80,8 +72,6 @@ class DocumentedRule:
 
 @dataclass(frozen=True, slots=True)
 class RuleCatalogDocument:
-    """Versioned, deterministic public catalog generated from native rule specs."""
-
     rules: tuple[DocumentedRule, ...]
     schema_version: int = 1
 
@@ -99,7 +89,6 @@ class RuleCatalogDocument:
             raise ValueError(msg)
 
     def as_public_dict(self) -> dict[str, object]:
-        """Serialize reviewed public data without timestamps or private cases."""
         return {
             "schemaVersion": self.schema_version,
             "rules": [self._rule_dict(rule) for rule in sorted(self.rules, key=lambda item: item.spec.key)],

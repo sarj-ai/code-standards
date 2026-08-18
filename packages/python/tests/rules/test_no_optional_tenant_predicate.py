@@ -40,7 +40,6 @@ def _count(source: str) -> int:
 
 
 def test_flags_conditional_tenant_predicate_with_tautology_fallback():
-    """The exact first-party shape that leaked a list endpoint across tenants."""
     src = (
         "def _build_filter_conditions(args):\n"
         "    where_conditions = []\n"
@@ -61,7 +60,6 @@ def test_flags_conditional_tenant_predicate_with_tautology_fallback():
 
 
 def test_flags_tautology_seeded_list():
-    """`clauses = [SQL("TRUE")]` plus an optional tenant clause is still fail-open."""
     src = (
         "def as_sql_query(self):\n"
         '    clauses = [SQL("TRUE")]\n'
@@ -75,7 +73,6 @@ def test_flags_tautology_seeded_list():
 
 
 def test_flags_when_seed_is_a_non_tenant_predicate():
-    """A `deleted_at IS NULL` seed does not scope anything; the tenant clause is still optional."""
     src = (
         "def list_scenarios(args):\n"
         '    where_conditions = [SQL("s.deleted_at IS NULL")]\n'
@@ -175,7 +172,6 @@ def test_recognises_alternate_tenant_column_names(column: str):
 
 
 def test_ignores_unconditional_seed():
-    """The safe idiom: the tenant predicate seeds the list, so it always applies."""
     src = (
         "def list_profiles(args):\n"
         '    conditions = [SQL("organization_id = %s")]\n'
@@ -211,7 +207,6 @@ def test_ignores_unconditional_extend():
 
 
 def test_ignores_query_with_no_tenant_predicate_at_all():
-    """An intentionally cross-tenant admin query never claimed to be scoped."""
     src = (
         "def list_all_assignments(direction):\n"
         '    clauses = [SQL("TRUE")]\n'
@@ -223,7 +218,6 @@ def test_ignores_query_with_no_tenant_predicate_at_all():
 
 
 def test_ignores_mixed_function_with_one_unconditional_predicate():
-    """One always-applied tenant clause is enough; the optional second one is a refinement."""
     src = (
         "def build(args):\n"
         '    c = [SQL("organization_id = %s")]\n'
@@ -273,7 +267,6 @@ def test_nested_function_predicate_does_not_mask_outer_scope():
 
 
 def test_ignores_tenant_column_in_a_select_list():
-    """`organization_id` as a projected column is not a predicate."""
     src = (
         "def build(args):\n"
         "    fields = []\n"

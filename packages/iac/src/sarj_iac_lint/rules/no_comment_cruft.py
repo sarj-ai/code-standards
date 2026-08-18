@@ -1,5 +1,3 @@
-"""SARJ202: Flags commented-out HCL and section banners in IaC files."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -57,8 +55,6 @@ _HCL_CODE_RE = re.compile(
 
 @final
 class NoCommentCruft(Rule):
-    """Commented-out HCL or a section-banner comment in an IaC file."""
-
     id = "no-comment-cruft"
     code = "SARJ202"
     documentation = RuleDocumentation(
@@ -156,7 +152,6 @@ class NoCommentCruft(Rule):
 
 
 def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[tuple[int, str]]]:
-    """Group comment lines into runs split by HCL, blanks, or heredoc text."""
     runs: list[list[tuple[int, str]]] = []
     current: list[tuple[int, str]] = []
     for lineno, raw in enumerate(lines, start=1):
@@ -173,7 +168,6 @@ def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[tup
 
 
 def _code_dominant_lines(lines: list[str], in_heredoc: Sequence[bool]) -> frozenset[int]:
-    """Return lines in runs where at least half the voting lines are HCL."""
     dominant: set[int] = set()
     for run in _comment_runs(lines, in_heredoc):
         voting = [(lineno, body) for lineno, body in run if body and not _is_directive(body)]
@@ -186,7 +180,6 @@ def _code_dominant_lines(lines: list[str], in_heredoc: Sequence[bool]) -> frozen
 
 
 def _banner_group_leaders(lines: list[str], in_heredoc: Sequence[bool]) -> frozenset[int]:
-    """Return the first rule line of each contiguous comment banner."""
     leaders: set[int] = set()
     for run in _comment_runs(lines, in_heredoc):
         seen_banner = False

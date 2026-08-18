@@ -15,7 +15,6 @@ def _check(source: str) -> list[Diagnostic]:
 
 
 def _cls(header: str, docstring: str, body: str = "    x: int = 1\n") -> list[Diagnostic]:
-    """Wrap a class header and docstring in a class with a real body."""
     return _check(f'class {header}:\n    """{docstring}"""\n\n{body}')
 
 

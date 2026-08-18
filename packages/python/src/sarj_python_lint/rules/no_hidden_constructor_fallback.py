@@ -1,8 +1,3 @@
-"""SARJ095 — Constructor options must not hide runtime configuration fallback.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_hidden_constructor_fallback.py
-"""
-
 from __future__ import annotations
 
 import ast

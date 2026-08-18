@@ -1338,7 +1338,6 @@ def test_two():
 
 
 def test_a_pathologically_deep_body_does_not_exhaust_the_stack():
-    """Normalisation deep-copies and `ast.dump`s each body, both recursive."""
     body = "e = " + " + ".join(['"a"'] * 1500)
     src = f"def test_one():\n    {body}\n    assert e\n\n\ndef test_two():\n    {body}\n    assert e\n"
     assert _check(src) == []

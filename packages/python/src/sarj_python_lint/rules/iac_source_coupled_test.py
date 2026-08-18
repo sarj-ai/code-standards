@@ -1,8 +1,3 @@
-"""SARJ412 — tests must not assert on raw IaC source text.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_iac_source_coupled_test.py
-"""
-
 from __future__ import annotations
 
 import ast

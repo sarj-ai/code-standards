@@ -1,5 +1,3 @@
-"""Cross-file comment and generated-artifact policy tests."""
-
 from pathlib import Path, PurePosixPath
 
 import pytest

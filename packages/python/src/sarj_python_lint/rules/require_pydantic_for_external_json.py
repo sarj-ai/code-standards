@@ -1,8 +1,3 @@
-"""SARJ411 — Validate external JSON before reading fixed fields.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_pydantic_for_external_json.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -417,7 +412,6 @@ def _fixed_record_call_receiver(node: ast.Call) -> ast.expr | None:
 
 
 def _summary_record_receiver(node: ast.AST) -> ast.expr | None:
-    """Return a helper's record receiver even when its key is a parameter."""
     if isinstance(node, ast.Subscript):
         return node.value
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _RECORD_METHODS:

@@ -1,8 +1,3 @@
-"""SARJ206 — committed Terraform test files are prohibited.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/iac/tests/rules/test_no_terraform_test_file.py
-"""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -29,8 +24,6 @@ _BANNED_SUFFIXES = (".tftest.hcl", ".tftest.json")
 
 @final
 class NoTerraformTestFile(Rule):
-    """Reject Terraform's source-coupled test-file formats by path."""
-
     id = "no-terraform-test-file"
     code = "SARJ206"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(

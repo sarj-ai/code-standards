@@ -1,5 +1,3 @@
-"""Performance regression test."""
-
 from __future__ import annotations
 
 import ast
@@ -54,12 +52,10 @@ def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> flo
 
 
 def _worst_path_time_s(rule_id: str, source: str) -> float:
-    """Time `rule_id` on every path flavour and return its slowest."""
     return max(_best_time_s(rule_id, path, source) for path in _PATHS)
 
 
 def _parse_baseline_s(repeats: int = 7) -> float:
-    """Best-of-N cost of `ast.parse` on the benchmark source."""
     best = float("inf")
     for _ in range(repeats):
         start = time.perf_counter()

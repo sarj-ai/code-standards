@@ -1,8 +1,3 @@
-"""SARJ409 — Imported production collections are not independent parametrized test oracles.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_production_derived_test_cases.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -39,7 +34,6 @@ class _PytestBindings(NamedTuple):
 
 
 def _scope_binding_counts(statements: list[ast.stmt]) -> dict[str, int]:
-    """Count bindings in one scope without attributing nested scopes to it."""
     counts: dict[str, int] = {}
     stack: list[ast.AST] = [*reversed(statements)]
     while stack:

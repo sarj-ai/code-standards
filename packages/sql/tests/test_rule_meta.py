@@ -1,5 +1,3 @@
-"""Every rule must be self-documenting: non-empty id, code, description, and a docstring."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -25,8 +23,6 @@ def test_rule_has_self_documenting_meta(rule_id: str) -> None:
     assert cls.description, f"{rule_id}: empty description"
     assert len(cls.description) >= 10
 
-    assert cls.__doc__, f"{rule_id}: missing docstring"
-
 
 def test_registry_keys_match_class_ids() -> None:
     for key, cls in REGISTRY.items():
@@ -47,7 +43,6 @@ def test_historical_aliases_are_documentation_only() -> None:
 
 
 def test_every_rule_has_valid_source_owned_documentation() -> None:
-    """Keep the generated catalog complete by requiring metadata on every live rule."""
     missing = sorted(rule_id for rule_id, cls in REGISTRY.items() if cls.documentation is None)
     assert not missing, f"rules missing source-owned documentation: {', '.join(missing)}"
 

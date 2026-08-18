@@ -1,8 +1,3 @@
-"""SARJ040 — A mock built without `spec=` accepts any attribute — spec it or fake it.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_mock_without_spec.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -147,7 +142,6 @@ class MockWithoutSpec(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag `unittest.mock` constructions in test files that carry no spec argument."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -178,8 +172,6 @@ class MockWithoutSpec(Rule):
 
 
 class _MockNames:
-    """The local names through which `unittest.mock` is reachable in one file."""
-
     def __init__(self) -> None:
         self.modules: set[str] = set()
         self.factories: dict[str, str] = {}
@@ -192,7 +184,6 @@ class _MockNames:
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _MockNames:
-        """Collect every local binding that resolves to `unittest.mock`."""
         found = cls()
         for node in nodes(tree, ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Import):
@@ -221,7 +212,6 @@ class _MockNames:
                     self.factories[alias.asname or alias.name] = alias.name
 
     def resolve(self, func: ast.expr) -> str | None:
-        """Map a call's callee onto the `unittest.mock` symbol it invokes."""
         if isinstance(func, ast.Name):
             if func.id in self.shadowed:
                 return None
@@ -250,8 +240,6 @@ class _MockNames:
 
 
 class _FileFacts:
-    """Per-file context the false-positive guards need."""
-
     def __init__(self) -> None:
         self.bound_name: dict[ast.Call, _ScopedName] = {}
         self.reads: dict[_ScopedName, set[str]] = {}
@@ -267,7 +255,6 @@ class _FileFacts:
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _FileFacts:
-        """Collect the name bindings, attribute reads, and import-failure arms of one file."""
         found = cls()
         scopes = _top_function_scopes(tree)
         constructors = _ImportedConstructors.from_tree(tree)
@@ -324,7 +311,6 @@ class _FileFacts:
         value: ast.expr | None,
         constructors: _ImportedConstructors,
     ) -> None:
-        """Record direct arguments of an imported constructor assigned to a local."""
         if not isinstance(target, ast.Name) or not isinstance(value, ast.Call) or not constructors.resolves(value.func):
             return
         direct_arguments = [argument for argument in value.args if isinstance(argument, ast.Name)]
@@ -350,14 +336,12 @@ class _FileFacts:
             self.path_calls.add((scope, path))
 
     def is_call_recorder(self, node: ast.Call) -> bool:
-        """Report whether the double bound by `node` is only ever called and introspected."""
         name = self.bound_name.get(node)
         if name is None or name not in self.called or name in self.escaped:
             return False
         return self.reads.get(name, set()) <= _MOCK_API_ATTRS
 
     def is_method_stub(self, node: ast.Call) -> bool:
-        """Report whether `node` is a canned stub for one method of some receiver."""
         path = self.attribute_target.get(node)
         if path is None:
             return False
@@ -368,7 +352,6 @@ class _FileFacts:
         return canned or bool(seen) or path in self.path_calls
 
     def is_inert_constructor_placeholder(self, node: ast.Call) -> bool:
-        """Report a local mock whose sole read is one direct constructor argument."""
         name = self.bound_name.get(node)
         if name is None:
             return False
@@ -378,8 +361,6 @@ class _FileFacts:
 
 
 class _ImportedConstructors(NamedTuple):
-    """Conservative bindings that are statically known to name imported classes."""
-
     direct: set[str]
     shadowed: set[str]
 
@@ -397,7 +378,6 @@ class _ImportedConstructors(NamedTuple):
 
 
 def _looks_like_class_name(name: str) -> bool:
-    """Use Python's class naming convention only after proving an import binding."""
     return bool(name) and name[0].isupper()
 
 
@@ -419,7 +399,6 @@ def _is_sys_modules_subscript(target: ast.expr | None) -> bool:
 
 
 def _escaped_names(argument: ast.expr) -> set[str]:
-    """Find names passed as values while ignoring reads of the mock assertion API."""
     escaped: set[str] = set()
 
     class _EscapeVisitor(ast.NodeVisitor):
@@ -437,7 +416,6 @@ def _escaped_names(argument: ast.expr) -> set[str]:
 
 
 def _dotted_path(expr: ast.expr) -> str | None:
-    """Render a pure `name.attr.attr` chain as a dotted string."""
     parts: list[str] = []
     while isinstance(expr, ast.Attribute):
         parts.append(expr.attr)
@@ -449,7 +427,6 @@ def _dotted_path(expr: ast.expr) -> str | None:
 
 
 def _shadowed_mock_bindings(tree: ast.Module, imported: set[str]) -> set[str]:
-    """Conservatively reject imported mock names rebound anywhere in the file."""
     rebound: set[str] = set()
     for node in nodes(tree, ast.Name, ast.arg, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler):
         match node:
@@ -465,7 +442,6 @@ def _shadowed_mock_bindings(tree: ast.Module, imported: set[str]) -> set[str]:
 
 
 def _top_function_scopes(tree: ast.Module) -> dict[int, int]:
-    """Map nodes to their outermost function so same-named locals cannot bleed across tests."""
     scopes: dict[int, int] = {}
 
     def visit(node: ast.AST, scope: int, function_scope: int | None) -> None:
@@ -481,7 +457,6 @@ def _top_function_scopes(tree: ast.Module) -> dict[int, int]:
 
 
 def _pytest_mocker_calls(tree: ast.Module) -> dict[ast.Call, str]:
-    """Resolve constructors reached through an actual pytest-mock fixture parameter."""
     found: dict[ast.Call, str] = {}
 
     class _Visitor(ast.NodeVisitor):

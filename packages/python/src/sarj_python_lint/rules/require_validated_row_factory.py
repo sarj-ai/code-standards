@@ -1,8 +1,3 @@
-"""SARJ414 requires fetched Psycopg rows to use ``class_row(Model)``.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_validated_row_factory.py
-"""
-
 from __future__ import annotations
 
 import ast

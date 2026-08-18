@@ -1,5 +1,3 @@
-"""Compatibility bundles depend only on exact, authoritative publications."""
-
 from __future__ import annotations
 
 from datetime import timedelta

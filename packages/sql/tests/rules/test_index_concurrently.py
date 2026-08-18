@@ -141,7 +141,6 @@ CREATE INDEX idx_users_email ON users (email);
 
 
 def test_flags_index_created_before_its_table_in_the_same_file():
-    """The boundary: "earlier in the file" is ordered, not merely "present"."""
     src = """
 CREATE INDEX idx_orders_user ON orders (user_id);
 CREATE TABLE orders (id BIGSERIAL PRIMARY KEY, user_id BIGINT);
@@ -150,7 +149,6 @@ CREATE TABLE orders (id BIGSERIAL PRIMARY KEY, user_id BIGINT);
 
 
 def test_flags_index_when_only_a_commented_out_create_table_precedes_it():
-    """The boundary: a masked `CREATE TABLE` is not a `CREATE TABLE`."""
     src = """
 -- CREATE TABLE orders (id BIGSERIAL PRIMARY KEY);
 CREATE INDEX idx_orders_user ON orders (user_id);
@@ -159,7 +157,6 @@ CREATE INDEX idx_orders_user ON orders (user_id);
 
 
 def test_allows_plain_create_index_in_sqlite():
-    """CONCURRENTLY is a syntax error outside Postgres."""
     src = "CREATE INDEX `i` ON `users` (`email`);"
     assert _check(src) == []
 
@@ -173,7 +170,6 @@ CREATE INDEX `email_idx` ON `sessions` (`email`);
 
 
 def test_flags_plain_create_index_with_no_dialect_marker():
-    """The boundary: the dialect guard must not widen to unmarked Postgres SQL."""
     src = 'CREATE INDEX idx_users_email ON "users" (email);'
     assert len(_check(src)) == 1
 

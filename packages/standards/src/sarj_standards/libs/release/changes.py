@@ -1,5 +1,3 @@
-"""Detect package-version changes between two repository revisions."""
-
 from __future__ import annotations
 
 import re
@@ -26,7 +24,6 @@ def changed_release_targets(
     after: str,
     runner: ProcessRunner = run_process,
 ) -> Mapping[str, bool]:
-    """Return deterministic target flags for a GitHub release workflow."""
     changed: dict[str, bool] = {}
     for name, target in RELEASE_TARGETS.items():
         result = runner(
@@ -47,6 +44,5 @@ def pending_release_targets(
     runner: ProcessRunner = run_process,
     checker: PublicationChecker = publication_exists,
 ) -> Mapping[str, bool]:
-    """Return current versions absent from their immutable registry, including interrupted releases."""
     _ = changed_release_targets(root, before=before, after=after, runner=runner)
     return {name: not checker(target_requirement(root, name)) for name in RELEASE_TARGETS}

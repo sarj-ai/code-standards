@@ -1,5 +1,3 @@
-"""Shared file-scope predicates for the file-scope-gated rules."""
-
 from __future__ import annotations
 
 import ast
@@ -66,7 +64,6 @@ _MAX_ANCESTOR_DEPTH = 40
 
 
 def is_generated_source(source: str) -> bool:
-    """Report whether `source` self-identifies as generated code."""
     bodies = _leading_header_bodies(source)
     non_ai = [body for body in bodies if _AI_ATTRIBUTION_RE.search(body) is None]
     for body in non_ai:
@@ -78,7 +75,6 @@ def is_generated_source(source: str) -> bool:
 
 
 def _leading_header_bodies(source: str) -> list[str]:
-    """Return real leading comments or a module docstring, stopping at code."""
     bodies: list[str] = []
     tokens = tokenize.generate_tokens(StringIO(source).readline)
     while True:
@@ -109,18 +105,15 @@ def _leading_header_bodies(source: str) -> list[str]:
 
 @lru_cache(maxsize=256)
 def _is_codegen_root(directory: Path) -> bool:
-    """Report whether `directory` holds a code generator's config or ignore file."""
     return any((directory / name).exists() for name in _CODEGEN_MARKER_NAMES)
 
 
 @lru_cache(maxsize=256)
 def _is_repo_root(directory: Path) -> bool:
-    """Report whether `directory` is a repository root."""
     return any((directory / name).exists() for name in _REPO_ROOT_MARKERS)
 
 
 def is_generated_path(path: Path) -> bool:
-    """Report whether `path` sits in a tree of generated or vendored code."""
     if any(part.lower() in _GENERATED_DIR_NAMES for part in path.parts):
         return True
     for depth, ancestor in enumerate(path.parents):
@@ -136,18 +129,15 @@ def is_generated_path(path: Path) -> bool:
 
 
 def clear_path_caches() -> None:
-    """Start one rule run with fresh, bounded filesystem marker lookups."""
     _is_codegen_root.cache_clear()
     _is_repo_root.cache_clear()
 
 
 def is_generated(path: Path, source: str) -> bool:
-    """Report whether the file is generated, by either header or location."""
     return is_generated_source(source) or is_generated_path(path)
 
 
 def is_test_path(path: Path) -> bool:
-    """Report whether `path` is a test file."""
     name = path.name
     if name == "conftest.py" or name.startswith("test_") or name.endswith("_test.py"):
         return True
@@ -155,7 +145,6 @@ def is_test_path(path: Path) -> bool:
 
 
 def is_test_support_path(path: Path) -> bool:
-    """Report shared test builders and doubles kept outside a test tree."""
     parts = {part.lower() for part in path.parts}
     stem = path.stem.lower()
     return bool(parts & _TEST_SUPPORT_DIR_NAMES or (not stem.endswith("_prod") and _TEST_SUPPORT_STEM_RE.search(stem)))

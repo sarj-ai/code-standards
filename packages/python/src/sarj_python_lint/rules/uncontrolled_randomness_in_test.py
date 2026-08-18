@@ -1,8 +1,3 @@
-"""SARJ410 — Repeated unseeded PRNG sampling makes a test probabilistic.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_uncontrolled_randomness_in_test.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -57,7 +52,6 @@ def _bound_target_names(node: ast.AST) -> set[str]:
 
 
 def _scope_binding_events(statements: list[ast.stmt]) -> list[str]:
-    """Return binding events in one scope without entering nested scopes."""
     bindings: list[str] = []
     stack: list[ast.AST] = [*reversed(statements)]
     while stack:
@@ -143,7 +137,6 @@ def _is_seed_call(node: ast.Call, modules: set[str], seeds: set[str]) -> bool:
 
 
 def _test_nodes(test: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
-    """Walk one collected test without attributing nested helpers to it."""
     stack: list[ast.AST] = [*reversed(test.body)]
     while stack:
         node = stack.pop()
@@ -154,7 +147,6 @@ def _test_nodes(test: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AS
 
 
 def _bounded_nodes(root: ast.AST) -> Iterator[ast.AST]:
-    """Walk a subtree without entering nested callable or class scopes."""
     stack = [root]
     while stack:
         node = stack.pop()

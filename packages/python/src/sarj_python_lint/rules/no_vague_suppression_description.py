@@ -1,8 +1,3 @@
-"""SARJ419 — Suppression descriptions must name the concrete mismatch or invariant.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_vague_suppression_description.py
-"""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath

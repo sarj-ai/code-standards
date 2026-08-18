@@ -1,5 +1,3 @@
-"""Bounded, run-scoped first-party symbol index for project-aware rules."""
-
 from __future__ import annotations
 
 import ast
@@ -76,8 +74,6 @@ class LoadedSource:
 
 @final
 class ProjectIndexSet:
-    """Immutable summaries for every bounded first-party root in one lint run."""
-
     def __init__(self, units: Mapping[Path, SourceUnit]) -> None:
         self._units = MappingProxyType(dict(units))
         by_module = {unit.module: unit for unit in units.values() if unit.module is not None}
@@ -348,11 +344,11 @@ def _field_key(type_name: str) -> str:
 
 
 def _tail(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return ""
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""
 
 
 def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:

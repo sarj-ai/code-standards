@@ -1,13 +1,8 @@
-"""SARJ098 — Reject duplicate names in a static module ``__all__``.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_duplicate_dunder_all_entry.py
-"""
-
 from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -27,10 +22,14 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+class _LiteralElement(NamedTuple):
+    value: str
+    line: int
+    column: int
+
+
 @final
 class NoDuplicateDunderAllEntry(Rule):
-    """Find later duplicates in a fully static package export declaration."""
-
     id = "no-duplicate-dunder-all-entry"
     code = "SARJ098"
     documentation = RuleDocumentation(
@@ -129,7 +128,6 @@ def _assigns_dunder_all(statement: ast.AST) -> bool:
 
 
 def _has_other_dunder_all_rebindings(tree: ast.Module, declaration: ast.stmt) -> bool:
-    """Skip when code outside ``declaration`` may change or obscure its final surface."""
     for statement in tree.body:
         if statement is declaration:
             continue
@@ -141,7 +139,6 @@ def _has_other_dunder_all_rebindings(tree: ast.Module, declaration: ast.stmt) ->
 
 
 def _is_cardinality_preserving_dunder_all_mutation(statement: ast.stmt) -> bool:
-    """Accept mutations that cannot erase a duplicate already in the literal."""
     match statement:
         case ast.Expr(
             value=ast.Call(func=ast.Attribute(value=ast.Name(id="__all__"), attr="append" | "extend" | "insert"))
@@ -152,7 +149,6 @@ def _is_cardinality_preserving_dunder_all_mutation(statement: ast.stmt) -> bool:
 
 
 def _mentions_dunder_all(node: ast.AST) -> bool:
-    """Detect references and string-stored bindings of the module export name."""
     for child in ast.walk(node):
         match child:
             case ast.Name(id="__all__"):
@@ -174,7 +170,7 @@ def _mentions_dunder_all(node: ast.AST) -> bool:
     return False
 
 
-def _literal_elements(statement: ast.stmt) -> list[tuple[str, int, int]] | None:
+def _literal_elements(statement: ast.stmt) -> list[_LiteralElement] | None:
     value: ast.expr | None
     match statement:
         case ast.Assign(targets=[ast.Name(id="__all__")]) | ast.AnnAssign(target=ast.Name(id="__all__"), simple=1):
@@ -183,9 +179,9 @@ def _literal_elements(statement: ast.stmt) -> list[tuple[str, int, int]] | None:
             return None
     if not isinstance(value, (ast.List, ast.Tuple)):
         return None
-    elements: list[tuple[str, int, int]] = []
+    elements: list[_LiteralElement] = []
     for element in value.elts:
         if not isinstance(element, ast.Constant) or not isinstance(element.value, str):
             return None
-        elements.append((element.value, element.lineno, element.col_offset + 1))
+        elements.append(_LiteralElement(element.value, element.lineno, element.col_offset + 1))
     return elements

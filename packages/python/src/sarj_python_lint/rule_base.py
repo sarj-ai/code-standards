@@ -1,5 +1,3 @@
-"""Base types for sarj-python-lint rules."""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -94,8 +92,6 @@ type ExamplePath = str
 
 @dataclass(frozen=True, slots=True)
 class ExampleFile:
-    """One virtual source file in a rule example."""
-
     path: PurePosixPath
     source: str = field(repr=False)
 
@@ -109,14 +105,11 @@ class ExampleFile:
 
     @classmethod
     def python(cls, path: ExamplePath, source: str) -> Self:
-        """Build a Python example file without leaking path parsing into rules."""
         return cls(PurePosixPath(path), source)
 
 
 @dataclass(frozen=True, slots=True)
 class RuleExample:
-    """A reviewed, executable example; examples are private unless opted in."""
-
     example_id: str
     outcome: ExampleOutcome
     files: tuple[ExampleFile, ...]
@@ -166,8 +159,6 @@ class RuleExample:
 
 @dataclass(frozen=True, slots=True)
 class RuleDocumentation:
-    """Source-authored rule prose and reviewed examples."""
-
     summary: str
     rationale: str
     remediation: str
@@ -214,8 +205,6 @@ class RuleDocumentation:
 
 @dataclass(frozen=True, slots=True)
 class NativeRuleSpec:
-    """Complete native rule record adapted from a rule class and its authored docs."""
-
     engine: str
     rule_id: str
     code: str
@@ -241,8 +230,6 @@ class NativeRuleSpec:
 
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
-    """A single lint finding."""
-
     path: Path
     line: int
     col: int
@@ -252,14 +239,11 @@ class Diagnostic:
     column_encoding: ColumnEncoding = ColumnEncoding.UTF8_BYTES
 
     def format(self) -> str:
-        """Render the finding ruff-compatibly as `path:line:col: CODE message`."""
         label = "warning: " if self.severity is Severity.WARNING else ""
         return f"{self.path}:{self.line}:{self.col}: {self.code} {label}{self.message}"
 
 
 class Rule(ABC):
-    """Base class for a single lint rule."""
-
     id: str
     code: str
     description: str
@@ -267,7 +251,6 @@ class Rule(ABC):
 
     @abstractmethod
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Inspect the given source."""
         raise NotImplementedError
 
     @classmethod
@@ -280,7 +263,6 @@ class Rule(ABC):
 
     @classmethod
     def native_spec(cls) -> NativeRuleSpec | None:
-        """Adapt source-owned documentation while deriving engine, ID, and code."""
         authored = cls.documentation
         if authored is None:
             return None
@@ -306,18 +288,14 @@ class Rule(ABC):
 
     @classmethod
     def public_examples(cls) -> tuple[RuleExample, ...]:
-        """Return the rule's explicitly publishable canonical fixtures."""
         spec = cls.native_spec()
         return () if spec is None else spec.public_examples
 
 
 class ProjectRule(Rule):
-    """A rule that may resolve first-party symbols prepared once per CLI run."""
-
     _project_indexes: ProjectIndexSet | None = None
 
     def prepare(self, indexes: ProjectIndexSet) -> None:
-        """Attach immutable project symbols before checking the selected files."""
         self._project_indexes = indexes
 
 
@@ -325,7 +303,6 @@ _last_parse: tuple[str, str, ast.Module | None] | None = None
 
 
 def parse_or_none(path: Path, source: str) -> ast.Module | None:
-    """Parse `source`, memoizing the most recent file so N rules share one parse."""
     global _last_parse  # ruff:ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
     path_key = str(path)
     if _last_parse is not None and _last_parse[0] == path_key and _last_parse[1] is source:

@@ -1,5 +1,3 @@
-"""Executable contract for SARJ019 / no-query-with-many-joins."""
-
 from pathlib import Path
 
 import pytest
@@ -22,7 +20,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def _sql_with_joins(n: int, join_kw: str = "JOIN") -> str:
-    """Build an assignment whose query has exactly `n` join clauses."""
     clauses = " ".join(f"{join_kw} t{i} ON t{i}.id = base.id" for i in range(n))
     return f'q = "SELECT * FROM base {clauses}"'  # ruff:ignore[hardcoded-sql-expression] — synthetic lint-rule fixture, not a real query
 

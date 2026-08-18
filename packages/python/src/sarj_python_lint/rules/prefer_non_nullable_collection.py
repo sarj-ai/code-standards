@@ -1,8 +1,3 @@
-"""SARJ082 — Prefer non-null list parameters when local use proves equivalence.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_non_nullable_collection.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -120,7 +115,6 @@ class PreferNonNullableCollection(Rule):
 
 
 def _eligible_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    """Return locally controlled module functions and constructors, excluding possibly inherited ordinary methods."""
     functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -185,7 +179,6 @@ def _is_only_empty_normalization(function: ast.FunctionDef | ast.AsyncFunctionDe
 
 
 def _captured_by_nested_scope(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
-    """Take a false negative when a closure also observes the nullable parameter."""
     for node in ast.walk(function):
         if node is function or not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             continue
@@ -198,7 +191,6 @@ def _captured_by_nested_scope(function: ast.FunctionDef | ast.AsyncFunctionDef, 
 
 
 def _starts_with_empty_normalization(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
-    """Recognize a first-statement guard or self-assignment that erases None."""
     statements = [statement for statement in function.body if not _is_docstring(statement)]
     if not statements:
         return False
@@ -231,7 +223,6 @@ def _starts_with_empty_normalization(function: ast.FunctionDef | ast.AsyncFuncti
 
 
 def _empty_normalizing_conditional(conditional: ast.IfExp, name: str) -> ast.Compare | None:
-    """Return the identity test when a conditional only replaces ``None`` with an empty list."""
     match conditional:
         case ast.IfExp(
             test=(
@@ -275,7 +266,6 @@ def _observes_none(
     *,
     allowed: ast.Compare | None,
 ) -> bool:
-    """Report a second identity check that preserves None as a meaningful state."""
     for node, _parent in _body_nodes(function):
         if node is allowed or not isinstance(node, ast.Compare):
             continue
@@ -325,7 +315,6 @@ def _forwards_inherited_constructor_parameter(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     name: str,
 ) -> bool:
-    """Preserve a nullable constructor parameter inherited from an external base."""
     if not any(_qualified_name(base).split(".")[-1] != "object" for base in owner.bases):
         return False
     for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):

@@ -1,5 +1,3 @@
-"""Detect a repo's npm client, and speak its dialect for overrides and installs."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -52,7 +50,6 @@ _EXACT_VERSION = re.compile(
 
 
 def detect(root: Path) -> PackageManager:
-    """Select the declared package manager or infer one from its lockfile."""
     declared = _declared_manager(root / "package.json")
     if declared is not None:
         return declared
@@ -67,7 +64,6 @@ def detect(root: Path) -> PackageManager:
 
 
 def workspace_root(project_root: Path, repository_root: Path) -> Path:
-    """Find the package-manager root without ever ascending past the repository."""
     repository = repository_root.resolve()
     project = project_root.resolve()
     try:
@@ -89,7 +85,6 @@ def _has_lock(root: Path) -> bool:
 
 
 def yarn_variant(root: Path) -> YarnVariant:
-    """Tell Yarn 1 from Berry without running either."""
     declared = _declared_manager_spec(root / "package.json")
     if declared is not None and declared.split("@", 1)[0] == PackageManager.YARN:
         major = declared.partition("@")[2].partition(".")[0]
@@ -101,7 +96,6 @@ def yarn_variant(root: Path) -> YarnVariant:
 
 
 def declared_version(root: Path, client: PackageManager) -> str | None:
-    """Return an exact declared client version without Corepack's integrity suffix."""
     declared = _declared_manager_spec(root / "package.json")
     if declared is None:
         return None
@@ -142,14 +136,11 @@ def _declared_manager(package_json: Path) -> PackageManager | None:
 
 @dataclass(frozen=True)
 class Overrides:
-    """One package manager's spelling of the peer overrides."""
-
     #: The package-manager policy document key path, outermost first.
     key_path: tuple[str, ...]
     entries: dict[str, object]
 
     def as_document(self) -> dict[str, object]:
-        """Nest the entries under their key path, for printing."""
         document: dict[str, object] = dict(self.entries)
         for key in reversed(self.key_path):
             document = {key: document}
@@ -157,7 +148,6 @@ class Overrides:
 
 
 def overrides_for(client: PackageManager) -> Overrides:
-    """Translate the bundled npm overrides into one client's dialect."""
     npm_entries = manifest.eslint_overrides()
     match client:
         case PackageManager.NPM:
@@ -172,7 +162,6 @@ def overrides_for(client: PackageManager) -> Overrides:
 
 
 def pnpm_workspace_values(text: str) -> dict[str, str]:
-    """Read scalar pnpm workspace override entries without accepting comments."""
     values: dict[str, str] = {}
     in_overrides = False
     for line in text.splitlines():
@@ -190,15 +179,6 @@ def pnpm_workspace_values(text: str) -> dict[str, str]:
 
 
 def _flatten(entries: Mapping[str, object], separator: str) -> Iterator[tuple[str, str]]:
-    """Rewrite npm's nested overrides as the flat selectors pnpm and Yarn take.
-
-    npm expresses "force this version of `child` only underneath `parent`" by
-    nesting; pnpm and Yarn express it as one `parent>child` / `parent/child` key.
-    npm's `$dep` indirection ("whatever the root depends on") is resolved here
-    against the shipped peer set, because Yarn has no equivalent and a literal
-    `$eslint` in a `resolutions` entry is a version range Yarn cannot parse.
-
-    """
     peers = manifest.eslint_peers()
     for parent, value in entries.items():
         nested = manifest.as_table(value)
@@ -218,7 +198,6 @@ def _resolved(value: object, peers: Mapping[str, str]) -> str:
 
 
 def _resolved_tree(value: object) -> object:
-    """Replace npm `$dep` references that npm 11 misresolves during peer updates."""
     nested = manifest.as_table(value)
     if nested:
         return {name: _resolved_tree(pin) for name, pin in nested.items()}
@@ -231,7 +210,6 @@ def install_command(
     workspace: bool = False,
     yarn: YarnVariant = YarnVariant.CLASSIC,
 ) -> str:
-    """Build the script-free command that locks package.json's exact peers."""
     match client:
         case PackageManager.NPM:
             return "npm install --ignore-scripts --no-audit --no-fund"
@@ -271,7 +249,6 @@ def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
 
 
 def install_note(client: PackageManager, *, yarn: YarnVariant = YarnVariant.CLASSIC) -> str | None:
-    """Explain the one thing each client needs beyond the install command."""
     if client is PackageManager.YARN:
         note = (
             "Yarn resolves `resolutions` at install time, so re-run `yarn install`"

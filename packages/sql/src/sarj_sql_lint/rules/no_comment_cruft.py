@@ -1,5 +1,3 @@
-"""SARJ113 — Remove commented-out SQL, banners, and unowned debt markers."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -48,8 +46,6 @@ _DIRECTIVE_RE = re.compile(
 
 @final
 class NoCommentCruft(Rule):
-    """Commented-out SQL, decorative banners, and unowned debt markers."""
-
     id = "no-comment-cruft"
     code = "SARJ113"
     documentation = RuleDocumentation(

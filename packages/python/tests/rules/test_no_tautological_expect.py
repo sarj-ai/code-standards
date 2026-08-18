@@ -50,7 +50,6 @@ def test_flags_truthy_constants(literal: str):
 
 
 def test_flags_set_display_wrapping_a_real_condition():
-    """The Home Assistant shape: braces instead of parentheses make it a set literal."""
     src = (
         "def test_via_device_missing(caplog):\n"
         "    assert {\n"
@@ -64,7 +63,6 @@ def test_flags_set_display_wrapping_a_real_condition():
 
 
 def test_flags_list_display_that_lost_its_comparison():
-    """The Airflow shape: `assert [msg]` where the `== messages` was dropped."""
     src = 'def test_read_remote_logs_not_found(ti):\n    assert [f"No logs found on hdfs for ti={ti}"]\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -82,12 +80,10 @@ def test_flags_every_non_empty_container_display(display: str, kind: str):
 
 
 def test_flags_container_holding_a_runtime_value():
-    """A non-empty display is truthy whatever it holds, so `[x]` still cannot fail."""
     assert _count("def test_x(x):\n    assert [x]\n") == 1
 
 
 def test_flags_value_that_slid_into_the_message_slot():
-    """The emulated_hue shape: `assert True, <the thing you meant to check>`."""
     src = 'def test_hue(cover_result_json):\n    assert True, cover_result_json[0]["success"]["on"]\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -130,7 +126,6 @@ def test_flags_each_assertion_separately_and_sorts_by_position():
 
 
 def test_fires_outside_test_files_too():
-    """A never-failing assertion in production code is the same defect."""
     assert len(_check("def guard():\n    assert True\n", "src/app/service.py")) == 1
 
 
@@ -146,7 +141,6 @@ def test_flags_every_constant_condition_sarj064_ceded(condition: str):
 
 
 def test_flags_a_constant_condition_carrying_a_message():
-    """SARJ064's `assert True, "we got here"` case; the message slot changes nothing."""
     diags = _check('def test_thing():\n    assert True, "we got here"\n')
     assert len(diags) == 1
     assert "assertion-message slot" in diags[0].message
@@ -154,7 +148,6 @@ def test_flags_a_constant_condition_carrying_a_message():
 
 @pytest.mark.parametrize("condition", ["not False", "not 0", "not ''", "not None", "not 0.0", "not b''"])
 def test_flags_not_applied_to_a_falsy_constant(condition: str):
-    """The one shape SARJ064 had that this rule lacked, moved rather than dropped."""
     diags = _check(f"def test_thing():\n    assert {condition}\n")
     assert len(diags) == 1, condition
     assert "constant truthy value" in diags[0].message, condition
@@ -162,19 +155,16 @@ def test_flags_not_applied_to_a_falsy_constant(condition: str):
 
 @pytest.mark.parametrize("condition", ["not x", "not x.errors", "not f(x)", "not []", "not [*items]"])
 def test_ignores_not_applied_to_a_runtime_value(condition: str):
-    """`assert not x` is an ordinary assertion — the syntax cannot decide it."""
     assert _count(f"def test_thing(x, items):\n    assert {condition}\n") == 0, condition
 
 
 @pytest.mark.parametrize("condition", ["not True", "not 1", "not 'x'"])
 def test_ignores_not_applied_to_a_truthy_constant(condition: str):
-    """`assert not True` always fails, which is loud on the first run."""
     assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
 
 
 @pytest.mark.parametrize("condition", ["False", "None", "0", "''", "[]", "{}", "()"])
 def test_ignores_falsy_constant_conditions_sarj064_also_ignored(condition: str):
-    """An always-failing assertion self-corrects; `assert False` is ruff's B011 besides."""
     assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
 
 
@@ -212,7 +202,6 @@ def test_the_moved_not_shape_obeys_the_failing_match_arm_carve_out():
 
 
 def test_the_construction_shapes_stay_sarj064s():
-    """SARJ057 models no cross-statement construction, so it must stay silent."""
     echo = 'def test_thing():\n    u = User(name="bo")\n    assert u.name == "bo"\n'
     isinstance_check = "def test_thing():\n    u = User()\n    assert isinstance(u, User)\n"
     assert _count(echo) == 0
@@ -229,7 +218,6 @@ def test_ignores_identifier_self_comparison(expr: str):
 
 @pytest.mark.parametrize("expr", ["hash(o) == hash(o)", "f(1) == f(1)", "parse('a') is parse('a')"])
 def test_ignores_call_self_comparison(expr: str):
-    """`hash(o) == hash(o)` is a determinism test on a custom `__hash__`."""
     assert _count(f"def test_x(o):\n    assert {expr}\n") == 0, expr
 
 
@@ -257,7 +245,6 @@ def test_ignores_unittest_self_comparison_of_a_value():
 
 
 def test_ignores_assert_true_as_sole_except_body():
-    """The deliberate 'this exception is the acceptable outcome' marker."""
     src = (
         "def test_connect_failure(hass, entry):\n"
         "    try:\n"
@@ -270,13 +257,11 @@ def test_ignores_assert_true_as_sole_except_body():
 
 
 def test_flags_assert_true_that_is_not_the_whole_except_body():
-    """Only a lone marker is exempt; an except handler doing real work is not."""
     src = "def test_x():\n    try:\n        f()\n    except ValueError:\n        assert True\n        cleanup()\n"
     assert _count(src) == 1
 
 
 def test_ignores_benchmark_fixture_body():
-    """pydantic-core's timed failing-validation path: `assert False` / `assert True`."""
     src = (
         "def test_core_validation_error(benchmark):\n"
         "    def validate_with_expected_error():\n"
@@ -315,18 +300,15 @@ def test_does_not_treat_a_declared_but_unused_benchmark_param_as_a_benchmark():
 
 
 def test_ignores_assert_false():
-    """The standard unreachable marker — and an always-failing assert is loud, not silent."""
     assert _count('def test_x():\n    assert False, "unreachable"\n') == 0
 
 
 @pytest.mark.parametrize("display", ["[]", "()", "{}"])
 def test_ignores_empty_container(display: str):
-    """`assert []` always fails, which surfaces on the first run."""
     assert _count(f"def test_x():\n    assert {display}\n") == 0, display
 
 
 def test_ignores_splatted_container():
-    """`[*items]` is empty when `items` is, so its truth is a runtime question."""
     assert _count("def test_x(items):\n    assert [*items]\n") == 0
     assert _count("def test_x(extra):\n    assert {**extra}\n") == 0
 
@@ -348,13 +330,11 @@ def test_ignores_ordinary_assertions():
 
 
 def test_ignores_non_assertion_literals():
-    """A literal in a return, a call argument or a default is nobody's assertion."""
     src = 'def build():\n    values = [1]\n    check(True)\n    return {"a": 1}\n'
     assert _count(src) == 0
 
 
 def test_flags_unittest_equality_carrying_only_a_msg_keyword():
-    """`msg=` is the failure text; it changes nothing about the outcome."""
     src = "class T(TestCase):\n    def test_x(self):\n        self.assertEqual(1, 1, msg='x')\n"
     assert _count(src) == 1
 
@@ -376,7 +356,6 @@ def test_ignores_empty_source():
 
 
 def test_ignores_assert_true_marking_a_match_arm_beside_a_raising_arm():
-    """First-party PDF-processor suite — the matched pattern IS the assertion."""
     src = (
         "def test_wrong_password(tmpdir):\n"
         "    match PROCESSOR.process(source_file=protected, password='not right'):\n"
@@ -413,7 +392,6 @@ def test_ignores_a_match_arm_marker_beside_an_assert_false_arm():
 
 
 def test_flags_a_match_arm_marker_when_no_arm_can_fail():
-    """Without a failing arm the `match` proves nothing, so the assertion is bare."""
     src = (
         "def test_x():\n"
         "    match go():\n"
@@ -426,7 +404,6 @@ def test_flags_a_match_arm_marker_when_no_arm_can_fail():
 
 
 def test_flags_a_constant_assert_outside_the_match_that_has_a_failing_arm():
-    """The carve-out reaches the arms, not the whole function."""
     src = (
         "def test_x():\n"
         "    match go():\n"

@@ -1,8 +1,3 @@
-"""SARJ044 — A fixture returning a bare tuple forces positional unpacking everywhere.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_fixture_returns_bare_tuple.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -86,7 +81,6 @@ class FixtureReturnsBareTuple(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag pytest fixtures whose own body returns or yields a bare tuple."""
         if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
@@ -252,7 +246,6 @@ def _fixed_tuple_return_arity(
 
 
 def _optional_member(annotation: ast.expr) -> ast.expr | None:
-    """Return ``T`` from a statically proven ``T | None``/``Optional[T]``."""
     if isinstance(annotation, ast.Subscript):
         name = _dotted_tail(annotation.value)
         if name == "Optional":
@@ -278,11 +271,11 @@ def _only_non_none(members: list[ast.expr]) -> ast.expr | None:
 
 
 def _dotted_tail(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return None
 
 
 def _has_own_yield(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

@@ -1,8 +1,3 @@
-"""SARJ018 — Embedded `INSERT INTO ... VALUES/SELECT` in store code must be an upsert.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_store_insert_requires_on_conflict.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -140,7 +135,6 @@ def _enclosing_callable(
     tree: ast.AST,
     node: ast.expr,
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Return the narrowest callable whose source range owns `node`."""
     owners = [
         function
         for function in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
@@ -150,6 +144,5 @@ def _enclosing_callable(
 
 
 def _source_span(function: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Return a callable's source span for nearest-owner selection."""
     end_lineno = function.end_lineno
     return (end_lineno if end_lineno is not None else function.lineno) - function.lineno

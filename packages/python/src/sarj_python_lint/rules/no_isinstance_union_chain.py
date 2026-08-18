@@ -1,8 +1,3 @@
-"""SARJ003 — `if/elif isinstance(...)` chains that dispatch over a *local* closed union.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_isinstance_union_chain.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -167,12 +162,10 @@ class NoIsinstanceUnionChain(Rule):
 
 
 def _parent_index(tree: ast.Module) -> dict[ast.AST, ast.AST]:
-    """Index parents so local class evidence can respect Python lexical scopes."""
     return {child: owner for owner in ast.walk(tree) for child in ast.iter_child_nodes(owner)}
 
 
 def _class_bindings_by_scope(tree: ast.Module, parent: dict[ast.AST, ast.AST]) -> dict[ast.AST, frozenset[str]]:
-    """Collect class names by the namespace that actually owns each binding."""
     mutable: dict[ast.AST, set[str]] = {}
     for class_node in nodes(tree, ast.ClassDef):
         owner = _binding_scope(class_node, tree, parent)
@@ -181,7 +174,6 @@ def _class_bindings_by_scope(tree: ast.Module, parent: dict[ast.AST, ast.AST]) -
 
 
 def _binding_scope(node: ast.AST, tree: ast.Module, parent: dict[ast.AST, ast.AST]) -> ast.AST:
-    """Return the namespace in which a class statement binds its name."""
     current = parent.get(node)
     while current is not None:
         if isinstance(current, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
@@ -196,12 +188,6 @@ def _visible_local_classes(
     parent: dict[ast.AST, ast.AST],
     classes_by_scope: dict[ast.AST, frozenset[str]],
 ) -> frozenset[str]:
-    """Return class bindings visible as bare names at one dispatch site.
-
-    Function scopes close over enclosing function scopes but skip intervening
-    class namespaces. A class namespace is visible only while its body itself
-    is executing, before a method/function scope is entered.
-    """
     visible_scopes: list[ast.AST] = [tree]
     current = parent.get(node)
     entered_function = False
@@ -216,7 +202,6 @@ def _visible_local_classes(
 
 
 def _qualifying_chain_length(head: ast.If, local_classes: frozenset[str]) -> int:
-    """Count the arms if `head` is a local-closed-union dispatch chain, else 0."""
     first_target: ast.expr | None = None
     count = 0
     current: ast.If | None = head
@@ -251,7 +236,6 @@ def _qualifying_chain_length(head: ast.If, local_classes: frozenset[str]) -> int
 
 
 def _is_exhaustive_terminal(orelse: list[ast.stmt]) -> bool:
-    """Report whether the trailing `else` block terminates instead of falling through."""
     if not orelse:
         return False
     return any(_stmt_terminates(stmt) for stmt in orelse)
@@ -272,7 +256,6 @@ def _stmt_terminates(stmt: ast.stmt) -> bool:
 
 
 def _shadows_isinstance(tree: ast.Module) -> bool:
-    """Report whether this module can no longer prove the builtin binding."""
     for node in ast.walk(tree):
         match node:
             case ast.Name(id="isinstance", ctx=ast.Store()) | ast.arg(arg="isinstance"):
@@ -302,12 +285,10 @@ def _is_assert_never(func: ast.expr) -> bool:
 
 
 def _ast_equal(a: ast.expr, b: ast.expr) -> bool:
-    """Compare `a` and `b` structurally, ignoring source positions."""
     return ast.dump(a) == ast.dump(b)
 
 
 def _isinstance_single_type(test: ast.expr) -> _IsinstanceTypeTest | None:
-    """Parse `test` as `isinstance(x, T)` with a single (non-tuple) type argument."""
     if not isinstance(test, ast.Call):
         return None
     if not (isinstance(test.func, ast.Name) and test.func.id == "isinstance"):

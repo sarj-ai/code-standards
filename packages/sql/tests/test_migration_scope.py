@@ -1,5 +1,3 @@
-"""Shared production-PostgreSQL migration scope."""
-
 from pathlib import Path
 
 import pytest

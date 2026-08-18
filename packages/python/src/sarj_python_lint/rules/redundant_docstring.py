@@ -1,8 +1,3 @@
-"""SARJ050 — A docstring that only re-spells the signature it sits under.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_docstring.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -42,7 +37,6 @@ _DIGITS_RE = re.compile(r"\d+")
 
 
 def _numeric_content(node: ast.FunctionDef | ast.AsyncFunctionDef, docstring: str, class_name: str | None) -> bool:
-    """Return whether the docstring names a number absent from the signature."""
     in_docstring = set(_DIGITS_RE.findall(docstring))
     if not in_docstring:
         return False
@@ -50,7 +44,6 @@ def _numeric_content(node: ast.FunctionDef | ast.AsyncFunctionDef, docstring: st
 
 
 def _signature_text(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str | None) -> str:
-    """Render the owning class, function, parameters, and annotations."""
     parts: list[str] = [node.name]
     if class_name is not None:
         parts.append(class_name)

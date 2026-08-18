@@ -1,5 +1,3 @@
-"""Standard machine formats for canonical Standards diagnostics."""
-
 from __future__ import annotations
 
 from heapq import nsmallest
@@ -13,12 +11,10 @@ _GITHUB_ANNOTATION_LIMIT = 10
 
 
 def to_json(report: AnalysisReport, *, indent: int | None = 2) -> str:
-    """Serialize the canonical Standards analysis schema deterministically."""
     return json.dumps(report.as_dict(), indent=indent, sort_keys=True) + "\n"
 
 
 def to_sarif(report: AnalysisReport) -> str:
-    """Serialize SARIF 2.1.0 for GitHub, editors, and analysis aggregators."""
     rules = _sarif_rules(report)
     payload: dict[str, object] = {
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
@@ -59,7 +55,6 @@ def to_sarif(report: AnalysisReport) -> str:
 
 
 def to_text(report: AnalysisReport) -> str:
-    """Render deterministic human-readable diagnostics and execution issues."""
     lines = [_text_diagnostic(item) for item in report.diagnostics]
     lines.extend(f"{issue.source}: {issue.kind}: {issue.message}" for issue in report.issues)
     lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
@@ -68,7 +63,6 @@ def to_text(report: AnalysisReport) -> str:
 
 
 def to_github(report: AnalysisReport, *, max_annotations_per_level: int = _GITHUB_ANNOTATION_LIMIT) -> str:
-    """Render GitHub workflow commands without changing diagnostic semantics."""
     if not 0 <= max_annotations_per_level <= _GITHUB_ANNOTATION_LIMIT:
         msg = "max_annotations_per_level must be between 0 and 10"
         raise ValueError(msg)

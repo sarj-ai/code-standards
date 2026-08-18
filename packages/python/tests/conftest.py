@@ -1,5 +1,3 @@
-"""Every rule's tests must exercise it in BOTH directions, measured by running them."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -40,7 +38,6 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Wrap each rule class's own `check`, so attribution is per rule, not per base."""
     root = config.rootpath.parents[1]
     for rule_id, cls in REGISTRY.items():
         examples = (root / cls.examples_path()).as_posix()
@@ -48,7 +45,6 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def _is_narrowed(config: pytest.Config) -> bool:
-    """Was the run filtered to a subset?"""
     keyword: object = config.option.keyword  # pyright: ignore[reportAny] — pytest's option namespace is untyped
     markexpr: object = config.option.markexpr  # pyright: ignore[reportAny] — same
     if keyword or markexpr:

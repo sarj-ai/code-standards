@@ -1,10 +1,9 @@
-"""Shared docstring analysis for the docstring-ceremony rules (SARJ050/084/085/086)."""
-
 from __future__ import annotations
 
 import ast
+from itertools import starmap
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_python_lint.rules._comments import split_identifier, stem
 
@@ -205,8 +204,13 @@ _ARG_ENTRY_RE = re.compile(r"^[ \t]+(?P<name>\*{0,2}[A-Za-z_]\w*)[ \t]*(?:\((?P<
 ARG_SECTIONS = ("Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments")
 
 
+class ArgEntry(NamedTuple):
+    name: str
+    type_name: str
+    description: str
+
+
 def sections(docstring: str) -> dict[str, str]:
-    """Split a Google-style docstring into `{"summary": ..., "<Section>": ...}`."""
     marks = [(match.start(), match.end(), match.group("name")) for match in _SECTION_RE.finditer(docstring)]
     if not marks:
         return {"summary": docstring}
@@ -218,7 +222,6 @@ def sections(docstring: str) -> dict[str, str]:
 
 
 def arg_section(docstring: str) -> str | None:
-    """Return the parameter-documentation block of `docstring`, if it has one."""
     found = sections(docstring)
     for name in ARG_SECTIONS:
         if name in found:
@@ -226,24 +229,21 @@ def arg_section(docstring: str) -> str | None:
     return None
 
 
-def arg_entries(block: str) -> list[tuple[str, str, str]]:
-    """Parse an `Args:` block into `(name, type, description)` triples."""
+def arg_entries(block: str) -> list[ArgEntry]:
     entries: list[list[str]] = []
     for raw in block.splitlines():
         if match := _ARG_ENTRY_RE.match(raw):
             entries.append([match.group("name"), match.group("type") or "", match.group("desc").strip()])
         elif entries and raw.strip():
             entries[-1][2] += " " + raw.strip()
-    return [(name, type_, desc) for name, type_, desc in entries]
+    return list(starmap(ArgEntry, entries))
 
 
 def identifier_stems(text: str) -> set[str]:
-    """Collect the stemmed word parts of every identifier in `text`."""
     return {stem(part) for match in _IDENTIFIER_RE.finditer(text) for part in split_identifier(match.group(0))}
 
 
 def decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
-    """Collect the lowercase word parts of every decorator on `node`."""
     markers: set[str] = set()
     for decorator in node.decorator_list:
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
@@ -257,7 +257,6 @@ def decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDe
 def docstring_expression(
     node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> ast.Expr | None:
-    """Return the expression carrying ``node``'s docstring, if one exists."""
     if not node.body:
         return None
     expression = node.body[0]
@@ -271,7 +270,6 @@ def docstring_expression(
 
 
 def base_names(node: ast.ClassDef) -> set[str]:
-    """Return the stable final dotted name of every class base."""
     names: set[str] = set()
     for base in node.bases:
         target = base.value if isinstance(base, ast.Subscript) else base
@@ -285,7 +283,6 @@ def base_names(node: ast.ClassDef) -> set[str]:
 def is_framework_consumed_docstring(
     node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> bool:
-    """Report mechanically visible framework/schema consumption of a docstring."""
     if isinstance(node, ast.Module):
         return False
     markers = decorator_markers(node)
@@ -297,7 +294,6 @@ def is_framework_consumed_docstring(
 
 
 def annotation_tokens(annotation: ast.expr | None) -> list[str]:
-    """Split an annotation's rendered source into lowercase word parts."""
     if annotation is None:
         return []
     try:
@@ -308,7 +304,6 @@ def annotation_tokens(annotation: ast.expr | None) -> list[str]:
 
 
 def signature_stems(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: str | None) -> set[str]:
-    """Collect every stem a reader can read off the signature."""
     tokens = list(split_identifier(node.name))
     if class_name is not None:
         tokens.extend(split_identifier(class_name))
@@ -324,7 +319,6 @@ def signature_stems(node: ast.FunctionDef | ast.AsyncFunctionDef, class_name: st
 
 
 def restates(text: str, known: Iterable[str]) -> bool:
-    """Report whether every content word of `text` is already in `known`."""
     known_stems = set(known)
     words = [match.group(0).lower() for match in WORD_RE.finditer(text)]
     content = [word for word in words if word not in STOPWORDS]

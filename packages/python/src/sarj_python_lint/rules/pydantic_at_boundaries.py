@@ -1,8 +1,3 @@
-"""SARJ008 — An ad-hoc dict record at a function boundary — use pydantic.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_pydantic_at_boundaries.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -46,8 +41,6 @@ _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 
 @dataclass(frozen=True, slots=True)
 class _RouteInfo:
-    """A FastAPI route decorator found on a function."""
-
     has_response_model: bool
 
 
@@ -173,7 +166,6 @@ class PydanticAtBoundaries(Rule):
 
 
 def _local_function_ids(tree: ast.Module) -> set[int]:
-    """Collect `id()`s of every function defined inside another function's body."""
     out: set[int] = set()
     stack: list[tuple[ast.AST, bool]] = [(tree, False)]
     while stack:
@@ -187,7 +179,6 @@ def _local_function_ids(tree: ast.Module) -> set[int]:
 
 
 def _builds_record_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the function returns a record it built in place."""
     returned: list[ast.expr] = []
     record_names: set[str] = set()
     invalidated_names: set[str] = set()
@@ -247,7 +238,6 @@ def _builds_record_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
 
 
 def _is_record_literal(node: ast.expr) -> bool:
-    """Report whether `node` is an unnamed record built in place."""
     if isinstance(node, ast.List):
         return any(_is_record_literal(elt) for elt in node.elts)
     if isinstance(node, ast.ListComp):
@@ -258,19 +248,16 @@ def _is_record_literal(node: ast.expr) -> bool:
 
 
 def _is_documentation_path(path: Path) -> bool:
-    """Report whether `path` is executable source embedded in documentation."""
     return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
 
 
 def _mutated_record_roots(target: ast.AST) -> set[str]:
-    """Return local mapping names mutated through a subscript target."""
     while isinstance(target, ast.Subscript):
         target = target.value
     return {target.id} if isinstance(target, ast.Name) else set()
 
 
 def _is_dict_conversion_name(name: str) -> bool:
-    """Report whether a method explicitly promises conversion to raw mapping data."""
     return name in _DICT_CONVERSION_NAMES or _DICT_CONVERSION_RE.fullmatch(name) is not None
 
 
@@ -287,7 +274,6 @@ _VALIDATOR_DECORATORS = frozenset({"model_validator", "field_validator", "valida
 
 
 def _is_validator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether `node` is a pydantic validator hook."""
     for dec in node.decorator_list:
         target = dec.func if isinstance(dec, ast.Call) else dec
         name = _flat_name(target) if isinstance(target, (ast.Name, ast.Attribute)) else ""
@@ -297,7 +283,6 @@ def _is_validator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _is_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether `node` is a pytest fixture (`@pytest.fixture` / `@fixture`)."""
     for dec in node.decorator_list:
         target = dec.func if isinstance(dec, ast.Call) else dec
         name = _flat_name(target) if isinstance(target, (ast.Name, ast.Attribute)) else ""
@@ -307,7 +292,6 @@ def _is_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _route_info(node: ast.FunctionDef | ast.AsyncFunctionDef) -> _RouteInfo | None:
-    """Detect a FastAPI route decorator: `@<router|app|*_router>.<method>(...)`."""
     for dec in node.decorator_list:
         if not isinstance(dec, ast.Call):
             continue
@@ -325,7 +309,6 @@ def _route_info(node: ast.FunctionDef | ast.AsyncFunctionDef) -> _RouteInfo | No
 
 
 def _resolve_annotation(node: ast.expr | None) -> ast.expr | None:
-    """Unwrap a string forward-reference annotation into its parsed expression."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             return ast.parse(node.value.strip(), mode="eval").body
@@ -335,7 +318,6 @@ def _resolve_annotation(node: ast.expr | None) -> ast.expr | None:
 
 
 def _classify_return(node: ast.expr) -> str | None:
-    """Classify the annotation as a flagged shape."""
     # Look through `X | None` / Optional[X] / Union[...] members.
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
         return _classify_return(node.left) or _classify_return(node.right)
@@ -375,7 +357,6 @@ def _classify_return(node: ast.expr) -> str | None:
 
 
 def _is_untyped_dict_args(slice_node: ast.expr) -> bool:
-    """Report whether `dict[K, V]` is flagged (`str` keys with `Any`/`object` values)."""
     if not isinstance(slice_node, ast.Tuple) or len(slice_node.elts) != _DICT_ARG_COUNT:
         return False
     key = _resolve_annotation(slice_node.elts[0])
@@ -386,8 +367,8 @@ def _is_untyped_dict_args(slice_node: ast.expr) -> bool:
 
 
 def _flat_name(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr  # `typing.Dict` -> `Dict`
-    return ""
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""

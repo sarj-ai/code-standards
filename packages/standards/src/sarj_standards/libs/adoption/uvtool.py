@@ -1,5 +1,3 @@
-"""Resolve the consumer's declared uv runtime without inheriting its config."""
-
 from __future__ import annotations
 
 import tomllib
@@ -17,7 +15,6 @@ _PYPROJECT: Final = "pyproject.toml"
 
 
 def version_file(project: Path | None) -> Path | None:
-    """Return the project file that explicitly constrains uv, when present."""
     if project is None:
         return None
     uv_config = project / _UV_CONFIG
@@ -28,7 +25,6 @@ def version_file(project: Path | None) -> Path | None:
 
 
 def required_version(path: Path) -> str | None:
-    """Read uv's PEP 440 ``required-version`` constraint from a supported file."""
     if not path.is_file():
         return None
     try:
@@ -55,7 +51,6 @@ def _table(value: object) -> dict[str, object]:
 
 
 def argv(project: Path, *arguments: str) -> tuple[str, ...]:
-    """Run uv arguments with a release satisfying the consumer contract."""
     source = version_file(project)
     required = None if source is None else required_version(source)
     if required is None:
@@ -64,5 +59,4 @@ def argv(project: Path, *arguments: str) -> tuple[str, ...]:
 
 
 def lock_argv(project: Path) -> tuple[str, ...]:
-    """Run lock resolution with a uv release satisfying the consumer contract."""
     return argv(project, "lock")

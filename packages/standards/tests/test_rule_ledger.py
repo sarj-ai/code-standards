@@ -1,5 +1,3 @@
-"""Keep the shipped rule ledger equal to the registries, so removals cannot be silent."""
-
 # sarj-doctor-ignore-retired-rules -- the ledger contract below intentionally
 # names every retired identifier and its migration target.
 
@@ -24,8 +22,6 @@ if TYPE_CHECKING:
 
 @runtime_checkable
 class _Coded(Protocol):
-    """The one attribute this file needs from a rule, across four packages."""
-
     @property
     def code(self) -> str: ...
 
@@ -262,7 +258,6 @@ def test_doctor_names_every_sarj061_consumer_reference(tmp_path: Path) -> None:
 def test_doctor_tells_a_chained_retirement_to_delete_rather_than_renumber(
     tmp_path: Path,
 ) -> None:
-    """SARJ055 was renumbered to SARJ083, and then SARJ083 was removed outright."""
     _ = (tmp_path / "service.py").write_text("value = data['k']  # sarj-noqa: SARJ055\n", encoding="utf-8")
     findings = list(check_retired_rules(tmp_path))
     assert len(findings) == 1

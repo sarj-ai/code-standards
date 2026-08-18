@@ -1,8 +1,3 @@
-"""SARJ078 — Prefer `Self` type annotation for methods returning instance of enclosing class.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_self_type_annotation.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -29,7 +24,6 @@ if TYPE_CHECKING:
 
 
 def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Return whether every return preserves the concrete receiver type."""
     if _block_can_fall_through(outer_func.body):
         return False
     target_name = "cls" if _is_classmethod(outer_func) else "self"
@@ -77,7 +71,6 @@ def _is_return_self_or_cls(outer_func: ast.FunctionDef | ast.AsyncFunctionDef) -
 
 
 def _block_can_fall_through(statements: list[ast.stmt]) -> bool:
-    """Conservatively report whether execution can reach the end of a block."""
     if not statements:
         return True
     match statements[-1]:
@@ -90,7 +83,6 @@ def _block_can_fall_through(statements: list[ast.stmt]) -> bool:
 
 
 def _is_classmethod(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Check if function node is decorated with @classmethod."""
     return any(isinstance(dec, ast.Name) and dec.id == "classmethod" for dec in node.decorator_list)
 
 
@@ -221,7 +213,6 @@ class PreferSelfTypeAnnotation(Rule):
 
 
 def _is_metaclass(node: ast.ClassDef) -> bool:
-    """Report direct metaclass definitions, where `Self` is not valid for class objects."""
     return any(_trailing_annotation_name(base) in {"type", "ABCMeta"} for base in node.bases)
 
 
@@ -256,5 +247,4 @@ _INPLACE_DUNDERS = frozenset(
 
 
 def _ruff_owns_self_annotation(name: str) -> bool:
-    """Defer standard self-returning dunders to Ruff PYI034."""
     return name in _RUFF_SELF_DUNDERS or name in _INPLACE_DUNDERS

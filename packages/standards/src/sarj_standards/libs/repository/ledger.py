@@ -1,5 +1,3 @@
-"""Read the shipped record of every rule identifier that was removed or renamed."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -34,8 +32,6 @@ class Status(StrEnum):
 
 @dataclass(frozen=True)
 class Retired:
-    """One identifier that no longer resolves, and what to do about it."""
-
     id: str
     kind: str
     status: Status
@@ -61,14 +57,11 @@ class Retired:
 
 @dataclass(frozen=True)
 class Ledger:
-    """The shipped ledger: what is live, and what is not."""
-
     rules: Mapping[str, tuple[str, ...]]
     codes: Mapping[str, tuple[str, ...]]
     retired: tuple[Retired, ...]
 
     def active_ids(self) -> frozenset[str]:
-        """Collect every live identifier, ESLint names carrying their prefix."""
         live = {code for family in self.codes.values() for code in family}
         for family, names in self.rules.items():
             prefix = "@sarj/" if family == ESLINT else ""
@@ -77,7 +70,6 @@ class Ledger:
 
 
 def load() -> Ledger:
-    """Read the rule ledger bundled in this wheel."""
     parsed: object = json.loads(  # pyright: ignore[reportAny] -- json.loads is an untyped stdlib boundary; the shape is narrowed below
         LEDGER_JSON.read_text(encoding="utf-8")
     )

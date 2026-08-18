@@ -1,5 +1,3 @@
-"""Deterministic FastAPI syntax resolution shared by route-aware rules."""
-
 from __future__ import annotations
 
 import ast
@@ -61,15 +59,11 @@ class Route:
 
 
 class AnnotatedParts(NamedTuple):
-    """The value type and metadata inside one ``Annotated`` annotation."""
-
     value: ast.expr
     metadata: tuple[ast.expr, ...]
 
 
 class ParameterMarker(NamedTuple):
-    """A resolved FastAPI parameter marker and its call."""
-
     name: str
     call: ast.Call
 
@@ -92,11 +86,11 @@ class _ImportedReference:
 
 
 def flat_name(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return ""
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""
 
 
 def _binding_name(node: ast.expr) -> str:
@@ -108,8 +102,6 @@ def _binding_name(node: ast.expr) -> str:
 
 
 class FastapiIndex:
-    """Resolve only FastAPI bindings whose provenance is visible in one module."""
-
     def __init__(self, tree: ast.Module, *, path: Path | None = None) -> None:
         self.tree: ast.Module = tree
         self.path: Path | None = path
@@ -460,7 +452,6 @@ class FastapiIndex:
         return isinstance(resolved, (ast.Name, ast.Attribute)) and self.canonical(resolved) in INJECTION_TYPES
 
     def is_imported_dependency_alias(self, node: ast.expr | None) -> bool:
-        """Resolve an imported dependency alias only from bounded, explicit source facts."""
         if self.path is None or node is None or isinstance(node, ast.Constant):
             return False
         reference = _imported_reference(self.tree, node)
@@ -634,13 +625,6 @@ def _resolve_module_path(current: Path, reference: _ImportedReference) -> Path |
 
 
 def _resolve_module_path_without_checkout(current: Path, reference: _ImportedReference) -> Path | None:
-    """Resolve an explicitly local import when a detached source tree has no VCS root.
-
-    Relative imports must stay inside a real package chain. Absolute imports are
-    considered only at an ancestor matching their first component, or as a
-    direct sibling module. These exact, bounded anchors avoid treating an
-    arbitrary filesystem ancestor as an import search path.
-    """
     module_parts = tuple(part for part in reference.module.split(".") if part)
     candidates: set[Path] = set()
     if 0 < reference.level <= _MAX_PATH_ANCESTORS:

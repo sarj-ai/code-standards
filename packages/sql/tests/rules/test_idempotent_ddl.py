@@ -177,7 +177,6 @@ def test_skips_trailing_inline_comment():
 
 
 def test_flags_create_table_inside_dollar_quoted_body():
-    """Ensure CREATE TABLE without IF NOT EXISTS inside a dollar-quoted body is flagged."""
     src = """
 CREATE OR REPLACE FUNCTION seed() RETURNS void AS $$
 BEGIN
@@ -191,7 +190,6 @@ $$ LANGUAGE plpgsql;
 
 
 def test_string_literal_inside_a_dollar_quoted_body_is_still_masked():
-    """Keeping the body as SQL must not stop its own string literals being masked."""
     src = """
 CREATE OR REPLACE FUNCTION seed() RETURNS void AS $$
 BEGIN
@@ -220,18 +218,15 @@ def test_allows_mysql_drop_index_without_if_exists():
 
 
 def test_flags_mysql_create_table_without_if_not_exists():
-    """The boundary: MySQL *does* support this one, so the gate must not reach it."""
     src = "CREATE TABLE `orders` (`id` int UNSIGNED NOT NULL) ENGINE=InnoDB;"
     assert len(_check(src)) == 1
 
 
 def test_flags_mysql_drop_table_without_if_exists():
-    """The boundary: MySQL *does* support `DROP TABLE IF EXISTS`."""
     assert len(_check(f"{_MYSQL_MARKER}DROP TABLE `orders`;")) == 1
 
 
 def test_flags_sqlite_create_index_without_if_not_exists():
-    """Verify SQLite supports CREATE INDEX IF NOT EXISTS so non-idempotent indexes are flagged."""
     src = "CREATE INDEX `idx` ON `orders` (`user_id`);"
     assert len(_check(src)) == 1
 

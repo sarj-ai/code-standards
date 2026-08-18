@@ -1,8 +1,3 @@
-"""SARJ019 — A SQL query with 3+ join operations is too entangled.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_query_with_many_joins.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -135,7 +130,6 @@ class NoQueryWithManyJoins(Rule):
 
 
 def _implicit_join_count(sql: str) -> int:
-    """Count top-level relation separators in every ``FROM`` clause."""
     depths: list[int] = []
     depth = 0
     for char in sql:

@@ -110,18 +110,15 @@ def test_allows_timestamp_in_a_cte_column_list():
 
 
 def test_flags_timestamp_column_definition_ending_in_a_comma():
-    """The boundary: the char before the keyword is part of the column name."""
     diags = _check("CREATE TABLE t (created_at TIMESTAMP, id INT);")
     assert len(diags) == 1
 
 
 def test_flags_timestamp_column_definition_ending_the_column_list():
-    """The boundary: `)` on the right alone must not trigger the guard."""
     assert len(_check("CREATE TABLE t (created_at TIMESTAMP)")) == 1
 
 
 def test_flags_timestamp_as_the_first_column_definition():
-    """The boundary: `(` on the left alone must not trigger the guard."""
     assert len(_check("CREATE TABLE t (created_at TIMESTAMP NOT NULL, id INT)")) == 1
 
 

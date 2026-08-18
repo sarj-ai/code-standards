@@ -1,5 +1,3 @@
-"""Rule campaign detection is derived from immutable inventory/catalog revisions."""
-
 from __future__ import annotations
 
 import hashlib

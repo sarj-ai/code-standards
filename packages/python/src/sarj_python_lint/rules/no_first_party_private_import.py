@@ -1,8 +1,3 @@
-"""SARJ048 — Importing a private name — but only when the private name is OURS.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_first_party_private_import.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -86,7 +81,6 @@ class NoFirstPartyPrivateImport(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag every private import whose defining module is first-party."""
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -102,8 +96,6 @@ class NoFirstPartyPrivateImport(Rule):
 
 @dataclass(frozen=True, slots=True)
 class _PrivateImport:
-    """One private thing imported by one statement."""
-
     line: int
     col: int
     module: str
@@ -115,7 +107,6 @@ class _PrivateImport:
 
 
 def _is_our_own_internals(hit: _PrivateImport, path: Path) -> bool:
-    """Return whether the private module is unavailable or belongs to the importer's distribution."""
     if not hit.is_segment:
         return False
     if not has_first_party_source(hit.module, path):
@@ -132,7 +123,6 @@ def _message(module: str, name: str) -> str:
 
 
 def _is_ours(module: str, path: Path, own_top: str | None) -> bool:
-    """Report whether `module` is a first-party module OUTSIDE the file's own package."""
     top = module.partition(".")[0]
     if own_top is not None and top == own_top:
         return False
@@ -140,7 +130,6 @@ def _is_ours(module: str, path: Path, own_top: str | None) -> bool:
 
 
 def _private_imports(tree: ast.Module) -> list[_PrivateImport]:
-    """Collect private symbols and submodule segments from absolute imports."""
     hits: list[_PrivateImport] = []
     for node in nodes(tree, ast.ImportFrom, ast.Import):
         if isinstance(node, ast.ImportFrom):
@@ -199,7 +188,6 @@ def _plain_import_hits(node: ast.Import) -> list[_PrivateImport]:
 
 
 def _private_segment(module: str) -> str | None:
-    """Return the first private component BELOW the top level of a dotted module path."""
     return next((part for part in module.split(".")[1:] if _is_private_name(part)), None)
 
 

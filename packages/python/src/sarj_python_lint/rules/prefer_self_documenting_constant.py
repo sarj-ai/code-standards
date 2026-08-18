@@ -1,8 +1,3 @@
-"""SARJ097 — Constant names and values should expose facts supplied only by comments.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_self_documenting_constant.py
-"""
-
 from __future__ import annotations
 
 import ast

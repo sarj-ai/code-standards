@@ -1,8 +1,3 @@
-"""SARJ087 — A `Returns:` block that only re-spells the name and the return annotation.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_docstring_returns_restate_signature.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -62,7 +57,6 @@ def _return_block(docstring: str) -> str | None:
 
 
 def _names_fixed_tuple_positions(block: str, annotation: ast.expr | None) -> bool:
-    """Report whether prose supplies names absent from a tuple's positional type."""
     elements = _fixed_tuple_elements(annotation)
     if not elements:
         return False
@@ -82,7 +76,6 @@ def _names_fixed_tuple_positions(block: str, annotation: ast.expr | None) -> boo
 
 
 def _fixed_tuple_elements(annotation: ast.expr | None) -> tuple[ast.expr, ...]:
-    """Return the statically named slots of a fixed tuple annotation."""
     if not isinstance(annotation, ast.Subscript):
         return ()
     container = annotation.value

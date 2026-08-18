@@ -1,8 +1,3 @@
-"""SARJ094 — FastAPI operations must publish an explicit, accurate OpenAPI contract.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_fastapi_openapi_contract.py
-"""
-
 from __future__ import annotations
 
 import ast

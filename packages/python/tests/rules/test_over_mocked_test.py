@@ -30,7 +30,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def _patches(count: int, prefix: str = "app.mod") -> str:
-    """Build a test decorated with `count` distinct `@patch`es."""
     decorators = "\n".join(f'@patch("{prefix}{i}.collaborator")' for i in range(count))
     params = ", ".join(f"m{i}" for i in range(count))
     return f"{decorators}\ndef test_thing({params}):\n    assert run() == 1\n"

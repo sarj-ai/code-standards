@@ -1,5 +1,3 @@
-"""Transactional authoring helpers for the warning-first rule lifecycle."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,15 +29,12 @@ _ENGINE_BY_FAMILY: Final = MappingProxyType(
 
 @dataclass(frozen=True, slots=True)
 class StageResult:
-    """Outcome of preparing one registered rule for warning-first publication."""
-
     status: int
     changed: bool
     message: str
 
 
 def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) -> StageResult:
-    """Validate and atomically stage one live rule plus all derived artifacts."""
     repository = root.resolve()
     inventory = rule_inventory_artifact.build(repository)
     known = {

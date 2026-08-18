@@ -1,5 +1,3 @@
-"""Unit and fresh-repository tests for the all-rules command."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping

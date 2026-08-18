@@ -1,5 +1,3 @@
-"""SARJ109: `gen_random_uuid()` in a migration — use `uuidv7()`."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -37,8 +35,6 @@ _MESSAGE = (
 
 @final
 class PreferUuidv7Default(Rule):
-    """`gen_random_uuid()` default — use the time-ordered `uuidv7()`."""
-
     id = "prefer-uuidv7-default"
     code = "SARJ109"
     documentation = RuleDocumentation(
@@ -82,7 +78,6 @@ class PreferUuidv7Default(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Report every `gen_random_uuid(` call in real (unmasked) SQL."""
         if is_dump_file(source, path):
             return []
         model_owned = is_generated_migration(path, source)

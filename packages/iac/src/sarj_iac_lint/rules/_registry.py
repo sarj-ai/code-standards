@@ -1,5 +1,3 @@
-"""Rule registry — the single source of truth mapping rule id to rule class."""
-
 from __future__ import annotations
 
 from types import MappingProxyType

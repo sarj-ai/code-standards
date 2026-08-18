@@ -1,8 +1,3 @@
-"""SARJ088 — A test docstring that only re-spells the test's own name and body.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_restated_test_docstring.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -99,7 +94,6 @@ _SINGLETONS = MappingProxyType({None: "none", True: "true", False: "false"})
 
 
 def _body_stems(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect the stemmed word parts of every IDENTIFIER in the test body."""
     tokens: list[str] = []
     for child in ast.walk(node):
         match child:
@@ -196,7 +190,6 @@ class RestatedTestDocstring(Rule):
                 self._walk(child, class_name, path, diags)
 
     def _check_class(self, node: ast.ClassDef, path: Path, diags: list[Diagnostic]) -> None:
-        """Flag a `Test*` class whose docstring only re-spells its name and method names."""
         if not node.name.startswith("Test") or node.bases or node.keywords:
             return
         docstring = ast.get_docstring(node, clean=True)
@@ -221,7 +214,6 @@ class RestatedTestDocstring(Rule):
 
     @staticmethod
     def _is_plain_summary(docstring: str) -> bool:
-        """Report whether the docstring is a bare summary with nothing protected in it."""
         if frozenset(sections(docstring)) != _SUMMARY_ONLY:
             return False
         return not is_protected(docstring) and not VALUE_MARKER_RE.search(docstring)

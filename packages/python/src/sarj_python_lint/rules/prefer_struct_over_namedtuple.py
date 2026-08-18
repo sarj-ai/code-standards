@@ -1,8 +1,3 @@
-"""SARJ015 — `collections.namedtuple` — prefer `typing.NamedTuple` or a model.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_struct_over_namedtuple.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -119,7 +114,6 @@ class PreferStructOverNamedtuple(Rule):
 
 
 def _shadowed_names(tree: ast.Module, imported: set[str]) -> set[str]:
-    """Take a conservative whole-file false negative for rebound module aliases."""
     shadowed: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in imported:

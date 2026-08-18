@@ -1,5 +1,3 @@
-"""Authoritative registry proofs for coherent releases and recovery tags."""
-
 from __future__ import annotations
 
 import argparse
@@ -35,8 +33,6 @@ RegistryKind = Literal["npm", "pypi"]
 
 @dataclass(frozen=True, slots=True, order=True)
 class RegistryRequirement:
-    """One exact package version that must exist before dependent publication."""
-
     registry: RegistryKind
     name: str
     version: str
@@ -55,8 +51,6 @@ class _PypiSimpleResponse(BaseModel):
 
 
 class PublicationChecker(Protocol):
-    """Prove that one exact registry package version is publicly available."""
-
     def __call__(self, requirement: RegistryRequirement, /) -> bool: ...
 
 
@@ -83,7 +77,6 @@ _HTTP_NOT_FOUND = 404
 
 
 def target_requirement(root: Path, target_name: str) -> RegistryRequirement:
-    """Derive one registry identity from its authoritative package manifest."""
     target = RELEASE_TARGETS.get(target_name)
     package = _TARGET_PACKAGES.get(target_name)
     if target is None or package is None:
@@ -95,7 +88,6 @@ def target_requirement(root: Path, target_name: str) -> RegistryRequirement:
 
 
 def publication_exists(requirement: RegistryRequirement) -> bool:
-    """Query the resolver-facing registry API for one exact version."""
     if requirement.registry == "pypi":
         # uv and pip resolve through the Simple API, so version JSON visibility alone does not make a wheel resolvable.
         url = f"https://pypi.org/simple/{quote(requirement.name, safe='')}/"
@@ -126,7 +118,6 @@ def _request_publication(request: Request, requirement: RegistryRequirement) -> 
 
 
 def _pypi_filename_has_version(filename: str, version: str) -> bool:
-    """Parse a wheel/source filename and compare its normalized exact version."""
     try:
         expected = Version(version)
         if filename.endswith(".whl"):
@@ -143,7 +134,6 @@ def require_publication(
     *,
     checker: PublicationChecker = publication_exists,
 ) -> None:
-    """Reject release continuation until an exact registry version is visible."""
     if checker(requirement):
         return
     msg = f"{requirement.registry} publication is unavailable: {requirement.name}@{requirement.version}"
@@ -151,7 +141,6 @@ def require_publication(
 
 
 def lint_config_requirements(root: Path) -> tuple[RegistryRequirement, ...]:
-    """Read every exact sibling version the compatibility bundle publishes."""
     resolved = root.resolve()
     pyproject = resolved / "packages/standards/pyproject.toml"
     try:
@@ -202,7 +191,6 @@ def require_lint_config_dependencies(
     *,
     checker: PublicationChecker = publication_exists,
 ) -> tuple[RegistryRequirement, ...]:
-    """Prove every exact sibling is public before publishing Standards."""
     requirements = lint_config_requirements(root)
     for requirement in requirements:
         require_publication(requirement, checker=checker)
@@ -217,7 +205,6 @@ def wait_for_lint_config_dependencies(
     checker: PublicationChecker = publication_exists,
     sleeper: Callable[[float], object] = time.sleep,
 ) -> tuple[RegistryRequirement, ...]:
-    """Wait boundedly for newly published siblings to become registry-visible."""
     if attempts < 1:
         message = "publication attempts must be at least one"
         raise ValueError(message)
@@ -252,7 +239,6 @@ def wait_for_lint_config_dependencies(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Thin automation entry point for the lint-config publication preflight."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--attempts", type=int, default=6)

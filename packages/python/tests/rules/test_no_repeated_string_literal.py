@@ -58,7 +58,6 @@ def c():
 
 
 def test_two_distinct_functions_is_enough():
-    """Cross-function drift begins at two copies; there is no separate occurrence count."""
     two = f'''
 def a():
     return """{_LONG_SQL}"""
@@ -120,7 +119,6 @@ def b():
 
 
 def test_ignores_coincidental_error_message_pair_same_function():
-    """The JSON_PARSE_ERROR / VALIDATION_FAILED coincidental-coupling regression."""
     shared = "The AI generated an invalid response format. Please try again."
     src = f"""
 def get_user_error_message(code):
@@ -133,7 +131,6 @@ def get_user_error_message(code):
 
 
 def test_ignores_lowercase_from_in_prose():
-    """SQL keyword match is case-sensitive so prose containing 'from' is not structural."""
     prose = "Extract success criteria from the system prompt and evaluate them"
     assert len(prose) >= 40
     src = f"""
@@ -371,7 +368,6 @@ def second():
 
 
 def test_flags_lambda_bodies_in_two_functions():
-    """Lambda does not push a scope; each lambda inherits its enclosing function, so two distinct enclosers still flag."""
     src = f'''
 def a():
     return (lambda: """{_LONG_SQL}""")()
@@ -396,7 +392,6 @@ def sibling():
 
 
 def test_allows_two_module_level_lambdas():
-    """Module-level lambdas share the module scope, so they are excluded like module constants."""
     src = f'''
 f = lambda: """{_LONG_SQL}"""
 g = lambda: """{_LONG_SQL}"""
@@ -405,7 +400,6 @@ g = lambda: """{_LONG_SQL}"""
 
 
 def test_scaffolding_exclusion_is_per_occurrence_not_per_value():
-    """A description= copy is dropped, but two plain copies of the same literal still couple and flag."""
     text = "SELECT id FROM organization ORDER BY created_at DESC"
     src = f"""
 def a():
@@ -470,7 +464,6 @@ assert len(_FORWARD_REF) >= 40
 
 
 def test_excludes_doc_metadata_in_parameter_annotations():
-    """FastAPI copies the same Doc() paragraph onto every verb; 494 of 499 corpus findings."""
     src = f'''
 def get(response_model: Annotated[str, Doc("""{_LONG_SQL}""")] = None): ...
 def put(response_model: Annotated[str, Doc("""{_LONG_SQL}""")] = None): ...
@@ -533,7 +526,6 @@ def b(x: "{_FORWARD_REF}"): ...
 
 
 def test_annotation_guard_does_not_exempt_the_same_value_used_at_runtime():
-    """The Doc() copy is dropped, but two runtime copies of the same literal still couple."""
     src = f'''
 def a(x: Annotated[str, Doc("""{_LONG_SQL}""")] = None):
     return """{_LONG_SQL}"""
@@ -544,7 +536,6 @@ def b():
 
 
 def test_annotation_guard_does_not_exempt_parameter_defaults():
-    """A default sits in `arguments.defaults`, beside the annotation, not inside it."""
     src = f'''
 def a(sql: Annotated[str, Doc("doc")] = """{_LONG_SQL}"""): ...
 def b(sql: Annotated[str, Doc("doc")] = """{_LONG_SQL}"""): ...
@@ -589,7 +580,6 @@ def c():
 
 
 def test_exactly_two_occurrences_in_two_functions_fires():
-    """Two copies across two functions is a finding."""
     src = f'''
 def submit_financial_info():
     return """{_LONG_SQL}"""
@@ -603,7 +593,6 @@ def submit_legal_info():
 
 
 def test_two_occurrences_inside_one_function_does_not_fire():
-    """The distinct-scope filter, not a count gate, is what carries precision."""
     src = f'''
 def only_one():
     a = """{_LONG_SQL}"""

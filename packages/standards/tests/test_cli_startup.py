@@ -1,5 +1,3 @@
-"""The command router should not load every implementation on startup."""
-
 from __future__ import annotations
 
 import subprocess

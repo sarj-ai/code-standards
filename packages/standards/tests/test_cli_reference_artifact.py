@@ -1,5 +1,3 @@
-"""Tests for the source-derived CLI-reference artifact."""
-
 from __future__ import annotations
 
 from pathlib import Path

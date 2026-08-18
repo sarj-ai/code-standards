@@ -31,7 +31,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def _pair(comment: str, code: str) -> list[Diagnostic]:
-    """Wrap a pair with a differently shaped trailing statement."""
     return _check(f"def f():\n    # {comment}\n    {code}\n    return None\n")
 
 

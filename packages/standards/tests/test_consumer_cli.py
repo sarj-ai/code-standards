@@ -1,5 +1,3 @@
-"""The public CLI is intentionally small, coherent, and repository-rooted."""
-
 from __future__ import annotations
 
 import json
@@ -25,7 +23,6 @@ REMOVED_ALIASES = ("init", "sync", "analyze", "verify", "format", "inspect", "up
 
 
 def _git_environment() -> dict[str, str]:
-    """Keep hook-owned Git index variables out of nested repository fixtures."""
     return {
         key: value
         for key, value in os.environ.items()  # ruff: ignore[banned-api] — fixture must remove hook-owned Git variables.

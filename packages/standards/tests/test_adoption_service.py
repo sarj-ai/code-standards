@@ -1,5 +1,3 @@
-"""Typed adoption services own complete mutations independently of the CLI."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -106,7 +104,6 @@ def test_init_service_refuses_to_delete_a_custom_retired_launcher(tmp_path: Path
 
 
 def test_init_service_remains_python_only_after_adoption(tmp_path: Path) -> None:
-    """Placeholder destinations in the manifest must not invent an ecosystem."""
     _python_project(tmp_path)
     first = plan_init(tmp_path)
     assert apply_init(first, install=False).status == 0

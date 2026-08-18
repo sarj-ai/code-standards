@@ -1,8 +1,3 @@
-"""SARJ039 — Runtime-built constant collection or compiled regex inside a function — hoist it.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_module_level_constant.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -162,16 +157,12 @@ class PreferModuleLevelConstant(Rule):
 
 @dataclass(frozen=True, slots=True)
 class _Candidate:
-    """A classified initializer: what kind of value it is and how many entries it has."""
-
     kind: str
     size: int
 
 
 @dataclass(frozen=True, slots=True)
 class _Scope:
-    """One function body flattened: every descendant node, its parent, its nesting."""
-
     nodes: list[ast.AST]
     parents: dict[int, ast.AST]
     nested: set[int]
@@ -184,12 +175,10 @@ class _BindingCandidate:
 
 
 def _iter_functions(tree: ast.Module) -> Iterator[_Function]:
-    """Walk the module for every `def` / `async def`, nested ones included."""
     yield from nodes(tree, *_FUNCTION_NODES)
 
 
 def _hoistable_bindings(func: _Function) -> Iterator[tuple[ast.stmt, str, _Candidate]]:
-    """Find the bindings in this function's own scope that are safe to hoist."""
     scope = _scope_of(func)
     if _reads_frame_locals(scope):
         return
@@ -207,7 +196,6 @@ def _hoistable_bindings(func: _Function) -> Iterator[tuple[ast.stmt, str, _Candi
 
 
 def _scope_of(func: _Function) -> _Scope:
-    """Flatten the function body into nodes, parent links, and nesting flags."""
     nodes: list[ast.AST] = []
     parents: dict[int, ast.AST] = {}
     nested: set[int] = set()
@@ -224,7 +212,6 @@ def _scope_of(func: _Function) -> _Scope:
 
 
 def _reads_frame_locals(scope: _Scope) -> bool:
-    """Report whether the function reflects over its own frame via `locals()` / `vars()`."""
     for node in scope.nodes:
         match node:
             case ast.Call(func=ast.Name(id="locals" | "vars"), args=[], keywords=[]):
@@ -235,7 +222,6 @@ def _reads_frame_locals(scope: _Scope) -> bool:
 
 
 def _candidate_binding(node: ast.stmt) -> _BindingCandidate | None:
-    """Match a single-target `x = <value>` / `x: T = <value>` statement."""
     match node:
         case (
             ast.Assign(targets=[ast.Name() as target], value=value)
@@ -247,7 +233,6 @@ def _candidate_binding(node: ast.stmt) -> _BindingCandidate | None:
 
 
 def _classify(value: ast.expr) -> _Candidate | None:
-    """Classify the initializer as a constant-only display, a `frozenset`, or a regex."""
     match value:
         case ast.List(elts=elts):
             return _display_candidate("list", value, len(elts))
@@ -266,17 +251,14 @@ def _classify(value: ast.expr) -> _Candidate | None:
 
 
 def _is_large_enough(candidate: _Candidate) -> bool:
-    """Apply the `_MIN_ELEMENTS` floor, which a compiled regex is exempt from."""
     return candidate.kind == _REGEX_KIND or candidate.size >= _MIN_ELEMENTS
 
 
 def _display_candidate(kind: str, node: ast.expr, size: int) -> _Candidate | None:
-    """Accept a display only when every one of its leaves is a constant."""
     return _Candidate(kind=kind, size=size) if _is_constant_only(node, 0) else None
 
 
 def _call_candidate(call: ast.Call) -> _Candidate | None:
-    """Classify `frozenset([...])` and `re.compile("...")` call initializers."""
     if call.keywords:
         return None
     callee = _dotted_name(call.func)
@@ -288,7 +270,6 @@ def _call_candidate(call: ast.Call) -> _Candidate | None:
 
 
 def _frozenset_candidate(call: ast.Call) -> _Candidate | None:
-    """Accept `frozenset(<constant-only display>)`."""
     match call.args:
         case [ast.List(elts=elts) | ast.Set(elts=elts) | ast.Tuple(elts=elts) as inner] if _is_constant_only(inner, 0):
             return _Candidate(kind=_FROZENSET_KIND, size=len(elts))
@@ -297,7 +278,6 @@ def _frozenset_candidate(call: ast.Call) -> _Candidate | None:
 
 
 def _is_constant_pattern(call: ast.Call) -> bool:
-    """Report whether a `re.compile(...)` call takes a literal pattern and constant flags."""
     if not call.args or len(call.args) > _COMPILE_MAX_ARGS:
         return False
     match call.args[0]:
@@ -309,7 +289,6 @@ def _is_constant_pattern(call: ast.Call) -> bool:
 
 
 def _is_constant_flags(node: ast.expr) -> bool:
-    """Report whether a `re.compile` flags argument is an import-time constant."""
     match node:
         case ast.Constant(value=int()):
             return True
@@ -323,7 +302,6 @@ def _is_constant_flags(node: ast.expr) -> bool:
 
 
 def _is_constant_only(node: ast.expr, depth: int) -> bool:
-    """Report whether the expression is built entirely out of constants."""
     if depth > _MAX_LITERAL_DEPTH:
         return False
     match node:
@@ -342,7 +320,6 @@ def _is_constant_only(node: ast.expr, depth: int) -> bool:
 
 
 def _is_immutable_literal(node: ast.expr) -> bool:
-    """Recognize literal tuples that are not rebuilt at runtime."""
     match node:
         case (
             ast.Constant()
@@ -356,7 +333,6 @@ def _is_immutable_literal(node: ast.expr) -> bool:
 
 
 def _safe_methods_for(candidate: _Candidate) -> frozenset[str]:
-    """Pick the non-mutating method list that applies to this kind of value."""
     return _SAFE_REGEX_METHODS if candidate.kind == _REGEX_KIND else _SAFE_METHODS
 
 
@@ -366,7 +342,6 @@ def _is_safely_hoistable(
     target: ast.Name,
     safe_methods: frozenset[str],
 ) -> bool:
-    """Report whether every reference to the binding is a non-mutating, non-escaping read."""
     name = target.id
     if name in _parameter_names(func):
         return False
@@ -394,7 +369,6 @@ def _is_safely_hoistable(
 
 
 def _parameter_names(func: _Function) -> frozenset[str]:
-    """Collect every parameter name of the function, variadics included."""
     args = func.args
     params = [*args.posonlyargs, *args.args, *args.kwonlyargs]
     params.extend(arg for arg in (args.vararg, args.kwarg) if arg is not None)
@@ -402,7 +376,6 @@ def _parameter_names(func: _Function) -> frozenset[str]:
 
 
 def _mentions_name(node: ast.AST, name: str) -> bool:
-    """Report whether this node inside an inner scope refers to the binding."""
     match node:
         case ast.Name(id=ident) | ast.arg(arg=ident):
             return ident == name
@@ -413,7 +386,6 @@ def _mentions_name(node: ast.AST, name: str) -> bool:
 
 
 def _rebinds_name(node: ast.AST, name: str) -> bool:
-    """Report whether this node binds the name through something other than a `Name` store."""
     match node:
         case ast.Global() | ast.Nonlocal():
             return name in node.names
@@ -430,7 +402,6 @@ def _rebinds_name(node: ast.AST, name: str) -> bool:
 
 
 def _is_safe_read(node: ast.Name, parents: dict[int, ast.AST], safe_methods: frozenset[str]) -> bool:
-    """Report whether this single reference to the binding neither mutates nor escapes it."""
     parent = parents.get(id(node))
     match parent:
         case ast.Attribute():
@@ -466,7 +437,6 @@ def _is_safe_method_call(
     parents: dict[int, ast.AST],
     safe_methods: frozenset[str],
 ) -> bool:
-    """Report whether `x.<attr>` is an immediate call to a known non-mutating method."""
     if not isinstance(attribute.ctx, ast.Load) or attribute.attr not in safe_methods:
         return False
     parent = parents.get(id(attribute))
@@ -474,12 +444,10 @@ def _is_safe_method_call(
 
 
 def _is_safe_callee(func: ast.expr) -> bool:
-    """Report whether a call that receives the binding is known not to retain or mutate it."""
     return _dotted_name(func) in _SAFE_CALLEES
 
 
 def _dotted_name(node: ast.expr) -> str | None:
-    """Render a `Name` / `Attribute` chain as a dotted string."""
     match node:
         case ast.Name(id=ident):
             return ident
@@ -491,7 +459,6 @@ def _dotted_name(node: ast.expr) -> str | None:
 
 
 def _message(name: str, candidate: _Candidate) -> str:
-    """Render the diagnostic text for one hoistable binding."""
     if candidate.kind == _REGEX_KIND:
         return f"`{name}` repeats a regex-cache lookup on every call — hoist it to module scope."
     return (

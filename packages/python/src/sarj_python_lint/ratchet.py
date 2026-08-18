@@ -1,5 +1,3 @@
-"""Suppression ratchet: count every escape hatch in a tree and let the count only shrink."""
-
 from __future__ import annotations
 
 from collections import Counter
@@ -50,8 +48,6 @@ _BARE_TYPE_IGNORE_KEY: Final = "type-ignore"
 
 @dataclass(frozen=True, slots=True)
 class Measurement:
-    """What one scan of the tree found."""
-
     codes: Counter[str]
     packages: Counter[str]
     files: dict[str, int]
@@ -64,8 +60,6 @@ class Measurement:
 
 @dataclass(frozen=True, slots=True)
 class Baseline:
-    """Ceilings by code, package, and file so cleanup in one dimension cannot finance debt in another."""
-
     codes: dict[str, int] = field(default_factory=dict[str, int])
     packages: dict[str, int] = field(default_factory=dict[str, int])
     per_file_ceiling: int = DEFAULT_PER_FILE_CEILING
@@ -75,15 +69,12 @@ class Baseline:
 
 @dataclass(frozen=True, slots=True)
 class Failure:
-    """One ceiling that the measurement exceeded."""
-
     dimension: str
     key: str
     ceiling: int
     actual: int
 
     def format(self) -> str:
-        """Render the failure with the remediation for its dimension."""
         head = f"FAIL[{self.dimension}] {self.key}: {self.actual} suppressions, ceiling {self.ceiling}."
         return f"{head} {_REMEDIATION[self.dimension]}"
 
@@ -115,7 +106,6 @@ def measure(
     excluded_dir_names: frozenset[str] = DEFAULT_EXCLUDED_DIR_NAMES,
     excluded_subtrees: Iterable[str] = (),
 ) -> Measurement:
-    """Count every suppression under `root`, bucketed by code, package and file."""
     codes: Counter[str] = Counter()
     package_counts: Counter[str] = Counter()
     files: dict[str, int] = {}
@@ -137,7 +127,6 @@ def measure(
 
 
 def count_source(source: str) -> Counter[str]:
-    """Count the suppressions in one file's text, keyed by dialect and code."""
     counts: Counter[str] = Counter()
     for line in source.splitlines():
         _count_line(line, counts)
@@ -145,7 +134,6 @@ def count_source(source: str) -> Counter[str]:
 
 
 def gate(measurement: Measurement, baseline: Baseline) -> list[Failure]:
-    """Compare a measurement against the baseline's three ceilings."""
     failures = [
         Failure(dimension="code", key=key, ceiling=c, actual=n)
         for key, n in sorted(measurement.codes.items())
@@ -165,7 +153,6 @@ def gate(measurement: Measurement, baseline: Baseline) -> list[Failure]:
 
 
 def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, tuple[int, int]]:
-    """Find the code keys now below their ceiling — the wins worth locking in."""
     out: dict[str, tuple[int, int]] = {}
     for key, ceiling in baseline.codes.items():
         actual = measurement.codes.get(key, 0)
@@ -175,7 +162,6 @@ def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, tupl
 
 
 def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
-    """Build the baseline that `--update` would write from a measurement."""
     # Recompute exceptions so a file loses grandfathering as soon as it reaches the ceiling.
     exceptions = {path: n for path, n in measurement.files.items() if n > baseline.per_file_ceiling}
     return Baseline(
@@ -188,7 +174,6 @@ def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
 
 
 def load_baseline(path: Path) -> Baseline:
-    """Read a baseline JSON file, ignoring entries of the wrong shape."""
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; every read below narrows
         path.read_text(encoding="utf-8")
     )
@@ -206,14 +191,12 @@ def load_baseline(path: Path) -> Baseline:
 
 
 def _get(mapping: object, key: str) -> object:
-    """Read one key out of a value that may or may not be a JSON object."""
     if not isinstance(mapping, dict):
         return None
     return mapping.get(key)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] — json leaves are Any
 
 
 def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
-    """Render a baseline as the JSON text to write."""
     payload = {
         "_comment": (
             "Suppression ceilings, written by `sarj-ratchet --update`. Counts may "
@@ -235,7 +218,6 @@ def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
 
 
 def discover_packages(root: Path, excluded_dir_names: frozenset[str] = DEFAULT_EXCLUDED_DIR_NAMES) -> list[str]:
-    """List the top-level directories under `root` that contain Python files."""
     return sorted(
         name
         for child in root.iterdir()
@@ -247,7 +229,6 @@ def discover_packages(root: Path, excluded_dir_names: frozenset[str] = DEFAULT_E
 
 
 def _int_map(value: object) -> dict[str, int]:
-    """Narrow a JSON value to `{str: int}`, dropping anything else."""
     if not isinstance(value, dict):
         return {}
     return {
@@ -281,7 +262,6 @@ def _inside_subtree(relative: str, subtree: str) -> bool:
 
 
 def _python_files(root: Path, excluded_dir_names: frozenset[str]) -> Iterator[Path]:
-    """Yield every `.py` file under `root`, skipping excluded directories."""
     if not root.is_dir():
         return
     for path in sorted(root.rglob("*.py")):
@@ -290,7 +270,6 @@ def _python_files(root: Path, excluded_dir_names: frozenset[str]) -> Iterator[Pa
 
 
 def _read(path: Path) -> str:
-    """Read a source file, treating undecodable bytes as empty."""
     try:
         return path.read_text(encoding="utf-8")
     except UnicodeDecodeError, OSError:
@@ -298,7 +277,6 @@ def _read(path: Path) -> str:
 
 
 def _count_line(line: str, counts: Counter[str]) -> None:
-    """Add one line's suppressions to `counts`."""
     if file_noqa := _FILE_NOQA_RE.match(line):
         listed = file_noqa.group(1)
         if listed:

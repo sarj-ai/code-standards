@@ -1,5 +1,3 @@
-"""Tests for SARJ071 require-port-for-service."""
-
 from __future__ import annotations
 
 from pathlib import Path

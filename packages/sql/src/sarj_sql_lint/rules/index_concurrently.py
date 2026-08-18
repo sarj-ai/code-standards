@@ -1,5 +1,3 @@
-"""SARJ108: `CREATE INDEX` must use `CONCURRENTLY`."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -45,14 +43,11 @@ _CREATE_TABLE_RE = re.compile(
 
 
 def _base_name(raw: str) -> str:
-    """Reduce a possibly schema-qualified, possibly quoted table name to a bare key."""
     return raw.replace('"', "").rsplit(".", 1)[-1].lower()
 
 
 @final
 class IndexConcurrently(Rule):
-    """CREATE INDEX without CONCURRENTLY — blocks writes for the whole build."""
-
     id = "index-concurrently"
     code = "SARJ108"
     documentation = RuleDocumentation(
@@ -139,12 +134,10 @@ class IndexConcurrently(Rule):
 
 
 def _is_live(masked: str, pos: int) -> bool:
-    """Report whether offset `pos` is real SQL rather than a masked comment or literal."""
     return pos < len(masked) and not masked[pos].isspace()
 
 
 def _target_table(source: str, masked: str, start: int) -> str | None:
-    """Name the table an index built from `start` is created on."""
     end = masked.find(";", start)
     stmt_end = len(masked) if end == -1 else end
     match = _ON_TABLE_RE.search(source, start, stmt_end)

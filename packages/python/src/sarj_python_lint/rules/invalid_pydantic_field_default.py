@@ -1,8 +1,3 @@
-"""SARJ400 — Literal pydantic Field defaults must satisfy their declared contract.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_invalid_pydantic_field_default.py
-"""
-
 from __future__ import annotations
 
 import ast

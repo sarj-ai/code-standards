@@ -1,8 +1,3 @@
-"""SARJ420 — Docstrings are reserved for machine-consumed documentation.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_unnecessary_docstring.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -151,7 +146,6 @@ def _suppressed_on_docstring(source_lines: list[str], expression: ast.Expr, code
 
 
 def _explicit_docstring_consumers(tree: ast.Module) -> frozenset[str]:
-    """Collect owners whose docstrings are visibly read by executable code."""
     consumed: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == "__doc__":
@@ -170,8 +164,8 @@ def _explicit_docstring_consumers(tree: ast.Module) -> frozenset[str]:
 
 
 def _final_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return None

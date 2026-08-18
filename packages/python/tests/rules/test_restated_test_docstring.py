@@ -47,7 +47,6 @@ def test_flags_a_test_docstring_that_restates_the_name(name: str, docstring: str
 
 
 def test_a_docstring_naming_something_new_is_left_alone() -> None:
-    """The restatement test itself: one word the name and body do not carry saves it."""
     diags = _check('''
         def test_keeps_the_lock():
             """The scheduler would spin forever without this."""
@@ -66,7 +65,6 @@ def test_the_test_ceremony_vocabulary_is_discounted() -> None:
 
 
 def test_a_word_the_body_already_carries_is_not_novel() -> None:
-    """The body is code the reader has in front of them; a docstring re-spelling it adds nothing."""
     diags = _check('''
         def test_lookup():
             """Test that a missing beneficiary is None."""
@@ -96,7 +94,6 @@ def test_signature_parameters_and_annotations_are_not_novel() -> None:
 
 
 def test_prose_inside_a_string_literal_does_not_count_as_code() -> None:
-    """Only IDENTIFIERS widen the known set — a test body is full of English in strings."""
     diags = _check('''
         def test_rejects_it():
             """A stale cursor is silently discarded."""
@@ -106,7 +103,6 @@ def test_prose_inside_a_string_literal_does_not_count_as_code() -> None:
 
 
 def test_a_docstring_with_a_google_section_is_left_whole() -> None:
-    """Sections are SARJ086/087's subject; this rule deletes whole summaries only."""
     diags = _check('''
         def test_it_works():
             """Test that it works.
@@ -120,7 +116,6 @@ def test_a_docstring_with_a_google_section_is_left_whole() -> None:
 
 
 def test_a_protected_docstring_is_left_alone() -> None:
-    """A causal connective is the shape of a why, whatever words carry it."""
     diags = _check('''
         def test_it_works_because_the_lock_is_held():
             """It works because the lock is held."""
@@ -148,7 +143,6 @@ def test_a_docstring_carrying_a_unit_is_left_alone() -> None:
 
 
 def test_a_production_method_named_test_connection_is_left_alone() -> None:
-    """`Hook.test_connection` is not a test, and the fix is not "rename the test"."""
     diags = _check(
         '''
         class AzureComputeHook:
@@ -216,7 +210,6 @@ def test_flags_a_test_class_docstring_that_restates_the_class_name() -> None:
 
 
 def test_method_names_count_for_a_test_class() -> None:
-    """A `Test*` class names its subject twice: once in its own name, once per method."""
     diags = _check('''
         class TestParser:
             """Test cases for the diamond dependency manifest."""
@@ -239,7 +232,6 @@ def test_a_test_class_naming_something_new_is_left_alone() -> None:
 
 
 def test_a_test_class_with_a_base_is_left_alone() -> None:
-    """A base class makes the docstring an inherited contract, not a label."""
     diags = _check('''
         class TestSessionExpiry(BaseSuite):
             """Tests for session expiry."""

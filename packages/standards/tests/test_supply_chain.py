@@ -1,5 +1,3 @@
-"""Repository-level invariants that keep package publication fail closed."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,8 +31,8 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
         text = workflow.read_text(encoding="utf-8")
         for match in re.finditer(r"(?m)^\s*- uses: astral-sh/setup-uv@[^\n]+$", text):
             following = text[match.end() :].split("\n      - ", 1)[0]
-            if "version: '0.12.3'" not in following:
-                violations.append(f"setup-uv does not pin uv 0.12.3 in {workflow}")
+            if "version: '0.12.5'" not in following:
+                violations.append(f"setup-uv does not pin uv 0.12.5 in {workflow}")
     assert violations == []
 
 

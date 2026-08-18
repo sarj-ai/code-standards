@@ -1,5 +1,3 @@
-"""Repository-controlled release builds do not inherit publishing credentials."""
-
 from __future__ import annotations
 
 from pathlib import Path

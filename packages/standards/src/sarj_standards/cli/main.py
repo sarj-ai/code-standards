@@ -1,5 +1,3 @@
-"""CLI for syncing bundled lint configs into a consumer repository."""
-
 from __future__ import annotations
 
 import argparse
@@ -62,8 +60,6 @@ class _EvaluationScope(StrEnum):
 
 
 class _Args(argparse.Namespace):
-    """Provide typed defaults for the parsed command namespace."""
-
     cmd: str = ""
     dest: str = "."
     only: list[str]
@@ -187,13 +183,11 @@ def _resolve_dest(dest_arg: str) -> Path:
 
 
 def _user_error(message: str) -> NoReturn:
-    """Render invalid command input with argparse's conventional exit status."""
     print(f"error: {message}", file=sys.stderr)
     raise SystemExit(2)
 
 
 def _parse_rule_selector(value: str) -> RuleSelector:
-    """Validate a public rule selector once, at the argparse boundary."""
     from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level] -- parser startup stays lazy
         RuleSelector,
     )
@@ -252,7 +246,6 @@ def cmd_path(args: _Args) -> int:
 
 
 def cmd_peers(args: _Args) -> int:
-    """Print the npm packages `eslint.strict.mjs` needs, at versions that resolve."""
     from sarj_standards.libs.adoption import packagemanager, scaffold  # ruff: ignore[import-outside-top-level]
 
     peers = manifest.eslint_peers()
@@ -286,7 +279,6 @@ def cmd_peers(args: _Args) -> int:
 
 
 def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command renders repair and diagnosis state.
-    """Report every version pin site in a repo and whether it agrees with the rest."""
     from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -419,7 +411,6 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
 
 
 def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command preserves preview/apply state.
-    """Preview or apply one coherent bundle, optionally pinned exactly."""
     from sarj_standards.libs.adoption import doctor, lifecycle, upgrade  # ruff: ignore[import-outside-top-level]
 
     target_version: str | None = None
@@ -608,7 +599,6 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
 
 
 def cmd_setup(args: _Args) -> int:
-    """Scaffold a repo's whole adoption in one command."""
     from sarj_standards.libs.adoption import scaffold, service  # ruff: ignore[import-outside-top-level] -- lazy route
 
     root = _resolve_dest(args.dest)
@@ -723,7 +713,6 @@ def cmd_verify(args: _Args) -> int:
 
 
 def _declared_manifest(args: _Args) -> manifest.Manifest | None:
-    """Read the project adoption recorded by `setup`."""
     try:
         return manifest.load(_resolve_dest(args.dest))
     except TypeError, ValueError, SystemExit:
@@ -731,7 +720,6 @@ def _declared_manifest(args: _Args) -> manifest.Manifest | None:
 
 
 def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = None) -> int:
-    """Enforce the application profile's direct-dependency policy."""
     from sarj_standards.libs.linting import library_policy  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -781,7 +769,6 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
 
 
 def cmd_check(args: _Args) -> int:
-    """Run the complete quality gate or the selected paths."""
     from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -853,7 +840,6 @@ def _run_canonical_check(
     trusted: bool = False,
     staged: bool = False,
 ) -> int:
-    """Run every engine through one policy-aware diagnostic boundary."""
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
 
@@ -871,7 +857,6 @@ def _run_canonical_check(
 
 
 def cmd_analyze(args: _Args) -> int:
-    """Render canonical native diagnostics for CI and programmatic consumers."""
     from sarj_standards.api import (  # ruff: ignore[import-outside-top-level] -- keep CLI startup cheap
         AnalysisMode,
         Standards,
@@ -891,7 +876,6 @@ def cmd_analyze(args: _Args) -> int:
 
 
 def cmd_rule_evaluate(args: _Args) -> int:
-    """Run only explicitly selected custom rules for fleet calibration."""
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -911,7 +895,6 @@ def cmd_rule_evaluate(args: _Args) -> int:
 
 
 def cmd_observe(args: _Args) -> int:
-    """Emit selected-rule diagnostics without making findings block CI."""
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.linting.policy import warning_selectors  # ruff: ignore[import-outside-top-level]
 
@@ -939,7 +922,6 @@ def cmd_observe(args: _Args) -> int:
 
 
 def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) -> str:
-    """Render deterministic per-rule calibration counts and an author next step."""
     from sarj_standards.libs.diagnostics import AnalysisReport  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.rules import RuleEngine  # ruff: ignore[import-outside-top-level]
 
@@ -971,7 +953,6 @@ def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) 
 
 
 def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
-    """Render one canonical report, including pre-analysis configuration gates."""
     from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
         AnalysisReport,
         to_github,
@@ -1007,7 +988,6 @@ def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
 
 
 def _validate_analysis_output(args: _Args, root: Path) -> bool:
-    """Reject unsafe or unsupported report targets before any analysis runs."""
     if args.output is None or str(args.output) == "-":
         return False
     if args.output_format not in {"json", "sarif"}:
@@ -1023,7 +1003,6 @@ def _validate_analysis_output(args: _Args, root: Path) -> bool:
 
 
 def _machine_adoption_gate(root: Path) -> object | None:
-    """Return canonical diagnostics when full-check adoption/config gates fail."""
     from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
         Completion,
@@ -1113,7 +1092,6 @@ def _machine_adoption_gate(root: Path) -> object | None:
 
 
 def _machine_input_error(root: Path, message: str) -> object:
-    """Represent invalid CLI input through the selected machine-output protocol."""
     from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- machine formats stay lazy
         Completion,
         ExecutionIssue,
@@ -1128,7 +1106,6 @@ def _machine_input_error(root: Path, message: str) -> object:
 
 
 def _doctor_location(root: Path, where: str) -> str:
-    """Turn a human doctor site into a safe repository-relative location."""
     rendered = where.split(":", 1)[0]
     candidate = Path(rendered)
     if not candidate.is_absolute() and ".." not in candidate.parts and (root / candidate).exists():
@@ -1137,7 +1114,6 @@ def _doctor_location(root: Path, where: str) -> str:
 
 
 def _report_destination(root: Path, output: Path, *, output_format: str) -> Path:
-    """Validate a report target without creating it or running analysis."""
     candidate = output if output.is_absolute() else root / output
     lexical = Path(os.path.abspath(candidate))  # ruff: ignore[os-path-abspath] -- preserve symlink components for rejection
     try:
@@ -1176,7 +1152,6 @@ def _report_destination(root: Path, output: Path, *, output_format: str) -> Path
 
 
 def _prepare_report_parent(root: Path, output: Path) -> None:
-    """Create a requested in-repository report directory without traversing links."""
     candidate = output if output.is_absolute() else root / output
     lexical = Path(os.path.abspath(candidate))  # ruff: ignore[os-path-abspath] -- inspect lexical parent components.
     try:
@@ -1220,7 +1195,6 @@ def _check_staged_adoption_health(
     *,
     args: _Args,
 ) -> int:
-    """Keep the staged fast path from bypassing generated config and pin drift."""
     from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
 
     selected = tuple(Path(path) for path in staged_paths)
@@ -1277,7 +1251,6 @@ def _check_staged_adoption_health(
 
 
 def _staged_file_names(root: Path) -> list[str]:
-    """Return repository-relative index paths before worktree safety filtering."""
     git = shutil.which("git")
     if git is None:
         msg = "git is required for --staged"
@@ -1294,7 +1267,6 @@ def _staged_file_names(root: Path) -> list[str]:
 
 
 def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
-    """Keep hook-supplied paths inside the repository and reject symlink aliases."""
     repository = root.resolve()
     safe: list[str] = []
     for raw in paths:
@@ -1320,7 +1292,6 @@ def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
 
 
 def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ...]:
-    """Refuse direct staged checks when they would read different worktree bytes."""
     if not (root / ".git").exists():
         return ()
     git = shutil.which("git")
@@ -1340,7 +1311,6 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
 
 
 def _repository_relative_names(root: Path, paths: Iterable[str]) -> list[str]:
-    """Normalize supplied paths without requiring their worktree versions to exist."""
     repository = root.resolve()
     relative_names: list[str] = []
     for raw in paths:
@@ -1358,7 +1328,6 @@ def _repository_relative_names(root: Path, paths: Iterable[str]) -> list[str]:
 
 
 def _git_environment() -> dict[str, str]:
-    """Discard hook-local routing so `--root` remains the Git repository authority."""
     return {
         name: value
         for name, value in os.environ.items()  # ruff: ignore[banned-api] -- intentionally sanitize Git hook routing.
@@ -1367,7 +1336,6 @@ def _git_environment() -> dict[str, str]:
 
 
 def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
-    """Resolve explicit inputs without allowing repository-boundary aliases."""
     repository = root.resolve()
     selected: list[str] = []
     for raw in paths:
@@ -1432,7 +1400,6 @@ def cmd_format(args: _Args) -> int:
 
 
 def _staged_files(root: Path) -> list[str]:
-    """Return staged, non-deleted files as absolute paths safe for any caller CWD."""
     return _safe_staged_paths(root, _staged_file_names(root))
 
 
@@ -1444,7 +1411,6 @@ def cmd_inspect(args: _Args) -> int:
 
 
 def cmd_show(args: _Args) -> int:
-    """Render read-only package and adoption information."""
     match args.show_cmd:
         case "state":
             return cmd_inspect(args)
@@ -1478,7 +1444,6 @@ def cmd_show(args: _Args) -> int:
 
 
 def cmd_exclude(args: _Args) -> int:
-    """Inspect or change the repository's explicit path and rule denylist."""
     from sarj_standards.libs.adoption import exclusions  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -1507,7 +1472,6 @@ def cmd_exclude(args: _Args) -> int:
 
 
 def cmd_ratchet(args: _Args) -> int:
-    """Manage the Python suppression budget through the unified CLI."""
     from sarj_python_lint import run_ratchet  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -1534,7 +1498,6 @@ _DEFAULT_DIAGNOSTIC_BASELINE = "diagnostic-baseline.json"
 
 
 def cmd_baseline(args: _Args) -> int:
-    """Snapshot today's findings so only new ones fail, for every engine at once."""
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
 
@@ -1595,7 +1558,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _root_option_first(argv: list[str]) -> list[str]:
-    """Let the one global repository option appear before or after the verb."""
     equals_positions = [index for index, value in enumerate(argv) if value.startswith("--root=")]
     if equals_positions:
         if len(equals_positions) != 1:
@@ -1613,7 +1575,6 @@ def _root_option_first(argv: list[str]) -> list[str]:
 
 
 def _dispatch(args: _Args) -> int:
-    """Route one parsed command behind the consumer-facing error boundary."""
     match args.cmd:
         case "doctor":
             return cmd_doctor(args)
@@ -1642,7 +1603,6 @@ def _dispatch(args: _Args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] -- parser sections mirror public verbs.
-    """Build the public parser graph used by the CLI and derived references."""
     parser = argparse.ArgumentParser(
         prog="sarj-standards",
         description=f"Adopt, check, fix, diagnose, and update sarj-ai standards (v{__version__}).",
@@ -2175,7 +2135,6 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
 
 
 def _rule_author_next_steps(selector: RuleSelector) -> str:
-    """Render the local validation sequence after warning staging succeeds."""
     return (
         "next: validate the staged rule locally\n"
         f"  sarj-standards --root . maintain rules evaluate --rule {selector} --scope corpus\n"

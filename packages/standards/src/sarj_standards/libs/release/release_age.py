@@ -1,5 +1,3 @@
-"""Minimum-release-age policy for npm lockfiles."""
-
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -26,7 +24,6 @@ class _PublicationTime(NamedTuple):
 
 
 def load_exact_exclusions(path: Path) -> frozenset[str]:
-    """Load reviewable package@version exceptions from a line-oriented file."""
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
@@ -46,23 +43,17 @@ def load_exact_exclusions(path: Path) -> frozenset[str]:
 
 
 class PackumentFetcher(Protocol):
-    """Fetch one npm package metadata document."""
-
     def __call__(self, package_name: str, /) -> Mapping[str, object]: ...
 
 
 @dataclass(frozen=True, slots=True, order=True)
 class PackageIdentity:
-    """A unique registry package version represented in a lockfile."""
-
     name: str
     version: str
 
 
 @dataclass(frozen=True, slots=True)
 class ReleaseAgePolicy:
-    """Minimum package age and explicit package/version exceptions."""
-
     minimum_age: timedelta = timedelta(days=14)
     exclusions: frozenset[str] = frozenset()
 
@@ -73,7 +64,6 @@ class ReleaseAgePolicy:
 
     @classmethod
     def from_strings(cls, days_value: str | None, exclusions: str | None) -> Self:
-        """Parse CLI/environment values with the former script's defaults."""
         raw_days = "14" if days_value is None else days_value
         try:
             parsed_days = int(raw_days, 10)
@@ -89,8 +79,6 @@ class ReleaseAgePolicy:
 
 @dataclass(frozen=True, slots=True, order=True)
 class ReleaseAgeFailure:
-    """A locked version that is too new or lacks publication metadata."""
-
     identity: PackageIdentity
     detail: str
 
@@ -100,8 +88,6 @@ class ReleaseAgeFailure:
 
 @dataclass(frozen=True, slots=True)
 class ReleaseAgeReport:
-    """Deterministic result of checking all applicable lockfile packages."""
-
     checked: tuple[PackageIdentity, ...]
     failures: tuple[ReleaseAgeFailure, ...]
 
@@ -111,7 +97,6 @@ class ReleaseAgeReport:
 
 
 def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[PackageIdentity, ...]:
-    """Extract package versions and reject artifacts outside the public npm registry."""
     packages_value = _load_object(lockfile).get("packages")
     if packages_value is None:
         return ()
@@ -158,7 +143,6 @@ def _package_name(lock_path: str) -> str | None:
 
 
 def fetch_npm_packument(package_name: str) -> Mapping[str, object]:
-    """Fetch package metadata from the fixed public npm registry origin."""
     url = f"https://registry.npmjs.org/{quote(package_name, safe='')}"
     request = Request(url, headers={"Accept": "application/json"})
     with urlopen(request, timeout=15) as response:  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed trusted origin
@@ -178,7 +162,6 @@ def check_lockfile_release_age(
     clock: Callable[[], datetime] = _utc_now,
     concurrency: int = 12,
 ) -> ReleaseAgeReport:
-    """Check npm publication age concurrently with injectable I/O and time."""
     if concurrency < 1:
         msg = "release-age concurrency must be at least one"
         raise ValueError(msg)

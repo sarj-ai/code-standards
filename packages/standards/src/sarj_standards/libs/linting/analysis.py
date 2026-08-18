@@ -1,5 +1,3 @@
-"""In-process adapters from native Sarj analyzers to the canonical protocol."""
-
 from __future__ import annotations
 
 from dataclasses import replace
@@ -91,7 +89,6 @@ def analyze(
     grouped: GroupedPaths | None = None,
     rule_selection: RuleSelection | None = None,
 ) -> AnalysisReport:
-    """Run applicable bundled analyzers without parsing their console output."""
     root = root.resolve()
     try:
         contained = tuple(_contained_path(item, root) for item in files)
@@ -173,7 +170,6 @@ def _contained_path(value: str, root: Path) -> str:
 
 
 def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
-    """Derive consistent report axes from independent tool reports."""
     normalized = tuple(
         ToolReport(
             report.name,

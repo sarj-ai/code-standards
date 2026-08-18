@@ -1,5 +1,3 @@
-"""Corpus rule evaluation cannot accumulate multiple repositories in one process."""
-
 from __future__ import annotations
 
 from datetime import timedelta

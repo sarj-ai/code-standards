@@ -1,8 +1,3 @@
-"""SARJ092 — Docstrings should not repeat types already present in signatures.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_typed_doc_sections.py
-"""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath

@@ -1,5 +1,3 @@
-"""The one file a consumer repo pins, and the versions everything else must match."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -41,7 +39,6 @@ SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
 
 
 def adopted_version() -> str:
-    """Report the `sarj-standards` version this environment provides."""
     if __version__ != "0.0.0.dev0":
         return __version__
     source_project = CONFIGS_DIR.parents[2] / "pyproject.toml"
@@ -74,8 +71,6 @@ DEFAULT_DURABLE_ARTIFACTS: Final = (
 
 @dataclass(frozen=True)
 class ExclusionOverride:
-    """Rule exclusions scoped to repository-relative path patterns."""
-
     paths: tuple[str, ...]
     rules: tuple[str, ...]
     reason: str
@@ -83,8 +78,6 @@ class ExclusionOverride:
 
 @dataclass(frozen=True)
 class Manifest:
-    """A consumer repo's declared adoption of this package."""
-
     version: str
     configs: tuple[str, ...]
     python_dest: str
@@ -103,7 +96,6 @@ class Manifest:
     ci_bootstrap: tuple[str, ...] = ()
 
     def render(self) -> str:
-        """Serialise to the TOML text written at the repo root."""
         disabled = tuple(name for name in ALL_CONFIGS if name not in self.configs)
         disabled_text = ", ".join(f'"{name}"' for name in disabled)
         durable_text = ", ".join(json.dumps(value) for value in self.durable_artifacts)
@@ -157,7 +149,6 @@ class Manifest:
 
 
 def as_table(value: object) -> dict[str, object]:
-    """Read an untyped mapping as a string-keyed table of unknown values."""
     if not isinstance(value, dict):
         return {}
     # Centralize untyped-parser narrowing so downstream tables stay typed.
@@ -169,24 +160,20 @@ def as_table(value: object) -> dict[str, object]:
 
 
 def text_field(table: Mapping[str, object], key: str) -> str | None:
-    """Read one string out of an untyped table."""
     value = table.get(key)
     return value if isinstance(value, str) else None
 
 
 def list_field(table: Mapping[str, object], key: str) -> list[object]:
-    """Read one list out of an untyped table."""
     value = table.get(key)
     return value if isinstance(value, list) else []  # pyright: ignore[reportUnknownVariableType] — a narrowed `list` from an untyped parser has Unknown leaves
 
 
 def table_field(table: Mapping[str, object], key: str) -> dict[str, object]:
-    """Read one nested table out of an untyped table."""
     return as_table(table.get(key))
 
 
 def default_configs(*, has_python: bool, has_typescript: bool) -> tuple[str, ...]:
-    """Pick the config set for a repo's detected ecosystems."""
     selected: set[str] = set(SHARED_CONFIGS)
     if has_python:
         selected.update(PYTHON_CONFIGS)
@@ -197,12 +184,10 @@ def default_configs(*, has_python: bool, has_typescript: bool) -> tuple[str, ...
 
 
 def manifest_path(root: Path) -> Path:
-    """Locate the manifest for a repo root."""
     return root / MANIFEST_NAME
 
 
 def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one validation boundary keeps manifest errors coherent.
-    """Read a repo's manifest."""
     path = manifest_path(root)
     if not path.is_file():
         return None
@@ -286,7 +271,6 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
 
 
 def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
-    """Decode an optional manifest table without hiding a wrong-typed section."""
     value = data.get(key)
     if value is None:
         return {}
@@ -297,7 +281,6 @@ def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
 
 
 def load_for_setup(root: Path) -> Manifest | None:
-    """Load current policy or the final schema-less manifest for one-way setup migration."""
     try:
         return load(root)
     except ValueError:
@@ -400,7 +383,6 @@ def _string_list(
 
 
 def _ci_bootstrap(table: Mapping[str, object]) -> tuple[str, ...]:
-    """Read explicit single-line commands for generated CI setup."""
     commands = _string_list(table, "bootstrap", label="manifest [ci].bootstrap")
     if any(command != command.strip() or "\n" in command or "\r" in command for command in commands):
         msg = "manifest [ci].bootstrap commands must be trimmed single-line strings"
@@ -419,7 +401,6 @@ def _rule_selectors(table: Mapping[str, object], key: str) -> tuple[str, ...]:
 
 
 def validate_excluded_path(root: Path, pattern: str) -> str:
-    """Validate and normalize one repository-relative denylist pattern."""
     normalized = pattern.replace("\\", "/")
     if normalized.startswith(("/", "!")) or ".." in normalized.split("/"):
         msg = f"manifest exclusion pattern must be a repository-relative denylist pattern: {pattern}"
@@ -435,7 +416,6 @@ def validate_excluded_path(root: Path, pattern: str) -> str:
 
 
 def validate_excluded_rule(selector: str) -> str:
-    """Validate one exact canonical engine:rule denylist selector."""
     engine, separator, rule = selector.partition(":")
     if (
         not separator
@@ -450,7 +430,6 @@ def validate_excluded_rule(selector: str) -> str:
 
 
 def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
-    """Reject misspelled shipped rules while leaving native analyzer catalogs open."""
     from sarj_standards.libs.linting import (  # ruff: ignore[import-outside-top-level] -- avoid a manifest/policy import cycle.
         library_policy,
     )
@@ -544,7 +523,6 @@ def _relative_file(root: Path, table: Mapping[str, object], key: str) -> str | N
 
 
 def installed_versions() -> dict[str, str]:
-    """Report the versions of every Sarj distribution in the current environment."""
     found = {LINT_CONFIGS: adopted_version()}
     for name in SIBLING_PACKAGES:
         try:
@@ -555,7 +533,6 @@ def installed_versions() -> dict[str, str]:
 
 
 def eslint_peers() -> dict[str, str]:
-    """Read the tested npm version set for the bundled ESLint config."""
     parsed: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         PEERS_JSON.read_text(encoding="utf-8")
     )
@@ -567,7 +544,6 @@ def eslint_peers() -> dict[str, str]:
 
 
 def eslint_overrides() -> dict[str, object]:
-    """Read the npm `overrides` the peer set needs to install at all."""
     parsed: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         PEERS_JSON.read_text(encoding="utf-8")
     )

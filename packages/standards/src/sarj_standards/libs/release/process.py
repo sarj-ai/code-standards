@@ -1,5 +1,3 @@
-"""Typed, injectable process execution for release operations."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -21,8 +19,6 @@ _BLOCKED_CREDENTIAL_NAMES = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class ProcessResult:
-    """The process data release code needs, independent of subprocess internals."""
-
     returncode: int
     stdout: str = ""
     stderr: str = ""
@@ -40,8 +36,6 @@ class ProcessResult:
 
 
 class ProcessRunner(Protocol):
-    """Run one argv vector without a shell."""
-
     def __call__(
         self,
         argv: tuple[str, ...],
@@ -52,8 +46,6 @@ class ProcessRunner(Protocol):
 
 
 class ProcessFailureError(RuntimeError):
-    """A child process failed during a release operation."""
-
     argv: tuple[str, ...]
     returncode: int
 
@@ -69,7 +61,6 @@ def run_process(
     cwd: Path,
     capture_output: bool = False,
 ) -> ProcessResult:
-    """Run an argv vector directly, inheriting the environment and never using a shell."""
     return run_process_environment(argv, cwd=cwd, capture_output=capture_output, environment=None)
 
 
@@ -80,7 +71,6 @@ def run_process_environment(
     capture_output: bool = False,
     environment: Mapping[str, str] | None,
 ) -> ProcessResult:
-    """Run one argv vector with an explicit environment boundary."""
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is passed directly and shell remains disabled.
         argv,
         cwd=cwd,
@@ -97,7 +87,6 @@ def run_process_environment(
 
 
 def credential_free_environment(environment: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Filter credential-shaped variables; filesystem isolation is added by the runner."""
     source = os.environ if environment is None else environment  # ruff: ignore[banned-api] -- deliberate child-process boundary
     blocked_fragments = ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY", "AUTH")
     blocked_prefixes = ("AWS_", "AZURE_", "GOOGLE_", "TWINE_", "UV_PUBLISH_", "ACTIONS_ID_TOKEN_")
@@ -116,7 +105,6 @@ def run_build_process(
     cwd: Path,
     capture_output: bool = False,
 ) -> ProcessResult:
-    """Run build code with scrubbed variables and an empty temporary home."""
     with tempfile.TemporaryDirectory(prefix="sarj-build-home-") as home:
         environment = credential_free_environment()
         environment.update(

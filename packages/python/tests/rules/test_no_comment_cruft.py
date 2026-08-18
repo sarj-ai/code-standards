@@ -34,7 +34,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def _standalone(body: str) -> list[Diagnostic]:
-    """Check `body` as a standalone comment between live statements."""
     return _check(f"x = 1\n# {body}\ny = 2\n")
 
 
@@ -1061,7 +1060,6 @@ def test_license_header_rules_are_not_section_banners():
 
 
 def test_section_banner_below_a_license_header_still_flags():
-    """The exemption is scoped to the header, not to the whole file."""
     diags = _check(f"{_LICENSE_HEADER}import os\n\n\n# =========\nMAX = 1\n")
     assert len(diags) == 1
     assert "Section-banner" in diags[0].message

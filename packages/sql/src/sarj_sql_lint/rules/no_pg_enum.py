@@ -1,5 +1,3 @@
-"""SARJ103: forbid `CREATE TYPE ... AS ENUM` — use TEXT + CHECK constraint."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -37,8 +35,6 @@ _ALTER_ADD_VALUE_RE = re.compile(r"\bALTER\s+TYPE\b.*?\bADD\s+VALUE\b", re.IGNOR
 
 @final
 class NoPgEnum(Rule):
-    """Forbid CREATE TYPE AS ENUM in favor of TEXT with CHECK constraint."""
-
     id = "no-pg-enum"
     code = "SARJ103"
     documentation = RuleDocumentation(

@@ -1,5 +1,3 @@
-"""Clean-break adoption must never leave an older tool config authoritative."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

@@ -357,7 +357,6 @@ def test_skips_arms_whose_bodies_have_different_lengths():
 
 
 def test_skips_arms_whose_bodies_share_a_first_statement_but_differ_in_length():
-    """The length check must run *before* the element-wise compare."""
     assert (
         _check(
             """
@@ -490,7 +489,6 @@ def test_flags_the_same_pair_once_the_separating_comment_is_gone():
 
 
 def test_a_comment_on_the_second_arms_case_line_is_not_a_gap_comment():
-    """The gap ends one line *above* the second `case`."""
     diags = _check(
         """
         def f(v):

@@ -217,5 +217,4 @@ NON_PAGINATION = {
 
 @pytest.mark.parametrize("source", NON_PAGINATION.values(), ids=list(NON_PAGINATION))
 def test_offset_without_a_value_token_is_not_pagination(source: str):
-    """Requiring the value token is the shared reason all three packages stay quiet here."""
     assert _check(source) == []

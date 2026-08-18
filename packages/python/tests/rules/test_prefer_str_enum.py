@@ -277,7 +277,6 @@ class Rec(BaseModel):
     ["status", "state", "kind", "role", "priority", "severity", "direction", "tier", "stage", "type", "mode"],
 )
 def test_bare_choice_like_name_alone_not_flagged(field: str):
-    """A field name alone is too weak — a free-form `status: str` must not fire."""
     src = f"""
 from pydantic import BaseModel
 
@@ -441,7 +440,6 @@ def handle(status: str) -> int:
 
 
 def test_local_kind_dispatch_single_char_fires():
-    """The must-preserve true positive: a genuine two-way dispatch on a local."""
     src = """
 def route(kind: str) -> int:
     if kind == "a":
@@ -596,7 +594,6 @@ def handle(status: str) -> int:
 
 
 def test_sibling_choices_still_applies_in_test_files():
-    """Only the comparison-cluster trigger is test-file-scoped."""
     src = """
 from pydantic import BaseModel
 
@@ -620,7 +617,6 @@ def handle(status: str) -> int:
 
 
 def test_mixed_eq_and_in_operators_form_one_cluster():
-    """Merge a membership test and an equality comparison into one cluster."""
     src = """
 def handle(status: str) -> int:
     if status == "active":
@@ -701,7 +697,6 @@ def handle(s: str) -> int:
 
 
 def test_external_attribute_membership_not_flagged():
-    """Httpx `_config.py`: `url.scheme not in ("http", "https", "socks5", ...)`."""
     src = """
 def build(url) -> None:
     if url.scheme not in ("http", "https", "socks5", "socks5h"):
@@ -711,7 +706,6 @@ def build(url) -> None:
 
 
 def test_external_attribute_equality_cluster_not_flagged():
-    """Fastapi `_compat/v2.py`: `field.mode == "validation"` — pydantic-core attr."""
     src = """
 def read(field) -> int:
     if field.mode == "validation":
@@ -751,7 +745,6 @@ def handle(ctx) -> int:
 
 
 def test_reflection_key_membership_not_flagged():
-    """Httpx `_main.py`: `name in ("subject", "issuer")` over an ssl cert dict."""
     src = """
 def show(cert) -> None:
     for name in cert:
@@ -762,7 +755,6 @@ def show(cert) -> None:
 
 
 def test_reflection_dunder_dict_membership_not_flagged():
-    """Httpx `_models.py`: `name not in ["extensions", "stream"]` over __dict__."""
     src = """
 def copy(self) -> None:
     for name in self.__dict__:
@@ -773,7 +765,6 @@ def copy(self) -> None:
 
 
 def test_file_mode_membership_not_flagged():
-    """Flask `blueprints.py` / `app.py`: `mode not in {"r", "rt", "rb"}`."""
     src = """
 def opener(mode: str) -> None:
     if mode not in {"r", "rt", "rb"}:
@@ -808,7 +799,6 @@ def handle(status: str) -> bool:
 
 
 def test_upstream_role_membership_not_flagged():
-    """An LLM message-role membership check is a lone guard, not an app enum."""
     src = """
 def route(role: str) -> int:
     if role in ("user", "assistant", "system"):
@@ -819,7 +809,6 @@ def route(role: str) -> int:
 
 
 def test_metric_field_name_membership_not_flagged():
-    """Metric/log field-name keys are not a value enum."""
     src = """
 def prune(k: str) -> bool:
     return k not in ["diff_ms", "total_ms"]
@@ -868,7 +857,6 @@ def handle(status: str) -> bool:
 
 
 def test_single_char_scanner_cluster_not_flagged():
-    """Django `defaultfilters`: `last_char == "g"` is a char scan, not an enum."""
     src = """
 def stem(last_char: str) -> int:
     if last_char == "g":
@@ -881,7 +869,6 @@ def stem(last_char: str) -> int:
 
 
 def test_language_keyword_tokenizer_not_flagged():
-    """Django `smartif`: `token == "is" / "not" / "in"` is a keyword vocabulary."""
     src = """
 def parse(token: str) -> int:
     if token == "is":
@@ -896,7 +883,6 @@ def parse(token: str) -> int:
 
 
 def test_non_scanner_single_char_cluster_still_fires():
-    """A single-char dispatch on a non-scanner variable (grades) is a real enum."""
     src = """
 def grade(g: str) -> int:
     if g == "a":
@@ -911,7 +897,6 @@ def grade(g: str) -> int:
 
 
 def test_module_alias_literal_param_not_flagged():
-    """A param annotated with a module-level `Literal` alias is already closed."""
     src = """
 from typing import Literal
 
@@ -930,7 +915,6 @@ def render(align: Mode) -> int:
 
 
 def test_module_alias_literal_valueset_not_flagged():
-    """Rich `align.py`: `align = self.align` compared against the alias's values."""
     src = """
 from typing import Literal
 
@@ -1063,7 +1047,6 @@ def toggle(mode: Mode) -> int:
 
 @pytest.mark.parametrize("name", ["language", "lang", "country", "currency", "timezone", "locale", "region", "code"])
 def test_open_domain_code_cluster_not_flagged(name: str):
-    """Home Assistant `language.py`: `if language == "en": elif language == "zh":`."""
     src = f"""
 def regions({name}: str) -> int:
     if {name} == "en":
@@ -1095,7 +1078,6 @@ def pick(language: str) -> int:
 
 
 def test_genuine_closed_choice_cluster_still_fires_alongside_alias():
-    """An unrelated closed-choice dispatch still fires when an alias exists."""
     src = """
 from typing import Literal
 

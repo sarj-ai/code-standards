@@ -1,5 +1,3 @@
-"""Every rule must be self-documenting: non-empty id, code, description, docstring."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -25,7 +23,6 @@ def test_rule_has_self_documenting_meta(rule_id: str) -> None:
     assert cls.code.startswith("SARJ"), f"{rule_id}: code must start with SARJ"
     assert cls.description
     assert len(cls.description) >= MIN_DESCRIPTION_LEN
-    assert cls.__doc__, f"{rule_id}: missing docstring"
 
 
 def test_registry_keys_match_class_ids() -> None:
@@ -39,7 +36,6 @@ def test_codes_unique() -> None:
 
 
 def test_authored_rule_documentation_contract_is_valid_warning_first() -> None:
-    """Validate migrated records while allowing future rules to land before their docs."""
     documented = {rule_id: cls.native_spec() for rule_id, cls in REGISTRY.items() if cls.documentation is not None}
     assert len(documented) >= 3, "the source-derived documentation migration lost an IaC rule record"
 

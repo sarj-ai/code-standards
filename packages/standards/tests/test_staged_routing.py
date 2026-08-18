@@ -1,5 +1,3 @@
-"""Staged checks lint exactly the index paths pre-commit selected."""
-
 from __future__ import annotations
 
 import subprocess

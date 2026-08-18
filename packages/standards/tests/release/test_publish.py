@@ -1,5 +1,3 @@
-"""Native package publication is planned by the release library."""
-
 from __future__ import annotations
 
 import json

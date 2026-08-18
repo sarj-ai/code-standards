@@ -1,8 +1,3 @@
-"""SARJ052 — Stdlib `logging` imported in application code — the house logger is loguru.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_stdlib_logging.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -90,7 +85,6 @@ class NoStdlibLogging(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Report every runtime stdlib-`logging` import in `source`."""
         if is_test_path(path) or _EXEMPT_DIR_NAMES.intersection(path.parts) or is_generated(path, source):
             return []
         # Skip parsing unless the only import root this rule reports is present.
@@ -122,7 +116,6 @@ class NoStdlibLogging(Rule):
 
 
 def _logging_imports(tree: ast.Module) -> list[ast.Import | ast.ImportFrom]:
-    """Collect every `import logging...` / `from logging... import ...` node."""
     out: list[ast.Import | ast.ImportFrom] = []
     for node in nodes(tree, ast.Import, ast.ImportFrom):
         match node:
@@ -136,7 +129,6 @@ def _logging_imports(tree: ast.Module) -> list[ast.Import | ast.ImportFrom]:
 
 
 def _imports_loguru(tree: ast.Module, source: str) -> bool:
-    """Report whether the module imports loguru anywhere."""
     if _LOGURU_ROOT not in source:
         return False
     return any(
@@ -147,7 +139,6 @@ def _imports_loguru(tree: ast.Module, source: str) -> bool:
 
 
 def _type_checking_lines(tree: ast.Module, source: str) -> frozenset[int]:
-    """Collect the line numbers of every statement guarded by `if TYPE_CHECKING:`."""
     if "TYPE_CHECKING" not in source:
         return frozenset()
     return frozenset(
@@ -161,7 +152,6 @@ def _type_checking_lines(tree: ast.Module, source: str) -> frozenset[int]:
 
 
 def _is_type_checking_test(test: ast.expr) -> bool:
-    """Report whether `test` is the conventional `TYPE_CHECKING` guard."""
     match test:
         case ast.Name(id="TYPE_CHECKING") | ast.Attribute(attr="TYPE_CHECKING"):
             return True
@@ -170,10 +160,8 @@ def _is_type_checking_test(test: ast.expr) -> bool:
 
 
 def _is_logging_module(name: str) -> bool:
-    """Report whether a dotted module name is stdlib `logging` or a submodule of it."""
     return name == _LOGGING_ROOT or name.startswith(f"{_LOGGING_ROOT}.")
 
 
 def _is_loguru_module(name: str) -> bool:
-    """Report whether a dotted module name is `loguru` or a submodule of it."""
     return name == _LOGURU_ROOT or name.startswith(f"{_LOGURU_ROOT}.")

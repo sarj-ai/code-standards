@@ -1,5 +1,3 @@
-"""Reusable TypeScript check, pack, and publish operations."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,8 +30,6 @@ ReleaseMode = Literal["check", "pack", "publish"]
 
 @dataclass(frozen=True, slots=True)
 class PackedArtifact:
-    """A verified npm package artifact."""
-
     path: Path
     included_files: tuple[str, ...]
 
@@ -44,7 +40,6 @@ def pack_typescript(
     *,
     runner: ProcessRunner = run_build_process,
 ) -> PackedArtifact:
-    """Create and independently verify an npm tarball."""
     destination.mkdir(parents=True, exist_ok=True)
     result = runner(
         (
@@ -140,7 +135,6 @@ def _included_paths(value: object) -> tuple[str, ...]:
 
 
 def check_typescript(package_root: Path, *, runner: ProcessRunner = run_build_process) -> None:
-    """Run the reproducible TypeScript release test sequence."""
     for argv in (
         ("npm", "ci", "--no-audit", "--no-fund"),
         ("npm", "run", "lint"),
@@ -158,7 +152,6 @@ def run_typescript_release(
     runner: ProcessRunner = run_process,
     environment: Mapping[str, str] | None = None,
 ) -> PackedArtifact | None:
-    """Check, pack, or publish the TypeScript package without shell execution."""
     if mode not in {"check", "pack", "publish"}:
         msg = f"unsupported TypeScript release mode: {mode}"
         raise ValueError(msg)

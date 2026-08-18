@@ -1,8 +1,3 @@
-"""SARJ046 — A non-strict `xfail` bug-pin goes green forever once the bug is fixed.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_defect_xfail_requires_strict.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -107,7 +102,6 @@ class DefectXfailRequiresStrict(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag defect-pinning xfail markers that lack `strict=True`."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -144,14 +138,12 @@ def _rotting_bug_pins(tree: ast.Module, imports: ImportIndex) -> list[ast.Call]:
 
 
 def _rotting_markers(markers: list[ast.expr], imports: ImportIndex) -> list[ast.Call]:
-    """Return non-strict bug pins unless a sibling marks this owner as nondeterministic."""
     if _has_nondeterministic_marker(markers, imports):
         return []
     return [marker for marker in markers if isinstance(marker, ast.Call) and _is_rotting_xfail(marker, imports)]
 
 
 def _module_pytest_markers(tree: ast.Module, imports: ImportIndex) -> list[ast.expr]:
-    """Resolve one static module-level ``pytestmark`` binding without walking parametrized cases."""
     values: list[ast.expr] = []
     for statement in tree.body:
         match statement:
@@ -176,7 +168,6 @@ def _has_nondeterministic_marker(decorators: list[ast.expr], imports: ImportInde
 
 
 def _is_property_based(dec: ast.expr, imports: ImportIndex) -> bool:
-    """Report whether `dec` expands the test into many generated inputs."""
     target = dec.func if isinstance(dec, ast.Call) else dec
     if isinstance(target, ast.Name):
         return target.id in _PROPERTY_DECORATORS
@@ -187,7 +178,6 @@ def _is_property_based(dec: ast.expr, imports: ImportIndex) -> bool:
 
 
 def _pytest_marker_name(dec: ast.expr, imports: ImportIndex) -> str | None:
-    """Resolve a marker only when its local binding is proven to come from pytest."""
     target = dec.func if isinstance(dec, ast.Call) else dec
     if not isinstance(target, ast.Attribute):
         return None
@@ -219,7 +209,6 @@ _ENV_PROBE_RE = re.compile(
 
 
 def _is_environment_gated(dec: ast.Call) -> bool:
-    """Report whether the marker's condition gates on the interpreter or OS."""
     conditions = [*dec.args, *(kw.value for kw in dec.keywords if kw.arg == "condition")]
     for condition in conditions:
         parsed_condition = condition

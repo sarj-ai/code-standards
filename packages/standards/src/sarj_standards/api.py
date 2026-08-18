@@ -1,5 +1,3 @@
-"""Public API for standards adoption, checking, setup, and release policy."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -107,8 +105,6 @@ class AnalysisMode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    """One normalized diagnostic suitable for automation and presentation."""
-
     id: str
     level: str
     message: str
@@ -118,8 +114,6 @@ class Finding:
 
 @dataclass(frozen=True, slots=True)
 class Change:
-    """One planned or applied repository change."""
-
     action: str
     description: str
     path: Path | None = None
@@ -127,8 +121,6 @@ class Change:
 
 @dataclass(frozen=True, slots=True)
 class Result:
-    """Normalized result returned by the stable consumer facade."""
-
     status: Status
     findings: tuple[Finding, ...] = ()
     changes: tuple[Change, ...] = ()
@@ -140,8 +132,6 @@ class Result:
 
 
 class Standards:
-    """Small, state-free facade for one consumer repository."""
-
     def __init__(self, root: str | Path = ".") -> None:
         resolved = Path(root).resolve()
         if not resolved.is_dir():
@@ -255,7 +245,6 @@ class Standards:
         rules: Sequence[str | RuleSelector] | None = None,
         staged: bool = False,
     ) -> AnalysisReport:
-        """Return source findings and execution failures through the versioned diagnostic protocol."""
         try:
             normalized_trust = TrustMode(trust)
             normalized_mode = AnalysisMode(mode)
@@ -413,7 +402,6 @@ class Standards:
         rules: Sequence[str | RuleSelector] | None = None,
         staged: bool = False,
     ) -> AnalysisReport:
-        """Run the canonical structured analysis engine."""
         return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules, staged=staged)
 
     def fix(self) -> Result:
@@ -449,7 +437,6 @@ class Standards:
         install: bool = True,
         check_only: bool = False,
     ) -> Result:
-        """Resolve and apply an exact or the latest coherent Standards bundle."""
         return self._update_target(version=version, offline=offline, install=install, check_only=check_only)
 
     def _update_target(self, *, version: str | None, offline: bool, install: bool, check_only: bool) -> Result:
@@ -650,7 +637,6 @@ def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisM
 
 
 def _with_tracked_terraform_tests(root: Path, selected: list[str]) -> list[str]:
-    """Add categorical Terraform-test violations even outside configured verification scope."""
     git = shutil.which("git")
     if git is None:
         return selected

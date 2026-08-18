@@ -1,8 +1,3 @@
-"""SARJ068 — Build a string with an f-string, not `"literal" + expression`.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_fstring_over_concat.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -159,7 +154,6 @@ class PreferFstringOverConcat(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag `+` string building that an f-string expresses better."""
         if "+" not in source or is_generated(path, source) or _is_skill_utility(path):
             return []
         tree = parse_or_none(path, source)
@@ -214,7 +208,6 @@ class PreferFstringOverConcat(Rule):
 
 
 def _comment_lines(source: str) -> frozenset[int]:
-    """Collect the 1-based line numbers carrying a `#` comment."""
     try:
         return frozenset(
             token.start[0]
@@ -226,7 +219,6 @@ def _comment_lines(source: str) -> frozenset[int]:
 
 
 def _is_logging_call(node: ast.Call) -> bool:
-    """Report whether `node` is a logging call through the shared receiver resolver."""
     func = node.func
     if not isinstance(func, ast.Attribute) or func.attr not in LOG_METHODS:
         return False
@@ -234,7 +226,6 @@ def _is_logging_call(node: ast.Call) -> bool:
 
 
 def _verdict(node: ast.BinOp, known_strings: frozenset[str]) -> str | None:
-    """Judge one outermost `+` chain and build its message."""
     literals: list[str] = []
     dynamic: list[ast.expr] = []
     operands = _flatten(node)
@@ -284,7 +275,6 @@ def _verdict(node: ast.BinOp, known_strings: frozenset[str]) -> str | None:
 
 
 def _flatten(node: ast.expr) -> list[ast.expr]:
-    """Flatten a nested `+` chain into its operands."""
     operands: list[ast.expr] = []
     stack = [node]
     while stack:
@@ -299,12 +289,10 @@ def _flatten(node: ast.expr) -> list[ast.expr]:
 
 
 def _is_join_call(expr: ast.expr) -> bool:
-    """Report whether `expr` is a `<sep>.join(...)` call."""
     return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "join"
 
 
 def _is_orm_expression(expr: ast.expr) -> bool:
-    """Report whether `expr` builds an ORM/SQL expression object rather than a string."""
     if not isinstance(expr, ast.Call):
         return False
     func = expr.func
@@ -314,14 +302,12 @@ def _is_orm_expression(expr: ast.expr) -> bool:
 
 
 def _root_name(expr: ast.expr) -> str:
-    """Walk an attribute/subscript spine down to its leftmost `Name`."""
     while isinstance(expr, ast.Attribute | ast.Subscript):
         expr = expr.value
     return expr.id if isinstance(expr, ast.Name) else ""
 
 
 def _is_blob_glue(operands: list[ast.expr], dynamic: list[ast.expr]) -> bool:
-    """Report whether the chain only glues opaque blobs together with whitespace."""
     text = _template_text(operands)
     if not text or any(fragment.strip() for fragment in text):
         return False
@@ -329,7 +315,6 @@ def _is_blob_glue(operands: list[ast.expr], dynamic: list[ast.expr]) -> bool:
 
 
 def _template_text(operands: list[ast.expr]) -> list[str]:
-    """Collect every literal text fragment in the chain, f-string parts included."""
     text: list[str] = []
     for operand in operands:
         if isinstance(operand, ast.Constant) and isinstance(operand.value, str):
@@ -342,7 +327,6 @@ def _template_text(operands: list[ast.expr]) -> list[str]:
 
 
 def _has_string_literal_argument(expr: ast.expr) -> bool:
-    """Report whether `expr` is a call carrying a string literal in its arguments."""
     if not isinstance(expr, ast.Call):
         return False
     arguments: list[ast.expr] = [*expr.args, *(kw.value for kw in expr.keywords)]
@@ -350,7 +334,6 @@ def _has_string_literal_argument(expr: ast.expr) -> bool:
 
 
 def _is_lazy_call(expr: ast.expr) -> bool:
-    """Report whether `expr` yields a lazy translation proxy or a SafeString."""
     if not isinstance(expr, ast.Call):
         return False
     func = expr.func
@@ -359,25 +342,21 @@ def _is_lazy_call(expr: ast.expr) -> bool:
 
 
 def _is_str_call(expr: ast.expr) -> bool:
-    """Report whether `expr` is a `str(...)` coercion the f-string would delete."""
     return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name) and expr.func.id == "str"
 
 
 def _is_string_repetition(expr: ast.expr) -> bool:
-    """Report whether `expr` is a `"x" * n` padding/separator construction."""
     if not isinstance(expr, ast.BinOp) or not isinstance(expr.op, ast.Mult):
         return False
     return any(isinstance(side, ast.Constant) and isinstance(side.value, str) for side in (expr.left, expr.right))
 
 
 def _is_skill_utility(path: Path) -> bool:
-    """Report utility files beneath ``.agents/skills`` or ``.claude/skills``."""
     parts = tuple(part.casefold() for part in path.parts)
     return any(parts[index] in _SKILL_ROOTS and parts[index + 1] == "skills" for index in range(len(parts) - 1))
 
 
 def _known_string_names(node: ast.BinOp, parents: dict[int, ast.AST]) -> frozenset[str]:
-    """Collect conservative, same-scope string facts visible before ``node``."""
     scope: ast.AST = node
     while not isinstance(scope, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
         parent = parents.get(id(scope))
@@ -429,7 +408,6 @@ def _known_string_names(node: ast.BinOp, parents: dict[int, ast.AST]) -> frozens
 
 
 def _annotation_is_string(annotation: ast.expr) -> bool:
-    """Recognize annotations that guarantee a concrete string value."""
     if isinstance(annotation, ast.Name):
         return annotation.id == "str"
     if isinstance(annotation, ast.Attribute):
@@ -450,7 +428,6 @@ def _annotation_is_string(annotation: ast.expr) -> bool:
 
 
 def _is_string_expr(expr: ast.expr, known_strings: frozenset[str]) -> bool:
-    """Return whether syntax and local annotations prove ``expr`` is a string."""
     match expr:
         case ast.Constant(value=str()) | ast.JoinedStr():
             return True

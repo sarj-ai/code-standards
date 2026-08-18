@@ -42,7 +42,6 @@ def test_flags_bare_wildcard_list():
 
 
 def test_flags_ifexp_else_wildcard_branch():
-    """The real first-party pattern: `allowed if flag else ["*"]`."""
     src = (
         "app.add_middleware(\n"
         "    CORSMiddleware,\n"
@@ -74,7 +73,6 @@ def test_flags_wildcard_alongside_explicit_origins():
 
 
 def test_flags_when_credentials_before_origins():
-    """Keyword order does not matter."""
     src = 'app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"])\n'
     assert _count(src) == 1
 
@@ -120,7 +118,6 @@ def test_allows_wildcard_without_credentials_kwarg():
 
 
 def test_allows_dynamic_origins_variable():
-    """`allow_origins=origins_var` has no `"*"` literal — must not fire."""
     src = "add_middleware(allow_origins=origins_var, allow_credentials=True)\n"
     assert _check(src) == []
 
@@ -150,7 +147,6 @@ CORSMiddleware(app, allow_origin_regex=".*", allow_credentials=True)
 
 
 def test_allows_dynamic_origins_comprehension_no_star():
-    """The first-party comprehension shape: `[str(o) for o in allowed_origins]` — no `"*"` literal."""
     src = "add_middleware(allow_origins=[str(o) for o in allowed_origins], allow_credentials=True)\n"
     assert _check(src) == []
 
@@ -166,13 +162,11 @@ def test_allows_star_in_unrelated_call():
 
 
 def test_allows_star_in_unrelated_kwarg():
-    """A `"*"` under a different keyword (not allow_origins) does not fire."""
     src = 'add_middleware(allow_methods=["*"], allow_origins=["https://x"], allow_credentials=True)\n'
     assert _check(src) == []
 
 
 def test_allows_credentials_truthy_int_not_literal_true():
-    """`allow_credentials=1` is not the literal `True` — do not fire."""
     src = 'add_middleware(allow_origins=["*"], allow_credentials=1)\n'
     assert _check(src) == []
 

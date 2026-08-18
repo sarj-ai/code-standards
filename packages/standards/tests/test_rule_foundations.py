@@ -1,5 +1,3 @@
-"""Rule design contracts reject ambiguity and report evidence without source leaks."""
-
 from __future__ import annotations
 
 from datetime import timedelta

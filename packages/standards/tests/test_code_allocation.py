@@ -1,5 +1,3 @@
-"""`SARJ###` is one namespace across three packages, and only this package can see it."""
-
 from __future__ import annotations
 
 from importlib.metadata import version
@@ -26,8 +24,6 @@ if TYPE_CHECKING:
 
 
 class _Coded(Protocol):
-    """The one thing the three packages' unrelated `Rule` base classes share."""
-
     @property
     def code(self) -> str: ...
 
@@ -96,7 +92,6 @@ def _published_hook() -> Mapping[str, object]:
 
 
 def test_pre_commit_hooks_use_revision_local_dependencies_without_version_literals() -> None:
-    """The consumer's `rev` is the only version authority for repository hooks."""
     invalid: list[str] = []
     for hook in _published_hooks():
         hook_id = hook.get("id")

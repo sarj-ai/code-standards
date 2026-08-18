@@ -1,5 +1,3 @@
-"""Install, inspect, verify, and format an adopted repository."""
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -61,8 +59,6 @@ class Inspection:
 
 
 class EslintSelection(NamedTuple):
-    """Immutable ESLint routing result with named and tuple-compatible fields."""
-
     commands: tuple[Command, ...]
     unowned_count: int
 
@@ -144,7 +140,6 @@ def verification_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
 
 
 def selected_eslint_commands(root: Path, paths: Iterable[str], *, label: str = "selected") -> list[Command]:
-    """Build project-scoped ESLint commands for selected repository paths."""
     return list(select_eslint_commands(root, paths, label=label).commands)
 
 
@@ -155,7 +150,6 @@ def select_eslint_commands(
     label: str = "selected",
     fix: bool = False,
 ) -> EslintSelection:
-    """Return runnable project commands plus paths with no ESLint owner."""
     repository = root.resolve()
     fallback_project = _adopted_typescript_project(repository)
     candidates = _selected_eslint_candidates(repository, paths, fallback_project=fallback_project)
@@ -230,7 +224,6 @@ def _adopted_typescript_project(repository: Path) -> Path | None:
 
 
 def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
-    """Compatibility wrapper for hook callers."""
     return selected_eslint_commands(root, paths, label="staged")
 
 
@@ -293,13 +286,11 @@ def _eslint_sources(directory: Path) -> set[Path]:
 
 
 def _is_skill_artifact(path: Path, repository: Path) -> bool:
-    """Return whether a path belongs to an installed agent skill payload."""
     parts = path.relative_to(repository).parts
     return any(root in _SKILL_ARTIFACT_ROOTS and child == "skills" for root, child in pairwise(parts))
 
 
 def _contains_skill_artifacts(directory: Path) -> bool:
-    """Keep directory compression from letting ESLint rediscover excluded skills."""
     for parent, directories, _names in os.walk(directory):
         base = Path(parent)
         if base.name in _SKILL_ARTIFACT_ROOTS and "skills" in directories:
@@ -340,7 +331,6 @@ def format_commands(ecosystems: scaffold.Ecosystems) -> list[Command]:
 
 
 def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
-    """Build fix commands only for selected, repository-owned source files."""
     repository = root.resolve()
     selected = tuple(sorted(set(paths)))
     python_paths = tuple(
@@ -389,7 +379,6 @@ def execute(commands: Iterable[Command]) -> int:
 
 
 def harden_precommit_hook(root: Path) -> None:
-    """Add a pinned uvx fallback to pre-commit's generated hook launcher."""
     hook = _precommit_hook_path(root)
     text = hook.read_text(encoding="utf-8")
     if _PRECOMMIT_UVX_MARKER in text:
@@ -471,7 +460,6 @@ def _environment_binary(name: str) -> str:
 
 
 def _python_verification_roots(root: Path) -> tuple[Path, ...]:
-    """Return independently configured Python projects without double-checking an umbrella root."""
     nested = sorted(
         {
             path.parent

@@ -1,5 +1,3 @@
-"""Every engine must agree on what a log call and a secret name are."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,14 +11,12 @@ _TS_ROOT = Path(__file__).resolve().parents[3] / "packages" / "typescript" / "sr
 
 
 def _ts_string_set(source: str, name: str) -> set[str]:
-    """Read the entries of a `const <name> ..."""
     start = source.index(f"const {name}")
     body = source[source.index("[", start) : source.index("]", start)]
     return set(re.findall(r'"([^"]+)"', body))
 
 
 def test_log_methods_are_one_set_in_python() -> None:
-    """Reject private copies that can drift from the security sink vocabulary."""
     rules = Path(__file__).resolve().parent.parent / "src" / "sarj_python_lint" / "rules"
     redefiners = [
         path.name
@@ -35,7 +31,6 @@ def test_log_methods_are_one_set_in_python() -> None:
 
 
 def test_python_secret_words_cover_the_typescript_set() -> None:
-    """`bearer` was in the TS set and neither Python set; the rest were identical."""
     ts = _ts_string_set((_TS_ROOT / "_secret-names.ts").read_text(encoding="utf-8"), "SECRET_WORDS")
     missing = sorted(ts - SECRET_WORDS)
     assert missing == [], (
@@ -45,5 +40,4 @@ def test_python_secret_words_cover_the_typescript_set() -> None:
 
 
 def test_loguru_levels_are_log_methods() -> None:
-    """`loguru` is in _LOGGER_NAMES, so its documented levels must be log calls."""
     assert {"success", "trace", "log", "fatal"} <= LOG_METHODS

@@ -1,5 +1,3 @@
-"""CLI: sarj-python-lint check --rule <id> [--rule <id2>] [--baseline <json>] <files>."""
-
 from __future__ import annotations
 
 import argparse
@@ -113,7 +111,6 @@ def analyze(
     baseline: Path | None = None,
     root: Path | None = None,
 ) -> list[Diagnostic]:
-    """Return native diagnostics without rendering CLI output."""
     diagnostics = _check(rule_ids, paths)
     return diagnostics if baseline is None else _apply_baseline(diagnostics, _read_baseline(baseline), root=root)
 
@@ -145,7 +142,6 @@ class _OwnerLocation(NamedTuple):
 
 
 def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
-    """Keep the most specific remediation at a source location."""
     codes = frozenset(diagnostic.code for diagnostic in diags)
     needs_docstring_owners = ("SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])) or (
         "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
@@ -196,7 +192,6 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
 
 
 def _function_signature_owner_locations(source: str) -> dict[int, tuple[int, int]]:
-    """Map signature lines to their function opening for cross-rule precedence."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -212,7 +207,6 @@ def _function_signature_owner_locations(source: str) -> dict[int, tuple[int, int
 
 
 def _docstring_owner_locations(source: str) -> dict[int, tuple[int, int]]:
-    """Map every physical docstring line to the opening expression that owns it."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -257,7 +251,6 @@ class _Args(argparse.Namespace):
 
 
 def _explain(wanted: str) -> int:
-    """Print a rule's description and its derived examples link."""
     key = wanted.strip()
     cls = REGISTRY.get(key) or next((c for c in REGISTRY.values() if c.code.upper() == key.upper()), None)
     if cls is None:
@@ -279,7 +272,6 @@ def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
 
 
 def _baseline_path(path: Path, *, root: Path | None = None) -> str:
-    """Make baselines portable when a caller supplies repository-absolute paths."""
     try:
         return path.resolve().relative_to((Path.cwd() if root is None else root).resolve()).as_posix()
     except ValueError:
@@ -287,7 +279,6 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 
 
 def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
-    """Load a baseline file, keeping only well-formed `{path: {CODE: count}}` entries."""
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         path.read_text(encoding="utf-8")
     )
@@ -311,7 +302,6 @@ def _apply_baseline(
     *,
     root: Path | None = None,
 ) -> list[Diagnostic]:
-    """Suppress up to the baselined count per (path, code); excess diags survive."""
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:

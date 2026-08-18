@@ -1,8 +1,3 @@
-"""SARJ014 — Duration named in time units but typed as a raw `int`/`float`.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_timedelta_for_durations.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -225,12 +220,10 @@ class PreferTimedeltaForDurations(Rule):
 
 
 def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the function is an `@overload` restatement of another signature."""
     return any(_trailing_name(dec) == "overload" for dec in node.decorator_list)
 
 
 def _is_observability_boundary(path: Path, node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Keep raw numeric units at logging/metrics serialization boundaries."""
     name = node.name.lstrip("_")
     return (
         "logger" in path.stem.lower()
@@ -260,7 +253,6 @@ def _contains_float(node: ast.AST) -> bool:
 
 
 def _exclusively_serialized_duration_constants(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
-    """Find numeric constants whose reads are proven wire-model construction only."""
     definitions = {
         target.id: target
         for statement in tree.body
@@ -311,7 +303,6 @@ def _numeric_constant_target(statement: ast.stmt, imports: ImportIndex) -> ast.N
 
 
 def _has_competing_binding(tree: ast.Module, name: str, definition: ast.Name) -> bool:
-    """Reject lexical ambiguity rather than attributing shadowed reads to a constant."""
     for node in ast.walk(tree):
         match node:
             case ast.Name(id=identifier, ctx=ast.Store()) if identifier == name and node is not definition:
@@ -373,7 +364,6 @@ def _annotation_names(node: ast.expr | None) -> frozenset[str]:
 
 
 def _wire_model_class_names(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
-    """Resolve locally declared Pydantic and TypedDict wire models."""
     classes = nodes(tree, ast.ClassDef)
     by_name: dict[str, list[ast.ClassDef]] = {}
     for node in classes:
@@ -422,7 +412,6 @@ def _wire_model_class_names(tree: ast.Module, imports: ImportIndex) -> frozenset
 
 
 def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the function is a `click` / `typer` command entry point."""
     for dec in node.decorator_list:
         target = dec.func if isinstance(dec, ast.Call) else dec
         dotted = _dotted_name(target)
@@ -435,7 +424,6 @@ def _has_cli_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _is_forwarded_to_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef, param: str) -> bool:
-    """Report whether the body only forwards `param` to a callee of the function's own name."""
     body = [stmt for stmt in node.body if not _is_docstring(stmt)]
     if len(body) != 1:
         return False
@@ -451,7 +439,6 @@ def _is_forwarded_to_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef, par
 
 
 def _duration_named_params(args: ast.arguments) -> frozenset[str]:
-    """Collect the annotated parameters whose names read as durations."""
     return frozenset(
         a.arg
         for a in (*args.posonlyargs, *args.args, *args.kwonlyargs)
@@ -460,7 +447,6 @@ def _duration_named_params(args: ast.arguments) -> frozenset[str]:
 
 
 def _same_name_forwarded_params(node: ast.FunctionDef | ast.AsyncFunctionDef, params: frozenset[str]) -> frozenset[str]:
-    """Collect parameters used only as same-named sinks, never in duration arithmetic."""
     if not params:
         return frozenset()
     used: set[str] = set()
@@ -478,7 +464,6 @@ def _same_name_forwarded_params(node: ast.FunctionDef | ast.AsyncFunctionDef, pa
 
 
 def _is_same_name_sink(parent: ast.AST, name: str) -> bool:
-    """Report whether `parent` consumes a load of `name` under that same name."""
     match parent:
         case ast.keyword(arg=str(keyword)):
             return keyword == name
@@ -489,7 +474,6 @@ def _is_same_name_sink(parent: ast.AST, name: str) -> bool:
 
 
 def _admits_timedelta(node: ast.expr) -> bool:
-    """Report whether the annotation already accepts a `timedelta`."""
     if _trailing_name(node) == "timedelta":
         return True
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
@@ -507,7 +491,6 @@ def _is_docstring(stmt: ast.stmt) -> bool:
 
 
 def _dotted_name(node: ast.expr) -> str | None:
-    """Render a `Name` / `Attribute` chain as a dotted string."""
     match node:
         case ast.Name(id=ident):
             return ident
@@ -519,7 +502,6 @@ def _dotted_name(node: ast.expr) -> str | None:
 
 
 def _settings_field_ids(tree: ast.Module) -> frozenset[int]:
-    """`id()` of every `AnnAssign` declared directly on a pydantic-settings class."""
     classes = nodes(tree, ast.ClassDef)
     settings_classes = _resolve_settings_classes(classes)
     exempt: set[int] = set()
@@ -531,7 +513,6 @@ def _settings_field_ids(tree: ast.Module) -> frozenset[int]:
 
 
 def _pydantic_model_field_ids(tree: ast.Module, imports: ImportIndex) -> frozenset[int]:
-    """Exclude import-proven Pydantic schema fields whose numeric unit is their wire contract."""
     classes = nodes(tree, ast.ClassDef)
     by_name: dict[str, list[ast.ClassDef]] = {}
     for node in classes:
@@ -570,7 +551,6 @@ def _pydantic_model_field_ids(tree: ast.Module, imports: ImportIndex) -> frozens
 
 
 def _typed_dict_field_ids(tree: ast.Module, imports: ImportIndex) -> frozenset[int]:
-    """Exclude import-proven TypedDict fields whose numeric unit is a wire contract."""
     classes = nodes(tree, ast.ClassDef)
     by_name = {node.name: node for node in classes}
     resolved: dict[int, bool] = {}
@@ -638,15 +618,14 @@ def _resolve_settings_classes(
 
 
 def _target_name(target: ast.expr) -> str | None:
-    if isinstance(target, ast.Name):
-        return target.id
-    if isinstance(target, ast.Attribute):
-        return target.attr
-    return None
+    match target:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return None
 
 
 def _numeric_annotation(node: ast.expr) -> str | None:
-    """Return 'int'/'float' if the annotation resolves to a numeric duration type."""
     direct = _bare_numeric(node)
     if direct is not None:
         return direct

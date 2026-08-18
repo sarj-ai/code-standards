@@ -1,8 +1,3 @@
-"""SARJ024 — A structured string literal repeated across functions — extract a named constant.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_repeated_string_literal.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -188,7 +183,6 @@ class NoRepeatedStringLiteral(Rule):
 
 
 def _canonical_constants(tree: ast.Module) -> dict[str, tuple[str, ...]]:
-    """Index exact strings deliberately exposed as module-level constants."""
     names: dict[str, list[str]] = defaultdict(list)
     for statement in tree.body:
         match statement:
@@ -209,7 +203,6 @@ def _canonical_constants(tree: ast.Module) -> dict[str, tuple[str, ...]]:
 
 
 def _annotation_exprs(node: ast.AST) -> list[ast.expr]:
-    """Find the sub-expressions of `node` that are type annotations, not runtime values."""
     match node:
         case ast.arg(annotation=annotation) if annotation is not None:
             return [annotation]

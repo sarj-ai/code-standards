@@ -1,5 +1,3 @@
-"""SARJ205: per-environment tfvars inputs must earn their indirection — constant, default-equal, and orphaned assignments are dead configuration."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -105,8 +103,6 @@ _KEYWORD_SCALARS: Mapping[str, _Canon] = MappingProxyType({**_BOOL_SCALARS, "nul
 
 @final
 class NoDeadEnvironmentInput(Rule):
-    """Dead per-environment tfvars inputs: constant everywhere, equal to the declared default, or orphaned by a deleted variable."""
-
     id = "no-dead-environment-input"
     code = "SARJ205"
     documentation = RuleDocumentation(
@@ -267,7 +263,6 @@ class NoDeadEnvironmentInput(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Analyze the tfvars file's whole root once, then report this file's share."""
         # A JSON tfvars is never parsed, but it still has to reach the analysis:
         # a root whose only inputs are JSON would otherwise be silently skipped
         # instead of reporting that it cannot be read.
@@ -306,8 +301,6 @@ class NoDeadEnvironmentInput(Rule):
 
 @dataclass(frozen=True, slots=True)
 class _Declaration:
-    """One root-level `variable` block, reduced to what dead-input analysis needs."""
-
     has_default: bool
     default: _Canon | None
     untyped: bool
@@ -315,8 +308,6 @@ class _Declaration:
 
 @dataclass(frozen=True, slots=True)
 class _AssignmentValue:
-    """One tfvars assignment's raw text, comparable form, and defining file."""
-
     text: str
     canon: _Canon | None
     file: Path
@@ -324,16 +315,12 @@ class _AssignmentValue:
 
 @dataclass(frozen=True, slots=True)
 class _BlindEnvironment:
-    """An environment the root names whose inputs the scan cannot read."""
-
     name: str
     reason: str
 
 
 @dataclass(frozen=True, slots=True)
 class _RootAnalysis:
-    """One shared cross-tfvars analysis of a root module."""
-
     root: Path
     files: Mapping[str, tuple[Path, ...]]
     declarations: Mapping[str, _Declaration]
@@ -342,17 +329,10 @@ class _RootAnalysis:
     anchor: Path | None
 
     def environment_of(self, resolved: Path) -> str | None:
-        """Name the environment a tfvars file feeds, or None when it is not a root input.
-
-        Matching is on resolved paths because `files` holds the paths as the
-        layout presents them — a symlinked input would otherwise never match
-        itself, and the file would go unlinted with no error to say so.
-        """
         return next((env for env, paths in self.files.items() if any(resolved == p.resolve() for p in paths)), None)
 
 
 def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, value: str) -> str | None:
-    """Classify one assignment against the root, returning its diagnostic message."""
     declaration = analysis.declarations.get(name)
     if declaration is None:
         return (
@@ -392,16 +372,6 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, va
 
 
 def _varies_elsewhere(analysis: _RootAnalysis, name: str) -> bool:
-    """Report whether another environment gives `name` a different value.
-
-    An assignment equal to the default is a no-op in its own environment, but
-    when a sibling environment sets the variable to something else the line is
-    the parallel entry for a knob that is genuinely in use: deleting it hides
-    the knob and stops the environment files reading side by side. The measured
-    corpus put a quarter of default-equal assignments in this shape, including
-    the `deletion_protection` / `backup_enabled` family, where the explicit
-    false IS the audit surface.
-    """
     canons = {value.canon for value in analysis.values.get(name, {}).values()}
     # An opaque sibling (heredoc or interpolation) counts as variation, not as
     # agreement: `None` joins the set on its own. Advising deletion of a line a
@@ -410,7 +380,6 @@ def _varies_elsewhere(analysis: _RootAnalysis, name: str) -> bool:
 
 
 def _constant_everywhere(analysis: _RootAnalysis, environment: str, name: str, canon: _Canon | None) -> bool:
-    """Report whether `name` carries one semantic value across every enumerated environment."""
     if analysis.blind or canon is None or len(analysis.files) < _MIN_ENVIRONMENTS:
         return False
     per_env = analysis.values.get(name, {})
@@ -422,7 +391,6 @@ def _constant_everywhere(analysis: _RootAnalysis, environment: str, name: str, c
 
 
 def _blind_message(analysis: _RootAnalysis, blind: _BlindEnvironment) -> str:
-    """Say which environment the scan cannot see and what that suppresses."""
     return (
         f"blind-environment: {blind.reason}; cross-environment analysis (constant-everywhere, "
         f"required-but-constant) is suppressed for root `{analysis.root.name}` because the scan cannot "
@@ -431,15 +399,6 @@ def _blind_message(analysis: _RootAnalysis, blind: _BlindEnvironment) -> str:
 
 
 def _display(canon: _Canon | None, value: str) -> str:
-    """Render a value only when it cannot be a secret, else name nothing.
-
-    A tfvars file holds passwords, API keys and tokens, and a diagnostic travels
-    further than the file does — into CI logs, PR annotations and shared
-    terminals — so only the tags that cannot carry a secret are ever printed.
-    The variable name and the environments already make every finding
-    actionable; the value is convenience, and convenience does not justify
-    echoing `database_password` into a build log.
-    """
     text = " ".join(value.split())
     if canon is None or canon.tag not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
         return ""
@@ -447,16 +406,6 @@ def _display(canon: _Canon | None, value: str) -> str:
 
 
 def _find_root(path: Path) -> Path | None:
-    """Resolve the root module a tfvars file feeds: the nearest ancestor with .tf files.
-
-    The nearest ancestor holding any .tf file is the configuration the tfvars
-    pairs with; it only counts as a root when it declares at least one variable,
-    so fixture directories and variable-free stacks stay out of scope.
-
-    Ancestors are walked as the path is written, not as it resolves: a tfvars
-    symlinked in from elsewhere belongs to the configuration it is linked INTO,
-    and resolving first walked away from that root and found nothing.
-    """
     absolute = path if path.is_absolute() else Path.cwd() / path
     if any(part in _SKIP_DIR_NAMES for part in absolute.parts):
         return None
@@ -472,23 +421,15 @@ def _find_root(path: Path) -> Path | None:
 
 @lru_cache(maxsize=256)
 def _has_tf_files(directory: Path) -> bool:
-    """Report whether the directory directly holds any Terraform configuration."""
     return next(iter(directory.glob("*.tf")), None) is not None
 
 
 @lru_cache(maxsize=256)
 def _declares_variables(directory: Path) -> bool:
-    """Report whether any .tf file directly in the directory declares a variable."""
     return next(_variable_blocks(directory), None) is not None
 
 
 def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, bool]]:
-    """Yield `(name, default value, untyped)` for every top-level variable block.
-
-    `untyped` marks `type = any`, where Terraform performs none of the string
-    conversions this rule's comparison relies on: `"false"` stays a string
-    beside a bare `false`, so the two are not one value.
-    """
     for tf in sorted(directory.glob("*.tf")):
         text = _read_text(tf)
         if text is None:
@@ -510,7 +451,6 @@ def _read_text(path: Path) -> str | None:
 
 @lru_cache(maxsize=64)
 def _analyze_root(root: Path) -> _RootAnalysis:
-    """Run the one shared cross-tfvars analysis for a root, cached per process."""
     files = _environment_files(root)
     declarations = {
         name: _Declaration(default is not None, None if default is None else _canonical(default), untyped)
@@ -568,15 +508,6 @@ def _analyze_root(root: Path) -> _RootAnalysis:
 
 
 def _auto_loaded_blind(files: Mapping[str, Sequence[Path]]) -> Iterator[_BlindEnvironment]:
-    """Report a root that mixes Terraform's auto-loaded var-files with named environments.
-
-    `terraform.tfvars` and `*.auto.tfvars` in the root are loaded into EVERY
-    plan, so beside named environment files they are a baseline, not a peer:
-    their assignments belong to every environment at a precedence this rule
-    cannot model. Analyzing them as one more environment silently turns real
-    findings into none, so the root goes blind instead. A root whose only
-    inputs are auto-loaded is unambiguous and stays analyzable.
-    """
     auto = files.get(_AUTO_ENVIRONMENT, ())
     named = {env for env in files if env != _AUTO_ENVIRONMENT}
     if not auto or not named:
@@ -590,7 +521,6 @@ def _auto_loaded_blind(files: Mapping[str, Sequence[Path]]) -> Iterator[_BlindEn
 
 
 def _redefinition_reason(environment: str, name: str, file: Path) -> str:
-    """Say that one file redefines a key, which Terraform refuses to load."""
     return (
         f"`{file.name}` assigns `{name}` twice, which Terraform rejects as a redefined attribute, "
         f"so environment `{environment}` has no inputs this rule can read"
@@ -598,13 +528,6 @@ def _redefinition_reason(environment: str, name: str, file: Path) -> str:
 
 
 def _conflict_reason(environment: str, name: str, paths: Sequence[Path]) -> str:
-    """Say which files disagree about one environment's input.
-
-    Terraform merges several var-files by an order this rule cannot observe, so
-    two files claiming one environment with different values for `name` leave no
-    single answer to compare against. Guessing one would compute a
-    constant-everywhere finding from a value the other file overrides.
-    """
     named = ", ".join(f"`{path.name}`" for path in paths)
     return (
         f"environment `{environment}` is defined by more than one file ({named}) and they assign "
@@ -613,12 +536,6 @@ def _conflict_reason(environment: str, name: str, paths: Sequence[Path]) -> str:
 
 
 def _environment_files(root: Path) -> dict[str, list[Path]]:
-    """Map each environment name to the root's tfvars files that define it.
-
-    Files are keyed by resolved path so an alias — `current.tfvars` symlinked at
-    `prod.tfvars`, or `env/current` at `env/prod` — is the one environment it
-    really is, not a second one whose every shared line reads as constant.
-    """
     out: dict[str, list[Path]] = {}
     seen: set[Path] = set()
     for file, environment in _candidate_environments(root):
@@ -633,14 +550,6 @@ def _environment_files(root: Path) -> dict[str, list[Path]]:
 
 
 def _candidate_environments(root: Path) -> Iterator[tuple[Path, str]]:
-    """Yield `(file, environment)` for every tfvars that names one environment.
-
-    The environment is the file's own stem, except for Terraform's conventional
-    `terraform.tfvars`, which carries no identity of its own and takes the name
-    of the directory holding it. That one rule covers both shipped layouts —
-    `env/<name>/terraform.tfvars` and `env/<name>.tfvars` — where keying on the
-    directory alone collapsed the second into a single environment called `env`.
-    """
     for file in sorted(root.glob(f"*{_TFVARS_SUFFIX}")):
         # Terraform loads every auto-loaded root var-file into the SAME plan, so
         # `a.auto.tfvars` and `b.auto.tfvars` are one environment, not two whose
@@ -652,33 +561,16 @@ def _candidate_environments(root: Path) -> Iterator[tuple[Path, str]]:
 
 
 def _is_auto_loaded(name: str) -> bool:
-    """Report whether Terraform loads this root-level var-file into every plan.
-
-    Returns:
-        True for `terraform.tfvars` and any `*.auto.tfvars`.
-
-    """
     stem = name.removesuffix(_TFVARS_SUFFIX)
     return stem == _CONVENTIONAL_STEM or stem.endswith(_AUTO_STEM_SUFFIX)
 
 
 def _is_non_environment(label: str) -> bool:
-    """Report whether a tfvars label names a copy or specimen rather than a deployment.
-
-    The whole label, or its final dotted segment, has to be one of the specimen
-    words: `prod.bak` is a copy, while `old-west` is somebody's region and is
-    left alone. Splitting on every separator swallowed real environment names.
-    """
     lowered = label.lower()
     return lowered in _NON_ENVIRONMENT_STEMS or lowered.rsplit(".", 1)[-1] in _NON_ENVIRONMENT_STEMS
 
 
 def _nested_tfvars(root: Path, suffix: str) -> Iterator[tuple[Path, Path]]:
-    """Yield `(file, environment directory)` for tfvars one or two levels below the root.
-
-    An intermediate directory holding its own .tf files is its own configuration,
-    never an environment of this root; skip-listed directories never count.
-    """
     for pattern in (f"*/*{suffix}", f"*/*/*{suffix}"):
         for file in sorted(root.glob(pattern)):
             relative_dirs = file.relative_to(root).parts[:-1]
@@ -690,13 +582,11 @@ def _nested_tfvars(root: Path, suffix: str) -> Iterator[tuple[Path, Path]]:
 
 
 def _stem_environment(name: str) -> str:
-    """Reduce a root-level tfvars filename to its environment label."""
     stem = name.removesuffix(_TFVARS_SUFFIX)
     return stem.removesuffix(_AUTO_STEM_SUFFIX)
 
 
 def _structural_blind(root: Path, files: dict[str, list[Path]]) -> Iterator[_BlindEnvironment]:
-    """Find environments the directory layout names but the scan cannot read."""
     for file, env_dir in _nested_tfvars(root, _TFVARS_JSON_SUFFIX):
         yield _BlindEnvironment(env_dir.name, f"`{file.relative_to(root)}` is JSON, which this rule does not parse")
     for json_file in sorted(root.glob(f"*{_TFVARS_JSON_SUFFIX}")):
@@ -720,7 +610,6 @@ def _structural_blind(root: Path, files: dict[str, list[Path]]) -> Iterator[_Bli
 
 
 def _manifest_blind(root: Path, environments: frozenset[str]) -> Iterator[_BlindEnvironment]:
-    """Find environments an `envs.json` manifest declares beyond the visible tfvars."""
     manifest = root / _ENVS_MANIFEST
     if not manifest.is_file():
         return
@@ -751,7 +640,6 @@ def _manifest_blind(root: Path, environments: frozenset[str]) -> Iterator[_Blind
 
 
 def _tfvars_secret(entry: object) -> str | None:
-    """Pull the secret-manager tfvars reference out of one manifest entry, if any."""
     if not isinstance(entry, dict):
         return None
     for key, value in entry.items():  # pyright: ignore[reportUnknownVariableType] — json leaves are Any; narrowed below
@@ -761,11 +649,6 @@ def _tfvars_secret(entry: object) -> str | None:
 
 
 def _canonical(text: str) -> _Canon | None:
-    """Parse one literal HCL value into a comparable shape, or None when opaque.
-
-    Heredocs and interpolations are opaque because their bodies are masked before
-    this rule sees them: two masked heredocs must never read as equal.
-    """
     if "${" in text or "<<" in text:
         return None
     parsed = _parse_value(text, _skip_ws(text, 0))
@@ -798,7 +681,6 @@ def _parse_value(text: str, index: int) -> _ValueParseResult:
 
 
 def _parse_string(text: str, index: int) -> _ValueParseResult:
-    """Read one quoted string, coercing "true"/"false"/numeric text like HCL would."""
     cursor = index + 1
     while cursor < len(text):
         char = text[cursor]
@@ -812,7 +694,6 @@ def _parse_string(text: str, index: int) -> _ValueParseResult:
 
 
 def _string_scalar(inner: str) -> _Canon:
-    """Coerce string text the way HCL converts it: to bool or number, never to null."""
     if (bool_scalar := _BOOL_SCALARS.get(inner)) is not None:
         return bool_scalar
     if _NUMBER_RE.fullmatch(inner) is not None:

@@ -1,8 +1,3 @@
-"""SARJ415 keeps DB execution inside constructor-injected pool owners.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_sql_requires_injected_pool_owner.py
-"""
-
 from __future__ import annotations
 
 import ast

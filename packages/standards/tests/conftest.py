@@ -1,5 +1,3 @@
-"""Shared isolation for Standards package tests."""
-
 from __future__ import annotations
 
 import os

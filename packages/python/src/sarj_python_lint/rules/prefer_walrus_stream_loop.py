@@ -1,8 +1,3 @@
-"""SARJ077 — Prefer walrus operator in `while` loop conditions for stream/chunk reading.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_stream_loop.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -31,12 +26,10 @@ _MIN_BODY_LEN = 2
 
 
 def _is_constant_true(node: ast.AST) -> bool:
-    """Check if node represents the constant True."""
     return (isinstance(node, ast.Constant) and node.value is True) or (isinstance(node, ast.Name) and node.id == "True")
 
 
 def _is_falsy_break_check(test_node: ast.AST, var_name: str) -> bool:
-    """Check if test_node is `not var_name` or `var_name is None`."""
     if (
         isinstance(test_node, ast.UnaryOp)
         and isinstance(test_node.op, ast.Not)

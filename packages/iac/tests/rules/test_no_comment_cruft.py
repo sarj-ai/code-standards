@@ -158,7 +158,6 @@ resource "google_project_service" "run" {}
 
 
 def test_flags_a_run_that_is_mostly_disabled_code():
-    """The boundary: a genuine disabled block is code-dominant and must still fire."""
     src = _PUBLIC_EXAMPLES[0].focus_file.source
     diags = _check(src)
     assert len(diags) == _PUBLIC_EXAMPLES[0].expected_count
@@ -166,7 +165,6 @@ def test_flags_a_run_that_is_mostly_disabled_code():
 
 
 def test_flags_a_half_code_run_at_the_threshold():
-    """The boundary: the threshold is >= 50%, not > 50%."""
     src = """
 # keep the legacy bucket around until Q3
 # force_destroy = true
@@ -178,7 +176,6 @@ resource "google_storage_bucket" "new" {}
 
 
 def test_a_lone_attribute_line_is_still_code_dominant():
-    """The boundary: a one-line run of pure code is 100% code and must fire."""
     src = """
 # ttl = 3600
 resource "google_dns_record_set" "a" {}
@@ -187,7 +184,6 @@ resource "google_dns_record_set" "a" {}
 
 
 def test_banner_detection_is_unaffected_by_run_dominance():
-    """A prose-dominant comment run does not stop its banner lines being banners."""
     src = """
 # ============================================================
 # Networking — VPC, subnets and the private service connection
@@ -201,7 +197,6 @@ resource "google_compute_network" "vpc" {}
 
 
 def test_each_banner_in_a_file_is_reported_once():
-    """Two banners are two findings: the collapse is per banner, not per file."""
     src = """
 ################
 # A
@@ -218,7 +213,6 @@ resource "x" "y" {}
 
 
 def test_a_lone_divider_with_no_title_is_still_one_finding():
-    """A single rule line is its own banner group; nothing to collapse."""
     src = """
 # ------------------------------------------------------------
 resource "x" "y" {}
@@ -227,7 +221,6 @@ resource "x" "y" {}
 
 
 def test_a_blank_line_between_rules_starts_a_new_banner():
-    """A blank line breaks the comment run, so these are two banners."""
     src = """
 # ============================================================
 
@@ -238,7 +231,6 @@ resource "x" "y" {}
 
 
 def test_a_mixed_character_rule_is_a_banner():
-    """`# -=-=-=-=` has no 4-run of any single character — only the full-body regex sees it."""
     src = '# -=-=-=-=\nresource "google_compute_network" "vpc" {}\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -246,7 +238,6 @@ def test_a_mixed_character_rule_is_a_banner():
 
 
 def test_a_rule_with_a_title_after_it_is_a_banner():
-    """`# ==== Section ====` has letters, so the full-body regex cannot see it."""
     src = '# ==== Networking ====\nresource "google_compute_network" "vpc" {}\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -254,24 +245,20 @@ def test_a_rule_with_a_title_after_it_is_a_banner():
 
 
 def test_four_characters_is_already_a_banner():
-    """The lower boundary: the threshold is four, and four must fire."""
     assert len(_check('# ====\nresource "google_compute_network" "vpc" {}\n')) == 1
 
 
 @pytest.mark.parametrize("body", ["==", "---"])
 def test_a_run_shorter_than_four_is_not_a_banner(body: str):
-    """The other side of the boundary: two or three characters do not read as a rule."""
     assert _check(f'# {body}\nresource "google_compute_network" "vpc" {{}}\n') == []
 
 
 def test_a_directive_that_happens_to_contain_a_rule_is_not_a_banner():
-    """A `# TODO` about banners is a directive first — otherwise SARJ202 flags its own fix."""
     src = '# TODO: replace the ==== dividers in this file with real blocks\nresource "google_storage_bucket" "b" {}\n'
     assert _check(src) == []
 
 
 def test_directives_do_not_vote_on_whether_a_run_is_code():
-    """Directives are neither prose nor code; counting them as prose hides real dead code."""
     src = """
 # tflint-ignore: terraform_unused_declarations
 # checkov:skip=CKV_GCP_1: justified
@@ -294,7 +281,6 @@ resource "google_storage_bucket" "new" {}
     ids=["banner-shaped", "code-shaped"],
 )
 def test_a_heredoc_body_is_never_comment_cruft(body: str):
-    """A shell script's `#` lines are the script, not a disabled Terraform block."""
     src = f"""
 resource "google_compute_instance" "node" {{
   metadata_startup_script = <<-EOT
@@ -307,7 +293,6 @@ resource "google_compute_instance" "node" {{
 
 
 def test_the_same_lines_outside_a_heredoc_are_still_judged():
-    """The boundary: the heredoc is what excuses them, not their content."""
     src = '# bucket        = "legacy"\n# force_destroy = true\nresource "google_storage_bucket" "new" {}\n'
     assert len(_check(src)) == 2
 
@@ -318,7 +303,6 @@ def test_the_same_lines_outside_a_heredoc_are_still_judged():
     ids=["real-hcl", "blank-line"],
 )
 def test_a_prose_run_does_not_dilute_a_neighbouring_dead_code_run(separator: str):
-    """Merge the two runs and the file's five voting lines are only 40% code — silence."""
     src = f"""
 # Networking module.
 # See the README for the supported regions and the private service

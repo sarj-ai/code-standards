@@ -1,8 +1,3 @@
-"""SARJ080 — Prefer match/case for explicit runtime type dispatch.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_match_type_dispatch.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -101,7 +96,6 @@ _MAX_TRY_BODY_LINES = 20
 
 
 def _handler_exception_names(handler: ast.ExceptHandler) -> set[str] | None:
-    """Extract the exception class names one handler catches."""
     if handler.type is None:
         return None
     caught: set[str] = set()
@@ -116,7 +110,6 @@ def _handler_exception_names(handler: ast.ExceptHandler) -> set[str] | None:
 
 
 def _first_matching_handler(try_node: ast.Try | ast.TryStar, exc_name: str) -> ast.ExceptHandler | None:
-    """Find the handler that would actually receive `exc_name`."""
     for handler in try_node.handlers:
         names = _handler_exception_names(handler)
         if names is None or exc_name in names or bool(names & _GENERIC_EXCEPTIONS):
@@ -125,7 +118,6 @@ def _first_matching_handler(try_node: ast.Try | ast.TryStar, exc_name: str) -> a
 
 
 def _raised_exception_name(raise_node: ast.Raise) -> str | None:
-    """Extract exception class name from `raise Exc()` or `raise Exc`."""
     match raise_node.exc:
         case (
             ast.Call(func=ast.Name(id=name))
@@ -140,12 +132,10 @@ def _raised_exception_name(raise_node: ast.Raise) -> str | None:
 
 
 def _is_docstring(stmt: ast.stmt) -> bool:
-    """Report whether `stmt` is a bare string expression."""
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str)
 
 
 def _always_raises(body: list[ast.stmt]) -> bool:
-    """Report whether every terminal path through `body` ends in a `raise`."""
     stmts = [stmt for stmt in body if not _is_docstring(stmt)]
     if not stmts:
         return False
@@ -166,18 +156,15 @@ def _always_raises(body: list[ast.stmt]) -> bool:
 
 
 def _try_body_span(try_node: ast.Try | ast.TryStar) -> int:
-    """Measure the try body in source lines."""
     end = max((stmt.end_lineno or stmt.lineno) for stmt in try_node.body)
     return end - try_node.lineno
 
 
 def _is_bare_raise_body(try_node: ast.Try | ast.TryStar) -> bool:
-    """Report whether the try body is nothing but a single `raise`."""
     return len(try_node.body) == 1 and isinstance(try_node.body[0], ast.Raise)
 
 
 def _shadows_isinstance(tree: ast.Module) -> bool:
-    """Take a whole-file false negative if the builtin cannot be proven."""
     for node in ast.walk(tree):
         match node:
             case ast.Name(id="isinstance", ctx=ast.Store()) | ast.arg(arg="isinstance"):
@@ -204,7 +191,6 @@ def _matchable_isinstance_test(
     *,
     ast_module_names: frozenset[str] = frozenset(),
 ) -> str | None:
-    """Extract the simple subject of an isinstance test convertible to patterns."""
     if not isinstance(test, ast.Call) or not isinstance(test.func, ast.Name) or test.func.id != "isinstance":
         return None
     if len(test.args) != _ISINSTANCE_ARG_COUNT or test.keywords or not isinstance(test.args[0], ast.Name):
@@ -236,7 +222,6 @@ def _matchable_class_reference(
     *,
     ast_module_names: frozenset[str],
 ) -> bool:
-    """Report whether `node` can safely head a class pattern."""
     match node:
         case ast.BinOp(left=left, op=ast.BitOr(), right=right):
             return _matchable_class_reference(
@@ -267,20 +252,17 @@ def _matchable_class_reference(
 
 
 def _looks_like_class_name(name: str) -> bool:
-    """Recognize ordinary and private CamelCase runtime class references."""
     unprefixed = name.lstrip("_")
     return bool(unprefixed) and unprefixed[:1].isupper() and not unprefixed.isupper()
 
 
 def _is_dotted_name(node: ast.expr) -> bool:
-    """Report whether `node` is the prefix of a pattern-compatible dotted name."""
     if isinstance(node, ast.Name):
         return True
     return isinstance(node, ast.Attribute) and _is_dotted_name(node.value)
 
 
 def _is_matchable_raise_guard(test: ast.expr, runtime_tuple_aliases: frozenset[str]) -> bool:
-    """Report whether a raise is directly guarded by type or None dispatch."""
     if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
         return _is_matchable_raise_guard(test.operand, runtime_tuple_aliases)
     if _matchable_isinstance_test(test, runtime_tuple_aliases) is not None:
@@ -301,7 +283,6 @@ def _isinstance_ladder(
     runtime_tuple_aliases: frozenset[str],
     ast_module_names: frozenset[str],
 ) -> _IsinstanceLadder | None:
-    """Recognize a complete if/elif chain dispatching one name by runtime type."""
     branches = _if_ladder(node)
     branch_count = len(branches)
     if branch_count < _MIN_TYPE_DISPATCH_BRANCHES:
@@ -321,8 +302,11 @@ def _isinstance_ladder(
             return None
         subject = branch_subject
 
-    if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES and any(
-        _dispatch_uses_stdlib_ast(branch.test, ast_module_names) for branch in branches
+    if (
+        subject is not None
+        and branch_count < _ERROR_TYPE_DISPATCH_BRANCHES
+        and any(_dispatch_uses_stdlib_ast(branch.test, ast_module_names) for branch in branches)
+        and not _projects_subject_attributes(branches, subject)
     ):
         return None
     if subject is None:
@@ -331,7 +315,6 @@ def _isinstance_ladder(
 
 
 def _if_ladder(node: ast.If) -> tuple[ast.If, ...]:
-    """Return the complete maximal if/elif chain rooted at ``node``."""
     branches = [node]
     current = node
     while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
@@ -341,7 +324,6 @@ def _if_ladder(node: ast.If) -> tuple[ast.If, ...]:
 
 
 def _dispatch_uses_stdlib_ast(test: ast.expr, ast_module_names: frozenset[str]) -> bool:
-    """Report whether a dispatch arm directly names a proven stdlib ``ast`` class."""
     call = _leading_isinstance(test)
     if call is None or len(call.args) != _ISINSTANCE_ARG_COUNT:
         return False
@@ -351,8 +333,21 @@ def _dispatch_uses_stdlib_ast(test: ast.expr, ast_module_names: frozenset[str]) 
     )
 
 
+def _projects_subject_attributes(branches: tuple[ast.If, ...] | list[ast.If], subject: str) -> bool:
+    for branch in branches:
+        if len(branch.body) != 1 or not isinstance(branch.body[0], ast.Return):
+            return False
+        returned = branch.body[0].value
+        if not (
+            isinstance(returned, ast.Attribute)
+            and isinstance(returned.value, ast.Name)
+            and returned.value.id == subject
+        ):
+            return False
+    return True
+
+
 def _leading_isinstance(test: ast.expr) -> ast.Call | None:
-    """Return the leading isinstance call from a plain or guarded dispatch arm."""
     candidate = test.values[0] if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And) else test
     if isinstance(candidate, ast.Call) and isinstance(candidate.func, ast.Name) and candidate.func.id == "isinstance":
         return candidate
@@ -360,14 +355,12 @@ def _leading_isinstance(test: ast.expr) -> ast.Call | None:
 
 
 def _type_dispatch_severity(branch_count: int) -> Severity:
-    """Keep newly expanded two-arm findings advisory while 3+ remains blocking."""
     return Severity.WARNING if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES else Severity.ERROR
 
 
 def _sequential_isinstance_dispatches(
     tree: ast.Module, path: Path, code: str, runtime_tuple_aliases: frozenset[str]
 ) -> list[Diagnostic]:
-    """Find exclusive type dispatch spelled as terminating sibling if statements."""
     findings: list[Diagnostic] = []
     ast_module_names = _stdlib_ast_module_names(tree)
     for owner in ast.walk(tree):
@@ -402,15 +395,15 @@ def _sequential_isinstance_dispatches(
                 )
                 guards = [_passthrough_guard_var(statement) for statement in statements[index:end]]
                 owned_by_sentinel_arm = guards[:_MIN_SENTINEL_COUNT] == [subject] * _MIN_SENTINEL_COUNT
+                dispatches = [statement for statement in statements[index:end] if isinstance(statement, ast.If)]
                 exact_two_ast_dispatch = branch_count < _ERROR_TYPE_DISPATCH_BRANCHES and any(
-                    isinstance(statement, ast.If) and _dispatch_uses_stdlib_ast(statement.test, ast_module_names)
-                    for statement in statements[index:end]
+                    _dispatch_uses_stdlib_ast(statement.test, ast_module_names) for statement in dispatches
                 )
                 if (
                     branch_count >= _MIN_TYPE_DISPATCH_BRANCHES
                     and not adjacent_if
                     and not owned_by_sentinel_arm
-                    and not exact_two_ast_dispatch
+                    and (not exact_two_ast_dispatch or _projects_subject_attributes(dispatches, subject))
                 ):
                     findings.append(
                         Diagnostic(
@@ -430,7 +423,6 @@ def _sequential_isinstance_dispatches(
 
 
 def _stdlib_ast_module_names(tree: ast.Module) -> frozenset[str]:
-    """Return unshadowed module-level bindings proven to refer to stdlib ``ast``."""
     imported = {
         alias.asname or "ast"
         for statement in tree.body
@@ -468,7 +460,6 @@ def _matchable_isinstance_dispatch(
     runtime_tuple_aliases: frozenset[str],
     ast_module_names: frozenset[str],
 ) -> str | None:
-    """Extract a type-dispatch subject, preserving any trailing ``and`` terms as a case guard."""
     match test:
         case ast.BoolOp(op=ast.And(), values=[leading_isinstance, *guard_terms]):
             subject = _matchable_isinstance_test(
@@ -484,12 +475,10 @@ def _matchable_isinstance_dispatch(
 
 
 def _rebinds_name(node: ast.AST, name: str) -> bool:
-    """Reject guards that change the dispatch subject after ``match`` would snapshot it."""
     return any(isinstance(candidate, ast.NamedExpr) and candidate.target.id == name for candidate in ast.walk(node))
 
 
 def _body_terminates(body: list[ast.stmt]) -> bool:
-    """Prove a branch cannot fall through to the following sibling statement."""
     statements = [statement for statement in body if not _is_docstring(statement)]
     if not statements:
         return False
@@ -513,7 +502,6 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
 
 
 def _statement_blocks(node: ast.AST) -> tuple[list[ast.stmt], ...]:
-    """Return each ordered statement block directly owned by an AST node."""
     match node:
         case ast.Module() | ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
             return (node.body,)
@@ -528,7 +516,6 @@ def _statement_blocks(node: ast.AST) -> tuple[list[ast.stmt], ...]:
 
 
 def _repeated_match_attribute_captures(node: ast.Match, path: Path, code: str) -> list[Diagnostic]:
-    """Find OR-patterns that redundantly destructure one shared attribute."""
     findings: list[Diagnostic] = []
     if not isinstance(node.subject, ast.Name):
         return findings
@@ -582,7 +569,6 @@ def _repeated_match_attribute_captures(node: ast.Match, path: Path, code: str) -
 
 
 def _class_pattern_keyword_captures(pattern: ast.pattern) -> dict[str, str] | None:
-    """Return direct ``attribute=name`` captures from one class pattern."""
     if not isinstance(pattern, ast.MatchClass):
         return None
     captures: dict[str, str] = {}
@@ -594,7 +580,6 @@ def _class_pattern_keyword_captures(pattern: ast.pattern) -> dict[str, str] | No
 
 
 def _simple_pattern_capture(pattern: ast.pattern) -> str | None:
-    """Return the name bound by a plain keyword capture pattern."""
     match pattern:
         case ast.MatchAs(pattern=None, name=str() as name):
             return name
@@ -603,7 +588,6 @@ def _simple_pattern_capture(pattern: ast.pattern) -> str | None:
 
 
 def _bound_pattern_names(pattern: ast.pattern) -> set[str]:
-    """Collect every name a pattern binds in its case body."""
     names: set[str] = set()
     for node in ast.walk(pattern):
         match node:
@@ -619,7 +603,6 @@ def _bound_pattern_names(pattern: ast.pattern) -> set[str]:
 
 
 def _body_name_contexts(body: list[ast.stmt], name: str) -> _NameContexts:
-    """Report whether a case body loads and rebinds one name."""
     loaded = False
     rebound = False
     for statement in body:
@@ -634,7 +617,6 @@ def _body_name_contexts(body: list[ast.stmt], name: str) -> _NameContexts:
 
 
 def _unsafe_direct_attribute_use(body: list[ast.stmt], subject: str, capture: str) -> bool:
-    """Reject bodies where a capture is a snapshot rather than a direct read."""
     for statement in body:
         for node in ast.walk(statement):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)) and any(
@@ -651,7 +633,6 @@ def _unsafe_direct_attribute_use(body: list[ast.stmt], subject: str, capture: st
 
 
 def _rooted_in_name(node: ast.expr, name: str) -> bool:
-    """Report whether an attribute or subscript chain starts at one name."""
     current = node
     while isinstance(current, (ast.Attribute, ast.Subscript)):
         current = current.value
@@ -659,7 +640,6 @@ def _rooted_in_name(node: ast.expr, name: str) -> bool:
 
 
 def _join_guidance(items: list[str]) -> str:
-    """Join a short diagnostic list without losing code formatting."""
     if len(items) == 1:
         return items[0]
     if len(items) == _PAIR_COUNT:
@@ -668,7 +648,6 @@ def _join_guidance(items: list[str]) -> str:
 
 
 def _passthrough_guard_var(stmt: ast.stmt) -> str | None:
-    """Extract the variable of a sentinel *passthrough* guard."""
     if not isinstance(stmt, ast.If) or stmt.orelse or len(stmt.body) != 1:
         return None
     returned = stmt.body[0]
@@ -682,7 +661,6 @@ def _passthrough_guard_var(stmt: ast.stmt) -> str | None:
 
 
 def _is_type_check_call(test: ast.expr, var: str) -> bool:
-    """Report whether `test` is `isinstance(var, ...)` or `issubclass(var, ...)`."""
     if not isinstance(test, ast.Call) or not isinstance(test.func, ast.Name):
         return False
     if test.func.id not in {"isinstance", "issubclass"} or not test.args:
@@ -692,7 +670,6 @@ def _is_type_check_call(test: ast.expr, var: str) -> bool:
 
 
 def _is_none_identity_test(test: ast.expr, var: str) -> bool:
-    """Report whether `test` is `var is None` or `var is not None`."""
     if not isinstance(test, ast.Compare) or len(test.ops) != 1:
         return False
     if not isinstance(test.ops[0], (ast.Is, ast.IsNot)):
@@ -706,7 +683,6 @@ def _is_none_identity_test(test: ast.expr, var: str) -> bool:
 def _check_sequential_type_guards(
     func_node: ast.FunctionDef | ast.AsyncFunctionDef, path: Path, code: str
 ) -> list[Diagnostic]:
-    """Check for 2+ sequential sentinel passthrough guards on the SAME variable."""
     body = func_node.body
     if not body:
         return []
@@ -753,7 +729,6 @@ def _check_sequential_type_guards(
 
 
 def _passthrough_guard_kind(stmt: ast.If, var: str) -> str:
-    """Classify a proven passthrough guard for the narrow None/Unset exemption."""
     if _is_none_identity_test(stmt.test, var):
         return "none"
     if isinstance(stmt.test, ast.Call) and len(stmt.test.args) >= _ISINSTANCE_ARG_COUNT:
@@ -916,7 +891,7 @@ class PreferMatchTypeDispatch(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Safe two-branch `isinstance` dispatch is advisory; dispatch with three or more branches and the rule's established parser shapes remain blocking.",
-            "Generated files, runtime tuple aliases, two-arm stdlib AST visitors, subject-rebinding guards, idiomatic None/Unset prologues, and code that shadows `isinstance` are excluded; test files omit the control-flow-raise check.",
+            "Generated files, runtime tuple aliases, general two-arm stdlib AST visitors, subject-rebinding guards, idiomatic None/Unset prologues, and code that shadows `isinstance` are excluded; exact AST attribute projections remain advisory, and test files omit the control-flow-raise check.",
         ),
         examples=(
             RuleExample(
@@ -993,7 +968,6 @@ class PreferMatchTypeDispatch(Rule):
 
 
 def _runtime_tuple_aliases(tree: ast.Module) -> frozenset[str]:
-    """Collect names statically bound to runtime tuples accepted by isinstance."""
     aliases: set[str] = set()
     for node in ast.walk(tree):
         match node:

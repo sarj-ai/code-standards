@@ -1,5 +1,3 @@
-"""Extract source comments across every syntax family Standards lints."""
-
 from __future__ import annotations
 
 import ast
@@ -15,7 +13,7 @@ import secrets
 import stat
 import tokenize
 from types import MappingProxyType
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, NamedTuple, TypedDict
 
 
 if TYPE_CHECKING:
@@ -59,6 +57,12 @@ class Record(TypedDict):
     language: str
     kind: str
     sentences: int
+    text: str
+
+
+class _CommentUnit(NamedTuple):
+    line: int
+    kind: str
     text: str
 
 
@@ -117,8 +121,7 @@ def _read_regular_file(directory_descriptor: int, filename: str) -> str | None:
             os.close(descriptor)
 
 
-def _comments(language: str, source: str) -> list[tuple[int, str, str]]:
-    """Route one syntax family to its comment-aware extractor."""
+def _comments(language: str, source: str) -> list[_CommentUnit]:
     return {
         "config": _hash_comments,
         "iac": _hcl_comments,
@@ -287,8 +290,8 @@ def _rmdir_if_owned(name: str, expected: os.stat_result, directory_descriptor: i
                 raise
 
 
-def _python_comments(source: str) -> list[tuple[int, str, str]]:
-    found: list[tuple[int, str, str]] = []
+def _python_comments(source: str) -> list[_CommentUnit]:
+    found: list[_CommentUnit] = []
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -303,10 +306,10 @@ def _python_comments(source: str) -> list[tuple[int, str, str]]:
                 and isinstance(first.value, ast.Constant)
                 and isinstance(first.value.value, str)
             ):
-                found.append((first.lineno, "docstring", first.value.value))
+                found.append(_CommentUnit(first.lineno, "docstring", first.value.value))
     with suppress(tokenize.TokenError, IndentationError):
         found.extend(
-            (token.start[0], "comment", token.string.removeprefix("#").strip())
+            _CommentUnit(token.start[0], "comment", token.string.removeprefix("#").strip())
             for token in tokenize.generate_tokens(io.StringIO(source).readline)
             if token.type == tokenize.COMMENT
         )
@@ -332,8 +335,8 @@ def _sentence_units(text: str) -> int:
     return units + (len(_BOUNDARY_RE.split(paragraph)) if paragraph else 0)
 
 
-def _javascript_comments(source: str) -> list[tuple[int, str, str]]:
-    found: list[tuple[int, str, str]] = []
+def _javascript_comments(source: str) -> list[_CommentUnit]:
+    found: list[_CommentUnit] = []
     index = 0
     line = 1
     quote: str | None = None
@@ -356,14 +359,14 @@ def _javascript_comments(source: str) -> list[tuple[int, str, str]]:
         if char == "/" and following == "/":
             end = source.find("\n", index)
             end = len(source) if end < 0 else end
-            found.append((line, "comment", source[index + 2 : end].strip()))
+            found.append(_CommentUnit(line, "comment", source[index + 2 : end].strip()))
             index = end
             continue
         if char == "/" and following == "*":
             end = source.find("*/", index + 2)
             end = len(source) - 2 if end < 0 else end
             value = source[index + 2 : end]
-            found.append((line, "jsdoc" if value.startswith("*") else "comment", value.strip("* \n")))
+            found.append(_CommentUnit(line, "jsdoc" if value.startswith("*") else "comment", value.strip("* \n")))
             line += value.count("\n")
             index = end + 2
             continue
@@ -372,9 +375,8 @@ def _javascript_comments(source: str) -> list[tuple[int, str, str]]:
     return found
 
 
-def _sql_comments(source: str) -> list[tuple[int, str, str]]:
-    """Extract SQL comments without treating strings or dollar bodies as comments."""
-    found: list[tuple[int, str, str]] = []
+def _sql_comments(source: str) -> list[_CommentUnit]:
+    found: list[_CommentUnit] = []
     index = 0
     line = 1
     quote: str | None = None
@@ -410,14 +412,14 @@ def _sql_comments(source: str) -> list[tuple[int, str, str]]:
         if pair == "--":
             end = source.find("\n", index)
             end = len(source) if end < 0 else end
-            found.append((line, "comment", source[index + 2 : end].strip()))
+            found.append(_CommentUnit(line, "comment", source[index + 2 : end].strip()))
             index = end
             continue
         if pair == "/*":
             end = source.find("*/", index + 2)
             end = len(source) if end < 0 else end
             value = source[index + 2 : end]
-            found.append((line, "comment", value.strip("* \n")))
+            found.append(_CommentUnit(line, "comment", value.strip("* \n")))
             line += value.count("\n")
             index = min(len(source), end + 2)
             continue
@@ -426,9 +428,8 @@ def _sql_comments(source: str) -> list[tuple[int, str, str]]:
     return found
 
 
-def _hash_comments(source: str) -> list[tuple[int, str, str]]:
-    """Extract YAML/TOML hash comments while respecting simple quoted scalars."""
-    found: list[tuple[int, str, str]] = []
+def _hash_comments(source: str) -> list[_CommentUnit]:
+    found: list[_CommentUnit] = []
     block_indent: int | None = None
     for line_number, raw in enumerate(source.splitlines(), start=1):
         indent = len(raw) - len(raw.lstrip())
@@ -440,12 +441,11 @@ def _hash_comments(source: str) -> list[tuple[int, str, str]]:
             block_indent = indent
         marker = _hash_comment_index(raw)
         if marker is not None:
-            found.append((line_number, "comment", raw[marker + 1 :].strip()))
+            found.append(_CommentUnit(line_number, "comment", raw[marker + 1 :].strip()))
     return found
 
 
-def _hcl_comments(source: str) -> list[tuple[int, str, str]]:
-    """Extract HCL line and block comments, excluding heredoc bodies and strings."""
+def _hcl_comments(source: str) -> list[_CommentUnit]:
     masked = _mask_hcl_heredocs(source)
     found = _javascript_comments(masked)
     found.extend(_hash_comments(masked))
@@ -490,9 +490,8 @@ def _hash_comment_index(line: str) -> int | None:
     return None
 
 
-def _markdown_comments(source: str) -> list[tuple[int, str, str]]:  # ruff: ignore[too-many-locals] -- scanner keeps independent fence and HTML-comment state
-    """Extract HTML and pseudo-reference comments outside fenced code blocks."""
-    found: list[tuple[int, str, str]] = []
+def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-many-locals] -- scanner keeps independent fence and HTML-comment state
+    found: list[_CommentUnit] = []
     in_fence = False
     fence = ""
     in_html = False
@@ -513,12 +512,12 @@ def _markdown_comments(source: str) -> list[tuple[int, str, str]]:  # ruff: igno
             before, separator, _after = raw.partition("-->")
             html_parts.append(before)
             if separator:
-                found.append((html_start, "comment", "\n".join(html_parts).strip()))
+                found.append(_CommentUnit(html_start, "comment", "\n".join(html_parts).strip()))
                 in_html = False
                 html_parts = []
             continue
         if stripped.startswith("[//]:"):
-            found.append((line_number, "comment", stripped.removeprefix("[//]:").strip()))
+            found.append(_CommentUnit(line_number, "comment", stripped.removeprefix("[//]:").strip()))
             continue
         before, opener, rest = raw.partition("<!--")
         if not opener:
@@ -526,11 +525,11 @@ def _markdown_comments(source: str) -> list[tuple[int, str, str]]:  # ruff: igno
         _ = before
         body, closer, _after = rest.partition("-->")
         if closer:
-            found.append((line_number, "comment", body.strip()))
+            found.append(_CommentUnit(line_number, "comment", body.strip()))
         else:
             in_html = True
             html_start = line_number
             html_parts = [rest]
     if in_html:
-        found.append((html_start, "comment", "\n".join(html_parts).strip()))
+        found.append(_CommentUnit(html_start, "comment", "\n".join(html_parts).strip()))
     return found

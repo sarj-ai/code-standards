@@ -1,5 +1,3 @@
-"""Release tag parsing and manifest-version validation."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,16 +43,12 @@ class ReleaseTargetId(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ReleaseTarget:
-    """A release tag prefix and its authoritative manifest."""
-
     manifest: Path
     format: ManifestFormat
 
 
 @dataclass(frozen=True, slots=True)
 class ValidatedReleaseTag:
-    """A tag proven to exactly match its package manifest."""
-
     tag: str
     target: str
     version: str
@@ -63,8 +57,6 @@ class ValidatedReleaseTag:
 
 @dataclass(frozen=True, slots=True)
 class TagSyncResult:
-    """Remote tags created now and tags that already existed."""
-
     created: tuple[str, ...]
     existing: tuple[str, ...]
 
@@ -101,7 +93,6 @@ _TAG_PATTERN: Final = re.compile(r"^(?P<target>[a-z][a-z0-9-]*)-v(?P<version>[^\
 
 
 def read_manifest_version(path: Path, manifest_format: ManifestFormat) -> str:
-    """Read and validate a top-level package version from JSON or TOML."""
     try:
         data = _read_manifest(path, manifest_format)
     except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
@@ -133,7 +124,6 @@ def validate_release_tag(
     *,
     targets: Mapping[str, ReleaseTarget] = RELEASE_TARGETS,
 ) -> ValidatedReleaseTag:
-    """Require ``<target>-v<version>`` to exactly match the target manifest."""
     match = _TAG_PATTERN.fullmatch(tag)
     if match is None or match["target"] not in targets:
         msg = f"unrecognized release tag: {tag}"
@@ -183,7 +173,6 @@ def missing_remote_release_tags(
     *,
     runner: ProcessRunner = run_process,
 ) -> tuple[str, ...]:
-    """Return manifest-derived release tags missing from the ``origin`` remote."""
     resolved = root.resolve()
     tags = (_current_tag(ReleaseTargetId(target), resolved) for target in RELEASE_TARGETS)
     return tuple(tag for tag in tags if not _remote_tag_exists(resolved, tag, runner=runner))
@@ -195,7 +184,6 @@ def verify_remote_release_tags(
     commit: str,
     runner: ProcessRunner = run_process,
 ) -> tuple[str, ...]:
-    """Return missing manifest tags and reject existing tags bound to the wrong tree."""
     resolved = root.resolve()
     if not commit or commit.startswith("-"):
         msg = "release tag verification requires an explicit publishing commit"
@@ -230,7 +218,6 @@ def create_release_tags(
     delay: timedelta = timedelta(0),
     sleeper: Callable[[float], object] = time.sleep,
 ) -> TagSyncResult:
-    """Tag an explicit publishing commit after registry publication is visible."""
     from sarj_standards.libs.release.registry import (  # ruff: ignore[import-outside-top-level] -- avoid the tags/registry import cycle
         publication_exists,
         require_publication,
@@ -310,7 +297,6 @@ def _require_remote_tag_commit(
     *,
     runner: ProcessRunner,
 ) -> None:
-    """Accept the publishing commit or an older tag whose package tree is unchanged."""
     result = runner(
         (
             "git",
@@ -369,7 +355,6 @@ def _require_remote_tag_commit(
 
 
 def _require_local_tag_commit(root: Path, tag: str, commit: str, *, runner: ProcessRunner) -> bool:
-    """Return whether a local tag exists, rejecting one that names another commit."""
     try:
         result = runner(
             ("git", "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"),

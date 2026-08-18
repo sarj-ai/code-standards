@@ -1,5 +1,3 @@
-"""Enforce the package's one-way API and business-logic boundaries."""
-
 from __future__ import annotations
 
 import ast

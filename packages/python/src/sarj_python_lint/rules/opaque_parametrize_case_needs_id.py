@@ -1,8 +1,3 @@
-"""SARJ042 — An opaque parametrize case with no id reports as `test_x[case0]`.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_opaque_parametrize_case_needs_id.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -92,7 +87,6 @@ class OpaqueParametrizeCaseNeedsId(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag parametrize cases whose value cannot produce a readable pytest id."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -140,7 +134,6 @@ def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]
 
 
 def _decorator_calls(tree: ast.Module) -> list[ast.Call]:
-    """Collect every call used as a decorator, in source order."""
     return [dec for node in nodes(tree, *_DECORATED_NODES) for dec in node.decorator_list if isinstance(dec, ast.Call)]
 
 
@@ -156,7 +149,6 @@ def _has_keyword(node: ast.Call, name: str) -> bool:
 
 
 def _parametrize_width(argnames: ast.expr) -> int | None:
-    """Return the statically known number of parameters in a table."""
     if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
         names = [stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip())]
         return len(names) or None

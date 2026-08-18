@@ -1,5 +1,3 @@
-"""Canonical diagnostics preserve facts across JSON, SARIF, and native tools."""
-
 from __future__ import annotations
 
 import json

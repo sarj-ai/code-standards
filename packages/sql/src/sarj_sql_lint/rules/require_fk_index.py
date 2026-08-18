@@ -1,5 +1,3 @@
-"""SARJ112: Require index on Foreign Key column."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -121,7 +119,6 @@ _MAX_TREE_BYTES = 1_000_000
 
 
 def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
-    """Locate the migration tree `path` belongs to."""
     for parent in path.parents:
         if parent.name.lower() in _MIGRATION_ROOT_NAMES:
             return parent
@@ -132,7 +129,6 @@ def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounde
 def _tree_leading_indexed(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
     root: Path,
 ) -> frozenset[tuple[str, str]]:
-    """Collect `(table, leading indexed column)` pairs from every `.sql` file under `root`."""
     pairs: set[tuple[str, str]] = set()
     try:
         candidates = sorted(root.rglob("*.sql"))[:_MAX_TREE_FILES]
@@ -151,7 +147,6 @@ def _tree_leading_indexed(  # sarj-noqa: SARJ023 — bounded tree helpers stay a
 
 
 def _sibling_indexed(path: Path, tables: tuple[str, ...]) -> set[str]:
-    """Leading columns indexed anywhere in `path`'s migration tree for `tables`."""
     if not tables:
         return set()
     try:
@@ -179,8 +174,6 @@ class _StmtContext:
 
 @final
 class RequireFkIndex(Rule):
-    """Foreign key column without corresponding index on child table."""
-
     id = "require-fk-index"
     code = "SARJ112"
     documentation = RuleDocumentation(
@@ -311,7 +304,6 @@ class RequireFkIndex(Rule):
 
 
 def _message(column: str, table: str, *, is_dump: bool) -> str:
-    """Word the diagnostic for `column` on `table`."""
     head = (
         f"Foreign key column `{column}` on table `{table}` should have a corresponding `CREATE INDEX` "
         "to prevent full table scans and lock contention during parent row deletes."

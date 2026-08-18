@@ -1,5 +1,3 @@
-"""Direct tests for the comment helpers shared by SARJ016/049/050/051 and SARJ038/054."""
-
 import tokenize
 
 import pytest
@@ -53,7 +51,6 @@ def test_each_protected_signal_exempts_a_comment(signal: str, body: str) -> None
     ],
 )
 def test_the_floor_does_not_protect_a_pure_narration(body: str) -> None:
-    """The negative controls that keep the leak rate at ~1%."""
     assert not is_protected(body)
 
 
@@ -71,7 +68,6 @@ def test_identifier_splitting_covers_the_three_casings() -> None:
 
 
 def test_stemming_is_symmetric_across_the_e_forms() -> None:
-    """Without the trailing-`e` strip, `create` and `creates` never match."""
     assert stem("creates") == stem("creating") == stem("create")
     assert stem("updated") == stem("updates") == stem("update")
     assert stem("retries") == stem("retry")
@@ -84,7 +80,6 @@ def test_a_short_word_is_left_alone() -> None:
 
 
 def test_restating_requires_an_exact_or_stemmed_match_not_a_prefix() -> None:
-    """Prefix matching is deliberately absent; it drove a ~60% false-positive rate."""
     assert restates(content_tokens("updating the widgets"), code_tokens("def update_widget(): ..."))
     assert not restates(["loc"], code_tokens("location = 1"))
 
@@ -114,7 +109,6 @@ def test_standalone_and_trailing_comments_are_separated() -> None:
 
 
 def test_a_comment_inside_brackets_is_reported_as_nested() -> None:
-    """Depth is the only thing separating "annotates an element" from "signposts the file"."""
     assert nested_comment_lines(_SOURCE) == {5}
 
 
@@ -124,7 +118,6 @@ def test_consecutive_standalone_comments_group_into_one_run() -> None:
 
 
 def test_the_suppression_view_shares_the_same_pass() -> None:
-    """`all_comments` exists so the suppression rules do not tokenize a second time."""
     scan = all_comments(_SOURCE)
     assert [(body, standalone) for _line, _col, body, standalone in scan.comments] == [
         ("leading note", True),

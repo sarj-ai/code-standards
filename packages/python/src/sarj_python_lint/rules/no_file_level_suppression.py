@@ -1,8 +1,3 @@
-"""SARJ038 — Module-scope unscoped suppression blanket — scope it or fix the findings.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_suppression.py
-"""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -87,7 +82,6 @@ class NoFileLevelSuppression(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Report every unscoped module-scope suppression blanket in `source`."""
         comments = scan_comments_or_none(source)
         if comments is None:
             return []
@@ -108,7 +102,6 @@ class NoFileLevelSuppression(Rule):
 
 
 def _blanket_message(comment: Comment) -> str | None:
-    """Classify a comment as one of the two unscoped type-checker blankets."""
     if not (comment.standalone and comment.before_first_statement):
         return None
     if _is_unscoped(comment.body, _TYPE_IGNORE_RE, _BRACKET_CODES_RE):
@@ -119,7 +112,6 @@ def _blanket_message(comment: Comment) -> str | None:
 
 
 def _is_unscoped(body: str, directive: re.Pattern[str], codes: re.Pattern[str]) -> bool:
-    """Report whether `body` is `directive` with no code list after it."""
     match = directive.match(body)
     if match is None:
         return False

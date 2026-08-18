@@ -1,8 +1,3 @@
-"""SARJ070 — Adjacent `case` arms with identical bodies — merge them into one or-pattern.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_or_pattern.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -93,7 +88,6 @@ class PreferOrPattern(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag runs of adjacent `case` arms that duplicate one body."""
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -114,7 +108,6 @@ class PreferOrPattern(Rule):
 
 
 def _mergeable_runs(node: ast.Match, lines: list[str]) -> list[list[ast.match_case]]:
-    """Group the match's arms into maximal runs of adjacent, mergeable arms."""
     runs: list[list[ast.match_case]] = []
     current: list[ast.match_case] = []
     for case in node.cases:
@@ -136,7 +129,6 @@ def _mergeable_runs(node: ast.Match, lines: list[str]) -> list[list[ast.match_ca
 
 
 def _is_mergeable_arm(case: ast.match_case) -> bool:
-    """Report whether an arm can ever take part in an or-pattern merge."""
     if case.guard is not None:
         return False
     if _is_irrefutable(case.pattern):
@@ -145,12 +137,10 @@ def _is_mergeable_arm(case: ast.match_case) -> bool:
 
 
 def _is_irrefutable(pattern: ast.pattern) -> bool:
-    """Report whether `pattern` matches everything (`case _:` or `case name:`)."""
     return isinstance(pattern, ast.MatchAs) and pattern.pattern is None
 
 
 def _is_empty_body(body: list[ast.stmt]) -> bool:
-    """Report whether the arm body does nothing at all."""
     if len(body) != 1:
         return False
     stmt = body[0]
@@ -160,7 +150,6 @@ def _is_empty_body(body: list[ast.stmt]) -> bool:
 
 
 def _arms_merge(first: ast.match_case, second: ast.match_case, lines: list[str]) -> bool:
-    """Report whether two adjacent arms can be folded into one or-pattern."""
     if _bound_names(first.pattern) != _bound_names(second.pattern):
         return False
     if not _bodies_equal(first.body, second.body):
@@ -174,19 +163,16 @@ def _arms_merge(first: ast.match_case, second: ast.match_case, lines: list[str])
 
 
 def _arm_end(case: ast.match_case) -> int:
-    """Return the last source line the arm occupies."""
     return case.body[-1].end_lineno or case.body[-1].lineno
 
 
 def _bodies_equal(first: list[ast.stmt], second: list[ast.stmt]) -> bool:
-    """Compare two statement blocks structurally, ignoring source positions."""
     if len(first) != len(second):
         return False
     return all(ast.dump(a) == ast.dump(b) for a, b in zip(first, second, strict=True))
 
 
 def _bound_names(pattern: ast.pattern) -> frozenset[str]:
-    """Collect every name the pattern binds."""
     names: set[str] = set()
     for node in walk(pattern):
         match node:
@@ -200,7 +186,6 @@ def _bound_names(pattern: ast.pattern) -> frozenset[str]:
 
 
 def _comments_in(lines: list[str], start: int, end: int) -> tuple[str, ...]:
-    """Collect the `#` tails on the 1-based inclusive line range `start..end`."""
     found: list[str] = []
     for index in range(max(start, 1), min(end, len(lines)) + 1):
         _, sep, tail = lines[index - 1].partition("#")
@@ -210,7 +195,6 @@ def _comments_in(lines: list[str], start: int, end: int) -> tuple[str, ...]:
 
 
 def _message(run: list[ast.match_case]) -> str:
-    """Describe the merge, including complete syntax only when it fits."""
     preview = _preview(run[0].pattern, run[1].pattern)
     prefix = f"{len(run)} consecutive `case` arms repeat an identical body — merge them "
     if preview is None:
@@ -219,13 +203,11 @@ def _message(run: list[ast.match_case]) -> str:
 
 
 def _preview(first: ast.pattern, second: ast.pattern) -> str | None:
-    """Render a complete parseable two-pattern suggestion, if it fits."""
     preview = _render_valid_or_pattern([first, second])
     return preview if preview is not None and len(preview) <= _MAX_RENDERED_PREVIEW else None
 
 
 def _render_valid_or_pattern(patterns: list[ast.pattern]) -> str | None:
-    """Render an or-pattern only when Python accepts its capture layout."""
     try:
         preview = ast.unparse(ast.MatchOr(patterns=patterns))
         compile(f"match subject:\n    case {preview}:\n        pass\n", "<sarj-or-pattern>", "exec")

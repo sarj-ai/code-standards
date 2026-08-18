@@ -37,7 +37,6 @@ _SOURCE_TREE_VERSION = "0.0.0.dev0"
 
 
 def test_version_string() -> None:
-    """The shipped version has to BE the pyproject version, not merely look like one."""
     declared = tomllib.loads((_PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert __version__ == declared["project"]["version"]
 

@@ -1,8 +1,3 @@
-"""SARJ025 — No `OFFSET` pagination in a store query — use a keyset cursor.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_offset_pagination.py
-"""
-
 from __future__ import annotations
 
 import ast

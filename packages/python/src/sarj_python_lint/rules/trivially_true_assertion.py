@@ -1,8 +1,3 @@
-"""SARJ064 — An assertion whose outcome the test itself already decided.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_trivially_true_assertion.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -105,8 +100,6 @@ _ONLY_ASSERTION_ADVICE = (
 
 @dataclass(frozen=True, slots=True)
 class _KwargEcho:
-    """One `assert name.field == <literal>` paired with how the name was built."""
-
     node: _Assertion
     field: tuple[str, str]
     echoes: bool
@@ -114,8 +107,6 @@ class _KwargEcho:
 
 @dataclass(slots=True)
 class _Scope:
-    """Everything one function body does with its local names."""
-
     asserts: list[_Assertion]
     loads: dict[str, list[ast.Name]]
     binds: dict[str, int]
@@ -125,8 +116,6 @@ class _Scope:
 
 @dataclass(frozen=True, slots=True)
 class _Index:
-    """One traversal's worth of facts about the module."""
-
     parents: dict[int, ast.AST]
     scopes: list[_Scope]
     owners: dict[int, _Scope]
@@ -182,7 +171,6 @@ class TriviallyTrueAssertion(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag assertions whose truth is settled by the test source itself."""
         if not is_test_path(path) or not _is_collected_module(path):
             return []
         tree = parse_or_none(path, source)
@@ -209,7 +197,6 @@ class TriviallyTrueAssertion(Rule):
 
 
 def _one_per_test(index: _Index, findings: dict[int, tuple[_Assertion, str]]) -> list[tuple[_Assertion, str]]:
-    """Keep the earliest finding in each test function and discard the rest."""
     anchors: dict[int, tuple[_Assertion, str]] = {}
     for node, diagnosis in findings.values():
         scope = index.owners.get(id(node))
@@ -221,7 +208,6 @@ def _one_per_test(index: _Index, findings: dict[int, tuple[_Assertion, str]]) ->
 
 
 def _advice(scope: _Scope | None, findings: dict[int, tuple[_Assertion, str]]) -> str:
-    """Choose the repair based on whether any meaningful assertion remains."""
     if scope is None or any(id(node) not in findings for node in scope.asserts):
         return _ADVICE
     return _ONLY_ASSERTION_ADVICE
@@ -234,7 +220,6 @@ def _is_collected_module(path: Path) -> bool:
 
 
 def _index_module(tree: ast.Module) -> _Index:
-    """Walk the module once, recording everything both shapes need."""
     parents: dict[int, ast.AST] = {}
     scopes: list[_Scope] = []
     owners: dict[int, _Scope] = {}
@@ -262,7 +247,6 @@ def _index_module(tree: ast.Module) -> _Index:
 
 
 def _imported_names(tree: ast.Module) -> frozenset[str]:
-    """Collect bindings whose constructor behavior lives outside this module."""
     bindings: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -292,7 +276,6 @@ def _record_local(node: ast.AST, scope: _Scope) -> None:
 
 
 def _construction_findings(index: _Index) -> list[tuple[_Assertion, str]]:
-    """Find assertions that only read back what the test handed a constructor."""
     echoes: list[_KwargEcho] = []
     hits: list[tuple[_Assertion, str]] = []
     for scope in index.scopes:
@@ -314,7 +297,6 @@ def _construction_findings(index: _Index) -> list[tuple[_Assertion, str]]:
 
 
 def _constructed_locals(scope: _Scope, parents: dict[int, ast.AST]) -> dict[str, ast.Call]:
-    """Keep the locals bound exactly once to a call and never touched since."""
     return {
         name: call
         for name, call in scope.calls.items()
@@ -325,7 +307,6 @@ def _constructed_locals(scope: _Scope, parents: dict[int, ast.AST]) -> dict[str,
 
 
 def _is_assertion_read(node: ast.Name, parents: dict[int, ast.AST]) -> bool:
-    """Report whether this mention of the name only reads it inside an assertion."""
     parent = parents.get(id(node))
     if isinstance(parent, ast.Attribute):
         grandparent = parents.get(id(parent))
@@ -372,7 +353,6 @@ def _kwarg_echo(
     constructed: dict[str, ast.Call],
     imported_names: frozenset[str],
 ) -> _KwargEcho | None:
-    """Pair `x = C(field=<literal>)` with a later `assert x.field == <literal>`."""
     operands = _echo_operands(node)
     if operands is None:
         return None
@@ -397,7 +377,6 @@ def _kwarg_echo(
 
 
 def _uses_imported_binding(func: ast.expr, imported_names: frozenset[str]) -> bool:
-    """Return whether a callee resolves through a binding imported by this module."""
     current = func
     while isinstance(current, ast.Attribute):
         current = current.value
@@ -420,7 +399,6 @@ def _echo_operands(node: _Assertion) -> _EchoOperands | None:
 
 
 def _constructor_name(call: ast.Call) -> str | None:
-    """Name the class this call instantiates, if it plausibly is one."""
     name = _called_name(call.func)
     if name is None or not name[:1].isupper():
         return None
@@ -435,7 +413,6 @@ def _called_name(func: ast.expr) -> str | None:
 
 
 def _is_pure_literal(node: ast.expr) -> bool:
-    """Report whether `node` is a literal built entirely out of source text."""
     match node:
         case ast.Constant():
             return True
@@ -451,7 +428,6 @@ def _is_pure_literal(node: ast.expr) -> bool:
 
 
 def _is_isinstance_echo(node: _Assertion, constructed: dict[str, ast.Call], asserts: list[_Assertion]) -> bool:
-    """Detect `x = Foo(...)` followed by `assert isinstance(x, Foo)`."""
     if isinstance(node, ast.Assert):
         test = node.test
         if not isinstance(test, ast.Call) or not _is_isinstance_call(test) or len(test.args) != _ISINSTANCE_ARITY:
@@ -474,7 +450,6 @@ def _is_isinstance_echo(node: _Assertion, constructed: dict[str, ast.Call], asse
 
 
 def _narrows_for_a_later_assertion(node: _Assertion, name: str, asserts: list[_Assertion]) -> bool:
-    """Report whether a following assertion uses the name this one narrows."""
     for other in asserts:
         if other.lineno <= node.lineno:
             continue

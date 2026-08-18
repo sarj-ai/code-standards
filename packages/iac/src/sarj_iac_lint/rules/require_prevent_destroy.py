@@ -1,5 +1,3 @@
-"""SARJ203: Irreplaceable stores require a provider-side or Terraform deletion guard."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -67,8 +65,6 @@ class _ProviderGuardResult(NamedTuple):
 
 @final
 class RequirePreventDestroyOnIrreplaceable(Rule):
-    """Bucket, secret, or registry without an effective deletion guard."""
-
     id = "require-prevent-destroy-on-irreplaceable"
     code = "SARJ203"
     documentation = RuleDocumentation(
@@ -127,7 +123,6 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag irreplaceable stores lacking an effective literal deletion guard."""
         if not str(path).endswith(_HCL_SUFFIXES):
             return []
         top = blocks(source)
@@ -156,7 +151,6 @@ class RequirePreventDestroyOnIrreplaceable(Rule):
 
 
 def _violation(block: Block) -> str | None:
-    """Describe why `block` is unguarded, or None when it is guarded or exempt."""
     force = block.attribute(_FORCE_DESTROY)
     if force is not None and _literal(force.value) == "true":
         # A literal true is an explicit declaration that the store is disposable.
@@ -184,7 +178,6 @@ def _violation(block: Block) -> str | None:
 
 
 def _provider_guard(block: Block) -> _ProviderGuardResult:
-    """Resolve only provider guards documented for the exact Google resource type."""
     resource_type = block.labels[0]
     problems: list[str] = []
     if resource_type in _GOOGLE_DELETION_POLICY_TYPES:
@@ -203,7 +196,6 @@ def _provider_guard(block: Block) -> _ProviderGuardResult:
 
 
 def _literal(value: str) -> str:
-    """Reduce an attribute value to its bare literal for a `true`/`false` test."""
     text = value.strip().rstrip(",").strip()
     while text.startswith("(") and text.endswith(")"):
         text = text[1:-1].strip()
@@ -211,7 +203,6 @@ def _literal(value: str) -> str:
 
 
 def _quoted_literal(value: str) -> str | None:
-    """Return an exact double-quoted string, excluding expressions and bare identifiers."""
     text = value.strip().rstrip(",").strip()
     while text.startswith("(") and text.endswith(")"):
         text = text[1:-1].strip()

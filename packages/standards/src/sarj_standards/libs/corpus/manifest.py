@@ -1,5 +1,3 @@
-"""Parse public corpus manifests and guarded private overlays."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -34,8 +32,6 @@ class CorpusVisibility(StrEnum):
 
 @dataclass(frozen=True, slots=True, repr=False)
 class CorpusSource:
-    """One locally available corpus with content and optional Git pins."""
-
     name: str = field(repr=False)
     root: Path = field(repr=False)
     kind: CorpusKind
@@ -78,8 +74,6 @@ class CorpusSource:
 
 @dataclass(frozen=True, slots=True)
 class CorpusManifest:
-    """A versioned collection of reproducible local corpus sources."""
-
     origin: Path = field(repr=False)
     sources: tuple[CorpusSource, ...]
     private: bool = False
@@ -100,12 +94,10 @@ def _is_object_list(value: object) -> TypeIs[list[object]]:
 
 
 def load_manifest(path: Path) -> CorpusManifest:
-    """Load a public manifest without resolving or downloading any corpus."""
     return _load(path, expect_private=False)
 
 
 def load_private_overlay(path: Path) -> CorpusManifest:
-    """Load an explicit owner-readable overlay whose identities remain private."""
     if os.name == "nt":
         msg = "private corpus overlays require POSIX owner-only permission semantics"
         raise OSError(msg)
@@ -212,7 +204,6 @@ def _strings(value: object, *, label: str) -> tuple[str, ...]:
 
 
 def merge_manifests(public: CorpusManifest, private: CorpusManifest | None = None) -> CorpusManifest:
-    """Combine an optional private overlay without weakening either manifest."""
     if public.private:
         msg = "base corpus manifest must be public"
         raise ValueError(msg)

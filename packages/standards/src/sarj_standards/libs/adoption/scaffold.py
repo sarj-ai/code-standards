@@ -1,5 +1,3 @@
-"""Turn adoption into one command."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -43,8 +41,6 @@ class _HookMigration(NamedTuple):
 
 @dataclass(frozen=True)
 class Ecosystems:
-    """What kind of repo this is, and WHERE, decided by files already there."""
-
     python: bool
     typescript: bool
     python_root: Path | None = None
@@ -61,8 +57,6 @@ class Ecosystems:
 
 @dataclass
 class Plan:
-    """Everything `setup` intends to do, so `--dry-run` and the real run agree."""
-
     ecosystems: Ecosystems
     root: Path | None = None
     profile: manifest.Profile = "standard"
@@ -143,7 +137,6 @@ def detect(
     python_dest: str | None = None,
     typescript_dest: str | None = None,
 ) -> Ecosystems:
-    """Detect each ecosystem and the directory that owns it."""
     python_root = _override(root, python_dest) or _python_root(root)
     typescript_root = _override(root, typescript_dest) or _typescript_root(root)
     install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
@@ -164,7 +157,6 @@ def detect(
 
 
 def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
-    """Resolve only the ecosystem destinations recorded during setup."""
     python = bool({"ruff", "pyright"}.intersection(adopted.configs))
     typescript = "eslint" in adopted.configs
     detected = detect(
@@ -209,13 +201,11 @@ def _python_root(root: Path) -> Path | None:
 
 
 def _typescript_root(root: Path) -> Path | None:
-    """Locate the directory an npm client would call the project root."""
     lockfiles = tuple(name for name, _ in LOCKFILES)
     return _shallowest(root, lockfiles) or _shallowest(root, ("package.json",))
 
 
 def _shallowest(root: Path, names: Sequence[str]) -> Path | None:
-    """Find the least-nested directory holding any of `names`."""
     if any((root / name).is_file() for name in names):
         return root
     wanted = frozenset(names)
@@ -251,7 +241,6 @@ def build_plan(
     hook_manager: manifest.HookManager | None = None,
     allow_existing_nested_eslint: bool = False,
 ) -> Plan:
-    """Work out every file `setup` would create or amend."""
     ecosystems = detect(root, python_dest=python_dest, typescript_dest=typescript_dest)
     selected = (
         tuple(configs)
@@ -412,7 +401,6 @@ _NAMED_ESLINT_EXPORT = re.compile(r"(?m)^\s*export\s+default\s+(?P<name>[A-Za-z_
 
 
 def _wire_nested_eslint(path: Path, strict: Path) -> str | None:
-    """Compose a locally declared array flat config with repository policy."""
     text = path.read_text(encoding="utf-8")
     exported = _NAMED_ESLINT_EXPORT.search(text)
     if exported is None:
@@ -436,14 +424,12 @@ def _wire_nested_eslint(path: Path, strict: Path) -> str | None:
 
 
 def dest_of(root: Path, subdirectory: Path | None) -> str:
-    """Express one detected project root the way the manifest records it."""
     if subdirectory is None:
         return "."
     return subdirectory.relative_to(root).as_posix() or "."
 
 
 def _note_subproject_destinations(root: Path, plan: Plan) -> None:
-    """Report configs written outside the repository root."""
     for label, subdirectory in (
         ("python", plan.ecosystems.python_root),
         ("typescript", plan.ecosystems.typescript_root),
@@ -501,7 +487,6 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
 
 
 def _plan_retired_repository_launcher(root: Path, plan: Plan) -> None:
-    """Remove only the exact protocol-1 launcher superseded by bootstrap."""
     path = root / launcher.RETIRED_REPOSITORY_LAUNCHER
     if not path.exists():
         return
@@ -515,7 +500,6 @@ def _plan_retired_repository_launcher(root: Path, plan: Plan) -> None:
 
 
 def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
-    """Add current metadata without discarding consumer-owned TOML tables."""
     version_line = _SCHEMA_LESS_VERSION_LINE.search(text)
     if version_line is None:  # The legacy loader proves this before planning.
         return text
@@ -532,7 +516,6 @@ def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
 
 
 def _without_schema_less_configs(text: str) -> str:
-    """Remove the validated legacy configs array, including multiline arrays."""
     lines = text.splitlines(keepends=True)
     kept: list[str] = []
     skipping = False
@@ -550,7 +533,6 @@ def _without_schema_less_configs(text: str) -> str:
 
 
 def _generated_python_exclusions(repository: Path, python_root: Path | None) -> tuple[str, ...]:
-    """Detect only generator-owned Python trees backed by explicit metadata."""
     if python_root is None:
         return ()
     exclusions: list[str] = []
@@ -567,7 +549,6 @@ def _generated_python_exclusions(repository: Path, python_root: Path | None) -> 
 
 
 def _is_speakeasy_project(project: Path) -> bool:
-    """Require both Speakeasy's manifest and its exact source ownership header."""
     if not (project / ".speakeasy" / "gen.yaml").is_file():
         return False
     source = project / "src"
@@ -584,7 +565,6 @@ def _is_speakeasy_project(project: Path) -> bool:
 
 
 def _openapi_python_client_package(project: Path) -> Path | None:
-    """Return a Hatch package only when pinned OpenAPI generation owns it."""
     generator = project / "generate.py"
     pyproject = project / "pyproject.toml"
     if not (project / "codegen.config.yml").is_file() or not generator.is_file():
@@ -746,7 +726,6 @@ def _python_target(document: Mapping[str, object]) -> str | None:
 
 
 def _extend_ruff_replacement_policy(text: str) -> str:
-    """Make consumer Ruff selections additive before inheriting our policy."""
 
     def rewrite_section(section: re.Match[str]) -> str:
         def rewrite_key(match: re.Match[str]) -> str:
@@ -850,7 +829,6 @@ def _eslint_wiring_reaches_strict(
     *,
     planned_strict: Path | None = None,
 ) -> bool:
-    """Follow local config re-exports without leaving the TypeScript project."""
     visited: set[Path] = set() if seen is None else seen
     resolved = path.resolve()
     if resolved in visited or not resolved.is_file():
@@ -877,7 +855,6 @@ def _eslint_wiring_reaches_strict(
 
 
 def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
-    """Pin peers in package.json and write the client-specific overrides."""
     overrides = packagemanager.overrides_for(client)
     pnpm_workspace = root / "pnpm-workspace.yaml"
     package_overrides: Overrides | None = overrides
@@ -926,7 +903,6 @@ def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
 
 
 def _plan_yarn_workspace_peers(typescript_root: Path, plan: Plan) -> None:
-    """Declare ESLint peers in the Yarn workspace that imports them."""
     package_json = typescript_root / "package.json"
     if not package_json.is_file():
         plan.errors.append(f"cannot adopt TypeScript in {typescript_root}: package.json is missing")
@@ -947,7 +923,6 @@ def _plan_yarn_workspace_peers(typescript_root: Path, plan: Plan) -> None:
 
 
 def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
-    """Merge pnpm 11 workspace overrides without reformatting its policy file."""
     if re.search(r"""(?m)^(?:overrides|"overrides"|'overrides'):[ \t]*[^\s#]""", text):
         msg = "flow-style `overrides` is unsupported; convert it to a YAML block mapping and rerun setup"
         raise ValueError(msg)
@@ -973,7 +948,6 @@ def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
 def _merged_npm_overrides(  # ruff: ignore[too-many-locals] -- explicit JSON merge state preserves consumer fields.
     text: str, overrides: Overrides | None, *, client: PackageManager
 ) -> str | None:
-    """Merge exact ESLint peers and optional overrides into package.json text."""
     parsed: object = json.loads(text)  # pyright: ignore[reportAny] -- untyped stdlib boundary
     data = manifest.as_table(parsed)
     if not data:
@@ -1035,14 +1009,6 @@ def _merged_npm_overrides(  # ruff: ignore[too-many-locals] -- explicit JSON mer
 
 
 def _align_npm_direct_dependency_overrides(overrides: dict[str, object]) -> None:
-    """Keep consumer overrides valid after setup pins npm's direct ESLint peers.
-
-    npm rejects a direct dependency override whose spec differs from the direct
-    dependency with EOVERRIDE. Its ``$name`` reference expresses the same
-    override without duplicating the version. Preserve nested child overrides
-    and exact existing specs; only repair entries that setup's own peer pinning
-    would otherwise make invalid.
-    """
     for name, pinned in manifest.eslint_peers().items():
         current = overrides.get(name)
         if isinstance(current, str):
@@ -1056,7 +1022,6 @@ def _align_npm_direct_dependency_overrides(overrides: dict[str, object]) -> None
 
 
 def _semver_major(value: object) -> int | None:
-    """Read the first conventional semantic-version major from an npm range."""
     if not isinstance(value, str):
         return None
     match = re.match(r"^\s*(?:[~^]|>=?|<=?|=)?\s*v?(?P<major>\d+)(?:\.|\s|$)", value)
@@ -1071,11 +1036,6 @@ def _has_path(data: Mapping[str, object], key_path: Sequence[str]) -> bool:
 
 
 def _set_path(data: dict[str, object], key_path: Sequence[str], value: object) -> None:
-    """Write `value` at a nested key path, creating the tables on the way down.
-
-    pnpm reads its overrides from `pnpm.overrides`, so the merge has to reach two
-    levels in without discarding whatever else lives under `pnpm`.
-    """
     table = data
     for key in key_path[:-1]:
         nested = manifest.table_field(table, key)
@@ -1085,13 +1045,11 @@ def _set_path(data: dict[str, object], key_path: Sequence[str], value: object) -
 
 
 def _indent_of(text: str) -> int:
-    """Read a JSON file's indentation so a merge does not reformat the whole file."""
     match = re.search(r"\n(?P<indent> +)\S", text)
     return len(match.group("indent")) if match else 2
 
 
 def _eslint_entrypoint() -> str:
-    """Render the ESLint entrypoint, with the extension seam spelled out."""
     return """// Flat config entrypoint. `eslint.strict.mjs` next to this file is SYNCED --
 // `sarj-standards setup` overwrites it, and `setup --dry-run` fails CI if
 // you edit it. Put every repo-specific decision HERE instead, in the override
@@ -1167,7 +1125,6 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
 
 
 def _plan_retire_precommit_staged_check(root: Path, plan: Plan) -> None:
-    """Remove only the generated Standards hook when Lefthook becomes authoritative."""
     existing = [root / name for name in _PRECOMMIT_CONFIG_NAMES if (root / name).is_file()]
     if len(existing) > 1:
         plan.errors.append(
@@ -1192,7 +1149,6 @@ def _plan_retire_precommit_staged_check(root: Path, plan: Plan) -> None:
 
 
 def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigration:
-    """Replace a plain official umbrella hook while retaining every unrelated byte."""
     official = tuple(
         block for block in hooks.precommit_repo_blocks(text) if hooks.is_official_standards_repo(block.repository)
     )
@@ -1240,7 +1196,6 @@ def _precommit_item_indent(text: str) -> int:
 
 
 def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
-    """Replace recognized generated hooks with one current staged hook."""
     local_blocks = tuple(
         block
         for block in hooks.precommit_repo_blocks(text)
@@ -1271,7 +1226,6 @@ def _canonicalize_owned_hooks(text: str, runner_prefix: str) -> str:
 
 
 def _remove_owned_precommit_hooks(text: str) -> str:
-    """Remove generated staged hooks while preserving unrelated local hooks byte-for-byte."""
     local_blocks = tuple(
         block
         for block in hooks.precommit_repo_blocks(text)
@@ -1348,7 +1302,6 @@ def _canonicalize_local_hook_block(
     item_indent: int,
     insert_canonical: bool,
 ) -> str:
-    """Canonicalize only hooks inside an explicitly local pre-commit repository."""
     lines = text.splitlines(keepends=True)
     owned = {"sarj-standards-check", "sarj-standards-drift"}
     spans: list[tuple[int, int]] = []
@@ -1376,7 +1329,6 @@ def _canonicalize_local_hook_block(
 
 
 def precommit_block() -> str:
-    """Render the single manifest-driven staged-file orchestrator."""
     return _precommit_check_block(launcher.repository_command())
 
 
@@ -1413,7 +1365,6 @@ def _record(plan: Plan, path: Path, contents: str, *, force: bool, reason: str) 
 
 
 def apply(plan: Plan, *, preconditions: Mapping[Path, bytes | None] | None = None) -> None:
-    """Carry out a plan's file writes and appends."""
     from . import transaction  # ruff: ignore[import-outside-top-level] -- avoid a scaffold/transaction import cycle
 
     if plan.root is None:
@@ -1439,7 +1390,6 @@ def apply(plan: Plan, *, preconditions: Mapping[Path, bytes | None] | None = Non
 
 
 def ci_snippet() -> str:
-    """Render the CI job that keeps a repo honest between upgrades."""
     lines = [
         "      - name: sarj standards",
         f"        run: {launcher.repository_command()} check --trust-repository-code",
@@ -1448,7 +1398,6 @@ def ci_snippet() -> str:
 
 
 def github_ci_workflow(root: Path) -> str:
-    """Render a complete manifest-pinned GitHub Actions workflow."""
     root = root.resolve()
     adopted = manifest.load_for_setup(root)
     python_dest = "." if adopted is None else adopted.python_dest
@@ -1550,10 +1499,9 @@ def github_ci_workflow(root: Path) -> str:
 
 
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:
-    """Make generated CI honor a consumer's explicit uv compatibility contract."""
     source = uvtool.version_file(python_root)
     if source is None:
-        return "          version: '0.12.3'"
+        return "          version: '0.12.5'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 
@@ -1568,7 +1516,6 @@ def python_ci_install_argv(root: Path, python_dest: str) -> tuple[str, ...]:
 
 
 def _is_uv_workspace(project: Path) -> bool:
-    """Return whether the locked Python project declares uv workspace members."""
     pyproject = project / "pyproject.toml"
     try:
         parsed: object = tomllib.loads(pyproject.read_text(encoding="utf-8"))
@@ -1580,7 +1527,6 @@ def _is_uv_workspace(project: Path) -> bool:
 
 
 def standards_check_workflows(root: Path) -> tuple[Path, ...]:
-    """Return existing workflows whose executable steps run the canonical check."""
     directory = root / ".github" / "workflows"
     if not directory.is_dir():
         return ()
@@ -1595,7 +1541,6 @@ def standards_check_workflows(root: Path) -> tuple[Path, ...]:
 
 
 def _workflow_runs_standards_check(path: Path, *, source_checkout: bool) -> bool:
-    """Inspect only YAML ``run`` values, so comments and step names cannot suppress CI generation."""
     try:
         parsed = cast("object", yaml.safe_load(path.read_text(encoding="utf-8")))
     except OSError, yaml.YAMLError:
@@ -1607,7 +1552,6 @@ def _workflow_runs_standards_check(path: Path, *, source_checkout: bool) -> bool
 
 
 def _run_value_executes_standards_check(command: str, *, source_checkout: bool) -> bool:
-    """Recognize a direct Standards invocation, not inert shell text mentioning one."""
     logical = command.replace("\\\n", " ")
     for line in logical.splitlines():
         lexer = shlex.shlex(line, posix=True, punctuation_chars=";&|")
@@ -1675,7 +1619,6 @@ def _launcher_options_are_valid(
 
 
 def _migrate_legacy_workflow_gate(path: Path) -> str | None:
-    """Rewrite only the removed umbrella verb inside an existing Standards workflow."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:

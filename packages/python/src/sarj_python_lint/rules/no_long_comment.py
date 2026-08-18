@@ -1,8 +1,3 @@
-"""SARJ091 — Flag unusually large, unstructured docstring prose walls.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_long_comment.py
-"""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -102,7 +97,6 @@ class NoLongComment(Rule):
 
 
 def _eligible_owner(group: ProseGroup) -> bool:
-    """Limit the heuristic to docstrings whose prose is not a typed public API contract."""
     if group.kind != "docstring":
         return False
     if group.owner_kind == "module":

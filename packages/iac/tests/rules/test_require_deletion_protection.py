@@ -549,7 +549,6 @@ resource "google_bigquery_table" "rollup" {
 
 
 def test_flags_bigquery_table_that_stores_data():
-    """The boundary: a real table is retained — the guard keys on the view block."""
     src = """
 resource "google_bigquery_table" "events" {
   dataset_id = "analytics"
@@ -561,7 +560,6 @@ resource "google_bigquery_table" "events" {
 
 
 def test_flags_bigquery_table_whose_view_block_is_nested_elsewhere():
-    """The boundary: only a DIRECT `view` child says the resource is a view."""
     src = """
 resource "google_bigquery_table" "events" {
   dataset_id = "analytics"
@@ -593,7 +591,6 @@ def test_tf_json_is_explicitly_out_of_scope():
 
 
 def test_still_flags_a_curated_type_next_to_the_removed_one():
-    """The boundary: removing one type must not disturb the rest of the set."""
     src = """
 resource "google_bigtable_instance" "main" {
   name = "prod"
@@ -604,7 +601,6 @@ resource "google_bigtable_instance" "main" {
 
 @pytest.mark.parametrize("value", ["FALSE", "False", "fAlSe", '"FALSE"', "( FALSE )"])
 def test_an_uppercase_false_is_still_disabled_protection(value: str):
-    """`_literal` lowercases; without that, `deletion_protection = FALSE` reads as an expression."""
     src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -613,7 +609,6 @@ def test_an_uppercase_false_is_still_disabled_protection(value: str):
 
 @pytest.mark.parametrize("value", ["TRUE", "True", '"TRUE"'])
 def test_an_uppercase_true_still_protects(value: str):
-    """The other side: lowercasing must not turn a working guard into a finding."""
     src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
     assert _check(src) == []
 
@@ -632,7 +627,6 @@ resource "google_bigquery_dataset" "warehouse" {
 
 @pytest.mark.parametrize("resource_type", sorted(PROTECTED_TYPES))
 def test_every_protected_type_is_wired_in(resource_type: str):
-    """Verify deleting any single row from PROTECTED_TYPES fails this test case."""
     src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
     diags = _check(src)
     if resource_type == "google_redis_instance":

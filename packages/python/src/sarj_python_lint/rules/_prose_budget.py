@@ -1,5 +1,3 @@
-"""Shared extraction and sentence counting for SARJ091-092."""
-
 from __future__ import annotations
 
 import ast
@@ -79,7 +77,6 @@ _last_groups: tuple[str, str, tuple[ProseGroup, ...]] | None = None
 
 
 def sentence_units(text: str) -> int:
-    """Count prose sentences and unpunctuated list items deterministically."""
     text = _without_examples_metadata(text)
     cleaned = re.sub(r"https?://\S+", "URL", text)
     cleaned = re.sub(r"`[^`\n]+`", "CODE", cleaned)
@@ -102,12 +99,10 @@ def sentence_units(text: str) -> int:
 
 
 def has_list_items(text: str) -> bool:
-    """Report whether prose contains a Markdown-style list item."""
     return any(_BULLET_RE.match(line.strip().lstrip("*").strip()) for line in text.splitlines())
 
 
 def has_documentation_structure(text: str) -> bool:
-    """Return whether prose is deliberately structured rather than one narrative wall."""
     paragraphs = [part for part in re.split(r"\n\s*\n", text) if part.strip()]
     if len(paragraphs) >= _MIN_STRUCTURED_PARAGRAPHS:
         return True
@@ -119,12 +114,10 @@ def has_documentation_structure(text: str) -> bool:
 
 
 def has_technical_anchor(text: str) -> bool:
-    """Return whether prose carries a concrete code, path, literal, or numeric anchor."""
     return _TECHNICAL_ANCHOR_RE.search(text) is not None
 
 
 def _without_examples_metadata(text: str) -> str:
-    """Remove standardized rule-example links from the prose budget."""
     kept: list[str] = []
     expect_url = False
     for raw in text.splitlines():
@@ -144,7 +137,6 @@ def _without_examples_metadata(text: str) -> str:
 
 
 def groups(path: Path, source: str) -> list[ProseGroup]:
-    """Extract docstrings and contiguous own-line comment runs from one file."""
     global _last_groups  # ruff: ignore[global-statement] -- rules run sequentially per file.
     path_key = str(path)
     if _last_groups is not None and _last_groups[0] == path_key and _last_groups[1] is source:
@@ -155,7 +147,6 @@ def groups(path: Path, source: str) -> list[ProseGroup]:
 
 
 def _extract_groups(path: Path, source: str) -> list[ProseGroup]:
-    """Perform the shared parse and tokenization once for adjacent prose rules."""
     if is_generated(path, source):
         return []
     tree = parse_or_none(path, source)
@@ -278,7 +269,6 @@ def _typed_restatement_lines(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     docstring_line: int,
 ) -> tuple[int, ...]:
-    """Locate entries that explicitly repeat types already present in the signature."""
     annotations = {
         arg.arg: _normalise_type(ast.unparse(arg.annotation))
         for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
@@ -322,7 +312,6 @@ def _typed_restatement_lines(
 
 
 def _section_body_line_counts(doc: str) -> dict[int, int]:
-    """Count non-blank body lines under each typed-section heading."""
     counts: dict[int, int] = {}
     active_header: int | None = None
     for index, raw in enumerate(doc.splitlines()):
@@ -337,5 +326,4 @@ def _section_body_line_counts(doc: str) -> dict[int, int]:
 
 
 def _normalise_type(value: str) -> str:
-    """Normalize insignificant spelling differences in a repeated annotation."""
     return re.sub(r"\s+", "", value).removeprefix("typing.").removesuffix(",optional").casefold()

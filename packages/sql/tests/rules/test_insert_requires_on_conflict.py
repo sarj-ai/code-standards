@@ -168,7 +168,6 @@ def test_every_idempotent_insert_form_is_excused(source: str):
 
 
 def test_insert_or_abort_is_not_excused():
-    """`OR IGNORE`/`OR REPLACE` survive replay; `OR ABORT` does not."""
     assert len(_check("INSERT OR ABORT INTO t (a) VALUES (1);")) == 1
 
 
@@ -180,7 +179,6 @@ WRITE_VERB_REQUIRED = {
 
 @pytest.mark.parametrize("source", WRITE_VERB_REQUIRED.values(), ids=list(WRITE_VERB_REQUIRED))
 def test_insert_keyword_without_a_write_verb_does_not_fire(source: str):
-    """A bare `INSERT INTO` used to be enough here — the loosest of the three."""
     assert _check(source) == []
 
 
@@ -212,20 +210,17 @@ def test_guarded_dollar_quoted_seed_block_is_exempt():
 
 
 def test_unguarded_dollar_quoted_insert_still_fires():
-    """The exemption is for blocks that guard their own replay, not for `DO` blocks."""
     diags = _check(_UNGUARDED_SEED)
     assert len(diags) == 1
     assert "idempotent upserts" in diags[0].message
 
 
 def test_guard_in_one_block_does_not_excuse_another_block():
-    """Contiguous-run grouping is per body, so one guarded block cannot cover a sibling."""
     diags = _check(f"{_GUARDED_SEED}\n{_UNGUARDED_SEED}")
     assert len(diags) == 1
 
 
 def test_commented_out_guard_does_not_excuse_the_block():
-    """The guard is read from masked text, so a `--`'d guard does not count."""
     src = """
 DO $$
 BEGIN

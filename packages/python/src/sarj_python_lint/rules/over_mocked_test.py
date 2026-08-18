@@ -1,8 +1,3 @@
-"""SARJ062 — A test that substitutes six collaborators exercises the mock wiring, not the code.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_over_mocked_test.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -212,7 +207,6 @@ class OverMockedTest(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag test functions that substitute more collaborators than the threshold."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -240,7 +234,6 @@ class OverMockedTest(Rule):
 def _over_mocked_tests(
     path: Path, tree: ast.Module, threshold: int = _THRESHOLD
 ) -> list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, int]]:
-    """Find the test functions whose substitution count exceeds `threshold`."""
     names = _MockNames.from_tree(tree)
     path_tokens = _seam_path_tokens(path)
     hits: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, int]] = []
@@ -256,7 +249,6 @@ def _over_mocked_tests(
 def _test_functions(
     tree: ast.Module,
 ) -> Iterator[tuple[ast.ClassDef | None, ast.FunctionDef | ast.AsyncFunctionDef]]:
-    """Yield the `test*` callables pytest and unittest actually collect."""
     for stmt in tree.body:
         if isinstance(stmt, _FUNC_NODES) and stmt.name.startswith(_TEST_PREFIX):
             yield None, stmt
@@ -275,7 +267,6 @@ _TEST_ROOT_NAMES = frozenset({"t", "test", "tests"})
 
 
 def _seam_path_tokens(path: Path) -> frozenset[str]:
-    """Tokenise the part of `path` that the author chose, not the whole checkout."""
     parts = path.parts
     start = next((i for i, part in enumerate(parts) if part in _TEST_ROOT_NAMES), len(parts) - 1)
     tokens: set[str] = set()
@@ -296,8 +287,6 @@ def _is_seam_test(
 
 
 class _MockNames:
-    """The local names through which `unittest.mock` and the imports are reachable."""
-
     def __init__(self) -> None:
         self.modules: set[str] = set()
         self.symbols: dict[str, str] = {}
@@ -305,7 +294,6 @@ class _MockNames:
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _MockNames:
-        """Collect every local binding that resolves to `unittest.mock`, and the import table."""
         found = cls()
         for node in nodes(tree, ast.Import, ast.ImportFrom):
             if isinstance(node, ast.Import):
@@ -339,7 +327,6 @@ class _MockNames:
                 self.qualified[alias.asname or alias.name] = f"{node.module}.{alias.name}"
 
     def qualify(self, owner: str) -> str:
-        """Rewrite a bare-name collaborator to the dotted path it was imported from."""
         head, dot, rest = owner.partition(".")
         full = self.qualified.get(head)
         if full is None:
@@ -347,7 +334,6 @@ class _MockNames:
         return f"{full}.{rest}" if dot else full
 
     def is_mock_module(self, node: ast.expr) -> bool:
-        """Report whether `node` names the mock module (or pytest-mock's fixture)."""
         if isinstance(node, ast.Name):
             return node.id in self.modules or node.id == _MOCKER
         # `unittest.mock.patch(...)` — the receiver is itself an attribute chain.
@@ -356,7 +342,6 @@ class _MockNames:
         return False
 
     def patch_subform(self, func: ast.expr) -> _PatchSubform | None:
-        """Map a callee onto the `patch` form it invokes."""
         if isinstance(func, ast.Name):
             return _PATCH if self.symbols.get(func.id) == _PATCH else None
         if not isinstance(func, ast.Attribute):
@@ -373,7 +358,6 @@ class _MockNames:
         return isinstance(node, ast.Attribute) and node.attr == _PATCH and self.is_mock_module(node.value)
 
     def factory(self, func: ast.expr) -> str | None:
-        """Map a callee onto the mock constructor it invokes."""
         if isinstance(func, ast.Name):
             symbol = self.symbols.get(func.id)
             return symbol if symbol in _MOCK_FACTORIES else None
@@ -383,8 +367,6 @@ class _MockNames:
 
 
 class _BodyScan(NamedTuple):
-    """One pass over a test body: what it substituted, and how the names are wired."""
-
     subs: set[tuple[str, str]]
     facets: dict[str, str]
 
@@ -394,7 +376,6 @@ def _substitutions(
     owner: ast.ClassDef | None,
     names: _MockNames,
 ) -> frozenset[str]:
-    """Collect the distinct collaborators this test replaces with a double."""
     subs: set[tuple[str, str]] = set()
     injected: list[str | None] = []
     for dec in reversed(func.decorator_list):
@@ -418,7 +399,6 @@ def _is_infra_target(key: str) -> bool:
 
 
 def _resolve(name: str, facets: Mapping[str, str]) -> str:
-    """Follow the wiring edges from `name` to the object it is a facet of."""
     seen = {name}
     while (nxt := facets.get(name)) is not None and nxt not in seen:
         seen.add(nxt)
@@ -439,7 +419,6 @@ def _class_injected_owners(owner: ast.ClassDef | None, names: _MockNames) -> lis
 
 
 def _injected_owners(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> list[str | None]:
-    """Say which collaborator each parameter this decorator prepends stands for."""
     if subform in {_PATCH, "object"}:
         if _has_replacement(call, subform):
             return []
@@ -458,7 +437,6 @@ def _has_replacement(call: ast.Call, subform: _PatchSubform) -> bool:
 
 
 def _injected_facets(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: list[str | None]) -> dict[str, str]:
-    """Alias each `@patch`-injected parameter onto the collaborator it replaced."""
     positional = [
         name for arg in (*func.args.posonlyargs, *func.args.args) if (name := arg.arg) not in _TEST_CASE_RECEIVERS
     ]
@@ -466,7 +444,6 @@ def _injected_facets(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: lis
 
 
 def _body_substitutions(func: ast.AST, names: _MockNames) -> _BodyScan:
-    """Walk a test body once, collecting substitutions and the wiring between them."""
     scan = _BodyScan(subs=set(), facets={})
     for node in walk(func):
         if isinstance(node, ast.Call):
@@ -485,7 +462,6 @@ def _body_substitutions(func: ast.AST, names: _MockNames) -> _BodyScan:
 
 
 def _record_facets(targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]) -> None:
-    """Note that a name assigned into another object's attribute is part of that object."""
     roots = list(
         dict.fromkeys(
             root for target in targets if isinstance(target, ast.Attribute) and (root := _object_of(target, names))
@@ -501,7 +477,6 @@ def _record_facets(targets: list[ast.expr], value: ast.expr, names: _MockNames, 
 
 
 def _assigned_names(value: ast.expr) -> list[str]:
-    """List the names the assigned expression places inside the target's object graph."""
     match value:
         case ast.Name(id=name):
             return [name]
@@ -517,7 +492,6 @@ def _assigned_names(value: ast.expr) -> list[str]:
 
 
 def _record_handle_facet(targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]) -> None:
-    """Note that a `patch(...)` handle names the collaborator that patch replaced."""
     if not isinstance(value, ast.Call):
         return
     subform = names.patch_subform(value.func)
@@ -540,7 +514,6 @@ def _call_substitutions(node: ast.Call, names: _MockNames) -> list[tuple[str, st
 
 
 def _binding_keys(target: ast.expr, value: ast.expr, names: _MockNames) -> list[tuple[str, str]]:
-    """Key a `x = MagicMock()` binding by the name the double is bound to."""
     if not isinstance(value, ast.Call) or names.factory(value.func) is None:
         return []
     bound = _bound_name(target, names)
@@ -555,13 +528,11 @@ def _bound_name(target: ast.expr, names: _MockNames) -> str | None:
 
 
 def _object_of(node: ast.expr, names: _MockNames) -> str | None:
-    """Name the collaborator an expression reaches into, resolved through imports."""
     root = _collaborator_of(node)
     return None if root is None else names.qualify(root)
 
 
 def _collaborator_of(node: ast.expr) -> str | None:
-    """Name the collaborator an attribute chain reaches into."""
     dotted = _dotted(node)
     if dotted is None:
         return None
@@ -572,7 +543,6 @@ def _collaborator_of(node: ast.expr) -> str | None:
 
 
 def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> list[tuple[str, str]]:
-    """Name the collaborator(s) a `patch`-family call replaces."""
     if subform == "dict":
         return []
     if subform in {"object", "multiple"}:
@@ -596,7 +566,6 @@ def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> li
 
 
 def _receiver(node: ast.expr, names: _MockNames) -> _MockReceiver:
-    """Render the object a `patch.object` / `monkeypatch.setattr` call targets."""
     text = _target_text(node)
     if isinstance(node, ast.Constant):
         return _MockReceiver(text, _owner_of(text))
@@ -604,7 +573,6 @@ def _receiver(node: ast.expr, names: _MockNames) -> _MockReceiver:
 
 
 def _owner_of(target: str) -> str:
-    """Reduce a dotted patch target to the object whose attribute is replaced."""
     head, dot, _ = target.rpartition(".")
     return head if dot else target
 
@@ -614,7 +582,6 @@ def _replaced_attributes(call: ast.Call) -> list[str]:
 
 
 def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[tuple[str, str]]:
-    """Name the target of a `monkeypatch.setattr(...)` call."""
     func = call.func
     if not isinstance(func, ast.Attribute) or func.attr != _MONKEYPATCH_SUBSTITUTION:
         return []
@@ -632,7 +599,6 @@ def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[tuple[str, str]
 
 
 def _mock_parameters(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: int) -> list[str]:
-    """List the mock-shaped fixtures this test asks pytest to build for it."""
     args = func.args
     positional = [name for arg in (*args.posonlyargs, *args.args) if (name := arg.arg) not in _TEST_CASE_RECEIVERS]
     candidates = [*positional[injected:], *(arg.arg for arg in args.kwonlyargs)]
@@ -654,7 +620,6 @@ def _target_text(node: ast.expr) -> str:
 
 
 def _joined_text(node: ast.JoinedStr) -> str:
-    """Rebuild an f-string patch target as a dotted name."""
     parts: list[str] = []
     for value in node.values:
         if isinstance(value, ast.Constant) and isinstance(value.value, str):

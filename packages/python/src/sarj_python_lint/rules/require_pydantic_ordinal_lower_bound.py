@@ -1,8 +1,3 @@
-"""SARJ418 enforces a lower bound promised by an ordinal Pydantic field.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py
-"""
-
 from __future__ import annotations
 
 import ast

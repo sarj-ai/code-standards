@@ -1,5 +1,3 @@
-"""Tests for the adoption path: `init`, `doctor`, `peers`, and the manifest."""
-
 from __future__ import annotations
 
 import json
@@ -98,7 +96,6 @@ def test_doctor_leaves_maintainer_repository_policy_to_maintain_check(
 
 
 def test_every_eslint_import_has_a_pinned_peer() -> None:
-    """The config's imports were a hidden contract; now they are a checked one."""
     imported = set(re.findall(r'^import \w+ from "([^"]+)";', ESLINT_STRICT.read_text(), re.MULTILINE))
     pinned = set(manifest.eslint_peers())
     assert imported - pinned == set(), "eslint.strict.mjs imports a package with no pin in eslint.peers.json"
@@ -121,13 +118,6 @@ def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str)
 
 
 def test_peer_pins_are_exact_versions() -> None:
-    """A range would reintroduce the failure the file exists to fix.
-
-    The set is only installable because it is exact plus an `overrides` entry:
-    the config's unicorn floor pulls `eslint >= 10.4` while the newest published
-    `eslint-plugin-react` peers `eslint <= ^9.7`, so resolving anything here to
-    "latest" produces a tree npm refuses outright.
-    """
     peers = manifest.eslint_peers()
     assert len(peers) >= 9, "every package eslint.strict.mjs imports must be pinned"
     for name, pin in peers.items():
@@ -168,7 +158,6 @@ def test_peers_command_prints_one_install_command() -> None:
 
 
 def test_eslint_plugin_pin_matches_the_published_package() -> None:
-    """The README advertised a floor the config had already outgrown."""
     source = REPO_ROOT / "packages" / "typescript" / "package.json"
     if not source.is_file():
         pytest.skip("running against an installed wheel, outside the source tree")
@@ -178,7 +167,6 @@ def test_eslint_plugin_pin_matches_the_published_package() -> None:
 
 
 def test_this_repos_own_overrides_are_the_ones_consumers_get() -> None:
-    """The private workaround that made the repo's green CI a lie."""
     source = REPO_ROOT / "packages" / "typescript" / "package.json"
     if not source.is_file():
         pytest.skip("running against an installed wheel, outside the source tree")
@@ -456,7 +444,6 @@ def test_doctor_respects_the_manifests_config_set(tmp_path: Path) -> None:
 
 
 def test_doctor_fails_when_a_synced_config_is_edited(tmp_path: Path) -> None:
-    """The vendoring failure, caught at the earliest possible moment."""
     _ = _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     with (tmp_path / ".ruff-strict.toml").open("a") as handle:
@@ -479,7 +466,6 @@ def test_setup_accepts_several_configs(tmp_path: Path) -> None:
 
 
 def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
-    """One command replaces the README's read-then-hand-edit sequence."""
     _ = _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
@@ -495,7 +481,6 @@ def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
 
 
 def test_init_wires_an_empty_pyright_config(tmp_path: Path) -> None:
-    """An empty JSON object is a valid Pyright config, not an adoption error."""
     _ = _python_repo(tmp_path)
     _ = (tmp_path / "pyrightconfig.json").write_text("{}\n", encoding="utf-8")
 
@@ -666,7 +651,6 @@ def test_adopted_ruff_uses_the_consumer_target_for_str_enum_modernization(
     python_floor: str,
     expected_count: int,
 ) -> None:
-    """UP042 belongs to Ruff and must follow the consumer target, not the tool runtime."""
     pytest.importorskip("ruff", reason="ruff not installed in this env")
     _ = _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
@@ -736,7 +720,6 @@ def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
 
 
 def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Path) -> None:
-    """The generated entrypoint has to teach "extend, do not fork"."""
     _ = _typescript_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
@@ -761,7 +744,6 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     ],
 )
 def test_init_gives_a_typescript_repo_everything_npm_needs(tmp_path: Path, expected: str) -> None:
-    """Anything missing here sends the reader back to trial-and-error installs."""
     _ = _typescript_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert expected in proc.stdout
@@ -1240,7 +1222,6 @@ def test_generated_precommit_block_routes_every_supported_javascript_suffix(tmp_
 
 
 def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None:
-    """`init` has to WRITE the overrides, not just talk about them."""
     _ = _typescript_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
@@ -1254,7 +1235,6 @@ def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None
 
 
 def test_init_does_not_clobber_a_consumers_existing_overrides(tmp_path: Path) -> None:
-    """package.json is the consumer's file; only the ESLint entries are ours."""
     _ = (tmp_path / "package.json").write_text(
         json.dumps({"name": "web", "overrides": {"left-pad": "1.3.0"}}, indent=2) + "\n"
     )
@@ -1280,7 +1260,6 @@ def test_init_leaves_a_package_json_that_already_has_the_overrides_alone(
 
 
 def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path) -> None:
-    """The repo root is not the project root, and writing there reaches nobody."""
     (tmp_path / "web").mkdir()
     _ = (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
     _ = (tmp_path / "web" / "package-lock.json").write_text("{}\n")
@@ -1298,7 +1277,6 @@ def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path)
 def test_doctor_reads_the_subproject_destinations_back_out_of_the_manifest(
     tmp_path: Path,
 ) -> None:
-    """CI runs bare `sync --check`; if it did not know the dests it saw permanent drift."""
     (tmp_path / "web").mkdir()
     _ = (tmp_path / "web" / "package.json").write_text('{"name": "web"}\n')
     _ = (tmp_path / "web" / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n")
@@ -1312,7 +1290,6 @@ def test_doctor_reads_the_subproject_destinations_back_out_of_the_manifest(
 def test_doctor_keeps_shared_configs_at_repo_root_after_subproject_adoption(
     tmp_path: Path,
 ) -> None:
-    """A recorded Python destination must not capture repository-wide configs."""
     project = tmp_path / "python" / "api"
     project.mkdir(parents=True)
     _ = (project / "pyproject.toml").write_text(
@@ -1341,7 +1318,6 @@ def _precommit_entries(config: str) -> list[tuple[str, bool]]:
 
 
 def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
-    """The one file `init` writes that nothing executed."""
     _ = _python_repo(tmp_path)
     _ = (tmp_path / "src" / "app.py").write_text("VALUE: int = 1\n")
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
@@ -1914,7 +1890,6 @@ def test_doctor_rejects_non_exact_python_bundle_range(tmp_path: Path) -> None:
 
 
 def test_doctor_catches_a_stale_pyproject_pin(tmp_path: Path) -> None:
-    """The measured case: consumers pin 0.25.0 while main ships 0.33.0."""
     _ = _python_repo(tmp_path)
     _ = (tmp_path / "requirements.txt").write_text("sarj-python-lint==0.25.0\n")
     proc = _cli("--root", str(tmp_path), "doctor")
@@ -2047,7 +2022,6 @@ def test_doctor_rejects_ranges_even_when_they_name_the_tested_floor(tmp_path: Pa
 
 
 def test_doctor_still_reports_a_range_that_is_not_the_floor(tmp_path: Path) -> None:
-    """The operator is stripped ONCE, so a malformed pin is not laundered into a match."""
     floor = manifest.eslint_peers()["@sarj/eslint-plugin"]
     _ = _typescript_repo(tmp_path)
     _ = (tmp_path / "package.json").write_text(
@@ -2121,7 +2095,6 @@ def test_adopted_workspace_checks_the_install_root_not_nested_plugin_ranges(tmp_
 
 
 def test_doctor_skips_vendored_trees(tmp_path: Path) -> None:
-    """A pin inside `node_modules` or `.venv` is not the repo's to fix."""
     _ = _python_repo(tmp_path)
     buried = tmp_path / "node_modules" / "junk"
     buried.mkdir(parents=True)
@@ -2133,7 +2106,6 @@ def test_doctor_skips_vendored_trees(tmp_path: Path) -> None:
 def test_doctor_git_walk_isolates_hook_environment_and_prunes_generated_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Git hook repository variables cannot redirect a consumer scan."""
     kept = tmp_path / "pyproject.toml"
     skipped = tmp_path / "node_modules" / "junk" / "pyproject.toml"
     generated = tmp_path / ".playwright-mcp" / "page.yml"
@@ -2268,7 +2240,6 @@ def test_rev_pattern_reads_a_commit_pin(rev: str) -> None:
 
 
 def test_rev_pattern_is_not_fooled_by_a_version_tag() -> None:
-    """`v6.0.0` is a tag from some other repo, not a commit; reading it as one would cry wolf."""
     assert doctor.parse_revs("rev: v6.0.0\n") == []
 
 
@@ -2289,7 +2260,6 @@ def _documented_pins(text: str) -> dict[str, str]:
     [REPO_ROOT / "README.md", REPO_ROOT / "packages" / "standards" / "README.md"],
 )
 def test_readme_never_advertises_a_version_that_is_not_shipping(readme: Path) -> None:
-    """The class of bug this kills, not one instance of it."""
     if not readme.is_file():
         pytest.skip(f"{readme} not present")
     current = {

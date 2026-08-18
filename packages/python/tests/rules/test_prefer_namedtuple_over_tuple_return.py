@@ -66,6 +66,10 @@ def test_fires_on_async_function():
     assert len(diags) == 1
 
 
+def test_fires_on_positional_records_nested_in_a_list_return():
+    assert len(_check("def records() -> list[tuple[int, str, str]]: ...\n")) == 1
+
+
 def test_fires_on_str_none_element():
     diags = _check("def download() -> tuple[bytes, dict[str, str], str | None]: ...\n")
     assert len(diags) == 1

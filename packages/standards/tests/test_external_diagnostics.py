@@ -1,5 +1,3 @@
-"""External analyzer adapters preserve native structure and trust boundaries."""
-
 from __future__ import annotations
 
 import json

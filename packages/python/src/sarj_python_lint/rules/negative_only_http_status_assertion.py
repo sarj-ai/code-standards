@@ -1,8 +1,3 @@
-"""SARJ408 — A negative-only HTTP status assertion permits wrong non-500 responses.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_negative_only_http_status_assertion.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -75,7 +70,6 @@ def _all_server_errors(node: ast.expr) -> bool:
 
 
 def _test_nodes(test: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
-    """Walk one collected test without attributing nested helpers to it."""
     stack: list[ast.AST] = [*reversed(test.body)]
     while stack:
         node = stack.pop()

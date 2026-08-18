@@ -1,5 +1,3 @@
-"""Publish one validated package target through its native client."""
-
 from __future__ import annotations
 
 import json
@@ -31,7 +29,6 @@ _PYTHON_TARGETS: Mapping[str, str] = MappingProxyType(
 
 
 def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner = run_process) -> None:
-    """Build and publish exactly one package without shell commands or globs."""
     resolved = root.resolve()
     build_runner = run_build_process if runner is run_process else runner
     if target == "typescript":
@@ -71,7 +68,6 @@ def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner =
 
 
 def _npm_pack_filename(output: str) -> str:
-    """Extract the safe tarball filename from npm's JSON pack report."""
     decoder = json.JSONDecoder()
     for index in range(len(output) - 1, -1, -1):
         if output[index] != "[":

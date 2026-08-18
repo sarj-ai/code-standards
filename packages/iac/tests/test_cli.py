@@ -50,7 +50,6 @@ def test_update_baseline_records_the_counts_and_exits_zero(tmp_path: Path, capsy
 
 
 def test_a_baselined_file_stops_failing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """The whole point: existing findings are grandfathered so only new ones fail."""
     src = tmp_path / "main.tf"
     src.write_text(_TWO_BRANCHES, encoding="utf-8")
     out = tmp_path / "baseline.json"
@@ -77,7 +76,6 @@ def test_a_new_finding_beyond_the_baseline_still_fails(tmp_path: Path, capsys: p
 
 
 def test_removing_a_finding_does_not_bank_credit(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A baseline is a ceiling, not an allowance to re-spend elsewhere."""
     src = tmp_path / "main.tf"
     src.write_text(_THREE_BRANCHES, encoding="utf-8")
     out = tmp_path / "baseline.json"

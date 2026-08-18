@@ -1,5 +1,3 @@
-"""Failure recovery preserves user state without hiding partial rollback."""
-
 from __future__ import annotations
 
 import stat

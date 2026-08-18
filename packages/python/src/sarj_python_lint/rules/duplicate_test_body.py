@@ -1,8 +1,3 @@
-"""SARJ066 — N copy-pasted test functions in one module are one `parametrize` waiting to be written.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_duplicate_test_body.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -12,7 +7,7 @@ from pathlib import PurePosixPath
 import re
 import textwrap
 import tokenize
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -88,6 +83,12 @@ _IDENTICAL_ADVICE = (
     "There is no case table to build here: one of the two is a copy-paste that never got its "
     "edit. Make it exercise what its name claims, or delete it."
 )
+
+
+class _TestFunction(NamedTuple):
+    container: str
+    in_test_case: bool
+    node: ast.FunctionDef | ast.AsyncFunctionDef
 
 
 class DuplicateTestBody(Rule):
@@ -170,7 +171,6 @@ class DuplicateTestBody(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag test functions whose normalized body already exists in the module."""
         if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
@@ -199,8 +199,6 @@ class DuplicateTestBody(Rule):
 
 
 class _Outline:
-    """A test function fingerprinted by everything that is cheap to read."""
-
     def __init__(self, node: ast.FunctionDef | ast.AsyncFunctionDef, container: str) -> None:
         super().__init__()
         self.node: ast.FunctionDef | ast.AsyncFunctionDef = node
@@ -225,8 +223,6 @@ class _Outline:
 
 
 class _Shape:
-    """One test function's body reduced to a comparable normalized form."""
-
     def __init__(self, node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[int, str]) -> None:
         super().__init__()
         self.node: ast.FunctionDef | ast.AsyncFunctionDef = node
@@ -242,8 +238,6 @@ class _Shape:
 
 
 class _Canonicalizer(ast.NodeVisitor):
-    """Rewrite a copied subtree so only its structure survives, then dump it."""
-
     def __init__(self, bound: frozenset[str]) -> None:
         super().__init__()
         self._bound: frozenset[str] = bound
@@ -252,7 +246,6 @@ class _Canonicalizer(ast.NodeVisitor):
         self.literals: list[object] = []
 
     def render(self, stmt: ast.stmt) -> str:
-        """Normalize a copy of `stmt` and return its dumped shape."""
         clone = copy.deepcopy(stmt)
         self.visit(clone)
         return ast.dump(clone)
@@ -266,19 +259,16 @@ class _Canonicalizer(ast.NodeVisitor):
         node.kind = None
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
-        """Keep lookup keys because they identify different response contracts."""
         self.visit(node.value)
         self._visit_with_literal_values(node.slice)
 
     def visit_Dict(self, node: ast.Dict) -> None:
-        """Keep mapping keys while still normalizing case values."""
         for key, value in zip(node.keys, node.values, strict=True):
             if key is not None:
                 self._visit_with_literal_values(key)
             self.visit(value)
 
     def visit_Call(self, node: ast.Call) -> None:
-        """Keep ``pytest.raises(match=...)`` because it is the asserted contract."""
         self.visit(node.func)
         for argument in node.args:
             self.visit(argument)
@@ -338,7 +328,6 @@ def _is_pytest_raises(node: ast.expr) -> bool:
 
 
 def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
-    """Group the module's tests by body shape, discarding the groups that are not copies."""
     test_functions = _test_functions(tree)
     positions = {
         id(node): position
@@ -383,7 +372,6 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
 
 
 def duplicate_test_owner_ids(tree: ast.Module, source: str) -> frozenset[int]:
-    """Return the identities of tests participating in a SARJ066 group."""
     try:
         groups = _duplicate_groups(tree, source)
     except tokenize.TokenError, IndentationError, SyntaxError, RecursionError:
@@ -392,7 +380,6 @@ def duplicate_test_owner_ids(tree: ast.Module, source: str) -> frozenset[int]:
 
 
 def _consecutive_embedded_source_groups(members: list[_Shape], positions: dict[int, int]) -> list[list[_Shape]]:
-    """Keep only long uninterrupted runs of embedded-source checker tests."""
     ordered = sorted(members, key=lambda member: positions[id(member.node)])
     runs: list[list[_Shape]] = []
     for member in ordered:
@@ -403,7 +390,6 @@ def _consecutive_embedded_source_groups(members: list[_Shape], positions: dict[i
 
 
 def _shares_embedded_source_signal(members: list[_Shape]) -> bool:
-    """Require every case to repeatedly exercise at least one common operation."""
     common = members[0].embedded_source_signals
     for member in members[1:]:
         common = common.intersection(member.embedded_source_signals)
@@ -411,20 +397,17 @@ def _shares_embedded_source_signal(members: list[_Shape]) -> bool:
 
 
 def _comment_lines(source: str) -> dict[int, str]:
-    """Index every `#` comment in the file by the line it sits on."""
     standalone, _ = standalone_comments(source)
     return {line: text for line, _, text in (*standalone, *trailing_comments(source))}
 
 
 def _documentation(node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[int, str]) -> tuple[str, ...]:
-    """Collect the prose a function carries: its docstring and its own comments."""
     docstring = ast.get_docstring(node, clean=False) or ""
     end = node.end_lineno or node.lineno
     return (docstring, *(comments[line] for line in range(node.lineno, end + 1) if line in comments))
 
 
 def _erases_a_fixture_document(members: list[_Shape]) -> bool:
-    """Report whether the group is held together by erasing a multi-line fixture."""
     if all(member.embedded_source_checker for member in members):
         return False
     # `zip(*...)` loses the element type through the star-unpack, so the columns
@@ -455,7 +438,6 @@ def _is_fixture_document(value: object) -> bool:
 
 
 def _erases_contract_identity(members: list[_Shape]) -> bool:
-    """Keep distinct API resources while allowing terminal action cases."""
     columns: list[tuple[object, ...]] = list(zip(*(member.literals for member in members), strict=True))
     return any(
         len(set(column)) > 1
@@ -475,7 +457,6 @@ def _paths_differ_only_by_terminal_action(paths: tuple[object, ...]) -> bool:
 
 
 def _has_enough_duplicate_evidence(members: list[_Shape]) -> bool:
-    """Require corroborating names for a two-test group with varying inputs."""
     if len(members) > _MIN_GROUP or not _differing_literals(members[0].literals, members[1].literals):
         return True
     names = [member.node.name for member in members]
@@ -490,10 +471,9 @@ def _test_name_tokens(name: str) -> set[str]:
     return {token for token in name.removeprefix(_TEST_PREFIX).split("_") if token}
 
 
-def _test_functions(tree: ast.Module) -> list[tuple[str, bool, ast.FunctionDef | ast.AsyncFunctionDef]]:
-    """Collect the `test_*` functions pytest would collect, tagged by container."""
+def _test_functions(tree: ast.Module) -> list[_TestFunction]:
     classes = _class_index(tree)
-    found: list[tuple[str, bool, ast.FunctionDef | ast.AsyncFunctionDef]] = []
+    found: list[_TestFunction] = []
     pending: list[tuple[str, bool, ast.Module | ast.ClassDef]] = [("", False, tree)]
     while pending:
         container, in_test_case, node = pending.pop()
@@ -507,12 +487,11 @@ def _test_functions(tree: ast.Module) -> list[tuple[str, bool, ast.FunctionDef |
                     )
                 )
             elif isinstance(stmt, _FUNC_NODES) and stmt.name.startswith(_TEST_PREFIX):
-                found.append((container, in_test_case, stmt))
+                found.append(_TestFunction(container, in_test_case, stmt))
     return found
 
 
 def _class_index(tree: ast.Module) -> dict[str, ast.ClassDef]:
-    """Map every class name the module defines to its definition."""
     found: dict[str, ast.ClassDef] = {}
     pending: list[ast.Module | ast.ClassDef] = [tree]
     while pending:
@@ -524,7 +503,6 @@ def _class_index(tree: ast.Module) -> dict[str, ast.ClassDef]:
 
 
 def _is_test_case_class(node: ast.ClassDef, classes: dict[str, ast.ClassDef], seen: frozenset[str]) -> bool:
-    """Report whether the class reaches `unittest.TestCase` through any base."""
     if node.name in seen:
         return False
     inner = seen | {node.name}
@@ -555,7 +533,6 @@ def _base_name(base: ast.expr) -> str:
 
 
 def _uses_unittest_api(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the body calls a `self.<...>` API only a TestCase provides."""
     return any(
         isinstance(child, ast.Attribute)
         and isinstance(child.value, ast.Name)
@@ -573,7 +550,6 @@ def _body_without_docstring(node: ast.FunctionDef | ast.AsyncFunctionDef) -> lis
 
 
 def _is_embedded_source_checker(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Recognize a source fixture assigned only to one checker assertion."""
     match _body_without_docstring(node):
         case [
             ast.Assign(
@@ -606,7 +582,6 @@ def _is_checker_call(node: ast.Call) -> bool:
 
 
 def _embedded_source_signals(node: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-    """Find operations repeated enough inside an embedded Python fixture to tie cases together."""
     match _body_without_docstring(node):
         case [ast.Assign(value=ast.Constant(value=str() as source)), ast.Assert()]:
             try:
@@ -630,7 +605,6 @@ def _call_name(node: ast.Call) -> str:
 
 
 def _bound_names(body: list[ast.stmt]) -> frozenset[str]:
-    """Find every name the body binds, so those names can be renamed positionally."""
     stored = {
         child.id
         for stmt in body
@@ -695,7 +669,6 @@ def _walk(node: ast.AST) -> Iterator[ast.AST]:
 
 
 def _message(group: list[_Shape]) -> str:
-    """Describe the duplication and point back at the original."""
     original, duplicate = group[0], group[1]
     others = len(group) - _MIN_GROUP
     also = f" (and {others} more in this module)" if others > 0 else ""

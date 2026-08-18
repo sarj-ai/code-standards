@@ -99,7 +99,6 @@ NON_PAGINATION = {
 
 @pytest.mark.parametrize("source", NON_PAGINATION.values(), ids=list(NON_PAGINATION))
 def test_offset_without_a_value_token_is_not_pagination(source: str):
-    """A migration adding an `offset` column used to be told to use cursor pagination."""
     assert _check(source) == []
 
 

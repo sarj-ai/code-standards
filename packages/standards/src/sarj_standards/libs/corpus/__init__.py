@@ -1,5 +1,3 @@
-"""Reproducible, local-only corpus manifests and snapshots."""
-
 from .manifest import (
     CorpusKind,
     CorpusManifest,

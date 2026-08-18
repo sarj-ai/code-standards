@@ -1,5 +1,3 @@
-"""Conservatively migrate retired rule names in source suppressions."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,8 +31,6 @@ _ESLINT_SUPPRESSIONS: Final = "eslint-suppressions.json"
 
 @dataclass(frozen=True, slots=True)
 class Rewrite:
-    """One source file whose unambiguous suppression directives can be migrated."""
-
     path: Path
     contents: str
 
@@ -49,16 +45,12 @@ class _DirectiveState(Enum):
 
 @dataclass(frozen=True, slots=True)
 class _CommentSpan:
-    """One exact source comment span, excluding the line ending."""
-
     start: int
     end: int
 
 
 @dataclass(frozen=True, slots=True)
 class _Directive:
-    """A classified suppression comment and its validated rule identifiers."""
-
     state: _DirectiveState
     tokens: tuple[str, ...] = ()
     match: re.Match[str] | None = None
@@ -66,12 +58,10 @@ class _Directive:
 
 
 def supports(path: Path) -> bool:
-    """Return whether source-aware suppression parsing supports this file."""
     return path.suffix.lower() in _SOURCE_SUFFIXES
 
 
 def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
-    """Plan source-only rewrites; ambiguous references remain doctor blockers."""
     shipped = ledger.load()
     retired = shipped.retired
     active = shipped.active_ids()
@@ -98,7 +88,6 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
 
 
 def reference_counts(path: Path, text: str) -> dict[str, int]:
-    """Count retired identifiers in proven directives and ambiguous rule-reference sites."""
     if "sarj-doctor-ignore-retired-rules" in text:
         return {}
     retired = ledger.load().retired
@@ -188,8 +177,6 @@ class _DuplicateKeyError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class _JsonObject:
-    """Typed object produced at every JSON object boundary."""
-
     values: dict[str, object]
 
 
@@ -240,7 +227,6 @@ def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[s
 
 
 def _is_jsx_comment_wrapper(path: Path, text: str, span: _CommentSpan, comment: str) -> bool:
-    """Avoid deleting the comment from a JSX expression and leaving invalid ``{}``."""
     if path.suffix.lower() not in {".jsx", ".tsx"} or not comment.startswith("/*"):
         return False
     line_start = text.rfind("\n", 0, span.start) + 1
@@ -293,7 +279,6 @@ def _python_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
 
 
 def _javascript_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
-    """Find real JS comments while conservatively treating templates as strings."""
     spans: list[_CommentSpan] = []
     index = 0
     quote: str | None = None

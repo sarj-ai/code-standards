@@ -846,7 +846,6 @@ class InMemorySmtpServer:
 
 
 def _two_real_methods_spanning(span: int) -> str:
-    """Build a two-method double whose class spans exactly `span` lines."""
     body = "\n".join(f"        self.field_{i} = {i}" for i in range(span - 8))
     return f"""
 class InMemorySmtpServer:

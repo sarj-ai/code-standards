@@ -1,5 +1,3 @@
-"""SARJ207 — Remove HCL comments that only restate the declaration below."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -69,8 +67,6 @@ _MIN_STEM_LENGTH = 3
 
 @final
 class NoRestatedComment(Rule):
-    """An isolated HCL comment whose words are all carried by the next declaration."""
-
     id = "no-restated-comment"
     code = "SARJ207"
     documentation = RuleDocumentation(

@@ -10,7 +10,7 @@ uv tool install --python 3.14 sarj-standards
 
 ## Contributing
 
-Install uv 0.12.3, Python 3.14, Node 22.16, and GNU Make. Then bootstrap a fresh checkout:
+Install uv 0.12.5, Python 3.14, Node 22.16, and GNU Make. Then bootstrap a fresh checkout:
 
 ```bash
 make setup

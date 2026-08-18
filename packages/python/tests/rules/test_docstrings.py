@@ -1,5 +1,3 @@
-"""Direct tests for the docstring parser shared by SARJ049/SARJ084."""
-
 import ast
 
 import pytest
@@ -35,7 +33,6 @@ def test_sections_split_on_headers_alone_on_their_line() -> None:
 
 
 def test_a_section_word_with_prose_after_it_is_not_a_header() -> None:
-    """A header must be ALONE on its line; otherwise ordinary prose splits the docstring."""
     assert set(sections("Note: this is prose, not a section.\n")) == {"summary"}
     assert set(sections("See the Returns: value for details.\n")) == {"summary"}
 
@@ -54,7 +51,6 @@ def test_an_arg_entry_carries_name_type_and_description() -> None:
 
 
 def test_a_wrapped_description_folds_into_its_entry() -> None:
-    """Without the fold, an entry whose informative half wrapped reads as a bare restatement."""
     entries = arg_entries("    key (str): The lookup key,\n        namespaced by tenant.\n")
     assert entries == [("key", "str", "The lookup key, namespaced by tenant.")]
 
@@ -82,7 +78,6 @@ def test_a_docstring_restating_only_the_signature_is_recognised() -> None:
 
 
 def test_a_text_with_no_content_words_is_not_a_restatement() -> None:
-    """Distinguish empty prose from a restatement of the code."""
     node = _func("def run() -> None: ...")
     assert not restates("The a of it.", signature_stems(node, None))
 
@@ -108,7 +103,6 @@ def test_the_value_marker_ignores_a_plain_restatement() -> None:
     ["@router.post('/widgets')", "@app.get('/x')", "@click.command()", "@function_tool"],
 )
 def test_a_consumed_docstring_is_recognised_by_its_decorator(decorator: str) -> None:
-    """These docstrings are artefacts -- an OpenAPI description, `--help`, a tool prompt."""
     node = _func(f"{decorator}\ndef handler() -> None: ...")
     assert decorator_markers(node) & PROMPT_DECORATOR_MARKERS
 
