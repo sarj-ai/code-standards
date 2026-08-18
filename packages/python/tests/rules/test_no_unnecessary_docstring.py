@@ -54,6 +54,9 @@ async def stop() -> None:
         (7, "SARJ420", Severity.WARNING),
         (11, "SARJ420", Severity.WARNING),
     ]
+    assert {finding.message for finding in findings} == {
+        "No docstring consumer detected — delete it; make author-controlled names, types, and structure explain the code."
+    }
 
 
 @pytest.mark.parametrize(
@@ -78,6 +81,16 @@ async def stop() -> None:
         'from pydantic import BaseModel\n\ndef build() -> None:\n    class Base(BaseModel):\n        value: str\n\n    class Child(Base):\n        """Published by inherited Pydantic schema generation."""\n        other: str\n',
         'import pytest\n\n@pytest.fixture\ndef account() -> object:\n    """Description shown by pytest --fixtures."""\n    return object()\n',
         'import pytest_asyncio as pa\n\n@pa.fixture\nasync def account() -> object:\n    """Description shown by pytest --fixtures."""\n    return object()\n',
+        'import typer\n\napp = typer.Typer()\n\n@app.command()\ndef serve() -> None:\n    """Description shown in CLI help."""\n    return None\n',
+        'from typer import Typer as Cli\n\nFactory = Cli\napp = Factory()\n\n@app.callback()\ndef main() -> None:\n    """Description shown in CLI help."""\n    return None\n',
+        'import click\n\n@click.command()\ndef serve() -> None:\n    """Description shown in CLI help."""\n    return None\n',
+        'from click import command as cli_command\n\n@cli_command()\ndef serve() -> None:\n    """Description shown in CLI help."""\n    return None\n',
+        'import click\n\n@click.group()\ndef cli() -> None:\n    """Description shown in CLI help."""\n    return None\n',
+        'import click\n\n@click.group()\ndef cli() -> None:\n    return None\n\n@cli.command()\ndef serve() -> None:\n    """Description shown in CLI help."""\n    return None\n',
+        'import click\n\ncli = click.Group()\n\n@cli.command()\ndef serve() -> None:\n    """Description shown in CLI help."""\n    return None\n',
+        'import typer\n\ndef register(app: typer.Typer) -> None:\n    @app.command()\n    def serve() -> None:\n        """Description shown in CLI help."""\n        return None\n',
+        'import typer\n\napp = typer.Typer()\n\n@app.command(**options)\ndef serve() -> None:\n    """May be consumed through dynamic options."""\n    return None\n',
+        'import click\n\n@click.command(**options)\ndef serve() -> None:\n    """May be consumed through dynamic options."""\n    return None\n',
         '@property\ndef value(self) -> str:\n    """Published as the property descriptor doc."""\n    return self._value\n',
     ],
 )
@@ -106,6 +119,24 @@ def lookup() -> str:
     ],
 )
 def test_unproven_or_overridden_fastapi_routes_do_not_exempt_docstrings(source: str) -> None:
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'class Typer:\n    pass\n\napp = Typer()\n\n@app.command()\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'from .typer import Typer\n\napp = Typer()\n\n@app.command()\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'import typer\n\napp = typer.Typer()\n\n@app.command(help="Published explicitly")\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'import typer\n\napp = typer.Typer()\napp = custom_app\n\n@app.command()\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'import click\n\n@click.command(help="Published explicitly")\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'from .click import command\n\n@command()\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'import click\nclick = custom_click\n\n@click.command()\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'class Cli:\n    def command(self): ...\n\ncli = Cli()\n\n@cli.command()\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+        'import click\n\n@click.group()\ndef cli() -> None:\n    return None\n\n@cli.command(help="Published explicitly")\ndef serve() -> None:\n    """Human-only notes."""\n    return None\n',
+    ],
+)
+def test_unproven_or_overridden_cli_decorators_do_not_exempt_docstrings(source: str) -> None:
     assert [finding.code for finding in _check(source)] == ["SARJ420"]
 
 

@@ -40,7 +40,10 @@ class DocstringArgsRestateSignature(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Argument documentation must add facts beyond the function signature.",
         rationale="Repeating parameter names and types obscures useful behavioral contracts and drifts when signatures change.",
-        remediation="Remove the redundant argument section, or retain it only to document constraints, units, defaults, or semantics absent from the signature.",
+        remediation=(
+            "Delete the human-only docstring or redundant argument section. Express author-controlled semantics with "
+            "names and types; keep hidden constraints or units as a concise local comment."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(

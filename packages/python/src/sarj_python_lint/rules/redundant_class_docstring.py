@@ -35,9 +35,15 @@ class RedundantClassDocstring(Rule):
     id: str = "redundant-class-docstring"
     code: str = "SARJ085"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Class docstrings must add information beyond the class name and bases.",
+        summary=(
+            "Class docstring restates the declaration — delete it; clarify author-controlled names, fields, or types "
+            "if the role is unclear."
+        ),
         rationale="Restating a class declaration adds maintenance cost without helping a reader understand its contract.",
-        remediation="Delete the redundant docstring or document an invariant, lifetime, exclusion, or other fact absent from the declaration.",
+        remediation=(
+            "Delete the docstring and clarify author-controlled names, fields, or types. Keep a hidden invariant, "
+            "lifetime, or exclusion as a concise comment near its enforcement."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(

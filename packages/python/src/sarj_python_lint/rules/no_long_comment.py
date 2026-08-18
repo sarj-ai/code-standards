@@ -33,9 +33,15 @@ class NoLongComment(Rule):
     id = "no-long-comment"
     code = "SARJ091"
     documentation = RuleDocumentation(
-        summary="Long docstrings must use deliberate documentation structure or technical anchors.",
+        summary=(
+            "Unstructured docstring prose wall — delete it; clarify author-controlled names, types, and structure or "
+            "move durable design context to maintained documentation."
+        ),
         rationale="An unstructured prose wall is difficult to scan and often hides a contract that belongs in clearer code or durable structured documentation.",
-        remediation="Clarify the code or restructure the docstring with paragraphs, lists, code, paths, links, or other meaningful technical anchors.",
+        remediation=(
+            "Delete human-only prose and clarify names, types, or structure. Keep machine-consumed documentation; move "
+            "broader design context to maintained documentation."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(

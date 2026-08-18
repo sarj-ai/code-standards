@@ -14,6 +14,7 @@ import {
   carriesValue,
   commentBody,
   declarationRange,
+  hasJsDocTag,
   isLabel,
   isTagsOnly,
   isWall,
@@ -88,7 +89,7 @@ export default createRule<Options, MessageIds>({
     schema: [WALL_SCHEMA],
     messages: {
       commentWall:
-        "{{restated}} of this declaration's {{commented}} member comments only re-spell the member's own name — delete them, and keep the rows that say what the name cannot.",
+        "{{restated}} of this declaration's {{commented}} member comments only re-spell member names — delete them; if a row still needs narration, give the member a clearer name. Keep constraints, lifecycle, and rationale.",
     },
   },
   defaultOptions: [WALL_DEFAULTS],
@@ -168,7 +169,13 @@ export default createRule<Options, MessageIds>({
         const body = commentBody(comment);
         // A tag block is a directive to a documentation generator, and one
         // content word is a label; neither is a re-spelling of the name.
-        if (body.length === 0 || carriesValue(body) || isTagsOnly(body) || isLabel(body)) {
+        if (
+          body.length === 0 ||
+          hasJsDocTag(comment) ||
+          carriesValue(body) ||
+          isTagsOnly(body) ||
+          isLabel(body)
+        ) {
           continue;
         }
         const { end, start } = declarationRange(member.node);

@@ -306,7 +306,10 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Repeated comments that merely narrate adjacent configuration hide constraints and make the file harder "
                 "to scan."
             ),
-            remediation="Name configuration entries clearly and keep comments only for constraints or rationale.",
+            remediation=(
+                "Delete narration. Where names are author-controlled, clarify jobs, steps, targets, keys, or sections; "
+                "keep comments only for constraints or rationale."
+            ),
             category=RuleCategory.MAINTAINABILITY,
             languages=frozenset({Language.CONFIG}),
             file_patterns=("**/*.{yaml,yml,toml,jsonc,ini,cfg,conf,properties,sh,zsh,bash}",),
@@ -507,7 +510,10 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "A comment that repeats the key and scalar value adds no information and can drift independently from "
                 "the configuration it narrates."
             ),
-            remediation="Delete the restatement; keep comments only for constraints or rationale absent from the value.",
+            remediation=(
+                "Delete the restatement. If the entry is author-controlled and unclear, clarify its key or section; "
+                "keep comments only for constraints or rationale absent from the value."
+            ),
             category=RuleCategory.MAINTAINABILITY,
             languages=frozenset({Language.CONFIG}),
             file_patterns=("**/*.yaml", "**/*.yml", "**/*.toml"),
@@ -1162,7 +1168,8 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
                     path,
                     index + 1,
                     "SARJ306",
-                    "Comment exactly repeats the adjacent scalar assignment — delete the restatement.",
+                    "Comment repeats the adjacent assignment — delete it; clarify an author-controlled key or section "
+                    "if the entry is unclear.",
                 )
             )
             continue
@@ -1186,7 +1193,8 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
                     path,
                     weak[0],
                     "SARJ300",
-                    f"Config comment wall ({len(weak)} narrated entries) — name jobs, steps, targets, and keys clearly; keep only constraints or rationale.",
+                    f"Config comment wall ({len(weak)} narrated entries) — where names are author-controlled, clarify "
+                    "jobs, steps, targets, keys, or sections; keep only constraints or rationale.",
                 )
             )
     return findings

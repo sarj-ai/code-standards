@@ -27,7 +27,10 @@ class NoTypedDocSections(Rule):
     documentation = RuleDocumentation(
         summary="Docstring sections must not repeat types already present in a fully typed signature.",
         rationale="Duplicated type spellings drift from annotations and add noise without strengthening the behavioral contract.",
-        remediation="Remove the repeated type while retaining behavioral facts, constraints, units, and error conditions.",
+        remediation=(
+            "Delete the human-only docstring or repeated type. Express author-controlled contracts with names and "
+            "annotations; keep hidden constraints, units, or error conditions as a concise local comment."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(

@@ -128,7 +128,10 @@ class RestatedTestDocstring(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Test docstrings must add information beyond the test name and body.",
         rationale="A docstring that narrates visible test code creates duplicate prose that can drift without explaining the regression or contract.",
-        remediation="Delete the redundant docstring, improve the test name, or document a reason or constraint not visible in the test.",
+        remediation=(
+            "Delete the docstring and put the scenario and expected outcome in the test name. Keep a hidden regression "
+            "reason or constraint as one concise local comment."
+        ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(

@@ -536,7 +536,7 @@ export default createRule<Options, MessageIds>({
       commentWall:
         "Statement comment wall ({{count}} narrated steps) — delete the walkthrough and name the operations in code; keep only constraints or rationale.",
       redundantNarration:
-        "Comment narrates the code — delete it or say *why*, not *what*. Code is self-documenting.",
+        "Comment narrates the code — delete it; if the code still needs explanation, use clearer names or extract a named helper. Keep only constraints or rationale.",
       placeholderImplementation:
         "Placeholder implementation comment — implement the behavior or use an explicit unsupported path.",
       untrackedTodo:

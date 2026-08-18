@@ -112,7 +112,8 @@ export default createRule<Options, MessageIds>({
     docs: { description: "Reject typed-signature repetition while preserving behavior that types cannot express." },
     schema: [],
     messages: {
-      typedSection: "Typed JSDoc repeats parameters or returns — delete the tags and improve names or types instead.",
+      typedSection:
+        "Typed JSDoc repeats parameters or returns — delete the repeated tags; if the signature still needs explanation, improve its names or types. Keep constraints and rationale.",
     },
   },
   defaultOptions: [],

@@ -55,9 +55,15 @@ class RedundantModuleDocstring(Rule):
     id: str = "redundant-module-docstring"
     code: str = "SARJ099"
     documentation = RuleDocumentation(
-        summary="Module docstrings must add information beyond the file path.",
+        summary=(
+            "Module docstring restates the file path — delete it; clarify the author-controlled module path or exports "
+            "if the purpose is unclear."
+        ),
         rationale="A one-line restatement of a module path duplicates information already visible to readers and search tools.",
-        remediation="Delete the redundant docstring or document an invariant, boundary, consumer, or compatibility constraint.",
+        remediation=(
+            "Delete the docstring and clarify the author-controlled module path or exports. Keep durable boundaries "
+            "and compatibility constraints near the code they govern or in maintained documentation."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(

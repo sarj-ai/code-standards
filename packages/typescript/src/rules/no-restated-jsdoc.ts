@@ -164,7 +164,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       restatesSignature:
-        "JSDoc only re-spells the signature — delete it, or say what the caller cannot read off the name (what it throws, what it assumes, why it exists).",
+        "JSDoc only re-spells the signature — delete it; if the signature still needs explanation, improve its names or types. Keep constraints, failures, and rationale.",
       deleteBlock: "Delete the JSDoc block.",
     },
   },

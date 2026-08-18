@@ -450,7 +450,10 @@ class NoCommentCruft(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Comment repeats code, preserves dead code, or adds a decorative section marker.",
         rationale="Mechanical narration and dead code obscure the constraints and rationale that comments should preserve.",
-        remediation="Delete the cruft and keep only concise comments that explain a non-obvious reason or constraint.",
+        remediation=(
+            "Delete the cruft. If author-controlled code is unclear without narration, clarify names, types, or "
+            "structure; keep only concise comments for a hidden reason or constraint."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         limitations=(
             "Only standalone comments are classified; trailing comments, docstrings, directives, and referenced notes are excluded.",
@@ -640,7 +643,8 @@ class NoCommentCruft(Rule):
                     code=self.code,
                     message=(
                         f"File-header comment preamble ({len(leading)} lines) — "
-                        "use a module docstring for the why, not a block of comments."
+                        "delete the ceremony; use a descriptive module path and place durable constraints near the "
+                        "code they govern or in maintained documentation."
                     ),
                     column_encoding=ColumnEncoding.CODEPOINTS,
                 )

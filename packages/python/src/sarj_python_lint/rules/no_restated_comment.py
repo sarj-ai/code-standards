@@ -217,9 +217,15 @@ class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Comment restates the statement immediately below it.",
+        summary=(
+            "Comment restates the next statement — delete it; clarify an author-controlled name or extract a named "
+            "helper if the code is unclear."
+        ),
         rationale="Comments that repeat code add reading cost and can become stale without explaining intent.",
-        remediation="Delete the comment or replace it with context the statement cannot express.",
+        remediation=(
+            "Delete the comment. If author-controlled code is unclear without it, clarify a name or extract a named "
+            "helper; keep comments only for context the statement cannot express."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SUGGESTION,
         limitations=(
