@@ -11,8 +11,9 @@ from typing import Final, NamedTuple
 TOOL_PYTHON: Final = "3.14"
 PACKAGE: Final = "sarj-standards"
 COMMAND: Final = "sarj-standards"
-REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
-LAUNCHER_PROTOCOL: Final = 1
+BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==1.0.0"
+RETIRED_REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
+RETIRED_LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 _SHELL_WHITESPACE: Final = r"(?:\s|\\\r?\n)+"
 _LEGACY_REPOSITORY_INVOCATION: Final = re.compile(
@@ -20,6 +21,12 @@ _LEGACY_REPOSITORY_INVOCATION: Final = re.compile(
     rf"--from{_SHELL_WHITESPACE}['\"]?sarj-standards==[^\s;&|\\'\"]+['\"]?"
     rf"{_SHELL_WHITESPACE}sarj-standards"
     rf"(?:{_SHELL_WHITESPACE}--root(?:{_SHELL_WHITESPACE}|=)(?:\.|['\"]\.['\"]))?"
+)
+_REPOSITORY_LAUNCHER_INVOCATION: Final = re.compile(
+    rf"\buv{_SHELL_WHITESPACE}run{_SHELL_WHITESPACE}--no-config"
+    rf"{_SHELL_WHITESPACE}--no-project{_SHELL_WHITESPACE}--python"
+    rf"{_SHELL_WHITESPACE}3\.14{_SHELL_WHITESPACE}python"
+    rf"{_SHELL_WHITESPACE}(?:\./)?\.sarj/standards"
 )
 _LEGACY_MAKE_RUN: Final = re.compile(
     r"(?m)^(?P<indent>\t?)(?:@)?\$\(STANDARDS_RUN\)[ \t]+sarj-standards"
@@ -44,6 +51,16 @@ _LEGACY_PYTHON_ARGV_INVOCATION: Final = re.compile(
     r"(?P=indent)['\"]sarj-standards['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]--root['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]\.['\"],[ \t]*\r?\n"
+)
+_REPOSITORY_PYTHON_ARGV_INVOCATION: Final = re.compile(
+    r"(?m)^(?P<indent>[ \t]*)['\"]uv['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]run['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]--no-config['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]--no-project['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]--python['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]3\.14['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]python['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]\.sarj/standards['\"],[ \t]*\r?\n"
 )
 
 
@@ -74,17 +91,17 @@ def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool =
     )
 
 
-def repository_argv(*arguments: str, executable: str = "uv") -> tuple[str, ...]:
-    """Build the versionless command committed to consumer wiring."""
+def repository_argv(*arguments: str, executable: str = "uvx") -> tuple[str, ...]:
+    """Build the immutable bootstrap command committed to consumer wiring."""
     return (
         executable,
-        "run",
         "--no-config",
-        "--no-project",
+        "--isolated",
         "--python",
         TOOL_PYTHON,
-        "python",
-        REPOSITORY_LAUNCHER.as_posix(),
+        "--from",
+        BOOTSTRAP_SPEC,
+        COMMAND,
         *arguments,
     )
 
@@ -95,8 +112,10 @@ def repository_command(*arguments: str) -> str:
 
 
 def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
-    """Replace exact legacy uvx launchers with the manifest-driven repository launcher."""
+    """Replace former direct-bundle and repository-file launchers with bootstrap."""
     contents, count = _LEGACY_REPOSITORY_INVOCATION.subn(repository_command(), text)
+    contents, repository_count = _REPOSITORY_LAUNCHER_INVOCATION.subn(repository_command(), contents)
+    count += repository_count
     update_target = re.compile(
         rf"{re.escape(repository_command())}{_SHELL_WHITESPACE}update"
         rf"{_SHELL_WHITESPACE}--to(?:{_SHELL_WHITESPACE}|=)[^\s;&|\\'\"]+"
@@ -105,6 +124,8 @@ def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
     count += update_target_count
     contents, python_argv_count = _LEGACY_PYTHON_ARGV_INVOCATION.subn(_python_repository_argv, contents)
     count += python_argv_count
+    contents, repository_python_count = _REPOSITORY_PYTHON_ARGV_INVOCATION.subn(_python_repository_argv, contents)
+    count += repository_python_count
     before_make = contents
     make_invocations = tuple(_LEGACY_MAKE_RUN.finditer(contents))
     if (
@@ -134,9 +155,9 @@ def _python_repository_argv(match: re.Match[str]) -> str:
     return "".join(f'{indent}"{argument}",\n' for argument in repository_argv())
 
 
-def repository_script() -> str:
-    """Render the dependency-free launcher whose only authority is the manifest."""
-    return f"""# Managed by sarj-standards launcher protocol {LAUNCHER_PROTOCOL}; do not edit.
+def retired_repository_script() -> str:
+    """Render protocol 1 exactly so only an unmodified retired launcher is removed."""
+    return f"""# Managed by sarj-standards launcher protocol {RETIRED_LAUNCHER_PROTOCOL}; do not edit.
 from __future__ import annotations
 
 import os
@@ -148,7 +169,7 @@ import sys
 import tomllib
 
 
-PROTOCOL = {LAUNCHER_PROTOCOL}
+PROTOCOL = {RETIRED_LAUNCHER_PROTOCOL}
 TOOL_PYTHON = {TOOL_PYTHON!r}
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\Z")
 ROOT = Path(__file__).resolve().parents[1]

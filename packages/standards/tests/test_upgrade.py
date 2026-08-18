@@ -15,6 +15,9 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold, transaction, upgrade
 
 
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.0 sarj-standards"
+
+
 class _LaterWriteError(OSError):
     """A planned later write failed during a transaction regression."""
 
@@ -121,7 +124,7 @@ def test_pin_rewrite_isolates_custom_uvx_launcher_from_consumer_config() -> None
 
     rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": current})
 
-    assert rewritten.contents == ("run: uv run --no-config --no-project --python 3.14 python .sarj/standards check\n")
+    assert rewritten.contents == f"run: {BOOTSTRAP_COMMAND} check\n"
     assert rewritten.packages == ("sarj-standards",)
 
 
@@ -134,7 +137,7 @@ def test_pin_rewrite_migrates_a_multiline_shell_launcher() -> None:
     rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": "5.16.1"})
 
     assert rewritten.contents == (
-        "          uv run --no-config --no-project --python 3.14 python .sarj/standards"
+        f"          {BOOTSTRAP_COMMAND}"
         ' check --staged --trust-repository-code --format github -- "${changed_files[@]}"\n'
     )
     assert rewritten.packages == ("sarj-standards",)
@@ -173,7 +176,7 @@ def test_upgrade_migrates_legacy_generated_ci_hooks_and_scripts_to_one_launcher(
     plan = upgrade.build_plan(tmp_path)
     assert upgrade.apply(plan, install=False) == 0
 
-    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    launcher_command = BOOTSTRAP_COMMAND
     workflow = (workflows / "standards.yml").read_text(encoding="utf-8")
     hook = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
     script = package.read_text(encoding="utf-8")
@@ -265,7 +268,7 @@ def test_upgrade_scans_make_and_lefthook_pin_sites(tmp_path: Path, filename: str
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.1"})
 
     by_name = {update.path.name: update.contents for update in updates}
-    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    launcher_command = BOOTSTRAP_COMMAND
     assert launcher_command in by_name[filename]
     assert launcher_command in by_name["lefthook.yml"]
     assert all("sarj-standards==" not in contents for contents in by_name.values())
@@ -290,7 +293,7 @@ def test_upgrade_migrates_make_variable_launcher_to_the_repository_launcher(tmp_
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
 
     [updated] = [update.contents for update in updates if update.path == makefile]
-    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    launcher_command = BOOTSTRAP_COMMAND
     assert f"STANDARDS_VERSION := $(shell {launcher_command} --version)" in updated
     assert "STANDARDS_RUN" not in updated
     assert f"\t{launcher_command} update" in updated
@@ -315,7 +318,7 @@ def test_upgrade_preserves_dynamic_make_version_consumers(tmp_path: Path) -> Non
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
 
     [updated] = [update.contents for update in updates if update.path == makefile]
-    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    launcher_command = BOOTSTRAP_COMMAND
     assert f"STANDARDS_VERSION := $(shell {launcher_command} --version)" in updated
     assert f"\t{launcher_command} update" in updated
     assert "\t@echo $(STANDARDS_VERSION)" in updated
@@ -345,9 +348,10 @@ def test_upgrade_migrates_python_argv_launcher_in_scripts(tmp_path: Path) -> Non
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
 
     [updated] = [update.contents for update in updates if update.path == script]
-    assert '    "uv",\n' in updated
-    assert '    "run",\n' in updated
-    assert '    ".sarj/standards",\n' in updated
+    assert '    "uvx",\n' in updated
+    assert '    "--from",\n' in updated
+    assert '    "sarj-standards-bootstrap==1.0.0",\n' in updated
+    assert '    "sarj-standards",\n' in updated
     assert '    "check",\n' in updated
     assert "sarj-standards==" not in updated
 
@@ -368,14 +372,14 @@ def test_upgrade_migrates_quoted_package_script_and_removes_duplicate_update_tar
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.4"})
 
     [updated] = [update.contents for update in updates if update.path == package]
-    launcher_command = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    launcher_command = BOOTSTRAP_COMMAND
     assert f"{launcher_command} check --trust-repository-code" in updated
     assert f"{launcher_command} update --offline --no-install" in updated
     assert "sarj-standards==" not in updated
     assert "--to 5.8.4" not in updated
 
 
-def test_upgrade_keeps_uvx_ignored_and_adds_launcher_uv_to_knip(tmp_path: Path) -> None:
+def test_upgrade_keeps_knip_unchanged_when_bootstrap_also_uses_uvx(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     package = tmp_path / "package.json"
     package.write_text(
@@ -384,12 +388,13 @@ def test_upgrade_keeps_uvx_ignored_and_adds_launcher_uv_to_knip(tmp_path: Path) 
         encoding="utf-8",
     )
     knip = tmp_path / "knip.json"
-    knip.write_text('{\n  "ignoreBinaries": ["uvx"]\n}\n', encoding="utf-8")
+    original = '{\n  "ignoreBinaries": ["uvx"]\n}\n'
+    knip.write_text(original, encoding="utf-8")
 
     updates = doctor.plan_version_pin_updates(tmp_path, {"sarj-standards": "5.16.5"})
 
-    [updated] = [update.contents for update in updates if update.path == knip]
-    assert updated == '{\n  "ignoreBinaries": ["uv", "uvx"]\n}\n'
+    assert all(update.path != knip for update in updates)
+    assert knip.read_text(encoding="utf-8") == original
 
 
 def test_upgrade_does_not_touch_knip_without_a_repository_launcher_migration(tmp_path: Path) -> None:
@@ -462,7 +467,7 @@ def test_upgrade_installs_only_ecosystems_adopted_by_the_manifest(tmp_path: Path
     assert plan.ecosystems.python_root is None
     assert plan.ecosystems.typescript_install_root is None
     precommit = next(contents for path, contents in plan.scaffold_plan.writes if path.name == ".pre-commit-config.yaml")
-    assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in precommit
+    assert BOOTSTRAP_COMMAND in precommit
     assert "uv run --frozen sarj-standards" not in precommit
 
 
@@ -1008,9 +1013,9 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     workflow = (workflows / "standards.yml").read_text(encoding="utf-8")
     package_json = (tmp_path / "package.json").read_text(encoding="utf-8")
-    assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in precommit
+    assert BOOTSTRAP_COMMAND in precommit
     assert "sarj-standards-drift" not in precommit
-    repository_launcher = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    repository_launcher = BOOTSTRAP_COMMAND
     assert repository_launcher in workflow
     assert repository_launcher in package_json
     assert "sarj-standards==" not in workflow + package_json

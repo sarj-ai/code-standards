@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from pathlib import Path, PurePath
+from pathlib import Path
 import re
 import shlex
 from typing import TYPE_CHECKING, Final, NamedTuple
@@ -357,18 +357,8 @@ def _runs_staged_check(value: object) -> bool:
         tokens = shlex.split(value)
     except ValueError:
         return False
-    executable = next(
-        (index for index, token in enumerate(tokens) if PurePath(token).name == launcher.REPOSITORY_LAUNCHER.name),
-        None,
-    )
-    if executable is None:
-        return False
-    prefix = tokens[:executable]
-    if prefix and PurePath(prefix[0]).name not in {"uv", "uvx"}:
-        return False
-    if any(PurePath(token).name in {"echo", "printf"} for token in prefix):
-        return False
-    return tokens[executable + 1 : executable + 3] == ["check", "--staged"]
+    prefix = launcher.repository_argv()
+    return tuple(tokens[: len(prefix)]) == prefix and tokens[len(prefix) : len(prefix) + 2] == ["check", "--staged"]
 
 
 def _canonical_lefthook_command(root: Path | None = None) -> str:

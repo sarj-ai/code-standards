@@ -241,8 +241,10 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
                 f"{names}; review the files and rerun with --force"
             )
             return InitPlan(scaffold_plan, None, ())
-    mutations = tuple(path for path, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)) + tuple(
-        target.destination for target in sync_plan.targets
+    mutations = (
+        tuple(path for path, _contents in (*scaffold_plan.writes, *scaffold_plan.edits))
+        + tuple(scaffold_plan.deletes)
+        + tuple(target.destination for target in sync_plan.targets)
     )
     transaction.validate_targets(resolved, mutations)
     commands = tuple(
@@ -269,7 +271,9 @@ def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
         return InitResult(2, failure=InitFailure.APPLY, error=str(exc))
     if stale:
         return InitResult(2, failure=InitFailure.APPLY, error="setup plan is stale; rerun setup")
-    scaffold_targets = tuple(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits))
+    scaffold_targets = tuple(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)) + tuple(
+        plan.scaffold.deletes
+    )
     python_environment = (
         None if plan.scaffold.ecosystems.python_root is None else plan.scaffold.ecosystems.python_root / ".venv"
     )
@@ -346,6 +350,7 @@ def _apply_init_transaction(
     direct_targets = (
         *(target.destination for target in plan.sync.targets),
         *(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)),
+        *plan.scaffold.deletes,
     )
     file_transaction.mark_written(*(path for path in direct_targets if path.name not in _INSTALL_MUTATED_NAMES))
     if install:

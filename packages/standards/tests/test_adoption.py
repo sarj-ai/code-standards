@@ -33,6 +33,7 @@ if TYPE_CHECKING:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.0 sarj-standards"
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -569,7 +570,7 @@ def test_init_separates_the_tool_runtime_from_an_older_consumer_target(tmp_path:
     assert pyright["pythonVersion"] == "3.10"
     assert "target-version" not in (tmp_path / ".ruff-strict.toml").read_text(encoding="utf-8")
     hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in hook
+    assert BOOTSTRAP_COMMAND in hook
 
 
 def test_init_application_profile_selects_application_artifacts(tmp_path: Path) -> None:
@@ -719,7 +720,7 @@ def test_init_no_install_prints_every_skipped_setup_command(tmp_path: Path) -> N
     assert "uv add --dev" not in proc.stdout
     assert "pre-commit install" in proc.stdout
     hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert "--python 3.14 python .sarj/standards" in hook
+    assert BOOTSTRAP_COMMAND in hook
 
 
 def test_inspect_reports_detected_adoption(tmp_path: Path) -> None:
@@ -918,7 +919,7 @@ def test_nested_python_project_uses_the_same_isolated_launcher(tmp_path: Path) -
     hook = next(contents for path, contents in plan.writes if path.name == ".pre-commit-config.yaml")
     snippet = scaffold.ci_snippet()
 
-    expected = "uv run --no-config --no-project --python 3.14 python .sarj/standards"
+    expected = BOOTSTRAP_COMMAND
     assert expected in hook
     assert expected in snippet
     assert "--project python" not in hook
@@ -989,7 +990,7 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "rev:" not in generated
     assert "repo: local" in generated
-    assert ".sarj/standards check --staged --" in generated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --" in generated
     assert "always_run: true" in generated
     assert "package\\.json|pyrightconfig\\.json" in generated
     assert generated.count("id: sarj-standards-check") == 1
@@ -1116,8 +1117,7 @@ def test_init_repairs_inert_or_compound_lefthook_commands(tmp_path: Path, run: s
 
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
-    assert ".sarj/standards check --staged" in updated
-    assert ".sarj/standards check --staged --trust-repository-code -- {staged_files}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
 
 
 def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
@@ -1132,7 +1132,7 @@ def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
     assert "# sarj-standards check --staged" in updated
-    assert ".sarj/standards check --staged --trust-repository-code -- {staged_files}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
 
 
 def test_init_rejects_malformed_lefthook_yaml(tmp_path: Path) -> None:
@@ -1169,7 +1169,7 @@ def test_init_repairs_unwired_but_rejects_missing_lefthook_management(tmp_path: 
     (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
     unwired = _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install")
     assert unwired.returncode == 0, unwired.stderr
-    assert ".sarj/standards check --staged --trust-repository-code -- {staged_files}" in (
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in (
         tmp_path / "lefthook.yml"
     ).read_text(encoding="utf-8")
 
@@ -1196,8 +1196,8 @@ def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = config.read_text(encoding="utf-8")
     assert original_job in updated
-    assert "- name: sarj-standards\n      run: uv run --no-config --no-project" in updated
-    assert ".sarj/standards check --staged --trust-repository-code -- {staged_files}" in updated
+    assert f"- name: sarj-standards\n      run: {BOOTSTRAP_COMMAND}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
     assert "pre-push:\n  commands: {}" in updated
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
@@ -1216,8 +1216,7 @@ def test_nested_lefthook_v2_job_can_already_run_staged_check(tmp_path: Path) -> 
     assert proc.returncode == 0, proc.stderr
     updated = config.read_text(encoding="utf-8")
     assert updated != original
-    assert ".sarj/standards check --staged" in updated
-    assert ".sarj/standards check --staged --trust-repository-code -- {staged_files}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
 
 
 def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
@@ -1360,7 +1359,7 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
         # Run the CLI the hook names, through the interpreter the tests already
         # use, so this exercises the generated command shape without needing a
         # network fetch or a uv-managed virtualenv inside tmp_path.
-        subcommand = entry.rsplit(" .sarj/standards ", 1)[1].split()
+        subcommand = entry.rsplit(" sarj-standards ", 1)[1].split()
         if not pass_filenames_false:
             subcommand.append("src/app.py")
         proc = _cli(*subcommand, cwd=tmp_path)
@@ -1396,8 +1395,7 @@ def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> Non
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  jobs:\n    - name: standards\n"
-        "      run: uv run --no-config --no-project --python 3.14 python .sarj/standards "
-        "check --staged --trust-repository-code -- {staged_files}\n",
+        f"      run: {BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}\n",
         encoding="utf-8",
     )
 
@@ -1699,10 +1697,10 @@ def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path)
 
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "uv run --frozen" not in generated
-    assert "uv run --no-config --no-project --python 3.14 python .sarj/standards" in generated
+    assert BOOTSTRAP_COMMAND in generated
     # `check` runs the Python/SQL/IaC registries; a TypeScript repo has nothing
     # to feed them, and a hook that lints nothing is a hook that hides.
-    assert ".sarj/standards check" in generated
+    assert f"{BOOTSTRAP_COMMAND} check" in generated
 
 
 @pytest.mark.parametrize("ecosystem", ["python", "typescript"])
@@ -1723,7 +1721,7 @@ def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: s
     assert uv_required is not None
     uv_version = uv_required.removeprefix("==")
     assert f"version: '{uv_version}'" in rendered.stdout
-    assert ".sarj/standards check" in rendered.stdout
+    assert f"{BOOTSTRAP_COMMAND} check" in rendered.stdout
     if ecosystem == "python":
         assert "uv sync --locked" not in rendered.stdout
     else:
