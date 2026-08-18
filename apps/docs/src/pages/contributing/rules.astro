@@ -9,6 +9,18 @@ const prepare = [
   'sarj-standards --root . maintain rules changes --before origin/main --after HEAD',
   'make verify',
 ].join('\n');
+
+const badExample = `class Counter extends React.Component {
+  increment() {
+    this.state.count += 1;
+  }
+}`;
+
+const goodExample = `class Counter extends React.Component {
+  increment() {
+    this.setState(({ count }) => ({ count: count + 1 }));
+  }
+}`;
 ---
 
 <ReferencePage
@@ -23,6 +35,16 @@ const prepare = [
         focused positive, negative, and near-miss cases, and complete source-owned metadata. Register the finished module,
         then run the warning-first preparation sequence below.
       </p>
+      <p>
+        Every proposed rule, including an upstream rule added to a shared config, must ship with executable positive and
+        negative behavioral unit tests and public bad and good examples. A test that only checks the configured rule ID or
+        severity is not behavioral coverage.
+      </p>
+      <h2>Behavioral example</h2>
+      <p>Bad: direct React state mutation bypasses React's update lifecycle.</p>
+      <Code code={badExample} lang="tsx" wrap />
+      <p>Good: update state through React's state API.</p>
+      <Code code={goodExample} lang="tsx" wrap />
       <Code code={prepare} lang="bash" frame="terminal" wrap />
       <p>
         <code>prepare</code> validates the live registry and documentation, records the warning-first lifecycle,

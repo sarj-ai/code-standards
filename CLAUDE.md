@@ -3,8 +3,11 @@
 Run `make setup` at the start of a fresh checkout. This installs Lefthook before
 dependency setup. Never use `--no-verify`; fix the actionable hook output and retry.
 
-When adding a lint rule, update its implementation, registry, strict configuration,
-tests, owning package version, lockfile, and any exact `sarj-standards`
+Every proposed lint rule, whether custom or upstream, MUST include executable
+positive and negative behavioral unit tests plus public bad and good examples.
+A config-presence or severity assertion does not count as behavioral coverage.
+When adding a custom lint rule, also update its implementation, registry, strict
+configuration, owning package version, lockfile, and any exact `sarj-standards`
 dependency in one change. Run `make verify` before review.
 
 `make dogfood` dynamically enables every registered Python and TypeScript custom

@@ -17,7 +17,7 @@ make setup
 make verify
 ```
 
-Once a new rule and its tests are registered, stage it as a warning and validate it locally:
+Every proposed rule, whether custom or upstream, must include executable positive and negative behavioral unit tests plus public bad and good examples. Configuration-only assertions do not count as behavioral coverage. Once a custom rule and its tests are registered, stage it as a warning and validate it locally:
 
 ```bash
 sarj-standards --root . maintain rules stage-warning python:no-string-concat-in-loop

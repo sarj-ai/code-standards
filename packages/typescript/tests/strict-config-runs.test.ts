@@ -59,6 +59,19 @@ async function lint(file: string): Promise<Linter.LintMessage[]> {
   return results.flatMap((result) => result.messages);
 }
 
+async function lintWith(
+  createConfig: ConfigFactory,
+  file: string,
+): Promise<Linter.LintMessage[]> {
+  const eslint = new ESLint({
+    cwd: FIXTURE_DIR,
+    overrideConfigFile: true,
+    overrideConfig: createConfig(),
+  });
+  const results = await eslint.lintFiles([resolve(FIXTURE_DIR, file)]);
+  return results.flatMap((result) => result.messages);
+}
+
 function severity(setting: unknown): unknown {
   return Array.isArray(setting) ? setting[0] : setting;
 }
@@ -83,6 +96,30 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       "@typescript-eslint/await-thenable",
     );
   });
+
+  it.each(CONFIG_FACTORIES)(
+    "%s reports direct React state mutation",
+    async (_name, createConfig) => {
+      const messages = await lintWith(createConfig, "react-state-mutation-invalid.tsx");
+      const findings = messages.filter(
+        (message) => message.ruleId === "react/no-direct-mutation-state",
+      );
+
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.severity).toBe(2);
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s accepts React setState updates",
+    async (_name, createConfig) => {
+      const messages = await lintWith(createConfig, "react-state-mutation-valid.tsx");
+
+      expect(messages.map((message) => message.ruleId)).not.toContain(
+        "react/no-direct-mutation-state",
+      );
+    },
+  );
 
   it.each(CONFIG_FACTORIES)(
     "%s lints an excluded Vite config with syntax-aware rules",

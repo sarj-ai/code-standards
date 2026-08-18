@@ -26,11 +26,14 @@ running or reporting a corpus evaluation.
    Prefer augmenting a maintained upstream rule or preset.
 3. Select syntax-aware analysis whenever comments, strings, scopes, aliases, or
    nesting can make regex ambiguous. Never infer intent from names alone.
-4. Write labeled `EvaluationCase` values before implementation. Cover exact
-   positives, minimal negatives, near misses, nested forms, aliases, generated
-   code, fixtures, suppressions, malformed input, duplicate diagnostics, and
-   multi-rule precedence. For fixes, include semantic preservation and a second
-   pass that must produce no change.
+4. Every proposed rule, whether custom or upstream, MUST have executable
+   behavioral unit tests with at least one exact positive and one exact negative,
+   plus public bad and good examples. Config-presence, rule-id, or severity-only
+   assertions do not satisfy this requirement. Write labeled `EvaluationCase`
+   values before implementation. Also cover near misses, nested forms, aliases,
+   generated code, fixtures, suppressions, malformed input, duplicate diagnostics,
+   and multi-rule precedence. For fixes, include semantic preservation and a
+   second pass that must produce no change.
 5. Implement the smallest rule and register it atomically with its metadata,
    strict config, ledger entry, tests, docs, and owning package version. Keep a
    new judgment-heavy rule at warning severity. From the Standards repository,
