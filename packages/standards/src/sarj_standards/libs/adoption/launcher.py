@@ -138,7 +138,10 @@ def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
             contents,
         )
         contents = _LEGACY_MAKE_VERSION_PRINT.sub(f"\t@{repository_command('--version')}", contents)
-        contents = _LEGACY_MAKE_RUN_ASSIGNMENT.sub("", contents)
+        contents = _LEGACY_MAKE_RUN_ASSIGNMENT.sub(
+            lambda match: "\r\n" if match.group(0).endswith("\r\n") else ("\n" if match.group(0).endswith("\n") else ""),
+            contents,
+        )
         contents = _LEGACY_MAKE_VERSION_ASSIGNMENT.sub(
             f"STANDARDS_VERSION := $(shell {repository_command('--version')})\n",
             contents,

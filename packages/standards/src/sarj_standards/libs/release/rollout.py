@@ -16,6 +16,7 @@ import tempfile
 import tomllib
 from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 
+from sarj_standards.libs.adoption import launcher
 from sarj_standards.libs.adoption import manifest as adoption_manifest
 
 
@@ -40,6 +41,7 @@ SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".go",
 MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
 MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
 COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
+MANAGED_DELETIONS = frozenset({launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix()})
 
 
 class RolloutError(RuntimeError):
@@ -406,7 +408,7 @@ def changed_paths(repo: Path, runner: CommandRunner) -> tuple[str, ...]:
             msg = "git returned an invalid porcelain status record"
             raise RolloutError(msg)
         state, path = record[:2], record[3:]
-        if "D" in state or "R" in state:
+        if "R" in state or ("D" in state and path not in MANAGED_DELETIONS):
             msg = f"update may not delete or rename files: {path}"
             raise RolloutError(msg)
         paths.append(path)
@@ -416,11 +418,14 @@ def changed_paths(repo: Path, runner: CommandRunner) -> tuple[str, ...]:
 
 def committed_paths(repo: Path, base: str, runner: CommandRunner) -> tuple[str, ...]:
     comparison = f"origin/{base}...HEAD"
-    removed = stdout(runner.run(("git", "diff", "--name-only", "--diff-filter=DR", comparison), cwd=repo))
-    if removed:
-        msg = f"rollout branch may not delete or rename files: {removed}"
+    renamed = stdout(runner.run(("git", "diff", "--name-only", "--diff-filter=R", comparison), cwd=repo))
+    deleted = stdout(runner.run(("git", "diff", "--name-only", "--diff-filter=D", comparison), cwd=repo))
+    unsafe_deletions = tuple(path for path in deleted.splitlines() if path not in MANAGED_DELETIONS)
+    if renamed or unsafe_deletions:
+        affected = renamed or ", ".join(unsafe_deletions)
+        msg = f"rollout branch may not delete or rename files: {affected}"
         raise RolloutError(msg)
-    result = runner.run(("git", "diff", "--name-only", "-z", "--diff-filter=ACM", comparison), cwd=repo)
+    result = runner.run(("git", "diff", "--name-only", "-z", "--diff-filter=ACMD", comparison), cwd=repo)
     return tuple(path for path in (result.stdout or "").split("\0") if path)
 
 
@@ -492,6 +497,13 @@ def unauthenticated_environment() -> dict[str, str]:
     environment = dict(os.environ)  # ruff: ignore[banned-api] — copy before scrubbing auth
     environment.pop("GH_TOKEN", None)
     environment.pop("GITHUB_TOKEN", None)
+    inherited_virtual_env = environment.pop("VIRTUAL_ENV", None)
+    environment.pop("UV_PROJECT_ENVIRONMENT", None)
+    if inherited_virtual_env:
+        virtual_bin = Path(inherited_virtual_env) / ("Scripts" if os.name == "nt" else "bin")
+        environment["PATH"] = os.pathsep.join(
+            entry for entry in environment.get("PATH", "").split(os.pathsep) if Path(entry) != virtual_bin
+        )
     for name in tuple(environment):
         if name.startswith("STANDARDS_ROLLOUT_"):
             environment.pop(name)

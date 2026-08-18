@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -133,15 +134,36 @@ class TestSafety:
         with pytest.raises(rollout.RolloutError, match="delete or rename"):
             rollout.changed_paths(Path("repo"), runner)
 
+    def test_status_parser_allows_the_prevalidated_retired_launcher_deletion(self) -> None:
+        runner = FakeRunner([(0, " D .sarj/standards\0")])
+
+        assert rollout.changed_paths(Path("repo"), runner) == (".sarj/standards",)
+
+    def test_committed_paths_include_the_prevalidated_retired_launcher_deletion(self) -> None:
+        runner = FakeRunner([(0, ""), (0, ".sarj/standards\n"), (0, ".sarj/standards\0")])
+
+        assert rollout.committed_paths(Path("repo"), "main", runner) == (".sarj/standards",)
+        assert "--diff-filter=ACMD" in runner.commands[-1]
+
+    def test_committed_paths_reject_other_deletions(self) -> None:
+        runner = FakeRunner([(0, ""), (0, "protected.toml\n")])
+
+        with pytest.raises(rollout.RolloutError, match="delete or rename"):
+            rollout.committed_paths(Path("repo"), "main", runner)
+
     def test_consumer_environment_scrubs_github_credentials(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("GH_TOKEN", "secret")
         monkeypatch.setenv("GITHUB_TOKEN", "secret")
-        monkeypatch.setenv("PATH", "/bin")
+        monkeypatch.setenv("VIRTUAL_ENV", "/standards/.venv")
+        monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", "/standards/.venv")
+        monkeypatch.setenv("PATH", f"/standards/.venv/bin{os.pathsep}/bin")
 
         environment = rollout.unauthenticated_environment()
 
         assert "GH_TOKEN" not in environment
         assert "GITHUB_TOKEN" not in environment
+        assert "VIRTUAL_ENV" not in environment
+        assert "UV_PROJECT_ENVIRONMENT" not in environment
         assert environment["PATH"] == "/bin"
 
     def test_repository_owned_make_pin_is_updated_exactly(self, tmp_path: Path) -> None:
