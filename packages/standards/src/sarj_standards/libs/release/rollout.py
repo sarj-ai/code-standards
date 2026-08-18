@@ -14,7 +14,10 @@ import sys
 import tempfile
 import time
 import tomllib
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
+
+import yaml
 
 from sarj_standards.libs.adoption import doctor as adoption_doctor
 from sarj_standards.libs.adoption import launcher
@@ -45,6 +48,7 @@ SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".go",
 MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
 MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
 COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
+WORKFLOW_TOOL_ACTIONS = MappingProxyType({"hashicorp/setup-terraform": ("terraform", "terraform_version")})
 MANAGED_DELETIONS = frozenset({launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix()})
 RELEASE_VISIBILITY_ATTEMPTS = 7
 RELEASE_VISIBILITY_DELAY = timedelta(seconds=10)
@@ -560,6 +564,49 @@ def consumer_verification_environment(environment: Mapping[str, str], base_sha: 
     return prepared
 
 
+def declared_workflow_tools(repo: Path) -> tuple[str, ...]:
+    requirements: dict[str, str] = {}
+    workflow_root = repo / ".github/workflows"
+    for path in sorted((*workflow_root.glob("*.yml"), *workflow_root.glob("*.yaml"))):
+        try:
+            parsed: object = yaml.safe_load(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        except (OSError, yaml.YAMLError) as exc:
+            msg = f"could not read consumer workflow tool declarations from {path}: {exc}"
+            raise RolloutError(msg) from exc
+        if not is_object(parsed):
+            continue
+        jobs = parsed.get("jobs")
+        if not is_object(jobs):
+            continue
+        for job_value in jobs.values():
+            if not is_object(job_value):
+                continue
+            steps = job_value.get("steps")
+            if not is_array(steps):
+                continue
+            for step_value in steps:
+                if not is_object(step_value):
+                    continue
+                uses = step_value.get("uses")
+                if not isinstance(uses, str):
+                    continue
+                action = uses.partition("@")[0]
+                declaration = WORKFLOW_TOOL_ACTIONS.get(action)
+                if declaration is None:
+                    continue
+                tool, version_key = declaration
+                options = step_value.get("with")
+                version = options.get(version_key) if is_object(options) else None
+                if not isinstance(version, str) or VERSION_RE.fullmatch(version) is None:
+                    msg = f"{path}: {action} must declare an exact {version_key} for rollout verification"
+                    raise RolloutError(msg)
+                previous = requirements.setdefault(tool, version)
+                if previous != version:
+                    msg = f"consumer workflows declare conflicting {tool} versions: {previous} and {version}"
+                    raise RolloutError(msg)
+    return tuple(f"{tool}@{version}" for tool, version in sorted(requirements.items()))
+
+
 def provision_consumer_tools(
     repo: Path,
     shim_directory: Path,
@@ -568,14 +615,22 @@ def provision_consumer_tools(
 ) -> ProvisionedTools:
     prepared = dict(environment)
     mise_prefix: tuple[str, ...] = ()
-    if any((repo / relative).is_file() for relative in MISE_CONFIG_PATHS):
+    has_mise_config = any((repo / relative).is_file() for relative in MISE_CONFIG_PATHS)
+    workflow_tools = declared_workflow_tools(repo)
+    if has_mise_config or workflow_tools:
         prepared["MISE_YES"] = "1"
         prepared["MISE_TRUSTED_CONFIG_PATHS"] = str(repo.resolve())
-        installed = runner.run(("mise", "install"), cwd=repo, env=prepared, check=False)
-        if installed.returncode != 0:
-            msg = "could not provision repository-declared mise tools:\n" + verification_detail(installed)
-            raise RolloutError(msg)
-        mise_prefix = ("mise", "exec", "--")
+        if has_mise_config:
+            installed = runner.run(("mise", "install"), cwd=repo, env=prepared, check=False)
+            if installed.returncode != 0:
+                msg = "could not provision repository-declared mise tools:\n" + verification_detail(installed)
+                raise RolloutError(msg)
+        if workflow_tools:
+            installed = runner.run(("mise", "install", *workflow_tools), cwd=repo, env=prepared, check=False)
+            if installed.returncode != 0:
+                msg = "could not provision workflow-declared tools:\n" + verification_detail(installed)
+                raise RolloutError(msg)
+        mise_prefix = ("mise", "exec", *workflow_tools, "--")
 
     adopted = adoption_manifest.load(repo)
     python_root = None if adopted is None else repo / adopted.python_dest
