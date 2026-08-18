@@ -19,6 +19,7 @@ from sarj_python_lint.rules.duplicated_override_docstring import (
 )
 from sarj_python_lint.rules.fastapi_openapi_contract import FastapiOpenapiContract
 from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
+from sarj_python_lint.rules.get_delegates_to_get_many import GetDelegatesToGetMany
 from sarj_python_lint.rules.iac_source_coupled_test import IacSourceCoupledTest
 from sarj_python_lint.rules.invalid_pydantic_field_default import (
     InvalidPydanticFieldDefault,
@@ -37,7 +38,6 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
 )
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import NoFileLevelEscapeHatchNoqa
-from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
 from sarj_python_lint.rules.no_first_party_private_import import (
     NoFirstPartyPrivateImport,
 )
@@ -180,12 +180,12 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferMatchAssertNever.id: PreferMatchAssertNever,
         RequireKeywordOnlySwapProneParams.id: RequireKeywordOnlySwapProneParams,
         RequirePydanticForExternalJson.id: RequirePydanticForExternalJson,
-        NoFileLevelSuppression.id: NoFileLevelSuppression,
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,
         MockWithoutSpec.id: MockWithoutSpec,
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         FixtureReturnsBareTuple.id: FixtureReturnsBareTuple,
+        GetDelegatesToGetMany.id: GetDelegatesToGetMany,
         KwargHeavyConstructionInTest.id: KwargHeavyConstructionInTest,
         DefectXfailRequiresStrict.id: DefectXfailRequiresStrict,
         NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
