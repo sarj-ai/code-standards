@@ -54,10 +54,15 @@ def _table(value: object) -> dict[str, object]:
     return {key: item for key, item in value.items() if isinstance(key, str)}  # pyright: ignore[reportUnknownVariableType]
 
 
-def lock_argv(project: Path) -> tuple[str, ...]:
-    """Run lock resolution with a uv release satisfying the consumer contract."""
+def argv(project: Path, *arguments: str) -> tuple[str, ...]:
+    """Run uv arguments with a release satisfying the consumer contract."""
     source = version_file(project)
     required = None if source is None else required_version(source)
     if required is None:
-        return ("uv", "lock")
-    return ("uvx", "--no-config", "--isolated", "--from", f"uv{required}", "uv", "lock")
+        return ("uv", *arguments)
+    return ("uvx", "--no-config", "--isolated", "--from", f"uv{required}", "uv", *arguments)
+
+
+def lock_argv(project: Path) -> tuple[str, ...]:
+    """Run lock resolution with a uv release satisfying the consumer contract."""
+    return argv(project, "lock")
