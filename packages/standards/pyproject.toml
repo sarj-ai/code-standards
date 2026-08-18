@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards"
-version = "6.1.0"
+version = "6.1.1"
 description = "One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
