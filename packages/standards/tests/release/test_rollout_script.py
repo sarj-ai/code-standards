@@ -114,6 +114,14 @@ class TestSafety:
             (MANIFEST, "uv.lock", "eslint.config.mjs", ".github/workflows/standards.yml", ".github/workflows/ci.yml")
         )
 
+    def test_prevalidated_pin_bearing_workflow_is_allowed(self) -> None:
+        workflow = ".github/workflows/ci-internal-tools.yml"
+
+        rollout.reject_unsafe_diff((MANIFEST, workflow), allowed_workflow_paths=frozenset({workflow}))
+
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, workflow))
+
     def test_only_prevalidated_retired_suppression_source_is_allowed(self) -> None:
         source = "apps/web/src/index.ts"
 

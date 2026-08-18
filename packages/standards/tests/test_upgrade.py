@@ -93,6 +93,47 @@ def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) ->
     assert consumer_config.read_text(encoding="utf-8") == "export default [];\n"
 
 
+def test_upgrade_synchronizes_identical_generated_config_mirrors(tmp_path: Path) -> None:
+    primary = tmp_path / "apps" / "dashboard"
+    mirror = tmp_path / "apps" / "banking"
+    fixture = tmp_path / "tests" / "fixtures" / "legacy"
+    for project in (primary, mirror, fixture):
+        project.mkdir(parents=True)
+        (project / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
+    (primary / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", "apps/dashboard", hook_manager="none")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    plan = upgrade.build_plan(tmp_path)
+    targets = {target for _source, target in plan.config_writes}
+
+    assert primary / "eslint.strict.mjs" in targets
+    assert mirror / "eslint.strict.mjs" in targets
+    assert fixture / "eslint.strict.mjs" not in targets
+
+
+def test_upgrade_does_not_touch_a_divergent_config_with_the_same_name(tmp_path: Path) -> None:
+    primary = tmp_path / "apps" / "dashboard"
+    custom = tmp_path / "apps" / "banking"
+    for project in (primary, custom):
+        project.mkdir(parents=True)
+    (primary / "eslint.strict.mjs").write_text("export default [];\n", encoding="utf-8")
+    custom_config = custom / "eslint.strict.mjs"
+    custom_config.write_text("export default [{ custom: true }];\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
+    (primary / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    adopted = manifest.Manifest("0.0.1", ("eslint",), ".", "apps/dashboard", hook_manager="none")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    targets = {target for _source, target in upgrade.build_plan(tmp_path).config_writes}
+
+    assert custom_config not in targets
+    assert custom_config.read_text(encoding="utf-8") == "export default [{ custom: true }];\n"
+
+
 def test_upgrade_plan_normalizes_a_repository_alias(tmp_path: Path) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()

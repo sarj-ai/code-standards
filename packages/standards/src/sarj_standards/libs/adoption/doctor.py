@@ -69,7 +69,7 @@ _PIN = re.compile(
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
 )
 _PREAPPROVED_ESLINT = re.compile(
-    r'(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n'
+    r"(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n"
     r'(?:[ \t]+-[^\n]*\n)*?[ \t]+-\s*["\']?@sarj/eslint-plugin@)'
     r'(?P<version>[0-9][0-9A-Za-z._+\-]*)(?P<suffix>["\']?\s*(?:#.*)?)$'
 )
