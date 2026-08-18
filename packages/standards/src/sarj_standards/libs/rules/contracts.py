@@ -22,8 +22,6 @@ MessageId = NewType("MessageId", str)
 
 
 class Language(StrEnum):
-    """Syntax families supported by the standards rule catalog."""
-
     PYTHON = "python"
     TYPESCRIPT = "typescript"
     MARKDOWN = "markdown"
@@ -33,15 +31,11 @@ class Language(StrEnum):
 
 
 class RuleOrigin(StrEnum):
-    """Whether an existing rule is upstream or maintained by Sarj."""
-
     UPSTREAM = "upstream"
     SARJ = "sarj"
 
 
 class RuleEngine(StrEnum):
-    """Stable engine namespace used by configuration, diagnostics, and URLs."""
-
     ESLINT = "eslint"
     IAC = "iac"
     PYTHON = "python"
@@ -77,7 +71,6 @@ class RuleSelector:
 
     @property
     def native_rule_id(self) -> str:
-        """Return the analyzer-native rule ID for diagnostic matching."""
         if self.engine is RuleEngine.ESLINT:
             return f"@sarj/{self.rule_id}"
         return str(self.rule_id)
@@ -112,8 +105,6 @@ class RuleSelection:
 
 
 class RuleCategory(StrEnum):
-    """Small, cross-engine taxonomy used to browse the generated catalog."""
-
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
     MAINTAINABILITY = "maintainability"
@@ -124,32 +115,24 @@ class RuleCategory(StrEnum):
 
 
 class DefaultLevel(StrEnum):
-    """Default policy level derived from a shipped Standards profile."""
-
     ERROR = "error"
     OFF = "off"
     WARNING = "warning"
 
 
 class RuleStatus(StrEnum):
-    """Lifecycle state rendered in the generated rule directory."""
-
     ACTIVE = "active"
     RENAMED = "renamed"
     RETIRED = "retired"
 
 
 class AutofixPolicy(StrEnum):
-    """The strongest mutation a proposed rule may safely offer."""
-
     NONE = "none"
     SUGGESTION = "suggestion"
     SAFE = "safe"
 
 
 class ExpectedOutcome(StrEnum):
-    """Expected checker result for one evaluation case."""
-
     MATCH = "match"
     NO_MATCH = "no-match"
 

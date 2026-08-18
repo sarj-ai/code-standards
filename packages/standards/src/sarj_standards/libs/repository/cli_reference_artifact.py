@@ -28,8 +28,6 @@ class ReferenceSyncResult:
 
 
 class ReferenceArgument(TypedDict):
-    """One positional argument or option in the stable CLI reference."""
-
     kind: Literal["positional", "option"]
     names: list[str]
     metavar: str | None
@@ -40,8 +38,6 @@ class ReferenceArgument(TypedDict):
 
 
 class ReferenceCommand(TypedDict):
-    """One command and its recursively nested subcommands."""
-
     name: str
     path: list[str]
     usage: str
@@ -51,15 +47,11 @@ class ReferenceCommand(TypedDict):
 
 
 class ReferenceLauncher(TypedDict):
-    """Source-derived commands for first-time use."""
-
     install: str
     runLatest: str
 
 
 class CliReference(TypedDict):
-    """Versioned, source-derived command-line reference."""
-
     schemaVersion: int
     version: str
     program: str

@@ -26,6 +26,11 @@ class _Location(NamedTuple):
     column: int
 
 
+class _PackageKey(NamedTuple):
+    ecosystem: Ecosystem
+    normalized_name: str
+
+
 @dataclass(frozen=True, slots=True)
 class LibraryMapping:
     id: str
@@ -476,7 +481,7 @@ def _scan_manifests(
         else:
             dependencies = _requirements_dependencies(path, root, frozenset())
         for source, ecosystem, package in dependencies:
-            entry = package_index.get((ecosystem, _normalize(package, ecosystem)))
+            entry = package_index.get(_PackageKey(ecosystem, _normalize(package, ecosystem)))
             if entry is None or entry.id in allowed:
                 continue
             text = source.read_text(encoding="utf-8-sig")
@@ -487,8 +492,12 @@ def _scan_manifests(
     return tuple(sorted(set(findings), key=lambda item: (str(item.path), item.line, item.id, item.package)))
 
 
-def _package_index() -> dict[tuple[Ecosystem, str], LibraryMapping]:
-    return {(entry.ecosystem, _normalize(name, entry.ecosystem)): entry for entry in CATALOG for name in entry.packages}
+def _package_index() -> dict[_PackageKey, LibraryMapping]:
+    return {
+        _PackageKey(entry.ecosystem, _normalize(name, entry.ecosystem)): entry
+        for entry in CATALOG
+        for name in entry.packages
+    }
 
 
 def _normalize(name: str, ecosystem: Ecosystem) -> str:

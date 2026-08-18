@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path, PurePosixPath
 import re
-from typing import ClassVar, override
+from typing import ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -23,6 +23,11 @@ from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_su
 
 # Name tails that mark a class as a service in this codebase's own vocabulary.
 _SERVICE_NAME_RE = re.compile(r"(?:Service|Store|DAO|Dao|Gateway|Provider)$")
+
+
+class _ParameterDefault(NamedTuple):
+    parameter: ast.arg
+    default: ast.expr | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -357,13 +362,13 @@ def _handles_http_requests(node: ast.ClassDef) -> bool:
 
 def _params_with_defaults(
     method: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> list[tuple[ast.arg, ast.expr | None]]:
+) -> list[_ParameterDefault]:
     args = method.args
     positional = [*args.posonlyargs, *args.args]
     padding: list[ast.expr | None] = [None] * (len(positional) - len(args.defaults))
     return [
-        *zip(positional, [*padding, *args.defaults], strict=True),
-        *zip(args.kwonlyargs, args.kw_defaults, strict=True),
+        *map(_ParameterDefault, positional, [*padding, *args.defaults], strict=True),
+        *map(_ParameterDefault, args.kwonlyargs, args.kw_defaults, strict=True),
     ]
 
 

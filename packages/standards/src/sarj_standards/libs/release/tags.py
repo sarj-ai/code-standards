@@ -30,8 +30,6 @@ _TAGGER_NAME = "sarj-ai release automation"
 
 
 class ReleaseTargetId(StrEnum):
-    """Stable package identities shared by release manifests and tags."""
-
     TYPESCRIPT = "typescript"
     BOOTSTRAP = "bootstrap"
     PYTHON = "python"

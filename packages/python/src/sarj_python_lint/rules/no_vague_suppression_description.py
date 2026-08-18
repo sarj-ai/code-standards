@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
 )
 from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
@@ -30,8 +31,9 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _VAGUE_RE = re.compile(
-    r"^(?:needed|required|intentional(?:ly)?|ignore(?:d)?|false positive|type error|"
-    r"python|mypy|pyright|ruff|to satisfy (?:the )?(?:linter|type checker|mypy|pyright|ruff))\.?$",
+    r"^(?:(?:needed|required|necessary|intentional(?:ly)?|ignore(?:d)?|false[- ]positive|type error|"
+    r"lint issue|python|mypy|pyright|ruff)(?:\s+(?:here|for now|workaround))?|"
+    r"to satisfy (?:the )?(?:linter|type checker|mypy|pyright|ruff))\.?$",
     re.IGNORECASE,
 )
 
@@ -96,6 +98,7 @@ class NoVagueSuppressionDescription(Rule):
                 col=comment.col,
                 code=self.code,
                 message=self.description,
+                severity=Severity.WARNING,
                 column_encoding=ColumnEncoding.CODEPOINTS,
             )
             for comment in comments

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, final, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 
 
 _FETCH_METHODS = frozenset({"fetchall", "fetchmany", "fetchone"})
+
+
+class _BoundCursor(NamedTuple):
+    call: ast.Call
+    variable: str
 
 
 @final
@@ -102,8 +107,8 @@ class RequireValidatedRowFactory(Rule):
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
 
-def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.Call, str]]:
-    result: list[tuple[ast.Call, str]] = []
+def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_BoundCursor]:
+    result: list[_BoundCursor] = []
     for node in ast.walk(function):
         if not isinstance(node, (ast.With, ast.AsyncWith)):
             continue
@@ -115,7 +120,7 @@ def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tup
                 and expression.func.attr == "cursor"
                 and isinstance(item.optional_vars, ast.Name)
             ):
-                result.append((expression, item.optional_vars.id))
+                result.append(_BoundCursor(expression, item.optional_vars.id))
     return result
 
 

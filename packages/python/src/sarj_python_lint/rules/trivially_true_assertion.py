@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -77,6 +77,12 @@ class _EchoOperands:
 
 
 type _Assertion = ast.Assert | ast.Call
+
+
+class _AssertionFinding(NamedTuple):
+    node: _Assertion
+    diagnosis: str
+
 
 _KWARG_DIAGNOSIS = (
     "this reads back the literal the test just handed the constructor, so it can only fail if attribute "
@@ -178,9 +184,9 @@ class TriviallyTrueAssertion(Rule):
             return []
 
         index = _index_module(tree)
-        findings: dict[int, tuple[_Assertion, str]] = {}
+        findings: dict[int, _AssertionFinding] = {}
         for node, diagnosis in _construction_findings(index):
-            _ = findings.setdefault(id(node), (node, diagnosis))
+            _ = findings.setdefault(id(node), _AssertionFinding(node, diagnosis))
 
         diags = [
             Diagnostic(
@@ -196,18 +202,18 @@ class TriviallyTrueAssertion(Rule):
         return diags
 
 
-def _one_per_test(index: _Index, findings: dict[int, tuple[_Assertion, str]]) -> list[tuple[_Assertion, str]]:
-    anchors: dict[int, tuple[_Assertion, str]] = {}
+def _one_per_test(index: _Index, findings: dict[int, _AssertionFinding]) -> list[_AssertionFinding]:
+    anchors: dict[int, _AssertionFinding] = {}
     for node, diagnosis in findings.values():
         scope = index.owners.get(id(node))
         key = id(node) if scope is None else id(scope)
         earlier = anchors.get(key)
         if earlier is None or (node.lineno, node.col_offset) < (earlier[0].lineno, earlier[0].col_offset):
-            anchors[key] = (node, diagnosis)
+            anchors[key] = _AssertionFinding(node, diagnosis)
     return list(anchors.values())
 
 
-def _advice(scope: _Scope | None, findings: dict[int, tuple[_Assertion, str]]) -> str:
+def _advice(scope: _Scope | None, findings: dict[int, _AssertionFinding]) -> str:
     if scope is None or any(id(node) not in findings for node in scope.asserts):
         return _ADVICE
     return _ONLY_ASSERTION_ADVICE
@@ -275,9 +281,9 @@ def _record_local(node: ast.AST, scope: _Scope) -> None:
 # Both shapes: what the test constructed a line earlier.                       #
 
 
-def _construction_findings(index: _Index) -> list[tuple[_Assertion, str]]:
+def _construction_findings(index: _Index) -> list[_AssertionFinding]:
     echoes: list[_KwargEcho] = []
-    hits: list[tuple[_Assertion, str]] = []
+    hits: list[_AssertionFinding] = []
     for scope in index.scopes:
         if not scope.asserts or not scope.calls:
             continue
@@ -289,10 +295,12 @@ def _construction_findings(index: _Index) -> list[tuple[_Assertion, str]]:
             if echo is not None:
                 echoes.append(echo)
             elif _is_isinstance_echo(node, constructed, scope.asserts):
-                hits.append((node, _ISINSTANCE_DIAGNOSIS))
+                hits.append(_AssertionFinding(node, _ISINSTANCE_DIAGNOSIS))
 
     coercing = {echo.field for echo in echoes if not echo.echoes}
-    hits.extend((echo.node, _KWARG_DIAGNOSIS) for echo in echoes if echo.echoes and echo.field not in coercing)
+    hits.extend(
+        _AssertionFinding(echo.node, _KWARG_DIAGNOSIS) for echo in echoes if echo.echoes and echo.field not in coercing
+    )
     return hits
 
 

@@ -21,8 +21,6 @@ class InventorySyncResult:
 
 
 class RuleInventoryEntry(TypedDict):
-    """One rule's stable runtime-discovery fields."""
-
     family: str
     id: str
     code: str
@@ -31,8 +29,6 @@ class RuleInventoryEntry(TypedDict):
 
 
 class RuleInventory(TypedDict):
-    """The versioned rule inventory shipped with Standards."""
-
     schemaVersion: int
     rules: list[RuleInventoryEntry]
 

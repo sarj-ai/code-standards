@@ -19,8 +19,6 @@ class RuleEvaluator(Protocol):
 
 
 class PromotionDecision(StrEnum):
-    """Evidence-based rollout state for a candidate rule."""
-
     REJECT = "reject"
     WARN = "warn"
     ERROR = "error"

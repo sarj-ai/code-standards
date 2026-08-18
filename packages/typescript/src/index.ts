@@ -166,6 +166,7 @@ const advisoryRules = [
   "iac-source-coupled-test",
   "repeated-static-call-cases",
   "source-coupled-test",
+  "test-phase-label-comment",
 ] as const;
 
 const recommendedRules = {
@@ -208,7 +209,6 @@ const recommendedRules = {
   "@sarj/no-unsafe-mock-casting": "error",
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
-  "@sarj/test-phase-label-comment": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
@@ -231,6 +231,7 @@ const recommendedRules = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "warn",
+  "@sarj/test-phase-label-comment": "warn",
   "@sarj/zod-naming-convention": "error",
 } as const;
 
@@ -278,7 +279,6 @@ const strictRules = {
   "@sarj/no-unsafe-mock-casting": "error",
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
-  "@sarj/test-phase-label-comment": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
@@ -301,6 +301,7 @@ const strictRules = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "warn",
+  "@sarj/test-phase-label-comment": "warn",
   "@sarj/zod-naming-convention": "error",
 } as const;
 

@@ -17,15 +17,11 @@ _REVISION = re.compile(r"^[0-9a-f]{40}$")
 
 
 class CorpusKind(StrEnum):
-    """How a local corpus checkout is pinned."""
-
     LOCAL = "local"
     GIT = "git"
 
 
 class CorpusVisibility(StrEnum):
-    """Whether corpus identities may appear in public reports."""
-
     PUBLIC = "public"
     PRIVATE = "private"
 

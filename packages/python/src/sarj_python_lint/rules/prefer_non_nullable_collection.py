@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -26,6 +26,11 @@ if TYPE_CHECKING:
 
 _UNION_NAMES = frozenset({"Optional", "Union"})
 _NORMALIZATION_VALUE_COUNT = 2
+
+
+class _ParameterDefault(NamedTuple):
+    parameter: ast.arg
+    default: ast.expr | None
 
 
 class PreferNonNullableCollection(Rule):
@@ -144,13 +149,13 @@ def _equivalent_empty_parameters(
     return matches
 
 
-def _parameters_with_defaults(arguments: ast.arguments) -> list[tuple[ast.arg, ast.expr | None]]:
+def _parameters_with_defaults(arguments: ast.arguments) -> list[_ParameterDefault]:
     positional = [*arguments.posonlyargs, *arguments.args]
     positional_defaults: list[ast.expr | None] = [None] * (len(positional) - len(arguments.defaults))
     positional_defaults.extend(arguments.defaults)
     return [
-        *zip(positional, positional_defaults, strict=True),
-        *zip(arguments.kwonlyargs, arguments.kw_defaults, strict=True),
+        *map(_ParameterDefault, positional, positional_defaults, strict=True),
+        *map(_ParameterDefault, arguments.kwonlyargs, arguments.kw_defaults, strict=True),
     ]
 
 

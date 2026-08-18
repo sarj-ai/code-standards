@@ -38,6 +38,16 @@ _LOCAL_READ_METHODS = frozenset({"read_bytes", "read_text"})
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src", "examples"})
 
 
+class _OwnedName(NamedTuple):
+    owner: int
+    name: str
+
+
+class _ExternalRecordFinding(NamedTuple):
+    sink: ast.expr
+    origin: ast.Call
+
+
 @dataclass(frozen=True, slots=True)
 class _ModuleSummaries:
     decoder_parameters: dict[str, int]
@@ -46,7 +56,7 @@ class _ModuleSummaries:
     response_functions: frozenset[str]
     response_methods: frozenset[tuple[int, str]]
     function_owners: dict[int, int]
-    http_client_attributes: frozenset[tuple[int, str]]
+    http_client_attributes: frozenset[_OwnedName]
 
 
 class _RecordAccess(NamedTuple):
@@ -230,8 +240,8 @@ def _returns_http_response(function: ast.FunctionDef | ast.AsyncFunctionDef, imp
     return function.returns is not None and imports.resolves(function.returns, sources=_HTTP_MODULES, symbol="Response")
 
 
-def _http_client_attribute_names(tree: ast.Module, imports: ImportIndex) -> frozenset[tuple[int, str]]:
-    owned_attributes: set[tuple[int, str]] = set()
+def _http_client_attribute_names(tree: ast.Module, imports: ImportIndex) -> frozenset[_OwnedName]:
+    owned_attributes: set[_OwnedName] = set()
     for class_node in nodes(tree, ast.ClassDef):
         assignments: dict[str, list[bool]] = {}
         for function in class_node.body:
@@ -260,7 +270,9 @@ def _http_client_attribute_names(tree: ast.Module, imports: ImportIndex) -> froz
                             isinstance(node.value, ast.Name) and node.value.id in typed_parameters
                         )
         owner = id(class_node)
-        owned_attributes.update((owner, name) for name, values in assignments.items() if values and all(values))
+        owned_attributes.update(
+            _OwnedName(owner, name) for name, values in assignments.items() if values and all(values)
+        )
     return frozenset(owned_attributes)
 
 
@@ -308,7 +320,7 @@ def _function_findings(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     imports: ImportIndex,
     summaries: _ModuleSummaries,
-) -> list[tuple[ast.expr, ast.Call]]:
+) -> list[_ExternalRecordFinding]:
     scope = _own_scope(function)
     local_positions = summaries.local_parameters.get(function.name, frozenset())
     parameters = frozenset(
@@ -318,15 +330,17 @@ def _function_findings(
     response_names = _http_response_names(scope, imports, summaries, function)
     bindings = _unique_bindings(scope)
     resolver = _OriginResolver(imports, summaries, parameters, outbound_requests, response_names, bindings)
-    findings: list[tuple[ast.expr, ast.Call]] = []
+    findings: list[_ExternalRecordFinding] = []
     for node in scope:
         access = _record_access(node)
         if access is not None:
-            findings.extend((access.sink, origin) for origin in resolver.origins(access.receiver))
+            findings.extend(_ExternalRecordFinding(access.sink, origin) for origin in resolver.origins(access.receiver))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             for position in summaries.record_parameters.get(node.func.id, frozenset()):
                 if position < len(node.args):
-                    findings.extend((node, origin) for origin in resolver.origins(node.args[position]))
+                    findings.extend(
+                        _ExternalRecordFinding(node, origin) for origin in resolver.origins(node.args[position])
+                    )
     return findings
 
 

@@ -47,6 +47,11 @@ class _ExtractedCompare(NamedTuple):
     operator: str
 
 
+class _LocalBinding(NamedTuple):
+    target: str
+    value: ast.expr
+
+
 #: Sibling class attributes whose presence marks all raw-str fields as choice-like.
 CHOICES_ATTR_NAMES = frozenset({"choices", "states", "statuses", "values", "allowed"})
 
@@ -965,8 +970,8 @@ def _is_valid_url_group(value: ast.expr) -> bool:
     )
 
 
-def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str, ast.expr]]:
-    bindings: list[tuple[str, ast.expr]] = []
+def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_LocalBinding]:
+    bindings: list[_LocalBinding] = []
     stack: list[ast.AST] = list(func.body)
     while stack:
         node = stack.pop()
@@ -979,7 +984,7 @@ def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[
         elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
             targets, value = [node.target], node.value
         if value is not None:
-            bindings.extend((name, value) for target in targets for name in _bound_target_names(target))
+            bindings.extend(_LocalBinding(name, value) for target in targets for name in _bound_target_names(target))
         stack.extend(children(node))
     return bindings
 

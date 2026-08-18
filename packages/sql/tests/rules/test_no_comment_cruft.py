@@ -19,6 +19,9 @@ def _check(source: str, name: str = "migration.sql"):
         "/* CREATE TABLE old (id bigint); */\nSELECT 1;",
         "-- ===== legacy =====\nSELECT 1;",
         f"-- {_DEBT_MARKER} remove old rows\nSELECT 1;",
+        "-- SELECT id\n-- FROM legacy\n-- WHERE active;\nSELECT 1;",
+        "-- CREATE UNIQUE INDEX old_idx ON legacy (id);\nSELECT 1;",
+        "/* DROP TABLE legacy;\n * sarj-noqa: SARJ999\n */\nSELECT 1;",
     ],
 )
 def test_flags_comment_cruft(source: str) -> None:
@@ -36,6 +39,8 @@ def test_flags_comment_cruft(source: str) -> None:
         "-- Roll back from snapshot OPS-812.\nSELECT 1;",
         f"-- {_DEBT_MARKER} tracked in DB-812\nSELECT 1;",
         "-- The replica must be updated before this statement.\nSELECT 1;",
+        "-- CREATE TABLE statements must use bigint IDs.\nSELECT 1;",
+        "-- ===== See RFC 9110 =====\nSELECT 1;",
     ],
 )
 def test_preserves_non_cruft_comments(source: str) -> None:

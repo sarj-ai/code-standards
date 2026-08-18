@@ -84,8 +84,6 @@ _INVALID_DOCTOR_FINDING_IDS = frozenset(
 
 
 class Status(StrEnum):
-    """Stable outcome shared by every consumer-facing operation."""
-
     OK = "ok"
     CHANGED = "changed"
     DRIFT = "drift"
@@ -95,8 +93,6 @@ class Status(StrEnum):
 
 
 class AnalysisMode(StrEnum):
-    """Whether analysis follows adopted policy or scans the requested native corpus raw."""
-
     POLICY = "policy"
     CORPUS = "corpus"
     OBSERVE = "observe"

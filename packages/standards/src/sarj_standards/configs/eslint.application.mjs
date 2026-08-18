@@ -920,6 +920,7 @@ export function createConfig(options = {}) {
         "error",
         "no-console",
         "react-hooks/exhaustive-deps",
+        "@sarj/no-vague-suppression-description",
       ],
 
       // Dedup: TS-enum ban → @sarj/no-enum, oversized-try-block ban →
@@ -1116,7 +1117,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-whole-object-assertion": "error",
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
-      "@sarj/test-phase-label-comment": "error",
+      "@sarj/test-phase-label-comment": "warn",
       // Both architectural rules stay enabled in the shared baseline. The
       // fetch rule ships conservative client/service defaults; consumers can
       // replace its `allow` list. The storage rule is intentionally inert until

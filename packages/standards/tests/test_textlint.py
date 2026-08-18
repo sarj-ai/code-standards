@@ -685,6 +685,15 @@ def test_hidden_markdown_heading_suppression_is_exact_code_specific(tmp_path: Pa
     assert _codes(path, root=tmp_path) == ["SARJ305"]
 
 
+def test_hidden_markdown_heading_suppression_is_local(tmp_path: Path) -> None:
+    path = tmp_path / "README.md"
+    path.write_text(
+        "<!-- sarj-noqa: SARJ305 -->\n<!-- ## Preserved setup -->\n\n<!-- ## Stale setup -->\n",
+        encoding="utf-8",
+    )
+    assert _codes(path, root=tmp_path) == ["SARJ305"]
+
+
 def test_exact_config_restatement_suppression_is_local_and_code_specific(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     restatement = "# Retry count is 3\nretry_count = 3\n"
@@ -695,7 +704,20 @@ def test_exact_config_restatement_suppression_is_local_and_code_specific(tmp_pat
     assert _codes(path, root=tmp_path) == ["SARJ306"]
 
 
-def test_comment_reduction_rules_block(
+@pytest.mark.parametrize(
+    ("comment", "entry"),
+    [
+        ("# Retry count is 3", "retry_count = -3"),
+        ("# Endpoint is api-v1", 'endpoint = "api_v1"'),
+    ],
+)
+def test_exact_config_restatement_preserves_scalar_punctuation(tmp_path: Path, comment: str, entry: str) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(f"{comment}\n{entry}\n", encoding="utf-8")
+    assert _codes(path, root=tmp_path) == []
+
+
+def test_comment_reduction_rules_warn_without_blocking(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     markdown = tmp_path / "README.md"
@@ -704,11 +726,11 @@ def test_comment_reduction_rules_block(
     config.write_text("# Retry count is 3\nretry_count = 3\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    assert textlint.run([markdown.name, config.name]) == 1
+    assert textlint.run([markdown.name, config.name]) == 0
     output = capsys.readouterr().out
     assert "SARJ305 " in output
     assert "SARJ306 " in output
-    assert "warning:" not in output
+    assert output.count("warning:") == 2
 
 
 def test_exact_restatements_take_precedence_over_generic_comment_wall(tmp_path: Path) -> None:

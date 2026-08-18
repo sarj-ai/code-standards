@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 import json
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, TypeGuard
+from typing import TYPE_CHECKING, Final, NamedTuple, TypeGuard
 
 
 if TYPE_CHECKING:
@@ -29,6 +29,12 @@ DEFAULT_EXCLUDED_DIR_NAMES: Final = frozenset(
         "venv",
     }
 )
+
+
+class Improvement(NamedTuple):
+    previous: int
+    current: int
+
 
 DEFAULT_PER_FILE_CEILING: Final = 10
 
@@ -152,12 +158,12 @@ def gate(measurement: Measurement, baseline: Baseline) -> list[Failure]:
     return failures
 
 
-def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, tuple[int, int]]:
-    out: dict[str, tuple[int, int]] = {}
+def improvements(measurement: Measurement, baseline: Baseline) -> dict[str, Improvement]:
+    out: dict[str, Improvement] = {}
     for key, ceiling in baseline.codes.items():
         actual = measurement.codes.get(key, 0)
         if actual < ceiling:
-            out[key] = (ceiling, actual)
+            out[key] = Improvement(ceiling, actual)
     return out
 
 

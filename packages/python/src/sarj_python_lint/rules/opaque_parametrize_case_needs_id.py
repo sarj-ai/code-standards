@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -25,6 +25,12 @@ if TYPE_CHECKING:
 _PARAMETRIZE = "parametrize"
 
 _PARAM = "param"
+
+
+class _UnnameableTable(NamedTuple):
+    decorator: ast.Call
+    case_count: int
+
 
 # Node kinds pytest cannot render into a readable test id.
 _OPAQUE_NODES = (ast.Dict, ast.Set, ast.DictComp, ast.SetComp, ast.ListComp, ast.GeneratorExp, ast.Call)
@@ -111,11 +117,11 @@ class OpaqueParametrizeCaseNeedsId(Rule):
         return diags
 
 
-def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]]:
+def _tables_with_unnameable_cases(tree: ast.Module) -> list[_UnnameableTable]:
     # One diagnostic per table, not per case: a single `ids=` on the decorator
     # resolves every case at once, so per-case reporting would be N copies of
     # one fix and would bury a large table's other diagnostics.
-    hits: list[tuple[ast.Call, int]] = []
+    hits: list[_UnnameableTable] = []
     for node in _decorator_calls(tree):
         if not _is_parametrize(node.func):
             continue
@@ -129,7 +135,7 @@ def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]
             continue
         count = sum(1 for case in values.elts if _is_unnameable(case, width))
         if count:
-            hits.append((node, count))
+            hits.append(_UnnameableTable(node, count))
     return hits
 
 

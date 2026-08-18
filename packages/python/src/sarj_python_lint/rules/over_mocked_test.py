@@ -80,6 +80,16 @@ class _MockReceiver(NamedTuple):
     owner: str
 
 
+class _SubstitutionKey(NamedTuple):
+    target: str
+    owner: str
+
+
+class _OverMockedFunction(NamedTuple):
+    function: ast.FunctionDef | ast.AsyncFunctionDef
+    substitution_count: int
+
+
 # Tokens naming test-infrastructure knobs rather than collaborators: the
 # environment, configuration, logging, the clock, and the retry/timeout dials.
 _INFRA_TOKENS = frozenset(
@@ -231,18 +241,16 @@ class OverMockedTest(Rule):
         return diags
 
 
-def _over_mocked_tests(
-    path: Path, tree: ast.Module, threshold: int = _THRESHOLD
-) -> list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, int]]:
+def _over_mocked_tests(path: Path, tree: ast.Module, threshold: int = _THRESHOLD) -> list[_OverMockedFunction]:
     names = _MockNames.from_tree(tree)
     path_tokens = _seam_path_tokens(path)
-    hits: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, int]] = []
+    hits: list[_OverMockedFunction] = []
     for owner, func in _test_functions(tree):
         if _is_seam_test(func, owner, path_tokens):
             continue
         count = len(_substitutions(func, owner, names))
         if count > threshold:
-            hits.append((func, count))
+            hits.append(_OverMockedFunction(func, count))
     return hits
 
 
@@ -367,7 +375,7 @@ class _MockNames:
 
 
 class _BodyScan(NamedTuple):
-    subs: set[tuple[str, str]]
+    subs: set[_SubstitutionKey]
     facets: dict[str, str]
 
 
@@ -376,7 +384,7 @@ def _substitutions(
     owner: ast.ClassDef | None,
     names: _MockNames,
 ) -> frozenset[str]:
-    subs: set[tuple[str, str]] = set()
+    subs: set[_SubstitutionKey] = set()
     injected: list[str | None] = []
     for dec in reversed(func.decorator_list):
         if isinstance(dec, ast.Call):
@@ -389,7 +397,7 @@ def _substitutions(
 
     scan = _body_substitutions(func, names)
     subs |= scan.subs
-    subs.update((name, name) for name in _mock_parameters(func, len(injected)))
+    subs.update(_SubstitutionKey(name, name) for name in _mock_parameters(func, len(injected)))
     facets = scan.facets | _injected_facets(func, injected)
     return frozenset(names.qualify(_resolve(owning, facets)) for target, owning in subs if not _is_infra_target(target))
 
@@ -506,18 +514,18 @@ def _record_handle_facet(targets: list[ast.expr], value: ast.expr, names: _MockN
             facets.setdefault(target.id, owning)
 
 
-def _call_substitutions(node: ast.Call, names: _MockNames) -> list[tuple[str, str]]:
+def _call_substitutions(node: ast.Call, names: _MockNames) -> list[_SubstitutionKey]:
     subform = names.patch_subform(node.func)
     if subform is not None:
         return _patch_keys(node, subform, names)
     return _monkeypatch_keys(node, names)
 
 
-def _binding_keys(target: ast.expr, value: ast.expr, names: _MockNames) -> list[tuple[str, str]]:
+def _binding_keys(target: ast.expr, value: ast.expr, names: _MockNames) -> list[_SubstitutionKey]:
     if not isinstance(value, ast.Call) or names.factory(value.func) is None:
         return []
     bound = _bound_name(target, names)
-    return [(bound, bound)] if bound is not None else []
+    return [_SubstitutionKey(bound, bound)] if bound is not None else []
 
 
 def _bound_name(target: ast.expr, names: _MockNames) -> str | None:
@@ -542,7 +550,7 @@ def _collaborator_of(node: ast.expr) -> str | None:
     return parts[0]
 
 
-def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> list[tuple[str, str]]:
+def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> list[_SubstitutionKey]:
     if subform == "dict":
         return []
     if subform in {"object", "multiple"}:
@@ -555,14 +563,14 @@ def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> li
             else _replaced_attributes(call)
         )
         return (
-            [(f"{receiver.target}.{attr}", receiver.owner) for attr in attrs]
+            [_SubstitutionKey(f"{receiver.target}.{attr}", receiver.owner) for attr in attrs]
             if attrs
-            else [(receiver.target, receiver.owner)]
+            else [_SubstitutionKey(receiver.target, receiver.owner)]
         )
     if not call.args:
         return []
     target = _target_text(call.args[0])
-    return [(target, _owner_of(target))]
+    return [_SubstitutionKey(target, _owner_of(target))]
 
 
 def _receiver(node: ast.expr, names: _MockNames) -> _MockReceiver:
@@ -581,7 +589,7 @@ def _replaced_attributes(call: ast.Call) -> list[str]:
     return [arg for kw in call.keywords if (arg := kw.arg) is not None and arg not in _PATCH_CONFIG_KWARGS]
 
 
-def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[tuple[str, str]]:
+def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[_SubstitutionKey]:
     func = call.func
     if not isinstance(func, ast.Attribute) or func.attr != _MONKEYPATCH_SUBSTITUTION:
         return []
@@ -594,8 +602,8 @@ def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[tuple[str, str]
     # in the two-argument form the second argument is the replacement, and
     # reading it as an attribute name would key the target off the stub.
     if len(call.args) >= _SETATTR_SPLIT_ARITY:
-        return [(f"{receiver.target}.{_target_text(call.args[1])}", receiver.owner)]
-    return [(receiver.target, _owner_of(receiver.target))]
+        return [_SubstitutionKey(f"{receiver.target}.{_target_text(call.args[1])}", receiver.owner)]
+    return [_SubstitutionKey(receiver.target, _owner_of(receiver.target))]
 
 
 def _mock_parameters(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: int) -> list[str]:

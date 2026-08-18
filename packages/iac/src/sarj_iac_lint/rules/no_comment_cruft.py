@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import heredoc_body_mask
 from sarj_iac_lint.rule_base import (
@@ -37,6 +37,12 @@ _DIRECTIVE_PREFIXES = (
     "noqa",
     "!",
 )
+
+
+class _CommentLine(NamedTuple):
+    line: int
+    body: str
+
 
 _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
 _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}")
@@ -151,9 +157,9 @@ class NoCommentCruft(Rule):
         return diags
 
 
-def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[tuple[int, str]]]:
-    runs: list[list[tuple[int, str]]] = []
-    current: list[tuple[int, str]] = []
+def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[_CommentLine]]:
+    runs: list[list[_CommentLine]] = []
+    current: list[_CommentLine] = []
     for lineno, raw in enumerate(lines, start=1):
         m = None if in_heredoc[lineno - 1] else _COMMENT_RE.match(raw)
         if m is None:
@@ -161,7 +167,7 @@ def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[tup
                 runs.append(current)
                 current = []
             continue
-        current.append((lineno, m.group(3).strip()))
+        current.append(_CommentLine(lineno, m.group(3).strip()))
     if current:
         runs.append(current)
     return runs

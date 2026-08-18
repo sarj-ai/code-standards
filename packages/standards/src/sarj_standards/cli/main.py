@@ -53,8 +53,6 @@ _INVALID_DOCTOR_IDS = frozenset(
 
 
 class _EvaluationScope(StrEnum):
-    """Policy treatment for selected-rule calibration."""
-
     CORPUS = "corpus"
     EFFECTIVE = "effective"
 

@@ -18,39 +18,29 @@ InvocationId = NewType("InvocationId", str)
 
 
 class Severity(StrEnum):
-    """Stable diagnostic severity independent of any one lint engine."""
-
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
 
 
 class Completion(StrEnum):
-    """Whether every requested analyzer completed successfully."""
-
     COMPLETE = "complete"
     PARTIAL = "partial"
     FAILED = "failed"
 
 
 class Conclusion(StrEnum):
-    """Semantic result, kept separate from execution completeness."""
-
     PASSED = "passed"
     FINDINGS = "findings"
     INCONCLUSIVE = "inconclusive"
 
 
 class TrustMode(StrEnum):
-    """Whether repository-controlled executable analyzer configuration may run."""
-
     SAFE = "safe"
     TRUSTED = "trusted"
 
 
 class CoverageDisposition(StrEnum):
-    """Why selected input was not analyzed."""
-
     FAILED = "failed"
     UNSUPPORTED = "unsupported"
     EXCLUDED = "excluded"
@@ -58,23 +48,17 @@ class CoverageDisposition(StrEnum):
 
 
 class FixSafety(StrEnum):
-    """Whether a fix may be applied without human review."""
-
     SAFE = "safe"
     UNSAFE = "unsafe"
 
 
 class CacheStatus(StrEnum):
-    """Cache outcome for one analyzer invocation."""
-
     DISABLED = "disabled"
     HIT = "hit"
     MISS = "miss"
 
 
 class _CoverageNotice(TypedDict):
-    """Serialized coverage notice returned to protocol consumers."""
-
     source: str
     reason: str
     fileCount: int
@@ -117,7 +101,6 @@ class CoverageNotice:
 
     @property
     def blocking(self) -> bool:
-        """Return whether this notice means requested analysis failed."""
         return self.disposition is CoverageDisposition.FAILED
 
     def as_dict(self) -> _CoverageNotice:

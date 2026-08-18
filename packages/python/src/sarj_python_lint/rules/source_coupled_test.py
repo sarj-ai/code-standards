@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, final, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -34,6 +34,13 @@ GENERAL_SOURCE_SUFFIXES = (
     ".yaml",
     ".yml",
 )
+
+
+class TestFunction(NamedTuple):
+    function: ast.FunctionDef | ast.AsyncFunctionDef
+    unittest_style: bool
+
+
 _TEXT_TRANSFORMS = frozenset(
     {"casefold", "lower", "lstrip", "removeprefix", "removesuffix", "replace", "rstrip", "strip", "upper"}
 )
@@ -136,11 +143,11 @@ class SourceCoupledTest(Rule):
         ]
 
 
-def top_level_test_functions(tree: ast.Module) -> list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, bool]]:
-    functions: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, bool]] = []
+def top_level_test_functions(tree: ast.Module) -> list[TestFunction]:
+    functions: list[TestFunction] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name.startswith("test"):
-            functions.append((statement, False))
+            functions.append(TestFunction(statement, unittest_style=False))
         elif isinstance(statement, ast.ClassDef):
             unittest_style = any(
                 (isinstance(base, ast.Name) and base.id == "TestCase")
@@ -148,7 +155,7 @@ def top_level_test_functions(tree: ast.Module) -> list[tuple[ast.FunctionDef | a
                 for base in statement.bases
             )
             functions.extend(
-                (child, unittest_style)
+                TestFunction(child, unittest_style)
                 for child in statement.body
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test")
             )

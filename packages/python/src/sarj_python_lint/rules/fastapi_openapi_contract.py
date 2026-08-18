@@ -6,7 +6,7 @@ from http import HTTPStatus
 from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -26,6 +26,11 @@ from sarj_python_lint.rules._fastapi import (
     flat_name,
 )
 from sarj_python_lint.rules._paths import is_generated, is_test_path
+
+
+class _FunctionParameter(NamedTuple):
+    parameter: ast.arg
+    default: ast.expr | None
 
 
 if TYPE_CHECKING:
@@ -163,15 +168,15 @@ def _literal_none(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is None
 
 
-def _function_parameters(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.arg, ast.expr | None]]:
+def _function_parameters(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_FunctionParameter]:
     positional = [*function.args.posonlyargs, *function.args.args]
     padded_defaults = [None] * (len(positional) - len(function.args.defaults)) + list(function.args.defaults)
-    parameters = list(zip(positional, padded_defaults, strict=True))
-    parameters.extend(zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True))
+    parameters = list(map(_FunctionParameter, positional, padded_defaults, strict=True))
+    parameters.extend(map(_FunctionParameter, function.args.kwonlyargs, function.args.kw_defaults, strict=True))
     if function.args.vararg is not None:
-        parameters.append((function.args.vararg, None))
+        parameters.append(_FunctionParameter(function.args.vararg, None))
     if function.args.kwarg is not None:
-        parameters.append((function.args.kwarg, None))
+        parameters.append(_FunctionParameter(function.args.kwarg, None))
     return parameters
 
 

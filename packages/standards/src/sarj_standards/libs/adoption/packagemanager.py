@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class PackageManager(StrEnum):
-    """The npm clients a consumer repo can be built on."""
-
     NPM = "npm"
     PNPM = "pnpm"
     YARN = "yarn"
@@ -24,8 +22,6 @@ class PackageManager(StrEnum):
 
 
 class YarnVariant(StrEnum):
-    """The two mutually incompatible Yarn command dialects."""
-
     CLASSIC = "classic"
     BERRY = "berry"
 

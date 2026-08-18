@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -25,6 +25,12 @@ if TYPE_CHECKING:
 
 # Columns that scope a row to a tenant.
 _TENANT_COLUMNS = ("organization_id", "org_id", "tenant_id", "account_id", "workspace_id")
+
+
+class _TenantFragment(NamedTuple):
+    expression: ast.expr
+    conditional: bool
+
 
 # Require a comparison after the tenant column so SELECT-list names do not masquerade as predicates.
 _TENANT_PREDICATE_RE = re.compile(
@@ -131,8 +137,8 @@ def _iter_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctio
     return nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
-def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.expr, bool]]:
-    found: list[tuple[ast.expr, bool]] = []
+def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_TenantFragment]:
+    found: list[_TenantFragment] = []
 
     def visit(node: ast.AST, *, conditional: bool) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
@@ -140,7 +146,7 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
         # An `IfExp` fragment guards the predicate inside itself:
         # `c.append(SQL("organization_id = %s") if org else SQL("TRUE"))`.
         found.extend(
-            (fragment, conditional or isinstance(fragment, ast.IfExp))
+            _TenantFragment(fragment, conditional or isinstance(fragment, ast.IfExp))
             for fragment in _composition_fragments(node)
             if _mentions_tenant_predicate(fragment)
         )

@@ -25,6 +25,12 @@ if TYPE_CHECKING:
 
 _MOCK_MODULE = "unittest.mock"
 
+
+class _UnspeccedCall(NamedTuple):
+    call: ast.Call
+    label: str
+
+
 # Constructors whose default is an attribute-permissive double.
 _UNSPECCED_FACTORIES = frozenset({"Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock"})
 
@@ -512,8 +518,8 @@ def _unspecced_calls(
     names: _MockNames,
     pytest_mocker: dict[ast.Call, str],
     facts: _FileFacts,
-) -> list[tuple[ast.Call, str]]:
-    hits: list[tuple[ast.Call, str]] = []
+) -> list[_UnspeccedCall]:
+    hits: list[_UnspeccedCall] = []
     for node in nodes(tree, ast.Call):
         symbol = names.resolve(node.func) or pytest_mocker.get(node)
         if symbol is None:
@@ -529,7 +535,7 @@ def _unspecced_calls(
             or facts.is_inert_constructor_placeholder(node)
         ):
             continue
-        hits.append((node, label))
+        hits.append(_UnspeccedCall(node, label))
     return hits
 
 

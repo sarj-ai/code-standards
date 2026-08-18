@@ -1,5 +1,3 @@
-"""Deterministically propagate one published Standards bundle to consumers."""
-
 from __future__ import annotations
 
 import argparse
@@ -47,7 +45,7 @@ MANAGED_DELETIONS = frozenset({launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix()})
 
 
 class RolloutError(RuntimeError):
-    """An expected, actionable rollout failure."""
+    pass
 
 
 def is_object(value: object) -> TypeGuard[dict[str, object]]:

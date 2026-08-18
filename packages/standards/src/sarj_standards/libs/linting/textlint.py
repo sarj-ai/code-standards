@@ -498,6 +498,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             limitations=(
                 "Only standalone, closed HTML comments containing an ATX heading outside Markdown code are checked; template instructions and protected rationale are preserved.",
             ),
+            blocking=False,
         ),
         "exact-config-comment-restatement": RuleMeta(
             code="SARJ306",
@@ -531,6 +532,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             limitations=(
                 "Only an immediately adjacent standalone comment using exact `key is value` or `key equals value` wording over a simple scalar entry is checked.",
             ),
+            blocking=False,
         ),
     }
 )
@@ -568,10 +570,11 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
             *_markdown_hidden_comment_findings(path, source),
             *_comment_findings(path, source),
         ]
-        suppressed: frozenset[str] = (
-            _markdown_suppressions(source) if path.suffix.lower() in {".md", ".mdx"} else frozenset()
+        findings.extend(
+            finding
+            for finding in path_findings
+            if not (path.suffix.lower() in {".md", ".mdx"} and _markdown_suppresses_finding(source, finding))
         )
-        findings.extend(finding for finding in path_findings if finding.code not in suppressed)
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
 
@@ -589,13 +592,18 @@ def _relative(path: Path, root: Path) -> str:
         return path.name
 
 
-def _markdown_suppressions(source: str) -> frozenset[str]:
-    prose = "\n".join(_markdown_prose_lines(source))
-    return frozenset(
-        code.strip().upper()
-        for match in _MARKDOWN_SUPPRESSION_RE.finditer(prose)
-        for code in match.group("codes").split(",")
-    )
+def _markdown_suppresses_finding(source: str, finding: Finding) -> bool:
+    if finding.code == "SARJ302":
+        prose = "\n".join(_markdown_prose_lines(source))
+        return any(
+            finding.code in {code.strip().upper() for code in match.group("codes").split(",")}
+            for match in _MARKDOWN_SUPPRESSION_RE.finditer(prose)
+        )
+    lines = source.splitlines()
+    if finding.line <= 1 or finding.line > len(lines):
+        return False
+    match = _MARKDOWN_SUPPRESSION_RE.fullmatch(lines[finding.line - 2])
+    return match is not None and finding.code in {code.strip().upper() for code in match.group("codes").split(",")}
 
 
 _SHELL_SUFFIXES: Final = frozenset({".bash", ".sh", ".zsh"})
@@ -695,8 +703,18 @@ def _shell_tokens(line: str) -> list[str]:
         return []
 
 
-def _shell_logical_lines(source: str) -> list[tuple[int, str]]:
-    logical: list[tuple[int, str]] = []
+class _ShellLogicalLine(NamedTuple):
+    line: int
+    command: str
+
+
+class _ShellSegment(NamedTuple):
+    separator: str | None
+    tokens: list[str]
+
+
+def _shell_logical_lines(source: str) -> list[_ShellLogicalLine]:
+    logical: list[_ShellLogicalLine] = []
     pending: list[str] = []
     start = 1
     for number, line in enumerate(source.splitlines(), start=1):
@@ -708,27 +726,27 @@ def _shell_logical_lines(source: str) -> list[tuple[int, str]]:
         pending.append(stripped[:-1] if continued else line)
         if continued:
             continue
-        logical.append((start, " ".join(pending)))
+        logical.append(_ShellLogicalLine(start, " ".join(pending)))
         pending = []
     if pending:
-        logical.append((start, " ".join(pending)))
+        logical.append(_ShellLogicalLine(start, " ".join(pending)))
     return logical
 
 
-def _shell_segments(tokens: Sequence[str]) -> list[tuple[str | None, list[str]]]:
-    segments: list[tuple[str | None, list[str]]] = []
+def _shell_segments(tokens: Sequence[str]) -> list[_ShellSegment]:
+    segments: list[_ShellSegment] = []
     current: list[str] = []
     separator: str | None = None
     for token in tokens:
         if token in _SHELL_SEPARATORS:
             if current:
-                segments.append((separator, current))
+                segments.append(_ShellSegment(separator, current))
                 current = []
             separator = token
             continue
         current.append(token)
     if current:
-        segments.append((separator, current))
+        segments.append(_ShellSegment(separator, current))
     return segments
 
 
@@ -1251,9 +1269,9 @@ def _exact_config_restatement(path: Path, body: str, lines: list[str], index: in
     entry = _config_scalar_entry(path, lines[index + 1])
     if comment is None or entry is None:
         return False
-    return _config_words(comment.group("key")) == _config_words(entry.key) and _config_words(
+    return _config_words(comment.group("key")) == _config_words(entry.key) and _config_value(
         comment.group("value")
-    ) == _config_words(entry.value)
+    ) == _config_value(entry.value)
 
 
 def _config_scalar_entry(path: Path, line: str) -> _ConfigScalarEntry | None:
@@ -1275,6 +1293,13 @@ def _config_words(text: str) -> tuple[str, ...]:
         expanded = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", match.group(0))
         tokens.extend(part.casefold() for part in re.split(r"[-_]+", expanded) if part)
     return tuple(tokens)
+
+
+def _config_value(text: str) -> str:
+    value = text.strip()
+    if len(value) >= _QUOTED_SCALAR_MIN_LENGTH and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1]
+    return " ".join(value.split()).casefold()
 
 
 def _inside_comment_run(path: Path, lines: list[str], index: int) -> bool:

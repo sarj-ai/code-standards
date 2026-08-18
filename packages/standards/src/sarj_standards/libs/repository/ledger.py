@@ -24,8 +24,6 @@ CODE: Final = "code"
 
 
 class Status(StrEnum):
-    """What became of a retired identifier."""
-
     REMOVED = "removed"
     RENAMED = "renamed"
 
@@ -40,7 +38,6 @@ class Retired:
 
     @property
     def pattern(self) -> re.Pattern[str]:
-        """Match every spelling of this identifier a consumer repo can contain."""
         if self.kind == ESLINT:
             return re.compile(rf"(?<![\w/-]){re.escape(self.id)}(?![\w-])")
         if self.kind == CODE:
@@ -49,7 +46,6 @@ class Retired:
 
     @property
     def advice(self) -> str:
-        """Describe the fix in one line."""
         if self.status is Status.RENAMED and self.replacement is not None:
             return f"renamed to {self.replacement} -- {self.note}"
         return f"no longer exists -- {self.note}"

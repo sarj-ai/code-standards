@@ -97,7 +97,11 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         diags.extend(
             diagnostic
             for diagnostic in deduplicate_diagnostics(
-                [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)],
+                [
+                    diagnostic
+                    for diagnostic in raw
+                    if diagnostic.code == "SARJ419" or not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
+                ],
                 source=source,
             )
         )
@@ -191,29 +195,29 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
     ]
 
 
-def _function_signature_owner_locations(source: str) -> dict[int, tuple[int, int]]:
+def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return {}
-    owners: dict[int, tuple[int, int]] = {}
+    owners: dict[int, _OwnerLocation] = {}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         body_line = node.body[0].lineno if node.body else node.lineno + 1
         end_line = max(node.lineno, body_line - 1)
-        owners.update(dict.fromkeys(range(node.lineno, end_line + 1), (node.lineno, node.col_offset + 1)))
+        owners.update(dict.fromkeys(range(node.lineno, end_line + 1), _OwnerLocation(node.lineno, node.col_offset + 1)))
     return owners
 
 
-def _docstring_owner_locations(source: str) -> dict[int, tuple[int, int]]:
+def _docstring_owner_locations(source: str) -> dict[int, _OwnerLocation]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         tree = None
     if tree is None:
         return {}
-    owners: dict[int, tuple[int, int]] = {}
+    owners: dict[int, _OwnerLocation] = {}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) or not node.body:
             continue
@@ -224,7 +228,7 @@ def _docstring_owner_locations(source: str) -> dict[int, tuple[int, int]]:
             and isinstance(expression.value.value, str)
         ):
             continue
-        location = (expression.lineno, expression.col_offset + 1)
+        location = _OwnerLocation(expression.lineno, expression.col_offset + 1)
         lines = range(expression.lineno, (expression.end_lineno or expression.lineno) + 1)
         owners.update(dict.fromkeys(lines, location))
     return owners

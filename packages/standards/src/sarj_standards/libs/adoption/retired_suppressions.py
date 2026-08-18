@@ -36,8 +36,6 @@ class Rewrite:
 
 
 class _DirectiveState(Enum):
-    """Whether a comment is a proven directive, merely resembles one, or is unrelated."""
-
     NONE = auto()
     VALID = auto()
     AMBIGUOUS = auto()

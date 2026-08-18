@@ -13,6 +13,7 @@ from sarj_sql_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    SourceComment,
     is_dump_file,
     sql_comments,
 )
@@ -28,11 +29,16 @@ _SQL_HEAD_RE = re.compile(
 )
 _COMPLETE_SQL_RE = re.compile(
     r"^(?:"
-    r"(?:ALTER|CREATE)\s+(?:TABLE|TYPE|INDEX|VIEW|SCHEMA|FUNCTION|PROCEDURE)\s+[\w.\"]+|"
-    r"(?:DELETE\s+FROM|DROP\s+(?:TABLE|TYPE|INDEX|VIEW|SCHEMA)|INSERT\s+INTO|UPDATE\s+[\w.\"]+\s+SET)\b|"
-    r"SELECT\b.+\bFROM\b|(?:BEGIN|COMMIT|ROLLBACK|TRUNCATE)\s*;?$"
-    r")",
-    re.IGNORECASE,
+    r"CREATE(?:\s+OR\s+REPLACE)?(?:\s+UNIQUE)?\s+"
+    r"(?:TABLE|TYPE|INDEX|VIEW|SCHEMA|FUNCTION|PROCEDURE|POLICY)\s+[\w.\"]+"
+    r"(?:\s+(?:ON|AS|WITH)\b|\s*\().*|"
+    r"ALTER\s+(?:TABLE|TYPE|INDEX|VIEW|SCHEMA|FUNCTION|PROCEDURE|POLICY)\s+[\w.\"]+\s+.+|"
+    r"DELETE\s+FROM\s+[\w.\"]+(?:\s+WHERE\b.+)?|"
+    r"DROP\s+(?:TABLE|TYPE|INDEX|VIEW|SCHEMA|FUNCTION|PROCEDURE|POLICY)\s+[\w.\"]+|"
+    r"INSERT\s+INTO\s+[\w.\"]+\s+.+|UPDATE\s+[\w.\"]+\s+SET\s+.+|"
+    r"SELECT\s+.+\s+FROM\s+.+|(?:BEGIN|COMMIT|ROLLBACK|TRUNCATE(?:\s+TABLE)?\s+[\w.\"]*)"
+    r");$",
+    re.IGNORECASE | re.DOTALL,
 )
 _BANNER_RE = re.compile(r"^(?:[-=#*~_.+ ]{4,}|.*(?:={4,}|-{4,}|#{4,}|\*{4,}|~{4,}).*)$")
 _DEBT_MARKERS = ("TO" + "DO", "FIX" + "ME", "HACK", "X" + "XX")
@@ -88,24 +94,39 @@ class NoCommentCruft(Rule):
         if is_dump_file(source, path):
             return []
         findings: list[Diagnostic] = []
-        for comment in sql_comments(source):
-            lines = [line.strip().lstrip("*").strip() for line in comment.body.splitlines()]
+        for comments in _comment_groups(source):
+            first = comments[0]
+            lines = [line.strip().lstrip("*").strip() for comment in comments for line in comment.body.splitlines()]
             effective = [line for line in lines if line]
-            if not effective or any(_DIRECTIVE_RE.match(line) for line in effective):
+            effective = [line for line in effective if _DIRECTIVE_RE.match(line) is None]
+            if not effective:
                 continue
             message = _message(effective)
             if message is None:
                 continue
-            findings.append(Diagnostic(path, comment.line, comment.column, self.code, message))
+            findings.append(Diagnostic(path, first.line, first.column, self.code, message))
         return findings
 
 
 def _message(lines: list[str]) -> str | None:
+    if any(_REFERENCE_RE.search(line) for line in lines):
+        return None
     if any(_BANNER_RE.fullmatch(line) for line in lines):
         return "Section-banner comment — use migration statements and file structure instead of ASCII dividers."
-    code_lines = sum(_SQL_HEAD_RE.match(line) is not None for line in lines)
-    if code_lines and code_lines * 2 >= len(lines) and any(_COMPLETE_SQL_RE.match(line) for line in lines):
+    statement = " ".join(lines)
+    if _SQL_HEAD_RE.match(statement) is not None and _COMPLETE_SQL_RE.fullmatch(statement):
         return "Commented-out SQL — delete it; version control preserves migration history."
     if any(_DEBT_RE.match(line) and _REFERENCE_RE.search(line) is None for line in lines):
         return "Unowned SQL debt marker — resolve it or attach a durable issue reference."
     return None
+
+
+def _comment_groups(source: str) -> list[list[SourceComment]]:
+    comments = sql_comments(source)
+    groups: list[list[SourceComment]] = []
+    for comment in comments:
+        if groups and not comment.block and not groups[-1][-1].block and comment.line == groups[-1][-1].line + 1:
+            groups[-1].append(comment)
+        else:
+            groups.append([comment])
+    return groups

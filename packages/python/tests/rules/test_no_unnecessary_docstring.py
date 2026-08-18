@@ -48,10 +48,10 @@ async def stop() -> None:
     findings = _check(source)
 
     assert [(finding.line, finding.code, finding.severity) for finding in findings] == [
-        (1, "SARJ420", Severity.ERROR),
-        (4, "SARJ420", Severity.ERROR),
-        (7, "SARJ420", Severity.ERROR),
-        (11, "SARJ420", Severity.ERROR),
+        (1, "SARJ420", Severity.WARNING),
+        (4, "SARJ420", Severity.WARNING),
+        (7, "SARJ420", Severity.WARNING),
+        (11, "SARJ420", Severity.WARNING),
     ]
 
 
@@ -59,10 +59,10 @@ async def stop() -> None:
     "source",
     [
         'def explain() -> None:\n    """>>> 1 + 1\n    2\n    """\n    return None\n',
-        'class Payload(BaseModel):\n    """Published in JSON Schema."""\n    value: str\n',
-        '@strawberry.type\nclass Payload:\n    """Published in GraphQL schema."""\n    value: str\n',
-        '@function_tool\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n',
-        '@pytest.fixture\ndef account() -> object:\n    """Description shown by pytest --fixtures."""\n    return object()\n',
+        'from pydantic import BaseModel\n\nclass Payload(BaseModel):\n    """Published in JSON Schema."""\n    value: str\n',
+        'import strawberry\n\n@strawberry.type\nclass Payload:\n    """Published in GraphQL schema."""\n    value: str\n',
+        'from agents import function_tool\n\n@function_tool\ndef lookup() -> str:\n    """Description sent to the model."""\n    return "x"\n',
+        'import pytest\n\n@pytest.fixture\ndef account() -> object:\n    """Description shown by pytest --fixtures."""\n    return object()\n',
         '@property\ndef value(self) -> str:\n    """Published as the property descriptor doc."""\n    return self._value\n',
     ],
 )
@@ -76,7 +76,7 @@ def test_doctest_schema_and_framework_consumers_are_exempt(source: str) -> None:
         '"""CLI help."""\n\nparser = Parser(description=__doc__)\n',
         'def operation() -> None:\n    """Plugin description."""\n    return None\n\nregister(operation.__doc__)\n',
         'class Plugin:\n    """Plugin description."""\n    value = 1\n\nhelp(Plugin)\n',
-        'def operation() -> None:\n    """Plugin description."""\n    return None\n\ninspect.getdoc(operation)\n',
+        'import inspect\n\ndef operation() -> None:\n    """Plugin description."""\n    return None\n\ninspect.getdoc(operation)\n',
     ],
 )
 def test_explicit_runtime_reads_are_exempt(source: str) -> None:
@@ -98,6 +98,47 @@ publish(consumed.__doc__)
     findings = _check(source)
 
     assert [(finding.line, finding.code) for finding in findings] == [(6, "SARJ420")]
+
+
+def test_runtime_reads_use_qualified_owner_identity() -> None:
+    source = '''class Alpha:
+    def run(self) -> None:
+        """Human-only notes."""
+        return None
+
+class Beta:
+    def run(self) -> None:
+        """Published plugin help."""
+        return None
+
+publish(Beta.run.__doc__)
+'''
+    assert [(finding.line, finding.code) for finding in _check(source)] == [(3, "SARJ420")]
+
+
+def test_simple_alias_to_runtime_consumer_is_followed() -> None:
+    source = '''def operation() -> None:
+    """Published plugin help."""
+    return None
+
+callback = operation
+publish(callback.__doc__)
+'''
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '@get\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n',
+        'class BaseModel:\n    pass\n\nclass Payload(BaseModel):\n    """Human-only notes."""\n    value: str\n',
+        'def getdoc(value: object) -> str:\n    return "x"\n\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n\npublish(getdoc(operation))\n',
+        'from inspect import getdoc\n\ndef getdoc(value: object) -> str:\n    return "local"\n\ndef operation() -> None:\n    """Human-only notes."""\n    return None\n\npublish(getdoc(operation))\n',
+        'from pydantic import BaseModel\n\nclass BaseModel:\n    pass\n\nclass Payload(BaseModel):\n    """Human-only notes."""\n    value: str\n',
+    ],
+)
+def test_unproven_framework_and_consumer_names_do_not_exempt(source: str) -> None:
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
 
 
 def test_syntax_required_class_and_function_docstrings_are_exempt_but_a_module_is_not() -> None:
@@ -131,6 +172,14 @@ def test_an_unrelated_suppression_does_not_hide_the_warning() -> None:
     source = 'def kept() -> None:\n    """External documentation."""  # sarj-noqa: SARJ050 — separate rule\n    return None\n'
 
     assert [finding.code for finding in _check(source)] == ["SARJ420"]
+
+
+def test_suppression_requires_a_reason_and_cannot_live_inside_docstring_text() -> None:
+    bare = 'def kept() -> None:\n    """External documentation."""  # sarj-noqa: SARJ420\n    return None\n'
+    embedded = 'def kept() -> None:\n    """Notes.\n    # sarj-noqa: SARJ420 — not a source comment\n    """\n    return None\n'
+
+    assert [finding.code for finding in _check(bare)] == ["SARJ420"]
+    assert [finding.code for finding in _check(embedded)] == ["SARJ420"]
 
 
 @pytest.mark.parametrize(

@@ -34,6 +34,11 @@ class _FixtureDecorators(NamedTuple):
     roots: frozenset[str]
 
 
+class _TupleResult(NamedTuple):
+    expression: ast.expr
+    field_count: int
+
+
 class FixtureReturnsBareTuple(Rule):
     id: str = "fixture-returns-bare-tuple"
     code: str = "SARJ044"
@@ -105,8 +110,8 @@ class FixtureReturnsBareTuple(Rule):
         return diags
 
 
-def _bare_tuple_results(tree: ast.Module) -> list[tuple[ast.expr, int]]:
-    hits: list[tuple[ast.expr, int]] = []
+def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
+    hits: list[_TupleResult] = []
     fixture_names = _fixture_decorator_names(tree)
     aliases = _type_aliases(tree)
     for node in nodes(tree, *_FUNC_NODES):
@@ -127,7 +132,7 @@ def _bare_tuple_results(tree: ast.Module) -> list[tuple[ast.expr, int]]:
             )
             >= _MIN_FIELDS
         ):
-            hits.append((node.returns, arity))
+            hits.append(_TupleResult(node.returns, arity))
     return hits
 
 
@@ -290,25 +295,25 @@ def _has_own_yield(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
-def _tuple_results_of(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.expr, int]]:
-    found: list[tuple[ast.expr, int]] = []
+def _tuple_results_of(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_TupleResult]:
+    found: list[_TupleResult] = []
     for stmt in fixture.body:
         found.extend(_scan_for_results(stmt))
     return found
 
 
-def _scan_for_results(node: ast.AST) -> list[tuple[ast.expr, int]]:
+def _scan_for_results(node: ast.AST) -> list[_TupleResult]:
     # Descend through control flow but never into a nested function: a tuple
     # returned by a closure the fixture builds crosses the closure's boundary,
     # not the fixture's, so it is a different (and legitimate) shape.
     if isinstance(node, (*_FUNC_NODES, ast.Lambda)):
         return []
-    found: list[tuple[ast.expr, int]] = []
+    found: list[_TupleResult] = []
     value = _returned_value(node)
     if value is not None:
         count = _bare_tuple_arity(value)
         if count >= _MIN_FIELDS:
-            found.append((value, count))
+            found.append(_TupleResult(value, count))
     for child in children(node):
         found.extend(_scan_for_results(child))
     return found

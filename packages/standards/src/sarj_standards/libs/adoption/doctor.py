@@ -28,8 +28,6 @@ if TYPE_CHECKING:
 
 
 class Level(StrEnum):
-    """How much a finding matters."""
-
     OK = "ok"
     WARN = "warn"
     DRIFT = "drift"

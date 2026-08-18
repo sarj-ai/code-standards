@@ -1,5 +1,3 @@
-"""Resolve and execute the exact Standards bundle selected by a repository."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,19 +22,16 @@ _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][
 
 
 class BootstrapError(ValueError):
-    """A concise consumer-facing bootstrap failure."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)
 class ParsedArguments:
-    """Bootstrap-owned root and untouched Standards arguments."""
-
     root: Path | None
     forwarded: tuple[str, ...]
 
 
 def explicit_root(arguments: Sequence[str], *, cwd: Path) -> ParsedArguments:
-    """Remove one optional global root argument from forwarded arguments."""
     root: Path | None = None
     forwarded: list[str] = []
     index = 0
@@ -70,7 +65,6 @@ def explicit_root(arguments: Sequence[str], *, cwd: Path) -> ParsedArguments:
 
 
 def find_root(start: Path) -> Path:
-    """Find the nearest manifest at or above the invocation directory."""
     current = start.resolve()
     for candidate in (current, *current.parents):
         if (candidate / MANIFEST_NAME).is_file():
@@ -80,7 +74,6 @@ def find_root(start: Path) -> Path:
 
 
 def table(value: object) -> Mapping[str, object]:
-    """Narrow one untyped TOML document to a string-keyed table."""
     if not isinstance(value, dict):
         message = f"{MANIFEST_NAME} must contain a TOML table"
         raise BootstrapError(message)
@@ -92,7 +85,6 @@ def table(value: object) -> Mapping[str, object]:
 
 
 def bundle(root: Path) -> str:
-    """Read the exact bundle selected by one repository manifest."""
     manifest = root / MANIFEST_NAME
     try:
         with manifest.open("rb") as stream:
@@ -119,7 +111,6 @@ def bundle(root: Path) -> str:
 
 
 def command(uvx: str, root: Path, selected_bundle: str, arguments: Sequence[str]) -> tuple[str, ...]:
-    """Build the exact isolated Standards invocation."""
     return (
         uvx,
         "--no-config",
@@ -154,7 +145,6 @@ def execute(exact_command: Sequence[str], environment: Mapping[str, str], *, pla
 
 
 def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
-    """Replace this bootstrap process with the exact Standards process."""
     parsed = explicit_root(arguments, cwd=cwd)
     explicit = parsed.root
     if explicit is not None:
@@ -181,7 +171,6 @@ def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Launch the exact Standards bundle declared by the repository."""
     try:
         run(sys.argv[1:] if argv is None else argv, cwd=Path.cwd())
     except BootstrapError as exc:

@@ -28,7 +28,6 @@ _SARJ_NOQA_RE = re.compile(
 
 
 def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
-    """Report whether the diagnostic's line carries a `# sarj-noqa[: CODE]` comment."""
     if line < 1 or line > len(source_lines):
         return False
     text = source_lines[line - 1]
@@ -44,22 +43,16 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
 
 
 class Severity(StrEnum):
-    """Whether a diagnostic blocks the lint command."""
-
     WARNING = "warning"
     ERROR = "error"
 
 
 class ColumnEncoding(StrEnum):
-    """Coordinate system used by a native diagnostic's one-based column."""
-
     UTF8_BYTES = "utf8-bytes"
     CODEPOINTS = "codepoints"
 
 
 class RuleCategory(StrEnum):
-    """Small cross-engine taxonomy used by generated rule directories."""
-
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
     MAINTAINABILITY = "maintainability"
@@ -70,16 +63,12 @@ class RuleCategory(StrEnum):
 
 
 class AutofixPolicy(StrEnum):
-    """Strongest source mutation a rule can safely offer."""
-
     NONE = "none"
     SUGGESTION = "suggestion"
     SAFE = "safe"
 
 
 class ExampleOutcome(StrEnum):
-    """Expected result when a rule checks one documentation example."""
-
     MATCH = "match"
     NO_MATCH = "no-match"
 

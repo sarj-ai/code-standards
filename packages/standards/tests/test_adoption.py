@@ -7,7 +7,7 @@ import re
 import subprocess
 import sys
 import tomllib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 import yaml
@@ -1310,9 +1310,14 @@ def test_doctor_keeps_shared_configs_at_repo_root_after_subproject_adoption(
 _PRECOMMIT_HOOK = re.compile(r"entry:\s*(?P<entry>.+?)\n(?P<rest>(?:\s+\w[^\n]*\n)*)", re.MULTILINE)
 
 
-def _precommit_entries(config: str) -> list[tuple[str, bool]]:
+class _PrecommitEntry(NamedTuple):
+    command: str
+    passes_filenames: bool
+
+
+def _precommit_entries(config: str) -> list[_PrecommitEntry]:
     return [
-        (match.group("entry").strip(), "pass_filenames: false" in match.group("rest"))
+        _PrecommitEntry(match.group("entry").strip(), "pass_filenames: false" in match.group("rest"))
         for match in _PRECOMMIT_HOOK.finditer(config)
     ]
 

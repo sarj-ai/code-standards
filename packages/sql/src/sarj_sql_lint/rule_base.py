@@ -9,7 +9,12 @@ import re
 from typing import ClassVar, Final, NamedTuple, Self
 
 
-type Statement = list[tuple[int, str]]
+class StatementFragment(NamedTuple):
+    line: int
+    text: str
+
+
+type Statement = list[StatementFragment]
 """A statement as `(lineno, text)` fragments — one per source line it spans."""
 
 
@@ -32,8 +37,6 @@ class SourceComment(NamedTuple):
 
 
 class RuleCategory(StrEnum):
-    """Small cross-engine taxonomy used by generated rule directories."""
-
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
     MAINTAINABILITY = "maintainability"
@@ -44,16 +47,12 @@ class RuleCategory(StrEnum):
 
 
 class AutofixPolicy(StrEnum):
-    """Strongest source mutation a rule can safely offer."""
-
     NONE = "none"
     SUGGESTION = "suggestion"
     SAFE = "safe"
 
 
 class ExampleOutcome(StrEnum):
-    """Expected result when a rule checks one documentation example."""
-
     MATCH = "match"
     NO_MATCH = "no-match"
 
@@ -607,11 +606,11 @@ def split_statements(masked: str) -> list[Statement]:
         line = raw
         while ";" in line:
             head, _, line = line.partition(";")
-            current.append((lineno, head))
+            current.append(StatementFragment(lineno, head))
             statements.append(current)
             current = []
         if line:
-            current.append((lineno, line))
+            current.append(StatementFragment(lineno, line))
     if current:
         statements.append(current)
     return statements

@@ -44,6 +44,7 @@ _SKIP_PARTS = frozenset(
 )
 _BOUNDARY_RE = re.compile(r"(?<=[.!?])[\"'`)\]]*\s+(?=[A-Z0-9`])")
 _BULLET_RE = re.compile(r"^\s*(?:[-*+] |\d+[.)] )")
+_SQL_DOLLAR_TAG_RE: re.Pattern[str] = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$")
 _SECOND_SENTENCE = 2
 _DIRECTORY_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 _READ_FLAGS = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -405,8 +406,8 @@ def _sql_comments(source: str) -> list[_CommentUnit]:
             quote = char
             index += 1
             continue
-        if char == "$" and (match := re.match(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$", source[index:])):
-            dollar_tag = match.group(0)
+        if char == "$" and (match := _SQL_DOLLAR_TAG_RE.match(source, index)):
+            dollar_tag = str(match.group(0))
             index += len(dollar_tag)
             continue
         if pair == "--":

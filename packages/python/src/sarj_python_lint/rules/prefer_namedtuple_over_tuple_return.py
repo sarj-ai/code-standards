@@ -29,10 +29,11 @@ _TUPLE_NAMES = frozenset({"tuple", "Tuple"})
 _SINGLE_RETURN_WRAPPERS = frozenset({"Annotated", "Awaitable", "Optional"})
 _UNION_NAMES = frozenset({"Union"})
 _COROUTINE_NAMES = frozenset({"Coroutine"})
-_COLLECTION_RETURN_WRAPPERS = frozenset({"list"})
+_COLLECTION_RETURN_WRAPPERS = frozenset(
+    {"Collection", "Iterable", "List", "Mapping", "Sequence", "dict", "frozenset", "list", "set"}
+)
 
 _MIN_ELEMENTS = 2
-_MIN_COLLECTION_RECORD_ELEMENTS = 3
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 _SORT_KEY_CALLS = frozenset({"max", "min", "sorted"})
 _FIXTURE_DECORATORS = frozenset({"fixture", "yield_fixture"})
@@ -469,9 +470,7 @@ def _is_bare_positional_tuple(
         return bool(members) and _is_bare_positional_tuple(members[-1], aliases, resolving, minimum_elements)
     if wrapper in _COLLECTION_RETURN_WRAPPERS:
         members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-        return any(
-            _is_bare_positional_tuple(member, aliases, resolving, _MIN_COLLECTION_RECORD_ELEMENTS) for member in members
-        )
+        return any(_is_bare_positional_tuple(member, aliases, resolving, _MIN_ELEMENTS) for member in members)
     if wrapper not in _TUPLE_NAMES:
         return False
     if not isinstance(annotation.slice, ast.Tuple):

@@ -40,8 +40,6 @@ _GIT_SHA_LENGTH: Final = 40
 
 
 class RuleDescriptorV1(TypedDict):
-    """Stable fields used to route one changed rule to its owning engine."""
-
     key: str
     engine: str
     family: str
@@ -57,8 +55,6 @@ type ChangeKind = Literal["added", "removed", "implementation-changed", "policy-
 
 
 class RuleChangeV1(TypedDict):
-    """One independently actionable change to a canonical rule key."""
-
     kind: ChangeKind
     key: str
     releaseTarget: str
@@ -67,8 +63,6 @@ class RuleChangeV1(TypedDict):
 
 
 class RuleChangeSetV1(TypedDict):
-    """Versioned rule changes between two resolved commit identities."""
-
     schemaVersion: int
     beforeSha: str
     afterSha: str

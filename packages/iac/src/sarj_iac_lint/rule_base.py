@@ -19,8 +19,6 @@ _SARJ_NOQA_RE = re.compile(
 
 
 class RuleCategory(StrEnum):
-    """Small cross-engine taxonomy used by generated rule directories."""
-
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
     MAINTAINABILITY = "maintainability"
@@ -31,16 +29,12 @@ class RuleCategory(StrEnum):
 
 
 class AutofixPolicy(StrEnum):
-    """Strongest source mutation a rule can safely offer."""
-
     NONE = "none"
     SUGGESTION = "suggestion"
     SAFE = "safe"
 
 
 class ExampleOutcome(StrEnum):
-    """Expected result when a rule checks one documentation example."""
-
     MATCH = "match"
     NO_MATCH = "no-match"
 

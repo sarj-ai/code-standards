@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 import re
-from typing import final, override
+from typing import NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
@@ -21,6 +21,11 @@ from sarj_sql_lint.rule_base import (
 
 
 RESERVED_KEYWORDS = frozenset({"foreign", "key", "constraint", "alter", "table", "create", "add", "column"})
+
+
+class _IndexedColumn(NamedTuple):
+    table: str
+    column: str
 
 
 def _mask_literals_and_comments(sql: str) -> str:
@@ -128,8 +133,8 @@ def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounde
 @lru_cache(maxsize=64)
 def _tree_leading_indexed(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
     root: Path,
-) -> frozenset[tuple[str, str]]:
-    pairs: set[tuple[str, str]] = set()
+) -> frozenset[_IndexedColumn]:
+    pairs: set[_IndexedColumn] = set()
     try:
         candidates = sorted(root.rglob("*.sql"))[:_MAX_TREE_FILES]
     except OSError:
@@ -142,7 +147,7 @@ def _tree_leading_indexed(  # sarj-noqa: SARJ023 — bounded tree helpers stay a
         except OSError:
             continue
         for table, cols in _collect_indexes(_mask_literals_and_comments(text)).items():
-            pairs.update((table, idx[0]) for idx in cols if idx)
+            pairs.update(_IndexedColumn(table, idx[0]) for idx in cols if idx)
     return frozenset(pairs)
 
 

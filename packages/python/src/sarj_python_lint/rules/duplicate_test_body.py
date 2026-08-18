@@ -91,6 +91,11 @@ class _TestFunction(NamedTuple):
     node: ast.FunctionDef | ast.AsyncFunctionDef
 
 
+class _LiteralDifference(NamedTuple):
+    original: object
+    replacement: object
+
+
 class DuplicateTestBody(Rule):
     id: str = "duplicate-test-body"
     code: str = "SARJ066"
@@ -687,17 +692,19 @@ def _message(group: list[_Shape]) -> str:
     )
 
 
-def _differing_literals(original: tuple[object, ...], duplicate: tuple[object, ...]) -> list[tuple[object, object]]:
+def _differing_literals(original: tuple[object, ...], duplicate: tuple[object, ...]) -> list[_LiteralDifference]:
     # Equal shapes imply the same number of constants, so positional comparison
     # is well defined; the length guard is belt and braces.
     if len(original) != len(duplicate):
         return []
     return [
-        (was, now) for was, now in zip(original, duplicate, strict=True) if was != now or type(was) is not type(now)
+        _LiteralDifference(was, now)
+        for was, now in zip(original, duplicate, strict=True)
+        if was != now or type(was) is not type(now)
     ]
 
 
-def _render_differences(differences: list[tuple[object, object]]) -> str:
+def _render_differences(differences: list[_LiteralDifference]) -> str:
     shown = ", ".join(f"{_render(was)} -> {_render(now)}" for was, now in differences[:_MAX_LITERALS_SHOWN])
     extra = len(differences) - _MAX_LITERALS_SHOWN
     return f"{shown} (and {extra} more literals)" if extra > 0 else shown

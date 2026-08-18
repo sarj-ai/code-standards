@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -23,6 +23,12 @@ if TYPE_CHECKING:
 
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+class _Tautology(NamedTuple):
+    node: ast.Assert | ast.Call
+    reason: str
+
 
 # `pytest.fail(...)` / `self.fail(...)` — an arm that calls it cannot pass.
 _FAIL = "fail"
@@ -144,14 +150,14 @@ def _always_fails(stmt: ast.stmt) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and _called_method(stmt.value) == _FAIL
 
 
-def _tautologies(tree: ast.Module, exempt: set[ast.AST]) -> list[tuple[ast.Assert | ast.Call, str]]:
-    found: list[tuple[ast.Assert | ast.Call, str]] = []
+def _tautologies(tree: ast.Module, exempt: set[ast.AST]) -> list[_Tautology]:
+    found: list[_Tautology] = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Assert, ast.Call)) or node in exempt:
             continue
         reason = _fixed_truth_reason(node.test) if isinstance(node, ast.Assert) else _unittest_reason(node)
         if reason is not None:
-            found.append((node, reason))
+            found.append(_Tautology(node, reason))
     return found
 
 
