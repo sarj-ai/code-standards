@@ -316,6 +316,25 @@ class TestStatus:
 
 
 class TestRelease:
+    def test_latest_version_refreshes_the_registry_backed_tool(self) -> None:
+        runner = FakeRunner([(0, "sarj-standards 6.0.5")])
+
+        assert rollout.latest_version(runner) == "6.0.5"
+        assert runner.commands == [
+            (
+                "uvx",
+                "--isolated",
+                "--python",
+                "3.14",
+                "--refresh-package",
+                "sarj-standards",
+                "--from",
+                "sarj-standards",
+                "sarj-standards",
+                "--version",
+            )
+        ]
+
     def test_release_verification_binds_package_and_tag_sha(self) -> None:
         sha = "a" * 40
         runner = FakeRunner(

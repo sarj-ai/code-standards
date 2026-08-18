@@ -907,7 +907,18 @@ def apply(
 
 def latest_version(runner: CommandRunner) -> str:
     result = runner.run(
-        ("uvx", "--isolated", "--python", "3.14", "--from", "sarj-standards", "sarj-standards", "--version")
+        (
+            "uvx",
+            "--isolated",
+            "--python",
+            "3.14",
+            "--refresh-package",
+            "sarj-standards",
+            "--from",
+            "sarj-standards",
+            "sarj-standards",
+            "--version",
+        )
     )
     match = re.search(r"([0-9]+\.[0-9]+\.[0-9]+(?:[a-zA-Z0-9.-]+)?)", stdout(result))
     if match is None:
