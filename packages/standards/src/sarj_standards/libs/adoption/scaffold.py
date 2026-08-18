@@ -1463,6 +1463,7 @@ def github_ci_workflow(root: Path) -> str:
         "on:",
         "  pull_request:",
         "  push:",
+        "    branches: [main]",
         "",
         "permissions:",
         "  contents: read",
