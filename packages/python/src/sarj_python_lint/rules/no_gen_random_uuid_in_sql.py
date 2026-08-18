@@ -1,8 +1,3 @@
-"""SARJ053 — `gen_random_uuid()` in SQL embedded in Python — use `uuidv7()`.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_gen_random_uuid_in_sql.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -99,7 +94,6 @@ class NoGenRandomUuidInSql(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Report every embedded SQL literal defaulting to `gen_random_uuid()`."""
         if is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
@@ -121,7 +115,6 @@ class NoGenRandomUuidInSql(Rule):
 
 
 def _is_offending_sql(value: str) -> bool:
-    """Report whether a string literal is SQL that calls `gen_random_uuid()`."""
     masked = strip_sql_noise(value)
     if not (_GEN_RANDOM_UUID_RE.search(masked) and _SQL_SHAPE_RE.search(masked)):
         return False

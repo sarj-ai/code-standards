@@ -1,13 +1,8 @@
-"""SARJ042 — An opaque parametrize case with no id reports as `test_x[case0]`.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_opaque_parametrize_case_needs_id.py
-"""
-
 from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -30,6 +25,12 @@ if TYPE_CHECKING:
 _PARAMETRIZE = "parametrize"
 
 _PARAM = "param"
+
+
+class _UnnameableTable(NamedTuple):
+    decorator: ast.Call
+    case_count: int
+
 
 # Node kinds pytest cannot render into a readable test id.
 _OPAQUE_NODES = (ast.Dict, ast.Set, ast.DictComp, ast.SetComp, ast.ListComp, ast.GeneratorExp, ast.Call)
@@ -92,7 +93,6 @@ class OpaqueParametrizeCaseNeedsId(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag parametrize cases whose value cannot produce a readable pytest id."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -117,11 +117,11 @@ class OpaqueParametrizeCaseNeedsId(Rule):
         return diags
 
 
-def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]]:
+def _tables_with_unnameable_cases(tree: ast.Module) -> list[_UnnameableTable]:
     # One diagnostic per table, not per case: a single `ids=` on the decorator
     # resolves every case at once, so per-case reporting would be N copies of
     # one fix and would bury a large table's other diagnostics.
-    hits: list[tuple[ast.Call, int]] = []
+    hits: list[_UnnameableTable] = []
     for node in _decorator_calls(tree):
         if not _is_parametrize(node.func):
             continue
@@ -135,12 +135,11 @@ def _tables_with_unnameable_cases(tree: ast.Module) -> list[tuple[ast.Call, int]
             continue
         count = sum(1 for case in values.elts if _is_unnameable(case, width))
         if count:
-            hits.append((node, count))
+            hits.append(_UnnameableTable(node, count))
     return hits
 
 
 def _decorator_calls(tree: ast.Module) -> list[ast.Call]:
-    """Collect every call used as a decorator, in source order."""
     return [dec for node in nodes(tree, *_DECORATED_NODES) for dec in node.decorator_list if isinstance(dec, ast.Call)]
 
 
@@ -156,7 +155,6 @@ def _has_keyword(node: ast.Call, name: str) -> bool:
 
 
 def _parametrize_width(argnames: ast.expr) -> int | None:
-    """Return the statically known number of parameters in a table."""
     if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
         names = [stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip())]
         return len(names) or None

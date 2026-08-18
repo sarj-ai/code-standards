@@ -1,5 +1,3 @@
-"""CLI: sarj-python-lint check --rule <id> [--rule <id2>] [--baseline <json>] <files>."""
-
 from __future__ import annotations
 
 import argparse
@@ -99,7 +97,11 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         diags.extend(
             diagnostic
             for diagnostic in deduplicate_diagnostics(
-                [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)],
+                [
+                    diagnostic
+                    for diagnostic in raw
+                    if diagnostic.code == "SARJ419" or not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
+                ],
                 source=source,
             )
         )
@@ -113,7 +115,6 @@ def analyze(
     baseline: Path | None = None,
     root: Path | None = None,
 ) -> list[Diagnostic]:
-    """Return native diagnostics without rendering CLI output."""
     diagnostics = _check(rule_ids, paths)
     return diagnostics if baseline is None else _apply_baseline(diagnostics, _read_baseline(baseline), root=root)
 
@@ -121,11 +122,21 @@ def analyze(
 _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
         "SARJ003": frozenset({"SARJ080"}),
-        "SARJ084": frozenset({"SARJ050", "SARJ091"}),
-        "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ091"}),
-        "SARJ092": frozenset({"SARJ086", "SARJ087"}),
+        "SARJ050": frozenset({"SARJ420"}),
+        "SARJ084": frozenset({"SARJ050", "SARJ091", "SARJ420"}),
+        "SARJ085": frozenset({"SARJ420"}),
+        "SARJ086": frozenset({"SARJ420"}),
+        "SARJ087": frozenset({"SARJ420"}),
+        "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ091", "SARJ420"}),
+        "SARJ091": frozenset({"SARJ420"}),
+        "SARJ092": frozenset({"SARJ086", "SARJ087", "SARJ420"}),
         "SARJ093": frozenset({"SARJ034"}),
+        "SARJ099": frozenset({"SARJ420"}),
     }
+)
+
+_DOCSTRING_PRECEDENCE_CODES = frozenset(
+    {"SARJ050", "SARJ084", "SARJ085", "SARJ086", "SARJ087", "SARJ088", "SARJ091", "SARJ092", "SARJ099"}
 )
 
 
@@ -135,9 +146,10 @@ class _OwnerLocation(NamedTuple):
 
 
 def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
-    """Keep the most specific remediation at a source location."""
     codes = frozenset(diagnostic.code for diagnostic in diags)
-    needs_docstring_owners = "SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])
+    needs_docstring_owners = ("SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])) or (
+        "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
+    )
     docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
     needs_signature_owners = "SARJ093" in codes and "SARJ034" in codes
     signature_owners = (
@@ -183,31 +195,29 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
     ]
 
 
-def _function_signature_owner_locations(source: str) -> dict[int, tuple[int, int]]:
-    """Map signature lines to their function opening for cross-rule precedence."""
+def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return {}
-    owners: dict[int, tuple[int, int]] = {}
+    owners: dict[int, _OwnerLocation] = {}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         body_line = node.body[0].lineno if node.body else node.lineno + 1
         end_line = max(node.lineno, body_line - 1)
-        owners.update(dict.fromkeys(range(node.lineno, end_line + 1), (node.lineno, node.col_offset + 1)))
+        owners.update(dict.fromkeys(range(node.lineno, end_line + 1), _OwnerLocation(node.lineno, node.col_offset + 1)))
     return owners
 
 
-def _docstring_owner_locations(source: str) -> dict[int, tuple[int, int]]:
-    """Map every physical docstring line to the opening expression that owns it."""
+def _docstring_owner_locations(source: str) -> dict[int, _OwnerLocation]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         tree = None
     if tree is None:
         return {}
-    owners: dict[int, tuple[int, int]] = {}
+    owners: dict[int, _OwnerLocation] = {}
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) or not node.body:
             continue
@@ -218,7 +228,7 @@ def _docstring_owner_locations(source: str) -> dict[int, tuple[int, int]]:
             and isinstance(expression.value.value, str)
         ):
             continue
-        location = (expression.lineno, expression.col_offset + 1)
+        location = _OwnerLocation(expression.lineno, expression.col_offset + 1)
         lines = range(expression.lineno, (expression.end_lineno or expression.lineno) + 1)
         owners.update(dict.fromkeys(lines, location))
     return owners
@@ -245,7 +255,6 @@ class _Args(argparse.Namespace):
 
 
 def _explain(wanted: str) -> int:
-    """Print a rule's description and its derived examples link."""
     key = wanted.strip()
     cls = REGISTRY.get(key) or next((c for c in REGISTRY.values() if c.code.upper() == key.upper()), None)
     if cls is None:
@@ -267,7 +276,6 @@ def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
 
 
 def _baseline_path(path: Path, *, root: Path | None = None) -> str:
-    """Make baselines portable when a caller supplies repository-absolute paths."""
     try:
         return path.resolve().relative_to((Path.cwd() if root is None else root).resolve()).as_posix()
     except ValueError:
@@ -275,7 +283,6 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 
 
 def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
-    """Load a baseline file, keeping only well-formed `{path: {CODE: count}}` entries."""
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         path.read_text(encoding="utf-8")
     )
@@ -299,7 +306,6 @@ def _apply_baseline(
     *,
     root: Path | None = None,
 ) -> list[Diagnostic]:
-    """Suppress up to the baselined count per (path, code); excess diags survive."""
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:

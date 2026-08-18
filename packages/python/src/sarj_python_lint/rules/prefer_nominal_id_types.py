@@ -1,8 +1,3 @@
-"""SARJ093 flags boundaries where multiple ID roles share primitive ID carrier types.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_nominal_id_types.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -234,7 +229,6 @@ def _boundary_roles(
 
 
 def _boundary_nodes(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef]:
-    """Return module functions, classes, and direct methods—not nested implementation closures."""
     result: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -273,11 +267,11 @@ def _role(
 
 
 def _qualified_tail(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return ""
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""
 
 
 def _is_raw_schema_class(node: ast.ClassDef) -> bool:

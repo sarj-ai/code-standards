@@ -1,5 +1,3 @@
-"""Shared first-party / third-party module resolution."""
-
 # Ownership resolution is conservative because a missed finding is safer than advising an impossible dependency edit.
 
 from __future__ import annotations
@@ -56,7 +54,6 @@ _MAX_ANCESTORS = 24
 
 
 def is_first_party_module(module: str, path: Path) -> bool:
-    """Report whether dotted `module` is declared inside `path`'s own project."""
     top = module.partition(".")[0]
     if not top or top in sys.stdlib_module_names:
         return False
@@ -68,7 +65,6 @@ def is_first_party_module(module: str, path: Path) -> bool:
 
 
 def own_top_package(path: Path) -> str | None:
-    """Return the outermost importable ancestor, including across PEP 420 namespace gaps."""
     resolved = _resolved(path)
     if resolved is None:
         return None
@@ -87,7 +83,6 @@ def own_top_package(path: Path) -> str | None:
 
 
 def same_distribution(module: str, path: Path) -> bool:
-    """Compare packaging manifests so a distribution's tests count as its own code."""
     ours = distribution_root(path)
     if ours is None:
         return False
@@ -101,7 +96,6 @@ def same_distribution(module: str, path: Path) -> bool:
 
 
 def distribution_root(path: Path) -> Path | None:
-    """Locate the nearest packaging manifest because package nesting alone is not distribution ownership."""
     resolved = _resolved(path)
     if resolved is None:
         return None
@@ -115,7 +109,6 @@ def distribution_root(path: Path) -> Path | None:
 
 
 def has_first_party_source(module: str, path: Path) -> bool:
-    """Report whether dotted `module` resolves to editable source in `path`'s project."""
     top, _, rest = module.partition(".")
     root = _project_root(path)
     if root is None:
@@ -127,7 +120,6 @@ def has_first_party_source(module: str, path: Path) -> bool:
 
 
 def project_root(path: Path) -> Path | None:
-    """Return the conservative repository/workspace root used by project-aware rules."""
     return _project_root(path)
 
 
@@ -148,7 +140,6 @@ def _resolved(path: Path) -> Path | None:
 
 @lru_cache(maxsize=256)
 def _project_root(path: Path) -> Path | None:
-    """Locate the project boundary above `path`, memoized per file path."""
     resolved = _resolved(path)
     if resolved is None:
         return None
@@ -170,13 +161,11 @@ def _project_root(path: Path) -> Path | None:
 
 @lru_cache(maxsize=32)
 def _first_party_roots(root: Path) -> frozenset[str]:
-    """Collect the top-level package names declared anywhere under `root`."""
     return frozenset(name for name, _ in _first_party_packages(root))
 
 
 @lru_cache(maxsize=32)
 def _first_party_packages(root: Path) -> tuple[tuple[str, Path], ...]:
-    """Locate importable top-level packages; `__init__.py` prevents data directories from posing as code."""
     found: list[tuple[str, Path]] = []
     queue: list[tuple[Path, int]] = [(root, 0)]
     scanned = 0

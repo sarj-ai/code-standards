@@ -131,7 +131,6 @@ _SUBSCRIPT_TARGETS = [
 
 @pytest.mark.parametrize("target", _SUBSCRIPT_TARGETS)
 def test_allows_subscript_targets(target: str):
-    """Per-slot writes are not single-string growth — excluded even for `+=`."""
     src = f"""
 def f(items, acc, obj, i):
     for x in items:
@@ -152,7 +151,6 @@ def f(items):
 
 
 def test_flags_concat_in_for_else_clause():
-    """The `else` block is visited at loop depth, so a concat there fires."""
     src = """
 def f(items):
     s = ""
@@ -264,7 +262,6 @@ def test_reports_distinct_positions_in_source_order():
 
 
 def test_flags_bare_name_augassign_when_target_is_string():
-    """`buf += line` where `buf` was initialised to a string is genuine O(n²)."""
     src = """
 def f(lines):
     buf = ""
@@ -276,7 +273,6 @@ def f(lines):
 
 
 def test_flags_bare_name_self_add_when_target_is_string():
-    """`out = out + chunk` where `out` was initialised to a string is O(n²)."""
     src = """
 def f(chunks):
     out = ""
@@ -288,7 +284,6 @@ def f(chunks):
 
 
 def test_allows_bare_name_augassign_when_target_is_numeric():
-    """`total += x` with `total = 0` is numeric — the string-var signal is absent."""
     src = """
 def f(items):
     total = 0
@@ -300,7 +295,6 @@ def f(items):
 
 
 def test_allows_bare_name_augassign_with_unknown_target_type():
-    """No local string initialiser for the target — stay conservative."""
     src = """
 def f(items, chunk, s):
     for x in items:
@@ -358,7 +352,6 @@ def render(seed: str, parts):
 
 
 def test_allows_join_reassignment_in_loop():
-    """requests/sessions.py — `url = ":".join([scheme, url])` is a one-shot join."""
     src = """
 def f(parts):
     url = ""
@@ -370,7 +363,6 @@ def f(parts):
 
 
 def test_allows_os_path_join_reassignment_in_loop():
-    """django/forms/fields.py — `f = os.path.join(root, f)` is a bounded rebind."""
     src = """
 def build(segments):
     import os
@@ -383,7 +375,6 @@ def build(segments):
 
 
 def test_allows_str_coercion_reassignment_in_loop():
-    """requests/models.py — `val = str(val)` is a single type coercion."""
     src = """
 def f(rows):
     val = ""
@@ -395,7 +386,6 @@ def f(rows):
 
 
 def test_allows_loop_local_target_rebound_before_concat():
-    """homeassistant/helpers/json.py — `desc = ...` then `desc += ...` is loop-local."""
     src = """
 def f(objs):
     for obj in objs:
@@ -408,7 +398,6 @@ def f(objs):
 
 
 def test_allows_loop_local_target_from_tuple_unpack():
-    """`obj, path = q.popleft()` then `path += ...` — path is freshly bound each pass."""
     src = """
 def f(q):
     while q:
@@ -420,7 +409,6 @@ def f(q):
 
 
 def test_flags_before_loop_accumulator_not_rebound_in_body():
-    """`msg = ""` before the loop, only `+=` inside — a true cross-iteration accumulator."""
     src = """
 def f(lines):
     msg = ""
@@ -432,7 +420,6 @@ def f(lines):
 
 
 def test_flags_inner_loop_accumulator_reset_in_outer_body_only():
-    """`buf = ""` resets per OUTER pass but accumulates across the INNER loop — O(n²)."""
     src = """
 def f(rows):
     for row in rows:
@@ -445,7 +432,6 @@ def f(rows):
 
 
 def test_flags_when_rebind_comes_after_concat():
-    """A rebind lexically AFTER the concat does not make the concat loop-local."""
     src = """
 def f(items):
     s = ""
@@ -458,7 +444,6 @@ def f(items):
 
 
 def test_allows_subscript_fstring_write_in_loop():
-    """requests/utils.py — `parts[i] = f"%{parts[i]}"` writes a distinct slot."""
     src = """
 def f(parts):
     for i in range(len(parts)):
@@ -547,7 +532,6 @@ def f(items):
 
 
 def test_allows_string_repeat_augassign():
-    """`s *= 2` is Mult, not Add — not the concat antipattern."""
     src = """
 def f(items):
     s = "-"
@@ -559,7 +543,6 @@ def f(items):
 
 
 def test_allows_fresh_binop_assignment_each_iteration():
-    """A plain (non-self) assignment to a fresh local is not accumulation."""
     src = """
 def f(items):
     for x in items:
@@ -798,7 +781,6 @@ def f(gen):
 
 
 def test_flags_async_for_concat_when_nested_in_sync_for():
-    """Flag the concat when an async-for nests inside a sync for."""
     src = """
 async def f(rows):
     s = ""
@@ -823,7 +805,6 @@ async def f(rows):
 
 
 def test_flags_implicit_adjacent_string_literal_concat():
-    """`"a" "b"` is parsed as a single str Constant, so it is flagged."""
     src = """
 def f(items):
     s = ""
@@ -835,7 +816,6 @@ def f(items):
 
 
 def test_allows_bytes_encode_call_in_loop():
-    """`.encode()` yields bytes and, as a call, is not treated as string growth."""
     src = """
 def f(items):
     buf = b""
@@ -847,7 +827,6 @@ def f(items):
 
 
 def test_allows_numeric_modulo_augassign_in_loop():
-    """`%` on a numeric RHS is Mod, not Add, and must not be flagged."""
     src = """
 def f(items):
     total = 0

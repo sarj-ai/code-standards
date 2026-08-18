@@ -1,5 +1,3 @@
-"""Execute the exact illustrative examples published by a rule."""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -16,7 +14,6 @@ type ExampleTest = Callable[[RuleExample], object]
 
 
 def illustrative_examples(rule: type[Rule]) -> Callable[[ExampleTest], ExampleTest]:
-    """Parametrize a test with every reviewed public example owned by ``rule``."""
     examples = rule.public_examples()
     if not examples:
         msg = f"{rule.id}: illustrative example test requires at least one public example"

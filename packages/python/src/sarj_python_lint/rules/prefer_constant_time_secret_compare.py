@@ -1,8 +1,3 @@
-"""SARJ011 — `==`/`!=` comparisons on secret-like values.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_constant_time_secret_compare.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -176,7 +171,6 @@ _EQUALITY_DUNDERS = frozenset({"__eq__", "__ne__"})
 
 
 def _equality_dunder_compares(tree: ast.AST, source: str) -> frozenset[int]:
-    """Collect the `id()`s of every `Compare` written directly in an `__eq__`/`__ne__` body."""
     if not any(dunder in source for dunder in _EQUALITY_DUNDERS):
         return frozenset()
     return frozenset(
@@ -188,7 +182,6 @@ def _equality_dunder_compares(tree: ast.AST, source: str) -> frozenset[int]:
 
 
 def _same_scope_compares(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.Compare]:
-    """Yield `func`'s own comparisons, not descending into nested `def`/`lambda` scopes."""
     stack: list[ast.AST] = list(func.body)
     while stack:
         current = stack.pop()
@@ -200,7 +193,6 @@ def _same_scope_compares(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterat
 
 
 def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
-    """Report whether the operand's identifier names an auth secret worth constant-time compare."""
     match node:
         case ast.NamedExpr(target=ast.Name(id=name)) | ast.Name(id=name) | ast.Attribute(attr=name):
             return _is_auth_secret_name(name, crypto_module=crypto_module)
@@ -224,7 +216,6 @@ def _is_secret_operand(node: ast.AST, *, crypto_module: bool) -> bool:
 
 
 def _is_password_confirmation_pair(operands: list[ast.expr]) -> bool:
-    """Exclude two user-entered password fields checked for confirmation equality."""
     if len(operands) != _CONFIRMATION_OPERAND_COUNT:
         return False
     names = [_operand_name(operand) for operand in operands]
@@ -248,7 +239,6 @@ _AUTH_MAPPING_WORDS = frozenset({"authorization", "cookies", "headers", "path_pa
 
 
 def _is_auth_mapping(node: ast.AST) -> bool:
-    """Report whether `.get(...)` reads a request authenticator container."""
     match node:
         case ast.Name(id=name) | ast.Attribute(attr=name):
             return name.lower() in _AUTH_MAPPING_WORDS
@@ -257,7 +247,6 @@ def _is_auth_mapping(node: ast.AST) -> bool:
 
 
 def _is_auth_lookup(node: ast.AST, *, crypto_module: bool) -> bool:
-    """Report whether an operand reads a named authenticator from a request mapping."""
     match node:
         case ast.Call(func=ast.Attribute(value=receiver, attr="get"), args=[ast.Constant(value=str() as key), *_]):
             return _is_auth_mapping(receiver) and _is_auth_secret_name(key, crypto_module=crypto_module)
@@ -272,7 +261,6 @@ _CRYPTO_MODULES = frozenset({"hmac", "hashlib", "secrets", "jwt", "cryptography"
 
 
 def _imports_crypto(tree: ast.AST, source: str) -> bool:
-    """Report whether the module imports crypto machinery anywhere."""
     if not any(module in source for module in _CRYPTO_MODULES):
         return False
     for node in nodes(tree, ast.Import, ast.ImportFrom):
@@ -285,7 +273,6 @@ def _imports_crypto(tree: ast.AST, source: str) -> bool:
 
 
 def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
-    """Report whether `identifier` names an authenticator (an access-gating secret)."""
     if not is_secret_name(identifier):
         return False
     tokens = identifier_tokens(identifier)
@@ -312,7 +299,6 @@ def _is_auth_secret_name(identifier: str, *, crypto_module: bool) -> bool:
 
 
 def _is_excluded_operand(node: ast.AST, *, literal_constants: frozenset[str]) -> bool:
-    """Report whether the operand makes the comparison a non-timing-attack surface."""
     if isinstance(node, ast.Constant):
         value = node.value
         if value is None or isinstance(value, bool):
@@ -329,7 +315,6 @@ def _is_excluded_operand(node: ast.AST, *, literal_constants: frozenset[str]) ->
 
 
 def _literal_constant_names(tree: ast.AST) -> frozenset[str]:
-    """Collect immutable-looking names bound directly to fixed str/bytes sentinels."""
     names: set[str] = set()
     for node in nodes(tree, ast.Assign, ast.AnnAssign):
         match node:
@@ -344,5 +329,4 @@ def _literal_constant_names(tree: ast.AST) -> frozenset[str]:
 
 
 def _is_constant_reference(identifier: str) -> bool:
-    """Report whether `identifier` is an ALL-CAPS named constant (a compile-time sentinel)."""
     return identifier.isupper() and any(c.isalpha() for c in identifier)

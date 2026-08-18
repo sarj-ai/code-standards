@@ -1,5 +1,3 @@
-"""Tests for the shipped rule-inventory build/runtime boundary."""
-
 from __future__ import annotations
 
 import json

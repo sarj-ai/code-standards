@@ -1,5 +1,3 @@
-"""Public release-policy library used by the standards CLI and automation."""
-
 from sarj_standards.libs.release.artifacts import (
     required_artifact_paths,
     verify_built_package,

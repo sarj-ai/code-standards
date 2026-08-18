@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+from pathlib import PurePosixPath
+import re
+from typing import TYPE_CHECKING, NamedTuple, final, override
+
+from sarj_iac_lint._hcl import heredoc_body_mask
+from sarj_iac_lint.rule_base import (
+    AutofixPolicy,
+    Diagnostic,
+    ExampleFile,
+    ExampleOutcome,
+    Rule,
+    RuleCategory,
+    RuleDocumentation,
+    RuleExample,
+)
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+_COMMENT_RE = re.compile(r"^(?P<indent>\s*)(?:#|//)\s?(?P<body>.*)$")
+_BLOCK_START_RE = re.compile(r"^(?P<indent>\s*)/\*\s?(?P<body>.*)$")
+_DECLARATION_RE = re.compile(
+    r"^(?:resource|data|module|variable|output|provider|locals|terraform|dynamic|moved)\b|^[A-Za-z_][\w-]*\s*=",
+    re.IGNORECASE,
+)
+_WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_DIRECTIVE_RE = re.compile(r"^(?:sarj-noqa|tflint|checkov|terraform|todo|fixme|hack|noqa)\b", re.IGNORECASE)
+_PROTECTED_RE = re.compile(
+    r"https?://|\b(?:because|otherwise|must|never|requires?|workaround|upstream|security|race|invariant)\b|"
+    r"\b[A-Z][A-Z0-9]{1,9}-\d+\b|\d+\s*(?:ms|seconds?|minutes?|hours?|days?|%|MB|GB)\b",
+    re.IGNORECASE,
+)
+_STOPWORDS = frozenset(
+    [
+        "a",
+        "an",
+        "the",
+        "this",
+        "that",
+        "to",
+        "of",
+        "for",
+        "in",
+        "on",
+        "by",
+        "with",
+        "from",
+        "and",
+        "or",
+        "is",
+        "are",
+        "be",
+        "set",
+        "create",
+        "define",
+        "configure",
+    ]
+)
+_GENERATED_RE = re.compile(r"generated.*do not edit|do not edit.*generated", re.IGNORECASE)
+_TRAILING_SUPPRESSION_RE = re.compile(
+    r"\s+(?:#|//)\s*sarj-noqa:\s*SARJ\d+(?:\s*,\s*SARJ\d+)*(?:\s*(?:—|--)\s*.+)?$",
+    re.IGNORECASE,
+)
+_MAX_COMMENT_WORDS = 8
+_MIN_CONTENT_WORDS = 2
+_MIN_STEM_LENGTH = 3
+
+
+class _CommentCandidate(NamedTuple):
+    body: str
+    declaration: str
+    line: int
+    column: int
+    indent: int
+
+
+@final
+class NoRestatedComment(Rule):
+    id = "no-restated-comment"
+    code = "SARJ207"
+    documentation = RuleDocumentation(
+        summary="HCL comments must not merely restate the adjacent declaration.",
+        rationale="Narrating a resource, block, or attribute duplicates executable configuration and can drift from it.",
+        remediation="Delete the comment or replace it with an external constraint, provider quirk, or operational reason.",
+        category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.NONE,
+        limitations=(
+            "Only short line or block comments immediately above a declaration at the same indentation are compared.",
+            "Heredocs, directives, generated files, references, units, modality, and causal explanations are preserved.",
+        ),
+        examples=(
+            RuleExample(
+                example_id="attribute-restatement",
+                title="Comment repeats an attribute name and value",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.iac("main.tf", "# Set instance type\ninstance_type = var.instance_type\n"),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="provider-constraint",
+                title="Comment records a provider constraint",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        "# Keep this type because the provider rejects ARM nodes.\ninstance_type = var.instance_type\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
+        ),
+    )
+    description = documentation.summary
+
+    @override
+    def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if _generated_header(source):
+            return []
+        lines = source.splitlines()
+        in_heredoc = heredoc_body_mask(lines)
+        findings: list[Diagnostic] = []
+        for body, declaration, line, column, indent in _comment_candidates(lines, in_heredoc):
+            normalized_body = _TRAILING_SUPPRESSION_RE.sub("", body).strip()
+            if not _eligible(normalized_body, declaration, indent):
+                continue
+            findings.append(Diagnostic(path, line, column, self.code, self.description))
+        return findings
+
+
+def _comment_candidates(lines: list[str], in_heredoc: tuple[bool, ...]) -> list[_CommentCandidate]:
+    candidates: list[_CommentCandidate] = []
+    index = 0
+    while index < len(lines) - 1:
+        if in_heredoc[index]:
+            index += 1
+            continue
+        raw = lines[index]
+        if (line_match := _COMMENT_RE.match(raw)) is not None:
+            if not in_heredoc[index + 1]:
+                indent = len(line_match["indent"])
+                candidates.append(
+                    _CommentCandidate(line_match["body"], lines[index + 1], index + 1, indent + 1, indent)
+                )
+            index += 1
+            continue
+        block_match = _BLOCK_START_RE.match(raw)
+        if block_match is None:
+            index += 1
+            continue
+        indent = len(block_match["indent"])
+        body_lines = [block_match["body"]]
+        end = index
+        while end < len(lines) and "*/" not in lines[end]:
+            end += 1
+            if end >= len(lines) or in_heredoc[end]:
+                break
+            body_lines.append(lines[end].strip().removeprefix("*").strip())
+        if end + 1 < len(lines) and "*/" in lines[end] and not in_heredoc[end + 1]:
+            body_lines[-1] = body_lines[-1].split("*/", 1)[0].strip()
+            body = " ".join(part for part in body_lines if part)
+            candidates.append(_CommentCandidate(body, lines[end + 1], index + 1, indent + 1, indent))
+        index = max(index + 1, end + 1)
+    return candidates
+
+
+def _eligible(body: str, declaration: str, indent: int) -> bool:
+    if not body or body.endswith("?") or _DIRECTIVE_RE.match(body) or _PROTECTED_RE.search(body):
+        return False
+    if len(body.split()) > _MAX_COMMENT_WORDS or len(declaration) - len(declaration.lstrip()) != indent:
+        return False
+    code = declaration.strip()
+    if not _DECLARATION_RE.match(code):
+        return False
+    content = [word for match in _WORD_RE.finditer(body) if (word := match.group(0).lower()) not in _STOPWORDS]
+    if len(content) < _MIN_CONTENT_WORDS:
+        return False
+    present = {part.lower() for match in _WORD_RE.finditer(code) for part in re.split(r"_+", match.group(0)) if part}
+    return all(word in present or _stem(word) in {_stem(item) for item in present} for word in content)
+
+
+def _generated_header(source: str) -> bool:
+    for line in source.splitlines()[:20]:
+        if not line.strip():
+            continue
+        match = _COMMENT_RE.match(line)
+        if match is None:
+            return False
+        if _GENERATED_RE.search(match["body"]):
+            return True
+    return False
+
+
+def _stem(word: str) -> str:
+    for suffix in ("ing", "ed", "es", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= _MIN_STEM_LENGTH:
+            return word[: -len(suffix)]
+    return word

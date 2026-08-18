@@ -486,7 +486,6 @@ def test_duration_name_non_numeric_annotation_not_flagged(annotation: str):
 
 
 def test_string_forward_ref_annotation_is_not_resolved():
-    """String (forward-ref) annotations are opaque to the AST rule — a known limit."""
     src = 'def f(delay_seconds: "int") -> None: ...\n'
     assert _check(src) == []
 
@@ -797,7 +796,6 @@ class AppSettings(BaseSettings):
 
 
 def test_settings_named_class_without_base_still_flagged():
-    """Flag a class *named* `...Settings` that has no base."""
     src = """
 class RedisSettings:
     connect_timeout_seconds: int
@@ -806,7 +804,6 @@ class RedisSettings:
 
 
 def test_non_pydantic_settings_named_base_exempts_by_name_heuristic():
-    """Exempt a class deriving from any base whose name ends in `Settings`."""
     src = """
 class LegacySettings:
     pass
@@ -843,7 +840,6 @@ def build() -> None:
 
 
 def test_external_intermediate_base_not_resolved_still_flagged():
-    """Flag a field whose intermediate base is from another module."""
     src = """
 class Config(ExternalBase):
     request_timeout_seconds: float
@@ -883,7 +879,6 @@ class AppSettings(BaseSettings):
 
 
 def test_settings_class_local_var_in_method_still_flagged():
-    """Flag an annotated local inside a settings-class method body."""
     src = """
 class AppSettings(BaseSettings):
     def m(self) -> None:
@@ -893,7 +888,6 @@ class AppSettings(BaseSettings):
 
 
 def test_settings_base_cycle_terminates_and_flags():
-    """Terminate on a base cycle with no `Settings` root and flag both classes."""
     src = """
 class A(B):
     timeout_seconds: int
@@ -913,13 +907,11 @@ def test_timestamp_ms_exclusion_wins_over_unit_token():
 
 
 def test_countdown_seconds_flagged_count_substring_not_a_boundary():
-    """Flag `countdown_seconds` because `count` is not on a token boundary."""
     src = "def f(countdown_seconds: int) -> None: ...\n"
     assert len(_check(src)) == 1
 
 
 def test_conint_call_annotation_not_resolved():
-    """Skip a `conint(...)` factory-call annotation the AST rule can't resolve."""
     src = "def f(timeout_seconds: conint(ge=0)) -> None: ...\n"
     assert _check(src) == []
 
@@ -1206,7 +1198,6 @@ def test_union_of_numeric_without_timedelta_still_fires():
 
 
 def test_a_timedelta_named_container_does_not_exempt():
-    """Flag a numeric duration alongside an unrelated `timedelta` mention."""
     src = "def f(timeout_seconds: int, schedule: list[timedelta]) -> None: ...\n"
     assert len(_check(src)) == 1
 

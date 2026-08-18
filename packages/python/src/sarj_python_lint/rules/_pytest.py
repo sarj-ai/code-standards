@@ -1,5 +1,3 @@
-"""Shared pytest-shape predicates for the assertion-quality rules."""
-
 from __future__ import annotations
 
 import ast
@@ -12,14 +10,12 @@ _BENCHMARK = "benchmark"
 
 
 def uses_benchmark_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether `node` both declares and uses the pytest-benchmark fixture."""
     args = node.args
     declared = any(arg.arg == _BENCHMARK for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs))
     return declared and any(isinstance(child, ast.Name) and child.id == _BENCHMARK for child in walk(node))
 
 
 def has_benchmark_marker(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether `node` carries `@pytest.mark.benchmark`, called or bare."""
     return any(_decorator_attr(dec) == _BENCHMARK for dec in node.decorator_list)
 
 

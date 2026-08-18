@@ -1,8 +1,3 @@
-"""SARJ026 — Functions returning a bare positional `tuple[A, B, ...]`.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -34,6 +29,9 @@ _TUPLE_NAMES = frozenset({"tuple", "Tuple"})
 _SINGLE_RETURN_WRAPPERS = frozenset({"Annotated", "Awaitable", "Optional"})
 _UNION_NAMES = frozenset({"Union"})
 _COROUTINE_NAMES = frozenset({"Coroutine"})
+_COLLECTION_RETURN_WRAPPERS = frozenset(
+    {"Collection", "Iterable", "List", "Mapping", "Sequence", "dict", "frozenset", "list", "set"}
+)
 
 _MIN_ELEMENTS = 2
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
@@ -69,7 +67,7 @@ _STRUCTURAL_BASES = frozenset(
 )
 
 _MSG = (
-    "function returns a bare positional tuple[...] — callers must unpack by "
+    "function return contract contains a fixed positional tuple[...] — callers must unpack by "
     "position; prefer a typing.NamedTuple or frozen dataclass (or a frozen pydantic model at validation boundaries)."
 )
 
@@ -79,7 +77,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
     id: str = "prefer-namedtuple-over-tuple-return"
     code: str = "SARJ026"
     documentation = RuleDocumentation(
-        summary="Functions should return named records instead of fixed positional tuples.",
+        summary="Functions should return named records instead of fixed positional tuples, including tuples nested in collections.",
         rationale="A positional tuple hides field meaning and lets callers silently swap or misread values.",
         remediation="Return a `NamedTuple`, frozen dataclass, or frozen validation model with named fields.",
         category=RuleCategory.MAINTAINABILITY,
@@ -165,14 +163,11 @@ class PreferNamedtupleOverTupleReturn(Rule):
 
 
 def _is_documentation_path(path: Path) -> bool:
-    """Report whether `path` is executable source embedded in documentation."""
     return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
 
 
 @dataclass(frozen=True, slots=True)
 class _ModuleFacts:
-    """What the module knows about itself: its own classes, its imports, its method names."""
-
     local_classes: frozenset[str]
     #: For each method name, how many distinct classes in this module declare it.
     classes_declaring: dict[str, int]
@@ -183,7 +178,6 @@ class _ModuleFacts:
 
 
 def _module_facts(tree: ast.Module) -> _ModuleFacts:
-    """Collect the module-wide facts the override heuristics need."""
     local_classes: set[str] = set()
     classes_declaring: dict[str, int] = {}
     class_methods: dict[str, frozenset[str]] = {}
@@ -229,7 +223,6 @@ def _module_facts(tree: ast.Module) -> _ModuleFacts:
 def _iter_boundary_functions(
     tree: ast.Module,
 ) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef | None, str]]:
-    """Walk every function with its direct owning class and stable qualified name."""
     stack: list[tuple[ast.AST, ast.ClassDef | None, tuple[str, ...]]] = [(tree, None, ())]
     while stack:
         node, owner, prefix = stack.pop()
@@ -246,7 +239,6 @@ def _iter_boundary_functions(
 
 
 def _is_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef, facts: _ModuleFacts) -> bool:
-    """Keep fixture-specific tuple diagnostics owned by SARJ044."""
     for decorator in node.decorator_list:
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
         name = _name_of(target)
@@ -256,7 +248,6 @@ def _is_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef, facts: _ModuleFact
 
 
 def _is_sort_key_callback(node: ast.FunctionDef | ast.AsyncFunctionDef, tree: ast.Module) -> bool:
-    """Allow tuples required as lexicographic keys by Python sorting protocols."""
     for call in nodes(tree, ast.Call):
         function = _name_of(call.func)
         if function not in _SORT_KEY_CALLS and not (isinstance(call.func, ast.Attribute) and call.func.attr == "sort"):
@@ -275,7 +266,6 @@ def _is_declared_override(
     facts: _ModuleFacts,
     path: Path,
 ) -> bool:
-    """Report whether the method implements a contract inherited from a base class."""
     if any(_name_of(dec) == "override" for dec in node.decorator_list):
         return True
     if _calls_super_method(node):
@@ -299,7 +289,6 @@ def _is_nested_adapter_of_override(
     facts: _ModuleFacts,
     path: Path,
 ) -> bool:
-    """Allow a local callback whose value only feeds its enclosing override's return."""
     parent = facts.parents.get(node)
     while parent is not None and not isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
         parent = facts.parents.get(parent)
@@ -332,7 +321,6 @@ def _is_opaque_composite_key(
     tree: ast.Module,
     facts: _ModuleFacts,
 ) -> bool:
-    """Allow tuples whose slots never escape opaque key/comparison semantics."""
     if _is_frozen_dataclass_key_property(node, owner):
         return True
     if owner is not None or not node.name.startswith("_"):
@@ -405,7 +393,6 @@ def _value_is_used_opaquely(value: ast.expr, tree: ast.Module, parents: dict[ast
 
 
 def _calls_super_method(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the body calls `super().<this method's name>(...)`."""
     for child in walk(node):
         match child:
             case ast.Call(func=ast.Attribute(attr=attr, value=ast.Call(func=ast.Name(id="super")))) if (
@@ -428,7 +415,6 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _returns_tuple_literal(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Detect an inferred fixed tuple without descending into nested scopes."""
     pending: list[ast.AST] = [*node.body]
     while pending:
         current = pending.pop()
@@ -446,21 +432,23 @@ def _is_bare_positional_tuple(
     annotation: ast.expr,
     aliases: dict[str, ast.expr] | None = None,
     resolving: frozenset[str] = frozenset(),
+    minimum_elements: int = _MIN_ELEMENTS,
 ) -> bool:
-    """Report whether an annotation contains a fixed positional tuple with at least two elements."""
     match annotation:
         case ast.Constant(value=str() as value):
             try:
                 parsed = ast.parse(value, mode="eval").body
             except SyntaxError:
                 return False
-            return _is_bare_positional_tuple(parsed, aliases, resolving)
+            return _is_bare_positional_tuple(parsed, aliases, resolving, minimum_elements)
         case ast.Name(id=name) if aliases is not None and name not in resolving:
             target = aliases.get(name)
-            return target is not None and _is_bare_positional_tuple(target, aliases, resolving | {name})
+            return target is not None and _is_bare_positional_tuple(
+                target, aliases, resolving | {name}, minimum_elements
+            )
         case ast.BinOp(left=left, op=ast.BitOr(), right=right):
-            return _is_bare_positional_tuple(left, aliases, resolving) or _is_bare_positional_tuple(
-                right, aliases, resolving
+            return _is_bare_positional_tuple(left, aliases, resolving, minimum_elements) or _is_bare_positional_tuple(
+                right, aliases, resolving, minimum_elements
             )
         case ast.Subscript():
             pass
@@ -473,19 +461,22 @@ def _is_bare_positional_tuple(
             if wrapper == "Annotated" and isinstance(annotation.slice, ast.Tuple)
             else annotation.slice
         )
-        return _is_bare_positional_tuple(inner, aliases, resolving)
+        return _is_bare_positional_tuple(inner, aliases, resolving, minimum_elements)
     if wrapper in _UNION_NAMES:
         members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-        return any(_is_bare_positional_tuple(member, aliases, resolving) for member in members)
+        return any(_is_bare_positional_tuple(member, aliases, resolving, minimum_elements) for member in members)
     if wrapper in _COROUTINE_NAMES:
         members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-        return bool(members) and _is_bare_positional_tuple(members[-1], aliases, resolving)
+        return bool(members) and _is_bare_positional_tuple(members[-1], aliases, resolving, minimum_elements)
+    if wrapper in _COLLECTION_RETURN_WRAPPERS:
+        members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+        return any(_is_bare_positional_tuple(member, aliases, resolving, _MIN_ELEMENTS) for member in members)
     if wrapper not in _TUPLE_NAMES:
         return False
     if not isinstance(annotation.slice, ast.Tuple):
         return False
     elements = annotation.slice.elts
-    if len(elements) < _MIN_ELEMENTS:
+    if len(elements) < minimum_elements:
         return False
     return not any(_is_ellipsis(el) for el in elements)
 
@@ -495,9 +486,8 @@ def _is_ellipsis(node: ast.expr) -> bool:
 
 
 def _name_of(node: ast.expr) -> str | None:
-    """Return the trailing name of a reference: `tuple` / `typing.Tuple` -> the trailing id."""
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return None

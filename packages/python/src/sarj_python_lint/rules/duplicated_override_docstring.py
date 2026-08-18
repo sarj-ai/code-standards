@@ -1,8 +1,3 @@
-"""SARJ084 — An override whose docstring is a verbatim copy of the base's.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_duplicated_override_docstring.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -34,7 +29,6 @@ _FUNC_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 def _methods(node: ast.ClassDef) -> dict[str, _Func]:
-    """Index a class body's directly-defined methods by name."""
     return {child.name: child for child in node.body if isinstance(child, _FUNC_TYPES)}
 
 
@@ -125,7 +119,6 @@ class DuplicatedOverrideDocstring(Rule):
 
     @staticmethod
     def _resolvable_bases(node: ast.ClassDef, by_name: dict[str, ast.ClassDef]) -> list[ast.ClassDef]:
-        """Bases of `node` that this module defines under an undotted name."""
         found: list[ast.ClassDef] = []
         for base in node.bases:
             if not isinstance(base, ast.Name):

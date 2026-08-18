@@ -70,7 +70,6 @@ def _chain(
     *type_names: str,
     terminal: str = "raise ValueError()",
 ) -> str:
-    """Render a local-closed-union dispatch over `target`."""
     lines: list[str] = [_classdefs(*type_names), "", "def handle(subject, other):"]
     for i, name in enumerate(type_names):
         kw = "if" if i == 0 else "elif"
@@ -91,7 +90,6 @@ def _two_arm(
     terminal: str = "raise ValueError()",
     classes: tuple[str, ...] = ("Foo", "Bar", "Baz"),
 ) -> str:
-    """Render a two-arm dispatch with local classes and an exhaustive terminal."""
     return (
         f"{_classdefs(*classes)}\n"
         "def handle(o, a, b):\n"

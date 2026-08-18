@@ -1,5 +1,3 @@
-"""The typed facade remains importable independently of argparse."""
-
 from __future__ import annotations
 
 import subprocess

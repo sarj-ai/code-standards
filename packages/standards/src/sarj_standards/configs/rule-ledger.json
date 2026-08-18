@@ -63,6 +63,8 @@
       "no-tautological-expect",
       "no-typed-doc-sections",
       "no-unique-violation-message-match",
+      "no-unnecessary-docstring",
+      "no-vague-suppression-description",
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
       "prefer-class-row",
@@ -115,6 +117,7 @@
       "idempotent-ddl",
       "index-concurrently",
       "insert-requires-on-conflict",
+      "no-comment-cruft",
       "no-offset-pagination",
       "no-pg-enum",
       "prefer-jsonb",
@@ -127,6 +130,7 @@
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-environment-conditional",
+      "no-restated-comment",
       "no-terraform-test-file",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
@@ -200,12 +204,15 @@
       "stepdown",
       "store-insert-requires-on-conflict",
       "test-loops-over-literal-cases",
+      "test-phase-label-comment",
       "zod-naming-convention"
     ],
     "text": [
       "commented-out-config",
       "config-comment-wall",
       "ephemeral-execution-artifact",
+      "exact-config-comment-restatement",
+      "hidden-markdown-heading",
       "iac-source-coupled-test",
       "unpinned-github-action"
     ]
@@ -295,7 +302,9 @@
       "SARJ415",
       "SARJ416",
       "SARJ417",
-      "SARJ418"
+      "SARJ418",
+      "SARJ419",
+      "SARJ420"
     ],
     "sql": [
       "SARJ101",
@@ -309,7 +318,8 @@
       "SARJ109",
       "SARJ110",
       "SARJ111",
-      "SARJ112"
+      "SARJ112",
+      "SARJ113"
     ],
     "iac": [
       "SARJ201",
@@ -317,14 +327,17 @@
       "SARJ203",
       "SARJ204",
       "SARJ205",
-      "SARJ206"
+      "SARJ206",
+      "SARJ207"
     ],
     "text": [
       "SARJ300",
       "SARJ301",
       "SARJ302",
       "SARJ303",
-      "SARJ304"
+      "SARJ304",
+      "SARJ305",
+      "SARJ306"
     ]
   },
   "retired": [

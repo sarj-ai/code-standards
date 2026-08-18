@@ -1,5 +1,3 @@
-"""Policies for TypeScript build output and npm package archives."""
-
 from __future__ import annotations
 
 import json
@@ -38,7 +36,6 @@ def _json_value(value: object) -> JsonValue:
 
 
 def required_artifact_paths(package_json: Mapping[str, object]) -> tuple[str, ...]:
-    """Return unique package entry points in declaration order."""
     candidates: list[str] = []
     for field in ("main", "module", "types"):
         candidates.extend(_exported_paths(_json_value(package_json.get(field))))
@@ -68,7 +65,6 @@ def _safe_artifact_path(value: str) -> str:
 
 
 def load_package_json(package_root: Path) -> dict[str, JsonValue]:
-    """Load a package manifest and require a JSON object."""
     manifest = package_root / "package.json"
     try:
         untyped: object = json.loads(manifest.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
@@ -83,7 +79,6 @@ def load_package_json(package_root: Path) -> dict[str, JsonValue]:
 
 
 def verify_built_package(package_root: Path) -> tuple[str, ...]:
-    """Require every exported entry point to be a non-empty file below ``dist``."""
     required = required_artifact_paths(load_package_json(package_root))
     if not required:
         msg = "package.json declares no publishable entry points"
@@ -112,7 +107,6 @@ def verify_package_tarball(
     expected_name: str | None = None,
     expected_version: str | None = None,
 ) -> tuple[str, ...]:
-    """Inspect an npm tarball and require safe, non-empty regular exported files."""
     expected = {"package/LICENSE", *(f"package/{path}" for path in required)}
     try:
         with tarfile.open(tarball, mode="r:gz") as archive:
@@ -136,7 +130,6 @@ def verify_package_tarball(
 
 
 def verify_python_wheel_license(wheel: Path) -> None:
-    """Require a non-empty license text in a Python wheel before publication."""
     try:
         with zipfile.ZipFile(wheel) as archive:
             licenses = [name for name in archive.namelist() if PurePosixPath(name).name == "LICENSE"]

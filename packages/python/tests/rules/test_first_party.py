@@ -1,5 +1,3 @@
-"""Direct tests for the first-party/third-party resolver shared by the import rules."""
-
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules._first_party import (
@@ -16,13 +14,11 @@ if TYPE_CHECKING:
 
 
 def _repo(root: Path) -> Path:
-    """Make `root` a project boundary the resolver will stop at."""
     (root / ".git").mkdir(parents=True, exist_ok=True)
     return root
 
 
 def _package(parent: Path, name: str) -> Path:
-    """Create an importable package directory."""
     package = parent / name
     package.mkdir(parents=True, exist_ok=True)
     _ = (package / "__init__.py").write_text("")
@@ -30,7 +26,6 @@ def _package(parent: Path, name: str) -> Path:
 
 
 def _chain(root: Path, depth: int) -> Path:
-    """Create `depth` nested plain directories under `root`."""
     current = root
     for level in range(depth):
         current /= f"d{level:02d}"
@@ -45,7 +40,6 @@ def test_a_package_directory_makes_its_top_level_name_first_party(tmp_path: Path
 
 
 def test_a_directory_without_an_init_is_not_a_package(tmp_path: Path) -> None:
-    """The `__init__.py` requirement is load-bearing, not incidental."""
     root = _repo(tmp_path)
     (root / "livekit").mkdir()
     assert not is_first_party_module("livekit", root / "svc.py")
@@ -60,7 +54,6 @@ def test_a_file_outside_any_project_resolves_to_nothing(tmp_path: Path) -> None:
 
 
 def test_a_stdlib_top_level_name_is_never_first_party(tmp_path: Path) -> None:
-    """A first-party package may shadow a stdlib name; the stdlib still wins here."""
     root = _repo(tmp_path)
     _ = _package(root, "json")
     assert not is_first_party_module("json", root / "svc.py")
@@ -76,7 +69,6 @@ def test_a_name_that_merely_looks_stdlib_ish_is_still_ours(tmp_path: Path) -> No
 
 
 def test_a_package_at_the_deepest_scanned_level_is_found(tmp_path: Path) -> None:
-    """Breaks if `_MAX_SCAN_DEPTH` is lowered."""
     root = _repo(tmp_path)
     _ = _package(_chain(root, 4), "pkg")
     assert is_first_party_module("pkg", root / "svc.py")
@@ -91,7 +83,6 @@ def test_a_package_one_level_past_the_scan_depth_is_not_found(tmp_path: Path) ->
 
 
 def _budget_probe(root: Path, siblings: int) -> bool:
-    """Lay out a tree whose package is reachable only within the scan budget."""
     _ = _repo(root)
     _ = _package(root / "a_deep", "pkg")
     for index in range(siblings):
@@ -129,7 +120,6 @@ def test_the_ancestor_walk_gives_up_one_level_further(tmp_path: Path) -> None:
 
 
 def test_own_top_package_reports_the_outermost_importable_ancestor(tmp_path: Path) -> None:
-    """PEP 420 namespace subpackages are routine, so the walk must not stop at a gap."""
     root = _repo(tmp_path)
     outer = _package(root, "app")
     namespace = outer / "lk" / "custom_models"
@@ -147,7 +137,6 @@ def test_distribution_root_is_the_nearest_packaging_manifest(tmp_path: Path) -> 
 
 
 def test_a_distributions_own_test_tree_is_inside_it(tmp_path: Path) -> None:
-    """The boundary the same-top-level-package proxy cannot express."""
     root = _repo(tmp_path)
     dist = root / "packages" / "svc"
     dist.mkdir(parents=True)
@@ -173,7 +162,6 @@ def test_a_sibling_distribution_is_first_party_but_not_the_same_distribution(
 
 
 def test_a_module_with_no_source_on_disk_is_not_editable(tmp_path: Path) -> None:
-    """A compiled extension beside a stub has no "export it publicly" edit available."""
     root = _repo(tmp_path)
     package = _package(root, "app")
     _ = (package / "stores.py").write_text("")

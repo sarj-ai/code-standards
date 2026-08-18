@@ -1,5 +1,3 @@
-"""Package release detection is library-owned, not embedded shell."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

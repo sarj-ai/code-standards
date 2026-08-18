@@ -1,5 +1,3 @@
-"""Rule selectors become typed values as soon as argparse accepts them."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeGuard

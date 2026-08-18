@@ -1,8 +1,3 @@
-"""SARJ413 — Repeated static call assertions should be named test cases.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_repeated_static_call_cases.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -306,6 +301,5 @@ def _static_shape(node: ast.expr) -> object:
 
 
 def _static_value(node: ast.expr) -> str:
-    """Return a bounded comparison token without retaining a large literal."""
     rendered = ast.dump(node, annotate_fields=False, include_attributes=False)
     return rendered[:512]

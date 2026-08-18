@@ -1,8 +1,3 @@
-"""SARJ059 — A hand-rolled double of a third-party service should use the library that fakes it properly.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_library_fake.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -30,8 +25,6 @@ if TYPE_CHECKING:
 
 
 class _Service(NamedTuple):
-    """A recognised external service and the maintained fake for it."""
-
     subject: str
     words: frozenset[str]
     infixes: tuple[str, ...]
@@ -333,7 +326,6 @@ class PreferLibraryFake(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag substantial hand-written doubles of services that have a maintained fake."""
         if not _is_double_module(path):
             return []
         tree = parse_or_none(path, source)
@@ -366,7 +358,6 @@ class PreferLibraryFake(Rule):
 
 
 def _is_double_module(path: Path) -> bool:
-    """Report whether `path` holds tests or shared test doubles."""
     if is_test_path(path):
         return True
     if any(part in _DOUBLE_DIR_NAMES for part in path.parts):
@@ -376,7 +367,6 @@ def _is_double_module(path: Path) -> bool:
 
 
 def _imported_roots(tree: ast.Module) -> frozenset[str]:
-    """Collect the top-level module name of every import in the file."""
     roots: set[str] = set()
     for node in nodes(tree, ast.Import, ast.ImportFrom):
         if isinstance(node, ast.Import):
@@ -387,7 +377,6 @@ def _imported_roots(tree: ast.Module) -> frozenset[str]:
 
 
 def _hand_rolled_service(node: ast.ClassDef, imported: frozenset[str]) -> _Service | None:
-    """Identify the external service `node` hand-rolls, if any."""
     if not _is_double_name(node.name) or _is_data_holder(node) or _is_extension_point(node):
         return None
     methods: list[_Method] = [child for child in node.body if isinstance(child, _FUNC_NODES)]
@@ -407,7 +396,6 @@ def _hand_rolled_service(node: ast.ClassDef, imported: frozenset[str]) -> _Servi
 
 
 def _has_wire_protocol_evidence(node: ast.ClassDef, service: _Service) -> bool:
-    """Require raw provider envelopes for easily misidentified LLM/BigQuery ports."""
     if service.subject not in _WIRE_GATED_SUBJECTS:
         return True
     keys = {
@@ -422,12 +410,10 @@ def _has_wire_protocol_evidence(node: ast.ClassDef, service: _Service) -> bool:
 
 
 def _implements_clock_port(node: ast.ClassDef, service: _Service) -> bool:
-    """Keep injected `Clock` ports distinct from replacements for the global clock."""
     return service.subject == "the system clock" and "Clock" in _base_names(node)
 
 
 def _is_double_name(name: str) -> bool:
-    """Report whether `name` carries a test-double marker."""
     flat = _flatten(name)
     if flat.startswith(_COLLECTED_PREFIX):
         return False
@@ -437,7 +423,6 @@ def _is_double_name(name: str) -> bool:
 
 
 def _match_service(name: str) -> _Service | None:
-    """Find the external service named by `name`."""
     flat = _flatten(name)
     words = _words(name)
     payloads = tuple(flat.removeprefix(marker) for marker in _MARKER_INFIXES if flat.startswith(marker))
@@ -461,7 +446,6 @@ def _words(name: str) -> frozenset[str]:
 
 
 def _base_names(node: ast.ClassDef) -> list[str]:
-    """Collect the simple name of every base class of `node`."""
     names: list[str] = []
     for base in node.bases:
         target = base.value if isinstance(base, ast.Subscript) else base
@@ -473,12 +457,10 @@ def _base_names(node: ast.ClassDef) -> list[str]:
 
 
 def _is_data_holder(node: ast.ClassDef) -> bool:
-    """Report whether `node` is a record type rather than a behaviour double."""
     return any(base in _DATA_HOLDER_BASES for base in _base_names(node))
 
 
 def _is_extension_point(node: ast.ClassDef) -> bool:
-    """Report whether `node` implements a framework's declared extension point."""
     return any(
         base.startswith(_EXTENSION_POINT_PREFIXES) or base.endswith(_EXTENSION_POINT_SUFFIXES)
         for base in _base_names(node)
@@ -486,7 +468,6 @@ def _is_extension_point(node: ast.ClassDef) -> bool:
 
 
 def _has_substance(node: ast.ClassDef, methods: list[_Method]) -> bool:
-    """Report whether the double is big enough to be worth replacing."""
     behaviour = sum(1 for method in methods if not _is_dunder(method))
     if behaviour >= _MIN_METHODS:
         return True
@@ -502,13 +483,11 @@ def _is_dunder(method: _Method) -> bool:
 
 
 def _is_delegating_spy(methods: list[_Method]) -> bool:
-    """Report whether the class mostly forwards to an injected real client."""
     forwards = sum(1 for method in methods if _forwards_to_inner(method))
     return forwards >= 2 and forwards * 2 >= len(methods)  # ruff:ignore[magic-value-comparison] — "at least half", not a magic threshold
 
 
 def _forwards_to_inner(method: _Method) -> bool:
-    """Report whether `method` is a one-line pass-through to its receiver's real client."""
     body = [stmt for stmt in method.body if not _is_docstring(stmt)]
     if len(body) != 1:
         return False

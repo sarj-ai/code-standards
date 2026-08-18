@@ -1,10 +1,8 @@
-"""SARJ202: Flags commented-out HCL and section banners in IaC files."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import heredoc_body_mask
 from sarj_iac_lint.rule_base import (
@@ -40,6 +38,12 @@ _DIRECTIVE_PREFIXES = (
     "!",
 )
 
+
+class _CommentLine(NamedTuple):
+    line: int
+    body: str
+
+
 _BANNER_FULL_RE = re.compile(r"^[-=#*~_+.\s]{4,}$")
 _BANNER_RUN_RE = re.compile(r"={4,}|-{4,}|#{4,}|\*{4,}|~{4,}")
 
@@ -57,8 +61,6 @@ _HCL_CODE_RE = re.compile(
 
 @final
 class NoCommentCruft(Rule):
-    """Commented-out HCL or a section-banner comment in an IaC file."""
-
     id = "no-comment-cruft"
     code = "SARJ202"
     documentation = RuleDocumentation(
@@ -75,6 +77,7 @@ class NoCommentCruft(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Commented assignments in tfvars files are allowed because they commonly document optional inputs.",
+            "Testdata and fixture trees may encode removed configuration as test input, so only banners are checked there.",
             "Directives and heredoc bodies are excluded, and disabled HCL runs must be code-dominant.",
         ),
         examples=(
@@ -119,7 +122,8 @@ class NoCommentCruft(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         # HCL commented-out code checks exclude .tfvars, while section banners are checked in all files.
-        detect_code = str(path).endswith((".tf", ".tf.json", ".hcl"))
+        fixture_input = any(part.lower() in {"fixture", "fixtures", "testdata"} for part in path.parts)
+        detect_code = str(path).endswith((".tf", ".tf.json", ".hcl")) and not fixture_input
         lines = source.splitlines()
         # Heredoc lines are data rather than HCL line comments.
         in_heredoc = heredoc_body_mask(lines)
@@ -153,10 +157,9 @@ class NoCommentCruft(Rule):
         return diags
 
 
-def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[tuple[int, str]]]:
-    """Group comment lines into runs split by HCL, blanks, or heredoc text."""
-    runs: list[list[tuple[int, str]]] = []
-    current: list[tuple[int, str]] = []
+def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[_CommentLine]]:
+    runs: list[list[_CommentLine]] = []
+    current: list[_CommentLine] = []
     for lineno, raw in enumerate(lines, start=1):
         m = None if in_heredoc[lineno - 1] else _COMMENT_RE.match(raw)
         if m is None:
@@ -164,14 +167,13 @@ def _comment_runs(lines: list[str], in_heredoc: Sequence[bool]) -> list[list[tup
                 runs.append(current)
                 current = []
             continue
-        current.append((lineno, m.group(3).strip()))
+        current.append(_CommentLine(lineno, m.group(3).strip()))
     if current:
         runs.append(current)
     return runs
 
 
 def _code_dominant_lines(lines: list[str], in_heredoc: Sequence[bool]) -> frozenset[int]:
-    """Return lines in runs where at least half the voting lines are HCL."""
     dominant: set[int] = set()
     for run in _comment_runs(lines, in_heredoc):
         voting = [(lineno, body) for lineno, body in run if body and not _is_directive(body)]
@@ -184,7 +186,6 @@ def _code_dominant_lines(lines: list[str], in_heredoc: Sequence[bool]) -> frozen
 
 
 def _banner_group_leaders(lines: list[str], in_heredoc: Sequence[bool]) -> frozenset[int]:
-    """Return the first rule line of each contiguous comment banner."""
     leaders: set[int] = set()
     for run in _comment_runs(lines, in_heredoc):
         seen_banner = False

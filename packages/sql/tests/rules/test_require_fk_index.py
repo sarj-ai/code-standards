@@ -1,5 +1,3 @@
-"""SARJ112 — migration-tree index scope, line attribution, and the dump wording."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -69,7 +67,6 @@ def test_allows_fk_whose_index_arrives_in_a_later_migration(tmp_path: Path) -> N
 
 
 def test_flags_fk_that_no_migration_in_the_tree_indexes(tmp_path: Path) -> None:
-    """The boundary: widening the scope must not silence a genuinely unindexed FK."""
     root = _tree(
         tmp_path,
         {
@@ -89,7 +86,6 @@ def test_flags_fk_that_no_migration_in_the_tree_indexes(tmp_path: Path) -> None:
 
 
 def test_tree_scan_does_not_reach_outside_the_migrations_directory(tmp_path: Path) -> None:
-    """The boundary: an index in an unrelated sibling tree must not count."""
     root = _tree(
         tmp_path,
         {
@@ -109,7 +105,6 @@ def test_tree_scan_does_not_reach_outside_the_migrations_directory(tmp_path: Pat
 
 
 def test_in_memory_source_is_judged_on_its_own_content() -> None:
-    """A path that is not a real file must not trigger a filesystem scan."""
     src = "CREATE TABLE child (parent_id INT REFERENCES parent(id));"
     assert len(_check(src)) == 1
 
@@ -139,7 +134,6 @@ def test_reports_the_line_of_each_inline_reference() -> None:
 
 
 def test_dump_findings_are_kept_and_point_at_the_migration() -> None:
-    """A dump is complete, so an absent CREATE INDEX really is an absent index."""
     src = """-- PostgreSQL database dump
 -- Dumped by pg_dump version 16.2
 CREATE TABLE public.child (parent_id integer REFERENCES public.parent(id));
@@ -151,7 +145,6 @@ CREATE TABLE public.child (parent_id integer REFERENCES public.parent(id));
 
 
 def test_non_dump_findings_keep_the_plain_message() -> None:
-    """The boundary: the dump wording must not leak onto ordinary migrations."""
     src = "CREATE TABLE child (parent_id INT REFERENCES parent(id));"
     diags = _check(src)
     assert len(diags) == 1
@@ -168,7 +161,6 @@ def test_multiline_using_btree_index_covers_the_fk() -> None:
 
 
 def test_table_level_primary_key_covers_the_fk() -> None:
-    """A PRIMARY KEY is an index; demanding a second one on the same column is noise."""
     src = """
     CREATE TABLE profiles (
         user_id UUID,
@@ -252,7 +244,6 @@ def test_inline_unique_named_constraint_covers_its_reference() -> None:
 
 
 def test_alter_table_only_composite_fk_is_covered_by_a_concurrent_index() -> None:
-    """The leading columns of the concurrent index match the composite FK, so it is covered."""
     src = """
     CREATE INDEX CONCURRENTLY idx_pdi ON public.pdi (team_id, person_id);
 

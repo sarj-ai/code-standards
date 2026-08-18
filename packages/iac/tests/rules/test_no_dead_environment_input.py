@@ -1,5 +1,3 @@
-"""SARJ205 — every sub-diagnostic and every fail-loud path pinned in both directions."""
-
 from __future__ import annotations
 
 import json
@@ -56,7 +54,6 @@ def _check_env(root: Path, env: str) -> list[Diagnostic]:
     ids=tuple(example.example_id for example in _EXAMPLES),
 )
 def test_documentation_examples_are_executable(example: RuleExample, tmp_path: Path) -> None:
-    """The rule reads the root from disk, so examples are materialized, not virtual."""
     for file in example.files:
         target = tmp_path / file.path
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -86,7 +83,6 @@ def test_flags_a_value_constant_in_every_environment(tmp_path: Path) -> None:
 
 
 def test_constant_everywhere_reports_in_each_environment_file(tmp_path: Path) -> None:
-    """Attribution is per assignment, so each environment's file carries its own finding."""
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -109,7 +105,6 @@ def test_divergent_values_are_not_flagged(tmp_path: Path) -> None:
 
 
 def test_a_value_assigned_in_only_some_environments_is_not_constant(tmp_path: Path) -> None:
-    """Presence itself diverges, so the per-env indirection is doing real work."""
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -119,7 +114,6 @@ def test_a_value_assigned_in_only_some_environments_is_not_constant(tmp_path: Pa
 
 
 def test_string_false_and_bare_false_compare_equal(tmp_path: Path) -> None:
-    """A textual diff misses string-typed booleans; the comparison is semantic."""
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -131,7 +125,6 @@ def test_string_false_and_bare_false_compare_equal(tmp_path: Path) -> None:
 
 
 def test_numbers_compare_numerically_across_notations(tmp_path: Path) -> None:
-    """HCL has one number type, so 1, 1.0, and "1" are the same value."""
     root = _write_root(
         tmp_path,
         'variable "replicas" {\n  type = number\n}\n',
@@ -183,14 +176,12 @@ def test_maps_compare_by_sorted_keys(tmp_path: Path) -> None:
 
 
 def test_identical_heredocs_stay_opaque_and_unflagged(tmp_path: Path) -> None:
-    """Heredoc bodies are masked before parsing, so equality would be a lie."""
     tfvars = 'policy = <<-EOT\n  {"rule": "allow"}\nEOT\n'
     root = _write_root(tmp_path, 'variable "policy" {\n  type = string\n}\n', {"dev": tfvars, "prod": tfvars})
     assert _check_env(root, "dev") == []
 
 
 def test_flags_an_assignment_equal_to_the_declared_default(tmp_path: Path) -> None:
-    """No environment overrides it, so both lines only restate the default."""
     root = _write_root(
         tmp_path,
         'variable "text_llm_enable_thinking" {\n  type    = bool\n  default = true\n}\n',
@@ -255,7 +246,6 @@ def test_declared_assignments_are_not_orphans(tmp_path: Path) -> None:
 
 
 def test_never_flags_a_variable_declared_but_never_assigned(tmp_path: Path) -> None:
-    """The named false-positive trap: 52 of 67 such corpus variables are module plumbing."""
     root = _write_root(
         tmp_path,
         _DECLARED_TIER + 'variable "plumbing_only" {\n  type = string\n}\n',
@@ -308,7 +298,6 @@ def test_non_tfvars_files_are_ignored(tmp_path: Path) -> None:
 
 
 def test_an_envs_manifest_secret_environment_makes_the_root_blind(tmp_path: Path) -> None:
-    """The shape that motivated the rule: prod tfvars live in a secret, not on disk."""
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -329,7 +318,6 @@ def test_an_envs_manifest_secret_environment_makes_the_root_blind(tmp_path: Path
 
 
 def test_the_blind_error_lands_once_on_the_anchor_file(tmp_path: Path) -> None:
-    """Changed-files runs must not multiply one root-level condition across files."""
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -371,12 +359,6 @@ def test_a_json_tfvars_environment_is_blind_not_half_read(tmp_path: Path) -> Non
 
 
 def test_blind_roots_keep_only_the_declaration_based_finding(tmp_path: Path) -> None:
-    """The environment the scan cannot read is the one that would keep the line.
-
-    Whether a variable is declared does not depend on any environment, so an
-    orphaned key survives; every value-based verdict does depend on the unseen
-    environment, so none of them is reported.
-    """
     root = _write_root(
         tmp_path,
         'variable "tier" {\n  type    = string\n  default = "BASIC"\n}\n',
@@ -480,7 +462,6 @@ def test_vendored_terraform_directories_are_never_roots(tmp_path: Path) -> None:
 
 
 def test_a_secret_valued_assignment_is_named_but_never_echoed(tmp_path: Path) -> None:
-    """Lint output reaches CI logs and PR annotations the gitignored tfvars never does."""
     secret = "correct-horse-battery-staple"
     root = _write_root(
         tmp_path,
@@ -522,7 +503,6 @@ def test_a_list_value_is_named_but_never_echoed(tmp_path: Path) -> None:
 
 
 def test_a_backup_tfvars_is_neither_linted_nor_an_environment(tmp_path: Path) -> None:
-    """A backup beside production is that file's copy, so shared lines are not constant."""
     root = tmp_path / "stack"
     root.mkdir()
     _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
@@ -550,7 +530,6 @@ def test_copy_and_specimen_labels_are_not_environments(label: str, tmp_path: Pat
 
 
 def test_an_untyped_variable_is_left_alone(tmp_path: Path) -> None:
-    """`type = any` opts out of the conversions the comparison relies on."""
     root = _write_root(
         tmp_path,
         'variable "flag" {\n  type = any\n}\n',
@@ -561,7 +540,6 @@ def test_an_untyped_variable_is_left_alone(tmp_path: Path) -> None:
 
 
 def test_auto_loaded_files_are_one_environment_not_several(tmp_path: Path) -> None:
-    """Terraform loads every *.auto.tfvars into the same plan."""
     root = tmp_path / "stack"
     root.mkdir()
     _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
@@ -573,7 +551,6 @@ def test_auto_loaded_files_are_one_environment_not_several(tmp_path: Path) -> No
 
 
 def test_a_specimen_word_inside_a_longer_name_is_still_an_environment(tmp_path: Path) -> None:
-    """`old-west` is a region; only a whole label or its final segment is a copy."""
     root = tmp_path / "stack"
     root.mkdir()
     _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
@@ -597,7 +574,6 @@ def test_a_json_only_root_reports_that_it_cannot_be_read(tmp_path: Path) -> None
 
 
 def test_an_unreadable_environment_reports_on_a_readable_file(tmp_path: Path) -> None:
-    """A blind error anchored to the file nobody can read is a silent gate."""
     root = _write_root(
         tmp_path,
         _DECLARED_REGION,
@@ -633,7 +609,6 @@ def test_a_symlinked_input_is_linted_in_the_root_it_is_linked_into(tmp_path: Pat
 
 
 def test_a_symlinked_alias_is_not_a_second_environment(tmp_path: Path) -> None:
-    """`current.tfvars -> prod.tfvars` is one environment, not a self-comparison."""
     root = tmp_path / "stack"
     root.mkdir()
     _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
@@ -645,7 +620,6 @@ def test_a_symlinked_alias_is_not_a_second_environment(tmp_path: Path) -> None:
 
 
 def test_env_directory_of_named_files_is_one_environment_each(tmp_path: Path) -> None:
-    """`env/dev.tfvars` and `env/prod.tfvars` are two environments, not one called env."""
     root = tmp_path / "stack"
     root.mkdir()
     _ = (root / "variables.tf").write_text(
@@ -663,7 +637,6 @@ def test_env_directory_of_named_files_is_one_environment_each(tmp_path: Path) ->
 
 
 def test_an_auto_loaded_var_file_beside_named_environments_goes_blind(tmp_path: Path) -> None:
-    """terraform.tfvars loads into every plan, so it is a baseline, not a peer."""
     root = _write_root(
         tmp_path,
         'variable "gke_enabled" {\n  type    = bool\n  default = false\n}\n',
@@ -689,7 +662,6 @@ def test_a_duplicate_key_in_one_file_does_not_claim_two_files(tmp_path: Path) ->
 
 
 def test_an_opaque_sibling_value_counts_as_variation(tmp_path: Path) -> None:
-    """An interpolated sibling may override, so the default-equal line stays."""
     root = _write_root(
         tmp_path,
         'variable "host" {\n  type    = string\n  default = "api.internal"\n}\n',
@@ -716,7 +688,6 @@ def test_a_numeric_literal_is_shown_but_a_numeric_string_is_not(tmp_path: Path) 
 
 
 def test_default_equal_is_kept_when_a_sibling_environment_differs(tmp_path: Path) -> None:
-    """The line is the parallel entry for a knob prod actually turns on."""
     root = _write_root(
         tmp_path,
         'variable "sql_deletion_protection" {\n  type    = bool\n  default = false\n}\n',
@@ -739,7 +710,6 @@ def test_default_equal_is_flagged_when_no_environment_differs(tmp_path: Path) ->
 
 
 def test_two_files_disagreeing_about_one_environment_go_blind(tmp_path: Path) -> None:
-    """Terraform merges var-files by an order the rule cannot observe."""
     root = _write_root(
         tmp_path,
         'variable "gke_enabled" {\n  type    = bool\n  default = false\n}\n',
@@ -768,7 +738,6 @@ def test_two_files_agreeing_about_one_environment_stay_analyzable(tmp_path: Path
 
 
 def test_a_real_second_environment_still_reports_constant(tmp_path: Path) -> None:
-    """The copy exclusion must not silence a genuine two-environment root."""
     root = _write_root(
         tmp_path,
         'variable "gke_enabled" {\n  type    = bool\n  default = false\n}\n',

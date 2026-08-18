@@ -1,5 +1,3 @@
-"""Executable contract for the shared SQL-literal helpers."""
-
 import ast
 from pathlib import Path
 

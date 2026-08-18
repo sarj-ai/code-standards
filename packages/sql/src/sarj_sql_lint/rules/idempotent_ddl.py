@@ -1,5 +1,3 @@
-"""SARJ102: DDL statements must be idempotent — migrations must be safe to re-run."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -86,8 +84,6 @@ _CHECKS = (
 
 @final
 class IdempotentDdl(Rule):
-    """DDL without IF [NOT] EXISTS — migrations must be safe to re-run."""
-
     id = "idempotent-ddl"
     code = "SARJ102"
     documentation = RuleDocumentation(

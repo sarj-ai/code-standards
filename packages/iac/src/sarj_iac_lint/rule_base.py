@@ -1,5 +1,3 @@
-"""Base types for sarj-iac-lint rules."""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -21,8 +19,6 @@ _SARJ_NOQA_RE = re.compile(
 
 
 class RuleCategory(StrEnum):
-    """Small cross-engine taxonomy used by generated rule directories."""
-
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
     MAINTAINABILITY = "maintainability"
@@ -33,16 +29,12 @@ class RuleCategory(StrEnum):
 
 
 class AutofixPolicy(StrEnum):
-    """Strongest source mutation a rule can safely offer."""
-
     NONE = "none"
     SUGGESTION = "suggestion"
     SAFE = "safe"
 
 
 class ExampleOutcome(StrEnum):
-    """Expected result when a rule checks one documentation example."""
-
     MATCH = "match"
     NO_MATCH = "no-match"
 
@@ -55,8 +47,6 @@ type ExamplePath = str
 
 @dataclass(frozen=True, slots=True)
 class ExampleFile:
-    """One virtual source file in a rule example."""
-
     path: PurePosixPath
     source: str = field(repr=False)
 
@@ -70,14 +60,11 @@ class ExampleFile:
 
     @classmethod
     def iac(cls, path: ExamplePath, source: str) -> Self:
-        """Build an IaC example file without leaking path parsing into rules."""
         return cls(PurePosixPath(path), source)
 
 
 @dataclass(frozen=True, slots=True)
 class RuleExample:
-    """A reviewed, executable example; examples are private unless opted in."""
-
     example_id: str
     outcome: ExampleOutcome
     files: tuple[ExampleFile, ...]
@@ -127,8 +114,6 @@ class RuleExample:
 
 @dataclass(frozen=True, slots=True)
 class RuleDocumentation:
-    """Source-authored rule prose and reviewed examples."""
-
     summary: str
     rationale: str
     remediation: str
@@ -175,8 +160,6 @@ class RuleDocumentation:
 
 @dataclass(frozen=True, slots=True)
 class NativeRuleSpec:
-    """Complete native rule record adapted from a rule class and its authored docs."""
-
     engine: str
     rule_id: str
     code: str
@@ -240,7 +223,6 @@ class Rule(ABC):
 
     @classmethod
     def native_spec(cls) -> NativeRuleSpec | None:
-        """Adapt source-owned documentation while deriving engine, ID, and code."""
         authored = cls.documentation
         if authored is None:
             return None
@@ -266,6 +248,5 @@ class Rule(ABC):
 
     @classmethod
     def public_examples(cls) -> tuple[RuleExample, ...]:
-        """Return the rule's explicitly publishable canonical fixtures."""
         spec = cls.native_spec()
         return () if spec is None else spec.public_examples

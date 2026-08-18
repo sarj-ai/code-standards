@@ -1,5 +1,3 @@
-"""Typed contracts for designing and evaluating deterministic lint rules."""
-
 from .catalog import DocumentedRule, RuleCatalog, RuleCatalogDocument
 from .contracts import (
     AutofixPolicy,

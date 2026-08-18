@@ -1,8 +1,3 @@
-"""SARJ012 — Secrets passed by keyword argument to a logging call.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_secret_in_log.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -39,7 +34,6 @@ _WHOLE_OBJECT_SERIALIZERS = frozenset({"dict", "json", "model_dump"})
 
 
 def _is_raw_secret_reference(value: ast.expr) -> bool:
-    """Report a direct, secret-named reference without guessing through aliases or calls."""
     match value:
         case ast.Name(id=name) | ast.Attribute(attr=name):
             return _is_secret_keyword(name)
@@ -48,14 +42,12 @@ def _is_raw_secret_reference(value: ast.expr) -> bool:
 
 
 def _is_secret_keyword(name: str) -> bool:
-    """Report whether the keyword name names a raw secret (not a redacted derivative)."""
     if any(token in _REDACTION_TOKENS for token in identifier_tokens(name)):
         return False
     return is_secret_name(name)
 
 
 def _is_raw_blob_name(name: str) -> bool:
-    """Report whether a name denotes a whole request/response payload."""
     tokens = identifier_tokens(name)
     return (
         bool(tokens) and tokens[-1] in _RAW_BLOB_TERMINALS and not any(token in _REDACTION_TOKENS for token in tokens)
@@ -63,7 +55,6 @@ def _is_raw_blob_name(name: str) -> bool:
 
 
 def _is_raw_blob_reference(value: ast.expr) -> bool:
-    """Recognize a whole payload or its zero-argument serialization."""
     match value:
         case ast.Name(id=name) | ast.Attribute(attr=name):
             return _is_raw_blob_name(name)
@@ -74,7 +65,6 @@ def _is_raw_blob_reference(value: ast.expr) -> bool:
 
 
 def _unsafe_interpolation(value: ast.expr) -> ast.expr | None:
-    """Return the first raw secret/blob interpolated into a log message."""
     if not isinstance(value, ast.JoinedStr):
         return None
     return next(
@@ -173,7 +163,6 @@ class NoSecretInLog(Rule):
 
 
 def _is_logging_call(node: ast.Call) -> bool:
-    """Report whether `node` looks like `logger.<level>(...)`."""
     func = node.func
     if not isinstance(func, ast.Attribute):
         return False

@@ -1,14 +1,9 @@
-"""SARJ056 — A tenant predicate that only appears inside a conditional branch.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_optional_tenant_predicate.py
-"""
-
 from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -30,6 +25,12 @@ if TYPE_CHECKING:
 
 # Columns that scope a row to a tenant.
 _TENANT_COLUMNS = ("organization_id", "org_id", "tenant_id", "account_id", "workspace_id")
+
+
+class _TenantFragment(NamedTuple):
+    expression: ast.expr
+    conditional: bool
+
 
 # Require a comparison after the tenant column so SELECT-list names do not masquerade as predicates.
 _TENANT_PREDICATE_RE = re.compile(
@@ -133,13 +134,11 @@ class NoOptionalTenantPredicate(Rule):
 
 
 def _iter_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
-    """Collect every function and method in the module."""
     return nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
-def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.expr, bool]]:
-    """Find WHERE-fragments in `func` that carry a tenant predicate."""
-    found: list[tuple[ast.expr, bool]] = []
+def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_TenantFragment]:
+    found: list[_TenantFragment] = []
 
     def visit(node: ast.AST, *, conditional: bool) -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
@@ -147,7 +146,7 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
         # An `IfExp` fragment guards the predicate inside itself:
         # `c.append(SQL("organization_id = %s") if org else SQL("TRUE"))`.
         found.extend(
-            (fragment, conditional or isinstance(fragment, ast.IfExp))
+            _TenantFragment(fragment, conditional or isinstance(fragment, ast.IfExp))
             for fragment in _composition_fragments(node)
             if _mentions_tenant_predicate(fragment)
         )
@@ -171,7 +170,6 @@ def _tenant_fragments(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
 
 
 def _block_terminates(body: list[ast.stmt]) -> bool:
-    """Report only simple blocks proven unable to reach their continuation."""
     if not body:
         return False
     match body[-1]:
@@ -188,7 +186,6 @@ def _block_terminates(body: list[ast.stmt]) -> bool:
 
 
 def _composition_fragments(node: ast.AST) -> list[ast.expr]:
-    """Yield the expressions `node` itself accumulates into a WHERE-fragment list."""
     if isinstance(node, ast.List):
         return list(node.elts)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"append", "extend"}:
@@ -197,7 +194,6 @@ def _composition_fragments(node: ast.AST) -> list[ast.expr]:
 
 
 def _mentions_tenant_predicate(node: ast.expr) -> bool:
-    """Report whether `node`'s subtree contains a tenant-column predicate string."""
     return any(
         isinstance(child, ast.Constant)
         and isinstance(child.value, str)

@@ -1,25 +1,19 @@
-"""Every rule must be self-documenting: non-empty id, code, description, and EXAMPLES."""
-
 from __future__ import annotations
 
 import json
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
-import sys
 import warnings
 
 import pytest
 
-from sarj_python_lint.rule_base import REPO_BLOB, ExampleFile, ExampleOutcome, Rule, RuleExample
+from sarj_python_lint.rule_base import ExampleFile, ExampleOutcome, Rule, RuleExample
 from sarj_python_lint.rules import REGISTRY
 
 
 # tests/ -> packages/python -> packages -> repo root.
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-
-# Content lines allowed in a rule's module docstring: the `SARJ### — claim` summary, an optional short rationale, and the two derived link lines.
-_MAX_DOCSTRING_LINES = 4
 
 # `SARJ` + exactly three digits.
 _CODE_RE = re.compile(r"^SARJ\d{3}$")
@@ -77,7 +71,6 @@ def _ledger() -> dict[str, tuple[str, ...] | None]:
 
 
 def _git(*args: str) -> str:
-    """Run git at the repo root, or skip the calling test if history is unavailable."""
     try:
         done = subprocess.run(
             ("git", "-C", str(_REPO_ROOT), *args),
@@ -91,7 +84,6 @@ def _git(*args: str) -> str:
 
 
 def _deleted_rule_modules() -> dict[str, str]:
-    """`{SARJ###: module stem}` for every rule module git has ever seen deleted."""
     assert _git("rev-parse", "--is-shallow-repository").strip() == "false", (
         "this gate reads deleted rule modules out of git history; check out with fetch-depth: 0"
     )
@@ -137,17 +129,8 @@ def test_rule_has_self_documenting_meta(rule_id: str) -> None:
     assert len(cls.description) >= 10, f"{rule_id}: description too short ({cls.description!r})"
 
 
-def _module_docstring(cls: type[Rule]) -> str:
-    return sys.modules[cls.__module__].__doc__ or ""
-
-
-def _content_lines(doc: str) -> list[str]:
-    return [line for line in doc.strip().splitlines() if line.strip()]
-
-
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
 def test_every_rule_has_an_examples_module(rule_id: str) -> None:
-    """The replacement for `assert cls.__doc__`: behaviour is pinned by tests, not prose."""
     cls = REGISTRY[rule_id]
     examples = _REPO_ROOT / cls.examples_path()
     assert examples.is_file(), (
@@ -156,37 +139,6 @@ def test_every_rule_has_an_examples_module(rule_id: str) -> None:
         f"the rule module to match its tests."
     )
     assert examples.stat().st_size > 0, f"{rule_id}: {cls.examples_path()} is empty"
-
-
-@pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_module_docstring_is_a_summary_plus_derived_links(rule_id: str) -> None:
-    """Every rule's docstring is a concise claim plus its executable examples."""
-    cls = REGISTRY[rule_id]
-    doc = _module_docstring(cls)
-    lines = _content_lines(doc)
-
-    assert lines, f"{rule_id}: empty module docstring"
-    assert len(lines) <= _MAX_DOCSTRING_LINES, (
-        f"{rule_id}: module docstring is {len(lines)} content lines, cap is {_MAX_DOCSTRING_LINES}. "
-        f"Put behavior in {cls.examples_path()}, not prose."
-    )
-
-    expected_examples = f"Examples: {cls.examples_url()}"
-    assert expected_examples in lines, (
-        f"{rule_id}: module docstring must carry the derived examples link.\n  expected: {expected_examples}"
-    )
-
-
-@pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_no_rule_hand_writes_a_link(rule_id: str) -> None:
-    """The examples link is derived from `__module__`; other repo links go stale."""
-    cls = REGISTRY[rule_id]
-    doc = _module_docstring(cls)
-    stray = [line.strip() for line in doc.splitlines() if REPO_BLOB in line and cls.examples_url() not in line]
-    assert not stray, (
-        f"{rule_id}: docstring hand-writes a repo link that `Rule.examples_url()` does not generate:\n  "
-        + "\n  ".join(stray)
-    )
 
 
 def test_registry_keys_match_class_ids() -> None:
@@ -207,7 +159,6 @@ def test_renamed_rules_keep_codes_but_do_not_resolve_old_ids() -> None:
 
 
 def test_every_rule_has_valid_source_owned_documentation() -> None:
-    """Keep the generated catalog complete by requiring metadata on every live rule."""
     missing = sorted(rule_id for rule_id, cls in REGISTRY.items() if cls.documentation is None)
     assert not missing, f"rules missing source-owned documentation: {', '.join(missing)}"
 
@@ -247,7 +198,6 @@ def test_rule_example_files_reject_unsafe_paths(path: str) -> None:
 
 
 def test_no_two_rules_share_a_code() -> None:
-    """Two rules on one `SARJ###` are indistinguishable in output and in suppressions."""
     seen: dict[str, str] = {}
     collisions: list[str] = []
     for rule_id in sorted(REGISTRY):
@@ -265,26 +215,7 @@ def test_no_two_rules_share_a_code() -> None:
     )
 
 
-def test_docstring_header_code_matches_class_code() -> None:
-    """A module docstring naming the wrong code hands users a suppression that silently does nothing."""
-    mismatches: list[str] = []
-    for rule_id in sorted(REGISTRY):
-        cls = REGISTRY[rule_id]
-        doc = sys.modules[cls.__module__].__doc__ or ""
-        found = _CODE_IN_TEXT_RE.search(doc)
-        header = found.group(0) if found else None
-        if header != cls.code:
-            mismatches.append(f"{cls.__module__}: docstring says {header}, cls.code is {cls.code}")
-    assert not mismatches, (
-        "module docstring header code != cls.code:\n  "
-        + "\n  ".join(mismatches)
-        + "\nThe docstring is the spec and the user-facing suppression instruction; a wrong "
-        "code there documents a `# sarj-noqa` that silently does nothing."
-    )
-
-
 def test_no_rule_reuses_a_retired_code() -> None:
-    """A retired code stays burned: an old suppression must never bind to a new rule."""
     ledger = _ledger()
     reused: list[str] = []
     for rule_id, cls in REGISTRY.items():
@@ -301,7 +232,6 @@ def test_no_rule_reuses_a_retired_code() -> None:
 
 
 def test_every_live_rule_is_in_the_code_ledger() -> None:
-    """Allocation is recorded at the moment it happens, so the ledger cannot go stale."""
     ledger = _ledger()
     missing = sorted(f"{cls.code} ({rule_id})" for rule_id, cls in REGISTRY.items() if cls.code not in ledger)
     assert not missing, (
@@ -312,7 +242,6 @@ def test_every_live_rule_is_in_the_code_ledger() -> None:
 
 
 def test_ledger_covers_every_deleted_rule_module() -> None:
-    """The backstop: git history, not memory, decides which codes have been retired."""
     ledger = _ledger()
     unrecorded = sorted(
         f"{code} ({stem}) deleted from {_RULES_DIR}"
@@ -327,7 +256,6 @@ def test_ledger_covers_every_deleted_rule_module() -> None:
 
 
 def test_reports_whether_history_can_still_corroborate_the_ledger() -> None:
-    """Make the subset gate's reach visible instead of leaving it inferred."""
     deleted = _deleted_rule_modules()
     recorded = len(_ledger())
 

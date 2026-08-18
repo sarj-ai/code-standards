@@ -1,8 +1,3 @@
-"""SARJ081 — Prefer assignment expression (`:=`) for regex match assignments immediately preceding an `if` check.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_regex_match.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -34,7 +29,6 @@ class _RegexImports(NamedTuple):
 
 
 def _is_regex_call(node: ast.AST, *, compiled_names: frozenset[str]) -> bool:
-    """Check if node is a call to re.search/match/fullmatch or pattern.search/match."""
     if not isinstance(node, ast.Call):
         return False
     func = node.func
@@ -55,7 +49,6 @@ def _is_regex_call(node: ast.AST, *, compiled_names: frozenset[str]) -> bool:
 
 
 def _is_simple_truthy_test(test_node: ast.AST, var_name: str) -> bool:
-    """Check if test_node is `if var_name:` or `if var_name is not None:`."""
     if isinstance(test_node, ast.Name) and test_node.id == var_name:
         return True
     if (
@@ -211,7 +204,6 @@ class PreferWalrusRegexMatch(Rule):
 
 
 def _regex_imports(tree: ast.Module) -> _RegexImports:
-    """Resolve local names that statically denote stdlib ``re`` or ``re.compile``."""
     modules: set[str] = set()
     functions: set[str] = set()
     for statement in tree.body:
@@ -230,7 +222,6 @@ def _compiled_bindings(
     regex_modules: frozenset[str],
     compile_functions: frozenset[str],
 ) -> frozenset[str]:
-    """Find names bound exactly once in this block to a resolved ``re.compile`` call."""
     assignments: dict[str, list[ast.expr]] = {}
     for statement in body:
         match statement:
@@ -260,7 +251,6 @@ def _owner_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
 
 
 def _scope_binding_counts(body: list[ast.stmt]) -> dict[str, int]:
-    """Count bindings in this lexical scope, including nested control-flow blocks."""
     counts: dict[str, int] = {}
 
     def record(name: str) -> None:

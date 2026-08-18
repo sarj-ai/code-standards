@@ -1,8 +1,3 @@
-"""SARJ013 — Psycopg `row_factory=dict_row` where a validated model row is intended.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_class_row.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -123,7 +118,6 @@ class _PsycopgBindings:
 
 
 def _psycopg_bindings(tree: ast.Module) -> _PsycopgBindings:
-    """Resolve only dict-row bindings whose psycopg provenance is visible."""
     result = _PsycopgBindings()
     for node in nodes(tree, ast.Import, ast.ImportFrom):
         if isinstance(node, ast.ImportFrom):
@@ -163,7 +157,6 @@ def _psycopg_bindings(tree: ast.Module) -> _PsycopgBindings:
 
 
 def _is_proven_dict_row(node: ast.expr, bindings: _PsycopgBindings) -> bool:
-    """Report whether `node` resolves to `psycopg.rows.dict_row`."""
     if isinstance(node, ast.NamedExpr):
         node = node.value
     if isinstance(node, ast.Name):
@@ -186,7 +179,6 @@ def _enclosing_function(
     node: ast.AST,
     parents: dict[int, ast.AST],
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Return the nearest callable that owns a row-factory keyword."""
     current: ast.AST | None = node
     while current is not None:
         if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -196,7 +188,6 @@ def _enclosing_function(
 
 
 def _fetch_call_count(owner: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Count result-shape changes inside one callable."""
     return sum(
         1
         for node in ast.walk(owner)
@@ -211,7 +202,6 @@ _RETURNING_PROJECTION_RE = re.compile(r"\breturning\b(?P<projection>.*?)(?:;|$)"
 
 
 def _has_single_column_select(owner: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Recognize a literal query whose result is one scalar/JSON column."""
     for node in ast.walk(owner):
         if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
             continue
@@ -223,7 +213,6 @@ def _has_single_column_select(owner: ast.FunctionDef | ast.AsyncFunctionDef) -> 
 
 
 def _has_top_level_comma(projection: str) -> bool:
-    """Report whether a SELECT projection contains more than one expression."""
     depth = 0
     quote: str | None = None
     for char in projection:

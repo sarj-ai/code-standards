@@ -1,5 +1,3 @@
-"""End-to-end suppression: `-- sarj-noqa[: CODE]` on a diagnostic's line drops it."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, NamedTuple

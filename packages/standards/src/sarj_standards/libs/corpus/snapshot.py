@@ -1,5 +1,3 @@
-"""Create and verify deterministic snapshots from already-local corpora."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -27,8 +25,6 @@ _GIT_SAFE_ENV: Final = frozenset(
 
 @dataclass(frozen=True, slots=True, repr=False)
 class CorpusSnapshot:
-    """Content identity without source text or private absolute paths."""
-
     name: str
     digest: str
     files: int
@@ -58,19 +54,15 @@ class CorpusSnapshot:
 
 
 class VerifiedInventory(NamedTuple):
-    """Verified corpus evidence paired with the exact files that produced it."""
-
     snapshot: CorpusSnapshot
     files: tuple[Path, ...]
 
 
 def snapshot(source: CorpusSource) -> CorpusSnapshot:
-    """Hash selected local bytes in stable path order without network access."""
     return snapshot_inventory(source, selected_files(source))
 
 
 def snapshot_inventory(source: CorpusSource, files: tuple[Path, ...]) -> CorpusSnapshot:
-    """Hash one previously selected inventory and reject in-flight mutation."""
     initial_revision = _git_revision(source) if source.kind is CorpusKind.GIT else None
     digest = hashlib.sha256()
     total = 0
@@ -115,7 +107,6 @@ def snapshot_inventory(source: CorpusSource, files: tuple[Path, ...]) -> CorpusS
 
 
 def selected_files(source: CorpusSource) -> tuple[Path, ...]:
-    """Return the selected regular files in stable relative-path order."""
     if not source.root.is_dir():
         root = "<private-corpus-root>" if source.visibility.value == "private" else source.root
         msg = f"corpus root is not a directory: {root}"
@@ -138,13 +129,11 @@ def _matches(path: str, patterns: tuple[str, ...]) -> bool:
 
 
 def verify(source: CorpusSource) -> CorpusSnapshot:
-    """Require local content and Git revision to match every declared pin."""
     verified, _files = verify_inventory(source)
     return verified
 
 
 def verify_inventory(source: CorpusSource) -> VerifiedInventory:
-    """Return verified evidence and the exact inventory that produced it."""
     files = selected_files(source)
     actual = snapshot_inventory(source, files)
     if actual.digest != source.digest:

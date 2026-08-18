@@ -66,6 +66,30 @@ def test_fires_on_async_function():
     assert len(diags) == 1
 
 
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "list[tuple[int, str]]",
+        "List[tuple[int, str]]",
+        "typing.List[tuple[int, str]]",
+        "Sequence[tuple[int, str]]",
+        "collections.abc.Iterable[tuple[int, str]]",
+        "Collection[tuple[int, str]]",
+        "set[tuple[int, str]]",
+        "frozenset[tuple[int, str]]",
+        "dict[str, tuple[int, str]]",
+        "Mapping[str, tuple[int, str]]",
+        "Optional[list[tuple[int, str]]]",
+    ],
+)
+def test_fires_on_positional_records_nested_in_collection_returns(annotation: str):
+    assert len(_check(f"def records() -> {annotation}: ...\n")) == 1
+
+
+def test_collection_with_variadic_tuple_is_permitted() -> None:
+    assert _check("def records() -> list[tuple[int, ...]]: ...\n") == []
+
+
 def test_fires_on_str_none_element():
     diags = _check("def download() -> tuple[bytes, dict[str, str], str | None]: ...\n")
     assert len(diags) == 1

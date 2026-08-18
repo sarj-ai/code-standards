@@ -1,5 +1,3 @@
-"""Hook-manager detection and validation shared by setup, update, and doctor."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -36,15 +34,11 @@ _OFFICIAL_STANDARDS_REPO: Final = re.compile(
 
 
 class LefthookWrite(NamedTuple):
-    """One comment-preserving Lefthook repair ready for a scaffold plan."""
-
     path: Path
     contents: str
 
 
 class PrecommitRepoBlock(NamedTuple):
-    """One byte-preserving repository list item from a pre-commit config."""
-
     start: int
     end: int
     indent: int
@@ -70,7 +64,6 @@ class _LocatedBlock(NamedTuple):
 
 
 def precommit_repo_blocks(text: str) -> tuple[PrecommitRepoBlock, ...]:
-    """Split top-level-looking pre-commit repository items without reformatting YAML."""
     lines = text.splitlines(keepends=True)
     section = _precommit_repo_section(lines)
     if section is None:
@@ -110,7 +103,6 @@ def _repository_scalar(raw: str) -> str | None:
 
 
 def _precommit_repo_section(lines: list[str]) -> _PrecommitRepoSection | None:
-    """Locate direct sequence children of the top-level ``repos`` key."""
     header = next((index for index, line in enumerate(lines) if re.match(r"^repos:\s*(?:#.*)?(?:\r?\n)?$", line)), None)
     if header is None:
         return None
@@ -138,7 +130,6 @@ def _precommit_repo_section(lines: list[str]) -> _PrecommitRepoSection | None:
 
 
 def yaml_list_item_end(lines: list[str], start: int, indent: int) -> int:
-    """Return a list item's end without consuming following comments or parent keys."""
     trailing: int | None = None
     index = start + 1
     while index < len(lines):
@@ -156,22 +147,18 @@ def yaml_list_item_end(lines: list[str], start: int, indent: int) -> int:
 
 
 def is_official_standards_repo(repository: str | None) -> bool:
-    """Recognize only the exact GitHub sarj-ai/standards repository identity."""
     return repository is not None and _OFFICIAL_STANDARDS_REPO.fullmatch(repository.strip()) is not None
 
 
 def lefthook_config(root: Path) -> Path | None:
-    """Return the active Lefthook configuration, if present."""
     return next((root / name for name in LEFTHOOK_NAMES if (root / name).is_file()), None)
 
 
 def detect_manager(root: Path) -> HookManager:
-    """Preserve an existing Lefthook setup; otherwise manage pre-commit."""
     return "lefthook" if lefthook_config(root) is not None else "pre-commit"
 
 
 def precommit_runs_staged_check(root: Path) -> bool:
-    """Require exactly one canonical local staged-check hook."""
     paths = [root / name for name in PRECOMMIT_NAMES if (root / name).is_file()]
     if len(paths) != 1:
         return False
@@ -208,7 +195,6 @@ def precommit_runs_staged_check(root: Path) -> bool:
 
 
 def lefthook_runs_staged_check(root: Path) -> bool:
-    """Require exactly one pinned, filename-aware staged command."""
     path = lefthook_config(root)
     if path is None:
         return False
@@ -225,7 +211,6 @@ def lefthook_runs_staged_check(root: Path) -> bool:
 
 
 def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
-    """Add the canonical command to a conventional Lefthook mapping without reformatting it."""
     path = lefthook_config(root)
     if path is None:
         msg = "--hooks lefthook requires lefthook.yml or lefthook.yaml"
@@ -371,7 +356,6 @@ def _canonical_lefthook_command(root: Path | None = None) -> str:
 
 
 def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None = None) -> list[str]:
-    """Collect scalar run commands from a bounded YAML object graph."""
     if depth > _MAX_JOB_DEPTH:
         return []
     visited: set[int] = set() if seen is None else seen
@@ -402,7 +386,6 @@ def _lefthook_run_values_from_entries(entries: Mapping[str, object]) -> list[str
 
 
 def _replace_lefthook_run(text: str, *, old: str, new: str) -> str | None:
-    """Replace one plain scalar run command without reformatting the YAML document."""
     matches: list[re.Match[str]] = []
     for match in re.finditer(r"(?m)^(?P<prefix>\s*run:\s*)(?P<value>[^\r\n]+)$", text):
         try:

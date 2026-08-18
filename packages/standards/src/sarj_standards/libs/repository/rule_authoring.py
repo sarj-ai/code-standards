@@ -1,5 +1,3 @@
-"""Safe, deterministic first step for authoring a custom rule."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,14 +35,11 @@ class AuthoringPlan:
 
 @dataclass(frozen=True, slots=True)
 class VerificationResult:
-    """Focused source/metadata result used before warning staging."""
-
     status: int
     message: str
 
 
 def verify(root: Path, selector: RuleSelector) -> VerificationResult:
-    """Verify that one registered rule has complete authored sources and public examples."""
     from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level] -- expensive engines load on demand
         rule_catalog_artifact,
     )
@@ -72,7 +67,6 @@ def verify(root: Path, selector: RuleSelector) -> VerificationResult:
 
 
 def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str) -> AuthoringPlan:
-    """Plan author-owned implementation and behavioral-test skeletons without mutation."""
     if selector.engine is RuleEngine.TEXT:
         msg = "text rules use the shared textlint catalog and are not scaffolded yet"
         raise ValueError(msg)
@@ -107,7 +101,6 @@ def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str)
 
 
 def apply(plan: AuthoringPlan, root: Path) -> None:
-    """Create a complete scaffold or restore every target on failure."""
     transaction = FileTransaction.capture(root, tuple(path for path, _ in plan.files))
     try:
         for path, contents in plan.files:

@@ -1,5 +1,3 @@
-"""Extract executable SQL while masking quoted values and comments."""
-
 from __future__ import annotations
 
 import ast
@@ -13,14 +11,12 @@ if TYPE_CHECKING:
 
 
 def is_store_module(path: Path) -> bool:
-    """Return whether a non-test path belongs to the store layer."""
     if is_test_path(path):
         return False
     return path.name == "store.py" or path.name.endswith("_store.py") or "stores" in path.parts
 
 
 def sql_string_value(node: ast.expr) -> str | None:
-    """Reconstruct a (possibly `+`-concatenated) string literal, else None."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
@@ -44,7 +40,6 @@ def sql_string_value(node: ast.expr) -> str | None:
 
 
 def strip_sql_noise(text: str, *, mask_dollar_quotes: bool = True) -> str:
-    """Mask SQL values and comments without changing text or line lengths."""
     out = list(text)
     n = len(text)
     i = 0
@@ -97,7 +92,6 @@ def strip_sql_noise(text: str, *, mask_dollar_quotes: bool = True) -> str:
 
 
 def _dollar_quote_end(text: str, start: int) -> int | None:
-    """Return the end of a complete Postgres dollar-quoted value."""
     delimiter_end = text.find("$", start + 1)
     if delimiter_end == -1:
         return None

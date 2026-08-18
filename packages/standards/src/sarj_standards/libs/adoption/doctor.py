@@ -1,5 +1,3 @@
-"""Find every place a consumer repo states a Sarj version, and prove they agree."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,8 +28,6 @@ if TYPE_CHECKING:
 
 
 class Level(StrEnum):
-    """How much a finding matters."""
-
     OK = "ok"
     WARN = "warn"
     DRIFT = "drift"
@@ -39,8 +35,6 @@ class Level(StrEnum):
 
 @dataclass(frozen=True)
 class Finding:
-    """One checked pin site and its verdict."""
-
     level: Level
     where: str
     detail: str
@@ -48,7 +42,6 @@ class Finding:
     remediation: str | None = None
 
     def as_dict(self) -> dict[str, str | None]:
-        """Return a stable machine-readable representation."""
         return {
             "id": self.id,
             "level": self.level.value,
@@ -60,16 +53,12 @@ class Finding:
 
 @dataclass(frozen=True)
 class VersionPinUpdate:
-    """One pin-bearing file rewritten to the installed compatibility bundle."""
-
     path: Path
     contents: str
     packages: tuple[str, ...]
 
 
 class VersionPinRewrite(NamedTuple):
-    """Updated text and the packages whose pins changed."""
-
     contents: str
     packages: tuple[str, ...]
 
@@ -181,7 +170,6 @@ _GIT_DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)
 
 
 def _git_environment() -> dict[str, str]:
-    """Keep user-level Git settings while discarding hook-local repository routing."""
     return {
         name: value
         for name, value in os.environ.items()  # ruff: ignore[banned-api] -- Git hook variables must not redirect child commands.
@@ -190,7 +178,6 @@ def _git_environment() -> dict[str, str]:
 
 
 def diagnose(root: Path) -> list[Finding]:
-    """Check version pins and required policy settings under a repo root."""
     installed = manifest.installed_versions()
     files = authored_files(root)
     findings = [*_check_manifest(root)]
@@ -210,7 +197,6 @@ def diagnose(root: Path) -> list[Finding]:
 
 
 def authored_files(root: Path) -> tuple[Path, ...]:
-    """List authored files after the same default and manifest exclusions doctor uses."""
     exclusions = _doctor_exclusions(root)
     return tuple(
         path
@@ -220,7 +206,6 @@ def authored_files(root: Path) -> tuple[Path, ...]:
 
 
 def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
-    """Check staged-gate adoption sites without traversing unrelated source files."""
     installed = manifest.installed_versions()
     files = _adoption_health_files(root, selected)
     findings = [*_check_manifest(root)]
@@ -239,7 +224,6 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
 
 
 def _check_repository_launcher(root: Path) -> Iterator[Finding]:
-    """Report the retired repository-local launcher when it remains."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
@@ -398,7 +382,6 @@ def _git_worktree(root: Path) -> bool:
 
 
 def _installed_hook_managers(root: Path) -> frozenset[str]:
-    """Return every manager participating in the active pre-commit hook chain."""
     git = shutil.which("git")
     if git is None:
         return frozenset()
@@ -434,7 +417,6 @@ def _installed_hook_managers(root: Path) -> frozenset[str]:
 
 
 def _has_adopted_eslint(root: Path) -> bool:
-    """Whether the manifest-owned install-root peer check supersedes loose pins."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
@@ -443,7 +425,6 @@ def _has_adopted_eslint(root: Path) -> bool:
 
 
 def _doctor_exclusions(root: Path) -> tuple[str, ...]:
-    """Read explicit fixture/generated-file exclusions without weakening defaults."""
     path = manifest.manifest_path(root)
     if not path.is_file():
         return ()
@@ -456,7 +437,6 @@ def _doctor_exclusions(root: Path) -> tuple[str, ...]:
 
 
 def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
-    """Name every reference to a rule that no longer exists."""
     retired = ledger.load().retired
     if not retired:
         return
@@ -478,12 +458,10 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
 
 
 def retired_rule_references(path: Path, text: str) -> frozenset[str]:
-    """Return retired identifiers used at syntactic rule-reference sites."""
     return frozenset(retired_rule_counts(path, text))
 
 
 def retired_rule_counts(path: Path, text: str) -> dict[str, int]:
-    """Count retired rule references with source-aware suppression parsing."""
     if retired_suppressions.supports(path):
         return retired_suppressions.reference_counts(path, text)
     references = _reference_text(path, text)
@@ -493,7 +471,6 @@ def retired_rule_counts(path: Path, text: str) -> dict[str, int]:
 
 
 def _reference_text(path: Path, text: str) -> str:
-    """Keep only syntactic rule-reference sites, never explanatory prose."""
     if _IGNORE_RETIRED_RULE_REFERENCES in text:
         return ""
     lowered = path.name.lower()
@@ -518,7 +495,6 @@ def _reference_text(path: Path, text: str) -> str:
 
 
 def check_pyright_deprecated(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
-    """Require consumers to keep Pyright's deprecated-API protection enabled."""
     for path in files if files is not None else _walk(root):
         if path.name not in _PYRIGHT_CONFIG_NAMES:
             continue
@@ -537,7 +513,6 @@ def check_pyright_deprecated(root: Path, files: Sequence[Path] | None = None) ->
 
 
 def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
-    """Require one Ruff authority and additive policy in extending configs."""
     for path in files if files is not None else _walk(root):
         if path.name not in _RUFF_CONFIG_NAMES:
             continue
@@ -575,7 +550,6 @@ def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None)
 
 
 def _ruff_extend_reaches_canonical(root: Path, source: Path, extended: str) -> bool:
-    """Follow a bounded Ruff config chain until the manifest-owned config."""
     current = source
     value = extended
     seen: set[Path] = set()
@@ -678,7 +652,6 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
 
 
 def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
-    """Flag the pre-isolation dependency that couples Standards to consumer Python."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
@@ -723,7 +696,6 @@ def _is_pin_site(path: Path) -> bool:
 
 
 def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinRewrite:
-    """Refresh recognized Sarj pins and normalize them to the required exact operator."""
     changed: set[str] = set()
     text, migrated_launchers = launcher.rewrite_legacy_repository_invocations(text)
     if migrated_launchers:
@@ -753,7 +725,6 @@ def plan_version_pin_updates(
     root: Path,
     installed: Mapping[str, str] | None = None,
 ) -> tuple[VersionPinUpdate, ...]:
-    """Plan every doctor-owned pin migration while honoring fixture exclusions."""
     versions = manifest.installed_versions() if installed is None else installed
     exclusions = _doctor_exclusions(root)
     updates: list[VersionPinUpdate] = []
@@ -833,7 +804,6 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
 
 
 def _local_eslint_plugin_matches(root: Path, manifest_path: Path, pinned: str, floor: str) -> bool:
-    """Verify a repository-local file dependency by package identity and exact version."""
     candidate = (manifest_path.parent / pinned.removeprefix("file:")).resolve()
     repository = root.resolve()
     if not candidate.is_relative_to(repository):
@@ -850,7 +820,6 @@ def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
 
 
 def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too-many-locals] -- validates each declared adoption site once
-    """Prove that a declared adoption is present and actually connected."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
@@ -988,7 +957,6 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
 
 
 def _check_ci_gate(root: Path) -> Iterator[Finding]:
-    """Require one semantic Standards check without prescribing a workflow filename."""
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
@@ -1189,7 +1157,6 @@ def _contains_expected_mapping(actual: Mapping[str, object], expected: Mapping[s
 
 
 def _is_exact_pin(pinned: str, expected: str) -> bool:
-    """Accept only spellings that cannot resolve away from the tested version."""
     normalized = pinned.strip()
     if normalized.startswith("=="):
         normalized = normalized[2:].strip()
@@ -1216,7 +1183,6 @@ def _candidate_files(files: Sequence[Path], suffixes: Sequence[str]) -> Iterator
 
 
 def _walk(root: Path) -> tuple[Path, ...]:
-    """List authored files once, honoring ignore rules when the root is a Git checkout."""
     git = shutil.which("git")
     try:
         completed = (
@@ -1262,12 +1228,10 @@ def _walk(root: Path) -> tuple[Path, ...]:
 
 
 def _is_skill_artifact(path: Path) -> bool:
-    """Keep installed agent skill payloads out of authored-source discovery."""
     return any(root in _SKILL_ARTIFACT_ROOTS and child == "skills" for root, child in pairwise(path.parts))
 
 
 def _read(path: Path) -> str:
-    """Read a repository file while replacing invalid UTF-8 bytes."""
     try:
         return path.read_bytes().decode("utf-8", errors="replace")
     except OSError:
@@ -1275,10 +1239,8 @@ def _read(path: Path) -> str:
 
 
 def parse_pins(text: str) -> dict[str, str]:
-    """Extract every Sarj version pin from a file's text."""
     return {match.group("name"): match.group("version") for match in _PIN.finditer(text)}
 
 
 def parse_revs(text: str) -> list[str]:
-    """Extract every pre-commit `rev:` tag from a file's text."""
     return [match.group("rev") for match in _REV.finditer(text)]

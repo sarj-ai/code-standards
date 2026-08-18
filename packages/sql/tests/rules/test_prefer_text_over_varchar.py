@@ -85,7 +85,6 @@ def test_skips_varchar_inside_string_literal():
 
 
 def test_allows_varchar_in_mysql():
-    """In MySQL TEXT cannot carry a DEFAULT, is stored off-page, and has an index-prefix limit."""
     src = """
 CREATE TABLE `deployments` (
   `id` varchar(256) NOT NULL,
@@ -101,7 +100,6 @@ def test_allows_varchar_in_sqlite():
 
 
 def test_flags_varchar_with_no_dialect_marker():
-    """The boundary: the dialect guard must not widen to unmarked Postgres DDL."""
     src = 'CREATE TABLE "users" (email VARCHAR(255) NOT NULL);'
     assert len(_check(src)) == 1
 
@@ -116,7 +114,6 @@ CREATE TABLE public.users (email character varying(255));
 
 
 def test_generated_migration_is_redirected_not_silenced(tmp_path: Path) -> None:
-    """A generator-owned migration keeps the finding and gains a "fix the model" note."""
     root = tmp_path / "prisma" / "migrations"
     (root / "20240101000000_init").mkdir(parents=True)
     (root / "migration_lock.toml").write_text('provider = "postgresql"\n')

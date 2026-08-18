@@ -1,8 +1,3 @@
-"""SARJ022 — Reject a junk-drawer module stem with a single public definition.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_generic_single_export_module.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -123,7 +118,6 @@ class NoGenericSingleExportModule(Rule):
 
 
 def _has_additional_public_export(tree: ast.Module, primary_name: str) -> bool:
-    """Report whether a definition is not the module's only public export."""
     if not _dunder_all_matches_primary(tree, primary_name):
         return True
     targets: list[ast.expr] = []
@@ -151,7 +145,6 @@ def _has_additional_public_export(tree: ast.Module, primary_name: str) -> bool:
 
 
 def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
-    """Accept no declared surface, or one fully static surface naming only the definition."""
     owners = [statement for statement in tree.body if _mentions_dunder_all(statement)]
     if not owners:
         return True
@@ -171,7 +164,6 @@ def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
 
 
 def _mentions_dunder_all(node: ast.AST) -> bool:
-    """Conservatively detect explicit, dynamic, or string-stored export surfaces."""
     for child in ast.walk(node):
         match child:
             case ast.Name(id="__all__"):
@@ -194,7 +186,6 @@ def _mentions_dunder_all(node: ast.AST) -> bool:
 
 
 def _annotation_name(node: ast.expr) -> str:
-    """Return the final component of an annotation name."""
     match node:
         case ast.Name(id=name) | ast.Attribute(attr=name):
             return name

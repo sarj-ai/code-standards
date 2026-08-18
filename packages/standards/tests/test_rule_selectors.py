@@ -1,5 +1,3 @@
-"""Typed rule selectors reject malformed identities at the public boundary."""
-
 from __future__ import annotations
 
 import pytest

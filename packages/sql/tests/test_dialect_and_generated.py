@@ -1,5 +1,3 @@
-"""Test shared scope predicates: is_postgres, is_mysql, is_generated_migration."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -50,7 +48,6 @@ def test_postgres_ddl_is_not_mistaken_for_another_dialect(source: str) -> None:
 
 
 def test_a_backtick_inside_a_comment_does_not_change_the_dialect() -> None:
-    """Rules pass masked text precisely so prose cannot fake a dialect."""
     source = "-- the `users` table\nCREATE TABLE users (id BIGSERIAL);"
     assert is_postgres(mask_sql(source))
 
@@ -82,7 +79,6 @@ def test_free_form_dialect_prose_is_not_a_directive() -> None:
 
 
 def test_sqlite_is_not_postgres_but_is_not_mysql_either() -> None:
-    """SARJ102 depends on this: SQLite supports `CREATE TABLE/INDEX IF NOT EXISTS`."""
     source = "CREATE TABLE `t` (`id` integer PRIMARY KEY AUTOINCREMENT);"
     assert not is_postgres(source)
     assert not is_mysql(source)
@@ -147,7 +143,6 @@ def test_drizzle_journal_marks_the_tree(tmp_path: Path) -> None:
 
 
 def test_a_hand_written_migration_tree_is_not_generated(tmp_path: Path) -> None:
-    """The boundary: no marker, no sentinel — the rule speaks normally."""
     root = tmp_path / "db" / "migrations"
     root.mkdir(parents=True)
     migration = root / "20240101000000_add_users.sql"
@@ -156,7 +151,6 @@ def test_a_hand_written_migration_tree_is_not_generated(tmp_path: Path) -> None:
 
 
 def test_the_marker_search_stops_at_a_repository_boundary(tmp_path: Path) -> None:
-    """A marker in a *different* project above the checkout must not leak downward."""
     (tmp_path / "migration_lock.toml").write_text('provider = "postgresql"\n')
     repo = tmp_path / "other_repo"
     (repo / ".git").mkdir(parents=True)

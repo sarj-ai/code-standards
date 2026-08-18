@@ -1,8 +1,3 @@
-"""SARJ021 — No `SELECT *` in a store query — list the columns you need.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_select_star.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -51,7 +46,6 @@ def _has_real_select_star(sql: str) -> bool:
 
 
 def _is_projection_star(sql: str, pos: int) -> bool:
-    """Report whether the `*` at `pos` is a column-projection star."""
     if _QUALIFIED_PREFIX.search(sql[:pos]) is not None:
         return True
     before = pos - 1

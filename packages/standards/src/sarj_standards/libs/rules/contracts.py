@@ -1,5 +1,3 @@
-"""Value objects shared by rule discovery and evaluation."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -24,8 +22,6 @@ MessageId = NewType("MessageId", str)
 
 
 class Language(StrEnum):
-    """Syntax families supported by the standards rule catalog."""
-
     PYTHON = "python"
     TYPESCRIPT = "typescript"
     MARKDOWN = "markdown"
@@ -35,15 +31,11 @@ class Language(StrEnum):
 
 
 class RuleOrigin(StrEnum):
-    """Whether an existing rule is upstream or maintained by Sarj."""
-
     UPSTREAM = "upstream"
     SARJ = "sarj"
 
 
 class RuleEngine(StrEnum):
-    """Stable engine namespace used by configuration, diagnostics, and URLs."""
-
     ESLINT = "eslint"
     IAC = "iac"
     PYTHON = "python"
@@ -53,8 +45,6 @@ class RuleEngine(StrEnum):
 
 @dataclass(frozen=True, slots=True, order=True)
 class RuleSelector:
-    """Canonical identity for one custom rule across CLI and wire boundaries."""
-
     engine: RuleEngine
     rule_id: RuleId
 
@@ -65,7 +55,6 @@ class RuleSelector:
 
     @classmethod
     def parse(cls, value: str) -> Self:
-        """Parse the strict public ``ENGINE:ID`` representation."""
         engine_text, separator, rule_text = value.partition(":")
         if not separator or ":" in rule_text:
             msg = "rule selector must use canonical ENGINE:ID form"
@@ -82,7 +71,6 @@ class RuleSelector:
 
     @property
     def native_rule_id(self) -> str:
-        """Return the analyzer-native rule ID for diagnostic matching."""
         if self.engine is RuleEngine.ESLINT:
             return f"@sarj/{self.rule_id}"
         return str(self.rule_id)
@@ -90,13 +78,10 @@ class RuleSelector:
 
 @dataclass(frozen=True, slots=True)
 class RuleSelection:
-    """A normalized, duplicate-free selection of custom rules."""
-
     selectors: frozenset[RuleSelector]
 
     @classmethod
     def from_values(cls, values: Iterable[str | RuleSelector]) -> Self:
-        """Normalize public strings and already-parsed selectors once."""
         if isinstance(values, str):
             msg = "rule selection must be an iterable of selector values, not one string"
             raise TypeError(msg)
@@ -116,13 +101,10 @@ class RuleSelection:
         return frozenset(selector.rule_id for selector in self.selectors if selector.engine is engine)
 
     def native_ids_for(self, engine: RuleEngine) -> frozenset[str]:
-        """Return engine-native IDs only at analyzer adapter boundaries."""
         return frozenset(selector.native_rule_id for selector in self.selectors if selector.engine is engine)
 
 
 class RuleCategory(StrEnum):
-    """Small, cross-engine taxonomy used to browse the generated catalog."""
-
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
     MAINTAINABILITY = "maintainability"
@@ -133,40 +115,30 @@ class RuleCategory(StrEnum):
 
 
 class DefaultLevel(StrEnum):
-    """Default policy level derived from a shipped Standards profile."""
-
     ERROR = "error"
     OFF = "off"
     WARNING = "warning"
 
 
 class RuleStatus(StrEnum):
-    """Lifecycle state rendered in the generated rule directory."""
-
     ACTIVE = "active"
     RENAMED = "renamed"
     RETIRED = "retired"
 
 
 class AutofixPolicy(StrEnum):
-    """The strongest mutation a proposed rule may safely offer."""
-
     NONE = "none"
     SUGGESTION = "suggestion"
     SAFE = "safe"
 
 
 class ExpectedOutcome(StrEnum):
-    """Expected checker result for one evaluation case."""
-
     MATCH = "match"
     NO_MATCH = "no-match"
 
 
 @dataclass(frozen=True, slots=True)
 class ExampleFile:
-    """One safe virtual file in an executable rule example."""
-
     path: PurePosixPath
     source: str = field(repr=False)
 
@@ -181,8 +153,6 @@ class ExampleFile:
 
 @dataclass(frozen=True, slots=True)
 class RuleExample:
-    """A reviewed fixture consumed by both rule tests and generated docs."""
-
     example_id: str
     outcome: ExpectedOutcome
     files: tuple[ExampleFile, ...]
@@ -227,8 +197,6 @@ class RuleExample:
 
 @dataclass(frozen=True, slots=True)
 class RuleSpec:
-    """Source-owned documentation and compatibility metadata for one live rule."""
-
     engine: RuleEngine
     rule_id: RuleId
     code: str | None
@@ -324,8 +292,6 @@ class RuleSpec:
 
 @dataclass(frozen=True, slots=True)
 class RuleProblem:
-    """A falsifiable lint problem, defined before implementation begins."""
-
     key: str
     summary: str
     harm: str
@@ -353,8 +319,6 @@ class RuleProblem:
 
 @dataclass(frozen=True, slots=True)
 class CatalogRule:
-    """One existing rule considered before adding custom code."""
-
     identifier: str
     summary: str
     origin: RuleOrigin
@@ -376,8 +340,6 @@ class CatalogRule:
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    """A normalized finding returned by any candidate rule implementation."""
-
     rule_id: str
     line: int
     column: int
@@ -394,8 +356,6 @@ class Finding:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationCase:
-    """Source used to falsify a candidate rule without leaking it into reports."""
-
     case_id: str
     language: Language
     source: str = field(repr=False)

@@ -1,5 +1,3 @@
-"""Exhaustive suite for SARJ012 `no-secret-in-log`."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -119,7 +117,6 @@ NON_LOG_METHODS = ["send", "write", "emit", "handle", "flush", "notice"]
 
 @pytest.mark.parametrize("method", NON_LOG_METHODS)
 def test_skips_non_log_method(method: str):
-    """`log`/`trace`/`send`/..."""
     src = f'logger.{method}("m", token=token)\n'
     assert _check(src) == []
 
@@ -224,7 +221,6 @@ def test_allows_redacted_keyword(kw: str):
 
 
 def test_redaction_wins_when_both_present():
-    """A name containing both a secret word and a redaction marker is exempt."""
     src = 'logger.info("m", token_prefix=token[:6], password_hash=h)\n'
     assert _check(src) == []
 
@@ -233,7 +229,6 @@ def test_redaction_wins_when_both_present():
 
 
 def test_allows_secret_keyword_with_sliced_value():
-    """A subscript is derived data; the rule declines to guess whether it is raw."""
     src = 'logger.info("m", token=token[:6])\n'
     assert _check(src) == []
 
@@ -284,7 +279,6 @@ def test_allows_safe_name_with_secret_subscript_value():
 
 
 def test_skips_positional_secret_argument():
-    """Positional args carry no keyword name to inspect."""
     src = 'logger.info("token=%s", token)\n'
     assert _check(src) == []
 
@@ -332,7 +326,6 @@ def test_allows_ordinary_keyword(kw: str):
 
 
 def test_comment_mentioning_secret_is_ignored():
-    """A comment naming a secret is not a keyword argument."""
     src = 'logger.info("ok")  # do not log the password here\n'
     assert _check(src) == []
 
@@ -356,13 +349,11 @@ def test_multiple_calls_each_flagged():
 
 
 def test_nested_logging_call_is_flagged():
-    """`ast.walk` reaches a logging call nested inside another call's args."""
     src = 'logger.info("outer", data=log.error("inner", token=token))\n'
     assert _codes(src) == ["SARJ012"]
 
 
 def test_nested_non_logger_keyword_not_flagged():
-    """`wrap(token=t)` is a keyword to a non-logger — only the outer call counts."""
     src = 'logger.info("m", data=wrap(token=t))\n'
     assert _check(src) == []
 
@@ -487,7 +478,6 @@ def test_flags_additional_secret_words(kw: str):
 
 
 def test_hash_keyword_is_exempted_by_redaction_marker():
-    """`hash` is a secret word, but the redaction regex matches `hash` first and wins."""
     assert _check('logger.info("m", hash=h)\n') == []
 
 
@@ -495,13 +485,11 @@ def test_hash_keyword_is_exempted_by_redaction_marker():
 
 
 def test_flags_camelcase_apikey():
-    """`apiKey` splits to api/key -> whole-token `apikey`, still a secret."""
     assert _codes('logger.info("m", apiKey=apiKey)\n') == ["SARJ012"]
 
 
 @pytest.mark.parametrize("kw", ["tokenCount", "apiKeyId", "tokenPresent", "promptTokens"])
 def test_allows_camelcase_innocuous(kw: str):
-    """CamelCase splitting surfaces the innocuous token (count/id/present/plural)."""
     assert _check(f'logger.info("m", {kw}=n)\n') == []
 
 
@@ -509,12 +497,10 @@ def test_allows_camelcase_innocuous(kw: str):
 
 
 def test_flags_reset_token_whole_token_matching():
-    """`reset` embeds `set` only as a substring, not a whole token, so `reset_token` flags."""
     assert _codes('logger.info("m", reset_token=reset_token)\n') == ["SARJ012"]
 
 
 def test_allows_plural_tokens_counter():
-    """Plural `tokens` is a usage counter, not the singular secret word `token`."""
     assert _check('logger.info("usage", tokens=n)\n') == []
 
 
@@ -526,7 +512,6 @@ def test_flags_bind_chain_on_self_logger():
 
 
 def test_flags_logger_log_with_positional_level():
-    """`.log(level, ...)` writes to the same sinks; the level argument is not a shield."""
     assert _codes('logger.log(logging.INFO, "m", token=token)\n') == ["SARJ012"]
 
 
@@ -534,7 +519,6 @@ def test_flags_logger_log_with_positional_level():
 
 
 def test_allows_secret_name_with_redacting_call_value():
-    """A call result is not a proven raw secret reference."""
     assert _check('logger.info("m", token=mask(token))\n') == []
 
 
@@ -547,13 +531,11 @@ def test_flags_fstring_secret_with_safe_keyword():
 
 @pytest.mark.parametrize("kw", ["staging_secret", "staging_token"])
 def test_staging_secret_should_be_flagged(kw: str):
-    """`tag` is a whole-token redaction marker, so `staging_*` raw env secrets still fire."""
     assert _codes(f'logger.info("boot", {kw}={kw})\n') == ["SARJ012"]
 
 
 @pytest.mark.parametrize("kw", ["secrets", "passwords"])
 def test_plural_secret_bundle_should_be_flagged(kw: str):
-    """A logged bundle like `secrets=all_secrets` is a genuine leak."""
     assert _codes(f'logger.info("loaded", {kw}={kw})\n') == ["SARJ012"]
 
 
@@ -579,7 +561,6 @@ def test_does_not_flag_leading_boolean_flag(kw: str):
 
 @pytest.mark.parametrize("kw", ["token_present", "password_enabled"])
 def test_trailing_flag_markers_still_exempt(kw: str):
-    """The pre-existing trailing-flag exemption is unchanged by the leading one."""
     assert _check(f'logger.info("state", {kw}=flag)\n') == []
 
 
@@ -588,13 +569,11 @@ def test_trailing_flag_markers_still_exempt(kw: str):
     ["api_key", "INTERNAL_ADMIN_TOKEN", "slack_signing_secret", "auth_token"],
 )
 def test_genuine_secret_still_flagged_alongside_flag_exemption(kw: str):
-    """Real credentials keep firing — the exemption is on the leading word, nothing else."""
     assert _codes(f'logger.info("boot", {kw}={kw})\n') == ["SARJ012"]
 
 
 @pytest.mark.parametrize("kw", ["issuer_token", "canary_token", "issuerToken"])
 def test_flags_credential_whose_leading_word_only_looks_like_a_flag(kw: str):
-    """`issuer`/`canary` merely start with the letters of `is`/`can` — still credentials."""
     assert _codes(f'logger.info("boot", {kw}={kw})\n') == ["SARJ012"]
 
 
@@ -633,6 +612,5 @@ def test_liveness_every_leak_shape_still_fires():
 
 
 def test_liveness_no_safe_shape_fires():
-    """Redaction markers, metadata names, `extra=`, and non-loggers stay silent."""
     safe = _SERVICE_MODULE.split("def safely")[1]
     assert _check(f"def safely{safe}") == []

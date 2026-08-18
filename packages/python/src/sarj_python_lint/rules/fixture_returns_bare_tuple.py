@@ -1,8 +1,3 @@
-"""SARJ044 — A fixture returning a bare tuple forces positional unpacking everywhere.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_fixture_returns_bare_tuple.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -37,6 +32,11 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 class _FixtureDecorators(NamedTuple):
     names: frozenset[str]
     roots: frozenset[str]
+
+
+class _TupleResult(NamedTuple):
+    expression: ast.expr
+    field_count: int
 
 
 class FixtureReturnsBareTuple(Rule):
@@ -86,7 +86,6 @@ class FixtureReturnsBareTuple(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag pytest fixtures whose own body returns or yields a bare tuple."""
         if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
@@ -111,8 +110,8 @@ class FixtureReturnsBareTuple(Rule):
         return diags
 
 
-def _bare_tuple_results(tree: ast.Module) -> list[tuple[ast.expr, int]]:
-    hits: list[tuple[ast.expr, int]] = []
+def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
+    hits: list[_TupleResult] = []
     fixture_names = _fixture_decorator_names(tree)
     aliases = _type_aliases(tree)
     for node in nodes(tree, *_FUNC_NODES):
@@ -133,7 +132,7 @@ def _bare_tuple_results(tree: ast.Module) -> list[tuple[ast.expr, int]]:
             )
             >= _MIN_FIELDS
         ):
-            hits.append((node.returns, arity))
+            hits.append(_TupleResult(node.returns, arity))
     return hits
 
 
@@ -252,7 +251,6 @@ def _fixed_tuple_return_arity(
 
 
 def _optional_member(annotation: ast.expr) -> ast.expr | None:
-    """Return ``T`` from a statically proven ``T | None``/``Optional[T]``."""
     if isinstance(annotation, ast.Subscript):
         name = _dotted_tail(annotation.value)
         if name == "Optional":
@@ -278,11 +276,11 @@ def _only_non_none(members: list[ast.expr]) -> ast.expr | None:
 
 
 def _dotted_tail(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return None
 
 
 def _has_own_yield(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -297,25 +295,25 @@ def _has_own_yield(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
-def _tuple_results_of(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.expr, int]]:
-    found: list[tuple[ast.expr, int]] = []
+def _tuple_results_of(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_TupleResult]:
+    found: list[_TupleResult] = []
     for stmt in fixture.body:
         found.extend(_scan_for_results(stmt))
     return found
 
 
-def _scan_for_results(node: ast.AST) -> list[tuple[ast.expr, int]]:
+def _scan_for_results(node: ast.AST) -> list[_TupleResult]:
     # Descend through control flow but never into a nested function: a tuple
     # returned by a closure the fixture builds crosses the closure's boundary,
     # not the fixture's, so it is a different (and legitimate) shape.
     if isinstance(node, (*_FUNC_NODES, ast.Lambda)):
         return []
-    found: list[tuple[ast.expr, int]] = []
+    found: list[_TupleResult] = []
     value = _returned_value(node)
     if value is not None:
         count = _bare_tuple_arity(value)
         if count >= _MIN_FIELDS:
-            found.append((value, count))
+            found.append(_TupleResult(value, count))
     for child in children(node):
         found.extend(_scan_for_results(child))
     return found

@@ -1,8 +1,3 @@
-"""SARJ085 — A class docstring that only re-spells the class name.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_redundant_class_docstring.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -23,10 +18,10 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._comments import is_protected, split_identifier
 from sarj_python_lint.rules._docstrings import (
-    PROMPT_DECORATOR_MARKERS,
     VALUE_MARKER_RE,
-    decorator_markers,
+    base_names,
     identifier_stems,
+    is_framework_consumed_docstring,
     restates,
 )
 from sarj_python_lint.rules._paths import is_generated
@@ -34,40 +29,6 @@ from sarj_python_lint.rules._paths import is_generated
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-
-# Preserve subclass docstrings that become machine-readable schema descriptions.
-_SCHEMA_BASES = frozenset(
-    {
-        "BaseModel",
-        "BaseSettings",
-        "RootModel",
-        "TypedDict",
-        "Enum",
-        "EnumMeta",
-        "Flag",
-        "IntEnum",
-        "IntFlag",
-        "ReprEnum",
-        "StrEnum",
-    }
-)
-
-# `@pydantic.dataclasses.dataclass` and `@strawberry.type` place the docstring in
-# a schema the same way a `BaseModel` subclass does.
-_SCHEMA_DECORATOR_MARKERS = frozenset({"pydantic", "strawberry", "graphene", "msgspec"})
-
-
-def _base_names(node: ast.ClassDef) -> list[str]:
-    """Render each base as its final dotted part."""
-    names: list[str] = []
-    for base in node.bases:
-        target = base.value if isinstance(base, ast.Subscript) else base
-        if isinstance(target, ast.Attribute):
-            names.append(target.attr)
-        elif isinstance(target, ast.Name):
-            names.append(target.id)
-    return names
 
 
 class RedundantClassDocstring(Rule):
@@ -144,11 +105,8 @@ class RedundantClassDocstring(Rule):
             return False
         if len(node.body) == 1:
             return False  # the docstring IS the body; deleting it leaves a syntax error
-        bases = _base_names(node)
-        if _SCHEMA_BASES.intersection(bases):
-            return False
-        markers = decorator_markers(node)
-        if markers & PROMPT_DECORATOR_MARKERS or markers & _SCHEMA_DECORATOR_MARKERS:
+        bases = base_names(node)
+        if is_framework_consumed_docstring(node):
             return False
         known = {*identifier_stems(node.name)}
         for base in bases:

@@ -1,5 +1,3 @@
-r"""SARJ101: detect TIMESTAMP columns missing `WITH TIME ZONE`."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -38,7 +36,6 @@ _CLOSES_LIST_ITEM = frozenset(",)")
 
 
 def _is_column_reference(line: str, start: int, end: int) -> bool:
-    """Report whether the `TIMESTAMP` token at `[start:end)` is a bare list element."""
     before = line[:start].rstrip()
     after = line[end:].lstrip()
     return bool(before) and before[-1] in _OPENS_LIST_ITEM and bool(after) and after[0] in _CLOSES_LIST_ITEM
@@ -46,8 +43,6 @@ def _is_column_reference(line: str, start: int, end: int) -> bool:
 
 @final
 class EnforceTimestamptz(Rule):
-    """Postgres TIMESTAMP without WITH TIME ZONE — use TIMESTAMPTZ."""
-
     id = "enforce-timestamptz"
     code = "SARJ101"
     documentation = RuleDocumentation(

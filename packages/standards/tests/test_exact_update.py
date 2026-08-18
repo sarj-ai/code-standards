@@ -1,5 +1,3 @@
-"""Exact-version updates cannot race a newer registry release."""
-
 from __future__ import annotations
 
 import shutil

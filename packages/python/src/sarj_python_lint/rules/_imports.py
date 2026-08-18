@@ -1,5 +1,3 @@
-"""Conservative module-import resolution for syntax-aware rules."""
-
 from __future__ import annotations
 
 import ast
@@ -17,8 +15,6 @@ class _ImportTarget:
 
 @dataclass(frozen=True, slots=True)
 class ImportIndex:
-    """Unambiguous imports whose local bindings are never reassigned."""
-
     bindings: Mapping[str, _ImportTarget]
     shadowed_names: frozenset[str]
 
@@ -50,12 +46,10 @@ class ImportIndex:
         return cls(MappingProxyType(bindings), frozenset(non_import_bindings))
 
     def resolves(self, node: ast.expr, *, sources: frozenset[str], symbol: str) -> bool:
-        """Report whether `node` unambiguously names `symbol` from `sources`."""
         resolved = self._resolve(node)
         return resolved is not None and resolved.module in sources and resolved.symbol == symbol
 
     def builtin_is_unshadowed(self, name: str) -> bool:
-        """Report whether a builtin spelling has no binding anywhere in this file."""
         return name not in self.shadowed_names and name not in self.bindings
 
     def _resolve(self, node: ast.expr) -> _ImportTarget | None:
@@ -81,7 +75,6 @@ class ImportIndex:
 
 
 def _non_import_bindings(tree: ast.Module) -> set[str]:
-    """Collect possible import shadows, accepting false negatives over alias mistakes."""
     names: set[str] = set()
     for node in ast.walk(tree):
         match node:

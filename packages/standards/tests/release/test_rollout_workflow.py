@@ -1,5 +1,3 @@
-"""Static contracts for non-blocking, deterministic fleet rollout."""
-
 from __future__ import annotations
 
 import ast

@@ -1,8 +1,3 @@
-"""SARJ071 — Advise when a concrete service may benefit from a consumer-owned port.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_port_for_service.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -10,7 +5,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from pathlib import Path, PurePosixPath
 import re
-from typing import ClassVar, override
+from typing import ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -28,6 +23,11 @@ from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_su
 
 # Name tails that mark a class as a service in this codebase's own vocabulary.
 _SERVICE_NAME_RE = re.compile(r"(?:Service|Store|DAO|Dao|Gateway|Provider)$")
+
+
+class _ParameterDefault(NamedTuple):
+    parameter: ast.arg
+    default: ast.expr | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,7 +231,6 @@ class RequirePortForService(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag service classes that have no abstract base to be substituted through."""
         if not _is_library_source(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
@@ -299,7 +298,6 @@ class RequirePortForService(Rule):
 
 
 def _is_library_source(path: Path) -> bool:
-    """Report whether `path` holds importable production code."""
     if is_test_path(path) or is_test_support_path(path):
         return False
     parts = _repository_relative_parts(path)
@@ -311,7 +309,6 @@ def _is_library_source(path: Path) -> bool:
 
 
 def _repository_relative_parts(path: Path) -> tuple[str, ...]:
-    """Use checkout-relative parts when an absolute corpus path is available."""
     if not path.is_absolute():
         return path.parts
     for parent in path.parents:
@@ -321,7 +318,6 @@ def _repository_relative_parts(path: Path) -> tuple[str, ...]:
 
 
 def _has_main_guard(tree: ast.Module) -> bool:
-    """Report whether the module is its own entry point."""
     for stmt in tree.body:
         if not isinstance(stmt, ast.If):
             continue
@@ -344,7 +340,6 @@ def _unsubstitutable_service(
     local_class_names: frozenset[str] | set[str],
     local_port_names: frozenset[str] | set[str],
 ) -> str | None:
-    """Decide whether `node` is a service class with no port above it."""
     if node.name.startswith("_") or not _SERVICE_NAME_RE.search(node.name):
         return None
     if _BASE_NAME_RE.match(node.name) or _names_a_port_in_scope(node.name, bound_names):
@@ -357,7 +352,6 @@ def _unsubstitutable_service(
 
 
 def _handles_http_requests(node: ast.ClassDef) -> bool:
-    """Report whether the class's public methods are HTTP route handlers."""
     return any(
         _is_http_parameter(param, default)
         for method in _methods(node)
@@ -368,19 +362,17 @@ def _handles_http_requests(node: ast.ClassDef) -> bool:
 
 def _params_with_defaults(
     method: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> list[tuple[ast.arg, ast.expr | None]]:
-    """Pair every parameter of `method` with its default expression."""
+) -> list[_ParameterDefault]:
     args = method.args
     positional = [*args.posonlyargs, *args.args]
     padding: list[ast.expr | None] = [None] * (len(positional) - len(args.defaults))
     return [
-        *zip(positional, [*padding, *args.defaults], strict=True),
-        *zip(args.kwonlyargs, args.kw_defaults, strict=True),
+        *map(_ParameterDefault, positional, [*padding, *args.defaults], strict=True),
+        *map(_ParameterDefault, args.kwonlyargs, args.kw_defaults, strict=True),
     ]
 
 
 def _is_http_parameter(param: ast.arg, default: ast.expr | None) -> bool:
-    """Report whether one parameter belongs to a web framework rather than a domain call."""
     if param.annotation is not None:
         for inner in ast.walk(param.annotation):
             if isinstance(inner, ast.Name | ast.Attribute) and _dotted_tail(inner) in _HTTP_PARAM_TYPES:
@@ -391,7 +383,6 @@ def _is_http_parameter(param: ast.arg, default: ast.expr | None) -> bool:
 
 
 def _names_a_port_in_scope(name: str, bound_names: frozenset[str] | set[str]) -> bool:
-    """Report whether the class name is a qualified form of a port already in scope."""
     return any(
         name[index].isupper() and (suffix := name[index:]) in bound_names and bool(_SERVICE_NAME_RE.search(suffix))
         for index in range(1, len(name))
@@ -403,7 +394,6 @@ def _has_base(
     local_class_names: frozenset[str] | set[str],
     local_port_names: frozenset[str] | set[str],
 ) -> bool:
-    """Report whether the class inherits a real port or an unknown external/framework base."""
     if any(keyword.arg == "metaclass" and _dotted_tail(keyword.value) == "ABCMeta" for keyword in node.keywords):
         return True
     for base in node.bases:
@@ -421,14 +411,12 @@ def _has_base(
 
 
 def _is_data_type(node: ast.ClassDef) -> bool:
-    """Report whether the class is a record rather than a service."""
     if any(_dotted_tail(dec) in _DATA_DECORATORS for dec in node.decorator_list):
         return True
     return any(_dotted_tail(base) in _DATA_BASES for base in node.bases)
 
 
 def _declares_interface(node: ast.ClassDef) -> bool:
-    """Report whether the class already declares an interface."""
     if any(_dotted_tail(dec) in _IMPLEMENTS_DECORATORS for dec in node.decorator_list):
         return True
     return any(_dotted_tail(dec) in _INTERFACE_DECORATORS for method in _methods(node) for dec in method.decorator_list)
@@ -439,7 +427,6 @@ def _methods(node: ast.ClassDef) -> list[ast.FunctionDef | ast.AsyncFunctionDef]
 
 
 def _public_method_count(node: ast.ClassDef) -> int:
-    """Count the instance methods a consumer would call through a port."""
     return sum(
         1
         for method in _methods(node)
@@ -449,7 +436,6 @@ def _public_method_count(node: ast.ClassDef) -> int:
 
 
 def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[str]) -> str | None:
-    """Find a required collaborator that drives a meaningful public surface."""
     init = next((method for method in _methods(node) if method.name == "__init__"), None)
     if init is None:
         return None
@@ -485,7 +471,6 @@ def _injected_collaborator(node: ast.ClassDef, data_names: frozenset[str] | set[
 def _self_stored_parameters(
     init: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> _StoredParameters:
-    """Map constructor parameters to fields, recording fallback storage."""
     fields_by_parameter: dict[str, set[str]] = {}
     fallback_stored: set[str] = set()
     stack: list[ast.AST] = list(init.body)
@@ -521,7 +506,6 @@ def _self_stored_parameters(
 
 
 def _stored_parameter_names(value: ast.expr) -> set[str]:
-    """Resolve transparent fallback and typing wrappers around stored parameters."""
     if isinstance(value, ast.Name):
         return {value.id}
     if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
@@ -534,7 +518,6 @@ def _stored_parameter_names(value: ast.expr) -> set[str]:
 
 
 def _fallback_parameter_names(value: ast.expr) -> set[str]:
-    """Collect parameters retained through an implementation fallback."""
     if isinstance(value, ast.BoolOp) and isinstance(value.op, ast.Or):
         return _stored_parameter_names(value)
     if isinstance(value, ast.Call) and _dotted_tail(value.func) == "cast":
@@ -545,7 +528,6 @@ def _fallback_parameter_names(value: ast.expr) -> set[str]:
 
 
 def _annotation_allows_none(annotation: ast.expr | None) -> bool:
-    """Report whether an annotation explicitly permits absence."""
     if annotation is None:
         return False
     if isinstance(annotation, ast.Constant):
@@ -573,7 +555,6 @@ def _annotation_allows_none(annotation: ast.expr | None) -> bool:
 
 
 def _behavioral_public_method_count(node: ast.ClassDef, fields: frozenset[str]) -> int:
-    """Count public methods that invoke a retained collaborator field."""
     return sum(
         _method_invokes_field(method, fields)
         for method in _methods(node)
@@ -587,7 +568,6 @@ def _method_invokes_field(
     method: ast.FunctionDef | ast.AsyncFunctionDef,
     fields: frozenset[str],
 ) -> bool:
-    """Report a direct `self.field(...)` or `self.field.method(...)` call."""
     stack: list[ast.AST] = list(method.body)
     while stack:
         current = stack.pop()
@@ -600,7 +580,6 @@ def _method_invokes_field(
 
 
 def _called_self_field(func: ast.expr) -> str | None:
-    """Resolve the retained field in one-level collaborator calls."""
     if not isinstance(func, ast.Attribute):
         return None
     receiver = func.value
@@ -612,7 +591,6 @@ def _called_self_field(func: ast.expr) -> str | None:
 
 
 def _annotation_tail(annotation: ast.expr | None) -> str | None:
-    """Reduce an annotation to the identifier that names its type."""
     match annotation:
         case None:
             return None
@@ -642,7 +620,6 @@ def _annotation_tail(annotation: ast.expr | None) -> str | None:
 
 
 def _dotted_tail(node: ast.expr) -> str | None:
-    """Reduce an expression to its final identifier."""
     match node:
         case ast.Name(id=name):
             return name

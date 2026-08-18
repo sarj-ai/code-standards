@@ -1,8 +1,3 @@
-"""SARJ067 — Mock setup the test can never exercise is a lie about what is covered.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_unused_mock_setup.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -91,8 +86,6 @@ _EFFECTFUL_NODES = (
 
 
 class _Finding(NamedTuple):
-    """One dead configuration statement and why it is dead."""
-
     node: ast.stmt
     message: str
 
@@ -145,7 +138,6 @@ class UnusedMockSetup(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag mock configuration statements that nothing in the test can observe."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -180,7 +172,6 @@ def _dead_setups(fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportInde
 
 
 def _overwritten_before_use(fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> Iterator[_Finding]:
-    """Find configurations reassigned before anything could read them."""
     has_mocker_fixture = _has_parameter(fn, _MOCKER)
     for block in _blocks(fn):
         pending: dict[str, ast.stmt] = {}
@@ -219,7 +210,6 @@ def _has_parameter(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> boo
 
 
 def _initial_mock_configs(stmt: ast.stmt, imports: ImportIndex, *, has_mocker_fixture: bool) -> tuple[str, ...]:
-    """Read configuration keywords supplied while binding a proven mock call."""
     match stmt:
         case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call() as call):
             pass
@@ -233,7 +223,6 @@ def _initial_mock_configs(stmt: ast.stmt, imports: ImportIndex, *, has_mocker_fi
 
 
 def _is_mock_configurator(func: ast.expr, imports: ImportIndex, *, has_mocker_fixture: bool) -> bool:
-    """Resolve a constructor/patch call whose keywords configure its result."""
     if has_mocker_fixture and isinstance(func, ast.Attribute):
         if isinstance(func.value, ast.Name) and func.value.id == _MOCKER:
             return func.attr in _MOCKER_CONFIGURATORS
@@ -249,7 +238,6 @@ def _is_mock_configurator(func: ast.expr, imports: ImportIndex, *, has_mocker_fi
 
 
 def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[_Finding]:
-    """Find configurations of a path the test then asserts was never called."""
     not_called = _not_called_assertions(fn)
     if not not_called:
         return
@@ -276,7 +264,6 @@ def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterat
 
 
 def _blocks(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[list[ast.stmt]]:
-    """Walk the statement blocks belonging to this function's own scope."""
     stack: list[ast.AST] = [fn]
     while stack:
         node = stack.pop()
@@ -286,7 +273,6 @@ def _blocks(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[list[ast.stm
 
 
 def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
-    """List the statement blocks a compound statement owns."""
     blocks: list[list[ast.stmt]] = []
     match node:
         case ast.FunctionDef() | ast.AsyncFunctionDef():
@@ -306,13 +292,11 @@ def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
 
 
 def _scope_statements(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.stmt]:
-    """Walk every statement in the function's own scope."""
     for block in _blocks(fn):
         yield from block
 
 
 def _config_target(stmt: ast.stmt) -> str | None:
-    """Read the dotted target of a mock configuration assignment."""
     if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
         return None
     target = stmt.targets[0]
@@ -322,7 +306,6 @@ def _config_target(stmt: ast.stmt) -> str | None:
 
 
 def _dotted(node: ast.expr) -> str | None:
-    """Render a `Name`-rooted attribute chain as a dotted string."""
     parts: list[str] = []
     current = node
     while isinstance(current, ast.Attribute):
@@ -335,7 +318,6 @@ def _dotted(node: ast.expr) -> str | None:
 
 
 def _is_inert(stmt: ast.stmt) -> bool:
-    """Report whether a statement provably cannot execute user code."""
     if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
         return True
     if isinstance(stmt, ast.Expr):
@@ -349,7 +331,6 @@ def _is_inert(stmt: ast.stmt) -> bool:
 
 
 def _not_called_assertions(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, int]:
-    """Collect `x.y.assert_not_called()` calls made in this function's scope."""
     found: dict[str, int] = {}
     for stmt in _scope_statements(fn):
         for node in _own_expressions(stmt):
@@ -364,7 +345,6 @@ def _not_called_assertions(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[s
 
 
 def _own_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
-    """Walk the expressions a statement owns, without descending into other statements."""
     for child in children(stmt):
         if isinstance(child, (ast.stmt, ast.excepthandler, ast.match_case)):
             continue
@@ -372,7 +352,6 @@ def _own_expressions(stmt: ast.stmt) -> Iterator[ast.AST]:
 
 
 def _introspected_paths(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect every path the function reads the call record of."""
     found: set[str] = set()
     for node in walk(fn):
         if not isinstance(node, ast.Attribute) or not _is_introspection(node.attr):
@@ -390,7 +369,6 @@ def _is_introspection(attr: str) -> bool:
 
 
 def _last_effectful_line(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
-    """Find the last line of the function that can invoke a mock."""
     last = 0
     for node in walk(fn):
         if isinstance(node, ast.Call) and not _is_assertion_call(node):

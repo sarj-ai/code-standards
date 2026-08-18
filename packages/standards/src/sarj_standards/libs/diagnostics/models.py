@@ -1,5 +1,3 @@
-"""Canonical, tool-neutral diagnostics returned by the Standards facade."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,39 +18,29 @@ InvocationId = NewType("InvocationId", str)
 
 
 class Severity(StrEnum):
-    """Stable diagnostic severity independent of any one lint engine."""
-
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
 
 
 class Completion(StrEnum):
-    """Whether every requested analyzer completed successfully."""
-
     COMPLETE = "complete"
     PARTIAL = "partial"
     FAILED = "failed"
 
 
 class Conclusion(StrEnum):
-    """Semantic result, kept separate from execution completeness."""
-
     PASSED = "passed"
     FINDINGS = "findings"
     INCONCLUSIVE = "inconclusive"
 
 
 class TrustMode(StrEnum):
-    """Whether repository-controlled executable analyzer configuration may run."""
-
     SAFE = "safe"
     TRUSTED = "trusted"
 
 
 class CoverageDisposition(StrEnum):
-    """Why selected input was not analyzed."""
-
     FAILED = "failed"
     UNSUPPORTED = "unsupported"
     EXCLUDED = "excluded"
@@ -60,23 +48,17 @@ class CoverageDisposition(StrEnum):
 
 
 class FixSafety(StrEnum):
-    """Whether a fix may be applied without human review."""
-
     SAFE = "safe"
     UNSAFE = "unsafe"
 
 
 class CacheStatus(StrEnum):
-    """Cache outcome for one analyzer invocation."""
-
     DISABLED = "disabled"
     HIT = "hit"
     MISS = "miss"
 
 
 class _CoverageNotice(TypedDict):
-    """Serialized coverage notice returned to protocol consumers."""
-
     source: str
     reason: str
     fileCount: int
@@ -103,8 +85,6 @@ _AnalysisReport = TypedDict(
 
 @dataclass(frozen=True, slots=True)
 class CoverageNotice:
-    """Requested source that an intentionally narrow analysis did not evaluate."""
-
     source: str
     reason: str
     file_count: int
@@ -121,7 +101,6 @@ class CoverageNotice:
 
     @property
     def blocking(self) -> bool:
-        """Return whether this notice means requested analysis failed."""
         return self.disposition is CoverageDisposition.FAILED
 
     def as_dict(self) -> _CoverageNotice:
@@ -135,8 +114,6 @@ class CoverageNotice:
 
 @dataclass(frozen=True, slots=True)
 class Position:
-    """A zero-based UTF-16 editor position plus its internal byte offset."""
-
     line: int
     character: int
     byte_offset: int
@@ -150,14 +127,11 @@ class Position:
             raise ValueError(msg)
 
     def as_dict(self) -> dict[str, int]:
-        """Serialize only the portable LSP-compatible coordinates."""
         return {"line": self.line, "character": self.character}
 
 
 @dataclass(frozen=True, slots=True)
 class Region:
-    """An exact half-open source region; absent when an analyzer knows only a point."""
-
     start: Position
     end: Position
 
@@ -177,8 +151,6 @@ class Region:
 
 @dataclass(frozen=True, slots=True)
 class Location:
-    """Repository-relative path with a truthful point or exact range."""
-
     path: str
     position: Position | None = None
     region: Region | None = None
@@ -209,8 +181,6 @@ class Location:
 
 @dataclass(frozen=True, slots=True)
 class RelatedLocation:
-    """A secondary source location that explains a diagnostic."""
-
     label: str
     location: Location
 
@@ -224,8 +194,6 @@ class RelatedLocation:
 
 @dataclass(frozen=True, slots=True)
 class TextEdit:
-    """One exact, repository-contained source replacement."""
-
     location: Location
     replacement: str
     expected_text_hash: str | None = None
@@ -253,8 +221,6 @@ class TextEdit:
 
 @dataclass(frozen=True, slots=True)
 class Fix:
-    """A bounded set of non-overlapping edits for one remediation."""
-
     title: str
     safety: FixSafety
     edits: tuple[TextEdit, ...]
@@ -289,8 +255,6 @@ class Fix:
 
 @dataclass(frozen=True, slots=True)
 class RuleDescriptor:
-    """Stable rule metadata shared by renderers and integrations."""
-
     key: str
     name: str
     summary: str
@@ -316,8 +280,6 @@ class RuleDescriptor:
 
 @dataclass(frozen=True, slots=True)
 class Diagnostic:
-    """One normalized static-analysis finding."""
-
     code: str
     message: str
     severity: Severity
@@ -381,8 +343,6 @@ class Diagnostic:
 
 @dataclass(frozen=True, slots=True)
 class ExecutionIssue:
-    """Analyzer/configuration failure, intentionally not disguised as a finding."""
-
     source: str
     kind: str
     message: str
@@ -404,8 +364,6 @@ class ExecutionIssue:
 
 @dataclass(frozen=True, slots=True)
 class ToolReport:
-    """Diagnostics and execution state for one analyzer invocation."""
-
     name: str
     completion: Completion
     diagnostics: tuple[Diagnostic, ...] = ()
@@ -462,8 +420,6 @@ class ToolReport:
 
 @dataclass(frozen=True, slots=True)
 class AnalysisReport:
-    """Versioned result for IDEs, CI annotations, and programmatic consumers."""
-
     root: Path
     completion: Completion
     conclusion: Conclusion
@@ -540,7 +496,6 @@ class AnalysisReport:
 
 
 def diagnostic_fingerprint(diagnostic: Diagnostic, *, anchor: str) -> str:
-    """Create a versioned stable fingerprint from non-message semantic facts."""
     _require_text(anchor, "diagnostic fingerprint anchor")
     identity = "\0".join(
         (

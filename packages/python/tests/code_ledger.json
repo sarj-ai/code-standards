@@ -130,5 +130,7 @@
   "SARJ415": "sql-requires-injected-pool-owner",
   "SARJ416": "preserve-declared-nominal-id",
   "SARJ417": "preserve-enum-types",
-  "SARJ418": "require-pydantic-ordinal-lower-bound"
+  "SARJ418": "require-pydantic-ordinal-lower-bound",
+  "SARJ419": "no-vague-suppression-description",
+  "SARJ420": "no-unnecessary-docstring"
 }

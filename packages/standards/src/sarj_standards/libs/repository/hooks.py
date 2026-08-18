@@ -1,5 +1,3 @@
-"""Install and invoke the repository's pinned Lefthook binary."""
-
 from __future__ import annotations
 
 from pathlib import Path

@@ -1,8 +1,3 @@
-"""SARJ045 — A domain object built with many kwargs inline belongs in a builder.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_kwarg_heavy_construction_in_test.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -115,7 +110,6 @@ class KwargHeavyConstructionInTest(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag kwarg-heavy constructions sitting directly in a test body."""
         if not is_test_path(path):
             return []
         tree = parse_or_none(path, source)
@@ -143,8 +137,6 @@ class KwargHeavyConstructionInTest(Rule):
 
 
 class _KwargHeavyVisitor(ast.NodeVisitor):
-    """Flag wide keyword calls whose nearest enclosing function is a test."""
-
     def __init__(self) -> None:
         super().__init__()
         self._func_names: list[str | None] = []
@@ -174,7 +166,6 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def reportable_hits(self, tree: ast.Module) -> list[tuple[ast.Call, int]]:
-        """Keep repeated wide test calls unless their callee is a helper defined here."""
         counts = Counter(name for node, _ in self.hits if (name := _callee_name(node.func)) is not None)
         local_defs = _locally_defined_names(tree)
         return [
@@ -199,23 +190,19 @@ def _is_data_callable(func: ast.expr) -> bool:
 
 
 def _is_mock_assertion(func: ast.expr) -> bool:
-    """Return whether the call asserts on a mock instead of building an object."""
     name = _callee_name(func)
     return name is not None and name.rsplit(".", maxsplit=1)[-1].startswith(_MOCK_ASSERTION_PREFIX)
 
 
 def _locally_defined_names(tree: ast.Module) -> frozenset[str]:
-    """Collect names bound by functions defined in this module."""
     return frozenset(node.name for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef))
 
 
 def _calls_a_local_helper(func: ast.expr, local_defs: frozenset[str]) -> bool:
-    """Return whether a bare callee names a function defined in this module."""
     return isinstance(func, ast.Name) and func.id in local_defs
 
 
 def _callee_name(func: ast.expr) -> str | None:
-    """Render a stable dotted callee, so unrelated terminal names never collide."""
     if isinstance(func, ast.Name):
         return func.id
     if isinstance(func, ast.Attribute):

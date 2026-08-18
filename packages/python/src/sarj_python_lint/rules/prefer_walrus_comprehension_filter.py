@@ -1,8 +1,3 @@
-"""SARJ076 — Prefer walrus operator in comprehension filters to avoid duplicate function evaluation.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_walrus_comprehension_filter.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -35,7 +30,6 @@ def _check_comprehension_node(
     path: Path,
     parents: dict[ast.AST, ast.AST],
 ) -> list[Diagnostic]:
-    """Check a callable-scoped comprehension for duplicate calls."""
     if len(node.generators) != 1 or not _has_callable_scope(node, parents):
         return []
 
@@ -86,7 +80,6 @@ def _check_comprehension_node(
 
 
 def _has_callable_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
-    """Require the expression to execute inside a function or lambda body."""
     child = node
     while (parent := parents.get(child)) is not None:
         match parent:

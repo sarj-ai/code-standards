@@ -1,5 +1,3 @@
-"""Compare immutable rule inventory and catalog artifacts between Git revisions."""
-
 from __future__ import annotations
 
 import hashlib
@@ -42,8 +40,6 @@ _GIT_SHA_LENGTH: Final = 40
 
 
 class RuleDescriptorV1(TypedDict):
-    """Stable fields used to route one changed rule to its owning engine."""
-
     key: str
     engine: str
     family: str
@@ -59,8 +55,6 @@ type ChangeKind = Literal["added", "removed", "implementation-changed", "policy-
 
 
 class RuleChangeV1(TypedDict):
-    """One independently actionable change to a canonical rule key."""
-
     kind: ChangeKind
     key: str
     releaseTarget: str
@@ -69,8 +63,6 @@ class RuleChangeV1(TypedDict):
 
 
 class RuleChangeSetV1(TypedDict):
-    """Versioned rule changes between two resolved commit identities."""
-
     schemaVersion: int
     beforeSha: str
     afterSha: str
@@ -92,7 +84,6 @@ def compare(
     after: str,
     runner: ProcessRunner = run_process,
 ) -> RuleChangeSetV1:
-    """Return deterministic inventory/catalog changes between two exact revisions."""
     resolved = root.resolve()
     before_sha = _resolve_revision(resolved, before, runner=runner)
     after_sha = _resolve_revision(resolved, after, runner=runner)
@@ -317,7 +308,6 @@ def _string(value: dict[str, object], key: str) -> str:
 
 
 def render_text(result: RuleChangeSetV1) -> str:
-    """Render a concise human review of the machine comparison."""
     lines = [f"rules {result['beforeSha']}..{result['afterSha']}"]
     lines.extend(f"{item['kind']}: {item['key']}" for item in result["changes"])
     if not result["changes"]:

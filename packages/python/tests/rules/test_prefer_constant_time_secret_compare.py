@@ -73,7 +73,6 @@ def test_flags_secret_name_left_operand(name: str, op: str):
 @pytest.mark.parametrize("name", _SECRET_NAMES)
 @pytest.mark.parametrize("op", _OPERATORS)
 def test_flags_secret_name_right_operand_yoda(name: str, op: str):
-    """Secret on the right-hand side (yoda-style) is flagged just the same."""
     src = f"def f({name}, other):\n    return other {op} {name}\n"
     assert _count(src) == 1
 
@@ -101,7 +100,6 @@ def test_flags_both_operands_secret_single_diagnostic():
 
 
 def test_flags_secret_vs_runtime_operand():
-    """Two runtime operands (secret vs another name) are a timing surface."""
     src = "def f(token, expected):\n    return token == expected\n"
     assert _count(src) == 1
 
@@ -147,7 +145,6 @@ def test_flags_comparison_under_not():
     ["user_password_check", "the_signature_bytes", "x_hmac_y"],
 )
 def test_flags_secret_word_as_whole_token(identifier: str):
-    """A secret word present as a whole snake/camel token is flagged."""
     src = f"import hmac\ndef f({identifier}, other):\n    return {identifier} == other\n"
     assert _count(src) == 1
 
@@ -178,7 +175,6 @@ def test_flags_signature_when_module_imports_crypto(name: str, crypto_import: st
 
 @pytest.mark.parametrize("name", _SIGNATURE_NAMES)
 def test_allows_signature_without_crypto_import(name: str):
-    """No crypto machinery in the module — `signature` is a function signature."""
     src = f"import inspect\ndef f({name}, other):\n    return {name} == other\n"
     assert _check(src) == []
 
@@ -196,14 +192,12 @@ def test_allows_inspect_signature_comparison():
 
 
 def test_token_still_fires_without_crypto_import():
-    """Only the polysemous `signature` is crypto-gated — other auth words are not."""
     src = "def f(token, other):\n    return token == other\n"
     assert _count(src) == 1
 
 
 @pytest.mark.parametrize("identifier", ["subtoken", "mytokenvalue"])
 def test_allows_secret_word_only_as_substring(identifier: str):
-    """A secret word buried mid-word (not a whole token) is NOT a secret."""
     src = f"def f({identifier}, other):\n    return {identifier} == other\n"
     assert _check(src) == []
 
@@ -249,7 +243,6 @@ def test_allows_token_scope_collection_comparison() -> None:
 
 @pytest.mark.parametrize("op", ["is", "is not", "<", ">", "<=", ">=", "in", "not in"])
 def test_allows_non_eq_operators(op: str):
-    """Identity, ordering, and membership operators are out of scope."""
     src = f"def f(token, other):\n    return token {op} other\n"
     assert _check(src) == []
 
@@ -316,7 +309,6 @@ def test_allows_excluded_operand_on_left(op: str):
 
 
 def test_allows_secret_count_vs_zero():
-    """`token_count == 0` is a count check — the numeric literal exempts it."""
     src = "def f(token_count):\n    return token_count == 0\n"
     assert _check(src) == []
 
@@ -336,7 +328,6 @@ def test_allows_secret_vs_string_or_bytes_literal(op: str, literal: str):
 
 
 def test_allows_password_vs_placeholder_sentinel():
-    """The real first-party case: `password == "PLACEHOLDER"` is a sentinel check."""
     src = 'def f(password, password_confirmation):\n    return password == "PLACEHOLDER" or password_confirmation == "PLACEHOLDER"\n'
     assert _check(src) == []
 
@@ -374,7 +365,6 @@ def test_allows_secret_vs_string_literal_left_operand():
 
 
 def test_flags_two_runtime_hash_names():
-    """`cached_hash != token_hash` still fires — `token_hash` carries the `token` authenticator."""
     src = "def f(cached_hash, token_hash):\n    return cached_hash != token_hash\n"
     assert _count(src) == 1
 
@@ -418,7 +408,6 @@ def test_syntax_error_unclosed_paren_returns_empty():
 
 
 def test_chained_comparison_not_flagged():
-    """`a == token == b` has two operators, so the single-op guard skips it."""
     src = "def f(a, token, b):\n    return a == token == b\n"
     assert _check(src) == []
 
@@ -512,13 +501,11 @@ _NON_SECRET_LOOKALIKES = [
 
 @pytest.mark.parametrize("name", _NON_SECRET_LOOKALIKES)
 def test_allows_non_secret_lookalike_vs_variable(name: str):
-    """LLM counters, key-row ids, and feature flags are not secrets even vs a variable."""
     src = f"def f({name}, other):\n    return {name} == other\n"
     assert _check(src) == []
 
 
 def test_still_flags_password_compound_label():
-    """A real secret word as a whole token, vs a runtime value, is still flagged."""
     src = "def f(password_field, submitted):\n    return password_field == submitted\n"
     assert _count(src) == 1
 
@@ -541,7 +528,6 @@ _INTEGRITY_HASH_NAMES = [
 
 @pytest.mark.parametrize("name", _INTEGRITY_HASH_NAMES)
 def test_allows_integrity_hash_operand(name: str):
-    """A bare content/integrity hash is not an authenticator — no timing surface."""
     src = f"def f({name}, other):\n    return {name} == other\n"
     assert _check(src) == []
 
@@ -551,7 +537,6 @@ _AUTH_HASH_NAMES = ["password_hash", "token_hash", "jwt_hash", "computed_hmac", 
 
 @pytest.mark.parametrize("name", _AUTH_HASH_NAMES)
 def test_flags_hash_carrying_authenticator(name: str):
-    """A hash-bearing name that also carries an auth word gates access — still fires."""
     src = f"import hashlib\ndef f({name}, provided):\n    return {name} == provided\n"
     assert _count(src) == 1
 
@@ -569,7 +554,6 @@ _DESCRIPTOR_LOOKALIKES = [
 
 @pytest.mark.parametrize("name", _DESCRIPTOR_LOOKALIKES)
 def test_allows_descriptor_and_category_lookalike(name: str):
-    """`_type`/`_name`/`_kind` descriptors and `type`/`kind` discriminators are metadata."""
     src = f"def f({name}, other):\n    return {name} == other\n"
     assert _check(src) == []
 
@@ -593,7 +577,6 @@ _BOOLEAN_FLAG_NAMES = [
 
 @pytest.mark.parametrize("name", _BOOLEAN_FLAG_NAMES)
 def test_allows_boolean_flag_prefix(name: str):
-    """A leading `is`/`has`/`was` marks a boolean flag, not the credential itself."""
     src = f"def f({name}, other):\n    return {name} == other\n"
     assert _check(src) == []
 
@@ -611,7 +594,6 @@ _FLAG_PREFIX_LOOKALIKES = [
 
 @pytest.mark.parametrize("name", _FLAG_PREFIX_LOOKALIKES)
 def test_flags_credential_whose_leading_word_only_looks_like_a_flag(name: str):
-    """A credential is not exempted just because its first word starts with `is`/`has`/`can`."""
     src = f"def f({name}, other):\n    return {name} == other\n"
     assert _count(src) == 1
 
@@ -627,13 +609,11 @@ _ALLCAPS_SENTINELS = [
 
 @pytest.mark.parametrize("sentinel", _ALLCAPS_SENTINELS)
 def test_allows_compare_against_allcaps_constant(sentinel: str):
-    """An ALL-CAPS constant is a compile-time sentinel/enum member, not a runtime secret."""
     src = f"def f(token_type):\n    return token_type == {sentinel}\n"
     assert _check(src) == []
 
 
 def test_allows_secret_operand_vs_allcaps_constant():
-    """Even a genuine secret vs an ALL-CAPS sentinel is a state check, not a timing surface."""
     src = "def f(password):\n    return password != PASSWORD_NOT_CHANGED\n"
     assert _check(src) == []
 
@@ -680,7 +660,6 @@ def test_skips_test_paths(test_path: str):
 
 
 def test_flags_same_compare_in_production_path():
-    """The identical runtime compare in a non-test module is still flagged."""
     src = "def f(api_key, provided):\n    return api_key == provided\n"
     assert len(PreferConstantTimeSecretCompare().check(Path("svc/auth.py"), src)) == 1
 
@@ -691,13 +670,11 @@ def test_flags_same_compare_in_production_path():
 
 @pytest.mark.parametrize("name", ["apiKey", "accessToken", "clientSecret", "authToken"])
 def test_flags_camelcase_secret_name(name: str):
-    """A secret word surfaced only by camelCase splitting is still flagged."""
     src = f"def f({name}, provided):\n    return {name} == provided\n"
     assert _count(src) == 1
 
 
 def test_flags_attribute_vs_attribute():
-    """`self.token == other.token` — both operands secret attrs, one diagnostic."""
     src = "def f(self, other):\n    return self.token == other.token\n"
     assert _count(src) == 1
 
@@ -708,25 +685,21 @@ def test_flags_comparison_inside_lambda():
 
 
 def test_flags_secret_vs_fstring_rhs():
-    """An f-string RHS is not a compile-time Constant, so it does not exempt."""
     src = 'def f(token, expected):\n    return token == f"{expected}"\n'
     assert _count(src) == 1
 
 
 def test_flags_fstring_secret_interpolation():
-    """Formatting does not make a timing-sensitive secret comparison safe."""
     src = 'def f(token, expected):\n    return f"{token}" == expected\n'
     assert _count(src) == 1
 
 
 def test_token_fires_but_token_type_stays_exempt():
-    """`token` is a secret; `token_type` (innocuous `type`) is metadata."""
     assert _count("def f(token, o):\n    return token == o\n") == 1
     assert _check("def f(token_type, o):\n    return token_type == o\n") == []
 
 
 def test_flags_token_tag_tag_absent_from_denylist():
-    """`tag` is NOT in the innocuous denylist, so `token_tag` still fires."""
     src = "def f(token_tag, other):\n    return token_tag == other\n"
     assert _count(src) == 1
 

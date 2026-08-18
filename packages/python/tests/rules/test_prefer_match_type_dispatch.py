@@ -239,7 +239,6 @@ def test_skips_generated_source():
 
 
 def test_skips_handler_that_re_raises_unchanged():
-    """920/1,364 of this arm: the handler propagates, so nothing jumps locally."""
     source = """
     def update_team_callbacks(request):
         try:
@@ -283,7 +282,6 @@ def test_skips_handler_where_both_branches_raise():
 
 
 def test_flags_handler_that_only_sometimes_re_raises():
-    """Upper bound on the re-raise guard: a conditional re-raise still reports."""
     source = """
     def load(payload):
         try:
@@ -300,7 +298,6 @@ def test_flags_handler_that_only_sometimes_re_raises():
 
 
 def test_skips_generic_exception_fault_barrier():
-    """647/1,364 of this arm matched only via `except Exception`, never by name."""
     source = """
     def create_team(request):
         try:
@@ -343,7 +340,6 @@ def test_skips_bare_except_fault_barrier():
 
 
 def test_skips_base_exception_only_type_under_except_exception():
-    """`except Exception` does not catch `SystemExit`; reporting it was unsound."""
     source = """
     def shutdown(code):
         try:
@@ -357,7 +353,6 @@ def test_skips_base_exception_only_type_under_except_exception():
 
 
 def test_flags_exception_raised_and_caught_by_its_own_name():
-    """Upper bound on the explicit-name guard: `raise Exception` / `except Exception`."""
     source = """
     def parse_item(val):
         try:
@@ -387,7 +382,6 @@ def test_skips_raise_inside_a_long_try_body():
 
 
 def test_flags_raise_in_a_try_body_at_the_span_limit():
-    """Upper bound on the span guard: exactly 20 lines still reports."""
     body = "\n".join(f"            step_{i}()" for i in range(17))
     source = f"""
     def endpoint(user):
@@ -404,7 +398,6 @@ def test_flags_raise_in_a_try_body_at_the_span_limit():
 
 
 def test_skips_try_body_that_is_only_a_raise():
-    """132/1,364: scaffolding that raises in order to obtain a live exception."""
     source = """
     def build_einfo():
         try:
@@ -417,7 +410,6 @@ def test_skips_try_body_that_is_only_a_raise():
 
 
 def test_skips_control_flow_raise_in_a_test_file():
-    """In a test the raise *is* the condition under test, not a dispatch."""
     source = """
     def test_does_not_execute_if_transaction_rolled_back(self):
         try:
@@ -432,7 +424,6 @@ def test_skips_control_flow_raise_in_a_test_file():
 
 
 def test_sequential_guards_still_report_in_a_test_file():
-    """The test exemption is scoped to the control-flow-raise arm only."""
     source = """
     class TagField(Field):
         def to_python(self, value):
@@ -451,7 +442,6 @@ def test_sequential_guards_still_report_in_a_test_file():
 
 
 def test_flags_django_was_modified_since_shape():
-    """django/django/views/static.py:116 and :119."""
     source = """
     def was_modified_since(header=None, mtime=0):
         try:
@@ -484,7 +474,6 @@ def test_skips_validation_raise_sharing_a_converter_handler() -> None:
 
 
 def test_flags_django_normalize_together_shape():
-    """django/django/db/models/options.py:74."""
     source = """
     def normalize_together(option_together):
         try:
@@ -508,7 +497,6 @@ def test_flags_django_normalize_together_shape():
 
 
 def test_skips_guards_returning_a_different_value():
-    """261/271 of this arm returned something other than the guarded variable."""
     source = """
     def most_recent_job(job_type, session):
         if job_type == "TriggererJob":
@@ -521,7 +509,6 @@ def test_skips_guards_returning_a_different_value():
 
 
 def test_skips_guards_with_no_type_check_in_the_chain():
-    """74/271 contained no type check at all — enum/string equality early returns."""
     source = """
     def resolve_kind(kind):
         if kind == "PENDING":
@@ -534,7 +521,6 @@ def test_skips_guards_with_no_type_check_in_the_chain():
 
 
 def test_skips_bare_name_sentinel_comparator():
-    """`case TICKET_NOT_FOUND:` is a capture pattern — it matches every value."""
     source = """
     def summarize(ticket_data, other):
         if ticket_data is TICKET_NOT_FOUND:
@@ -557,7 +543,6 @@ def test_skips_single_passthrough_guard():
 
 
 def test_flags_django_to_python_shape():
-    """django/django/db/models/fields/__init__.py:1639 — a surviving true positive."""
     source = """
     def to_python(self, value):
         if value is None:
@@ -615,7 +600,6 @@ def test_skips_passthrough_guards_on_different_variables():
 
 
 def test_flags_child_block_type_dispatch_ladder():
-    """The standards code that motivated the general isinstance-ladder arm."""
     source = """
     def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
         blocks: list[list[ast.stmt]] = []
@@ -713,7 +697,7 @@ def test_skips_guard_that_rebinds_dispatch_subject():
     assert _check(source) == []
 
 
-def test_two_branch_stdlib_ast_visitor_remains_excluded():
+def test_two_branch_stdlib_ast_visitor_is_advisory():
     source = """
     import ast
 
@@ -724,7 +708,25 @@ def test_two_branch_stdlib_ast_visitor_remains_excluded():
             return node.attr
         return None
     """
-    assert _check(source) == []
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].severity is Severity.WARNING
+
+
+def test_sequential_stdlib_ast_early_returns_are_advisory():
+    source = """
+    import ast
+
+    def final_name(node: ast.AST) -> str | None:
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            return node.attr
+        return None
+    """
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].severity is Severity.WARNING
 
 
 def test_two_branch_private_class_dispatch_is_advisory():
@@ -1236,7 +1238,6 @@ def test_skips_mixed_predicate_ladder():
 
 
 def test_skips_dynamic_isinstance_type_tuple():
-    """A runtime tuple cannot be translated safely into class patterns."""
     source = """
     def render(value):
         if isinstance(value, text_types):
@@ -1312,7 +1313,6 @@ def test_skips_file_that_shadows_isinstance():
 
 
 def test_skips_issubclass_ladder():
-    """Class patterns test instances, so they are not equivalent to issubclass."""
     source = """
     def classify(model):
         if issubclass(model, Admin):
@@ -1326,7 +1326,6 @@ def test_skips_issubclass_ladder():
 
 
 def test_skips_repeated_effectful_subject_expression():
-    """match evaluates its subject once, which could change observable behavior."""
     source = """
     def read():
         if isinstance(current_value(), str):

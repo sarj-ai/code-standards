@@ -1,5 +1,3 @@
-"""Base types and shared SQL text utilities for sarj-sql-lint rules."""
-
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -11,13 +9,16 @@ import re
 from typing import ClassVar, Final, NamedTuple, Self
 
 
-type Statement = list[tuple[int, str]]
+class StatementFragment(NamedTuple):
+    line: int
+    text: str
+
+
+type Statement = list[StatementFragment]
 """A statement as `(lineno, text)` fragments — one per source line it spans."""
 
 
 class SourceLocation(NamedTuple):
-    """A one-based source position."""
-
     line: int
     column: int
 
@@ -25,11 +26,17 @@ class SourceLocation(NamedTuple):
 class _ScanResult(NamedTuple):
     masked_source: str
     executable_spans: list[tuple[int, int]]
+    comments: list[SourceComment]
+
+
+class SourceComment(NamedTuple):
+    line: int
+    column: int
+    body: str
+    block: bool
 
 
 class RuleCategory(StrEnum):
-    """Small cross-engine taxonomy used by generated rule directories."""
-
     ARCHITECTURE = "architecture"
     CORRECTNESS = "correctness"
     MAINTAINABILITY = "maintainability"
@@ -40,16 +47,12 @@ class RuleCategory(StrEnum):
 
 
 class AutofixPolicy(StrEnum):
-    """Strongest source mutation a rule can safely offer."""
-
     NONE = "none"
     SUGGESTION = "suggestion"
     SAFE = "safe"
 
 
 class ExampleOutcome(StrEnum):
-    """Expected result when a rule checks one documentation example."""
-
     MATCH = "match"
     NO_MATCH = "no-match"
 
@@ -62,8 +65,6 @@ type ExamplePath = str
 
 @dataclass(frozen=True, slots=True)
 class ExampleFile:
-    """One virtual source file in a rule example."""
-
     path: PurePosixPath
     source: str = field(repr=False)
 
@@ -77,14 +78,11 @@ class ExampleFile:
 
     @classmethod
     def sql(cls, path: ExamplePath, source: str) -> Self:
-        """Build a SQL example file without leaking path parsing into rules."""
         return cls(PurePosixPath(path), source)
 
 
 @dataclass(frozen=True, slots=True)
 class RuleExample:
-    """A reviewed, executable example; examples are private unless opted in."""
-
     example_id: str
     outcome: ExampleOutcome
     files: tuple[ExampleFile, ...]
@@ -134,8 +132,6 @@ class RuleExample:
 
 @dataclass(frozen=True, slots=True)
 class RuleDocumentation:
-    """Source-authored rule prose and reviewed examples."""
-
     summary: str
     rationale: str
     remediation: str
@@ -182,8 +178,6 @@ class RuleDocumentation:
 
 @dataclass(frozen=True, slots=True)
 class NativeRuleSpec:
-    """Complete native rule record adapted from a rule class and its authored docs."""
-
     engine: str
     rule_id: str
     code: str
@@ -219,7 +213,6 @@ _IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_]")
 
 
 def is_dump_file(source: str, path: Path | None = None) -> bool:
-    """Report whether source text or path indicates an auto-generated schema dump file."""
     if path is not None:
         name = path.name.lower()
         if name in {"structure.sql", "schema.sql"} or name.endswith("_dump.sql") or "restore" in path.parts:
@@ -305,7 +298,6 @@ _POSTGRES_MIGRATION_EVIDENCE_RE = re.compile(
 
 
 def declared_dialect(source: str) -> str | None:
-    """Return an explicit dialect declared in a leading SQL line comment."""
     match = _DIALECT_DIRECTIVE_RE.search(source)
     if match is None:
         return None
@@ -318,7 +310,6 @@ def declared_dialect(source: str) -> str | None:
 
 
 def has_dbmate_directive(source: str, directive: str) -> bool:
-    """Find an exact dbmate line directive outside dollar-quoted function bodies."""
     dollar_lines = dollar_quoted_lines(source)
     return any(
         match.group(1).lower() == directive and source.count("\n", 0, match.start()) + 1 not in dollar_lines
@@ -338,7 +329,6 @@ _MAX_MARKER_ASCENT = 12
 
 
 def is_postgres(source: str) -> bool:
-    """Report whether `source` is free of any non-Postgres dialect marker."""
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "postgresql"
@@ -346,7 +336,6 @@ def is_postgres(source: str) -> bool:
 
 
 def is_postgres_source(path: Path, source: str) -> bool:
-    """Require positive PostgreSQL evidence before offering dialect-specific advice."""
     parts = tuple(part.lower() for part in path.parts)
     if any(part in _NON_POSTGRES_SQL_PARTS for part in parts):
         return False
@@ -357,7 +346,6 @@ def is_postgres_source(path: Path, source: str) -> bool:
 
 
 def is_mysql(source: str) -> bool:
-    """Report whether `source` carries a MySQL/MariaDB-exclusive token."""
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "mysql"
@@ -365,7 +353,6 @@ def is_mysql(source: str) -> bool:
 
 
 def is_sqlite(source: str) -> bool:
-    """Report whether source explicitly declares or syntactically signals SQLite."""
     dialect = declared_dialect(source)
     if dialect is not None:
         return dialect == "sqlite"
@@ -373,7 +360,6 @@ def is_sqlite(source: str) -> bool:
 
 
 def is_postgres_migration(path: Path, source: str) -> bool:
-    """Identify a production PostgreSQL migration from path plus positive dialect evidence."""
     parts = tuple(part.lower() for part in path.parts)
     if any(part in _NON_PRODUCTION_SQL_PARTS or part in _NON_POSTGRES_SQL_PARTS for part in parts):
         return False
@@ -395,7 +381,6 @@ def is_postgres_migration(path: Path, source: str) -> bool:
 
 
 def is_migration_source(path: Path, source: str) -> bool:
-    """Identify migration-intent SQL without guessing a database dialect."""
     parts = tuple(part.lower() for part in path.parts)
     if any(part in _NON_PRODUCTION_SQL_PARTS for part in parts):
         return False
@@ -409,7 +394,6 @@ def is_migration_source(path: Path, source: str) -> bool:
 
 @lru_cache(maxsize=2048)
 def _has_generated_marker(directory: Path) -> bool:
-    """Report whether `directory` or an ancestor is a generator-owned migration root."""
     for depth, parent in enumerate((directory, *directory.parents)):
         if depth > _MAX_MARKER_ASCENT:
             return False
@@ -426,19 +410,16 @@ def _has_generated_marker(directory: Path) -> bool:
 
 
 def is_generated_migration(path: Path, source: str) -> bool:
-    """Identify generated migrations so schema fixes redirect while runtime-safety findings remain."""
     if _GENERATED_MIGRATION_SENTINEL in source:
         return True
     return _has_generated_marker(path.parent)
 
 
 def clear_path_caches() -> None:
-    """Clear filesystem-derived state before each independent lint run."""
     _has_generated_marker.cache_clear()
 
 
 def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
-    """Report whether the diagnostic's line carries a `-- sarj-noqa[: CODE]` comment."""
     if line < 1 or line > len(source_lines):
         return False
     m = _SARJ_NOQA_RE.search(source_lines[line - 1])
@@ -452,14 +433,12 @@ def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
 
 
 def _blank(segment: str) -> str:  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
-    """Replace every char with a space, keeping newlines so offsets are preserved."""
     return _NON_NEWLINE.sub(" ", segment)
 
 
 def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
     source: str, start: int, quote: str
 ) -> int:
-    """Index just past a `quote`-delimited run starting at `start`, honoring `''`/`""`."""
     n = len(source)
     j = start + 1
     while j < n:
@@ -475,7 +454,6 @@ def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the ca
 def _dollar_open_tag(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
     source: str, i: int
 ) -> str | None:
-    """Return an opening dollar tag, rejecting identifier-adjacent `$` that cannot start a delimiter."""
     if i > 0 and _IDENT_CHAR_RE.match(source, i - 1) is not None:
         return None
     m = _DOLLAR_DELIM_RE.match(source, i)
@@ -485,7 +463,6 @@ def _dollar_open_tag(  # sarj-noqa: SARJ023 — scanner primitive stays above th
 def _closing_depth(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
     source: str, i: int, open_tag_depths: dict[str, list[int]]
 ) -> int | None:
-    """Choose the outermost matching tag so an unterminated nested tag cannot swallow a valid outer close."""
     match = _DOLLAR_DELIM_RE.match(source, i)
     if match is None:
         return None
@@ -501,6 +478,7 @@ def _scan(source: str) -> _ScanResult:
     open_tags: list[str] = []
     open_tag_depths: dict[str, list[int]] = {}
     spans: list[tuple[int, int]] = []
+    comments: list[SourceComment] = []
     body_start = 0
     i = 0
     chunk_start = 0
@@ -508,6 +486,19 @@ def _scan(source: str) -> _ScanResult:
 
     while i < n:
         ch = source[i]
+        template_close = next(
+            (closer for opener, closer in (("{#", "#}"), ("{%", "%}"), ("{{", "}}")) if source.startswith(opener, i)),
+            None,
+        )
+        if template_close is not None:
+            if i > chunk_start:
+                out.append(source[chunk_start:i])
+            close = source.find(template_close, i + 2)
+            end = n if close < 0 else close + len(template_close)
+            out.append(_blank(source[i:end]))
+            i = end
+            chunk_start = i
+            continue
         if ch == "$" and open_tags:
             depth = _closing_depth(source, i, open_tag_depths)
             if depth is not None:
@@ -531,9 +522,26 @@ def _scan(source: str) -> _ScanResult:
         if pair == "--":
             end = source.find("\n", i)
             end = n if end == -1 else end
+            comments.append(
+                SourceComment(
+                    line=source.count("\n", 0, i) + 1,
+                    column=i - source.rfind("\n", 0, i),
+                    body=source[i + 2 : end].strip(),
+                    block=False,
+                )
+            )
         elif pair == "/*":
             close = source.find("*/", i + 2)
             end = n if close == -1 else close + 2
+            body_end = end - 2 if close >= 0 else end
+            comments.append(
+                SourceComment(
+                    line=source.count("\n", 0, i) + 1,
+                    column=i - source.rfind("\n", 0, i),
+                    body=source[i + 2 : body_end].strip(),
+                    block=True,
+                )
+            )
         elif ch in {"'", '"'}:
             end = _scan_quoted(source, i, ch)
         elif ch == "$":
@@ -566,16 +574,18 @@ def _scan(source: str) -> _ScanResult:
 
     if open_tags:
         spans.append((body_start, n))
-    return _ScanResult("".join(out), spans)
+    return _ScanResult("".join(out), spans, comments)
 
 
 def mask_sql(source: str) -> str:
-    r"""Blank SQL noise without shifting offsets or hiding executable dollar-quoted bodies."""
     return _scan(source).masked_source
 
 
+def sql_comments(source: str) -> tuple[SourceComment, ...]:
+    return tuple(_scan(source).comments)
+
+
 def dollar_quoted_lines(source: str) -> frozenset[int]:
-    """Locate dollar bodies for rules with an explicit procedural-migration exemption."""
     spans = _scan(source).executable_spans
     if not spans:
         return frozenset()
@@ -590,25 +600,23 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
 
 
 def split_statements(masked: str) -> list[Statement]:
-    """Split already-masked SQL into `;`-delimited statements."""
     statements: list[Statement] = []
     current: Statement = []
     for lineno, raw in enumerate(masked.splitlines(), start=1):
         line = raw
         while ";" in line:
             head, _, line = line.partition(";")
-            current.append((lineno, head))
+            current.append(StatementFragment(lineno, head))
             statements.append(current)
             current = []
         if line:
-            current.append((lineno, line))
+            current.append(StatementFragment(lineno, line))
     if current:
         statements.append(current)
     return statements
 
 
 def locate(statement: Statement, offset: int) -> SourceLocation:
-    r"""Map a char `offset` into `"\n".join(text)` back to a 1-based `(line, col)`."""
     pos = 0
     for lineno, text in statement:
         if offset <= pos + len(text):
@@ -638,7 +646,6 @@ _MODEL_OWNED_SUFFIX = (
 
 
 def redirect_to_model(diags: list[Diagnostic], *, model_owned: bool) -> list[Diagnostic]:
-    """Retain generated-migration findings while directing the fix to the source model."""
     if not model_owned:
         return diags
     return [replace(d, message=d.message + _MODEL_OWNED_SUFFIX) for d in diags]
@@ -656,7 +663,6 @@ class Rule(ABC):
 
     @classmethod
     def native_spec(cls) -> NativeRuleSpec | None:
-        """Adapt source-owned documentation while deriving engine, ID, and code."""
         authored = cls.documentation
         if authored is None:
             return None
@@ -682,6 +688,5 @@ class Rule(ABC):
 
     @classmethod
     def public_examples(cls) -> tuple[RuleExample, ...]:
-        """Return the rule's explicitly publishable canonical fixtures."""
         spec = cls.native_spec()
         return () if spec is None else spec.public_examples

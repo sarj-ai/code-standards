@@ -1,8 +1,3 @@
-"""SARJ020 — Keep relational store queries free of aggregation.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_aggregation_in_store_query.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -88,7 +83,6 @@ _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 
 def _blank_null_safe_comparisons(sql: str) -> str:
-    """Blank out `IS [NOT] DISTINCT FROM` operators, preserving length and newlines."""
     return _NULL_SAFE_COMPARISON.sub(lambda m: " " * len(m.group(0)), sql)
 
 

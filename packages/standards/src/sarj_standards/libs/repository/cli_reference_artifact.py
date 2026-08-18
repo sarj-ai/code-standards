@@ -1,5 +1,3 @@
-"""Source-derived CLI reference artifact without rendered help-text parsing."""
-
 # argparse exposes no public parser-graph traversal API.
 # pyright: reportPrivateUsage=false
 
@@ -25,15 +23,11 @@ _REPOSITORY_REFERENCE_PATH: Final = Path("packages/standards/src/sarj_standards/
 
 @dataclass(frozen=True, slots=True)
 class ReferenceSyncResult:
-    """Outcome from synchronizing the committed CLI reference."""
-
     status: int
     message: str
 
 
 class ReferenceArgument(TypedDict):
-    """One positional argument or option in the stable CLI reference."""
-
     kind: Literal["positional", "option"]
     names: list[str]
     metavar: str | None
@@ -44,8 +38,6 @@ class ReferenceArgument(TypedDict):
 
 
 class ReferenceCommand(TypedDict):
-    """One command and its recursively nested subcommands."""
-
     name: str
     path: list[str]
     usage: str
@@ -55,15 +47,11 @@ class ReferenceCommand(TypedDict):
 
 
 class ReferenceLauncher(TypedDict):
-    """Source-derived commands for first-time use."""
-
     install: str
     runLatest: str
 
 
 class CliReference(TypedDict):
-    """Versioned, source-derived command-line reference."""
-
     schemaVersion: int
     version: str
     program: str
@@ -75,7 +63,6 @@ class CliReference(TypedDict):
 
 
 def validate(value: object) -> CliReference:
-    """Validate the stable outer envelope."""
     if not _is_object(value) or frozenset(value) != frozenset(
         {
             "schemaVersion",
@@ -185,7 +172,6 @@ def _is_launcher(value: object) -> TypeGuard[ReferenceLauncher]:
 
 
 def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
-    """Load the packaged CLI reference without constructing the parser."""
     try:
         payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     except (OSError, json.JSONDecodeError) as exc:
@@ -195,7 +181,6 @@ def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
 
 
 def build(parser: argparse.ArgumentParser) -> CliReference:
-    """Traverse the supplied parser graph; never depend on the CLI presentation layer."""
     from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level]
 
     root = _command(
@@ -315,12 +300,10 @@ def _usage(
 
 
 def render(parser: argparse.ArgumentParser) -> str:
-    """Render canonical committed CLI-reference bytes."""
     return json.dumps(build(parser), ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
 
 
 def sync(root: Path, parser: argparse.ArgumentParser, *, check: bool) -> ReferenceSyncResult:
-    """Check or update the committed reference from the parser graph."""
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
 
     destination = root.resolve() / _REPOSITORY_REFERENCE_PATH

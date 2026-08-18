@@ -1,5 +1,3 @@
-"""Rule documentation resolves to its executable examples."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

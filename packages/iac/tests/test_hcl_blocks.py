@@ -1,5 +1,3 @@
-"""Tests for `_hcl.blocks()` lexical block-tree walker."""
-
 from __future__ import annotations
 
 import pytest
@@ -10,12 +8,10 @@ from sarj_iac_lint._hcl import blocks, document, tokens
 
 
 def test_tokens_keeps_an_interpolated_string_whole():
-    """SARJ204 relies on this: an interpolated reference is never an operand token."""
     assert tokens('"cache-${var.environment}"') == ('"cache-${var.environment}"',)
 
 
 def test_tokens_keeps_multichar_operators_whole():
-    """SARJ204 reads comparisons by index, so `==` must not split into two tokens."""
     assert tokens('var.env=="prod"') == ("var.env", "==", '"prod"')
     assert tokens('var.env != "prod"') == ("var.env", "!=", '"prod"')
 
@@ -187,7 +183,6 @@ resource "aws_db_instance" "a" {
 
 
 def test_document_exposes_file_level_attributes_and_owns_the_block_tree():
-    """Terragrunt keeps configuration in top-level attributes, which blocks() cannot carry."""
     src = 'top_level = "x"\n\ninclude "root" {\n  path = "../root.hcl"\n}\n'
     root = document(src)
     assert not root.type

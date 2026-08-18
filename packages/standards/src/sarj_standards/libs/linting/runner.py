@@ -1,5 +1,3 @@
-"""Run every installed Sarj custom rule with one maintainable command."""
-
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -30,15 +28,11 @@ class _Rule(Protocol):
 
 @runtime_checkable
 class _CheckerModule(Protocol):
-    """Importable checker entry-point module."""
-
     def main(self, argv: list[str]) -> int: ...
 
 
 @runtime_checkable
 class _RegistryModule(Protocol):
-    """Importable rule-registry module."""
-
     REGISTRY: Mapping[str, type[_Rule]]
 
 
@@ -136,6 +130,8 @@ _PYTHON_NOISE_RULES = frozenset(
         "no-long-comment",
         "no-restated-comment",
         "no-typed-doc-sections",
+        "no-unnecessary-docstring",
+        "no-vague-suppression-description",
         "prefer-self-documenting-constant",
         "redundant-class-docstring",
         "redundant-docstring",
@@ -145,13 +141,12 @@ _PYTHON_NOISE_RULES = frozenset(
         "trailing-value-narration",
     }
 )
-_IAC_NOISE_RULES = frozenset({"no-comment-cruft"})
+_SQL_NOISE_RULES = frozenset({"no-comment-cruft"})
+_IAC_NOISE_RULES = frozenset({"no-comment-cruft", "no-restated-comment"})
 
 
 @dataclass
 class GroupedPaths:
-    """Files routed to the registry that understands their syntax."""
-
     python: list[str] = field(default_factory=list)
     sql: list[str] = field(default_factory=list)
     iac: list[str] = field(default_factory=list)
@@ -166,7 +161,6 @@ def run(
     python_baseline: str | None = None,
     policy: Policy | None = None,
 ) -> int:
-    """Dispatch files and directories to every applicable installed registry."""
     grouped = group_paths(files, policy=policy)
     statuses = [
         _run_tool(
@@ -178,7 +172,7 @@ def run(
         _run_tool(
             "sarj_sql_lint",
             grouped.sql,
-            selected=frozenset() if noise_only else None,
+            selected=_SQL_NOISE_RULES if noise_only else None,
         ),
         _run_tool(
             "sarj_iac_lint",
@@ -192,7 +186,6 @@ def run(
 
 
 def create_python_baseline(files: Sequence[str], output: str, *, policy: Policy | None = None) -> int:
-    """Snapshot current Python findings; later checks enforce the shrink-only ceiling."""
     grouped = group_paths(files, policy=policy)
     return _run_tool(
         "sarj_python_lint",
@@ -209,7 +202,6 @@ def _run_tool(
     selected: frozenset[str] | None,
     extra_args: Sequence[str] = (),
 ) -> int:
-    """Load and run a checker only when files and selected rules require it."""
     if not files or selected == frozenset():
         return 0
     checker, registry = _load_tool(package)
@@ -225,7 +217,6 @@ def _select_rules(registry: Mapping[str, type[_Rule]], selected: frozenset[str])
 def _load_tool(
     package: str,
 ) -> _LoadedTool:
-    """Load one checker when the all-rules command needs it."""
     checker_module = import_module(f"{package}.__main__")
     registry_module = import_module(f"{package}.rules")
     if not isinstance(checker_module, _CheckerModule) or not isinstance(registry_module, _RegistryModule):
@@ -270,7 +261,6 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
 
 
 def accepts_hook_path(path: Path) -> bool:
-    """Return whether staged source analysis should receive this path."""
     return (
         _owns_path(path)
         and not _is_skill_artifact(path)
@@ -280,7 +270,6 @@ def accepts_hook_path(path: Path) -> bool:
 
 
 def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
-    """Return only top-level requested directories, eliminating overlapping walks."""
     resolved = sorted({_path_key(path) for path in paths}, key=lambda path: (len(path.parts), str(path)))
     roots: list[Path] = []
     for path in resolved:
@@ -291,7 +280,6 @@ def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
 
 
 def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, policy: Policy | None = None) -> None:
-    """Walk one directory without entering dependency, cache, or build trees."""
     for root, dir_names, file_names in os.walk(path, topdown=True, followlinks=False):
         base = Path(root)
         dir_names[:] = sorted(
@@ -357,7 +345,6 @@ def _is_conventionally_generated(path: Path) -> bool:
 
 
 def _is_skill_artifact(path: Path) -> bool:
-    """Keep installed agent skill payloads out of repository source analysis."""
     parts = path.parts
     return any(root in _SKILL_ARTIFACT_ROOTS and child == "skills" for root, child in pairwise(parts))
 
@@ -392,7 +379,6 @@ def _has_generated_header(path: Path) -> bool:
 
 
 def _owns_path(path: Path) -> bool:
-    """Return whether any bundled checker can handle the path."""
     return (
         path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
         or path.suffix.lower() in _SUFFIX_TO_TOOL
@@ -401,7 +387,6 @@ def _owns_path(path: Path) -> bool:
 
 
 def _route_unique_path(grouped: GroupedPaths, path: Path, raw_path: str, seen: set[Path]) -> None:
-    """Route a physical file once even when inputs overlap."""
     key = _path_key(path)
     if key in seen:
         return
@@ -410,13 +395,11 @@ def _route_unique_path(grouped: GroupedPaths, path: Path, raw_path: str, seen: s
 
 
 def _path_key(path: Path) -> Path:
-    """Normalize a non-symlink path without another filesystem lookup."""
     # resolve() performs a filesystem lookup for every discovered file.
     return Path(os.path.abspath(path))  # ruff: ignore[os-path-abspath]
 
 
 def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
-    """Route one path; YAML intentionally belongs to both IaC and text checks."""
     tool = (
         _Tool.IAC
         if path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)

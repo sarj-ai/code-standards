@@ -1,5 +1,3 @@
-"""Static bundled-config metadata shared by adoption services and adapters."""
-
 from __future__ import annotations
 
 from types import MappingProxyType

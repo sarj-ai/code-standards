@@ -1,5 +1,3 @@
-"""CLI: sarj-iac-lint check --rule <id> [--rule <id2>] <files>."""
-
 from __future__ import annotations
 
 import argparse
@@ -89,12 +87,10 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
 
 
 def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
-    """Return native diagnostics without rendering CLI output."""
     return _check(rule_ids, paths)
 
 
 def _baseline_path(path: Path, *, root: Path | None = None) -> str:
-    """Make baselines portable when a caller supplies repository-absolute paths."""
     try:
         return path.resolve().relative_to((Path.cwd() if root is None else root).resolve()).as_posix()
     except ValueError:
@@ -102,7 +98,6 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 
 
 def baseline_counts(diags: list[Diagnostic], *, root: Path | None = None) -> dict[str, dict[str, int]]:
-    """Count diagnostics per `{path: {CODE: count}}`, the shape a baseline records."""
     counts: dict[str, dict[str, int]] = {}
     for d in diags:
         key = _baseline_path(d.path, root=root)
@@ -112,7 +107,6 @@ def baseline_counts(diags: list[Diagnostic], *, root: Path | None = None) -> dic
 
 
 def read_baseline(path: Path) -> dict[str, dict[str, int]]:
-    """Load a baseline file, keeping only well-formed `{path: {CODE: count}}` entries."""
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
         path.read_text(encoding="utf-8")
     )
@@ -136,7 +130,6 @@ def apply_baseline(
     *,
     root: Path | None = None,
 ) -> list[Diagnostic]:
-    """Suppress up to the baselined count per (path, code); anything beyond it survives."""
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:
@@ -154,7 +147,6 @@ def apply_baseline(
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
-    """Write `text` to `path` via a same-directory temporary file and one rename."""
     parent = path.parent
     parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=parent, prefix=f".{path.name}.", suffix=".tmp")

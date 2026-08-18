@@ -1,5 +1,3 @@
-"""Dependency-free partial HCL parsing that preserves positions for diagnostics and suppressions."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -13,7 +11,6 @@ _MAX_BLOCK_DEPTH = 128
 
 
 def strip_inline_comment(line: str) -> str:
-    """Truncate `line` at the first real `#`/`//` comment, ignoring ones in strings."""
     in_str = False
     i, n = 0, len(line)
     while i < n:
@@ -35,7 +32,6 @@ def strip_inline_comment(line: str) -> str:
 
 
 def mask_line(line: str) -> str:
-    """Blank double-quoted string contents and drop comments, keeping structure."""
     out: list[str] = []
     in_str = False
     i, n = 0, len(line)
@@ -62,12 +58,10 @@ def mask_line(line: str) -> str:
 
 
 def heredoc_body_mask(lines: list[str]) -> tuple[bool, ...]:
-    """Flag heredoc bodies, sharing the immutable result across rule passes."""
     return _cached_heredoc_body_mask(tuple(lines))
 
 
 def mask_block_comments(source: str) -> str:
-    """Blank HCL block comments outside strings while preserving positions."""
     chars = list(source)
     in_string = False
     in_comment = False
@@ -105,7 +99,6 @@ def mask_block_comments(source: str) -> str:
 
 
 def masked_hcl_lines(source: str) -> list[str]:
-    """Mask block comments and heredoc bodies in one mutually aware pass."""
     output: list[str] = []
     in_block_comment = False
     heredoc_term: str | None = None
@@ -180,7 +173,6 @@ _CLOSERS = frozenset(")]}")
 
 
 def tokens(text: str) -> tuple[str, ...]:
-    """Split `text` into HCL tokens, keeping whole strings and multi-character operators."""
     return tuple(m.group(0) for m in _TOKEN_RE.finditer(text))
 
 
@@ -192,8 +184,6 @@ class _Tok(NamedTuple):
 
 @dataclass(frozen=True, slots=True)
 class Attribute:
-    """An `name = value` assignment, with `value` rejoined across lines."""
-
     name: str
     value: str
     line: int
@@ -202,8 +192,6 @@ class Attribute:
 
 @dataclass(frozen=True, slots=True)
 class Block:
-    """An HCL block and its *direct* children (no flattening across nesting)."""
-
     type: str
     labels: tuple[str, ...]
     depth: int  # 0 for a top-level block
@@ -214,11 +202,9 @@ class Block:
     blocks: tuple[Block, ...]
 
     def attribute(self, *names: str) -> Attribute | None:
-        """Find the first direct attribute named by `names`."""
         return next((a for a in self.attributes if a.name in names), None)
 
     def child(self, block_type: str) -> Block | None:
-        """Find the first direct sub-block of type `block_type`."""
         return next((b for b in self.blocks if b.type == block_type), None)
 
 
@@ -235,11 +221,6 @@ class _ValueParseResult(NamedTuple):
 
 @lru_cache(maxsize=32)
 def document(source: str) -> Block:
-    """Parse `source` into a synthetic root block whose type is the empty string.
-
-    The root carries the file-level attributes a Terragrunt `.hcl` file keeps at
-    the top level, plus every top-level block; no real HCL block has an empty type.
-    """
     lines = [strip_inline_comment(line) for line in masked_hcl_lines(source)]
     toks = [
         _Tok(m.group(0), lineno, m.start() + 1)
@@ -251,7 +232,6 @@ def document(source: str) -> Block:
 
 
 def blocks(source: str) -> tuple[Block, ...]:
-    """Parse `source` into a tree of top-level HCL blocks."""
     return document(source).blocks
 
 
@@ -301,7 +281,6 @@ def _parse_body(toks: list[_Tok], i: int, depth: int, lines: list[str]) -> _Body
 
 
 def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> _ValueParseResult:
-    """Consume one attribute value, which may span lines inside `(`/`[`/`{`."""
     start, nest = i, 0
     while i < len(toks):
         tok = toks[i]
@@ -320,7 +299,6 @@ def _read_value(toks: list[_Tok], i: int, lines: list[str]) -> _ValueParseResult
 
 
 def _rejoin(toks: list[_Tok], start: int, end: int, lines: list[str]) -> str:
-    """Splice source text spanned by `toks[start:end]`, one space per line break."""
     parts: list[str] = []
     i = start
     while i < end:

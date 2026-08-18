@@ -1,8 +1,3 @@
-"""SARJ407 — Store queries ordered by `created_at` need a later tie-break key.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_created_at_order_requires_tiebreaker.py
-"""
-
 from __future__ import annotations
 
 import ast

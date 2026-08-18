@@ -1,5 +1,3 @@
-"""Require publishable package changes to cause a package version change."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,8 +13,6 @@ _DISPLAY_PATH_LIMIT = 3
 
 @dataclass(frozen=True, slots=True)
 class CausalityViolation:
-    """Publishable files changed while their authoritative version did not."""
-
     target: str
     manifest: Path
     version_field: str
@@ -36,8 +32,6 @@ class CausalityViolation:
 
 @dataclass(frozen=True, slots=True)
 class ReleaseCausalityReport:
-    """Deterministic artifact and version comparison between two revisions."""
-
     before: str
     after: str
     changed_targets: tuple[str, ...]
@@ -56,7 +50,6 @@ def check_release_causality(
     after: str,
     runner: ProcessRunner = run_process,
 ) -> ReleaseCausalityReport:
-    """Fail when shipped package content changes under an unchanged version."""
     result = runner(("git", "diff", "--name-only", "-z", before, after, "--"), cwd=root, capture_output=True)
     changed_paths = tuple(sorted(path for path in result.stdout.split("\0") if path))
     bumped = changed_release_targets(root, before=before, after=after, runner=runner)

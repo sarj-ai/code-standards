@@ -1,5 +1,3 @@
-"""SARJ106: prefer JSONB for PostgreSQL table storage."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -44,8 +42,6 @@ _JSON_CAST_RE = re.compile(r"::\s*(?P<json>JSON)\b", re.IGNORECASE)
 
 @final
 class PreferJsonb(Rule):
-    """JSON column type or table-DDL cast — use JSONB."""
-
     id = "prefer-jsonb"
     code = "SARJ106"
     documentation = RuleDocumentation(

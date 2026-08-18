@@ -1,5 +1,3 @@
-"""Rule inventory, promotion, and ledger maintenance."""
-
 from __future__ import annotations
 
 from collections.abc import Mapping

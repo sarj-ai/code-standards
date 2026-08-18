@@ -1,5 +1,3 @@
-"""Shared recognition of assertion APIs used by test-quality rules."""
-
 from __future__ import annotations
 
 import ast
@@ -42,12 +40,10 @@ FLUENT_ATTRS = frozenset({"expect"})
 
 
 def reads_as_verification(name: str) -> bool:
-    """Report whether a call name conventionally denotes an assertion."""
     return name in LIBRARY_ASSERTION_NAMES or bool(ASSERTION_NAME_RE.search(name) or RAISES_TOKEN_RE.search(name))
 
 
 def names_verification(func: ast.expr, aliases: frozenset[str] = frozenset()) -> bool:
-    """Report whether a callee is a recognised direct or fluent assertion API."""
     if isinstance(func, ast.Name):
         return func.id in aliases or reads_as_verification(func.id)
     if not isinstance(func, ast.Attribute):

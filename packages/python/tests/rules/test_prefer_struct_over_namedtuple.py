@@ -58,7 +58,6 @@ def test_flags_from_collections_import_namedtuple():
 
 
 def test_flags_aliased_from_import():
-    """`asname` is irrelevant — the original name `namedtuple` is what matters."""
     assert len(_check("from collections import namedtuple as nt\n")) == 1
 
 
@@ -100,7 +99,6 @@ def test_flags_qualified_collections_namedtuple_call():
 
 
 def test_allows_qualified_call_without_explicit_import():
-    """A spelling alone is not enough to prove stdlib provenance."""
     src = 'Row = collections.namedtuple("Row", ["id", "name"])\n'
     assert _check(src) == []
 
@@ -184,7 +182,6 @@ A = collections.namedtuple("A", ["x"])
 
 
 def test_functional_call_via_from_import_counts_import_only():
-    """A bare-name `namedtuple(...)` call is NOT a second finding; only the import is."""
     src = 'from collections import namedtuple\nPoint = namedtuple("Point", ["x", "y"])\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -234,13 +231,11 @@ def test_allows_non_namedtuple_collections_imports(src: str):
 
 
 def test_allows_collections_abc_namedtuple_lookalike():
-    """A submodule import (`collections.abc`) is not `module == 'collections'`."""
     src = "from collections.abc import Sequence\nimport collections\n"
     assert _check(src) == []
 
 
 def test_allows_bare_namedtuple_call_without_import():
-    """A bare `namedtuple(...)` Name-call is not attributed to collections here."""
     src = 'Point = namedtuple("Point", ["x", "y"])\n'
     assert _check(src) == []
 
@@ -250,7 +245,6 @@ def test_allows_unrelated_attribute_namedtuple_call():
 
 
 def test_allows_nested_attribute_namedtuple_call():
-    """`foo.collections.namedtuple(...)` — func.value is an Attribute, not a Name."""
     src = 'Row = foo.collections.namedtuple("Row", ["x"])\n'
     assert _check(src) == []
 
@@ -261,7 +255,6 @@ def test_allows_unrelated_module_namedtuple_call():
 
 
 def test_allows_collections_namedtuple_attribute_without_call():
-    """Only *calls* are flagged; a bare reference to the attribute is not."""
     src = "import collections\nfactory = collections.namedtuple\n"
     assert _check(src) == []
 
@@ -322,7 +315,6 @@ def test_line_and_col_of_two_distinct_findings():
 
 
 def test_finding_order_follows_ast_walk_not_source_position():
-    """Order findings by `ast.walk`, not source position."""
     src = (
         "import collections\n"
         'A = collections.namedtuple("A", ["x"])\n'
@@ -367,7 +359,6 @@ def test_param_shadowed_collections_is_exempt():
 
 
 def test_flags_qualified_call_before_its_import():
-    """Call textually before `import collections`: filtering is post-walk, so it still fires once."""
     src = 'Row = collections.namedtuple("Row", ["x"])\nimport collections\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -375,7 +366,6 @@ def test_flags_qualified_call_before_its_import():
 
 
 def test_flags_aliased_qualified_call_before_its_import():
-    """The alias (`c`) is defined AFTER the call; post-walk `collections_names` still resolves it."""
     src = 'R = c.namedtuple("R", ["x"])\nimport collections as c\n'
     diags = _check(src)
     assert len(diags) == 1
@@ -383,7 +373,6 @@ def test_flags_aliased_qualified_call_before_its_import():
 
 
 def test_from_alias_call_counts_import_only():
-    """`from collections import namedtuple as nt` + `nt(...)`: bare Name call is not a 2nd finding."""
     src = "from collections import namedtuple as nt\nP = nt('P', ['x'])\n"
     diags = _check(src)
     assert len(diags) == 1
@@ -391,7 +380,6 @@ def test_from_alias_call_counts_import_only():
 
 
 def test_flags_from_asname_shadowing_typing_name():
-    """`as NamedTuple` doesn't launder it — the source name is still `namedtuple`."""
     src = 'from collections import namedtuple as NamedTuple\nP = NamedTuple("P", ["x"])\n'
     assert len(_check(src)) == 1
 
@@ -446,7 +434,6 @@ def test_flags_conditional_from_import_alone():
 
 
 def test_exact_bfs_order_interleaved_imports_and_calls():
-    """Emit findings in pure BFS order across interleaved sites."""
     src = (
         "import collections\n"
         'A = collections.namedtuple("A", ["x"])\n'
@@ -484,28 +471,23 @@ def test_import_finding_precedes_call_finding_even_when_import_nested_deeper():
 
 
 def test_allows_qualified_typing_namedtuple_call():
-    """`typing.namedtuple` keys off the name `typing`, not in `collections_names`."""
     assert _check('import typing\nP = typing.namedtuple("P", ["x"])\n') == []
 
 
 def test_allows_typing_namedtuple_aliased_to_namedtuple():
-    """`from typing import NamedTuple as namedtuple` + bare call — neither site is collections."""
     src = 'from typing import NamedTuple as namedtuple\nP = namedtuple("P", ["x"])\n'
     assert _check(src) == []
 
 
 def test_allows_star_import_then_bare_call():
-    """Star imports can't be resolved statically; bare Name calls are never attributed."""
     assert _check('from collections import *\nP = namedtuple("P", ["x"])\n') == []
 
 
 def test_allows_collections_abc_qualified_call():
-    """`collections.abc.namedtuple(...)` — func.value is an Attribute chain, not a Name."""
     assert _check('import collections.abc\nP = collections.abc.namedtuple("P", ["x"])\n') == []
 
 
 def test_flags_top_level_collections_call_despite_submodule_import():
-    """`import collections.abc` binds `collections`; the seed name matches the qualified call."""
     src = 'import collections.abc\nP = collections.namedtuple("P", ["x"])\n'
     assert len(_check(src)) == 1
 

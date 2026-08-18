@@ -1,5 +1,3 @@
-"""SARJ111 — the CHECK/FK boundary, including a column literally named `check`."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,5 +68,4 @@ def test_reports_multiline_add_constraint() -> None:
 
 
 def test_unique_constraint_is_not_a_validating_constraint() -> None:
-    """The boundary: a UNIQUE column named `check` must not be read as a CHECK clause."""
     assert _check("ALTER TABLE t ADD CONSTRAINT uq UNIQUE (check);") == []

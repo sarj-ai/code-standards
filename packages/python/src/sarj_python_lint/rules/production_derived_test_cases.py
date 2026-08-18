@@ -1,8 +1,3 @@
-"""SARJ409 — Imported production collections are not independent parametrized test oracles.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_production_derived_test_cases.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -38,8 +33,12 @@ class _PytestBindings(NamedTuple):
     marks: set[str]
 
 
+class _CollectedTest(NamedTuple):
+    function: ast.FunctionDef | ast.AsyncFunctionDef
+    class_bindings: set[str]
+
+
 def _scope_binding_counts(statements: list[ast.stmt]) -> dict[str, int]:
-    """Count bindings in one scope without attributing nested scopes to it."""
     counts: dict[str, int] = {}
     stack: list[ast.AST] = [*reversed(statements)]
     while stack:
@@ -177,15 +176,15 @@ def _parametrize_cases(
     return decorator.args[_PARAMETRIZE_CASES_INDEX]
 
 
-def _collected_tests(tree: ast.Module) -> list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, set[str]]]:
-    tests: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, set[str]]] = []
+def _collected_tests(tree: ast.Module) -> list[_CollectedTest]:
+    tests: list[_CollectedTest] = []
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
-            tests.append((node, set()))
+            tests.append(_CollectedTest(node, set()))
         elif isinstance(node, ast.ClassDef) and node.name.startswith("Test"):
             class_bindings = set(_scope_binding_counts(node.body))
             tests.extend(
-                (child, class_bindings)
+                _CollectedTest(child, class_bindings)
                 for child in node.body
                 if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name.startswith("test_")
             )

@@ -1,8 +1,3 @@
-"""SARJ096 — Module constants should not expose mutable collection state.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_immutable_module_constant.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -196,8 +191,6 @@ def _mutated_names(tree: ast.Module) -> frozenset[str]:
 
 
 class _MutationVisitor(ast.NodeVisitor):
-    """Find mutations that resolve to module names, respecting lexical shadowing."""
-
     def __init__(self, mutated: set[str]) -> None:
         self.mutated: set[str] = mutated
         self._scopes: list[tuple[set[str], set[str]]] = []
@@ -345,8 +338,6 @@ def _scope_global_names(body: list[ast.stmt]) -> set[str]:
 
 
 class _BoundNameCollector(ast.NodeVisitor):
-    """Collect bindings owned by one lexical scope, including compound blocks."""
-
     def __init__(self) -> None:
         self.names: set[str] = set()
 

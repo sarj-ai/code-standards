@@ -1,5 +1,3 @@
-"""Source-coordinate conversion at the boundary between analyzers and editors."""
-
 from __future__ import annotations
 
 from array import array
@@ -25,8 +23,6 @@ class _Utf16Index(NamedTuple):
 
 @dataclass(slots=True)
 class SourceDocument:
-    """UTF-8 source with exact byte offsets and LSP-compatible UTF-16 positions."""
-
     path: Path
     text: str
     _lines: tuple[str, ...] = field(init=False, repr=False)
@@ -53,7 +49,6 @@ class SourceDocument:
         return cls(path, path.read_bytes().decode("utf-8", errors="surrogateescape"))
 
     def point(self, *, line: int, column: int) -> Position | None:
-        """Convert a one-based code-point line/column without inventing coordinates."""
         if line < 1 or column < 1 or line > len(self._lines):
             return None
         content = self._lines[line - 1].rstrip("\r\n")
@@ -68,7 +63,6 @@ class SourceDocument:
         )
 
     def utf16_point(self, *, line: int, character: int) -> Position | None:
-        """Resolve an already-zero-based UTF-16 position to its byte offset."""
         if line < 0 or character < 0 or line >= len(self._lines):
             return None
         content = self._lines[line].rstrip("\r\n")
@@ -123,7 +117,6 @@ class SourceDocument:
         return _Utf16Index(starts, ends, unit_extras, byte_extras)
 
     def byte_point(self, *, line: int, column: int) -> Position | None:
-        """Convert a one-based line and UTF-8 byte column without guessing."""
         if line < 1 or column < 1 or line > len(self._lines):
             return None
         content = self._lines[line - 1].rstrip("\r\n")
@@ -144,7 +137,6 @@ class SourceDocument:
         )
 
     def region(self, *, start_byte: int, end_byte: int) -> Region:
-        """Convert an exact half-open UTF-8 byte span into a UTF-16 range."""
         if start_byte < 0 or end_byte < start_byte or end_byte > self._byte_length:
             msg = "source byte range is outside the document"
             raise ValueError(msg)

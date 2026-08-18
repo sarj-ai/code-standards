@@ -1,5 +1,3 @@
-"""Safe structured adapters for bundled and repository-local analyzers."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -187,8 +185,6 @@ class _ExternalSeverity(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ProcessOutput:
-    """Captured external analyzer output."""
-
     returncode: int
     stdout: str
     stderr: str
@@ -214,7 +210,6 @@ def analyze_external(
     include_react_doctor: bool = False,
     react_doctor_staged: bool = False,
 ) -> tuple[ToolReport, ...]:
-    """Run installed analyzers; executable repository config requires explicit trust."""
     execute = run_process if runner is None else runner
     try:
         normalized_trust = TrustMode(trust)
@@ -356,7 +351,6 @@ def analyze_external(
 
 
 def _missing_eslint_issue(project: Path, root: Path) -> ExecutionIssue | None:
-    """Return an actionable failure when no repository-local ESLint can run."""
     current = project.resolve()
     repository = root.resolve()
     while True:
@@ -377,7 +371,6 @@ def _missing_eslint_issue(project: Path, root: Path) -> ExecutionIssue | None:
 
 
 def _local_eslint_argv(argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...]:
-    """Run an installed ESLint directly so package managers cannot resolve or download."""
     current = project.resolve()
     while True:
         if (current / ".pnp.cjs").is_file() or (current / ".pnp.loader.mjs").is_file():
@@ -433,7 +426,6 @@ def _react_project_roots(
     repository: Path | None = None,
     excluded: Sequence[str] = (),
 ) -> tuple[Path, ...]:
-    """Find authored packages that directly declare a React runtime or framework."""
     repository_root = root.resolve() if repository is None else repository.resolve()
     exclusions = PathSpec.from_lines("gitignore", excluded)
     projects: list[Path] = []
@@ -519,7 +511,6 @@ def _invoke_react_doctor(
 
 
 def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
-    """Select an explicit CI merge base so detached checkouts stay incremental."""
     if staged:
         return ("--staged",)
     base = os.environ.get(  # ruff: ignore[banned-api] -- explicit GitHub workflow boundary, not application settings.
@@ -531,7 +522,6 @@ def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
 
 
 def _missing_local_binary_issue(name: str, project: Path, root: Path) -> ExecutionIssue | None:
-    """Return an actionable failure when a repository-local Node binary is absent."""
     current = project.resolve()
     repository = root.resolve()
     while current.is_relative_to(repository):
@@ -552,7 +542,6 @@ def _missing_local_binary_issue(name: str, project: Path, root: Path) -> Executi
 
 
 def _local_node_binary_argv(name: str, argv: Sequence[str], project: Path, root: Path) -> tuple[str, ...]:
-    """Resolve a Node analyzer from the locked project without registry fallback."""
     current = project.resolve()
     repository = root.resolve()
     while current.is_relative_to(repository):
@@ -650,7 +639,6 @@ def _invoke_ruff_projects(
 
 
 def _project_analyzer(project: Path, name: str) -> str:
-    """Prefer a project's analyzer so its dependency environment resolves correctly."""
     candidates = (
         project / ".venv" / "bin" / name,
         project / ".venv" / "Scripts" / f"{name}.exe",
@@ -672,7 +660,6 @@ def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path
 
 
 def _nearest_analyzer_project(start: Path, root: Path, *, fallback: Path | None = None) -> Path:
-    """Use an explicit checker config before environment or package markers."""
     configured = _nearest_configured_python_project(start, root, names=("pyright", "basedpyright"))
     if configured is not None:
         return configured
@@ -828,13 +815,11 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
 
 
 def _analyzer_executable(name: str) -> str | None:
-    """Prefer the analyzer bundled beside this isolated Python runtime."""
     environment_bin = str(Path(sys.executable).parent)
     return shutil.which(name, path=environment_bin) or shutil.which(name)
 
 
 def _analysis_environment() -> dict[str, str]:
-    """Keep analyzer discovery/locale while withholding caller credentials."""
     return {
         key: value
         for key, value in os.environ.items()  # ruff: ignore[banned-api] -- deliberately reduce inherited environment.
@@ -1099,7 +1084,6 @@ def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
 
 
 def parse_react_doctor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
-    """Normalize React Doctor v3 JSON as blocking Standards diagnostics."""
     report = _ReactDoctorReport.model_validate_json(payload)
     expected_version = manifest.eslint_peers()["react-doctor"]
     if report.version != expected_version:
@@ -1205,7 +1189,6 @@ def _eslint_json_argv(argv: Sequence[str]) -> tuple[str, ...]:
 
 
 def _argv_file_count(argv: Sequence[str]) -> int:
-    """Count selected file arguments without mistaking flags for files."""
     if "--" not in argv:
         return 0
     # npm has both a package-manager delimiter and ESLint's file delimiter.

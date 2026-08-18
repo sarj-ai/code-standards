@@ -1,5 +1,3 @@
-"""SARJ110 — the assignment-spelling parser fix, per-state collapse, and dialect guard."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -91,7 +89,6 @@ def test_down_like_text_inside_a_function_body_is_not_a_section_boundary() -> No
 
 
 def test_zero_timeout_is_not_protection() -> None:
-    """The boundary: the spelling parses, but `0` means "wait forever"."""
     assert len(_check("SET lock_timeout = 0;\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
 
 
@@ -115,13 +112,11 @@ def test_a_timeout_that_is_only_mentioned_is_not_a_timeout_that_is_set(prologue:
 
 @pytest.mark.parametrize("value", ["'abc'", "'forever'", "''", "'none'"])
 def test_a_value_that_is_not_an_interval_is_not_protection(value: str) -> None:
-    """`SET lock_timeout = 'abc'` is a runtime error, not a shorter lock wait."""
     assert len(_check(f"SET lock_timeout = {value};\nALTER TABLE t ADD COLUMN c INT;\n")) == 1
 
 
 @pytest.mark.parametrize("value", ["'3s'", "'250ms'", "'1min'", "5000", "'2.5s'"])
 def test_a_plausible_interval_is_protection(value: str) -> None:
-    """The boundary: the check must reject prose without rejecting real intervals."""
     assert _check(f"SET lock_timeout = {value};\nALTER TABLE t ADD COLUMN c INT;\n") == []
 
 
@@ -144,7 +139,6 @@ def test_statement_timeout_can_be_deactivated(prologue: str) -> None:
 
 
 def test_similarly_named_setting_is_not_lock_timeout() -> None:
-    r"""`\b` after the name: `lock_timeout_ms` is a different GUC."""
     assert len(_check("SET lock_timeout_ms = '3s';\nALTER TABLE t ADD COLUMN c INT;\n")) == 1
 
 
@@ -171,7 +165,6 @@ def test_one_assignment_protects_every_later_statement() -> None:
 
 
 def test_unprotected_tail_after_commit_is_still_reported() -> None:
-    """The boundary: collapsing must not swallow a *second* unprotected region."""
     src = """
     BEGIN;
     SET LOCAL lock_timeout = '2s';
@@ -186,7 +179,6 @@ def test_unprotected_tail_after_commit_is_still_reported() -> None:
 
 
 def test_a_rollback_drops_the_local_timeout_just_as_a_commit_does() -> None:
-    """`ROLLBACK` ends the transaction too — `SET LOCAL` does not survive it."""
     src = """
     BEGIN;
     SET LOCAL lock_timeout = '2s';
@@ -210,7 +202,6 @@ def test_a_rollback_drops_the_local_timeout_just_as_a_commit_does() -> None:
     ids=["alter-table", "create-index", "create-unique-index", "drop-table"],
 )
 def test_every_ddl_form_needs_a_timeout(ddl: str) -> None:
-    """`DROP TABLE` takes ACCESS EXCLUSIVE like the rest and can queue behind a reader."""
     assert len(_check(f"{ddl}\n")) == 1
     assert _check(f"SET lock_timeout = '3s';\n{ddl}\n") == []
 
@@ -241,13 +232,11 @@ def test_sqlite_migration_is_not_asked_for_a_postgres_guc() -> None:
 
 
 def test_postgres_migration_still_fires_next_to_the_dialect_boundary() -> None:
-    """The boundary: same DDL, no dialect marker — the guard must not widen to this."""
     src = 'ALTER TABLE "users" ADD COLUMN note TEXT;\n'
     assert len(_check(src)) == 1
 
 
 def test_set_config_call_counts_as_an_assignment() -> None:
-    """`set_config(...)` is the function spelling of `SET`, and protects just as well."""
     src = "SELECT set_config('lock_timeout', '5s', false); ALTER TABLE t ADD COLUMN c INT;"
     assert _check(src) == []
 
@@ -284,7 +273,6 @@ def test_nontransactional_migration_rejects_transaction_local_set_config() -> No
 
 
 def test_a_schema_dump_is_not_asked_for_a_lock_timeout() -> None:
-    """A dump replays a whole database offline; there is no concurrent traffic to lock out."""
     src = """
     -- PostgreSQL database dump
     SET statement_timeout = 0;

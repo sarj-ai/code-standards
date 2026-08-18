@@ -1,5 +1,3 @@
-"""Resolve the installed package version, with a source-tree fallback."""
-
 from importlib.metadata import PackageNotFoundError, version
 
 

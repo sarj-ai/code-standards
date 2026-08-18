@@ -1,5 +1,3 @@
-"""Plan and apply a coherent standards upgrade without clobbering user config."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -67,16 +65,12 @@ _CONFIG_SOURCES = MappingProxyType(
 
 @dataclass(frozen=True)
 class Change:
-    """One deterministic file change in an upgrade preview."""
-
     path: Path
     reason: str
 
 
 @dataclass
 class UpgradePlan:
-    """Validated upgrade state shared by check and apply modes."""
-
     root: Path
     adopted: manifest.Manifest
     ecosystems: scaffold.Ecosystems
@@ -92,7 +86,6 @@ class UpgradePlan:
 
 
 def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- one plan resolves every owned site once
-    """Build a non-mutating plan targeting the executing compatibility bundle."""
     root = root.resolve()
     if not root.is_dir():
         msg = f"repository root {root} is not a directory"
@@ -241,7 +234,6 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
 
 
 def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str]) -> scaffold.Ecosystems:
-    """Keep install capabilities only for ecosystems explicitly adopted by the manifest."""
     python = ecosystems.python and any(name in manifest.PYTHON_CONFIGS for name in configs)
     typescript = ecosystems.typescript and any(name in manifest.TYPESCRIPT_CONFIGS for name in configs)
     return scaffold.Ecosystems(
@@ -256,7 +248,6 @@ def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str])
 
 
 def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
-    """Return consumer-authored blockers, excluding configs this plan replaces."""
     replaced = [target for _source, target in plan.config_writes]
     owned = {target.relative_to(plan.root).as_posix() for target in replaced}
     planned = {path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.suppression_writes}
@@ -287,7 +278,6 @@ def apply(
     install: bool = True,
     allow_retired_debt: bool = False,
 ) -> int:
-    """Apply one validated plan and restore touched files if any step fails."""
     if Version(plan.adopted.version) > Version(manifest.adopted_version()):
         return 2
     blockers = unsafe_retired_findings(plan)
@@ -370,7 +360,6 @@ def _apply_and_validate(
     install: bool,
     allow_retired_debt: bool,
 ) -> int:
-    """Apply the plan and return its install/postflight status."""
     _write_plan(plan, file_transaction)
     if install:
         status = lifecycle.execute(
@@ -403,17 +392,14 @@ def _apply_and_validate(
 
 
 def changes_bundle_version(plan: UpgradePlan) -> bool:
-    """Whether applying the plan crosses a rule-compatibility boundary."""
     return Version(plan.adopted.version) < Version(manifest.adopted_version())
 
 
 def is_install_remediable(finding: doctor.Finding) -> bool:
-    """Whether the setup commands skipped by ``--no-install`` fix a finding."""
     return finding.id in _INSTALL_REMEDIABLE_FINDING_IDS
 
 
 def pending_install_findings(root: Path) -> list[doctor.Finding]:
-    """Return truthful dependency drift left by a successful no-install update."""
     return [
         finding
         for finding in doctor.diagnose(root)
@@ -422,7 +408,6 @@ def pending_install_findings(root: Path) -> list[doctor.Finding]:
 
 
 def _write_plan(plan: UpgradePlan, file_transaction: transaction.FileTransaction) -> None:
-    """Write validated upgrade files; the caller owns rollback."""
     transaction.validate_targets(
         plan.root,
         tuple(
@@ -461,15 +446,12 @@ def _write_plan(plan: UpgradePlan, file_transaction: transaction.FileTransaction
 
 
 def _mark_direct_write(file_transaction: transaction.FileTransaction, path: Path) -> None:
-    """Record each direct write before another planned mutation can fail."""
     file_transaction.mark_written(path)
 
 
 def _mark_installer_writes(file_transaction: transaction.FileTransaction) -> None:
-    """Accept controlled installer mutations as the transaction's latest writes."""
     file_transaction.mark_written(*(path for path in file_transaction.before if path.name in _INSTALL_MUTATED_NAMES))
 
 
 def render(changes: Sequence[Change]) -> str:
-    """Render a deterministic human-readable preview."""
     return "\n".join(f"update: {change.path} -- {change.reason}" for change in changes)

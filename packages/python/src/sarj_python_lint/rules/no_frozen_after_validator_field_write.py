@@ -1,8 +1,3 @@
-"""SARJ401 — Frozen Pydantic after-validators must not assign declared fields.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_frozen_after_validator_field_write.py
-"""
-
 from __future__ import annotations
 
 import ast

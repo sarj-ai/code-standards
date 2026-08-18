@@ -1,8 +1,3 @@
-"""SARJ006 — Raw `str` used where a closed enumeration is clearly intended.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_prefer_str_enum.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -50,6 +45,11 @@ class _ExtractedCompare(NamedTuple):
     key: str
     literals: list[str]
     operator: str
+
+
+class _LocalBinding(NamedTuple):
+    target: str
+    value: ast.expr
 
 
 #: Sibling class attributes whose presence marks all raw-str fields as choice-like.
@@ -467,7 +467,6 @@ class PreferStrEnum(Rule):
 
 
 def _has_str_enum_signal(source: str) -> bool:
-    """Cheap source gate for files that cannot contain this rule's triggers."""
     if "Literal[" in source and any(f"def {prefix}" in source for prefix in _BUILDER_PREFIXES):
         return True
     has_string_literal = '"' in source or "'" in source
@@ -477,7 +476,6 @@ def _has_str_enum_signal(source: str) -> bool:
 
 
 def _enum_like_class_ids(tree: ast.Module) -> frozenset[int]:
-    """Resolve imported, aliased, and local Enum lineages for conservative suppression."""
     enum_names = set(_ENUM_BASE_NAMES)
     enum_modules = {"enum"}
     assignments: list[tuple[str, ast.expr]] = []
@@ -527,7 +525,6 @@ def _is_enum_reference(node: ast.expr, enum_names: set[str], enum_modules: set[s
 
 
 def _looks_like_enum_base_name(name: str) -> bool:
-    """Conservatively recognize conventional imported Enum/Flag base names."""
     return name in _ENUM_BASE_NAMES or name.endswith(_ENUM_BASE_SUFFIXES)
 
 
@@ -627,7 +624,6 @@ def _cluster_is_already_closed(
     literal_typed: frozenset[str],
     alias_valuesets: list[frozenset[str]],
 ) -> bool:
-    """Report whether a cluster is on a variable whose domain is already closed."""
     segment = key.rsplit(".", 1)[-1].lower()
     if segment in OPEN_DOMAIN_CODE_NAMES or segment.endswith(_OPEN_DOMAIN_SUFFIXES):
         return True
@@ -638,7 +634,6 @@ def _cluster_is_already_closed(
 
 
 def _module_literal_aliases(tree: ast.Module) -> _LiteralAliases:
-    """Collect module-level `X = Literal[...]` aliases."""
     names: set[str] = set()
     valuesets: list[frozenset[str]] = []
     for stmt in tree.body:
@@ -706,7 +701,6 @@ def _opaque_names(
     raw_string_aliases: frozenset[str],
     module_func_names: frozenset[str],
 ) -> frozenset[str]:
-    """Collect the names in `func` a StrEnum recommendation cannot apply to."""
     base = (
         _literal_typed_names(func, alias_names)
         | _explicitly_open_literal_union_names(func, raw_string_aliases)
@@ -719,7 +713,6 @@ def _opaque_names(
 
 
 def _class_method_owned_attributes(tree: ast.Module) -> dict[int, frozenset[str]]:
-    """Map direct methods to attributes the class demonstrably owns."""
     result: dict[int, frozenset[str]] = {}
     for cls in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
         attributes: set[str] = set()
@@ -760,7 +753,6 @@ def _class_method_closed_attributes(
     alias_names: frozenset[str],
     raw_string_aliases: frozenset[str],
 ) -> dict[int, frozenset[str]]:
-    """Map methods to class attributes whose annotations already close their domain."""
     result: dict[int, frozenset[str]] = {}
     for cls in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
         closed = {
@@ -781,7 +773,6 @@ def _class_method_closed_attributes(
 
 
 def _dynamically_constrained_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-    """Find domains whose accepted values come from a runtime collection."""
     result: set[str] = set()
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -805,7 +796,6 @@ def _dynamically_constrained_names(func: ast.FunctionDef | ast.AsyncFunctionDef)
 
 
 def _fallback_consumed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-    """Find open-domain dispatches whose truthy fallback consumes the raw value."""
     open_names: set[str] = set()
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -842,7 +832,6 @@ def _statements_read_key(statements: list[ast.stmt], key: str) -> bool:
 
 
 def _literal_typed_names(func: ast.FunctionDef | ast.AsyncFunctionDef, alias_names: frozenset[str]) -> frozenset[str]:
-    """Collect names in `func` annotated as a `Literal` (inline or via a module alias)."""
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
@@ -867,7 +856,6 @@ def _explicitly_open_literal_union_names(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     raw_string_aliases: frozenset[str],
 ) -> frozenset[str]:
-    """Collect names whose annotation explicitly combines reserved literals with arbitrary strings."""
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
@@ -892,7 +880,6 @@ def _is_literal_plus_open_string(
     annotation: ast.expr | None,
     raw_string_aliases: frozenset[str],
 ) -> bool:
-    """Report an explicit ``Literal[...] | str``-style open string domain."""
     if annotation is None:
         return False
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
@@ -909,7 +896,6 @@ def _is_literal_plus_open_string(
 
 
 def _union_annotation_members(annotation: ast.expr) -> list[ast.expr]:
-    """Flatten PEP 604 and ``typing.Union`` annotations into their members."""
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         return [*_union_annotation_members(annotation.left), *_union_annotation_members(annotation.right)]
     if isinstance(annotation, ast.Subscript) and _trailing_name(annotation.value) == "Union":
@@ -958,7 +944,6 @@ def _closed_comprehension_targets(
 
 
 def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: frozenset[str]) -> frozenset[str]:
-    """Propagate opacity along `x = <expr mentioning an opaque name>`."""
     edges: list[tuple[str, frozenset[str]]] = []
     for target, value in _local_bindings(func):
         if _is_valid_url_group(value):
@@ -976,7 +961,6 @@ def _close_over_assignments(func: ast.FunctionDef | ast.AsyncFunctionDef, seed: 
 
 
 def _is_valid_url_group(value: ast.expr) -> bool:
-    """Report a regex-group extraction whose owning URL matcher closes the result."""
     return (
         isinstance(value, ast.Call)
         and isinstance(value.func, ast.Attribute)
@@ -986,9 +970,8 @@ def _is_valid_url_group(value: ast.expr) -> bool:
     )
 
 
-def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str, ast.expr]]:
-    """Collect `x = <value>` / `x: T = <value>` / `(x := <value>)` bindings in `func`'s own scope."""
-    bindings: list[tuple[str, ast.expr]] = []
+def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_LocalBinding]:
+    bindings: list[_LocalBinding] = []
     stack: list[ast.AST] = list(func.body)
     while stack:
         node = stack.pop()
@@ -1001,7 +984,7 @@ def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[
         elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
             targets, value = [node.target], node.value
         if value is not None:
-            bindings.extend((name, value) for target in targets for name in _bound_target_names(target))
+            bindings.extend(_LocalBinding(name, value) for target in targets for name in _bound_target_names(target))
         stack.extend(children(node))
     return bindings
 
@@ -1010,7 +993,6 @@ def _foreign_typed_names(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     raw_string_aliases: frozenset[str],
 ) -> frozenset[str]:
-    """Collect names annotated with a named type other than `str`."""
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
@@ -1035,7 +1017,6 @@ def _is_foreign_annotation(
     annotation: ast.expr | None,
     raw_string_aliases: frozenset[str] = frozenset(),
 ) -> bool:
-    """Report whether the annotation names a type other than `str`."""
     if annotation is None:
         return False
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
@@ -1057,7 +1038,6 @@ def _is_foreign_annotation(
 
 
 def _strip_optional(annotation: ast.expr) -> ast.expr:
-    """Unwrap `X | None` and `Optional[X]` down to `X`."""
     match annotation:
         case ast.BinOp(op=ast.BitOr(), left=left, right=ast.Constant(value=None)):
             return _strip_optional(left)
@@ -1070,7 +1050,6 @@ def _strip_optional(annotation: ast.expr) -> ast.expr:
 
 
 def _literal_returning_functions(tree: ast.Module) -> frozenset[str]:
-    """Collect the names of functions in this module that return a `Literal[...]`."""
     return frozenset(
         node.name
         for node in tree.body
@@ -1084,7 +1063,6 @@ def _wire_bound_names(
     literal_funcs: frozenset[str],
     module_func_names: frozenset[str],
 ) -> frozenset[str]:
-    """Collect names in `func` bound from a value the module does not own."""
     names: set[str] = set()
     local_shadows = {
         node.name for node in func.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
@@ -1111,12 +1089,10 @@ def _wire_bound_names(
 
 
 def _bound_target_names(target: ast.expr) -> set[str]:
-    """Collect every name bound by an assignment target, nested unpacking included."""
     return {node.id for node in walk(target) if isinstance(node, ast.Name)}
 
 
 def _is_wire_lookup(value: ast.expr, blocked_call_names: frozenset[str] = frozenset()) -> bool:
-    """Report whether `value` reads from something the module does not own."""
     match value:
         case ast.Subscript():
             return True
@@ -1154,7 +1130,6 @@ def _is_wire_lookup(value: ast.expr, blocked_call_names: frozenset[str] = frozen
 
 
 def _is_foreign_attribute(node: ast.Attribute) -> bool:
-    """Report whether an attribute chain reads a value off an object the module does not own."""
     depth = 0
     current: ast.expr = node
     while isinstance(current, ast.Attribute):
@@ -1166,7 +1141,6 @@ def _is_foreign_attribute(node: ast.Attribute) -> bool:
 
 
 def _trailing_name(node: ast.AST) -> str | None:
-    """Return the trailing identifier of a `Name` / `Attribute` chain."""
     match node:
         case ast.Name(id=ident):
             return ident
@@ -1214,7 +1188,6 @@ def _is_none_annotation(node: ast.expr) -> bool:
 
 
 def _literal_string_values(node: ast.expr) -> list[str] | None:
-    """Return the string members of a `Literal[...]` subscript, or None if not one."""
     if not isinstance(node, ast.Subscript):
         return None
     head = node.value
@@ -1234,7 +1207,6 @@ def _flatten_annotation_union(node: ast.expr) -> list[ast.expr]:
 
 
 def _is_file_mode_key(key: str) -> bool:
-    """Report whether the variable holds an `open()` mode (`mode`, `_mode`, `file_mode`)."""
     segment = key.rsplit(".", 1)[-1].lstrip("_").lower()
     return segment in _FILE_MODE_KEYS or segment.endswith("_mode")
 
@@ -1319,7 +1291,6 @@ def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match) -> No
 
 
 def _match_accepts_unlisted_values(node: ast.Match) -> bool:
-    """Report whether an irrefutable arm handles unknown values normally."""
     return any(
         case.guard is None
         and isinstance(case.pattern, ast.MatchAs)
@@ -1330,7 +1301,6 @@ def _match_accepts_unlisted_values(node: ast.Match) -> bool:
 
 
 def _statements_reject_value(statements: list[ast.stmt]) -> bool:
-    """Recognize explicit exhaustive-match failures without guessing semantics."""
     return len(statements) == 1 and (
         isinstance(statements[0], ast.Raise)
         or (
@@ -1362,7 +1332,6 @@ def _merge_cluster(
 
 
 def _match_pattern_literals(pattern: ast.pattern) -> list[str]:
-    """Collect string literals from value, OR, and non-wildcard capture patterns."""
     match pattern:
         case ast.MatchValue(value=value_node):
             value = _str_const(value_node)
@@ -1379,14 +1348,12 @@ def _match_pattern_literals(pattern: ast.pattern) -> list[str]:
 
 
 def _choice_binding_field(binding: str) -> str | None:
-    """Return the field explicitly named by a choice collection, if any."""
     if binding.endswith("_choices") and len(binding) > len("_choices"):
         return binding.removesuffix("_choices")
     return CHOICE_COLLECTION_FIELDS.get(binding)
 
 
 def _extract_compare(node: ast.Compare) -> _ExtractedCompare | None:
-    """Return (variable key, string literals, operator kind) for an enum-shaped compare."""
     if len(node.ops) != 1 or len(node.comparators) != 1:
         return None
     op = node.ops[0]
@@ -1420,7 +1387,6 @@ def _extract_compare(node: ast.Compare) -> _ExtractedCompare | None:
 
 
 def _name_key(node: ast.AST) -> str | None:
-    """Return a stable local key; only one-hop owned attributes cross a method boundary."""
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in {"self", "cls"}:

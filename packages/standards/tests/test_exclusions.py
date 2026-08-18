@@ -1,5 +1,3 @@
-"""Focused coverage for the schema-3 exclusion denylist."""
-
 from __future__ import annotations
 
 import subprocess

@@ -1,5 +1,3 @@
-"""Performance regression tests enforcing absolute and relative time budgets for IaC rules."""
-
 from __future__ import annotations
 
 from pathlib import Path

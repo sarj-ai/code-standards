@@ -60,7 +60,6 @@ def test_leaves_the_same_method_with_different_arguments_alone() -> None:
 
 
 def test_leaves_a_filter_that_does_not_repeat_the_element_alone() -> None:
-    """The only shape SARJ076 exists for is the repeated call."""
     source = """
     def collect():
         return [compute(x) for x in range(10) if x > 0]
@@ -69,7 +68,6 @@ def test_leaves_a_filter_that_does_not_repeat_the_element_alone() -> None:
 
 
 def test_leaves_a_filter_already_using_the_walrus_alone() -> None:
-    """Rewriting as the rule asks must silence it, or the advice is unfollowable."""
     source = """
     def collect():
         return [value for x in range(10) if (value := compute(x))]
@@ -78,7 +76,6 @@ def test_leaves_a_filter_already_using_the_walrus_alone() -> None:
 
 
 def test_leaves_isinstance_style_guards_alone() -> None:
-    """`isinstance(x, T)` in the filter is a type narrowing, not a repeated computation."""
     source = """
     def collect(values):
         return [isinstance(x, str) for x in values if isinstance(x, str)]

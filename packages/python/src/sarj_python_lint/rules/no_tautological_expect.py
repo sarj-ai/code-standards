@@ -1,14 +1,9 @@
-"""SARJ057 — An assertion whose outcome is decided by the literal it was handed.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_tautological_expect.py
-"""
-
 from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
 from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -28,6 +23,12 @@ if TYPE_CHECKING:
 
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+class _Tautology(NamedTuple):
+    node: ast.Assert | ast.Call
+    reason: str
+
 
 # `pytest.fail(...)` / `self.fail(...)` — an arm that calls it cannot pass.
 _FAIL = "fail"
@@ -103,7 +104,6 @@ class NoTautologicalExpect(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag assertions whose truth is decided by their own literals."""
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -123,7 +123,6 @@ class NoTautologicalExpect(Rule):
 
 
 def _exempt_nodes(tree: ast.Module) -> set[ast.AST]:
-    """Collect the nodes the carve-outs put out of reach."""
     exempt: set[ast.AST] = set()
     for node in ast.walk(tree):
         if isinstance(node, _FUNC_NODES) and (uses_benchmark_fixture(node) or has_benchmark_marker(node)):
@@ -136,7 +135,6 @@ def _exempt_nodes(tree: ast.Module) -> set[ast.AST]:
 
 
 def _match_arm_markers(node: ast.Match) -> set[ast.AST]:
-    """Collect `assert <constant>` statements marking which arm of a `match` ran."""
     if not any(all(_always_fails(stmt) for stmt in case.body) for case in node.cases):
         return set()
     return {
@@ -145,7 +143,6 @@ def _match_arm_markers(node: ast.Match) -> set[ast.AST]:
 
 
 def _always_fails(stmt: ast.stmt) -> bool:
-    """Report whether `stmt` cannot complete without failing the test."""
     if isinstance(stmt, ast.Raise):
         return True
     if isinstance(stmt, ast.Assert):
@@ -153,20 +150,18 @@ def _always_fails(stmt: ast.stmt) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and _called_method(stmt.value) == _FAIL
 
 
-def _tautologies(tree: ast.Module, exempt: set[ast.AST]) -> list[tuple[ast.Assert | ast.Call, str]]:
-    """Find every assertion in `tree` whose outcome its own literals decide."""
-    found: list[tuple[ast.Assert | ast.Call, str]] = []
+def _tautologies(tree: ast.Module, exempt: set[ast.AST]) -> list[_Tautology]:
+    found: list[_Tautology] = []
     for node in ast.walk(tree):
         if not isinstance(node, (ast.Assert, ast.Call)) or node in exempt:
             continue
         reason = _fixed_truth_reason(node.test) if isinstance(node, ast.Assert) else _unittest_reason(node)
         if reason is not None:
-            found.append((node, reason))
+            found.append(_Tautology(node, reason))
     return found
 
 
 def _unittest_reason(node: ast.Call) -> str | None:
-    """Describe why a `unittest` assertion call cannot fail, if it cannot."""
     name = _called_method(node)
     # `msg=` is unittest's failure text and changes nothing about the outcome;
     # any other keyword means this is not the method we think it is.
@@ -185,7 +180,6 @@ def _unittest_reason(node: ast.Call) -> str | None:
 
 
 def _fixed_truth_reason(test: ast.expr) -> str | None:
-    """Describe why `test` is always truthy, if it is."""
     if _constant_truth(test) is True:
         return f"`{_preview(test)}` is a constant truthy value"
     kind = _nonempty_container_kind(test)
@@ -197,7 +191,6 @@ def _fixed_truth_reason(test: ast.expr) -> str | None:
 
 
 def _constant_truth(node: ast.expr) -> bool | None:
-    """Evaluate the truthiness of a scalar constant, `-1`, `+0` and `not 0` included."""
     if isinstance(node, ast.Constant):
         return bool(node.value)
     if isinstance(node, ast.UnaryOp):
@@ -210,7 +203,6 @@ def _constant_truth(node: ast.expr) -> bool | None:
 
 
 def _nonempty_container_kind(node: ast.expr) -> str | None:
-    """Name the container display kind when `node` is a provably non-empty one."""
     if isinstance(node, ast.Dict):
         if not node.keys or any(key is None for key in node.keys):
             return None
@@ -223,7 +215,6 @@ def _nonempty_container_kind(node: ast.expr) -> str | None:
 
 
 def _is_identical_literal_comparison(node: ast.expr) -> bool:
-    """Report whether `node` compares one literal with a textually identical one."""
     if not isinstance(node, ast.Compare) or len(node.ops) != 1:
         return False
     if not isinstance(node.ops[0], _SAMENESS_OPS):
@@ -232,12 +223,10 @@ def _is_identical_literal_comparison(node: ast.expr) -> bool:
 
 
 def _is_same_literal(left: ast.expr, right: ast.expr) -> bool:
-    """Report whether both operands are literals with identical syntax."""
     return _is_literal(left) and _is_literal(right) and ast.dump(left) == ast.dump(right)
 
 
 def _is_literal(node: ast.expr) -> bool:
-    """Report whether `node` is a literal built entirely from constants."""
     match node:
         case ast.Constant():
             return True
@@ -256,7 +245,6 @@ def _is_literal(node: ast.expr) -> bool:
 
 
 def _is_always_falsy_literal(node: ast.expr) -> bool:
-    """Report whether `node` is a literal that is always falsy."""
     if _constant_truth(node) is False:
         return True
     if isinstance(node, (ast.List, ast.Tuple)):
@@ -267,16 +255,14 @@ def _is_always_falsy_literal(node: ast.expr) -> bool:
 
 
 def _called_method(node: ast.Call) -> str | None:
-    func = node.func
-    if isinstance(func, ast.Attribute):
-        return func.attr
-    if isinstance(func, ast.Name):
-        return func.id
-    return None
+    match node.func:
+        case ast.Attribute(attr=name) | ast.Name(id=name):
+            return name
+        case _:
+            return None
 
 
 def _preview(node: ast.expr) -> str:
-    """Render `node` back to source, truncated so the message stays one line."""
     text = " ".join(ast.unparse(node).split())
     if len(text) > _OPERAND_PREVIEW_CHARS:
         return f"{text[:_OPERAND_PREVIEW_CHARS]}…"
@@ -284,7 +270,6 @@ def _preview(node: ast.expr) -> str:
 
 
 def _message(node: ast.Assert | ast.Call, reason: str) -> str:
-    """Compose the diagnostic, adding the message-slot hint where it applies."""
     slid_into_message_slot = isinstance(node, ast.Assert) and node.msg is not None
     hint = (
         " The expression you meant to assert on is sitting in the assertion-message slot — move it into the condition."

@@ -1,8 +1,3 @@
-"""SARJ034 — >=2 positional parameters with the same primitive annotation — swap-prone.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_require_keyword_only_swap_prone_params.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -204,7 +199,6 @@ class RequireKeywordOnlySwapProneParams(Rule):
 
 
 def _is_exempt_path(path: Path) -> bool:
-    """Report whether the file is exempt on location alone."""
     directories = path.parts[:-1]
     if any(_TEST_SUPPORT_DIR_RE.fullmatch(part) for part in directories):
         return True
@@ -234,7 +228,6 @@ def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _is_cli_command_decorator(dec: ast.expr) -> bool:
-    """Report whether `dec` registers the function as a click/typer CLI handler."""
     target = dec.func if isinstance(dec, ast.Call) else dec
     match target:
         case ast.Attribute(value=ast.Name(id=receiver)) if receiver in _CLI_DECORATOR_MODULES:
@@ -246,7 +239,6 @@ def _is_cli_command_decorator(dec: ast.expr) -> bool:
 
 
 def _method_node_ids(tree: ast.AST) -> frozenset[int]:
-    """Identify the defs that are methods — direct children of a class body."""
     return frozenset(
         id(child)
         for node in nodes(tree, ast.ClassDef)
@@ -256,7 +248,6 @@ def _method_node_ids(tree: ast.AST) -> frozenset[int]:
 
 
 def _subclass_method_node_ids(tree: ast.AST) -> frozenset[int]:
-    """Identify methods that may implement an inherited positional contract."""
     return frozenset(
         id(child)
         for node in nodes(tree, ast.ClassDef)
@@ -267,7 +258,6 @@ def _subclass_method_node_ids(tree: ast.AST) -> frozenset[int]:
 
 
 def _calls_super_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether the body calls `super().<this method's name>(...)`."""
     return any(
         isinstance(func := call.func, ast.Attribute)
         and func.attr == node.name
@@ -280,7 +270,6 @@ def _calls_super_same_name(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool
 
 
 def _is_route_decorator(dec: ast.expr) -> bool:
-    """Report whether `dec` is an HTTP-route decorator like `@router.get(...)`."""
     target = dec.func if isinstance(dec, ast.Call) else dec
     match target:
         case ast.Attribute(value=ast.Name(), attr=attr) if attr in _HTTP_ROUTE_METHODS:
@@ -290,7 +279,6 @@ def _is_route_decorator(dec: ast.expr) -> bool:
 
 
 def _swap_prone_annotation(args: ast.arguments) -> str | None:
-    """Find a primitive annotation shared by >= 2 swap-prone positional parameters."""
     params = list(args.args)
     if params and params[0].arg in {"self", "cls"}:
         params = params[1:]
@@ -311,17 +299,14 @@ def _swap_prone_annotation(args: ast.arguments) -> str | None:
 
 
 def _is_high_value_group(arg_names: list[str]) -> bool:
-    """Report whether a same-primitive group is worth enforcing globally."""
     return sum(1 for name in arg_names if _RISKY_NAME_PART_RE.search(name)) >= _MIN_SAME_TYPE
 
 
 def _is_dunder_prefixed(arg: str) -> bool:
-    """Report whether `arg` uses the PEP 484 positional-only naming convention."""
     return arg.startswith("__") and not arg.endswith("__")
 
 
 def _is_conventional_order(arg_names: list[str]) -> bool:
-    """Report whether every name comes from one conventional ordered vocabulary."""
     names = set(arg_names)
     return any(names <= vocabulary for vocabulary in _CONVENTIONAL_ORDER_GROUPS)
 
@@ -335,12 +320,10 @@ _LETTER_SUFFIX_RE = re.compile(r"_[a-z]$")
 
 
 def _is_symmetric_numbering(arg_names: list[str]) -> bool:
-    """Report whether the group is one stem plus a symmetric per-parameter label."""
     return _shares_one_stem(arg_names, _NUMERIC_SUFFIX_RE) or _shares_one_stem(arg_names, _LETTER_SUFFIX_RE)
 
 
 def _shares_one_stem(arg_names: list[str], suffix: re.Pattern[str]) -> bool:
-    """Report whether every name is the same stem plus a match of `suffix`."""
     if not all(suffix.search(name) for name in arg_names):
         return False
     stems = {suffix.sub("", name) for name in arg_names}
@@ -348,7 +331,6 @@ def _shares_one_stem(arg_names: list[str], suffix: re.Pattern[str]) -> bool:
 
 
 def _value_referenced_names(tree: ast.AST) -> frozenset[str]:
-    """Names referenced as a VALUE (loaded but not called) anywhere in the module."""
     call_funcs = {id(node.func) for node in nodes(tree, ast.Call)}
     return frozenset(
         node.id for node in nodes(tree, ast.Name) if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
@@ -356,7 +338,6 @@ def _value_referenced_names(tree: ast.AST) -> frozenset[str]:
 
 
 def _overload_stub_names(tree: ast.AST) -> frozenset[str]:
-    """Names carrying an `@overload` decorator anywhere in the module."""
     return frozenset(
         node.name
         for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)

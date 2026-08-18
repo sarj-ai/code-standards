@@ -1,5 +1,3 @@
-"""`init` has to speak the npm client the repo actually uses, or it writes a no-op."""
-
 from __future__ import annotations
 
 import json
@@ -64,7 +62,6 @@ def test_a_repo_with_no_lockfile_is_assumed_to_be_npm(tmp_path: Path) -> None:
 
 
 def test_the_packagemanager_field_beats_a_stray_lockfile(tmp_path: Path) -> None:
-    """Corepack enforces the field, so a repo declaring Yarn cannot be installed with npm."""
     root = _project(tmp_path, "package-lock.json", {"name": "web", "packageManager": "yarn@4.15.0"})
     assert packagemanager.detect(root) == PackageManager.YARN
 
@@ -94,7 +91,6 @@ def test_pnpm_gets_a_flat_selector_for_its_workspace_policy() -> None:
 
 
 def test_yarn_gets_a_path_selector_with_the_version_resolved() -> None:
-    """Yarn has no `$dep` indirection; a literal `$eslint` is a range it cannot parse."""
     overrides = packagemanager.overrides_for(PackageManager.YARN)
     assert overrides.key_path == ("resolutions",)
     assert overrides.entries == {"eslint-plugin-react/eslint": manifest.eslint_peers()["eslint"]}
@@ -167,7 +163,6 @@ def test_lint_execution_can_never_install_from_the_network() -> None:
 def test_yarn_dialect_follows_the_declared_package_manager(
     tmp_path: Path, package_json: dict[str, object], expected: YarnVariant
 ) -> None:
-    """A bare yarn.lock is Yarn 1; only a declared major or Berry's own config says otherwise."""
     root = _project(tmp_path, "yarn.lock", package_json)
 
     assert packagemanager.yarn_variant(root) is expected
@@ -181,7 +176,6 @@ def test_a_yarnrc_yml_marks_a_berry_checkout_without_a_declaration(tmp_path: Pat
 
 
 def test_each_yarn_dialect_gets_flags_it_actually_enforces() -> None:
-    """Yarn 1 silently ignores Berry flags, so the Berry spelling would run scripts there."""
     classic = packagemanager.install_command(PackageManager.YARN, yarn=YarnVariant.CLASSIC)
     berry = packagemanager.install_command(PackageManager.YARN, yarn=YarnVariant.BERRY)
 

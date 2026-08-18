@@ -1,5 +1,3 @@
-"""Test shared scope helpers exercised through every rule that consumes them."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,9 +24,11 @@ if TYPE_CHECKING:
 # SARJ112 unindexed `REFERENCES`, SARJ104 `VARCHAR(n)`, SARJ106 `JSON`,
 # SARJ101 `TIMESTAMP`, SARJ102 + SARJ108 + SARJ110 the bare `CREATE INDEX` on a
 # table this file does not create, SARJ111 a validating `ADD CONSTRAINT`,
-# SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ107 `LIMIT ... OFFSET`.
+# SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ107 `LIMIT ... OFFSET`, and
+# SARJ113 the commented-out `DROP TABLE`.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_TWELVE_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
+-- DROP TABLE legacy_children;
 CREATE TABLE IF NOT EXISTS children (
     id uuid PRIMARY KEY,
     owner_id uuid DEFAULT __LEGACY_UUID_DEFAULT__,
@@ -68,26 +68,23 @@ def _total(path: Path, source: str) -> int:
 
 
 def test_the_shared_source_fires_every_rule_exactly_once() -> None:
-    """The premise of every case below: without it, silence would prove nothing."""
     fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_TWELVE)) for cls in REGISTRY.values()}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 12
+    assert len(fired) == 13
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
 def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
-    """A pg_dump snapshot renders a schema; the fix belongs in the migration that made it."""
     assert rule_cls().check(HAND_WRITTEN, ALL_TWELVE) != []
     assert rule_cls().check(Path("db/structure.sql"), ALL_TWELVE) == []
 
 
 def test_require_fk_index_deliberately_declines_the_dump_exemption() -> None:
-    """The boundary: SARJ112 reads dumps on purpose, so a blanket exemption is wrong."""
     assert len(RequireFkIndex().check(Path("db/structure.sql"), ALL_TWELVE)) == 1
 
 
-def test_the_dump_exemption_is_what_stands_between_twelve_findings_and_one() -> None:
-    assert _total(HAND_WRITTEN, ALL_TWELVE) == 12
+def test_the_dump_exemption_is_what_stands_between_thirteen_findings_and_one() -> None:
+    assert _total(HAND_WRITTEN, ALL_TWELVE) == 13
     assert _total(Path("db/structure.sql"), ALL_TWELVE) == 1
 
 
@@ -97,18 +94,15 @@ def test_the_dump_filename_set_is_a_dump_signal(name: str) -> None:
 
 
 def test_the_dump_sql_suffix_is_a_dump_signal() -> None:
-    """`pg_dump -f prod_dump.sql` — the name is a suffix, not a whole filename."""
     assert _total(Path("db/prod_dump.sql"), ALL_TWELVE) == 1
 
 
 def test_a_restore_directory_is_a_dump_signal() -> None:
-    """A restore tree holds replay input; the arbitrary filenames inside it carry no hint."""
     assert _total(Path("db/restore/0001.sql"), ALL_TWELVE) == 1
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    """The boundary: `schema_changes.sql` is neither the set, the suffix, nor the tree."""
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_TWELVE) == 12
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_TWELVE) == 13
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_TWELVE}"
@@ -116,7 +110,6 @@ GENERATED = f"--> statement-breakpoint\n{ALL_TWELVE}"
 
 @pytest.mark.parametrize("rule_cls", MODEL_REDIRECTING, ids=_ids(MODEL_REDIRECTING))
 def test_each_schema_rule_redirects_a_generated_migration_to_the_model(rule_cls: type[Rule]) -> None:
-    """The finding survives regeneration, so it is kept — only the fix site is renamed."""
     plain = rule_cls().check(HAND_WRITTEN, ALL_TWELVE)
     generated = rule_cls().check(Path("drizzle/0000_init.sql"), GENERATED)
     assert len(generated) == len(plain) == 1
@@ -126,6 +119,5 @@ def test_each_schema_rule_redirects_a_generated_migration_to_the_model(rule_cls:
 
 @pytest.mark.parametrize("rule_cls", MODEL_REDIRECTING, ids=_ids(MODEL_REDIRECTING))
 def test_the_redirect_suppresses_nothing(rule_cls: type[Rule]) -> None:
-    """The boundary: redirecting must not become an exemption."""
     generated = rule_cls().check(Path("drizzle/0000_init.sql"), GENERATED)
     assert [d.line for d in generated] == [d.line + 1 for d in rule_cls().check(HAND_WRITTEN, ALL_TWELVE)]

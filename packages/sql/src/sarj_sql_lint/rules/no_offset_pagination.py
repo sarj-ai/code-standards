@@ -1,5 +1,3 @@
-"""SARJ107: forbid `OFFSET` pagination — use cursor-based pagination."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -33,8 +31,6 @@ PATTERN = re.compile(
 
 @final
 class NoOffsetPagination(Rule):
-    """OFFSET pagination — use cursor pagination instead."""
-
     id = "no-offset-pagination"
     code = "SARJ107"
     documentation = RuleDocumentation(

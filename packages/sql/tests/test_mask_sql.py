@@ -1,5 +1,3 @@
-"""`mask_sql` masking contract, with dollar-quoted bodies kept as live SQL."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -15,7 +13,6 @@ if TYPE_CHECKING:
 
 
 def _assert_shape(source: str, masked: str) -> None:
-    """Assert the invariants every caller of `mask_sql` relies on."""
     assert len(masked) == len(source)
     assert masked.count("\n") == source.count("\n")
     assert [i for i, c in enumerate(source) if c == "\n"] == [i for i, c in enumerate(masked) if c == "\n"]
@@ -48,7 +45,6 @@ def test_uppercase_tag_body_is_kept() -> None:
 
 
 def test_tag_must_match_to_close() -> None:
-    """A `$other$` inside a `$func$` body does not close it."""
     source = "$func$ SELECT 1; $other$ SELECT 2; $func$ SELECT 3;"
     masked = _mask(source)
     # everything is retained; the `$other$` opened a nested quote whose body is
@@ -62,7 +58,6 @@ def test_tag_must_match_to_close() -> None:
 
 
 def test_unmatched_inner_tag_does_not_steal_the_outer_close() -> None:
-    """`$a$ ... $b$ ... $a$` — the outer close pops the dangling inner tag."""
     source = "$a$ x $b$ y $a$ SELECT 9;"
     masked = _mask(source)
     assert masked.endswith(" SELECT 9;")
@@ -105,7 +100,6 @@ def test_empty_dollar_body() -> None:
     ],
 )
 def test_positional_parameters_do_not_open_a_dollar_quote(source: str) -> None:
-    """`$1`/`$2` are parameters: a dollar-quote tag can never start with a digit."""
     assert _mask(source) == source
 
 
@@ -119,12 +113,10 @@ def test_positional_parameters_do_not_open_a_dollar_quote(source: str) -> None:
     ],
 )
 def test_dollar_in_an_identifier_does_not_open_a_dollar_quote(source: str) -> None:
-    """Postgres allows `$` as a non-leading identifier char — it opens nothing."""
     assert _mask(source) == source
 
 
 def test_parameter_next_to_a_real_dollar_quote() -> None:
-    """The `$1` must not disturb the surrounding `$$` body."""
     source = "DO $$ EXECUTE format($fmt$UPDATE t SET a = %s$fmt$, $1); $$;"
     masked = _mask(source)
     assert "UPDATE t SET a = %s" in masked
@@ -172,7 +164,6 @@ def test_unterminated_tagged_dollar_quote_keeps_the_rest_as_sql() -> None:
 
 
 def test_pathological_unterminated_tags_do_not_recurse_or_hang() -> None:
-    """Many nested unterminated tags: an explicit stack, so no recursion limit."""
     source = "".join(f"$t{i}$ SELECT {i};\n" for i in range(2000))
     masked = _mask(source)
     assert "SELECT 1999;" in masked
@@ -235,7 +226,6 @@ def test_noqa_inside_a_dollar_body_still_suppresses(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """End-to-end: the body is now linted, and `-- sarj-noqa` on its line still wins."""
     f = tmp_path / "m.sql"
     _ = f.write_text(
         "DO $$\nBEGIN\n  x TIMESTAMP;\n  y TIMESTAMP; -- sarj-noqa: SARJ101\nEND $$;\n",

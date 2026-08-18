@@ -1,5 +1,3 @@
-"""Deterministically propagate one published Standards bundle to consumers."""
-
 from __future__ import annotations
 
 import argparse
@@ -47,7 +45,7 @@ MANAGED_DELETIONS = frozenset({launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix()})
 
 
 class RolloutError(RuntimeError):
-    """An expected, actionable rollout failure."""
+    pass
 
 
 def is_object(value: object) -> TypeGuard[dict[str, object]]:
@@ -93,8 +91,6 @@ class CommandRunner(Protocol):
 
 
 class SubprocessRunner:
-    """Small injection boundary: tests never invoke git, gh, or uv."""
-
     @staticmethod
     def run(
         command: Sequence[str],
@@ -227,12 +223,6 @@ def validate_version(version: str) -> str:
 
 
 def rollout_branch(version: str) -> str:
-    """Return the durable per-consumer rollout branch.
-
-    ``version`` remains accepted for source compatibility; release identity now
-    lives in the managed commit and PR body rather than creating one branch per
-    patch release.
-    """
     validate_version(version)
     return "standards-rollout/current"
 
@@ -243,7 +233,6 @@ def pr_marker(consumer: Consumer, version: str) -> str:
 
 
 def desired_marker(version: str) -> str:
-    """Bind a durable rolling PR to its currently materialized release."""
     return f"<!-- sarj-standards-rollout:desired={validate_version(version)} -->"
 
 
@@ -491,7 +480,6 @@ def remote_branch_sha(repo: Path, branch: str, runner: CommandRunner) -> str | N
 
 
 def force_with_lease(branch: str, previous_sha: str | None) -> str:
-    """Bind a rolling-branch push to the exact remote head validated earlier."""
     return f"--force-with-lease=refs/heads/{branch}:{previous_sha or ''}"
 
 
@@ -518,7 +506,6 @@ def provision_consumer_tools(
     runner: CommandRunner,
     environment: Mapping[str, str],
 ) -> ProvisionedTools:
-    """Provision repository-declared tools and an isolated Corepack shim directory."""
     prepared = dict(environment)
     mise_prefix: tuple[str, ...] = ()
     if any((repo / relative).is_file() for relative in MISE_CONFIG_PATHS):
@@ -573,7 +560,6 @@ def run_consumer_bootstrap(
     runner: CommandRunner,
     environment: Mapping[str, str],
 ) -> subprocess.CompletedProcess[str] | None:
-    """Run the consumer's declared analysis-input bootstrap exactly as generated CI does."""
     adopted = adoption_manifest.load(repo)
     if adopted is None:
         return None
@@ -597,7 +583,6 @@ def run_consumer_bootstrap(
 
 
 def _declared_corepack_manager(repo: Path) -> str | None:
-    """Return the first package manager whose repository pin needs Corepack shims."""
     for manifest in sorted(repo.glob("**/package.json")):
         if any(part in {"node_modules", ".git"} for part in manifest.parts):
             continue
@@ -617,7 +602,6 @@ def _declared_corepack_manager(repo: Path) -> str | None:
 
 
 def synchronize_repository_pin(repo: Path, version: str) -> bool:
-    """Update a reviewed repository-owned wrapper pin when one exists."""
     makefile = repo / "Makefile"
     if not makefile.is_file():
         return False
@@ -636,7 +620,6 @@ def synchronize_repository_pin(repo: Path, version: str) -> bool:
 
 
 def synchronize_repository_checker(repo: Path) -> bool:
-    """Use the checker that the consumer already declares and Standards config targets."""
     makefile = repo / "Makefile"
     project = repo / "python/pyproject.toml"
     if not makefile.is_file() or not project.is_file():
@@ -655,7 +638,6 @@ def synchronize_repository_checker(repo: Path) -> bool:
 
 
 def remove_retired_eslint_suppressions(repo: Path, runner: CommandRunner) -> frozenset[str]:
-    """Remove only exact retired selector tokens from existing ESLint directives."""
     matched = runner.run(
         ("git", "grep", "-lz", "eslint-disable", "--", "*.js", "*.jsx", "*.ts", "*.tsx"),
         cwd=repo,
@@ -700,7 +682,6 @@ def prepare_branch(
     base_sha: str,
     runner: CommandRunner,
 ) -> BranchPreparation:
-    """Validate remote ownership, then rebuild the rolling branch from the captured base."""
     branch = rollout_branch(version)
     previous_sha = remote_branch_sha(repo, branch, runner)
     if previous_sha is None:

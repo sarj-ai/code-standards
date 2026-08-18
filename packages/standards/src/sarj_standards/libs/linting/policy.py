@@ -1,5 +1,3 @@
-"""One denylist policy shared by every Standards analyzer."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -47,8 +45,6 @@ class _Override:
 
 @dataclass(frozen=True, slots=True)
 class Policy:
-    """Compiled repository policy; all rules are enabled unless denied."""
-
     root: Path
     excluded_paths: PathSpec[Pattern]
     excluded_rules: frozenset[str]
@@ -68,13 +64,11 @@ class Policy:
 
     @classmethod
     def corpus_from_manifest(cls, root: Path, manifest: Manifest | None) -> Self:
-        """Apply reviewed path scope while deliberately exposing every rule diagnostic."""
         policy = cls.from_manifest(root, manifest)
         return cls(policy.root, policy.excluded_paths, frozenset(), ())
 
     @classmethod
     def observe_from_manifest(cls, root: Path, manifest: Manifest | None) -> Self:
-        """Expose lifecycle warnings while preserving consumer-owned exclusions."""
         resolved = root.resolve()
         if manifest is None:
             return cls(resolved, PathSpec.from_lines("gitignore", ()), frozenset(), ())

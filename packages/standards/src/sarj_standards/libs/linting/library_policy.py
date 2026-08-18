@@ -1,5 +1,3 @@
-"""Hypermodern application-library policy and direct-dependency scanner."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,10 +26,13 @@ class _Location(NamedTuple):
     column: int
 
 
+class _PackageKey(NamedTuple):
+    ecosystem: Ecosystem
+    normalized_name: str
+
+
 @dataclass(frozen=True, slots=True)
 class LibraryMapping:
-    """One stable, machine-consumable policy decision."""
-
     id: str
     ecosystem: Ecosystem
     category: Category
@@ -358,12 +359,10 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
 
 
 def catalog() -> tuple[LibraryMapping, ...]:
-    """Return the immutable ordered policy catalog."""
     return CATALOG
 
 
 def python_banned_api() -> dict[str, str]:
-    """Build Ruff ``banned-api`` entries for Python imports."""
     return {
         name: f"{entry.id}: {entry.message} Replace with {entry.replacement}."
         for entry in CATALOG
@@ -374,14 +373,11 @@ def python_banned_api() -> dict[str, str]:
 
 @dataclass(frozen=True, slots=True)
 class RestrictedImport:
-    """One ESLint ``no-restricted-imports`` path entry."""
-
     name: str
     message: str
 
 
 def typescript_restricted_imports() -> tuple[RestrictedImport, ...]:
-    """Build ESLint ``no-restricted-imports`` path entries."""
     return tuple(
         RestrictedImport(name, f"{entry.id}: {entry.message} Replace with {entry.replacement}.")
         for entry in CATALOG
@@ -392,8 +388,6 @@ def typescript_restricted_imports() -> tuple[RestrictedImport, ...]:
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    """A forbidden direct dependency declaration."""
-
     id: str
     path: Path
     line: int
@@ -443,7 +437,6 @@ _REQUIREMENTS_NAME: Final = re.compile(r"^requirements(?:[-_.].*)?\.(?:txt|in)$"
 
 
 def scan(root: Path, *, allowed_ids: Iterable[str] = ()) -> tuple[Finding, ...]:
-    """Scan authored direct-dependency manifests below ``root``."""
     root = root.resolve()
     return _scan_manifests(root, _manifest_paths(root), allowed_ids=allowed_ids)
 
@@ -454,7 +447,6 @@ def scan_paths(
     *,
     allowed_ids: Iterable[str] = (),
 ) -> tuple[Finding, ...]:
-    """Scan only explicitly selected dependency manifests inside ``root``."""
     root = root.resolve()
     selected: set[Path] = set()
     for raw_path in paths:
@@ -489,7 +481,7 @@ def _scan_manifests(
         else:
             dependencies = _requirements_dependencies(path, root, frozenset())
         for source, ecosystem, package in dependencies:
-            entry = package_index.get((ecosystem, _normalize(package, ecosystem)))
+            entry = package_index.get(_PackageKey(ecosystem, _normalize(package, ecosystem)))
             if entry is None or entry.id in allowed:
                 continue
             text = source.read_text(encoding="utf-8-sig")
@@ -500,8 +492,12 @@ def _scan_manifests(
     return tuple(sorted(set(findings), key=lambda item: (str(item.path), item.line, item.id, item.package)))
 
 
-def _package_index() -> dict[tuple[Ecosystem, str], LibraryMapping]:
-    return {(entry.ecosystem, _normalize(name, entry.ecosystem)): entry for entry in CATALOG for name in entry.packages}
+def _package_index() -> dict[_PackageKey, LibraryMapping]:
+    return {
+        _PackageKey(entry.ecosystem, _normalize(name, entry.ecosystem)): entry
+        for entry in CATALOG
+        for name in entry.packages
+    }
 
 
 def _normalize(name: str, ecosystem: Ecosystem) -> str:
@@ -524,7 +520,6 @@ def _manifest_paths(root: Path) -> tuple[Path, ...]:
 
 
 def accepts_path(path: Path, root: Path) -> bool:
-    """Return whether the application dependency analyzer owns this file."""
     relative_parts = path.relative_to(root).parts
     in_requirements_dir = "requirements" in relative_parts[:-1]
     ignored_requirements_fixture = any(part.lower() in _IGNORED_MANIFEST_DIRS for part in relative_parts[:-1])

@@ -1,5 +1,3 @@
-"""Build-time synchronization and runtime loading for the shipped rule inventory."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,15 +16,11 @@ _RULE_FIELDS: Final = frozenset({"family", "id", "code", "source", "test"})
 
 @dataclass(frozen=True, slots=True)
 class InventorySyncResult:
-    """Outcome from synchronizing the committed inventory with live registries."""
-
     status: int
     message: str
 
 
 class RuleInventoryEntry(TypedDict):
-    """One rule's stable runtime-discovery fields."""
-
     family: str
     id: str
     code: str
@@ -35,8 +29,6 @@ class RuleInventoryEntry(TypedDict):
 
 
 class RuleInventory(TypedDict):
-    """The versioned rule inventory shipped with Standards."""
-
     schemaVersion: int
     rules: list[RuleInventoryEntry]
 
@@ -46,7 +38,6 @@ def _is_object(value: object) -> TypeGuard[dict[str, object]]:
 
 
 def validate(value: object) -> RuleInventory:
-    """Validate and normalize a version-one transitional rule inventory."""
     if not _is_object(value) or frozenset(value) != frozenset({"schemaVersion", "rules"}):
         msg = "rule inventory must contain exactly schemaVersion and rules"
         raise ValueError(msg)
@@ -104,7 +95,6 @@ def _relative_repository_path(value: str, *, field: str, index: int) -> str:
 
 
 def load(path: Path = RULE_INVENTORY_PATH) -> RuleInventory:
-    """Load the packaged inventory without importing any rule implementation."""
     try:
         payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     except (OSError, json.JSONDecodeError) as exc:
@@ -114,14 +104,12 @@ def load(path: Path = RULE_INVENTORY_PATH) -> RuleInventory:
 
 
 def build(root: Path) -> RuleInventory:
-    """Build an inventory from live registries; only maintenance calls this path."""
     from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level]
 
     return validate({"schemaVersion": SCHEMA_VERSION, "rules": rule_maintenance.inventory(root)})
 
 
 def render(root: Path) -> str:
-    """Render canonical committed inventory bytes."""
     return (
         json.dumps(
             build(root),
@@ -134,7 +122,6 @@ def render(root: Path) -> str:
 
 
 def sync(root: Path, *, check: bool) -> InventorySyncResult:
-    """Check or update the committed inventory from live rule registries."""
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
 
     destination = root.resolve() / _REPOSITORY_INVENTORY_PATH

@@ -1,5 +1,3 @@
-"""Tests for strict cross-language rule catalog generation."""
-
 from __future__ import annotations
 
 import pytest

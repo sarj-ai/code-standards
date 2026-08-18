@@ -1,5 +1,3 @@
-"""Exercise the complete SARJ020 contract."""
-
 from pathlib import Path
 
 import pytest

@@ -1,5 +1,3 @@
-"""The immutable bootstrap command supersedes the retired repository script."""
-
 from __future__ import annotations
 
 import pytest
@@ -7,7 +5,7 @@ import pytest
 from sarj_standards.libs.adoption import launcher
 
 
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.1 sarj-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.2 sarj-standards"
 
 
 def test_repository_wiring_uses_the_exact_immutable_bootstrap() -> None:

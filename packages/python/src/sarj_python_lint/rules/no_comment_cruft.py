@@ -1,8 +1,3 @@
-"""SARJ016 — Comment cruft — commented-out code, section banners, header preambles.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_comment_cruft.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -22,6 +17,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
 )
 from sarj_python_lint.rules._comments import (
+    PositionedComment,
     comment_runs,
     has_external_reference,
     nested_comment_lines,
@@ -233,12 +229,10 @@ _DOCTEST_PROMPT = ">>>"
 
 
 def _is_coding_cookie(body: str) -> bool:
-    """Report whether the comment is a PEP 263 source-encoding declaration."""
     return bool(_CODING_COOKIE_RE.search(body))
 
 
-def _doctest_block_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]:
-    """Collect every line of a contiguous comment run that contains a doctest prompt."""
+def _doctest_block_lines(standalone: Sequence[PositionedComment]) -> set[int]:
     exempt: set[int] = set()
     block: list[tuple[int, str]] = []
 
@@ -255,8 +249,7 @@ def _doctest_block_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]
     return exempt
 
 
-def _externally_referenced_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]:
-    """Collect every line of a comment run that cites a ticket, URL, RFC or issue."""
+def _externally_referenced_lines(standalone: Sequence[PositionedComment]) -> set[int]:
     exempt: set[int] = set()
     for run in comment_runs(standalone):
         if any(has_external_reference(body) for _, _, body in run):
@@ -264,8 +257,7 @@ def _externally_referenced_lines(standalone: Sequence[tuple[int, int, str]]) -> 
     return exempt
 
 
-def _illustration_block_lines(standalone: Sequence[tuple[int, int, str]]) -> set[int]:
-    """Collect the lines of every embedded-snippet block inside a comment run."""
+def _illustration_block_lines(standalone: Sequence[PositionedComment]) -> set[int]:
     exempt: set[int] = set()
     armed = False
     prev_line: int | None = None
@@ -302,7 +294,6 @@ def _is_redundant_narration(
     isolated_enumeration: bool,
     nested: bool,
 ) -> bool:
-    """Whether a comment merely narrates the code (step markers, meta-commentary)."""
     c = body.strip()
     if not c or _looks_like_code(c):
         return False
@@ -343,18 +334,15 @@ def _is_redundant_narration(
 
 
 def _is_sentence_continuation(prev_body: str | None) -> bool:
-    """Report whether the previous comment line leaves a sentence unfinished."""
     return bool(prev_body) and not _SENTENCE_END_RE.search(prev_body)
 
 
 def _is_section_label(body: str) -> bool:
-    """Report whether the comment is a bare one-word section signpost."""
     match = _SECTION_LABEL_RE.match(body)
     return match is not None and match.group(1).lower() in _SECTION_LABEL_WORDS
 
 
 def _is_heading_underline(body: str, prev_body: str | None) -> bool:
-    """Report whether a punctuation-only banner underlines a texty comment line."""
     if not _BANNER_FULL_RE.match(body):
         return False
     if prev_body is None:
@@ -363,7 +351,6 @@ def _is_heading_underline(body: str, prev_body: str | None) -> bool:
 
 
 def _is_dashed_prose_continuation(body: str, prev_body: str | None) -> bool:
-    """Keep a wrapped prose line that happens to contain an ASCII dash run."""
     if not _is_sentence_continuation(prev_body) or _BANNER_RUN_RE.search(body) is None:
         return False
     prose = _BANNER_RUN_RE.sub(" ", body)
@@ -382,7 +369,6 @@ def _is_banner(body: str) -> bool:
 
 
 def _is_region_marker(body: str) -> bool:
-    """Report whether the comment is a folding-region marker rather than prose."""
     match = _REGION_MARKER_RE.match(body)
     if match is None:
         return False
@@ -419,7 +405,6 @@ def _looks_like_code(body: str) -> bool:
 
 
 def _is_prose_line(body: str) -> bool:
-    """Report whether `body` reads as a natural-language sentence, not code."""
     c = body.strip()
     if not c or _is_banner(c) or _is_directive(c) or _looks_like_code(c):
         return False
@@ -450,8 +435,7 @@ def _is_assign_or_call(snippet: str) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
 
 
-def _license_header_lines(standalone: list[tuple[int, int, str]]) -> frozenset[int]:
-    """Collect the lines belonging to a file-header licence block."""
+def _license_header_lines(standalone: list[PositionedComment]) -> frozenset[int]:
     anchors = [line for line, _, body in standalone if line <= _LICENSE_HEADER_MAX_LINE and _LICENSE_RE.search(body)]
     return frozenset(
         line
@@ -621,12 +605,12 @@ class NoCommentCruft(Rule):
 
     def _flag_leading_preamble(
         self,
-        standalone: list[tuple[int, int, str]],
+        standalone: list[PositionedComment],
         first_code_line: int,
         path: Path,
         diags: dict[int, Diagnostic],
     ) -> None:
-        leading: list[tuple[int, int, str]] = []
+        leading: list[PositionedComment] = []
         prev_line: int | None = None
         for line, col, body in standalone:
             if line >= first_code_line:
@@ -637,7 +621,7 @@ class NoCommentCruft(Rule):
                 continue
             if prev_line is not None and line != prev_line + 1:
                 break
-            leading.append((line, col, body))
+            leading.append(PositionedComment(line, col, body))
             prev_line = line
         if any(_LICENSE_RE.search(body) for _, _, body in leading):
             return

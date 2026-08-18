@@ -1,5 +1,3 @@
-"""Repository-wide exact diagnostic baselines."""
-
 from __future__ import annotations
 
 import json
@@ -24,12 +22,10 @@ _NON_BASELINEABLE_SOURCES = frozenset({"react-doctor"})
 
 
 def is_baselineable(diagnostic: Diagnostic) -> bool:
-    """Return whether a finding may be hidden as pre-existing repository debt."""
     return diagnostic.source not in _NON_BASELINEABLE_SOURCES
 
 
 def load(path: Path) -> dict[str, int]:
-    """Load and validate one exact-fingerprint baseline."""
     if not path.is_file() or is_link_like(path):
         msg = f"diagnostic baseline must be a regular file: {path}"
         raise ValueError(msg)
@@ -85,7 +81,6 @@ def _required_text(entry: dict[str, object], key: str, index: int) -> str:
 
 
 def render(diagnostics: Iterable[Diagnostic]) -> str:
-    """Render stable review metadata for every baselined fingerprint."""
     entries: dict[str, dict[str, object]] = {}
     for item in diagnostics:
         if item.fingerprint is None or not is_baselineable(item):

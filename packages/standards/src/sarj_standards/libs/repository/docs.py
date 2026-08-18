@@ -1,5 +1,3 @@
-"""Generate every human-facing README from repository-owned source data."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,8 +48,6 @@ _DOCUMENTATION_URL: Final = "https://code-standards.sarj.ai/"
 
 @dataclass(frozen=True, slots=True)
 class DocumentationResult:
-    """Outcome of a deterministic documentation check or synchronization."""
-
     changed: tuple[Path, ...]
     checked: tuple[Path, ...]
 
@@ -62,12 +58,10 @@ class DocumentationResult:
 
 
 def check(root: Path) -> DocumentationResult:
-    """Report generated README drift and reject non-policy documentation."""
     return _update(root.resolve(), write=False)
 
 
 def sync(root: Path) -> DocumentationResult:
-    """Atomically synchronize every generated README with source data."""
     return _update(root.resolve(), write=True)
 
 
@@ -113,7 +107,7 @@ def _root_readme(
         "```bash\nuv tool install --python 3.14 sarj-standards\n```",
         (
             "## Contributing\n\n"
-            "Install uv 0.12.3, Python 3.14, Node 22.16, and GNU Make. Then bootstrap a fresh checkout:\n\n"
+            "Install uv 0.12.5, Python 3.14, Node 22.16, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
             "\n\nOnce a new rule and its tests are registered, stage it as a warning and validate it locally:\n\n"
             "```bash\n"

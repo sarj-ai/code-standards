@@ -1,5 +1,3 @@
-"""Rule registry — the single source of truth mapping rule id to rule class."""
-
 from __future__ import annotations
 
 from types import MappingProxyType
@@ -8,6 +6,7 @@ from typing import TYPE_CHECKING
 from sarj_iac_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_iac_lint.rules.no_dead_environment_input import NoDeadEnvironmentInput
 from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditional
+from sarj_iac_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_iac_lint.rules.no_terraform_test_file import NoTerraformTestFile
 from sarj_iac_lint.rules.require_deletion_protection import RequireDeletionProtection
 from sarj_iac_lint.rules.require_prevent_destroy import RequirePreventDestroyOnIrreplaceable
@@ -27,5 +26,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoEnvironmentConditional.id: NoEnvironmentConditional,
         NoDeadEnvironmentInput.id: NoDeadEnvironmentInput,
         NoTerraformTestFile.id: NoTerraformTestFile,
+        NoRestatedComment.id: NoRestatedComment,
     }
 )

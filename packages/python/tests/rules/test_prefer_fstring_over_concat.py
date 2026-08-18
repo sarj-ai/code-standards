@@ -29,7 +29,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def _typed(source: str) -> str:
-    """Give bare runtime names concrete ``str`` evidence in positive fixtures."""
     tree = ast.parse(textwrap.dedent(source))
     called_names = {
         node.func.id for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)

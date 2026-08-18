@@ -50,7 +50,6 @@ def test_flags_none_sentinel_break_after_assignment() -> None:
 
 
 def test_leaves_a_while_true_without_the_read_break_shape_alone() -> None:
-    """SARJ077 is about the assign-then-break-on-falsy idiom, not `while True` generally."""
     source = """
     while True:
         tick()
@@ -61,7 +60,6 @@ def test_leaves_a_while_true_without_the_read_break_shape_alone() -> None:
 
 
 def test_leaves_a_loop_already_using_the_walrus_alone() -> None:
-    """Rewriting as the rule asks must silence it, or the advice is unfollowable."""
     source = """
     while (chunk := stream.read(8192)):
         process(chunk)
@@ -70,7 +68,6 @@ def test_leaves_a_loop_already_using_the_walrus_alone() -> None:
 
 
 def test_leaves_a_break_on_a_different_variable_alone() -> None:
-    """The break has to test the variable that was just assigned; otherwise it is a different loop."""
     source = """
     while True:
         chunk = stream.read(8192)

@@ -8,6 +8,7 @@ from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
 from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 from sarj_sql_lint.rules.insert_requires_on_conflict import InsertRequiresOnConflict
+from sarj_sql_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_sql_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
@@ -37,5 +38,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequireLockTimeout.id: RequireLockTimeout,
         AddConstraintRequiresNotValid.id: AddConstraintRequiresNotValid,
         RequireFkIndex.id: RequireFkIndex,
+        NoCommentCruft.id: NoCommentCruft,
     }
 )

@@ -1,5 +1,3 @@
-"""SARJ204 — every guard pinned in both directions."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -103,7 +101,6 @@ locals {
 
 
 def test_a_function_result_compared_to_a_literal_is_not_flagged():
-    """`upper(var.environment)` is a call's value, not the bare environment name."""
     src = """
 locals {
   on = upper(var.environment) == "PROD"
@@ -113,7 +110,6 @@ locals {
 
 
 def test_flags_a_parenthesized_operand_inside_a_list_for_expression():
-    """`if` heads an expression, so `if (…)` is a grouping paren, not a call result."""
     src = """
 locals {
   subnets = [for e in var.subnets : e if (var.environment) == "prod"]
@@ -141,7 +137,6 @@ locals {
 
 
 def test_flags_an_index_keyed_by_the_environment():
-    """`local.tiers[var.environment]` is lookup() spelled as native indexing."""
     src = """
 locals {
   tier = local.tiers[var.environment]
@@ -272,7 +267,6 @@ locals {
 
 
 def test_flags_the_same_variable_against_a_real_literal():
-    """The guard is about the empty string, not about the variable."""
     src = """
 locals {
   ui = var.environment == "prod" ? "a" : "b"
@@ -332,7 +326,6 @@ data "google_project" "p" {
 
 
 def test_exempts_an_assert_inside_a_check_block():
-    """The prune is the whole subtree: `assert` sits two levels down."""
     src = """
 check "environment" {
   assert {
@@ -354,7 +347,6 @@ run "check" {
 
 
 def test_still_flags_a_sibling_of_an_exempt_block():
-    """Pruning `validation` must not prune the rest of the file."""
     src = """
 variable "environment" {
   validation {
@@ -382,7 +374,6 @@ resource "google_secret_manager_secret" "s" {
 
 
 def test_flags_contains_with_a_non_literal_haystack():
-    """Membership via an intermediate list is the same branch; the needle is the anchor."""
     src = """
 locals {
   on = contains(local.prod_like, var.environment)
@@ -439,7 +430,6 @@ locals {
 
 
 def test_never_flags_a_comparison_against_an_interpolated_string():
-    """A computed right-hand side is not a hardcoded environment name to edit."""
     src = """
 locals {
   on = var.environment == "prod-${var.suffix}" ? 1 : 0
@@ -449,7 +439,6 @@ locals {
 
 
 def test_flags_a_comparison_whose_branches_interpolate():
-    """Interpolation elsewhere in the value must not suppress a real comparison."""
     src = """
 locals {
   host = var.environment == "prod" ? "https://${var.domain}" : "http://localhost"
@@ -497,13 +486,11 @@ locals {
 
 
 def test_the_segment_sets_are_exactly_these():
-    """A parametrized case cannot catch a segment quietly deleted from the set."""
     assert {"environment", "env", "stage", "workspace", "deployment"} == ENVIRONMENT_SEGMENTS
     assert {"project", "slug", "branch", "account", "tenant"} == QUALIFIED_SEGMENTS
 
 
 def test_flags_a_module_input_computed_from_the_environment():
-    """The value belongs in that environment's tfvars, not in the call site."""
     src = """
 module "iam" {
   source                             = "./iam"
@@ -539,7 +526,6 @@ module "sandbox" {
 
 
 def test_flags_a_local_wired_into_module_inputs():
-    """Hoisting the branch into a local does not make it configuration."""
     src = """
 locals {
   langfuse_host = contains(["preview", "sandbox"], var.environment) ? "internal" : var.langfuse_host
@@ -574,7 +560,6 @@ locals {
 
 
 def test_reports_every_resource_that_repeats_the_same_gate():
-    """One decision spread over four resources is four sites to edit, and four noqa lines."""
     src = """
 resource "cloudflare_r2_bucket" "a" {
   count = var.environment == "sandbox" ? 1 : 0
@@ -628,7 +613,6 @@ resource "google_storage_bucket" "b" {
 
 
 def test_flags_a_terragrunt_top_level_attribute():
-    """Terragrunt keeps its configuration in file-level attributes, not blocks."""
     src = 'top_level = var.environment == "prod"\n'
     diags = _check(src, name="terragrunt.hcl")
     assert len(diags) == 1
@@ -659,7 +643,6 @@ locals {
 
 
 def test_ignores_tfvars():
-    """The suffix filter keeps .tfvars deliberately out of scope."""
     assert _check('environment = "prod"\n', name="prod.tfvars") == []
 
 
@@ -685,7 +668,6 @@ resource "google_monitoring_alert_policy" "a" {
 
 
 def test_a_multiline_value_reports_at_the_attribute_line():
-    """Suppression is line-keyed, so the diagnostic must land where a noqa can reach it."""
     src = """
 locals {
   node_metadata = merge(

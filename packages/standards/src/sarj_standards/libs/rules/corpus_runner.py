@@ -1,5 +1,3 @@
-"""Run corpus linters in bounded, repository-isolated child processes."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,8 +32,6 @@ _READ_SIZE = 65_536
 
 @dataclass(frozen=True, slots=True)
 class CorpusBatchResult:
-    """Aggregate-only result; source paths and diagnostic text are not retained."""
-
     corpus: str
     ordinal: int
     files: int
@@ -51,8 +47,6 @@ class CorpusBatchResult:
 
 @dataclass(frozen=True, slots=True)
 class IsolatedCorpusReport:
-    """Evidence that every bounded batch completed in its own process."""
-
     batches: tuple[CorpusBatchResult, ...]
 
     @property
@@ -99,7 +93,6 @@ def run_isolated_corpora(
     max_batches: int = _DEFAULT_MAX_BATCHES,
     accepted_returncodes: frozenset[int] = frozenset({0, 1}),
 ) -> IsolatedCorpusReport:
-    """Lint verified corpora without sharing a long-lived linter or retained findings."""
     if not sources:
         msg = "isolated corpus evaluation requires at least one corpus"
         raise ValueError(msg)
@@ -172,7 +165,6 @@ def argv_batches(
     *,
     batch_size: int,
 ) -> tuple[tuple[Path, ...], ...]:
-    """Bound batches by both file count and conservative encoded argv bytes."""
     base_bytes = sum(len(os.fsencode(argument)) + 1 for argument in command)
     if base_bytes >= _MAX_ARGV_BYTES:
         msg = "corpus linter command exceeds the argv byte budget"
@@ -260,7 +252,6 @@ def _run_process(
     timeout: timedelta,
     max_output_bytes: int,
 ) -> _ProcessResult:
-    """Drain both output streams while retaining only a deterministic prefix."""
     deadline = time.monotonic() + timeout.total_seconds()
     process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is never interpreted by a shell.
         argv,
@@ -365,7 +356,6 @@ def _drain_stream(
 
 
 def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
-    """Terminate a timed-out child and its descendants when process groups are available."""
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)

@@ -1,5 +1,3 @@
-"""Best-effort file transaction for adoption and upgrade operations."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -52,7 +50,6 @@ _INSTALL_MUTATION_NAMES: Final = frozenset(
 
 
 def validate_targets(root: Path, paths: tuple[Path, ...]) -> None:
-    """Reject mutation targets that escape the repo or traverse a symlink."""
     resolved_root = root.resolve()
     lexical_root = root.absolute()
     for path in paths:
@@ -81,12 +78,10 @@ def validate_targets(root: Path, paths: tuple[Path, ...]) -> None:
 
 
 def atomic_write_text(root: Path, path: Path, contents: str) -> None:
-    """Replace one validated file without following a swapped final symlink."""
     atomic_write_bytes(root, path, contents.encode("utf-8"))
 
 
 def atomic_write_bytes(root: Path, path: Path, contents: bytes, *, mode: int | None = None) -> None:
-    """Replace one validated binary file without following a swapped final symlink."""
     validate_targets(root, (path,))
     path.parent.mkdir(parents=True, exist_ok=True)
     validate_targets(root, (path,))
@@ -103,7 +98,6 @@ def atomic_write_bytes(root: Path, path: Path, contents: bytes, *, mode: int | N
 
 
 def assert_expected(root: Path, path: Path, expected: bytes | None) -> None:
-    """Fail immediately when a planned target changed after its plan was built."""
     validate_targets(root, (path,))
     current = path.read_bytes() if path.is_file() else None
     if current != expected:
@@ -112,7 +106,6 @@ def assert_expected(root: Path, path: Path, expected: bytes | None) -> None:
 
 
 def remove_file(root: Path, path: Path) -> None:
-    """Remove one validated regular file without following links."""
     validate_targets(root, (path,))
     try:
         path.unlink()
@@ -131,24 +124,18 @@ def _write_temporary(descriptor: int, contents: bytes, mode: int) -> None:
 
 @dataclass
 class FileSnapshot:
-    """Recoverable state for one file that existed before an operation."""
-
     contents: bytes | None
     mode: int | None
 
 
 @dataclass(frozen=True, slots=True)
 class RollbackIssue:
-    """One path that could not be restored without risking more data loss."""
-
     path: Path
     detail: str
 
 
 @dataclass(frozen=True, slots=True)
 class RollbackReport:
-    """Best-effort rollback outcome; recovery failures never raise recursively."""
-
     issues: tuple[RollbackIssue, ...] = ()
 
     @property
@@ -163,8 +150,6 @@ class RollbackReport:
 
 @dataclass
 class FileTransaction:
-    """Snapshot likely mutation targets and restore them after a failed operation."""
-
     root: Path
     before: dict[Path, FileSnapshot]
     written: dict[Path, bytes | None]
@@ -213,7 +198,6 @@ class FileTransaction:
                 self.absent_parents.update(_absent_parents(self.root, path.parent))
 
     def mark_written(self, *paths: Path) -> None:
-        """Record direct writes so later concurrent edits are not overwritten."""
         for path in paths:
             self.written[path] = path.read_bytes() if path.is_file() else None
 

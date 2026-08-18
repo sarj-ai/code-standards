@@ -1,5 +1,3 @@
-"""CLI: sarj-sql-lint check --rule <id> [--rule <id2>] <files>."""
-
 from __future__ import annotations
 
 import argparse
@@ -82,7 +80,6 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
 
 
 def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
-    """Return native diagnostics without rendering CLI output."""
     return _check(rule_ids, paths)
 
 

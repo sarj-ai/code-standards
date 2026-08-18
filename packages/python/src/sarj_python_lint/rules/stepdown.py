@@ -1,8 +1,3 @@
-"""SARJ023 — Stepdown rule — a single-caller private helper belongs below its caller.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_stepdown.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -123,7 +118,6 @@ class Stepdown(Rule):
 
 
 def _last_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
-    """Index defs by name, keeping the runtime implementation of an overload group."""
     last: dict[str, DefT] = {}
     for d in defs:
         last[d.name] = d
@@ -263,7 +257,6 @@ def _record_ref_line(ref_lines: dict[tuple[str, str], int], caller: str, callee:
 
 
 def _family_external_refs(classes: list[ast.ClassDef]) -> dict[int, frozenset[str]]:
-    """Map each class to method names its inheritance relatives reference via self/cls/super."""
     name_to_ids: dict[str, list[int]] = {}
     for c in classes:
         name_to_ids.setdefault(c.name, []).append(id(c))
@@ -318,7 +311,6 @@ def _base_name(base: ast.expr) -> str | None:
 
 
 def _class_self_method_refs(cls: ast.ClassDef) -> set[str]:
-    """Collect method names this class references via `self` / `cls` / `super()` / its own name."""
     out: set[str] = set()
     for m in cls.body:
         if not isinstance(m, _DEF_NODES):
@@ -361,7 +353,6 @@ def _has_order_sensitive_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef)
 
 
 def _deferred_body(node: ast.stmt) -> list[ast.stmt]:
-    """Collect statements that execute only when the def is invoked, not at import."""
     if isinstance(node, _DEF_NODES):
         return node.body
     if isinstance(node, ast.ClassDef):
@@ -375,7 +366,6 @@ def _deferred_body(node: ast.stmt) -> list[ast.stmt]:
 
 
 def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
-    """Yield expression nodes reachable at call time within `stmts`."""
     stack: list[ast.AST] = list(stmts)
     while stack:
         node = stack.pop()
@@ -419,12 +409,10 @@ def _module_pinned_names(tree: ast.Module, definition_names: frozenset[str]) -> 
 
 
 def _global_declaration_names(tree: ast.Module) -> set[str]:
-    """Pin names explicitly routed to mutable module state from any nested scope."""
     return {name for node in _walk(tree) if isinstance(node, ast.Global) for name in node.names}
 
 
 def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
-    """Collect bare names referenced at class-creation time inside the class body."""
     pinned: set[str] = set()
     for stmt in cls.body:
         if isinstance(stmt, _DEF_NODES):
@@ -446,7 +434,6 @@ def _class_pinned_names(cls: ast.ClassDef) -> set[str]:
 
 
 def _immediate_def_refs(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
-    """Collect names evaluated at `def` time: decorators, defaults, annotations."""
     parts: list[ast.expr] = list(node.decorator_list)
     parts.extend(node.args.defaults)
     parts.extend(d for d in node.args.kw_defaults if d is not None)
@@ -472,7 +459,6 @@ def _immediate_class_header_refs(cls: ast.ClassDef) -> set[str]:
 
 
 def _name_loads(node: ast.AST) -> set[str]:
-    """Collect load-context bare names evaluated where `node` sits at import/def time."""
     out: set[str] = set()
     stack: list[ast.AST] = [node]
     while stack:
@@ -553,7 +539,6 @@ def _resolved_function_loads(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     candidates: frozenset[str],
 ) -> Iterator[ast.Name]:
-    """Yield loads that resolve past the function's lexical scopes to a module definition."""
     blocked = _direct_scope_bindings(node) & candidates
     yield from _resolved_loads(node.body, candidates, blocked)
 

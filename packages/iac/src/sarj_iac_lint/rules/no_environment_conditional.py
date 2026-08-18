@@ -1,5 +1,3 @@
-"""SARJ204: Terraform must take named inputs instead of branching on the environment name."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -83,16 +81,12 @@ _MIN_QUOTED_LENGTH = 2
 
 
 class _Use(NamedTuple):
-    """One environment-name branch found in an attribute value."""
-
     identity: str
     shape: str
 
 
 @final
 class NoEnvironmentConditional(Rule):
-    """Terraform branching on the environment name rather than on a named input."""
-
     id = "no-environment-conditional"
     code = "SARJ204"
     documentation = RuleDocumentation(
@@ -214,7 +208,6 @@ class NoEnvironmentConditional(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Flag every environment-name branch outside an assertion block."""
         name = str(path)
         if name.endswith(_TEST_SUFFIXES) or not name.endswith(_HCL_SUFFIXES):
             return []
@@ -233,7 +226,6 @@ class NoEnvironmentConditional(Rule):
 
 
 def _attributes(bs: tuple[Block, ...]) -> Iterator[tuple[Block, Attribute]]:
-    """Walk every attribute at every depth, pruning whole assertion subtrees."""
     for block in bs:
         if block.type in _ASSERTION_BLOCKS:
             continue
@@ -243,7 +235,6 @@ def _attributes(bs: tuple[Block, ...]) -> Iterator[tuple[Block, Attribute]]:
 
 
 def _environment_use(value: str) -> _Use | None:
-    """Find the first environment-name branch in `value`, or None when there is none."""
     toks = tokens(value)
     for index, tok in enumerate(toks):
         if tok in _COMPARISONS:
@@ -260,7 +251,6 @@ def _environment_use(value: str) -> _Use | None:
 
 
 def _comparison(toks: tuple[str, ...], index: int) -> _Use | None:
-    """Read `<identity> == "literal"` in either operand order, through grouping parens."""
     if index == 0 or index + 1 >= len(toks):
         return None
     left, right = _left_operand(toks, index), _right_operand(toks, index)
@@ -275,7 +265,6 @@ def _comparison(toks: tuple[str, ...], index: int) -> _Use | None:
 
 
 def _left_operand(toks: tuple[str, ...], index: int) -> str | None:
-    """Resolve the operand before a comparison, or None when it is not one token."""
     if toks[index - 1] != ")":
         return toks[index - 1]
     open_index = _matching_open(toks, index - 1)
@@ -289,7 +278,6 @@ def _left_operand(toks: tuple[str, ...], index: int) -> str | None:
 
 
 def _right_operand(toks: tuple[str, ...], index: int) -> str | None:
-    """Resolve the operand after a comparison, or None when it is not one token."""
     if toks[index + 1] != "(":
         return toks[index + 1]
     close_index = _matching_close(toks, index + 1)
@@ -299,7 +287,6 @@ def _right_operand(toks: tuple[str, ...], index: int) -> str | None:
 
 
 def _call(toks: tuple[str, ...], index: int) -> _Use | None:
-    """Read `contains(list, identity)` and `lookup(map, identity, default)`."""
     args = _call_arguments(toks, index + 1)
     if len(args) < _MIN_CALL_ARGS:
         return None
@@ -318,7 +305,6 @@ def _call(toks: tuple[str, ...], index: int) -> _Use | None:
 
 
 def _call_arguments(toks: tuple[str, ...], open_index: int) -> list[list[str]]:
-    """Split a call's tokens on top-level commas so argument position is readable."""
     args: list[list[str]] = []
     current: list[str] = []
     depth = 0
@@ -340,26 +326,22 @@ def _call_arguments(toks: tuple[str, ...], open_index: int) -> list[list[str]]:
 
 
 def _single_identity(arg: Sequence[str]) -> str | None:
-    """Resolve an argument to its lone environment-identity token, or None."""
     tok = _single_token(arg)
     return tok if tok is not None and _is_environment_identity(tok) else None
 
 
 def _single_token(group: Sequence[str]) -> str | None:
-    """Reduce a token span to its lone token, peeling grouping parens, or None."""
     peeled = _peel(group)
     return peeled[0] if len(peeled) == 1 else None
 
 
 def _peel(group: Sequence[str]) -> Sequence[str]:
-    """Strip parens that wrap the whole token span, however deeply they nest."""
     while len(group) >= _GROUP_TOKENS and group[0] == "(" and _matching_close(group, 0) == len(group) - 1:
         group = group[1:-1]
     return group
 
 
 def _matching_close(toks: Sequence[str], open_index: int) -> int | None:
-    """Find the index of the bracket closing the one at `open_index`."""
     depth = 0
     for index in range(open_index, len(toks)):
         if toks[index] in _OPEN:
@@ -372,7 +354,6 @@ def _matching_close(toks: Sequence[str], open_index: int) -> int | None:
 
 
 def _matching_open(toks: Sequence[str], close_index: int) -> int | None:
-    """Find the index of the bracket opening the one at `close_index`."""
     depth = 0
     for index in range(close_index, -1, -1):
         if toks[index] in _CLOSE:
@@ -385,7 +366,6 @@ def _matching_open(toks: Sequence[str], close_index: int) -> int | None:
 
 
 def _index(toks: tuple[str, ...], index: int) -> _Use | None:
-    """Read `<expr>[identity]`: indexing by the environment is lookup() by another spelling."""
     if index == 0 or index + 2 >= len(toks):
         return None
     # An index needs a subject; a `[` after an operator, comma, or another
@@ -401,16 +381,10 @@ def _index(toks: tuple[str, ...], index: int) -> _Use | None:
 
 
 def _is_reference(tok: str) -> bool:
-    """Report whether a token is an identifier reference, not a keyword or operator.
-
-    Before `(` a reference names a function being called; before `[` it is the
-    subject of an index rather than the start of a list literal.
-    """
     return tok not in _EXPRESSION_KEYWORDS and (tok[:1].isalpha() or tok[:1] == "_")
 
 
 def _is_literal_list(arg: list[str]) -> bool:
-    """Report whether an argument is a non-empty list of string literals."""
     if len(arg) < _LIST_TOKENS or arg[0] != "[" or arg[-1] != "]":
         return False
     items = [tok for tok in arg[1:-1] if tok != ","]
@@ -418,7 +392,6 @@ def _is_literal_list(arg: list[str]) -> bool:
 
 
 def _is_environment_identity(tok: str) -> bool:
-    """Report whether one token reads the environment the code is deployed into."""
     if tok == _WORKSPACE:
         return True
     if not tok.startswith(_IDENTITY_PREFIXES):
@@ -427,7 +400,6 @@ def _is_environment_identity(tok: str) -> bool:
 
 
 def _is_environment_name(name: str) -> bool:
-    """Match environment segments whole, so a product word never reads as identity."""
     segments = [segment for segment in name.split("_") if segment]
     if not segments:
         return False
@@ -439,7 +411,6 @@ def _is_environment_name(name: str) -> bool:
 
 
 def _is_literal_string(tok: str) -> bool:
-    """Report whether a token is a non-empty, non-interpolated string literal."""
     if len(tok) < _MIN_QUOTED_LENGTH or not tok.startswith('"') or not tok.endswith('"'):
         return False
     if "${" in tok:
@@ -448,7 +419,6 @@ def _is_literal_string(tok: str) -> bool:
 
 
 def _message(owner: Block, attr: Attribute, use: _Use) -> str:
-    """Name the branch, where it sits, and the input that should replace it."""
     # The synthetic root block has no type: its attributes sit at the file's top
     # level, which is where Terragrunt keeps `inputs`.
     labelled = " ".join([owner.type, *(f'"{label}"' for label in owner.labels)])

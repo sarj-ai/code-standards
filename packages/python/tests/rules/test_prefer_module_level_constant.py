@@ -27,7 +27,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 def _fn(body: str) -> str:
-    """Wrap statements in a module-level function."""
     indented = "\n".join(f"    {line}" if line else "" for line in body.splitlines())
     return f"def handle(payload):\n{indented}\n"
 

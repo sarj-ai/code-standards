@@ -1,5 +1,3 @@
-"""Direct tests for the shared node index every rule's traversal goes through."""
-
 import ast
 
 from sarj_python_lint.rules._ast_index import children, nodes, walk
@@ -49,7 +47,6 @@ def test_children_is_elementwise_identical_to_iter_child_nodes() -> None:
 
 
 def test_nodes_preserves_ast_walk_order_for_a_single_type() -> None:
-    """The order invariant."""
     tree = _tree()
     expected = [n for n in ast.walk(tree) if isinstance(n, ast.Name)]
     assert [id(n) for n in nodes(tree, ast.Name)] == [id(n) for n in expected]
@@ -63,7 +60,6 @@ def test_nodes_preserves_ast_walk_order_across_several_types() -> None:
 
 
 def test_nodes_matches_subclasses_not_exact_classes() -> None:
-    """Buckets are keyed on exact class; a query for a BASE class must still resolve."""
     tree = _tree()
     expected = [n for n in ast.walk(tree) if isinstance(n, ast.stmt)]
     assert [id(n) for n in nodes(tree, ast.stmt)] == [id(n) for n in expected]
@@ -80,7 +76,6 @@ def test_a_type_absent_from_the_file_returns_nothing() -> None:
 
 
 def test_the_memo_slot_is_rebuilt_when_the_tree_changes() -> None:
-    """One slot, keyed on tree identity -- so alternating trees must not alias."""
     first = ast.parse("class A:\n    pass\n")
     second = ast.parse("def b() -> None:\n    pass\n")
     assert len(nodes(first, ast.ClassDef)) == 1
@@ -99,7 +94,6 @@ def test_repeated_queries_of_the_same_types_agree() -> None:
 
 
 def test_walk_of_a_subtree_stays_inside_it() -> None:
-    """`walk` exists for the containment question a whole-module index cannot answer."""
     tree = _tree()
     (klass,) = nodes(tree, ast.ClassDef)
     names = {n.id for n in walk(klass) if isinstance(n, ast.Name)}

@@ -1,5 +1,3 @@
-"""Stable diagnostic protocol and serializers."""
-
 from .models import (
     ANALYSIS_SCHEMA,
     FINGERPRINT_VERSION,

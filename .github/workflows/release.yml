@@ -131,7 +131,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
       - id: c
         env:
           BEFORE: ${{ github.event.before }}
@@ -169,7 +169,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
       - run: npm install --global npm@12.0.2 --ignore-scripts
       - name: Enforce lockfile release-age quarantine
         run: uv run --project ../standards --frozen sarj-standards --root ../.. maintain release lock-age packages/typescript/package-lock.json --exclude-file .github/release-age-exclusions.txt
@@ -249,7 +249,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
           enable-cache: false
       - run: uv python install 3.14
       - run: uv sync --locked --dev
@@ -355,7 +355,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
           enable-cache: false
       - run: uv python install 3.14
       - run: uv sync --locked --dev
@@ -450,7 +450,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
           enable-cache: false
       - run: uv python install 3.14
       - run: uv sync --locked --dev
@@ -545,7 +545,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
           enable-cache: false
       - run: uv python install 3.14
       - run: uv sync --locked --dev
@@ -638,7 +638,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - run: uv python install 3.14
@@ -715,7 +715,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          version: '0.12.3'
+          version: '0.12.5'
           enable-cache: false
       - run: uv python install 3.14
       - name: Require every exact Standards sibling to be public

@@ -1,5 +1,3 @@
-"""One tree traversal per file, shared by every rule that needs node lookups."""
-
 # Breadth-first order and isinstance semantics intentionally match ast.walk because rules rely on first-match order.
 
 from __future__ import annotations
@@ -16,7 +14,6 @@ _AST = ast.AST
 
 
 def children(node: ast.AST) -> list[ast.AST]:
-    """`node`'s direct children, in the same order as `ast.iter_child_nodes`."""
     out: list[ast.AST] = []
     for name in node._fields:
         value: object = getattr(node, name, None)
@@ -28,7 +25,6 @@ def children(node: ast.AST) -> list[ast.AST]:
 
 
 def walk(node: ast.AST) -> Iterator[ast.AST]:
-    """Yield `node` and every descendant, breadth-first."""
     queue: list[ast.AST] = [node]
     i = 0
     while i < len(queue):
@@ -45,8 +41,6 @@ def walk(node: ast.AST) -> Iterator[ast.AST]:
 
 @final
 class _NodeIndex:
-    """A module's nodes partitioned by exact class, in breadth-first order."""
-
     __slots__ = ("_buckets", "_flat", "_queries")
 
     def __init__(self, tree: ast.AST) -> None:
@@ -73,7 +67,6 @@ class _NodeIndex:
         self._queries: dict[tuple[type[ast.AST], ...], list[ast.AST]] = {}
 
     def query(self, types: tuple[type[ast.AST], ...]) -> list[ast.AST]:
-        """Return every node matching `isinstance(node, types)`, breadth-first."""
         hit = self._queries.get(types)
         if hit is not None:
             return hit
@@ -98,7 +91,6 @@ _last_index: tuple[ast.AST, _NodeIndex] | None = None
 
 
 def nodes[NodeT: ast.AST](tree: ast.AST, *types: type[NodeT]) -> list[NodeT]:
-    """Index a whole-file tree; use `walk` for subtrees and never mutate indexed nodes."""
     global _last_index  # ruff: ignore[global-statement] — single-slot memo, mirroring `parse_or_none`
     if _last_index is None or _last_index[0] is not tree:
         _last_index = (tree, _NodeIndex(tree))

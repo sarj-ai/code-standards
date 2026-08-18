@@ -1,5 +1,3 @@
-"""Repository setup is planned by the package rather than by shell recipes."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

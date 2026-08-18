@@ -1,8 +1,3 @@
-"""SARJ009 — Exception handlers that silently swallow via a sentinel return.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_sentinel_return_on_except.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -150,12 +145,10 @@ def _build_parent_map(tree: ast.AST) -> ParentMap:
 
 
 def _is_bare_except_pass(handler: ast.ExceptHandler) -> bool:
-    """Report whether a bare `except:` has a body of nothing but `pass`."""
     return handler.type is None and all(isinstance(stmt, ast.Pass) for stmt in handler.body)
 
 
 def _is_intended_result(handler: ast.ExceptHandler, ret: ast.Return, parents: ParentMap) -> bool:
-    """Report whether the handler's sentinel is the function's intended typed result."""
     exc_names = _handler_exc_names(handler)
     if _is_feature_detection(exc_names):
         return True
@@ -187,7 +180,6 @@ def _is_intended_result(handler: ast.ExceptHandler, ret: ast.Return, parents: Pa
 
 
 def _sentinel_is_declared_result(func: ast.FunctionDef | ast.AsyncFunctionDef, ret: ast.Return) -> bool:
-    """Report whether a NON-exception path of `func` returns this same sentinel."""
     key = _sentinel_key(ret.value)
     if key is None:
         return False
@@ -195,7 +187,6 @@ def _sentinel_is_declared_result(func: ast.FunctionDef | ast.AsyncFunctionDef, r
 
 
 def _sentinel_key(value: ast.expr | None) -> str | None:
-    """Classify a return value as one of the recognized sentinel shapes."""
     match value:
         case None | ast.Constant(value=None):
             return "none"
@@ -219,7 +210,6 @@ def _sentinel_matches_concrete_collection(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     ret: ast.Return,
 ) -> bool:
-    """Match an empty value to an explicitly concrete collection contract."""
     annotation = func.returns
     if isinstance(annotation, ast.Subscript):
         annotation = annotation.value
@@ -235,7 +225,6 @@ def _sentinel_matches_concrete_collection(
 
 
 def _guarded_body_swallows_nothing(handler: ast.ExceptHandler, parents: ParentMap) -> bool:
-    """Report whether the guarded `try` body has no error worth discarding."""
     try_node = parents.get(handler)
     if not isinstance(try_node, ast.Try | ast.TryStar) or not try_node.body:
         return False
@@ -245,14 +234,12 @@ def _guarded_body_swallows_nothing(handler: ast.ExceptHandler, parents: ParentMa
 
 
 def _is_inert(stmt: ast.stmt) -> bool:
-    """Report whether `stmt` can raise nothing at all."""
     if isinstance(stmt, ast.Pass):
         return True
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
 
 
 def _handler_prints_exception(handler: ast.ExceptHandler) -> bool:
-    """Report whether the handler `print(...)`s the exception it bound."""
     bound = handler.name
     if bound is None or not _is_narrow_handler(_handler_exc_names(handler)):
         return False
@@ -266,17 +253,14 @@ def _handler_prints_exception(handler: ast.ExceptHandler) -> bool:
 
 
 def _is_narrow_handler(exc_names: tuple[str, ...] | None) -> bool:
-    """Report whether the handler catches only narrow (non-broad, non-bare) types."""
     return exc_names is not None and not any(name in _BROAD_ERRORS for name in exc_names)
 
 
 def _returns_optional(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether `func`'s return annotation is an `Optional` shape."""
     return func.returns is not None and _annotation_is_optional(func.returns)
 
 
 def _annotation_is_optional(ann: ast.expr) -> bool:
-    """Report whether a type-annotation expression admits `None`."""
     if isinstance(ann, ast.BinOp) and isinstance(ann.op, ast.BitOr):
         return any(_is_none_annotation(side) or _annotation_is_optional(side) for side in (ann.left, ann.right))
     if isinstance(ann, ast.Subscript):
@@ -291,21 +275,18 @@ def _annotation_is_optional(ann: ast.expr) -> bool:
 
 
 def _is_none_annotation(ann: ast.expr) -> bool:
-    """Report whether an annotation node is `None`."""
     if isinstance(ann, ast.Constant):
         return ann.value is None
     return isinstance(ann, ast.Name) and ann.id == "None"
 
 
 def _sentinel_matches_optional(ret: ast.Return) -> bool:
-    """Report whether the return value is the `None` arm or an empty container."""
     if ret.value is None:
         return True
     return _is_sentinel(ret.value) and _value_kind(ret.value) != "bool"
 
 
 def _handler_exc_names(handler: ast.ExceptHandler) -> tuple[str, ...] | None:
-    """Collect the simple names of the caught exception types."""
     caught = handler.type
     if caught is None:
         return None
@@ -328,7 +309,6 @@ _ITERATION_ERRORS: frozenset[str] = frozenset({"StopIteration", "StopAsyncIterat
 
 
 def _is_iteration_control(exc_names: tuple[str, ...] | None) -> bool:
-    """Report whether the handler catches only iterator-exhaustion exceptions."""
     return exc_names is not None and len(exc_names) > 0 and all(name in _ITERATION_ERRORS for name in exc_names)
 
 
@@ -336,7 +316,6 @@ _BOOL_FAMILY_SUBSCRIPTS = frozenset({"TypeGuard", "TypeIs"})
 
 
 def _returns_bool(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether `func` declares a boolean contract."""
     ann = func.returns
     if ann is None:
         return False
@@ -350,12 +329,10 @@ def _returns_bool(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def _returns_none(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether `func` is annotated `-> None` (a procedure)."""
     return func.returns is not None and _is_none_annotation(func.returns)
 
 
 def _is_feature_detection(exc_names: tuple[str, ...] | None) -> bool:
-    """Report whether the handler catches only import errors."""
     return exc_names is not None and len(exc_names) > 0 and all(name in _IMPORT_ERRORS for name in exc_names)
 
 
@@ -363,12 +340,10 @@ _PREDICATE_NAME_RE = re.compile(r"^_*(?:is|has|can|should)_")
 
 
 def _is_predicate_name(name: str) -> bool:
-    """Report whether `name` is a boolean-probe name."""
     return _PREDICATE_NAME_RE.match(name) is not None
 
 
 def _enclosing_function(node: ast.AST, parents: ParentMap) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-    """Find the nearest enclosing function of `node`."""
     current = parents.get(node)
     while current is not None:
         if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -378,12 +353,10 @@ def _enclosing_function(node: ast.AST, parents: ParentMap) -> ast.FunctionDef | 
 
 
 def _has_non_except_bool_return(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """Report whether a non-exception path of `func` returns a boolean literal."""
     return any(_value_kind(ret.value) == "bool" for stmt in func.body for ret in _non_except_returns(stmt))
 
 
 def _non_except_returns(node: ast.AST) -> list[ast.Return]:
-    """Collect return nodes reachable from `node` on a non-exception path."""
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
         return []
     found: list[ast.Return] = []
@@ -397,7 +370,6 @@ def _non_except_returns(node: ast.AST) -> list[ast.Return]:
 
 
 def _is_lookup_with_default(handler: ast.ExceptHandler, parents: ParentMap, exc_names: tuple[str, ...] | None) -> bool:
-    """Report whether the handler is the lookup-with-default idiom."""
     try_node = parents.get(handler)
     if not isinstance(try_node, ast.Try):
         return False
@@ -410,7 +382,6 @@ def _is_lookup_with_default(handler: ast.ExceptHandler, parents: ParentMap, exc_
 
 
 def _value_kind(value: ast.expr | None) -> str | None:
-    """Classify the coarse kind of a return value, used for boolean-probe matching."""
     if value is None:
         return "none"
     if isinstance(value, ast.Constant):
@@ -423,7 +394,6 @@ def _value_kind(value: ast.expr | None) -> str | None:
 
 
 def _is_sentinel(value: ast.expr) -> bool:
-    """Report whether `value` is a sentinel: None, False, empty collection/str, set()."""
     match value:
         case ast.Constant(value=literal):
             # None, False, or empty string.
@@ -441,12 +411,10 @@ def _is_sentinel(value: ast.expr) -> bool:
 
 
 def _handler_logs_before_return(handler: ast.ExceptHandler) -> bool:
-    """Report whether some logging call can reach the handler's final sentinel return."""
     return _list_props(handler.body[:-1]).logged
 
 
 def _list_props(stmts: list[ast.stmt]) -> _FlowProps:
-    """Compute fall-through reachability for a statement list, ignoring the exit target."""
     reach_unlogged = True
     reach_logged = False
     for stmt in stmts:
@@ -461,7 +429,6 @@ def _list_props(stmts: list[ast.stmt]) -> _FlowProps:
 
 
 def _stmt_props(stmt: ast.stmt) -> _FlowProps:
-    """Compute `(unlogged, logged)` fall-through reachability for one statement."""
     match stmt:
         case ast.Return() | ast.Raise() | ast.Break() | ast.Continue():
             return _FlowProps(unlogged=False, logged=False)
@@ -538,12 +505,10 @@ def _match_props(node: ast.Match) -> _FlowProps:
 
 
 def _is_irrefutable_case(case: ast.match_case) -> bool:
-    """Report whether a case is an unguarded `case _:` / `case name:`."""
     return case.guard is None and isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None
 
 
 def _contains_logging_call(node: ast.AST) -> bool:
-    """Walk `node` for failure reporting, not crossing nested boundaries."""
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
         return False
     if _is_logging_call(node) or _is_user_failure_report(node):
@@ -558,7 +523,6 @@ _USER_INTERFACE_NAMES: frozenset[str] = frozenset({"ui", "notifier", "notificati
 
 
 def _is_user_failure_report(node: ast.AST) -> bool:
-    """Recognize an explicit user-facing report before a sentinel fallback."""
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -569,7 +533,6 @@ def _is_user_failure_report(node: ast.AST) -> bool:
 
 
 def _is_logging_call(node: ast.AST) -> bool:
-    """Report whether `node` is a `<recv>.<level>(...)` logging call."""
     if not isinstance(node, ast.Call):
         return False
     func = node.func
@@ -579,7 +542,6 @@ def _is_logging_call(node: ast.AST) -> bool:
 
 
 def _is_logger_receiver(receiver: ast.expr) -> bool:
-    """Report whether `receiver` denotes a logger."""
     match receiver:
         case ast.Name(id=name):
             return _is_logger_name(name)
@@ -592,7 +554,6 @@ def _is_logger_receiver(receiver: ast.expr) -> bool:
 
 
 def _is_logger_name(name: str) -> bool:
-    """Report whether `log`/`logger`/`logging` is the whole name or its final word."""
     return _LOGGER_NAME_RE.search(name) is not None
 
 
@@ -606,12 +567,10 @@ def _is_getlogger_call(call: ast.Call) -> bool:
 
 
 def _handler_reraises(handler: ast.ExceptHandler) -> bool:
-    """Report whether the handler body contains a `raise`, ignoring nested functions."""
     return any(_contains_raise(stmt) for stmt in handler.body)
 
 
 def _contains_raise(node: ast.AST) -> bool:
-    """Walk `node`, returning True on a `raise`, but not crossing nested defs."""
     # A `raise` inside a nested def/lambda doesn't re-raise for *this* handler,
     # so a node that IS a function/lambda contributes no re-raise.
     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):

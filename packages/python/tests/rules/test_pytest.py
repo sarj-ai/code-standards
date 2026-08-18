@@ -1,5 +1,3 @@
-"""Direct tests for the pytest-benchmark carve-out used by SARJ057."""
-
 import ast
 
 from sarj_python_lint.rules._pytest import has_benchmark_marker, uses_benchmark_fixture
@@ -25,7 +23,6 @@ def test_the_fixture_used_as_a_decorator_on_a_nested_function_counts() -> None:
 
 
 def test_a_parameter_that_is_merely_named_benchmark_does_not_silence_a_rule() -> None:
-    """Requiring the name to be USED is what keeps an unrelated parameter from exempting a test."""
     assert not uses_benchmark_fixture(_func("def test_x(benchmark):\n    assert compute() == 1\n"))
 
 

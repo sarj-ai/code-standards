@@ -1,5 +1,3 @@
-"""SARJ048 flags private imports only when the target is first-party and fixable."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

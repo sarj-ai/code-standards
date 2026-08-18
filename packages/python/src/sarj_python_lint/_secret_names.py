@@ -1,5 +1,3 @@
-"""Recognize secret-bearing identifiers for SARJ011 and SARJ012."""
-
 from __future__ import annotations
 
 from itertools import pairwise
@@ -67,7 +65,6 @@ _SEGMENT_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
 def identifier_tokens(identifier: str) -> list[str]:
-    """Return lowercase whole segments and their camel-case words."""
     tokens: list[str] = []
     for segment in _SEGMENT_RE.split(identifier):
         if not segment:
@@ -79,7 +76,6 @@ def identifier_tokens(identifier: str) -> list[str]:
 
 
 def leading_word(identifier: str) -> str | None:
-    """Return the first camel- or delimiter-separated word, lowercased."""
     for segment in _SEGMENT_RE.split(identifier):
         if not segment:
             continue
@@ -89,7 +85,6 @@ def leading_word(identifier: str) -> str | None:
 
 
 def is_secret_name(identifier: str) -> bool:
-    """Report whether `identifier` names raw secret material (a credential, not metadata)."""
     tokens = identifier_tokens(identifier)
     if tokens and tokens[-1] in _INNOCUOUS_WORDS:
         return False
@@ -101,5 +96,4 @@ def is_secret_name(identifier: str) -> bool:
 
 
 def _has_api_key(tokens: list[str]) -> bool:
-    """Report whether `api` is immediately followed by `key` (the split form of `api_key`)."""
     return any(a == "api" and b == "key" for a, b in pairwise(tokens))

@@ -1,5 +1,3 @@
-"""One deterministic Standards launcher for every consumer ecosystem."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,7 +9,7 @@ from typing import Final, NamedTuple
 TOOL_PYTHON: Final = "3.14"
 PACKAGE: Final = "sarj-standards"
 COMMAND: Final = "sarj-standards"
-BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==1.0.1"
+BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==1.0.2"
 RETIRED_REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
 RETIRED_LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
@@ -68,14 +66,11 @@ _REPOSITORY_PYTHON_ARGV_INVOCATION: Final = re.compile(
 
 
 class LegacyInvocationRewrite(NamedTuple):
-    """A legacy-launcher rewrite and the number of replacements made."""
-
     contents: str
     replacements: int
 
 
 def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool = False) -> tuple[str, ...]:
-    """Build the isolated launcher without consulting a consumer environment."""
     if version is not None and _VERSION.fullmatch(version) is None:
         msg = f"invalid exact Standards version: {version!r}"
         raise ValueError(msg)
@@ -95,7 +90,6 @@ def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool =
 
 
 def repository_argv(*arguments: str, executable: str = "uvx") -> tuple[str, ...]:
-    """Build the immutable bootstrap command committed to consumer wiring."""
     return (
         executable,
         "--no-config",
@@ -110,12 +104,10 @@ def repository_argv(*arguments: str, executable: str = "uvx") -> tuple[str, ...]
 
 
 def repository_command(*arguments: str) -> str:
-    """Render the stable consumer invocation shared by hooks, CI, and scripts."""
     return shlex.join(repository_argv(*arguments))
 
 
 def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
-    """Replace former direct-bundle and repository-file launchers with bootstrap."""
     contents, count = _LEGACY_REPOSITORY_INVOCATION.subn(repository_command(), text)
     contents, repository_count = _REPOSITORY_LAUNCHER_INVOCATION.subn(repository_command(), contents)
     count += repository_count
@@ -166,7 +158,6 @@ def _python_repository_argv(match: re.Match[str]) -> str:
 
 
 def retired_repository_script() -> str:
-    """Render protocol 1 exactly so only an unmodified retired launcher is removed."""
     return f"""# Managed by sarj-standards launcher protocol {RETIRED_LAUNCHER_PROTOCOL}; do not edit.
 from __future__ import annotations
 
@@ -242,10 +233,8 @@ if __name__ == "__main__":
 
 
 def latest() -> str:
-    """Render the installation-free launcher for the latest release."""
     return shlex.join(argv())
 
 
 def install() -> str:
-    """Render the optional persistent tool installation command."""
     return shlex.join(("uv", "tool", "install", "--python", TOOL_PYTHON, PACKAGE))

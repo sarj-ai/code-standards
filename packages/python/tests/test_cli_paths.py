@@ -1,5 +1,3 @@
-"""Directory expansion must never lint dependency or tool caches."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

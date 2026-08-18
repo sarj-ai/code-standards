@@ -1,5 +1,3 @@
-"""Small, transactional operations for the manifest's explicit denylist."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -17,8 +15,6 @@ ExclusionKind = Literal["path", "rule"]
 
 @dataclass(frozen=True)
 class Change:
-    """The result of an idempotent exclusion mutation."""
-
     kind: ExclusionKind
     value: str
     added: bool
@@ -26,7 +22,6 @@ class Change:
 
 
 def read(root: Path) -> manifest.Manifest:
-    """Load the adopted repository policy or explain how to create it."""
     adopted = manifest.load(root.resolve())
     if adopted is None:
         msg = "repository is not adopted; run `sarj-standards setup` first"
@@ -35,12 +30,10 @@ def read(root: Path) -> manifest.Manifest:
 
 
 def add(root: Path, kind: ExclusionKind, value: str) -> Change:
-    """Add one exact path pattern or rule selector, atomically and idempotently."""
     return _change(root, kind, value, add_value=True)
 
 
 def remove(root: Path, kind: ExclusionKind, value: str) -> Change:
-    """Remove one exact path pattern or rule selector, atomically and idempotently."""
     return _change(root, kind, value, add_value=False)
 
 

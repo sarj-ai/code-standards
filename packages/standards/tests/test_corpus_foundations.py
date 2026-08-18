@@ -1,5 +1,3 @@
-"""Corpus manifests pin local bytes and keep private overlays private."""
-
 from __future__ import annotations
 
 import os

@@ -1,8 +1,3 @@
-"""SARJ028 — Starlette/FastAPI CORS that echoes any Origin with credentials.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_cors_wildcard_with_credentials.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -122,17 +117,14 @@ class NoCorsWildcardWithCredentials(Rule):
 
 
 def _is_true_literal(node: ast.expr) -> bool:
-    """Report whether `node` is the literal `True` (not `1`, not a truthy expression)."""
     return isinstance(node, ast.Constant) and node.value is True
 
 
 def _contains_star_literal(node: ast.expr) -> bool:
-    """Report whether a `"*"` string `Constant` appears anywhere in `node`'s subtree."""
     return any(isinstance(child, ast.Constant) and child.value == "*" for child in walk(node))
 
 
 def _is_cors_construction(node: ast.Call, imports: ImportIndex) -> bool:
-    """Report a direct or application-installed, import-proven CORS middleware."""
     if imports.resolves(node.func, sources=_CORS_MODULES, symbol="CORSMiddleware"):
         return True
     return (
@@ -144,5 +136,4 @@ def _is_cors_construction(node: ast.Call, imports: ImportIndex) -> bool:
 
 
 def _is_universal_origin_regex(node: ast.expr) -> bool:
-    """Report an exact string regex that matches every origin."""
     return isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in _UNIVERSAL_ORIGIN_REGEXES

@@ -1,5 +1,3 @@
-"""Generate the public rule catalog from live, source-owned metadata."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -66,14 +64,11 @@ _PROCESS_TIMEOUT: Final = timedelta(seconds=120)
 
 @dataclass(frozen=True, slots=True)
 class CatalogSyncResult:
-    """Outcome from checking or synchronizing the committed public catalog."""
-
     status: int
     message: str
 
 
 def load(path: Path = RULE_CATALOG) -> dict[str, object]:
-    """Load the packaged public catalog without importing analysis engines."""
     try:
         payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     except (OSError, json.JSONDecodeError) as exc:
@@ -206,7 +201,6 @@ def _example_file(native: _NativeExampleFile) -> ExampleFile:
 
 
 def parse_typescript_projection(payload: object) -> tuple[RuleSpec, ...]:
-    """Validate a TypeScript catalog projection at its JSON trust boundary."""
     if not _is_array(payload):
         msg = "TypeScript public metadata projection must be an array"
         raise TypeError(msg)
@@ -318,7 +312,6 @@ def _typescript_file(value: object) -> ExampleFile:
 def build(  # ruff: ignore[too-many-locals] -- joins five engine registries with lifecycle metadata.
     root: Path,
 ) -> RuleCatalogDocument:
-    """Build the complete public catalog from current rule registries."""
     from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level]
 
     resolved = root.resolve()
@@ -468,12 +461,10 @@ def _typescript_specs(root: Path) -> tuple[RuleSpec, ...]:
 
 
 def render(root: Path) -> str:
-    """Render canonical, timestamp-free public catalog bytes."""
     return json.dumps(build(root).as_public_dict(), ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
 
 
 def sync(root: Path, *, check: bool) -> CatalogSyncResult:
-    """Check or atomically update the public catalog artifact."""
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
 
     resolved = root.resolve()

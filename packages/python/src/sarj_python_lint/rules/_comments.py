@@ -1,5 +1,3 @@
-"""Shared comment analysis for the comment-hygiene rules (SARJ016/049/050/051)."""
-
 from __future__ import annotations
 
 import ast
@@ -108,12 +106,10 @@ _SIGNALS = MappingProxyType(
 
 
 def is_protected(body: str) -> bool:
-    """Apply an exemption floor; absence of a signal does not prove prose is worthless."""
     return any(pattern.search(body) for pattern in _SIGNALS.values())
 
 
 def has_external_reference(body: str) -> bool:
-    """Report whether a comment cites a ticket, URL, RFC/PEP/CVE, or issue number."""
     return bool(_REF_RE.search(body))
 
 
@@ -257,7 +253,6 @@ STOPWORDS: frozenset[str] = frozenset(
 
 
 def split_identifier(token: str) -> list[str]:
-    """Split `snake_case` / `camelCase` / `SCREAMING_CASE` into lowercase parts."""
     parts: list[str] = []
     for chunk in token.split("_"):
         parts.extend(match.group(0).lower() for match in _CAMEL_RE.finditer(chunk))
@@ -265,7 +260,6 @@ def split_identifier(token: str) -> list[str]:
 
 
 def stem(word: str) -> str:
-    """Fold the common English inflections so `updates`/`updating` match `update`."""
     base = word
     for suffix in ("ing", "ied", "ies", "ers", "er", "ed", "es", "s"):
         if word.endswith(suffix) and len(word) - len(suffix) >= _MIN_STEM_LENGTH:
@@ -279,7 +273,6 @@ def stem(word: str) -> str:
 
 
 def content_tokens(text: str) -> list[str]:
-    """Split prose into lowercase content words, dropping stopwords."""
     tokens: list[str] = []
     for match in _WORD_RE.finditer(text):
         tokens.extend(split_identifier(match.group(0)))
@@ -287,7 +280,6 @@ def content_tokens(text: str) -> list[str]:
 
 
 def code_tokens(text: str) -> set[str]:
-    """Collect every identifier part appearing in a slice of source."""
     tokens: set[str] = set()
     for match in _WORD_RE.finditer(text):
         tokens.update(split_identifier(match.group(0)))
@@ -295,7 +287,6 @@ def code_tokens(text: str) -> set[str]:
 
 
 def restates(comment_tokens: Sequence[str], code: Iterable[str]) -> bool:
-    """Report whether every content token of a comment already appears in the code."""
     # Prefix matching is intentionally absent because it made unrelated identifiers look equivalent.
     present = set(code)
     stems = {stem(token) for token in present}
@@ -305,8 +296,21 @@ def restates(comment_tokens: Sequence[str], code: Iterable[str]) -> bool:
 _LAYOUT_TOKENS = frozenset({tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT})
 _NON_CODE_TOKENS = _LAYOUT_TOKENS | frozenset({tokenize.COMMENT, tokenize.ENCODING, tokenize.ENDMARKER})
 
-# `(line, col0, body, standalone)` for every comment, in source order.
-_Ordered = list[tuple[int, int, str, bool]]
+
+class PositionedComment(NamedTuple):
+    line: int
+    column: int
+    body: str
+
+
+class _OrderedComment(NamedTuple):
+    line: int
+    column: int
+    body: str
+    standalone: bool
+
+
+_Ordered = list[_OrderedComment]
 
 
 class _CommentScan[T](NamedTuple):
@@ -315,8 +319,8 @@ class _CommentScan[T](NamedTuple):
 
 
 class _Scan(NamedTuple):
-    standalone: list[tuple[int, int, str]]
-    trailing: list[tuple[int, int, str]]
+    standalone: list[PositionedComment]
+    trailing: list[PositionedComment]
     nested: set[int]
     first_code_line: int
     ordered: _Ordered
@@ -326,7 +330,6 @@ _last_scan: tuple[str, _Scan] | None = None
 
 
 def all_comments(source: str) -> _CommentScan[_Ordered]:
-    """Return every comment as `(line, col0, body, standalone)`, plus the first code line."""
     scan = _scan_memo(source)
     return _CommentScan(scan.ordered, scan.first_code_line)
 
@@ -341,8 +344,8 @@ def _scan_memo(source: str) -> _Scan:
 
 
 def _scan(source: str) -> _Scan:
-    standalone: list[tuple[int, int, str]] = []
-    trailing: list[tuple[int, int, str]] = []
+    standalone: list[PositionedComment] = []
+    trailing: list[PositionedComment] = []
     ordered: _Ordered = []
     nested: set[int] = set()
     first_code_line = 1 << 30
@@ -352,10 +355,10 @@ def _scan(source: str) -> _Scan:
     for tok in tokenize.generate_tokens(readline):
         if tok.type == tokenize.COMMENT:
             body = tok.string.lstrip("#").strip()
-            entry = (tok.start[0], tok.start[1], body)
+            entry = PositionedComment(tok.start[0], tok.start[1], body)
             is_standalone = tok.start[0] != prev_end_row
             (standalone if is_standalone else trailing).append(entry)
-            ordered.append((tok.start[0], tok.start[1], body, is_standalone))
+            ordered.append(_OrderedComment(tok.start[0], tok.start[1], body, is_standalone))
             if depth > 0:
                 nested.add(tok.start[0])
         elif tok.type == tokenize.OP:
@@ -370,25 +373,21 @@ def _scan(source: str) -> _Scan:
     return _Scan(standalone, trailing, nested, first_code_line, ordered)
 
 
-def trailing_comments(source: str) -> list[tuple[int, int, str]]:
-    """Return every comment that shares its line with code, as `(line, col, body)`."""
+def trailing_comments(source: str) -> list[PositionedComment]:
     return _scan_memo(source).trailing
 
 
 def nested_comment_lines(source: str) -> set[int]:
-    """Return the lines of comments sitting INSIDE a bracketed expression."""
     return _scan_memo(source).nested
 
 
-def standalone_comments(source: str) -> _CommentScan[list[tuple[int, int, str]]]:
-    """Return every own-line comment as `(line, col, body)`, plus the first code line."""
+def standalone_comments(source: str) -> _CommentScan[list[PositionedComment]]:
     scan = _scan_memo(source)
     return _CommentScan(scan.standalone, scan.first_code_line)
 
 
-def comment_runs(standalone: Sequence[tuple[int, int, str]]) -> list[list[tuple[int, int, str]]]:
-    """Group standalone comments into runs of consecutive lines."""
-    runs: list[list[tuple[int, int, str]]] = []
+def comment_runs(standalone: Sequence[PositionedComment]) -> list[list[PositionedComment]]:
+    runs: list[list[PositionedComment]] = []
     for entry in sorted(standalone):
         if runs and entry[0] == runs[-1][-1][0] + 1:
             runs[-1].append(entry)
@@ -448,7 +447,6 @@ def statement_comment_walls(
     source: str,
     standalone: Sequence[tuple[int, int, str]],
 ) -> dict[int, frozenset[int]]:
-    """Return `{leader: member lines}` for repeated statement narration walls."""
     tree = parse_or_none(path, source)
     if tree is None:
         return {}
@@ -489,7 +487,6 @@ def statement_comment_walls(
 
 
 def _owned_statement_lists(owner: ast.AST) -> tuple[list[ast.stmt], ...]:
-    """Return the distinct statement blocks directly owned by an AST node."""
     match owner:
         case (
             ast.Module()
@@ -511,14 +508,12 @@ def _owned_statement_lists(owner: ast.AST) -> tuple[list[ast.stmt], ...]:
 
 
 def _is_wall_statement(node: ast.stmt) -> bool:
-    """Exclude docstrings while retaining executable expression statements."""
     return isinstance(node, _WALL_STATEMENTS) and not (
         isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
     )
 
 
 def _weak_walkthrough_comment(body: str, statement: str) -> bool:
-    """Whether a comment is weak evidence inside a repeated walkthrough."""
     if (
         not body
         or body.endswith("?")

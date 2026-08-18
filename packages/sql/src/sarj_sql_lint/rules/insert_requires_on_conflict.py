@@ -1,5 +1,3 @@
-"""SARJ105: `INSERT INTO` in a migration must carry conflict handling."""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -52,7 +50,6 @@ INSERT_SELECT_TARGET_PATTERN = re.compile(
 
 
 def _guarded_dollar_body_lines(masked: str, source: str) -> frozenset[int]:
-    """1-based line numbers inside a dollar-quoted body that guards its own replay."""
     inside = dollar_quoted_lines(source)
     if not inside:
         return frozenset()
@@ -77,7 +74,6 @@ def _guarded_dollar_body_lines(masked: str, source: str) -> frozenset[int]:
 
 
 def _select_filters_existing_target(statement: str) -> bool:
-    """Recognize `INSERT ... SELECT` guarded by `WHERE NOT EXISTS` on its target."""
     match = INSERT_SELECT_TARGET_PATTERN.search(statement)
     if match is None:
         return False
@@ -91,8 +87,6 @@ def _select_filters_existing_target(statement: str) -> bool:
 
 @final
 class InsertRequiresOnConflict(Rule):
-    """INSERT INTO in a migration without ON CONFLICT — must be an idempotent upsert."""
-
     id = "insert-requires-on-conflict"
     code = "SARJ105"
     documentation = RuleDocumentation(

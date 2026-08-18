@@ -1,5 +1,3 @@
-"""Side-effect-free evaluation of candidate rules against labeled cases."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,14 +15,10 @@ if TYPE_CHECKING:
 
 
 class RuleEvaluator(Protocol):
-    """Adapter implemented by a language-specific candidate checker."""
-
     def __call__(self, case: EvaluationCase, /) -> Sequence[Finding]: ...
 
 
 class PromotionDecision(StrEnum):
-    """Evidence-based rollout state for a candidate rule."""
-
     REJECT = "reject"
     WARN = "warn"
     ERROR = "error"
@@ -32,8 +26,6 @@ class PromotionDecision(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class EvaluationThresholds:
-    """Explicit gates; defaults forbid false positives and false negatives."""
-
     max_false_positives: int = 0
     max_false_negatives: int = 0
     minimum_cases_for_error: int = 20
@@ -57,8 +49,6 @@ class EvaluationThresholds:
 
 @dataclass(frozen=True, slots=True)
 class CaseEvaluation:
-    """Report-safe outcome that deliberately excludes source text."""
-
     case_id: str
     path: str
     expected: ExpectedOutcome
@@ -71,8 +61,6 @@ class CaseEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationEvidence:
-    """Reproducibility and performance evidence for an evaluated run."""
-
     corpora: tuple[CorpusSnapshot, ...]
     sample_method: str
     elapsed: timedelta
@@ -94,8 +82,6 @@ class EvaluationEvidence:
 
 @dataclass(frozen=True, slots=True)
 class EvaluationReport:
-    """Complete evidence required to decide whether a rule may roll out."""
-
     problem_key: str
     rule_id: str
     cases: tuple[CaseEvaluation, ...]
@@ -163,7 +149,6 @@ def evaluate(
     thresholds: EvaluationThresholds | None = None,
     evidence: EvaluationEvidence | None = None,
 ) -> EvaluationReport:
-    """Evaluate cases in declared order and return a source-free report."""
     unsupported = [case.report_id for case in cases if case.language not in problem.languages]
     if unsupported:
         msg = f"cases use languages outside the problem: {', '.join(unsupported)}"

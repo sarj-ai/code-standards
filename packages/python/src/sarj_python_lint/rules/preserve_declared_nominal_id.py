@@ -1,8 +1,3 @@
-"""SARJ416 preserves project-declared nominal identifier roles.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_preserve_declared_nominal_id.py
-"""
-
 from __future__ import annotations
 
 import ast
@@ -136,8 +131,8 @@ def _raw_primitive(node: ast.expr | None) -> bool:
 
 
 def _tail(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return ""
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""

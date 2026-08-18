@@ -1,5 +1,3 @@
-"""In-process adapters from native Sarj analyzers to the canonical protocol."""
-
 from __future__ import annotations
 
 from dataclasses import replace
@@ -82,6 +80,11 @@ class _LoadedNative(NamedTuple):
     registry: _RegistryModule
 
 
+class _NativeRuleMetadata(NamedTuple):
+    rule_id: str
+    description: str
+
+
 def analyze(
     files: Sequence[str],
     *,
@@ -91,7 +94,6 @@ def analyze(
     grouped: GroupedPaths | None = None,
     rule_selection: RuleSelection | None = None,
 ) -> AnalysisReport:
-    """Run applicable bundled analyzers without parsing their console output."""
     root = root.resolve()
     try:
         contained = tuple(_contained_path(item, root) for item in files)
@@ -173,7 +175,6 @@ def _contained_path(value: str, root: Path) -> str:
 
 
 def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
-    """Derive consistent report axes from independent tool reports."""
     normalized = tuple(
         ToolReport(
             report.name,
@@ -303,11 +304,11 @@ def _load_native(package: str) -> _LoadedNative:
     return _LoadedNative(checker_module, registry_module)
 
 
-def _metadata(registry: Mapping[str, type[_RuleMetadata]]) -> dict[str, tuple[str, str]]:
-    by_code: dict[str, tuple[str, str]] = {}
+def _metadata(registry: Mapping[str, type[_RuleMetadata]]) -> dict[str, _NativeRuleMetadata]:
+    by_code: dict[str, _NativeRuleMetadata] = {}
     for rule_id, rule_type in registry.items():
         rule = rule_type()
-        by_code[rule.code] = (rule_id, rule.description)
+        by_code[rule.code] = _NativeRuleMetadata(rule_id, rule.description)
     return by_code
 
 
@@ -316,7 +317,7 @@ def _normalize_native(
     *,
     source: str,
     root: Path,
-    metadata: Mapping[str, tuple[str, str]],
+    metadata: Mapping[str, _NativeRuleMetadata],
     documents: dict[Path, SourceDocument | None],
 ) -> Diagnostic:
     resolved = item.path.resolve()

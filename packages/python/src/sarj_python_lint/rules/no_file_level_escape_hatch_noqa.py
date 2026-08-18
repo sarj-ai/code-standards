@@ -1,8 +1,3 @@
-"""SARJ054 — File-level `# ruff: noqa: TID251` — an escape hatch must be per-line.
-
-Examples: https://github.com/sarj-ai/standards/blob/main/packages/python/tests/rules/test_no_file_level_escape_hatch_noqa.py
-"""
-
 from __future__ import annotations
 
 from pathlib import PurePosixPath
@@ -81,7 +76,6 @@ class NoFileLevelEscapeHatchNoqa(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        """Report every file-level ruff exemption naming an escape-hatch code."""
         comments = scan_comments_or_none(source)
         if comments is None:
             return []
@@ -102,7 +96,6 @@ class NoFileLevelEscapeHatchNoqa(Rule):
 
 
 def _hatch_codes(comment: Comment) -> tuple[str, ...]:
-    """Extract the escape-hatch codes named by a file-level ruff exemption."""
     if not comment.standalone:
         return ()
     match = _RUFF_SCOPED_NOQA_RE.match(comment.body)
@@ -113,7 +106,6 @@ def _hatch_codes(comment: Comment) -> tuple[str, ...]:
 
 
 def _message(codes: tuple[str, ...]) -> str:
-    """Render the diagnostic for the escape-hatch codes found on the line."""
     listed = ", ".join(codes)
     return (
         f"file-level `# ruff: noqa: {listed}` pre-authorizes every future use in "

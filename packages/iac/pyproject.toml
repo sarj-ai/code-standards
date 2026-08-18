@@ -1,6 +1,6 @@
 [project]
 name = "sarj-iac-lint"
-version = "0.13.1"
+version = "0.14.0"
 description = "Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
