@@ -292,10 +292,16 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     )
     source = tmp_path / "component.tsx"
     source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
+    untouched = tmp_path / "untouched.tsx"
+    untouched.write_text("export const Untouched = () => <button />;\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
+    git_seen: list[tuple[str, ...]] = []
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
+        if argv[0] == "git":
+            git_seen.append(tuple(argv))
+            return ProcessOutput(0, "component.tsx\0", "")
         seen.append(tuple(argv))
         return ProcessOutput(
             1,
@@ -317,7 +323,16 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
                                     "message": "Button needs an explicit type.",
                                     "line": 1,
                                     "column": 32,
-                                }
+                                },
+                                {
+                                    "filePath": str(untouched),
+                                    "plugin": "react-doctor",
+                                    "rule": "button-has-type",
+                                    "severity": "warning",
+                                    "message": "Button needs an explicit type.",
+                                    "line": 1,
+                                    "column": 32,
+                                },
                             ],
                         }
                     ],
@@ -373,8 +388,20 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     )
 
     assert ci_report.completion is Completion.COMPLETE
+    assert tuple(item.location.path for item in ci_report.diagnostics) == ("component.tsx",)
     base_index = seen[2].index("--base")
     assert seen[2][base_index + 1] == "0123456789abcdef"
+    assert git_seen == [
+        (
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "-z",
+            "0123456789abcdef...HEAD",
+            "--",
+        )
+    ]
 
 
 def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytest.MonkeyPatch) -> None:

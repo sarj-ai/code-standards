@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import base64
 from dataclasses import dataclass
+from datetime import timedelta
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,7 @@ import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- centralized argv-only adapter; shell is never enabled
 import sys
 import tempfile
+import time
 import tomllib
 from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 
@@ -21,7 +23,7 @@ from sarj_standards.libs.adoption import uvtool as adoption_uvtool
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
 SOURCE_REPOSITORY = "https://github.com/sarj-ai/standards.git"
@@ -42,6 +44,8 @@ MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/
 MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
 COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
 MANAGED_DELETIONS = frozenset({launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix()})
+RELEASE_VISIBILITY_ATTEMPTS = 7
+RELEASE_VISIBILITY_DELAY = timedelta(seconds=10)
 
 
 class RolloutError(RuntimeError):
@@ -251,22 +255,36 @@ def json_result(result: subprocess.CompletedProcess[str]) -> object:
         return parsed
 
 
-def verify_release(version: str, runner: CommandRunner) -> str:
+def verify_release(
+    version: str,
+    runner: CommandRunner,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
     version = validate_version(version)
-    package = runner.run(
-        (
-            "uvx",
-            "--isolated",
-            "--python",
-            "3.14",
-            "--from",
-            f"sarj-standards=={version}",
-            "sarj-standards",
-            "--version",
+    package: subprocess.CompletedProcess[str] | None = None
+    for attempt in range(RELEASE_VISIBILITY_ATTEMPTS):
+        package = runner.run(
+            (
+                "uvx",
+                "--isolated",
+                "--python",
+                "3.14",
+                "--refresh-package",
+                "sarj-standards",
+                "--from",
+                f"sarj-standards=={version}",
+                "sarj-standards",
+                "--version",
+            ),
+            check=False,
         )
-    )
-    match = re.fullmatch(r"sarj-standards\s+([0-9a-zA-Z.-]+)", stdout(package))
-    if match is None or match.group(1) != version:
+        match = re.fullmatch(r"sarj-standards\s+([0-9a-zA-Z.-]+)", stdout(package))
+        if package.returncode == 0 and match is not None and match.group(1) == version:
+            break
+        if attempt + 1 < RELEASE_VISIBILITY_ATTEMPTS:
+            sleep(RELEASE_VISIBILITY_DELAY.total_seconds())
+    else:
         msg = f"PyPI artifact did not report version {version}"
         raise RolloutError(msg)
     tag = f"refs/tags/standards-v{version}"

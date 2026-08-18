@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from enum import StrEnum
 import json
@@ -498,7 +498,7 @@ def _invoke_react_doctor(
         "--json-compact",
         "--no-color",
     )
-    return _invoke(
+    report = _invoke(
         name,
         _local_node_binary_argv(name, argv, project, root) if use_local_binary else argv,
         cwd=project,
@@ -507,6 +507,34 @@ def _invoke_react_doctor(
         parser=parse_react_doctor,
         invocation_id=project.relative_to(root).as_posix() or None,
         file_count=file_count,
+    )
+    return _filter_react_doctor_to_changed_paths(report, root=root, runner=runner, staged=staged)
+
+
+def _filter_react_doctor_to_changed_paths(
+    report: ToolReport,
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    staged: bool,
+) -> ToolReport:
+    if staged:
+        return report
+    base = os.environ.get(  # ruff: ignore[banned-api] -- explicit GitHub workflow boundary, not application settings.
+        "SARJ_REACT_DOCTOR_BASE", ""
+    ).strip()
+    if not base:
+        return report
+    changed = runner(
+        ("git", "diff", "--name-only", "--diff-filter=ACMR", "-z", f"{base}...HEAD", "--"),
+        cwd=root,
+    )
+    if changed.returncode != 0:
+        return report
+    changed_paths = frozenset(path for path in changed.stdout.split("\0") if path)
+    return replace(
+        report,
+        diagnostics=tuple(item for item in report.diagnostics if item.location.path in changed_paths),
     )
 
 

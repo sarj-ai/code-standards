@@ -349,13 +349,32 @@ class TestRelease:
 
         assert rollout.verify_release("5.8.1", runner) == sha
         assert "sarj-standards==5.8.1" in runner.commands[0]
+        assert "--refresh-package" in runner.commands[0]
         assert "refs/tags/standards-v5.8.1^{}" in runner.commands[1]
+
+    def test_release_verification_waits_for_pypi_edge_visibility(self) -> None:
+        sha = "a" * 40
+        sleeps: list[float] = []
+        runner = FakeRunner(
+            [
+                (1, ""),
+                (0, "sarj-standards 5.8.1"),
+                (
+                    0,
+                    f"{'c' * 40}\trefs/tags/standards-v5.8.1\n{sha}\trefs/tags/standards-v5.8.1^{{}}\n",
+                ),
+            ]
+        )
+
+        assert rollout.verify_release("5.8.1", runner, sleep=sleeps.append) == sha
+        assert sleeps == [rollout.RELEASE_VISIBILITY_DELAY.total_seconds()]
+        assert runner.commands[0] == runner.commands[1]
 
     def test_release_rejects_version_substring(self) -> None:
         runner = FakeRunner([(0, "sarj-standards 15.8.10")])
 
         with pytest.raises(rollout.RolloutError, match="did not report"):
-            rollout.verify_release("5.8.1", runner)
+            rollout.verify_release("5.8.1", runner, sleep=lambda _: None)
 
     def test_dry_run_does_not_clone_or_push(self, tmp_path: Path) -> None:
         sha = "b" * 40
