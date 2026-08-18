@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 from sarj_standards.libs.adoption import doctor as adoption_doctor
 from sarj_standards.libs.adoption import launcher
 from sarj_standards.libs.adoption import manifest as adoption_manifest
+from sarj_standards.libs.adoption import packagemanager as adoption_packagemanager
 from sarj_standards.libs.adoption import scaffold as adoption_scaffold
 from sarj_standards.libs.adoption import uvtool as adoption_uvtool
 
@@ -47,6 +48,31 @@ COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
 MANAGED_DELETIONS = frozenset({launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix()})
 RELEASE_VISIBILITY_ATTEMPTS = 7
 RELEASE_VISIBILITY_DELAY = timedelta(seconds=10)
+SECONDARY_JAVASCRIPT_ROOT_EXCLUSIONS = frozenset(
+    {
+        ".cache",
+        ".git",
+        ".next",
+        ".nox",
+        ".pnpm",
+        ".tox",
+        ".turbo",
+        ".venv",
+        ".yarn",
+        "build",
+        "dist",
+        "example",
+        "examples",
+        "fixture",
+        "fixtures",
+        "node_modules",
+        "test",
+        "testdata",
+        "tests",
+        "vendor",
+        "venv",
+    }
+)
 
 
 class RolloutError(RuntimeError):
@@ -604,6 +630,19 @@ def run_consumer_bootstrap(
         result = runner.run((*tool_prefix, *compatible_install), cwd=repo, env=environment, check=False)
         if result.returncode != 0:
             return result
+    primary_typescript_root = adoption_packagemanager.workspace_root(
+        repo / adopted.typescript_dest,
+        repo,
+    )
+    for javascript_root in secondary_javascript_roots(repo, primary_typescript_root):
+        manager = adoption_packagemanager.detect(javascript_root)
+        install = adoption_packagemanager.frozen_install_argv(
+            manager,
+            yarn=adoption_packagemanager.yarn_variant(javascript_root),
+        )
+        result = runner.run((*tool_prefix, *install), cwd=javascript_root, env=environment, check=False)
+        if result.returncode != 0:
+            return result
     for command in adopted.ci_bootstrap:
         result = runner.run(
             (*tool_prefix, "bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command),
@@ -614,6 +653,23 @@ def run_consumer_bootstrap(
         if result.returncode != 0:
             return result
     return None
+
+
+def secondary_javascript_roots(repo: Path, primary: Path) -> tuple[Path, ...]:
+    repository = repo.resolve()
+    primary_root = primary.resolve()
+    roots: list[Path] = []
+    for current, directories, files in os.walk(repository):
+        directories[:] = sorted(
+            directory for directory in directories if directory not in SECONDARY_JAVASCRIPT_ROOT_EXCLUSIONS
+        )
+        root = Path(current)
+        if root == primary_root:
+            directories.clear()
+            continue
+        if any(name in files for name, _manager in adoption_packagemanager.LOCKFILES):
+            roots.append(root)
+    return tuple(sorted(roots, key=lambda path: path.relative_to(repository).as_posix()))
 
 
 def _declared_corepack_manager(repo: Path) -> str | None:

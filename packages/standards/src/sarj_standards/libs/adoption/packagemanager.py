@@ -229,6 +229,24 @@ def install_argv(
     return tuple(install_command(client, workspace=workspace, yarn=yarn).split())
 
 
+def frozen_install_argv(
+    client: PackageManager,
+    *,
+    yarn: YarnVariant = YarnVariant.CLASSIC,
+) -> Sequence[str]:
+    match client:
+        case PackageManager.NPM:
+            return ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund")
+        case PackageManager.PNPM:
+            return ("pnpm", "install", "--frozen-lockfile", "--ignore-scripts")
+        case PackageManager.YARN:
+            if yarn is YarnVariant.BERRY:
+                return ("yarn", "install", "--immutable", "--mode=skip-build")
+            return ("yarn", "install", "--frozen-lockfile", "--ignore-scripts")
+        case PackageManager.BUN:
+            return ("bun", "install", "--frozen-lockfile", "--ignore-scripts")
+
+
 def exec_argv(client: PackageManager, *command: str) -> Sequence[str]:
     match client:
         case PackageManager.NPM:

@@ -63,6 +63,11 @@ class VersionPinRewrite(NamedTuple):
     packages: tuple[str, ...]
 
 
+class _PackageEslintPinRewrite(NamedTuple):
+    contents: str
+    changed: bool
+
+
 #: `sarj-python-lint==0.25.0`, `"sarj-standards>=0.9"`, `--from sarj-sql-lint==1.2.3`.
 _PIN = re.compile(
     r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards)\s*(?P<op>==|>=|~=)\s*"
@@ -72,6 +77,15 @@ _PREAPPROVED_ESLINT = re.compile(
     r"(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n"
     r'(?:[ \t]+-[^\n]*\n)*?[ \t]+-\s*["\']?@sarj/eslint-plugin@)'
     r'(?P<version>[0-9][0-9A-Za-z._+\-]*)(?P<suffix>["\']?\s*(?:#.*)?)$'
+)
+_PACKAGE_DEPENDENCY_SECTION = re.compile(
+    r'(?P<prefix>"(?:dependencies|devDependencies)"\s*:\s*\{)(?P<body>[^{}]*)(?P<suffix>\})',
+    re.DOTALL,
+)
+_PACKAGE_ESLINT_PIN = re.compile(
+    r'(?P<prefix>"@sarj/eslint-plugin"\s*:\s*")'
+    r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
+    r'(?P<suffix>")'
 )
 
 #: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
@@ -786,9 +800,35 @@ def plan_version_pin_updates(
             continue
         original = _read(path)
         contents, packages = rewrite_version_pins(original, versions)
+        if path.name == "package.json":
+            contents, plugin_changed = _rewrite_package_eslint_pins(
+                contents,
+                versions[_ESLINT_PLUGIN],
+            )
+            if plugin_changed:
+                packages = tuple(sorted({*packages, _ESLINT_PLUGIN}))
         if packages:
             updates.append(VersionPinUpdate(path, contents, packages))
     return tuple(updates)
+
+
+def _rewrite_package_eslint_pins(text: str, version: str) -> _PackageEslintPinRewrite:
+    changed = False
+
+    def dependency_section(match: re.Match[str]) -> str:
+        nonlocal changed
+
+        def plugin_pin(pin: re.Match[str]) -> str:
+            nonlocal changed
+            if pin.group("version") == version:
+                return pin.group(0)
+            changed = True
+            return f"{pin.group('prefix')}{version}{pin.group('suffix')}"
+
+        body = _PACKAGE_ESLINT_PIN.sub(plugin_pin, match.group("body"))
+        return f"{match.group('prefix')}{body}{match.group('suffix')}"
+
+    return _PackageEslintPinRewrite(_PACKAGE_DEPENDENCY_SECTION.sub(dependency_section, text), changed)
 
 
 def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
