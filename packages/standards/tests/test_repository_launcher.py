@@ -1,5 +1,3 @@
-"""The immutable bootstrap command supersedes the retired repository script."""
-
 from __future__ import annotations
 
 import pytest

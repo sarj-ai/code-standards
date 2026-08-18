@@ -106,7 +106,6 @@ def assert_expected(root: Path, path: Path, expected: bytes | None) -> None:
 
 
 def remove_file(root: Path, path: Path) -> None:
-    """Remove one validated regular file without following links."""
     validate_targets(root, (path,))
     try:
         path.unlink()

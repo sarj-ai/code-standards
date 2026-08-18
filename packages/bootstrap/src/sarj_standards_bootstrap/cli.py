@@ -127,7 +127,6 @@ def command(uvx: str, root: Path, selected_bundle: str, arguments: Sequence[str]
 
 
 def execute(exact_command: Sequence[str], environment: Mapping[str, str], *, platform: str = os.name) -> NoReturn:
-    """Transfer control to Standards while preserving its process result on every OS."""
     arguments = tuple(exact_command)
     if platform == "nt":
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv; no consumer shell.
