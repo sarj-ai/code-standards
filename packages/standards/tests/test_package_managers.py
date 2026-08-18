@@ -180,7 +180,7 @@ def test_each_yarn_dialect_gets_flags_it_actually_enforces() -> None:
     berry = packagemanager.install_command(PackageManager.YARN, yarn=YarnVariant.BERRY)
 
     assert classic == "yarn install --ignore-scripts"
-    assert berry == "yarn install --mode=skip-build"
+    assert berry == "yarn install --no-immutable --mode=skip-build"
     assert packagemanager.install_argv(PackageManager.YARN, yarn=YarnVariant.BERRY) == tuple(berry.split())
 
 
@@ -308,7 +308,7 @@ def test_lifecycle_install_preserves_the_yarn_dialect(tmp_path: Path) -> None:
 
     commands = lifecycle.install_commands(tmp_path, ecosystems, hook_manager="none")
 
-    assert commands[0].argv == ("yarn", "install", "--mode=skip-build")
+    assert commands[0].argv == ("yarn", "install", "--no-immutable", "--mode=skip-build")
 
 
 def test_pnpm_workspace_install_targets_the_workspace_root() -> None:
@@ -383,7 +383,7 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
     resolutions = manifest.table_field(written, "resolutions")
     assert resolutions["eslint-plugin-react/eslint"] == manifest.eslint_peers()["eslint"]
-    assert "yarn install --mode=skip-build" in proc.stdout
+    assert "yarn install --no-immutable --mode=skip-build" in proc.stdout
 
 
 def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:

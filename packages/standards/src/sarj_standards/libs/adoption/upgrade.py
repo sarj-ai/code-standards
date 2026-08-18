@@ -61,6 +61,7 @@ _CONFIG_SOURCES = MappingProxyType(
         "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
     }
 )
+_MIRROR_EXCLUDED_PARTS: Final = frozenset({"example", "examples", "fixture", "fixtures", "test", "tests"})
 
 
 @dataclass(frozen=True)
@@ -178,8 +179,10 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         source = CONFIGS_DIR / (application if adopted.profile == "application" else standard)
         target = destination / target_name
         if not target.is_file() or target.read_bytes() != source.read_bytes():
-            changes.append(Change(target, f"sync {name} config"))
-            config_writes.append((source, target))
+            targets = (target, *_identical_config_mirrors(root, target))
+            for config_target in targets:
+                changes.append(Change(config_target, f"sync {name} config"))
+                config_writes.append((source, config_target))
 
     reserved_paths = {
         path,
@@ -230,6 +233,20 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         manifest_text,
         preconditions,
         preexisting_drift,
+    )
+
+
+def _identical_config_mirrors(root: Path, target: Path) -> tuple[Path, ...]:
+    if not target.is_file() or is_link_like(target):
+        return ()
+    expected = target.read_bytes()
+    return tuple(
+        path
+        for path in doctor.authored_files(root)
+        if path != target
+        and path.name == target.name
+        and not any(part.lower() in _MIRROR_EXCLUDED_PARTS for part in path.relative_to(root).parts)
+        and path.read_bytes() == expected
     )
 
 

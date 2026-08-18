@@ -566,6 +566,31 @@ def change_scope_base() -> str:
     return sha if sha is not None and re.fullmatch(r"[0-9a-f]{40}", sha) else ""
 
 
+def is_non_default_github_push() -> bool:
+    event_name = os.environ.get(  # ruff: ignore[banned-api] -- GitHub owns this value in Actions.
+        "GITHUB_EVENT_NAME", ""
+    ).strip()
+    if event_name != "push":
+        return False
+    event_path = os.environ.get(  # ruff: ignore[banned-api] -- GitHub owns this path in Actions.
+        "GITHUB_EVENT_PATH", ""
+    ).strip()
+    if not event_path:
+        return False
+    try:
+        payload: object = json.loads(Path(event_path).read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    except OSError, json.JSONDecodeError:
+        return False
+    event = manifest.as_table(payload)
+    if manifest.as_table(event.get("pull_request")):
+        return False
+    ref = manifest.text_field(event, "ref")
+    repository = manifest.as_table(event.get("repository"))
+    default_branch = manifest.text_field(repository, "default_branch")
+    prefix = "refs/heads/"
+    return bool(ref and default_branch and ref.startswith(prefix) and ref.removeprefix(prefix) != default_branch)
+
+
 def _missing_local_binary_issue(name: str, project: Path, root: Path) -> ExecutionIssue | None:
     current = project.resolve()
     repository = root.resolve()

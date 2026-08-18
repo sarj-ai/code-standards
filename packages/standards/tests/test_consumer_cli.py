@@ -325,6 +325,42 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     assert json.loads(capsys.readouterr().out)["diagnostics"] == []
 
 
+def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
+        encoding="utf-8",
+    )
+    git_environment = _git_environment()
+    _ = subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    _ = capsys.readouterr()
+    event = tmp_path / "push.json"
+    event.write_text(
+        json.dumps({"ref": "refs/heads/standards-rollout/current", "repository": {"default_branch": "main"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+    seen: list[tuple[str, ...] | None] = []
+    original = Standards.analyze
+
+    def capture_paths(self: Standards, paths: tuple[str, ...] | None = None, **kwargs: object) -> object:
+        seen.append(paths)
+        return original(self, paths, **kwargs)  # pyright: ignore[reportArgumentType]
+
+    monkeypatch.setattr(Standards, "analyze", capture_paths)
+
+    status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
+
+    assert status == 0
+    assert seen == [()]
+    assert json.loads(capsys.readouterr().out)["diagnostics"] == []
+
+
 def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

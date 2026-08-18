@@ -408,6 +408,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 
     assert ci_report.completion is Completion.COMPLETE
     assert tuple(item.location.path for item in ci_report.diagnostics) == ("component.tsx",)
+
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
     assert git_seen == [
@@ -430,6 +431,51 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
             "--",
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"ref": "refs/heads/feature", "repository": {"default_branch": "main"}}, True),
+        ({"ref": "refs/heads/main", "repository": {"default_branch": "main"}}, False),
+        (
+            {
+                "ref": "refs/heads/feature",
+                "repository": {"default_branch": "main"},
+                "pull_request": {"base": {"sha": "f" * 40}},
+            },
+            False,
+        ),
+        ({"ref": "refs/tags/v1.0.0", "repository": {"default_branch": "main"}}, False),
+    ],
+)
+def test_non_default_github_push_detection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+    expected: bool,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+
+    assert external_module.is_non_default_github_push() is expected
+
+
+def test_non_default_branch_is_not_treated_as_a_push_for_other_github_events(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    event = tmp_path / "event.json"
+    event.write_text(
+        json.dumps({"ref": "refs/heads/feature", "repository": {"default_branch": "main"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+
+    assert not external_module.is_non_default_github_push()
 
 
 def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytest.MonkeyPatch) -> None:

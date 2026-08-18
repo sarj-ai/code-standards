@@ -16,6 +16,7 @@ import time
 import tomllib
 from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 
+from sarj_standards.libs.adoption import doctor as adoption_doctor
 from sarj_standards.libs.adoption import launcher
 from sarj_standards.libs.adoption import manifest as adoption_manifest
 from sarj_standards.libs.adoption import scaffold as adoption_scaffold
@@ -470,7 +471,12 @@ def reject_git_metadata(
             raise RolloutError(msg)
 
 
-def reject_unsafe_diff(paths: Sequence[str], *, allowed_source_paths: frozenset[str] = frozenset()) -> None:
+def reject_unsafe_diff(
+    paths: Sequence[str],
+    *,
+    allowed_source_paths: frozenset[str] = frozenset(),
+    allowed_workflow_paths: frozenset[str] = frozenset(),
+) -> None:
     if not paths:
         msg = "the update produced no changes but the base manifest is not current"
         raise RolloutError(msg)
@@ -478,7 +484,11 @@ def reject_unsafe_diff(paths: Sequence[str], *, allowed_source_paths: frozenset[
     for rendered in paths:
         path = Path(rendered)
         lowered = rendered.lower()
-        workflow_is_unsafe = rendered.startswith(".github/workflows/") and rendered not in MANAGED_WORKFLOW_PATHS
+        workflow_is_unsafe = (
+            rendered.startswith(".github/workflows/")
+            and rendered not in MANAGED_WORKFLOW_PATHS
+            and rendered not in allowed_workflow_paths
+        )
         source_is_unsafe = (
             rendered not in allowed_source_paths
             and path.suffix in SOURCE_SUFFIXES
@@ -793,6 +803,11 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             runner,
             unauthenticated_environment(),
         )
+        allowed_workflow_paths = frozenset(
+            relative
+            for update in adoption_doctor.plan_version_pin_updates(repo)
+            if (relative := update.path.relative_to(repo).as_posix()).startswith(".github/workflows/")
+        )
         failures: list[str] = []
         try:
             runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=unauthenticated)
@@ -817,14 +832,14 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         verification_failure = "\n\n".join(failures)[-4000:]
         worktree_paths = changed_paths(repo, runner)
         if worktree_paths:
-            reject_unsafe_diff(worktree_paths)
+            reject_unsafe_diff(worktree_paths, allowed_workflow_paths=allowed_workflow_paths)
             reject_git_metadata(repo, worktree_paths, runner)
             runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
             message = f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}"
             runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", "-m", message), cwd=repo)
         else:
             branch_paths = committed_paths(repo, consumer.branch, runner)
-            reject_unsafe_diff(branch_paths)
+            reject_unsafe_diff(branch_paths, allowed_workflow_paths=allowed_workflow_paths)
             reject_git_metadata(
                 repo,
                 branch_paths,

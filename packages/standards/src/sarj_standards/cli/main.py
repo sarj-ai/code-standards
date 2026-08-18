@@ -807,11 +807,12 @@ def cmd_check(args: _Args) -> int:
                 return _emit_analysis_report(args, root, _machine_input_error(root, str(exc)))
             print(f"error: {exc}", file=sys.stderr)
             return 2
+    elif (root / ".git").exists() and external.is_non_default_github_push():
+        args.files = []
+        pull_request_scoped = True
     elif (root / ".git").exists() and (base := external.change_scope_base()):
         try:
-            args.files = [
-                path for path in _changed_file_paths(root, base) if runner.accepts_hook_path(Path(path))
-            ]
+            args.files = [path for path in _changed_file_paths(root, base) if runner.accepts_hook_path(Path(path))]
             pull_request_scoped = True
         except (OSError, subprocess.SubprocessError) as exc:
             if args.output_format != "text":
