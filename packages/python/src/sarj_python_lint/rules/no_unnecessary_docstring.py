@@ -39,6 +39,11 @@ _OPENAI_TOOL_DECORATORS = frozenset({"agents.function_tool"})
 _PYDANTIC_DOC_DECORATORS = frozenset({"pydantic.computed_field"})
 _FASTAPI_CONSTRUCTORS = frozenset({"fastapi.APIRouter", "fastapi.FastAPI"})
 _FASTAPI_ROUTE_METHODS = frozenset({"api_route", "delete", "get", "head", "options", "patch", "post", "put", "trace"})
+_TYPER_CONSTRUCTORS = frozenset({"typer.Typer"})
+_TYPER_DOC_METHODS = frozenset({"callback", "command"})
+_CLICK_DOC_DECORATORS = frozenset({"click.command", "click.group"})
+_CLICK_GROUP_CONSTRUCTORS = frozenset({"click.Group"})
+_CLICK_GROUP_METHODS = frozenset({"command", "group"})
 _KNOWN_DECORATORS = frozenset(
     {
         "builtins.property",
@@ -78,14 +83,18 @@ class NoUnnecessaryDocstring(ProjectRule):
     id: str = "no-unnecessary-docstring"
     code: str = "SARJ420"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Keep docstrings only when a machine or framework consumes them.",
+        summary=(
+            "No docstring consumer detected — delete it; make author-controlled names, types, and structure explain "
+            "the code."
+        ),
         rationale=(
-            "Human-only docstrings duplicate names, signatures, and nearby code while creating a second prose surface "
-            "that agents expand and maintainers must review."
+            "A docstring with no detected consumer makes code depend on prose for ordinary meaning and creates a "
+            "second maintenance surface that agents expand and maintainers must review."
         ),
         remediation=(
-            "Delete the docstring; move a genuinely hidden local invariant to one concise comment, or suppress SARJ420 "
-            "when an external documentation consumer cannot be detected mechanically."
+            "Delete the docstring. If author-controlled code is unclear without it, clarify names, types, and structure "
+            "or extract a small named helper. Keep a genuinely hidden invariant as one concise local comment. When "
+            "external tooling consumes __doc__, use an exact SARJ420 suppression that names the consumer."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
@@ -97,6 +106,10 @@ class NoUnnecessaryDocstring(ProjectRule):
             (
                 "The rule is intentionally default-deny: public API documentation without mechanically visible "
                 "consumption needs an auditable SARJ420 suppression."
+            ),
+            (
+                "Dynamic Click or Typer decorator options are conservatively treated as possible help consumers; "
+                "explicit non-None help leaves the docstring eligible."
             ),
         ),
         examples=(
@@ -143,9 +156,13 @@ class NoUnnecessaryDocstring(ProjectRule):
         explicitly_consumed = _explicit_docstring_consumers(tree, frozenset(owner_keys.values()))
         shadowed = _module_bound_names(tree)
         imports = _import_bindings(tree, shadowed)
-        fastapi_consumed = _fastapi_docstring_consumers(tree, imports)
-        schema_consumed = _schema_docstring_consumers(tree, imports)
-        project_schema_consumed = _project_schema_docstring_consumers(self._project_indexes, path, tree)
+        consumed_owner_ids = (
+            _fastapi_docstring_consumers(tree, imports)
+            | _typer_docstring_consumers(tree, imports)
+            | _click_group_docstring_consumers(tree, imports)
+            | _schema_docstring_consumers(tree, imports)
+            | _project_schema_docstring_consumers(self._project_indexes, path, tree)
+        )
         source_lines = source.splitlines()
         diagnostics: list[Diagnostic] = []
         for owner in _docstring_owners(tree):
@@ -159,9 +176,7 @@ class NoUnnecessaryDocstring(ProjectRule):
             owner_imports, owner_shadowed = _module_environment_before(tree, owner_line)
             if (
                 _is_syntax_required(owner)
-                or id(owner) in fastapi_consumed
-                or id(owner) in schema_consumed
-                or id(owner) in project_schema_consumed
+                or id(owner) in consumed_owner_ids
                 or _framework_consumes_docstring(owner, owner_imports, owner_shadowed)
             ):
                 continue
@@ -406,7 +421,9 @@ def _framework_consumes_docstring(
         return False
     for decorator in owner.decorator_list:
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        name = _resolve_imported_name(target, imports)
+        dotted = _dotted_name(target)
+        head = None if dotted is None else dotted.partition(".")[0]
+        name = _resolve_imported_name(target, imports) if head in imports else None
         if name in _LIVEKIT_TOOL_DECORATORS and (
             not isinstance(decorator, ast.Call) or _livekit_uses_docstring(decorator)
         ):
@@ -419,9 +436,11 @@ def _framework_consumes_docstring(
             not isinstance(decorator, ast.Call) or _keyword_is_missing_or_none(decorator, "description")
         ):
             return True
+        if name in _CLICK_DOC_DECORATORS and (not isinstance(decorator, ast.Call) or _doc_help_is_implicit(decorator)):
+            return True
         if name in _KNOWN_DECORATORS:
             return True
-        if name == "property" and "property" not in shadowed:
+        if dotted == "property" and "property" not in shadowed:
             return True
     if not isinstance(owner, ast.ClassDef):
         return False
@@ -493,6 +512,10 @@ def _keyword_is_missing_or_none(call: ast.Call, name: str) -> bool:
     return value is None or (isinstance(value, ast.Constant) and value.value is None)
 
 
+def _doc_help_is_implicit(call: ast.Call) -> bool:
+    return _keyword_is_missing_or_none(call, "help")
+
+
 def _livekit_uses_docstring(call: ast.Call) -> bool:
     return not any(
         keyword.arg == "raw_schema" and not (isinstance(keyword.value, ast.Constant) and keyword.value.value is None)
@@ -532,6 +555,77 @@ def _fastapi_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> f
                 targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
                 value = statement.value
                 is_receiver = _is_fastapi_receiver_value(value, bindings, imports)
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        bindings[target.id] = is_receiver
+
+    visit(tree.body, {})
+    return frozenset(consumed)
+
+
+def _typer_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> frozenset[int]:
+    consumed: set[int] = set()
+
+    def visit(body: list[ast.stmt], inherited: dict[str, bool]) -> None:
+        bindings = dict(inherited)
+        for statement in body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                if any(_is_typer_callback(decorator, bindings) for decorator in statement.decorator_list):
+                    consumed.add(id(statement))
+                nested = dict(bindings)
+                if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for argument in (
+                        *statement.args.posonlyargs,
+                        *statement.args.args,
+                        *statement.args.kwonlyargs,
+                    ):
+                        nested[argument.arg] = (
+                            argument.annotation is not None
+                            and _resolve_imported_name(argument.annotation, imports) in _TYPER_CONSTRUCTORS
+                        )
+                    if statement.args.vararg is not None:
+                        nested[statement.args.vararg.arg] = False
+                    if statement.args.kwarg is not None:
+                        nested[statement.args.kwarg.arg] = False
+                visit(statement.body, nested)
+                bindings[statement.name] = False
+                continue
+            if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+                value = statement.value
+                is_receiver = _is_typer_receiver_value(value, bindings, imports)
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        bindings[target.id] = is_receiver
+
+    visit(tree.body, {})
+    return frozenset(consumed)
+
+
+def _click_group_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> frozenset[int]:
+    consumed: set[int] = set()
+
+    def visit(body: list[ast.stmt], inherited: dict[str, bool]) -> None:
+        bindings = dict(inherited)
+        for statement in body:
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                group_decorator = next(
+                    (
+                        decorator
+                        for decorator in statement.decorator_list
+                        if _is_click_group_decorator(decorator, imports)
+                    ),
+                    None,
+                )
+                if any(_is_click_group_callback(decorator, bindings) for decorator in statement.decorator_list):
+                    consumed.add(id(statement))
+                visit(statement.body, bindings)
+                bindings[statement.name] = group_decorator is not None
+                continue
+            if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+                targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+                value = statement.value
+                is_receiver = _is_click_group_receiver_value(value, bindings, imports)
                 for target in targets:
                     if isinstance(target, ast.Name):
                         bindings[target.id] = is_receiver
@@ -592,6 +686,53 @@ def _is_fastapi_route(decorator: ast.expr, bindings: dict[str, bool]) -> bool:
         return False
     description = next((keyword.value for keyword in decorator.keywords if keyword.arg == "description"), None)
     return description is None or (isinstance(description, ast.Constant) and not description.value)
+
+
+def _is_typer_receiver_value(node: ast.AST | None, bindings: dict[str, bool], imports: dict[str, str]) -> bool:
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id, False) or _resolve_imported_name(node, imports) in _TYPER_CONSTRUCTORS
+    return isinstance(node, ast.Call) and (
+        _resolve_imported_name(node.func, imports) in _TYPER_CONSTRUCTORS
+        or (isinstance(node.func, ast.Name) and bindings.get(node.func.id, False))
+    )
+
+
+def _is_typer_callback(decorator: ast.expr, bindings: dict[str, bool]) -> bool:
+    if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+        return False
+    receiver = decorator.func.value
+    return (
+        isinstance(receiver, ast.Name)
+        and bindings.get(receiver.id, False)
+        and decorator.func.attr in _TYPER_DOC_METHODS
+        and _doc_help_is_implicit(decorator)
+    )
+
+
+def _is_click_group_decorator(decorator: ast.expr, imports: dict[str, str]) -> bool:
+    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    return _resolve_imported_name(target, imports) == "click.group"
+
+
+def _is_click_group_receiver_value(node: ast.AST | None, bindings: dict[str, bool], imports: dict[str, str]) -> bool:
+    if isinstance(node, ast.Name):
+        return bindings.get(node.id, False) or _resolve_imported_name(node, imports) in _CLICK_GROUP_CONSTRUCTORS
+    return isinstance(node, ast.Call) and (
+        _resolve_imported_name(node.func, imports) in _CLICK_GROUP_CONSTRUCTORS
+        or (isinstance(node.func, ast.Name) and bindings.get(node.func.id, False))
+    )
+
+
+def _is_click_group_callback(decorator: ast.expr, bindings: dict[str, bool]) -> bool:
+    if not isinstance(decorator, ast.Call) or not isinstance(decorator.func, ast.Attribute):
+        return False
+    receiver = decorator.func.value
+    return (
+        isinstance(receiver, ast.Name)
+        and bindings.get(receiver.id, False)
+        and decorator.func.attr in _CLICK_GROUP_METHODS
+        and _doc_help_is_implicit(decorator)
+    )
 
 
 def _module_bound_names(tree: ast.Module) -> frozenset[str]:

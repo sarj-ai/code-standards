@@ -10,6 +10,7 @@ const DIRECTIVE_RE = /^(?:!|eslint\b|eslint-|@ts-|prettier|biome-|c8\b|v8\b|ista
 const LICENSE_RE = /\b(?:copyright|spdx-license-identifier|licensed under)\b/i;
 const TYPED_TAG_RE = /@(arg|argument|param|return|returns|yield|yields)\b/i;
 const VALUE_TAG_RE = /@(example|deprecated|see|remarks|throws|internal|public|alpha|beta|since|template|fileoverview)\b/i;
+const ANY_TAG_RE = /(?:^|\s)@[A-Za-z][\w-]*\b/u;
 const BOUNDARY_RE = /(?<=[.!?])["'`)\]]*\s+(?=[A-Z0-9`])/;
 const BULLET_RE = /^\s*(?:[-*+] |\d+[.)] )/;
 const HEADING_RE = /^[A-Za-z][A-Za-z ]+:$/;
@@ -31,8 +32,9 @@ function body(comment: TSESTree.Comment): string {
     .trim();
 }
 
-function eligible(text: string, includeValueTags: boolean): boolean {
-  return text.length > 0 && !DIRECTIVE_RE.test(text) && !LICENSE_RE.test(text) && (includeValueTags || !VALUE_TAG_RE.test(text));
+function eligible(text: string, includeValueTags: boolean, jsDoc = false): boolean {
+  return text.length > 0 && !DIRECTIVE_RE.test(text) && !LICENSE_RE.test(text) &&
+    (includeValueTags || !VALUE_TAG_RE.test(text) && (!jsDoc || !ANY_TAG_RE.test(text)));
 }
 
 export function sentenceUnits(text: string): number {
@@ -90,7 +92,9 @@ export function proseGroups(
     const text = body(comment);
     if (comment.type === "Block") {
       flush();
-      if (eligible(text, includeValueTags)) groups.push({ comment, text, hasTypedTags: TYPED_TAG_RE.test(text) });
+      if (eligible(text, includeValueTags, comment.value.startsWith("*"))) {
+        groups.push({ comment, text, hasTypedTags: TYPED_TAG_RE.test(text) });
+      }
       continue;
     }
     const ownLine = sourceCode.lines[comment.loc.start.line - 1]?.slice(0, comment.loc.start.column).trim() === "";

@@ -98,7 +98,10 @@ class DocstringReturnsRestateSignature(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Return documentation must add facts beyond the function name and annotation.",
         rationale="Repeating the return type or function name adds noise and can become stale without explaining the result's semantics.",
-        remediation="Remove the redundant return section, or document identity, units, constraints, or other behavior absent from the signature.",
+        remediation=(
+            "Delete the human-only docstring or redundant return section. Express author-controlled identity and "
+            "units with names and types; keep hidden constraints as a concise local comment."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(

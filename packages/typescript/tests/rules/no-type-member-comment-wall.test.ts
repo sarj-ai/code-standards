@@ -257,6 +257,19 @@ ruleTester.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
+    {
+      name: "preserves custom JSDoc tags that may be consumed by downstream tooling",
+      code: [
+        "interface ApiSurface {",
+        "  /** The host. @customApiTag host */",
+        "  host: string;",
+        "  /** The port. @customApiTag port */",
+        "  port: number;",
+        "  /** The user. @customApiTag user */",
+        "  user: string;",
+        "}",
+      ].join("\n"),
+    },
     // A rule of dashes is a banner; `no-comment-cruft` owns that shape. Take
     // the dashes away and each comment is the member's own name.
     {

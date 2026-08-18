@@ -63,9 +63,15 @@ class RedundantDocstring(Rule):
     id: str = "redundant-docstring"
     code: str = "SARJ050"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Docstring only restates the signature — delete the whole docstring or document behavior callers cannot infer.",
+        summary=(
+            "Docstring only restates the signature — delete the whole docstring; clarify author-controlled names and "
+            "types if the contract is unclear."
+        ),
         rationale="Restating a clear name and signature creates maintenance work without helping callers.",
-        remediation="Delete the docstring or document behavior, constraints, side effects, or failure modes not evident from the signature.",
+        remediation=(
+            "Delete the docstring and clarify author-controlled names, types, or structure. Keep a concise local "
+            "comment only for a hidden constraint, side effect, or failure mode."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SUGGESTION,
         limitations=(

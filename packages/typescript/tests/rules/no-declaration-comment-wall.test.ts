@@ -77,6 +77,20 @@ ruleTester.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
+    {
+      name: "preserves machine-consumed type tags even when their prose restates members",
+      code: [
+        "class Store {",
+        "  /** The client. @type {Client} */",
+        "  client = createClient();",
+        "  /** The cache. @type {Cache} */",
+        "  cache = createCache();",
+        "  /** The clock. @type {Clock} */",
+        "  clock = createClock();",
+        "}",
+      ].join("\n"),
+    },
+
     // The words of a NESTED VALUE are not the member's own words. `// Hover
     // background` over a field initialised to `{ background: controlItemBgHover }`
     // has both its words inside the value it labels and neither in the name it

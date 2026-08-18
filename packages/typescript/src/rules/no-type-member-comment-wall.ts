@@ -15,6 +15,7 @@ import {
   type WallOptions,
   carriesValue,
   commentBody,
+  hasJsDocTag,
   isWall,
   isTagsOnly,
   knownTokens,
@@ -78,7 +79,7 @@ export default createRule<Options, MessageIds>({
     schema: [WALL_SCHEMA],
     messages: {
       commentWall:
-        "{{restated}} of this type's {{commented}} member comments only re-spell the member's own name and type — delete them, and keep the rows that say what the name cannot.",
+        "{{restated}} of this type's {{commented}} member comments only re-spell names and types — delete them; if a row still needs narration, improve its name or type. Keep constraints and rationale.",
     },
   },
   defaultOptions: [WALL_DEFAULTS],
@@ -162,7 +163,9 @@ export default createRule<Options, MessageIds>({
         claimed.add(comment);
         commented += 1;
         const body = commentBody(comment);
-        if (body.length === 0 || carriesValue(body) || isTagsOnly(body)) continue;
+        if (body.length === 0 || hasJsDocTag(comment) || carriesValue(body) || isTagsOnly(body)) {
+          continue;
+        }
         if (novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords) {
           restated += 1;
         }

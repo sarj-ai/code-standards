@@ -83,9 +83,15 @@ class NoRestatedComment(Rule):
     id = "no-restated-comment"
     code = "SARJ207"
     documentation = RuleDocumentation(
-        summary="HCL comments must not merely restate the adjacent declaration.",
+        summary=(
+            "HCL comment restates the adjacent declaration — delete it; clarify an author-controlled label or extract "
+            "a named local if the declaration is unclear."
+        ),
         rationale="Narrating a resource, block, or attribute duplicates executable configuration and can drift from it.",
-        remediation="Delete the comment or replace it with an external constraint, provider quirk, or operational reason.",
+        remediation=(
+            "Delete the restatement. If the declaration is unclear, improve an author-controlled resource, module, "
+            "local, or output label; keep provider constraints and operational rationale."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(

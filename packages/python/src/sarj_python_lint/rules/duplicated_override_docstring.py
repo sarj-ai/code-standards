@@ -47,7 +47,10 @@ class DuplicatedOverrideDocstring(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Remove an override docstring copied verbatim from its local base method.",
         rationale="Inherited documentation is already discoverable, while a duplicate adds a second copy that can drift.",
-        remediation="Delete the copied docstring, or rewrite it only when the override has behavior-specific information to add.",
+        remediation=(
+            "Delete the copied docstring. If author-controlled override code is unclear, clarify names or extract a "
+            "helper; keep behavior-specific differences as a concise comment near the divergent code."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
