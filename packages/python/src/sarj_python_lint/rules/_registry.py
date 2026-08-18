@@ -68,6 +68,10 @@ from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
 from sarj_python_lint.rules.no_unique_violation_message_match import (
     NoUniqueViolationMessageMatch,
 )
+from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
+from sarj_python_lint.rules.no_vague_suppression_description import (
+    NoVagueSuppressionDescription,
+)
 from sarj_python_lint.rules.opaque_parametrize_case_needs_id import OpaqueParametrizeCaseNeedsId
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
@@ -221,6 +225,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         TestPhaseLabelComment.id: TestPhaseLabelComment,
         NoLongComment.id: NoLongComment,
         NoTypedDocSections.id: NoTypedDocSections,
+        NoUnnecessaryDocstring.id: NoUnnecessaryDocstring,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
         NoUniqueViolationMessageMatch.id: NoUniqueViolationMessageMatch,
         NegativeOnlyHttpStatusAssertion.id: NegativeOnlyHttpStatusAssertion,
@@ -232,6 +237,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreserveDeclaredNominalId.id: PreserveDeclaredNominalId,
         PreserveEnumTypes.id: PreserveEnumTypes,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
+        NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
     }
 )
 

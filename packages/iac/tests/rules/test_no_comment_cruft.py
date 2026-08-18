@@ -109,6 +109,12 @@ def test_tfvars_commented_inputs_not_flagged_only_banners():
     assert "banner" in diags[0].message.lower()
 
 
+def test_testdata_can_encode_removed_configuration():
+    src = '# module "child" {\n#   source = "./child"\n# }\n'
+
+    assert _check(src, name="testdata/removed-module/main.tf") == []
+
+
 def test_ignores_comment_lines_inside_heredoc_body():
     # `#` and `key = 3` lines inside a heredoc are data, not dead HCL.
     src = """

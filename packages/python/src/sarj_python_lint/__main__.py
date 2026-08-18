@@ -121,11 +121,21 @@ def analyze(
 _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
         "SARJ003": frozenset({"SARJ080"}),
-        "SARJ084": frozenset({"SARJ050", "SARJ091"}),
-        "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ091"}),
-        "SARJ092": frozenset({"SARJ086", "SARJ087"}),
+        "SARJ050": frozenset({"SARJ420"}),
+        "SARJ084": frozenset({"SARJ050", "SARJ091", "SARJ420"}),
+        "SARJ085": frozenset({"SARJ420"}),
+        "SARJ086": frozenset({"SARJ420"}),
+        "SARJ087": frozenset({"SARJ420"}),
+        "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ091", "SARJ420"}),
+        "SARJ091": frozenset({"SARJ420"}),
+        "SARJ092": frozenset({"SARJ086", "SARJ087", "SARJ420"}),
         "SARJ093": frozenset({"SARJ034"}),
+        "SARJ099": frozenset({"SARJ420"}),
     }
+)
+
+_DOCSTRING_PRECEDENCE_CODES = frozenset(
+    {"SARJ050", "SARJ084", "SARJ085", "SARJ086", "SARJ087", "SARJ088", "SARJ091", "SARJ092", "SARJ099"}
 )
 
 
@@ -137,7 +147,9 @@ class _OwnerLocation(NamedTuple):
 def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = None) -> list[Diagnostic]:
     """Keep the most specific remediation at a source location."""
     codes = frozenset(diagnostic.code for diagnostic in diags)
-    needs_docstring_owners = "SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])
+    needs_docstring_owners = ("SARJ092" in codes and not codes.isdisjoint(_DIAGNOSTIC_PRECEDENCE["SARJ092"])) or (
+        "SARJ420" in codes and not codes.isdisjoint(_DOCSTRING_PRECEDENCE_CODES)
+    )
     docstring_owners = _docstring_owner_locations(source) if source is not None and needs_docstring_owners else {}
     needs_signature_owners = "SARJ093" in codes and "SARJ034" in codes
     signature_owners = (

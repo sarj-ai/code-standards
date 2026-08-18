@@ -324,24 +324,32 @@ def test_run_imports_only_registries_with_routed_files(
     assert loaded == ["sarj_sql_lint"]
 
 
-def test_noise_only_does_not_import_registry_with_no_selected_rules(
+def test_noise_only_imports_sql_registry_for_comment_cruft(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    def fail_load(
-        _package: str,
+    loaded: list[str] = []
+
+    def fake_load(
+        package: str,
     ) -> _LoadedTool:
-        pytest.fail("SQL registry has no noise rules")
+        loaded.append(package)
+
+        def checker(_argv: list[str]) -> int:
+            return 0
+
+        return _LoadedTool(checker, {"no-comment-cruft": object})
 
     monkeypatch.setattr(
         runner,
         "_load_tool",
-        fail_load,
+        fake_load,
     )
     migration = tmp_path / "migration.sql"
     migration.touch()
 
     assert runner.run([str(migration)], noise_only=True) == 0
+    assert loaded == ["sarj_sql_lint"]
 
 
 def test_python_baseline_is_forwarded_only_to_python_checker(
@@ -472,8 +480,14 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
                 "no-restated-comment": object,
                 "no-secret-in-log": object,
             }
+        elif package == "sarj_sql_lint":
+            registry = {"no-comment-cruft": object, "idempotent-ddl": object}
         elif package == "sarj_iac_lint":
-            registry = {"no-comment-cruft": object, "require-deletion-protection": object}
+            registry = {
+                "no-comment-cruft": object,
+                "no-restated-comment": object,
+                "require-deletion-protection": object,
+            }
         else:
             registry = {"idempotent-ddl": object}
         return _LoadedTool(checker, registry)
@@ -499,6 +513,7 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
     assert selected == [
         {"no-comment-cruft", "no-restated-comment"},
         {"no-comment-cruft"},
+        {"no-comment-cruft", "no-restated-comment"},
     ]
 
 

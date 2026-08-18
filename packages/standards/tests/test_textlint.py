@@ -101,6 +101,131 @@ SHELL_IAC_EVALUATION_CASES = (
     ),
 )
 
+MARKDOWN_HIDDEN_COMMENT_CASES = (
+    EvaluationCase(
+        "hidden-heading-block",
+        Language.MARKDOWN,
+        "<!--\n## Legacy setup\nUse the retired command.\n-->\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath("README.md"),
+    ),
+    EvaluationCase(
+        "hidden-heading-single-line",
+        Language.MARKDOWN,
+        "<!-- ## Legacy setup -->\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath("README.md"),
+    ),
+    EvaluationCase(
+        "ordinary-hidden-template-instruction",
+        Language.MARKDOWN,
+        "<!-- Explain why this change is needed. -->\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/pull_request_template.md"),
+    ),
+    EvaluationCase(
+        "heading-example-in-fence",
+        Language.MARKDOWN,
+        "```markdown\n<!-- ## Legacy setup -->\n```\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("README.md"),
+    ),
+    EvaluationCase(
+        "heading-example-in-indented-code",
+        Language.MARKDOWN,
+        "    <!-- ## Legacy setup -->\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("README.md"),
+    ),
+    EvaluationCase(
+        "unclosed-html-comment",
+        Language.MARKDOWN,
+        "<!--\n## Legacy setup\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("README.md"),
+    ),
+    EvaluationCase(
+        "protected-external-constraint",
+        Language.MARKDOWN,
+        "<!--\n## Compatibility workaround\nRequired by https://vendor.example/spec.\n-->\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("README.md"),
+    ),
+    EvaluationCase(
+        "markdownlint-directive",
+        Language.MARKDOWN,
+        "<!-- markdownlint-disable MD025\n# Generated title\n-->\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("README.md"),
+    ),
+)
+
+EXACT_CONFIG_RESTATEMENT_CASES = (
+    EvaluationCase(
+        "toml-exact-restatement",
+        Language.CONFIG,
+        "# Retry count is 3\nretry_count = 3\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath("config.toml"),
+    ),
+    EvaluationCase(
+        "yaml-exact-restatement",
+        Language.CONFIG,
+        "# Deploy environment equals production\ndeploy-environment: production\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath("config.yaml"),
+    ),
+    EvaluationCase(
+        "quoted-scalar-restatement",
+        Language.CONFIG,
+        '# Environment is production\nenvironment = "production"\n',
+        ExpectedOutcome.MATCH,
+        PurePosixPath("config.toml"),
+    ),
+    EvaluationCase(
+        "rationale-adds-information",
+        Language.CONFIG,
+        "# Keep three retries because the upstream API is eventually consistent.\nretry_count = 3\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config.toml"),
+    ),
+    EvaluationCase(
+        "value-does-not-match",
+        Language.CONFIG,
+        "# Retry count is 5\nretry_count = 3\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config.toml"),
+    ),
+    EvaluationCase(
+        "comment-has-extra-fact",
+        Language.CONFIG,
+        "# Retry count is 3 for transient failures\nretry_count = 3\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config.toml"),
+    ),
+    EvaluationCase(
+        "blank-line-breaks-attachment",
+        Language.CONFIG,
+        "# Retry count is 3\n\nretry_count = 3\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config.toml"),
+    ),
+    EvaluationCase(
+        "collection-value-is-out-of-scope",
+        Language.CONFIG,
+        "# Ports are 80 443\nports: [80, 443]\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config.yaml"),
+    ),
+    EvaluationCase(
+        "yaml-block-scalar-is-out-of-scope",
+        Language.CONFIG,
+        "# Script is echo ready\nscript: |\n  echo ready\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config.yaml"),
+    ),
+)
+
 
 def _codes(path: Path, *, root: Path | None = None) -> list[str]:
     return [finding.code for finding in textlint.check_paths([str(path)], root=root)]
@@ -117,6 +242,36 @@ def test_shell_iac_labeled_evaluation_cases(case: EvaluationCase, tmp_path: Path
     path.write_text(case.source, encoding="utf-8")
 
     findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ304"]
+
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+
+
+@pytest.mark.parametrize(
+    "case",
+    MARKDOWN_HIDDEN_COMMENT_CASES,
+    ids=tuple(case.case_id for case in MARKDOWN_HIDDEN_COMMENT_CASES),
+)
+def test_markdown_hidden_comment_labeled_evaluation_cases(case: EvaluationCase, tmp_path: Path) -> None:
+    path = tmp_path / case.path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(case.source, encoding="utf-8")
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ305"]
+
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+
+
+@pytest.mark.parametrize(
+    "case",
+    EXACT_CONFIG_RESTATEMENT_CASES,
+    ids=tuple(case.case_id for case in EXACT_CONFIG_RESTATEMENT_CASES),
+)
+def test_exact_config_restatement_labeled_evaluation_cases(case: EvaluationCase, tmp_path: Path) -> None:
+    path = tmp_path / case.path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(case.source, encoding="utf-8")
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ306"]
 
     assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
 
@@ -194,6 +349,8 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "commented-out-config",
         "config-comment-wall",
         "ephemeral-execution-artifact",
+        "exact-config-comment-restatement",
+        "hidden-markdown-heading",
         "iac-source-coupled-test",
         "unpinned-github-action",
     }
@@ -518,6 +675,55 @@ def test_markdown_artifact_suppression_is_exact_code_specific(tmp_path: Path) ->
 
     path.write_text("<!-- sarj-noqa: SARJ301 -->\n# Temporary execution record\n", encoding="utf-8")
     assert _codes(path, root=tmp_path) == ["SARJ302"]
+
+
+def test_hidden_markdown_heading_suppression_is_exact_code_specific(tmp_path: Path) -> None:
+    path = tmp_path / "README.md"
+    hidden = "<!-- ## Retired setup -->\n"
+    path.write_text(f"<!-- sarj-noqa: SARJ305 -->\n{hidden}", encoding="utf-8")
+    assert _codes(path, root=tmp_path) == []
+
+    path.write_text(f"<!-- sarj-noqa: SARJ302 -->\n{hidden}", encoding="utf-8")
+    assert _codes(path, root=tmp_path) == ["SARJ305"]
+
+
+def test_exact_config_restatement_suppression_is_local_and_code_specific(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    restatement = "# Retry count is 3\nretry_count = 3\n"
+    path.write_text(f"# sarj-noqa: SARJ306\n{restatement}", encoding="utf-8")
+    assert _codes(path, root=tmp_path) == []
+
+    path.write_text(f"# sarj-noqa: SARJ301\n{restatement}", encoding="utf-8")
+    assert _codes(path, root=tmp_path) == ["SARJ306"]
+
+
+def test_comment_reduction_rules_block(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    markdown = tmp_path / "README.md"
+    markdown.write_text("<!-- ## Retired setup -->\n", encoding="utf-8")
+    config = tmp_path / "config.toml"
+    config.write_text("# Retry count is 3\nretry_count = 3\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert textlint.run([markdown.name, config.name]) == 1
+    output = capsys.readouterr().out
+    assert "SARJ305 " in output
+    assert "SARJ306 " in output
+    assert "warning:" not in output
+
+
+def test_exact_restatements_take_precedence_over_generic_comment_wall(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "# Build name is build\nbuild_name: build\n"
+        "# Test name is test\ntest_name: test\n"
+        "# Deploy name is deploy\ndeploy_name: deploy\n"
+        "# Publish name is publish\npublish_name: publish\n",
+        encoding="utf-8",
+    )
+
+    assert _codes(path, root=tmp_path) == ["SARJ306", "SARJ306", "SARJ306", "SARJ306"]
 
 
 @pytest.mark.parametrize(

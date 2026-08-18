@@ -46,6 +46,16 @@ class _StandaloneComment(NamedTuple):
     body: str
 
 
+class _MarkdownHtmlComment(NamedTuple):
+    line: int
+    body: str
+
+
+class _ConfigScalarEntry(NamedTuple):
+    key: str
+    value: str
+
+
 _TEXT_SUFFIXES: Final = frozenset(
     {
         ".bash",
@@ -159,6 +169,12 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _SARJ_SUPPRESSION_RE = re.compile(r"^sarj-noqa:\s*(?P<codes>SARJ\d+(?:\s*,\s*SARJ\d+)*)\s*$", re.IGNORECASE)
+_MARKDOWN_HIDDEN_DIRECTIVE_RE = re.compile(
+    r"^(?:sarj-noqa|markdownlint|prettier|cspell|spellcheck|vale|doctoc|toc\b|more\b|"
+    r"begin\b|end\b|generated\b|copyright|spdx|template\b)",
+    re.IGNORECASE,
+)
+_MARKDOWN_ATX_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _WORKFLOW_ACTION_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<value>[^\s#]+)", re.IGNORECASE)
 _FULL_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 _FULL_IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
@@ -188,6 +204,11 @@ _NARRATION_RE = re.compile(
 )
 _WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*")
 _STOPWORDS: Final = frozenset({"a", "an", "and", "for", "from", "in", "of", "on", "the", "then", "this", "to", "we"})
+_CONFIG_RESTATEMENT_RE = re.compile(r"^(?P<key>.+?)\s+(?:is|equals)\s+(?P<value>.+?)[.!]?\s*$", re.IGNORECASE)
+_YAML_SCALAR_ENTRY_RE = re.compile(r"^\s*(?:-\s+)?(?P<key>[A-Za-z_][\w.-]*)\s*:\s*(?P<value>[^\s].*?)\s*$")
+_TOML_SCALAR_ENTRY_RE = re.compile(r"^\s*(?P<key>[A-Za-z_][\w.-]*)\s*=\s*(?P<value>[^\s].*?)\s*$")
+_CONFIG_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*|\d+(?:\.\d+)?")
+_QUOTED_SCALAR_MIN_LENGTH: Final = 2
 
 
 @dataclass(frozen=True)
@@ -448,6 +469,72 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Only test-named shell files or shell files below a tests directory are checked.",
             ),
         ),
+        "hidden-markdown-heading": RuleMeta(
+            code="SARJ305",
+            summary="HTML comment hides a Markdown heading",
+            rationale=(
+                "A heading hidden from rendered documentation is disabled documentation that silently drifts while "
+                "version control already preserves removed sections."
+            ),
+            remediation="Delete the hidden section, or restore it as maintained rendered documentation.",
+            category=RuleCategory.MAINTAINABILITY,
+            languages=frozenset({Language.MARKDOWN}),
+            file_patterns=("**/*.md", "**/*.mdx"),
+            examples=(
+                _public_example(
+                    example_id="hidden-obsolete-section",
+                    title="A hidden heading disables a documentation section",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="README.md",
+                    source="<!--\n## Legacy setup\nUse the retired command.\n-->\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="visible-current-section",
+                    title="Current documentation stays rendered",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="README.md",
+                    source="## Setup\n\nRun the current command.\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Only standalone, closed HTML comments containing an ATX heading outside Markdown code are checked; template instructions and protected rationale are preserved.",
+            ),
+        ),
+        "exact-config-comment-restatement": RuleMeta(
+            code="SARJ306",
+            summary="YAML or TOML comment exactly repeats the adjacent scalar assignment",
+            rationale=(
+                "A comment that repeats the key and scalar value adds no information and can drift independently from "
+                "the configuration it narrates."
+            ),
+            remediation="Delete the restatement; keep comments only for constraints or rationale absent from the value.",
+            category=RuleCategory.MAINTAINABILITY,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=("**/*.yaml", "**/*.yml", "**/*.toml"),
+            examples=(
+                _public_example(
+                    example_id="scalar-value-restatement",
+                    title="A prose comment repeats the assignment",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="config.toml",
+                    source="# Retry count is 3\nretry_count = 3\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="scalar-value-rationale",
+                    title="A rationale adds information absent from the assignment",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="config.toml",
+                    source="# Keep three retries because the upstream API is eventually consistent.\nretry_count = 3\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Only an immediately adjacent standalone comment using exact `key is value` or `key equals value` wording over a simple scalar entry is checked.",
+            ),
+        ),
     }
 )
 
@@ -483,6 +570,7 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
             *_workflow_action_findings(path, relative, source),
             *_artifact_findings(path, relative, source, durable_patterns),
             *_shell_iac_source_findings(path, relative, source),
+            *_markdown_hidden_comment_findings(path, source),
             *_comment_findings(path, source),
         ]
         suppressed: frozenset[str] = (
@@ -911,6 +999,61 @@ def _markdown_prose_lines(source: str) -> list[str]:
     return visible
 
 
+def _markdown_hidden_comment_findings(path: Path, source: str) -> list[Finding]:
+    """Find disabled Markdown sections without interpreting ordinary HTML prose."""
+    if path.suffix.casefold() not in {".md", ".mdx"}:
+        return []
+    return [
+        Finding(
+            path,
+            comment.line,
+            "SARJ305",
+            "HTML comment hides a Markdown heading — delete the disabled section or restore it as maintained documentation.",
+        )
+        for comment in _markdown_html_comments(source)
+        if _hidden_markdown_heading(comment.body)
+    ]
+
+
+def _markdown_html_comments(source: str) -> list[_MarkdownHtmlComment]:
+    """Extract standalone, closed HTML comments after Markdown code has been blanked."""
+    comments: list[_MarkdownHtmlComment] = []
+    pending_line: int | None = None
+    pending: list[str] = []
+    for line_number, line in enumerate(_markdown_prose_lines(source), start=1):
+        if pending_line is None:
+            match = re.fullmatch(r"\s*<!--(?P<body>.*)", line)
+            if match is None:
+                continue
+            pending_line = line_number
+            remainder = match.group("body")
+        else:
+            remainder = line
+        before, marker, after = remainder.partition("-->")
+        if marker:
+            if after.strip():
+                pending_line = None
+                pending = []
+                continue
+            pending.append(before)
+            comments.append(_MarkdownHtmlComment(pending_line, "\n".join(pending).strip()))
+            pending_line = None
+            pending = []
+            continue
+        pending.append(remainder)
+    return comments
+
+
+def _hidden_markdown_heading(body: str) -> bool:
+    lines = [stripped for line in body.splitlines() if (stripped := line.strip())]
+    if not lines or _MARKDOWN_HIDDEN_DIRECTIVE_RE.match(lines[0]):
+        return False
+    prose = "\n".join(lines)
+    if _PROTECTED_RE.search(prose):
+        return False
+    return any(_MARKDOWN_ATX_HEADING_RE.match(line) for line in lines)
+
+
 def _large_artifact(source: str, path: Path, lines: list[str]) -> bool:
     if len(lines) < _LARGE_ARTIFACT_MIN_LINES and not _has_word_count(source, _LARGE_ARTIFACT_MIN_WORDS):
         return False
@@ -1006,6 +1149,20 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
                 )
             )
             continue
+        if (
+            not protected
+            and _exact_config_restatement(path, body, lines, index)
+            and not _suppresses_previous_line(lines, index, "SARJ306")
+        ):
+            findings.append(
+                Finding(
+                    path,
+                    index + 1,
+                    "SARJ306",
+                    "Comment exactly repeats the adjacent scalar assignment — delete the restatement.",
+                )
+            )
+            continue
         next_index = _next_content_line(lines, index + 1)
         if next_index is None:
             continue
@@ -1094,6 +1251,46 @@ def _looks_commented_config(path: Path, body: str) -> bool:
         or compact.startswith(("[", "{"))
         or (compact[0] in {'"', "'"} and compact[-1] == compact[0])
     )
+
+
+def _exact_config_restatement(path: Path, body: str, lines: list[str], index: int) -> bool:
+    """Match one exact prose restatement of the immediately following scalar entry."""
+    if path.suffix.casefold() not in {".toml", ".yaml", ".yml"} or index + 1 >= len(lines):
+        return False
+    if (
+        index > 0
+        and (previous := _standalone_comment(path, lines[index - 1])) is not None
+        and _SARJ_SUPPRESSION_RE.fullmatch(previous.body) is None
+    ):
+        return False
+    comment = _CONFIG_RESTATEMENT_RE.fullmatch(body)
+    entry = _config_scalar_entry(path, lines[index + 1])
+    if comment is None or entry is None:
+        return False
+    return _config_words(comment.group("key")) == _config_words(entry.key) and _config_words(
+        comment.group("value")
+    ) == _config_words(entry.value)
+
+
+def _config_scalar_entry(path: Path, line: str) -> _ConfigScalarEntry | None:
+    pattern = _TOML_SCALAR_ENTRY_RE if path.suffix.casefold() == ".toml" else _YAML_SCALAR_ENTRY_RE
+    match = pattern.fullmatch(line)
+    if match is None:
+        return None
+    value = match.group("value").strip()
+    if value.startswith(("[", "{")) or value in {"|", ">", "|-", "|+", ">-", ">+"} or " #" in value or "${{" in value:
+        return None
+    if len(value) >= _QUOTED_SCALAR_MIN_LENGTH and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1]
+    return _ConfigScalarEntry(match.group("key"), value)
+
+
+def _config_words(text: str) -> tuple[str, ...]:
+    tokens: list[str] = []
+    for match in _CONFIG_TOKEN_RE.finditer(text):
+        expanded = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", match.group(0))
+        tokens.extend(part.casefold() for part in re.split(r"[-_]+", expanded) if part)
+    return tuple(tokens)
 
 
 def _inside_comment_run(path: Path, lines: list[str], index: int) -> bool:

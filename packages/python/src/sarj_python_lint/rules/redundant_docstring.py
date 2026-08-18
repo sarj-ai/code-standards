@@ -24,9 +24,8 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected, stem
 from sarj_python_lint.rules._docstrings import (
-    PROMPT_DECORATOR_MARKERS,
     VALUE_MARKER_RE,
-    decorator_markers,
+    is_framework_consumed_docstring,
     restates,
     signature_stems,
 )
@@ -152,7 +151,7 @@ class RedundantDocstring(Rule):
             return
         if len(node.body) == 1:
             return  # the docstring IS the body; deleting it leaves a syntax error
-        if decorator_markers(node) & PROMPT_DECORATOR_MARKERS:
+        if is_framework_consumed_docstring(node):
             return
         if _numeric_content(node, docstring, class_name):
             return

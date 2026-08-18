@@ -8,3 +8,5 @@ MD024:
 MD029:
   style: "ordered"
 MD040: true # Require language specified on fenced code blocks
+MD053:
+  ignored_definitions: [] # Treat pseudo-reference comments as removable unused definitions.

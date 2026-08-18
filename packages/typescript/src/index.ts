@@ -45,6 +45,7 @@ import noUnnecessaryUseClient from "./rules/no-unnecessary-use-client.js";
 import noUnsafeMockCasting from "./rules/no-unsafe-mock-casting.js";
 import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import testLoopsOverLiteralCases from "./rules/test-loops-over-literal-cases.js";
+import testPhaseLabelComment from "./rules/test-phase-label-comment.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferInputGroupSearch from "./rules/prefer-input-group-search.js";
@@ -119,6 +120,7 @@ const rules = {
   "no-unsafe-mock-casting": noUnsafeMockCasting,
   "no-zod-native-enum": noZodNativeEnum,
   "test-loops-over-literal-cases": testLoopsOverLiteralCases,
+  "test-phase-label-comment": testPhaseLabelComment,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-input-group-search": preferInputGroupSearch,
@@ -148,7 +150,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.9.0",
+  version: "15.10.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -206,6 +208,7 @@ const recommendedRules = {
   "@sarj/no-unsafe-mock-casting": "error",
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
+  "@sarj/test-phase-label-comment": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
@@ -275,6 +278,7 @@ const strictRules = {
   "@sarj/no-unsafe-mock-casting": "error",
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
+  "@sarj/test-phase-label-comment": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",

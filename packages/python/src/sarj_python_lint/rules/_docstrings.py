@@ -163,6 +163,34 @@ PROMPT_DECORATOR_MARKERS = frozenset(
     }
 )
 
+# Class docstrings consumed as schema descriptions rather than reader-only
+# prose. Final dotted names are intentional: imports can alias packages, while
+# the runtime base/decorator still has one of these stable framework surfaces.
+SCHEMA_BASE_NAMES = frozenset(
+    {
+        "BaseModel",
+        "BaseSettings",
+        "RootModel",
+        "TypedDict",
+        "Enum",
+        "EnumMeta",
+        "Flag",
+        "IntEnum",
+        "IntFlag",
+        "ReprEnum",
+        "StrEnum",
+    }
+)
+
+SCHEMA_DECORATOR_MARKERS = frozenset({"graphene", "msgspec", "pydantic", "strawberry"})
+
+# Python/framework constructs that visibly publish or copy the decorated
+# function's docstring. Generic decorators are not exempt merely because they
+# exist.
+FRAMEWORK_DOCSTRING_DECORATOR_MARKERS = PROMPT_DECORATOR_MARKERS | frozenset(
+    {"cached_property", "fixture", "property", "wraps"}
+)
+
 # Google-style section headers, each alone on its line.
 _SECTION_RE = re.compile(
     r"^[ \t]*(?P<name>Args|Arguments|Parameters|Params|Keyword Args|Keyword Arguments|"
@@ -224,6 +252,48 @@ def decorator_markers(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDe
         except AttributeError, ValueError:  # pragma: no cover — unparse is total for these nodes
             continue
     return markers
+
+
+def docstring_expression(
+    node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+) -> ast.Expr | None:
+    """Return the expression carrying ``node``'s docstring, if one exists."""
+    if not node.body:
+        return None
+    expression = node.body[0]
+    if (
+        isinstance(expression, ast.Expr)
+        and isinstance(expression.value, ast.Constant)
+        and isinstance(expression.value.value, str)
+    ):
+        return expression
+    return None
+
+
+def base_names(node: ast.ClassDef) -> set[str]:
+    """Return the stable final dotted name of every class base."""
+    names: set[str] = set()
+    for base in node.bases:
+        target = base.value if isinstance(base, ast.Subscript) else base
+        if isinstance(target, ast.Attribute):
+            names.add(target.attr)
+        elif isinstance(target, ast.Name):
+            names.add(target.id)
+    return names
+
+
+def is_framework_consumed_docstring(
+    node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    """Report mechanically visible framework/schema consumption of a docstring."""
+    if isinstance(node, ast.Module):
+        return False
+    markers = decorator_markers(node)
+    if markers & FRAMEWORK_DOCSTRING_DECORATOR_MARKERS:
+        return True
+    return isinstance(node, ast.ClassDef) and bool(
+        base_names(node) & SCHEMA_BASE_NAMES or markers & SCHEMA_DECORATOR_MARKERS
+    )
 
 
 def annotation_tokens(annotation: ast.expr | None) -> list[str]:

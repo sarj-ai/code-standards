@@ -25,6 +25,16 @@ class SourceLocation(NamedTuple):
 class _ScanResult(NamedTuple):
     masked_source: str
     executable_spans: list[tuple[int, int]]
+    comments: list[SourceComment]
+
+
+class SourceComment(NamedTuple):
+    """One real SQL comment outside strings and quoted identifiers."""
+
+    line: int
+    column: int
+    body: str
+    block: bool
 
 
 class RuleCategory(StrEnum):
@@ -501,6 +511,7 @@ def _scan(source: str) -> _ScanResult:
     open_tags: list[str] = []
     open_tag_depths: dict[str, list[int]] = {}
     spans: list[tuple[int, int]] = []
+    comments: list[SourceComment] = []
     body_start = 0
     i = 0
     chunk_start = 0
@@ -508,6 +519,19 @@ def _scan(source: str) -> _ScanResult:
 
     while i < n:
         ch = source[i]
+        template_close = next(
+            (closer for opener, closer in (("{#", "#}"), ("{%", "%}"), ("{{", "}}")) if source.startswith(opener, i)),
+            None,
+        )
+        if template_close is not None:
+            if i > chunk_start:
+                out.append(source[chunk_start:i])
+            close = source.find(template_close, i + 2)
+            end = n if close < 0 else close + len(template_close)
+            out.append(_blank(source[i:end]))
+            i = end
+            chunk_start = i
+            continue
         if ch == "$" and open_tags:
             depth = _closing_depth(source, i, open_tag_depths)
             if depth is not None:
@@ -531,9 +555,26 @@ def _scan(source: str) -> _ScanResult:
         if pair == "--":
             end = source.find("\n", i)
             end = n if end == -1 else end
+            comments.append(
+                SourceComment(
+                    line=source.count("\n", 0, i) + 1,
+                    column=i - source.rfind("\n", 0, i),
+                    body=source[i + 2 : end].strip(),
+                    block=False,
+                )
+            )
         elif pair == "/*":
             close = source.find("*/", i + 2)
             end = n if close == -1 else close + 2
+            body_end = end - 2 if close >= 0 else end
+            comments.append(
+                SourceComment(
+                    line=source.count("\n", 0, i) + 1,
+                    column=i - source.rfind("\n", 0, i),
+                    body=source[i + 2 : body_end].strip(),
+                    block=True,
+                )
+            )
         elif ch in {"'", '"'}:
             end = _scan_quoted(source, i, ch)
         elif ch == "$":
@@ -566,12 +607,17 @@ def _scan(source: str) -> _ScanResult:
 
     if open_tags:
         spans.append((body_start, n))
-    return _ScanResult("".join(out), spans)
+    return _ScanResult("".join(out), spans, comments)
 
 
 def mask_sql(source: str) -> str:
     r"""Blank SQL noise without shifting offsets or hiding executable dollar-quoted bodies."""
     return _scan(source).masked_source
+
+
+def sql_comments(source: str) -> tuple[SourceComment, ...]:
+    """Return real SQL comments in source order without exposing scanner state."""
+    return tuple(_scan(source).comments)
 
 
 def dollar_quoted_lines(source: str) -> frozenset[int]:

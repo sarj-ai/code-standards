@@ -75,6 +75,7 @@ class NoCommentCruft(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Commented assignments in tfvars files are allowed because they commonly document optional inputs.",
+            "Testdata and fixture trees may encode removed configuration as test input, so only banners are checked there.",
             "Directives and heredoc bodies are excluded, and disabled HCL runs must be code-dominant.",
         ),
         examples=(
@@ -119,7 +120,8 @@ class NoCommentCruft(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         # HCL commented-out code checks exclude .tfvars, while section banners are checked in all files.
-        detect_code = str(path).endswith((".tf", ".tf.json", ".hcl"))
+        fixture_input = any(part.lower() in {"fixture", "fixtures", "testdata"} for part in path.parts)
+        detect_code = str(path).endswith((".tf", ".tf.json", ".hcl")) and not fixture_input
         lines = source.splitlines()
         # Heredoc lines are data rather than HCL line comments.
         in_heredoc = heredoc_body_mask(lines)

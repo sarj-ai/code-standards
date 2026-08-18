@@ -628,6 +628,36 @@ def test_comment_corpus_writes_text_to_a_private_new_file(tmp_path: Path) -> Non
         comment_corpus.write_records([tmp_path], destination)
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("migration.sql", "SELECT '-- data';\n-- Remove old rows.\n", "sql", "Remove old rows.", "data"),
+        ("main.tf", 'name = "# value"\n# Keep the state name stable.\n', "iac", "Keep the state name stable.", "value"),
+        ("config.yaml", 'name: "# value"\n# Keep this key stable.\n', "config", "Keep this key stable.", "value"),
+        ("config.toml", 'name = "# value"\n# Keep this key stable.\n', "config", "Keep this key stable.", "value"),
+        (
+            "README.md",
+            "```sql\n<!-- example only -->\n```\n<!-- Keep this marker stable. -->\n",
+            "markdown",
+            "Keep this marker stable.",
+            "example only",
+        ),
+    ],
+    ids=["sql", "hcl", "yaml", "toml", "markdown"],
+)
+def test_comment_corpus_extracts_every_supported_language(
+    tmp_path: Path,
+    case: tuple[str, str, str, str, str],
+) -> None:
+    name, source, language, expected, excluded = case
+    (tmp_path / name).write_text(source, encoding="utf-8")
+
+    records = list(comment_corpus.records([tmp_path]))
+
+    assert [(record["language"], record["text"]) for record in records] == [(language, expected)]
+    assert all(excluded not in record["text"] for record in records)
+
+
 def test_comment_corpus_skips_symlinked_files(tmp_path: Path) -> None:
     outside = tmp_path.parent / f"{tmp_path.name}-outside.py"
     outside.write_text("# Sensitive explanation.\n", encoding="utf-8")

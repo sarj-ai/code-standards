@@ -136,6 +136,8 @@ _PYTHON_NOISE_RULES = frozenset(
         "no-long-comment",
         "no-restated-comment",
         "no-typed-doc-sections",
+        "no-unnecessary-docstring",
+        "no-vague-suppression-description",
         "prefer-self-documenting-constant",
         "redundant-class-docstring",
         "redundant-docstring",
@@ -145,7 +147,8 @@ _PYTHON_NOISE_RULES = frozenset(
         "trailing-value-narration",
     }
 )
-_IAC_NOISE_RULES = frozenset({"no-comment-cruft"})
+_SQL_NOISE_RULES = frozenset({"no-comment-cruft"})
+_IAC_NOISE_RULES = frozenset({"no-comment-cruft", "no-restated-comment"})
 
 
 @dataclass
@@ -178,7 +181,7 @@ def run(
         _run_tool(
             "sarj_sql_lint",
             grouped.sql,
-            selected=frozenset() if noise_only else None,
+            selected=_SQL_NOISE_RULES if noise_only else None,
         ),
         _run_tool(
             "sarj_iac_lint",

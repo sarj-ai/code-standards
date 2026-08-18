@@ -107,7 +107,8 @@ dogfood-python:
 	rule_args=(); \
 	for rule in "$${python_rules[@]}"; do rule_args+=(--rule "$$rule"); done; \
 	set +e; \
-	output="$$(uv run --quiet --project packages/python --frozen sarj-python-lint check "$${rule_args[@]}" -- "$${python_files[@]}" 2>&1)"; \
+	# The baseline ratchets pre-SARJ420 docstrings; new files and count increases still fail. \
+	output="$$(uv run --quiet --project packages/python --frozen sarj-python-lint check "$${rule_args[@]}" --baseline packages/python/comment-diagnostic-baseline.json -- "$${python_files[@]}" 2>&1)"; \
 	status=$$?; \
 	set -e; \
 	if (( status > 1 )); then printf '%s\n' "$$output"; exit $$status; fi; \

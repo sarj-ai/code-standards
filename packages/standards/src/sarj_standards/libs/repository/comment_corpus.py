@@ -1,4 +1,4 @@
-"""Extract Python and JavaScript-family comments for rule calibration."""
+"""Extract source comments across every syntax family Standards lints."""
 
 from __future__ import annotations
 
@@ -24,7 +24,22 @@ if TYPE_CHECKING:
 
 
 _SUFFIXES = MappingProxyType(
-    {".py": "python", ".js": "typescript", ".jsx": "typescript", ".ts": "typescript", ".tsx": "typescript"}
+    {
+        ".hcl": "iac",
+        ".js": "typescript",
+        ".jsx": "typescript",
+        ".md": "markdown",
+        ".mdx": "markdown",
+        ".py": "python",
+        ".sql": "sql",
+        ".tf": "iac",
+        ".tfvars": "iac",
+        ".toml": "config",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".yaml": "config",
+        ".yml": "config",
+    }
 )
 _SKIP_PARTS = frozenset(
     {".git", ".venv", ".worktrees", "node_modules", "dist", "build", "coverage", "vendor", "vendored"}
@@ -74,7 +89,7 @@ def records(roots: Sequence[Path]) -> Iterator[Record]:
                         continue
                     if source is None:
                         continue
-                    comments = _python_comments(source) if language == "python" else _javascript_comments(source)
+                    comments = _comments(language, source)
                     for line, kind, value in comments:
                         yield {
                             "repository": resolved_root.name,
@@ -100,6 +115,18 @@ def _read_regular_file(directory_descriptor: int, filename: str) -> str | None:
     finally:
         if descriptor >= 0:
             os.close(descriptor)
+
+
+def _comments(language: str, source: str) -> list[tuple[int, str, str]]:
+    """Route one syntax family to its comment-aware extractor."""
+    return {
+        "config": _hash_comments,
+        "iac": _hcl_comments,
+        "markdown": _markdown_comments,
+        "python": _python_comments,
+        "sql": _sql_comments,
+        "typescript": _javascript_comments,
+    }[language](source)
 
 
 def emit_summary(roots: Sequence[Path], output: TextIO) -> int:
@@ -342,4 +369,168 @@ def _javascript_comments(source: str) -> list[tuple[int, str, str]]:
             continue
         line += char == "\n"
         index += 1
+    return found
+
+
+def _sql_comments(source: str) -> list[tuple[int, str, str]]:
+    """Extract SQL comments without treating strings or dollar bodies as comments."""
+    found: list[tuple[int, str, str]] = []
+    index = 0
+    line = 1
+    quote: str | None = None
+    dollar_tag: str | None = None
+    while index < len(source):
+        char = source[index]
+        pair = source[index : index + 2]
+        if dollar_tag is not None:
+            if source.startswith(dollar_tag, index):
+                index += len(dollar_tag)
+                dollar_tag = None
+                continue
+            line += char == "\n"
+            index += 1
+            continue
+        if quote is not None:
+            if char == quote and source[index + 1 : index + 2] == quote:
+                index += 2
+                continue
+            if char == quote:
+                quote = None
+            line += char == "\n"
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            index += 1
+            continue
+        if char == "$" and (match := re.match(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$", source[index:])):
+            dollar_tag = match.group(0)
+            index += len(dollar_tag)
+            continue
+        if pair == "--":
+            end = source.find("\n", index)
+            end = len(source) if end < 0 else end
+            found.append((line, "comment", source[index + 2 : end].strip()))
+            index = end
+            continue
+        if pair == "/*":
+            end = source.find("*/", index + 2)
+            end = len(source) if end < 0 else end
+            value = source[index + 2 : end]
+            found.append((line, "comment", value.strip("* \n")))
+            line += value.count("\n")
+            index = min(len(source), end + 2)
+            continue
+        line += char == "\n"
+        index += 1
+    return found
+
+
+def _hash_comments(source: str) -> list[tuple[int, str, str]]:
+    """Extract YAML/TOML hash comments while respecting simple quoted scalars."""
+    found: list[tuple[int, str, str]] = []
+    block_indent: int | None = None
+    for line_number, raw in enumerate(source.splitlines(), start=1):
+        indent = len(raw) - len(raw.lstrip())
+        if block_indent is not None:
+            if raw.strip() and indent > block_indent:
+                continue
+            block_indent = None
+        if re.search(r"[>|][+-]?\s*(?:#.*)?$", raw):
+            block_indent = indent
+        marker = _hash_comment_index(raw)
+        if marker is not None:
+            found.append((line_number, "comment", raw[marker + 1 :].strip()))
+    return found
+
+
+def _hcl_comments(source: str) -> list[tuple[int, str, str]]:
+    """Extract HCL line and block comments, excluding heredoc bodies and strings."""
+    masked = _mask_hcl_heredocs(source)
+    found = _javascript_comments(masked)
+    found.extend(_hash_comments(masked))
+    return sorted(set(found))
+
+
+def _mask_hcl_heredocs(source: str) -> str:
+    lines = source.splitlines(keepends=True)
+    terminator: str | None = None
+    masked: list[str] = []
+    for raw in lines:
+        stripped = raw.strip()
+        if terminator is not None:
+            masked.append(raw if stripped == terminator else "\n" if raw.endswith("\n") else "")
+            if stripped == terminator:
+                terminator = None
+            continue
+        match = re.search(r"<<-?\s*([A-Za-z_][A-Za-z0-9_]*)\s*$", raw.rstrip("\n"))
+        terminator = match.group(1) if match is not None else None
+        masked.append(raw)
+    return "".join(masked)
+
+
+def _hash_comment_index(line: str) -> int | None:
+    quote: str | None = None
+    escaped = False
+    for index, char in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and quote == '"':
+            escaped = True
+            continue
+        if quote is not None:
+            if char == quote:
+                quote = None
+            continue
+        if char in {'"', "'"}:
+            quote = char
+        elif char == "#":
+            return index
+    return None
+
+
+def _markdown_comments(source: str) -> list[tuple[int, str, str]]:  # ruff: ignore[too-many-locals] -- scanner keeps independent fence and HTML-comment state
+    """Extract HTML and pseudo-reference comments outside fenced code blocks."""
+    found: list[tuple[int, str, str]] = []
+    in_fence = False
+    fence = ""
+    in_html = False
+    html_start = 0
+    html_parts: list[str] = []
+    for line_number, raw in enumerate(source.splitlines(), start=1):
+        stripped = raw.lstrip()
+        if not in_html and (match := re.match(r"(`{3,}|~{3,})", stripped)):
+            marker = match.group(1)
+            if not in_fence:
+                in_fence, fence = True, marker[0]
+            elif marker[0] == fence:
+                in_fence, fence = False, ""
+            continue
+        if in_fence:
+            continue
+        if in_html:
+            before, separator, _after = raw.partition("-->")
+            html_parts.append(before)
+            if separator:
+                found.append((html_start, "comment", "\n".join(html_parts).strip()))
+                in_html = False
+                html_parts = []
+            continue
+        if stripped.startswith("[//]:"):
+            found.append((line_number, "comment", stripped.removeprefix("[//]:").strip()))
+            continue
+        before, opener, rest = raw.partition("<!--")
+        if not opener:
+            continue
+        _ = before
+        body, closer, _after = rest.partition("-->")
+        if closer:
+            found.append((line_number, "comment", body.strip()))
+        else:
+            in_html = True
+            html_start = line_number
+            html_parts = [rest]
+    if in_html:
+        found.append((html_start, "comment", "\n".join(html_parts).strip()))
     return found
