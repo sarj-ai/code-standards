@@ -46,9 +46,20 @@ jobs:
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: '0.12.3'
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-        with:
-          install: false
+      - name: Install the pinned mise bootstrap
+        env:
+          MISE_VERSION: '2026.8.8'
+          MISE_SHA256: 1fce52a3656cf14bef6feeb9f0b90d545126a0bb598f0a69afbb9e4702f8f3e3
+        run: |
+          set -euo pipefail
+          destination="$RUNNER_TEMP/mise-bin"
+          mkdir -p "$destination"
+          curl --fail --location --retry 3 --silent --show-error \
+            "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64" \
+            --output "$destination/mise"
+          printf '%s  %s\n' "$MISE_SHA256" "$destination/mise" | sha256sum --check --strict
+          chmod 0755 "$destination/mise"
+          printf '%s\n' "$destination" >> "$GITHUB_PATH"
       - name: Resolve the exact bundle version
         id: version
         env:
