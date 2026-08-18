@@ -10,7 +10,9 @@ findings here.
 Map source and test roots, test frameworks, fakes/fixtures, generated artifacts,
 and the native focused/full test commands. Exclude generated, vendored,
 snapshot, fixture-data, LLM-evaluation, and end-to-end trees unless the finding
-specifically concerns one of them.
+specifically concerns one of them. In pull-request audits, separate executable
+test changes from support-only fixtures, fakes, and expected-data maintenance;
+classify individual tests rather than whole files or pull requests.
 
 ## Judgment checks
 
@@ -51,6 +53,23 @@ the weakness:
    Interaction assertions are appropriate at true adapter boundaries, but an
    observable returned value, persisted row, emitted event, or rendered payload
    is the stronger oracle elsewhere.
+10. **Delegation contracts** — A forwarding test uses non-default sentinels and
+    proves the exact arguments and returned/yielded value that distinguish the
+    delegate. `None`, an empty iterator, or a no-throw loop is not evidence of
+    forwarding unless that empty/default behavior is the named contract.
+11. **Structured results** — A decoder, response, or error test observes the
+    domain fields or stable diagnostic it promises. Container type, non-null,
+    key presence, or success status alone is sufficient only when that narrow
+    shape is explicitly the contract.
+12. **Pagination and competing cases** — A cursor is consumed, both traversal
+    directions are checked when supported, and seeded controls distinguish
+    tenant, filter, ordering, and boundary behavior. Merely producing a cursor
+    or a non-empty page does not prove those contracts.
+13. **Coverage incentives** — Review changed-line and per-component coverage
+    gates alongside the tests they induce. Coverage is useful discovery evidence,
+    but a test added only to execute a forwarding line still needs an independent
+    contract oracle. Recommend mutation review for new logic instead of treating
+    line or branch execution as proof of test value.
 
 Do not use assertion-to-code ratio, raw coverage percentage, test length, or the
 mere presence of mocks/private calls as evidence of low value. Prefer the
@@ -62,4 +81,6 @@ integration dependencies by the fidelity they add.
 For every finding include the test location, the behavior it claims, the
 specific mutation that survives, the impact, and the smallest stronger oracle.
 Also name nearby strong counterexamples when they establish an important
-false-positive boundary. Separate confirmed weak tests from suggestions.
+false-positive boundary. Separate confirmed weak tests from suggestions, and
+record whether an active deterministic rule supports the finding or whether it
+remains `judgment-only`.
