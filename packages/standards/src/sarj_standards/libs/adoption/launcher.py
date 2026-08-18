@@ -118,8 +118,11 @@ def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
         )
         contents = _LEGACY_MAKE_VERSION_PRINT.sub(f"\t@{repository_command('--version')}", contents)
         contents = _LEGACY_MAKE_RUN_ASSIGNMENT.sub("", contents)
-        contents = _LEGACY_MAKE_VERSION_ASSIGNMENT.sub("", contents)
-        if "$(STANDARDS_RUN)" not in contents and "$(STANDARDS_VERSION)" not in contents:
+        contents = _LEGACY_MAKE_VERSION_ASSIGNMENT.sub(
+            f"STANDARDS_VERSION := $(shell {repository_command('--version')})\n",
+            contents,
+        )
+        if "$(STANDARDS_RUN)" not in contents:
             count += len(make_invocations)
         else:
             return LegacyInvocationRewrite(before_make, count)

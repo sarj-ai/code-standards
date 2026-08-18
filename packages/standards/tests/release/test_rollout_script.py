@@ -436,6 +436,65 @@ class TestRelease:
         ]
         assert environment["PATH"].startswith(str(shim_directory))
 
+    def test_runs_declared_consumer_bootstrap_in_order(self, tmp_path: Path) -> None:
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "5.16.5"\n\n[ci]\n'
+            'bootstrap = ["npm --prefix frontend run generate:api", "npm --prefix frontend run typegen"]\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(0, "generated"), (0, "typed")])
+
+        failure = rollout.run_consumer_bootstrap(
+            tmp_path,
+            ("mise", "exec", "--"),
+            runner,
+            {"PATH": "/tools"},
+        )
+
+        assert failure is None
+        assert runner.commands == [
+            (
+                "mise",
+                "exec",
+                "--",
+                "bash",
+                "--noprofile",
+                "--norc",
+                "-e",
+                "-o",
+                "pipefail",
+                "-c",
+                "npm --prefix frontend run generate:api",
+            ),
+            (
+                "mise",
+                "exec",
+                "--",
+                "bash",
+                "--noprofile",
+                "--norc",
+                "-e",
+                "-o",
+                "pipefail",
+                "-c",
+                "npm --prefix frontend run typegen",
+            ),
+        ]
+        assert runner.environments == [{"PATH": "/tools"}, {"PATH": "/tools"}]
+
+    def test_stops_consumer_bootstrap_at_first_failure(self, tmp_path: Path) -> None:
+        (tmp_path / ".sarj-standards.toml").write_text(
+            'schema = 3\nbundle = "5.16.5"\n\n[ci]\nbootstrap = ["first", "second"]\n',
+            encoding="utf-8",
+        )
+        runner = FakeRunner([(9, "failed")])
+
+        failure = rollout.run_consumer_bootstrap(tmp_path, (), runner, {})
+
+        assert failure is not None
+        assert failure.returncode == 9
+        assert runner.commands == [("bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", "first")]
+
     def test_existing_verification_block_does_not_stop_later_consumers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         blocked = rollout.Outcome(consumer(), "blocked", "https://pr/1", "consumer verification failed; fix it")
 

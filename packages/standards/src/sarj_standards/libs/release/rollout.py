@@ -16,6 +16,8 @@ import tempfile
 import tomllib
 from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
 
+from sarj_standards.libs.adoption import manifest as adoption_manifest
+
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -531,6 +533,28 @@ def provision_consumer_tools(
     return ProvisionedTools(prepared, mise_prefix)
 
 
+def run_consumer_bootstrap(
+    repo: Path,
+    tool_prefix: tuple[str, ...],
+    runner: CommandRunner,
+    environment: Mapping[str, str],
+) -> subprocess.CompletedProcess[str] | None:
+    """Run the consumer's declared analysis-input bootstrap exactly as generated CI does."""
+    adopted = adoption_manifest.load(repo)
+    if adopted is None:
+        return None
+    for command in adopted.ci_bootstrap:
+        result = runner.run(
+            (*tool_prefix, "bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command),
+            cwd=repo,
+            env=environment,
+            check=False,
+        )
+        if result.returncode != 0:
+            return result
+    return None
+
+
 def _declared_corepack_manager(repo: Path) -> str | None:
     """Return the first package manager whose repository pin needs Corepack shims."""
     for manifest in sorted(repo.glob("**/package.json")):
@@ -740,9 +764,13 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         doctor = runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
-        verification = runner.run((*tool_prefix, *consumer.verify), cwd=repo, env=unauthenticated, check=False)
-        if verification.returncode != 0:
-            failures.append("consumer verification failed:\n" + verification_detail(verification))
+        bootstrap = run_consumer_bootstrap(repo, tool_prefix, runner, unauthenticated)
+        if bootstrap is not None:
+            failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
+        else:
+            verification = runner.run((*tool_prefix, *consumer.verify), cwd=repo, env=unauthenticated, check=False)
+            if verification.returncode != 0:
+                failures.append("consumer verification failed:\n" + verification_detail(verification))
         verification_failure = "\n\n".join(failures)[-4000:]
         worktree_paths = changed_paths(repo, runner)
         if worktree_paths:
