@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           version="$REQUESTED_VERSION"
           if [[ -z "$version" && "$EVENT_NAME" == schedule ]]; then
-            version="$(uvx --no-config --isolated --python 3.14 --from sarj-standards sarj-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
+            version="$(uvx --no-config --isolated --python 3.14 --refresh-package sarj-standards --from sarj-standards sarj-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
           fi
           if [[ -z "$version" ]]; then
             version="$(python3 - <<'PY'
@@ -131,7 +131,7 @@ jobs:
             git config --global user.name "sarj-standards-rollout[bot]"
             git config --global user.email "sarj-standards-rollout[bot]@users.noreply.github.com"
             if [[ "$EVENT_NAME" == schedule ]]; then
-              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile || operation_status=$?
+              run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" reconcile --version "$VERSION" || operation_status=$?
             else
               run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" plan --version "$VERSION" || operation_status=$?
               if (( operation_status == 0 )); then
