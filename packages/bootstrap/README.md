@@ -8,6 +8,12 @@ Manifest-driven launcher for an exact Sarj Standards bundle.
 uv tool install sarj-standards-bootstrap
 ```
 
-Rules and configuration are documented in the generated rule directory.
+Generated CI and hooks pin this protocol package exactly; ordinary Standards upgrades change only `.sarj-standards.toml`.
+
+```bash
+uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.1 sarj-standards check
+```
+
+The bootstrap deliberately inherits UV/PIP registry, proxy, certificate, cache, and offline environment policy. `--no-config --isolated` prevents consumer project configuration and installed tools from changing the selected bootstrap or Standards bundle.
 
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/standards)

@@ -67,7 +67,7 @@ def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> Non
     assert (tmp_path / ".github" / "workflows" / "standards.yml").is_file()
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert (
-        "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.0 sarj-standards"
+        "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.1 sarj-standards"
     ) in precommit
     assert "verbose: true" not in precommit
 

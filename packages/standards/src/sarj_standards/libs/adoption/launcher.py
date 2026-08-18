@@ -11,7 +11,7 @@ from typing import Final, NamedTuple
 TOOL_PYTHON: Final = "3.14"
 PACKAGE: Final = "sarj-standards"
 COMMAND: Final = "sarj-standards"
-BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==1.0.0"
+BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==1.0.1"
 RETIRED_REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
 RETIRED_LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
