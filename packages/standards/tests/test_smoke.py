@@ -179,6 +179,50 @@ def test_ruff_rejects_quoted_type_checking_union_annotations(tmp_path: Path) -> 
     assert result.stdout.count('"code": "UP037"') == 2
 
 
+def test_ruff_requires_match_for_broad_builtin_warning_categories(tmp_path: Path) -> None:
+    source = tmp_path / "test_warnings.py"
+    source.write_text(
+        "import pytest\n\n"
+        "class DomainWarning(Warning):\n"
+        "    pass\n\n"
+        "def emit_warning() -> None:\n"
+        "    pass\n\n"
+        "def test_broad_warning() -> None:\n"
+        "    with pytest.warns(RuntimeWarning):\n"
+        "        emit_warning()\n\n"
+        "def test_matched_warning() -> None:\n"
+        '    with pytest.warns(RuntimeWarning, match="overflow"):\n'
+        "        emit_warning()\n\n"
+        "def test_specific_warning() -> None:\n"
+        "    with pytest.warns(DomainWarning):\n"
+        "        emit_warning()\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--output-format",
+            "json",
+            "--select",
+            "PT030",
+            "--config",
+            str(RUFF_STRICT),
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.count('"code": "PT030"') == 1
+
+
 @pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
 def test_s311_is_owned_by_sarj410_in_every_supported_python_test_path(config: Path) -> None:
     data = manifest.as_table(tomllib.loads(config.read_text(encoding="utf-8")))

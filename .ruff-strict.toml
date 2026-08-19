@@ -351,6 +351,22 @@ raises-require-match-for = [
   "socket.error",
 ]
 
+# PT030's defaults cover only Warning, UserWarning, and DeprecationWarning.
+# The remaining broad built-in warning categories have the same false-pass risk:
+# an unrelated warning from the code under test can satisfy pytest.warns(). Keep
+# project-owned warning subclasses exempt because their type is already specific.
+warns-extend-require-match-for = [
+  "BytesWarning",
+  "EncodingWarning",
+  "FutureWarning",
+  "ImportWarning",
+  "PendingDeprecationWarning",
+  "ResourceWarning",
+  "RuntimeWarning",
+  "SyntaxWarning",
+  "UnicodeWarning",
+]
+
 [lint.flake8-tidy-imports.banned-api]
 "unittest.mock.Mock".msg              = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
 "unittest.mock.AsyncMock".msg         = "Same as Mock."
