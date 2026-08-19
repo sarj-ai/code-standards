@@ -7,6 +7,7 @@ import duplicateTestBody from "./rules/duplicate-test-body.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
 import noCorsWildcardWithCredentials from "./rules/no-cors-wildcard-with-credentials.js";
+import noDuplicateLifecycleRefreshListeners from "./rules/no-duplicate-lifecycle-refresh-listeners.js";
 import noDynamicSql from "./rules/no-dynamic-sql.js";
 import noEnum from "./rules/no-enum.js";
 import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
@@ -25,6 +26,7 @@ import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
 import noRawEnv from "./rules/no-raw-env.js";
 import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
 import noRestrictedLibraryLoad from "./rules/no-restricted-library-load.js";
+import noRouterRefreshPolling from "./rules/no-router-refresh-polling.js";
 import noRepeatedStringLiteral from "./rules/no-repeated-string-literal.js";
 import noRestatedComment from "./rules/no-restated-comment.js";
 import noRestatedJsdoc from "./rules/no-restated-jsdoc.js";
@@ -82,6 +84,7 @@ const rules = {
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
   "no-cors-wildcard-with-credentials": noCorsWildcardWithCredentials,
+  "no-duplicate-lifecycle-refresh-listeners": noDuplicateLifecycleRefreshListeners,
   "no-dynamic-sql": noDynamicSql,
   "no-enum": noEnum,
   "no-fat-try-blocks": noFatTryBlocks,
@@ -100,6 +103,7 @@ const rules = {
   "no-raw-env": noRawEnv,
   "no-raw-fetch-outside-clients": noRawFetchOutsideClients,
   "no-restricted-library-load": noRestrictedLibraryLoad,
+  "no-router-refresh-polling": noRouterRefreshPolling,
   "no-repeated-string-literal": noRepeatedStringLiteral,
   "no-restated-comment": noRestatedComment,
   "no-restated-jsdoc": noRestatedJsdoc,
@@ -150,7 +154,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.10.4",
+  version: "15.11.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -163,6 +167,8 @@ const applicationOnlyRules = [
 /** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
 const advisoryRules = [
   "no-bare-return-from-test-catch",
+  "no-duplicate-lifecycle-refresh-listeners",
+  "no-router-refresh-polling",
   "iac-source-coupled-test",
   "repeated-static-call-cases",
   "source-coupled-test",
@@ -185,12 +191,14 @@ const recommendedRules = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "warn",
+  "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
   "@sarj/no-repeated-string-literal": "error",
+  "@sarj/no-router-refresh-polling": "warn",
   "@sarj/no-restated-comment": "error",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",
@@ -252,6 +260,7 @@ const strictRules = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "warn",
+  "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
@@ -260,6 +269,7 @@ const strictRules = {
   "@sarj/no-raw-env": "error",
   "@sarj/no-raw-fetch-outside-clients": "error",
   "@sarj/no-repeated-string-literal": "error",
+  "@sarj/no-router-refresh-polling": "warn",
   "@sarj/no-restated-comment": "error",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",

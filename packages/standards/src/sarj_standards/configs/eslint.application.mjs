@@ -1064,6 +1064,8 @@ export function createConfig(options = {}) {
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-bare-return-from-test-catch": "warn",
+      "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
+      "@sarj/no-router-refresh-polling": "warn",
       "@sarj/no-long-comment": "error",
       "@sarj/no-vague-suppression-description": "error",
       "@sarj/no-generic-single-export-module": "error",
