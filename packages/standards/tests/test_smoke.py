@@ -135,11 +135,48 @@ def test_requested_ruff_families_remain_globally_enabled() -> None:
     data = tomllib.loads(RUFF_STRICT.read_text())
     lint = manifest.table_field(manifest.as_table(data), "lint")
     assert manifest.list_field(lint, "select") == ["ALL"]
+    assert lint["future-annotations"] is True
     raw_ignored = manifest.list_field(lint, "ignore")
     assert all(isinstance(code, str) for code in raw_ignored)
     ignored = {code for code in raw_ignored if isinstance(code, str)}
     assert not any(code.startswith(("ANN", "UP")) or re.fullmatch(r"F\d+", code) is not None for code in ignored)
     assert {"PLC0415", "BLE001"}.isdisjoint(ignored)
+
+
+def test_ruff_rejects_quoted_type_checking_union_annotations(tmp_path: Path) -> None:
+    source = tmp_path / "context.py"
+    source.write_text(
+        "from typing import TYPE_CHECKING\n\n"
+        "if TYPE_CHECKING:\n"
+        "    from example import BatchId, ScenarioId\n\n\n"
+        "class Context:\n"
+        '    agent_id: "ScenarioId | None"\n'
+        '    batch_id: "BatchId | None" = None\n',
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--output-format",
+            "json",
+            "--select",
+            "UP037",
+            "--config",
+            str(RUFF_STRICT),
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.count('"code": "UP037"') == 2
 
 
 @pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
