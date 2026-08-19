@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.repository import rule_authoring, rule_catalog_artifact
 from sarj_standards.libs.rules import RuleSelector
 
@@ -25,6 +26,8 @@ def test_new_rule_is_deterministic_and_dry_by_default(tmp_path: Path) -> None:
     assert plan.code == "SARJ400"
     assert not any(path.exists() for path, _ in plan.files)
     assert plan.render(tmp_path) == plan.render(tmp_path)
+    assert "register the rule in packages/python/src/sarj_python_lint/rules/_registry.py" in plan.render(tmp_path)
+    assert "maintain rules evaluate --rule python:prefer-explicit-clock --scope corpus" in plan.render(tmp_path)
     compile(plan.files[0][1], str(plan.files[0][0]), "exec")
 
 
@@ -50,6 +53,50 @@ def test_apply_creates_only_authored_implementation_and_test(tmp_path: Path) -> 
             category="correctness",
             summary="Queries should declare a timeout.",
         )
+
+
+def test_apply_refuses_a_concurrently_created_target(tmp_path: Path) -> None:
+    plan = rule_authoring.plan_new(
+        tmp_path,
+        RuleSelector.parse("python:prefer-explicit-clock"),
+        category="testing",
+        summary="Tests should receive an explicit clock.",
+    )
+    first = plan.files[0][0]
+    first.parent.mkdir(parents=True)
+    first.write_text("concurrent owner\n", encoding="utf-8")
+
+    with pytest.raises(OSError, match="changed concurrently"):
+        rule_authoring.apply(plan, tmp_path)
+
+    assert first.read_text(encoding="utf-8") == "concurrent owner\n"
+    assert not plan.files[1][0].exists()
+
+
+def test_apply_rolls_back_if_a_later_atomic_write_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan = rule_authoring.plan_new(
+        tmp_path,
+        RuleSelector.parse("python:prefer-explicit-clock"),
+        category="testing",
+        summary="Tests should receive an explicit clock.",
+    )
+    original = transaction.atomic_write_text
+    calls = 0
+
+    def fail_second_write(root: Path, path: Path, contents: str) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            detail = "injected failure"
+            raise OSError(detail)
+        original(root, path, contents)
+
+    monkeypatch.setattr(transaction, "atomic_write_text", fail_second_write)
+
+    with pytest.raises(OSError, match="injected failure"):
+        rule_authoring.apply(plan, tmp_path)
+
+    assert not any(path.exists() for path, _ in plan.files)
 
 
 def test_allocator_never_fills_a_historical_hole(tmp_path: Path) -> None:

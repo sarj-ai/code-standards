@@ -27,6 +27,14 @@ ruleTester.run("prefer-discriminated-union", rule, {
       code: "type Result = { ok: true; data: string } | { ok: false; error: string };",
     },
     {
+      name: "allows an exclusive-property result narrowed with in",
+      code: [
+        "type Result<T> = { data: T } | { error: string };",
+        "declare const result: Result<string>;",
+        'if ("error" in result) console.error(result.error);',
+      ].join("\n"),
+    },
+    {
       name: "allows an interface with only one optional payload",
       code: "interface Result { success: boolean; data?: string; }",
     },

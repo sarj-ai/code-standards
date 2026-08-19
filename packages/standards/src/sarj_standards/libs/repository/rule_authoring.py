@@ -6,7 +6,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from sarj_standards.libs.adoption.transaction import FileTransaction
+from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.rules import RuleEngine, RuleSelector
 
 
@@ -29,7 +29,15 @@ class AuthoringPlan:
     def render(self, root: Path) -> str:
         lines = [f"rule: {self.selector}", f"code: {self.code or 'engine-native'}"]
         lines.extend(f"create: {path.relative_to(root)}" for path, _ in self.files)
-        lines.append(f"next: implement the TODOs, then run `sarj-standards maintain rules prepare {self.selector}`")
+        registry = _registry_path(root, self.selector.engine).relative_to(root)
+        lines.extend(
+            (
+                f"next: implement the TODOs and register the rule in {registry}",
+                f"then: run the focused test and `sarj-standards maintain rules verify {self.selector}`",
+                f"then: run `sarj-standards maintain rules evaluate --rule {self.selector} --scope corpus`",
+                f"finally: run `sarj-standards maintain rules prepare {self.selector}`",
+            )
+        )
         return "\n".join(lines)
 
 
@@ -62,7 +70,7 @@ def verify(root: Path, selector: RuleSelector) -> VerificationResult:
             return VerificationResult(1, f"incomplete: resolve TODOs in {path.relative_to(repository)}")
     return VerificationResult(
         0,
-        f"ok: {selector} is registered with complete metadata and executable public accept/reject examples",
+        f"ok: {selector} is registered with complete metadata and public accept/reject examples",
     )
 
 
@@ -101,15 +109,22 @@ def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str)
 
 
 def apply(plan: AuthoringPlan, root: Path) -> None:
-    transaction = FileTransaction.capture(root, tuple(path for path, _ in plan.files))
+    mutation = transaction.FileTransaction.capture(root, tuple(path for path, _ in plan.files))
     try:
         for path, contents in plan.files:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(contents, encoding="utf-8")
-            transaction.mark_written(path)
-    except OSError:
-        _ = transaction.rollback()
+            transaction.assert_expected(root, path, None)
+            transaction.atomic_write_text(root, path, contents)
+            mutation.mark_written(path)
+    except BaseException:
+        _ = mutation.rollback()
         raise
+
+
+def _registry_path(root: Path, engine: RuleEngine) -> Path:
+    if engine is RuleEngine.ESLINT:
+        return root / "packages/typescript/src/index.ts"
+    package = engine.value
+    return root / f"packages/{package}/src/sarj_{package}_lint/rules/_registry.py"
 
 
 def _next_code(root: Path, engine: RuleEngine) -> str | None:

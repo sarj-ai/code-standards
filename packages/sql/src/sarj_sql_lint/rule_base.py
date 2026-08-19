@@ -437,11 +437,14 @@ def _blank(segment: str) -> str:  # sarj-noqa: SARJ023 — scanner primitive sta
 
 
 def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
-    source: str, start: int, quote: str
+    source: str, start: int, quote: str, *, backslash_escapes: bool = False
 ) -> int:
     n = len(source)
     j = start + 1
     while j < n:
+        if backslash_escapes and source[j] == "\\" and j + 1 < n:
+            j += 2
+            continue
         if source[j] == quote:
             if j + 1 < n and source[j + 1] == quote:
                 j += 2
@@ -449,6 +452,24 @@ def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the ca
             return j + 1
         j += 1
     return n
+
+
+def _scan_block_comment(source: str, start: int) -> int:
+    depth = 1
+    cursor = start + 2
+    while cursor < len(source):
+        if source.startswith("/*", cursor):
+            depth += 1
+            cursor += 2
+            continue
+        if source.startswith("*/", cursor):
+            depth -= 1
+            cursor += 2
+            if depth == 0:
+                return cursor
+            continue
+        cursor += 1
+    return len(source)
 
 
 def _dollar_open_tag(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
@@ -472,7 +493,7 @@ def _closing_depth(  # sarj-noqa: SARJ023 — scanner primitive stays above the 
 
 @lru_cache(maxsize=32)
 # ruff: ignore[too-many-locals] -- single-pass scanner state is kept local for speed and isolation.
-def _scan(source: str) -> _ScanResult:
+def _scan(source: str, *, preserve_quoted_identifiers: bool = False) -> _ScanResult:
     # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
     out: list[str] = []
     open_tags: list[str] = []
@@ -531,9 +552,8 @@ def _scan(source: str) -> _ScanResult:
                 )
             )
         elif pair == "/*":
-            close = source.find("*/", i + 2)
-            end = n if close == -1 else close + 2
-            body_end = end - 2 if close >= 0 else end
+            end = _scan_block_comment(source, i)
+            body_end = end - 2 if end < n or source.endswith("*/") else end
             comments.append(
                 SourceComment(
                     line=source.count("\n", 0, i) + 1,
@@ -542,8 +562,17 @@ def _scan(source: str) -> _ScanResult:
                     block=True,
                 )
             )
+        elif ch == '"' and preserve_quoted_identifiers:
+            i = _scan_quoted(source, i, ch)
+            continue
         elif ch in {"'", '"'}:
-            end = _scan_quoted(source, i, ch)
+            escape_string = (
+                ch == "'"
+                and i > 0
+                and source[i - 1] in {"E", "e"}
+                and (i == 1 or _IDENT_CHAR_RE.match(source, i - 2) is None)
+            )
+            end = _scan_quoted(source, i, ch, backslash_escapes=escape_string)
         elif ch == "$":
             tag = _dollar_open_tag(source, i)
             if tag is None:
@@ -579,6 +608,10 @@ def _scan(source: str) -> _ScanResult:
 
 def mask_sql(source: str) -> str:
     return _scan(source).masked_source
+
+
+def mask_sql_literals_and_comments(source: str) -> str:
+    return _scan(source, preserve_quoted_identifiers=True).masked_source
 
 
 def sql_comments(source: str) -> tuple[SourceComment, ...]:
