@@ -46,6 +46,7 @@ VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed --
 RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
 SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".sql"})
 MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
+MAX_VERIFICATION_ATTEMPTS = 2
 MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
 COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
 WORKFLOW_TOOL_ACTIONS = MappingProxyType({"hashicorp/setup-terraform": ("terraform", "terraform_version")})
@@ -531,6 +532,25 @@ def reject_unsafe_diff(
         raise RolloutError(msg)
 
 
+def amend_safe_changes(
+    repo: Path,
+    runner: CommandRunner,
+    *,
+    allowed_workflow_paths: frozenset[str],
+) -> bool:
+    paths = changed_paths(repo, runner)
+    if not paths:
+        return False
+    reject_unsafe_diff(paths, allowed_workflow_paths=allowed_workflow_paths)
+    reject_git_metadata(repo, paths, runner)
+    runner.run(("git", "add", "--", *paths), cwd=repo)
+    runner.run(
+        ("git", "-c", "core.hooksPath=/dev/null", "commit", "--amend", "--no-edit"),
+        cwd=repo,
+    )
+    return True
+
+
 def remote_branch_sha(repo: Path, branch: str, runner: CommandRunner) -> str | None:
     result = runner.run(("git", "ls-remote", "--heads", "origin", branch), cwd=repo)
     fields = stdout(result).split()
@@ -929,34 +949,43 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
         bootstrap = run_consumer_bootstrap(repo, tool_prefix, runner, unauthenticated)
+        worktree_paths = changed_paths(repo, runner)
+        reject_unsafe_diff(worktree_paths, allowed_workflow_paths=allowed_workflow_paths)
+        reject_git_metadata(repo, worktree_paths, runner)
+        runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
+        message = f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}"
+        runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", "-m", message), cwd=repo)
         if bootstrap is not None:
             failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
         else:
-            verification = runner.run(
-                (*tool_prefix, *consumer.verify),
-                cwd=repo,
-                env=consumer_verification_environment(unauthenticated, base_sha),
-                check=False,
-            )
-            if verification.returncode != 0:
-                failures.append("consumer verification failed:\n" + verification_detail(verification))
+            verification_failure_detail = ""
+            for attempt in range(MAX_VERIFICATION_ATTEMPTS):
+                verification = runner.run(
+                    (*tool_prefix, *consumer.verify),
+                    cwd=repo,
+                    env=consumer_verification_environment(unauthenticated, base_sha),
+                    check=False,
+                )
+                mutated = amend_safe_changes(repo, runner, allowed_workflow_paths=allowed_workflow_paths)
+                if verification.returncode == 0 and not mutated:
+                    break
+                if mutated and attempt + 1 < MAX_VERIFICATION_ATTEMPTS:
+                    continue
+                verification_failure_detail = verification_detail(verification)
+                if mutated:
+                    verification_failure_detail += "\nconsumer verification did not converge after safe auto-fixes"
+                break
+            if verification_failure_detail:
+                failures.append("consumer verification failed:\n" + verification_failure_detail)
         verification_failure = "\n\n".join(failures)[-4000:]
-        worktree_paths = changed_paths(repo, runner)
-        if worktree_paths:
-            reject_unsafe_diff(worktree_paths, allowed_workflow_paths=allowed_workflow_paths)
-            reject_git_metadata(repo, worktree_paths, runner)
-            runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
-            message = f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}"
-            runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", "-m", message), cwd=repo)
-        else:
-            branch_paths = committed_paths(repo, consumer.branch, runner)
-            reject_unsafe_diff(branch_paths, allowed_workflow_paths=allowed_workflow_paths)
-            reject_git_metadata(
-                repo,
-                branch_paths,
-                runner,
-                comparison=f"origin/{consumer.branch}...HEAD",
-            )
+        branch_paths = committed_paths(repo, consumer.branch, runner)
+        reject_unsafe_diff(branch_paths, allowed_workflow_paths=allowed_workflow_paths)
+        reject_git_metadata(
+            repo,
+            branch_paths,
+            runner,
+            comparison=f"origin/{consumer.branch}...HEAD",
+        )
         lease = force_with_lease(branch, previous_sha)
         runner.run(("git", "push", lease, "-u", "origin", branch), cwd=repo)
     pull = pull_request(consumer, version, runner)
