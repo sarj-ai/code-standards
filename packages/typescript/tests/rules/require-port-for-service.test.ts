@@ -1511,6 +1511,37 @@ ruleTester.run("require-port-for-service", rule, {
         },
       ],
     },
+    // Retaining selected members from a named options bag is the same seam as
+    // destructuring that bag in the parameter list.
+    {
+      filename: SRC,
+      code: `
+        export class PreferenceHandler {
+          private readonly directory: DirectoryPreferenceClient;
+          private readonly channelId: string;
+          constructor(options: {
+            channelId: string;
+            directory: DirectoryPreferenceClient;
+          }) {
+            this.channelId = options.channelId;
+            this.directory = options.directory;
+          }
+          async handle(task: PreferenceTask): Promise<void> {
+            await this.directory.update(task.userId);
+          }
+        }
+      `,
+      errors: [
+        {
+          messageId: "requireInterface",
+          data: {
+            name: "PreferenceHandler",
+            deps: "directory: DirectoryPreferenceClient",
+            methods: "handle",
+          },
+        },
+      ],
+    },
     // A `#private` field is storage too.
     {
       filename: SRC,

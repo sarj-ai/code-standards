@@ -220,6 +220,7 @@ const readConstructor = (
 ): ConstructorFacts => {
   const body = ctor.value.body;
   const storedFieldsFrom = new Map<string, Set<string>>();
+  const storedMemberFieldsFrom = new Map<string, Map<string, Set<string>>>();
   let constructedFields = 0;
 
   if (body !== null && body !== undefined) {
@@ -281,17 +282,27 @@ const readConstructor = (
         const fields = storedFieldsFrom.get(source.object.name) ?? new Set<string>();
         fields.add(storedField);
         storedFieldsFrom.set(source.object.name, fields);
+        const member = staticMemberName(source);
+        if (member !== null) {
+          const members = storedMemberFieldsFrom.get(source.object.name) ?? new Map<string, Set<string>>();
+          const memberFields = members.get(member) ?? new Set<string>();
+          memberFields.add(storedField);
+          members.set(member, memberFields);
+          storedMemberFieldsFrom.set(source.object.name, members);
+        }
       }
     }
   }
 
   const collaborators: Collaborator[] = [];
   for (const parameter of ctor.value.params) {
-    for (const reference of parameterCollaborators(parameter, declared)) {
+    for (const reference of parameterCollaborators(parameter, declared, storedMemberFieldsFrom)) {
       const fields =
         parameter.type === AST_NODE_TYPES.TSParameterProperty
           ? [reference.name]
-          : [...(storedFieldsFrom.get(reference.name) ?? [])];
+          : reference.fields.length > 0
+            ? reference.fields
+            : [...(storedFieldsFrom.get(reference.name) ?? [])];
       if (fields.length === 0) continue;
       if (CONFIGISH_TYPE_RE.test(reference.typeName)) continue;
       if (CONFIGISH_NAME_RE.test(reference.name)) continue;
@@ -313,6 +324,7 @@ const readConstructor = (
 const parameterCollaborators = (
   parameter: TSESTree.Parameter,
   declared: () => FileTypeIndex,
+  storedMemberFieldsFrom: ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>>,
 ): readonly Collaborator[] => {
   let target: TSESTree.Node = parameter;
   if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
@@ -320,7 +332,37 @@ const parameterCollaborators = (
     return objectPatternCollaborators(target, declared);
   }
   const named = namedParameterCollaborator(parameter);
-  return named === null ? [] : [named];
+  if (
+    named !== null &&
+    !CONFIGISH_NAME_RE.test(named.name) &&
+    !CONFIGISH_TYPE_RE.test(named.typeName)
+  ) return [named];
+  return namedBagCollaborators(parameter, declared, storedMemberFieldsFrom);
+};
+
+/** Resolve `this.repo = options.repo` without treating the whole options bag as a service. */
+const namedBagCollaborators = (
+  annotated: TSESTree.Parameter,
+  declared: () => FileTypeIndex,
+  storedMemberFieldsFrom: ReadonlyMap<string, ReadonlyMap<string, ReadonlySet<string>>>,
+): Collaborator[] => {
+  let target: TSESTree.Node = annotated;
+  if (target.type === AST_NODE_TYPES.TSParameterProperty) target = target.parameter;
+  if (target.type === AST_NODE_TYPES.AssignmentPattern) target = target.left;
+  if (target.type !== AST_NODE_TYPES.Identifier) return [];
+  const members = bagMemberTypes(target.typeAnnotation?.typeAnnotation, declared);
+  if (members === null) return [];
+  const storedMembers = storedMemberFieldsFrom.get(target.name);
+  if (storedMembers === undefined) return [];
+
+  const collaborators: Collaborator[] = [];
+  for (const [name, fields] of storedMembers) {
+    if (CONFIGISH_NAME_RE.test(name)) continue;
+    const reference = members.get(name);
+    if (reference === undefined) continue;
+    collaborators.push({ name, ...reference, fields: [...fields] });
+  }
+  return collaborators;
 };
 
 const namedParameterCollaborator = (annotated: TSESTree.Parameter): Collaborator | null => {
@@ -377,9 +419,10 @@ const objectPatternCollaborators = (
  * in this file only.
  */
 const bagMemberTypes = (
-  annotation: TSESTree.TypeNode,
+  annotation: TSESTree.TypeNode | undefined,
   declared: () => FileTypeIndex,
 ): MemberTypes | null => {
+  if (annotation === undefined) return null;
   if (annotation.type === AST_NODE_TYPES.TSTypeLiteral) {
     return propertySignatureTypes(annotation.members);
   }
