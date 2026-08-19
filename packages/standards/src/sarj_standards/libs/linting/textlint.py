@@ -10,11 +10,13 @@ import tomllib
 from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
+    ClassVar,
     Final,
     NamedTuple,
     cast,  # ruff: ignore[banned-api] -- typed boundary for PyYAML nodes.
 )
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
@@ -71,6 +73,18 @@ class _AttachedComment(NamedTuple):
 class _YamlPair(NamedTuple):
     key: Node
     value: Node
+
+
+class _ClaudePermissions(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    allow: list[str] = Field(default_factory=list)
+
+
+class _ClaudeSettings(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore")
+
+    permissions: _ClaudePermissions = Field(default_factory=_ClaudePermissions)
 
 
 _TEXT_SUFFIXES: Final = frozenset(
@@ -225,6 +239,18 @@ _YAML_SCALAR_ENTRY_RE = re.compile(r"^\s*(?:-\s+)?(?P<key>[A-Za-z_][\w.-]*)\s*:\
 _TOML_SCALAR_ENTRY_RE = re.compile(r"^\s*(?P<key>[A-Za-z_][\w.-]*)\s*=\s*(?P<value>[^\s].*?)\s*$")
 _CONFIG_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_-]*|\d+(?:\.\d+)?")
 _QUOTED_SCALAR_MIN_LENGTH: Final = 2
+_COMMAND_ARGUMENT_RE: Final = re.compile(r"(?<![A-Za-z0-9_])\$ARGUMENTS(?![A-Za-z0-9_])")
+_QUERY_LANGUAGE_NAMES: Final = frozenset({"logql", "postgres", "postgresql", "psql", "sql"})
+_SHELL_LANGUAGE_NAMES: Final = frozenset({"", "bash", "console", "sh", "shell", "zsh"})
+_QUERY_TOKEN_RE: Final = re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|logQl)\b", re.IGNORECASE)
+_QUOTED_ARGUMENT_RE: Final = re.compile(r'(?<!\S)"\$ARGUMENTS"(?!\S)')
+_MAX_MARKDOWN_FENCE_INDENT: Final = 3
+_MIN_MARKDOWN_FENCE_LENGTH: Final = 3
+_SECRET_READ_PERMISSION_PREFIXES: Final = (
+    "Bash(aws secretsmanager get-secret-value:",
+    "Bash(gcloud secrets versions access:",
+    "Bash(vault kv get:",
+)
 
 
 @dataclass(frozen=True)
@@ -552,6 +578,81 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             blocking=False,
         ),
+        "no-unsafe-command-argument-interpolation": RuleMeta(
+            code="SARJ307",
+            summary="raw Claude command argument interpolated into an executable shell or query fence",
+            rationale=(
+                "Slash-command arguments are user-controlled. Embedding them into a shell token or query string can "
+                "change command structure or query semantics when the documented command is executed."
+            ),
+            remediation=(
+                "Pass the argument as its own quoted shell token to a wrapper that validates or parameterizes it; never "
+                "splice it into SQL, LogQL, or another query string."
+            ),
+            category=RuleCategory.SECURITY,
+            languages=frozenset({Language.MARKDOWN}),
+            file_patterns=(".claude/commands/*.md",),
+            examples=(
+                _public_example(
+                    example_id="query-interpolation",
+                    title="Do not splice command arguments into queries",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".claude/commands/lookup.md",
+                    source="```sql\nSELECT id FROM records WHERE id = '$ARGUMENTS';\n```\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="quoted-wrapper-argument",
+                    title="Pass an opaque argument to a validating wrapper",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".claude/commands/lookup.md",
+                    source='```bash\nscripts/lookup.sh "$ARGUMENTS"\n```\n',
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Only fenced executable examples in .claude/commands Markdown are checked.",
+                "A standalone quoted shell argument is accepted on the assumption that the called wrapper validates or parameterizes it.",
+            ),
+            blocking=False,
+        ),
+        "no-wildcard-secret-read-permission": RuleMeta(
+            code="SARJ308",
+            summary="Claude settings grant wildcard access to secret values",
+            rationale=(
+                "A wildcard allow entry for a secret-read command lets an agent retrieve every secret visible to the "
+                "developer's cloud credentials without a per-command approval boundary."
+            ),
+            remediation=(
+                "Remove the wildcard permission. Allow a narrowly scoped wrapper that validates an explicit secret "
+                "name, or require interactive approval for each secret-value read."
+            ),
+            category=RuleCategory.SECURITY,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=(".claude/settings*.json", "**/.claude/settings*.json"),
+            examples=(
+                _public_example(
+                    example_id="wildcard-secret-read",
+                    title="Do not preapprove every secret-value read",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".claude/settings.json",
+                    source='{"permissions":{"allow":["Bash(gcloud secrets versions access:*)"]}}\n',
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="narrow-secret-wrapper",
+                    title="Allow a validating project wrapper instead",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".claude/settings.json",
+                    source='{"permissions":{"allow":["Bash(make pull-development-secrets)"]}}\n',
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Only literal wildcard allow entries for recognized cloud secret-value commands in Claude settings JSON are checked.",
+            ),
+            blocking=False,
+        ),
     }
 )
 
@@ -565,6 +666,7 @@ def is_text_path(path: Path) -> bool:
         or name in _TEXT_NAMES
         or name == ".env"
         or name.startswith(("dockerfile.", ".env."))
+        or (path.suffix.casefold() == ".json" and ".claude" in path.parts and name.startswith("settings"))
     )
 
 
@@ -586,6 +688,8 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
             *_artifact_findings(path, relative, source, durable_patterns),
             *_shell_iac_source_findings(path, relative, source),
             *_markdown_hidden_comment_findings(path, source),
+            *_markdown_command_argument_findings(path, relative, source),
+            *_claude_settings_secret_permission_findings(path, relative, source),
             *_comment_findings(path, source),
         ]
         findings.extend(
@@ -1040,6 +1144,70 @@ def _artifact_findings(
             )
         ]
     return []
+
+
+def _markdown_command_argument_findings(path: Path, relative: str, source: str) -> list[Finding]:
+    if not fnmatch(relative, ".claude/commands/*.md"):
+        return []
+    findings: list[Finding] = []
+    fence: tuple[str, int, str] | None = None
+    for line_number, line in enumerate(source.splitlines(), start=1):
+        stripped = line.lstrip(" ") if len(line) - len(line.lstrip(" ")) <= _MAX_MARKDOWN_FENCE_INDENT else ""
+        marker = stripped[:1]
+        marker_length = len(stripped) - len(stripped.lstrip(marker)) if marker in {"`", "~"} else 0
+        if fence is None:
+            if marker_length < _MIN_MARKDOWN_FENCE_LENGTH:
+                continue
+            info = stripped[marker_length:].strip().split(maxsplit=1)
+            language = info[0].casefold() if info else ""
+            fence = (marker, marker_length, language)
+            continue
+        fence_marker, fence_length, language = fence
+        if marker == fence_marker and marker_length >= fence_length and not stripped[marker_length:].strip():
+            fence = None
+            continue
+        if language not in _QUERY_LANGUAGE_NAMES | _SHELL_LANGUAGE_NAMES or not _COMMAND_ARGUMENT_RE.search(line):
+            continue
+        unsafe = language in _QUERY_LANGUAGE_NAMES or bool(_QUERY_TOKEN_RE.search(line))
+        if not unsafe:
+            without_safe_arguments = _QUOTED_ARGUMENT_RE.sub("", line)
+            unsafe = bool(_COMMAND_ARGUMENT_RE.search(without_safe_arguments))
+        if unsafe:
+            findings.append(
+                Finding(
+                    path,
+                    line_number,
+                    "SARJ307",
+                    "User-controlled $ARGUMENTS is spliced into an executable command or query. Pass it as a standalone quoted argument to a validating wrapper.",
+                )
+            )
+    return findings
+
+
+def _claude_settings_secret_permission_findings(path: Path, relative: str, source: str) -> list[Finding]:
+    if not (fnmatch(relative, ".claude/settings*.json") or fnmatch(relative, "**/.claude/settings*.json")):
+        return []
+    try:
+        settings = _ClaudeSettings.model_validate_json(source)
+    except ValidationError:
+        return []
+    findings: list[Finding] = []
+    lines = source.splitlines()
+    for permission in settings.permissions.allow:
+        if "*" not in permission:
+            continue
+        if not any(permission.startswith(prefix) for prefix in _SECRET_READ_PERMISSION_PREFIXES):
+            continue
+        line_number = next((number for number, line in enumerate(lines, start=1) if permission in line), 1)
+        findings.append(
+            Finding(
+                path,
+                line_number,
+                "SARJ308",
+                "Wildcard secret-value access is preapproved. Require per-read approval or a validating, narrowly scoped wrapper.",
+            )
+        )
+    return findings
 
 
 def _markdown_prose_lines(source: str) -> list[str]:

@@ -43,6 +43,7 @@
       "no-conftest-test-module-import",
       "no-cors-wildcard-with-credentials",
       "no-duplicate-dunder-all-entry",
+      "no-fastapi-on-event",
       "no-file-level-escape-hatch-noqa",
       "no-first-party-private-import",
       "no-frozen-after-validator-field-write",
@@ -149,6 +150,7 @@
       "no-client-side-data-fetching",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
+      "no-dangerously-allow-svg",
       "no-declaration-comment-wall",
       "no-duplicate-lifecycle-refresh-listeners",
       "no-dynamic-sql",
@@ -164,6 +166,7 @@
       "no-long-comment",
       "no-offset-pagination",
       "no-positional-tuple-return",
+      "no-production-browser-source-maps",
       "no-raw-env",
       "no-raw-fetch-outside-clients",
       "no-repeated-string-literal",
@@ -174,6 +177,7 @@
       "no-secret-in-log",
       "no-select-star",
       "no-sentinel-return-on-catch",
+      "no-server-env-in-client-component",
       "no-silent-promise-catch",
       "no-sleep-in-test-body",
       "no-storage-in-stateless-modules",
@@ -207,6 +211,8 @@
       "require-fetch-timeout",
       "require-port-for-service",
       "require-static-next-matcher",
+      "require-use-form-default-values",
+      "require-use-server-in-actions-file",
       "require-zod-form-validation",
       "source-coupled-test",
       "stepdown",
@@ -222,6 +228,8 @@
       "exact-config-comment-restatement",
       "hidden-markdown-heading",
       "iac-source-coupled-test",
+      "no-unsafe-command-argument-interpolation",
+      "no-wildcard-secret-read-permission",
       "unpinned-github-action"
     ]
   },
@@ -317,7 +325,8 @@
       "SARJ423",
       "SARJ424",
       "SARJ425",
-      "SARJ426"
+      "SARJ426",
+      "SARJ427"
     ],
     "sql": [
       "SARJ101",
@@ -351,7 +360,9 @@
       "SARJ303",
       "SARJ304",
       "SARJ305",
-      "SARJ306"
+      "SARJ306",
+      "SARJ307",
+      "SARJ308"
     ]
   },
   "retired": [

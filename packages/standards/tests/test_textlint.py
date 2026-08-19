@@ -224,6 +224,103 @@ EXACT_CONFIG_RESTATEMENT_CASES = (
     ),
 )
 
+COMMAND_ARGUMENT_CASES = (
+    EvaluationCase(
+        "unquoted-shell-argument",
+        Language.MARKDOWN,
+        "```bash\nscripts/config-diff.sh $ARGUMENTS\n```\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/commands/config-diff.md"),
+    ),
+    EvaluationCase(
+        "sql-query-interpolation",
+        Language.MARKDOWN,
+        "```sql\nSELECT id FROM account WHERE id = '$ARGUMENTS';\n```\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/commands/account.md"),
+    ),
+    EvaluationCase(
+        "sql-inside-wrapper-string",
+        Language.MARKDOWN,
+        "```bash\nscripts/db.sh \"SELECT id FROM account WHERE id = '$ARGUMENTS';\"\n```\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/commands/account.md"),
+    ),
+    EvaluationCase(
+        "log-query-interpolation",
+        Language.MARKDOWN,
+        '```logql\n{job="worker"} |= "$ARGUMENTS"\n```\n',
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/commands/trace.md"),
+    ),
+    EvaluationCase(
+        "quoted-wrapper-argument",
+        Language.MARKDOWN,
+        '```bash\nscripts/logs.sh "$ARGUMENTS" 1000\n```\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/commands/logs.md"),
+    ),
+    EvaluationCase(
+        "argument-in-prose",
+        Language.MARKDOWN,
+        "Run this command for **$ARGUMENTS**.\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/commands/help.md"),
+    ),
+    EvaluationCase(
+        "non-command-document",
+        Language.MARKDOWN,
+        "```bash\nscripts/config-diff.sh $ARGUMENTS\n```\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("docs/command-authoring.md"),
+    ),
+)
+
+SECRET_PERMISSION_CASES = (
+    EvaluationCase(
+        "gcloud-wildcard-secret-read",
+        Language.CONFIG,
+        '{"permissions":{"allow":["Bash(gcloud secrets versions access:*)"]}}\n',
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/settings.json"),
+    ),
+    EvaluationCase(
+        "aws-wildcard-secret-read",
+        Language.CONFIG,
+        '{"permissions":{"allow":["Bash(aws secretsmanager get-secret-value:*)"]}}\n',
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/settings.local.json"),
+    ),
+    EvaluationCase(
+        "project-secret-wrapper",
+        Language.CONFIG,
+        '{"permissions":{"allow":["Bash(make pull-development-secrets)"]}}\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/settings.json"),
+    ),
+    EvaluationCase(
+        "unrelated-gcloud-read",
+        Language.CONFIG,
+        '{"permissions":{"allow":["Bash(gcloud logging read:*)"]}}\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/settings.json"),
+    ),
+    EvaluationCase(
+        "non-claude-json",
+        Language.CONFIG,
+        '{"permissions":{"allow":["Bash(gcloud secrets versions access:*)"]}}\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config/settings.json"),
+    ),
+    EvaluationCase(
+        "invalid-settings-json",
+        Language.CONFIG,
+        "{not json}\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/settings.json"),
+    ),
+)
+
 
 def _codes(path: Path, *, root: Path | None = None) -> list[str]:
     return [finding.code for finding in textlint.check_paths([str(path)], root=root)]
@@ -255,6 +352,36 @@ def test_markdown_hidden_comment_labeled_evaluation_cases(case: EvaluationCase, 
     path.write_text(case.source, encoding="utf-8")
 
     findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ305"]
+
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+
+
+@pytest.mark.parametrize(
+    "case",
+    COMMAND_ARGUMENT_CASES,
+    ids=tuple(case.case_id for case in COMMAND_ARGUMENT_CASES),
+)
+def test_command_argument_labeled_evaluation_cases(case: EvaluationCase, tmp_path: Path) -> None:
+    path = tmp_path / case.path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(case.source, encoding="utf-8")
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ307"]
+
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+
+
+@pytest.mark.parametrize(
+    "case",
+    SECRET_PERMISSION_CASES,
+    ids=tuple(case.case_id for case in SECRET_PERMISSION_CASES),
+)
+def test_secret_permission_labeled_evaluation_cases(case: EvaluationCase, tmp_path: Path) -> None:
+    path = tmp_path / case.path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(case.source, encoding="utf-8")
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ308"]
 
     assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
 
@@ -350,6 +477,8 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "exact-config-comment-restatement",
         "hidden-markdown-heading",
         "iac-source-coupled-test",
+        "no-unsafe-command-argument-interpolation",
+        "no-wildcard-secret-read-permission",
         "unpinned-github-action",
     }
 
