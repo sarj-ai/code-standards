@@ -17,6 +17,10 @@ exclude                  = ["*.md"]
 select = ["ALL"]
 external = ["SARJ"]
 preview = true
+# Let Ruff's native UP037 own quoted annotations, including TYPE_CHECKING-only
+# imports. Its fix is intentionally unsafe when it must change annotation
+# evaluation semantics, so consumer baselines can grandfather existing debt.
+future-annotations = true
 logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (the house logger)
 # TC001/2/3 stay advisory but are NEVER auto-applied: the rewrite is an *unsafe*
 # fix that silently moves runtime-needed FastAPI/pydantic/livekit annotation
@@ -345,6 +349,22 @@ raises-require-match-for = [
   "EnvironmentError",
   "RuntimeError",
   "socket.error",
+]
+
+# PT030's defaults cover only Warning, UserWarning, and DeprecationWarning.
+# The remaining broad built-in warning categories have the same false-pass risk:
+# an unrelated warning from the code under test can satisfy pytest.warns(). Keep
+# project-owned warning subclasses exempt because their type is already specific.
+warns-extend-require-match-for = [
+  "BytesWarning",
+  "EncodingWarning",
+  "FutureWarning",
+  "ImportWarning",
+  "PendingDeprecationWarning",
+  "ResourceWarning",
+  "RuntimeWarning",
+  "SyntaxWarning",
+  "UnicodeWarning",
 ]
 
 [lint.flake8-tidy-imports.banned-api]
