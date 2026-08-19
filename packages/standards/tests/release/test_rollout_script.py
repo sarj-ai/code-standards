@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, final
 
 import pytest
 
+from sarj_standards.libs.adoption import doctor as adoption_doctor
 from sarj_standards.libs.release import rollout
 
 
@@ -453,6 +454,174 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         update_commands = [command for command in runner.commands if "update" in command]
         assert len(update_commands) == 1
         assert "--no-install" not in update_commands[0]
+
+    @pytest.mark.parametrize(
+        ("returncodes", "dirty_runs", "expected_state", "expected_verification_runs"),
+        [
+            ((1, 0), frozenset({1}), "pr-open", 2),
+            ((1,), frozenset[int](), "blocked", 1),
+            ((0, 0), frozenset({1}), "pr-open", 2),
+            ((0, 0), frozenset({1, 2}), "blocked", 2),
+        ],
+    )
+    def test_verification_autofix_amends_a_clean_candidate_once(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        *,
+        returncodes: tuple[int, ...],
+        dirty_runs: frozenset[int],
+        expected_state: str,
+        expected_verification_runs: int,
+    ) -> None:
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        manifest = repo / MANIFEST
+        eslint = repo / "eslint.config.mjs"
+        manifest.write_text('schema = 3\nbundle = "5.8.0"\n', encoding="utf-8")
+        eslint.write_text("export default [];\n", encoding="utf-8")
+        subprocess.run(("git", "init", "-b", "main"), cwd=repo, check=True, capture_output=True)
+        subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=repo, check=True)
+        subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=repo, check=True)
+        subprocess.run(("git", "add", "."), cwd=repo, check=True)
+        subprocess.run(("git", "commit", "-m", "base"), cwd=repo, check=True, capture_output=True)
+        base_sha = subprocess.run(
+            ("git", "rev-parse", "HEAD"), cwd=repo, check=True, capture_output=True, text=True
+        ).stdout.strip()
+        subprocess.run(("git", "update-ref", "refs/remotes/origin/main", base_sha), cwd=repo, check=True)
+
+        class FixedTemporaryDirectory:
+            def __enter__(self) -> str:
+                return str(tmp_path)
+
+            def __exit__(self, *_args: object) -> None:
+                return None
+
+        @final
+        class AutofixingRunner:
+            def __init__(self) -> None:
+                self.verification_runs = 0
+                self.commands: list[tuple[str, ...]] = []
+
+            def run(
+                self,
+                command: Sequence[str],
+                *,
+                cwd: Path | None = None,
+                check: bool = True,
+                env: Mapping[str, str] | None = None,
+            ) -> subprocess.CompletedProcess[str]:
+                rendered = tuple(command)
+                self.commands.append(rendered)
+                if rendered[:3] == ("gh", "repo", "clone") or rendered[:2] == ("git", "push"):
+                    return subprocess.CompletedProcess(rendered, 0, "", "")
+                if rendered[:3] == ("gh", "pr", "create"):
+                    return subprocess.CompletedProcess(rendered, 0, "https://example.test/pr/1\n", "")
+                if "update" in rendered:
+                    manifest.write_text('schema = 3\nbundle = "5.8.1"\n', encoding="utf-8")
+                    return subprocess.CompletedProcess(rendered, 0, "", "")
+                if rendered[-1:] == ("doctor",):
+                    return subprocess.CompletedProcess(rendered, 0, "", "")
+                if rendered == consumer().verify:
+                    self.verification_runs += 1
+                    dirty = subprocess.run(
+                        ("git", "status", "--porcelain"),
+                        cwd=repo,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    ).stdout
+                    assert not dirty, "verification hooks must run against a clean candidate commit"
+                    if self.verification_runs in dirty_runs:
+                        eslint.write_text(f'export default ["generated-{self.verification_runs}"];\n', encoding="utf-8")
+                    returncode = returncodes[self.verification_runs - 1]
+                    return subprocess.CompletedProcess(rendered, returncode, "verification result", "")
+                return subprocess.run(
+                    rendered,
+                    cwd=cwd,
+                    check=check,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+
+        runner = AutofixingRunner()
+
+        def missing_status(
+            _consumer: rollout.Consumer,
+            _version: str,
+            _runner: rollout.CommandRunner,
+        ) -> rollout.Outcome:
+            return rollout.Outcome(consumer(), "missing")
+
+        def fresh_branch(
+            _repo: Path,
+            _version: str,
+            _base_sha: str,
+            _runner: rollout.CommandRunner,
+        ) -> rollout.BranchPreparation:
+            return rollout.BranchPreparation("standards-rollout/current", None)
+
+        def fixed_temporary_directory(**_kwargs: object) -> FixedTemporaryDirectory:
+            return FixedTemporaryDirectory()
+
+        def provisioned_tools(
+            _repo: Path,
+            _shim_directory: Path,
+            _runner: rollout.CommandRunner,
+            _environment: Mapping[str, str],
+        ) -> rollout.ProvisionedTools:
+            return rollout.ProvisionedTools({"PATH": "/usr/bin:/bin"}, ())
+
+        def no_version_pin_updates(_root: Path) -> tuple[()]:
+            return ()
+
+        def no_bootstrap(
+            _repo: Path,
+            _tool_prefix: tuple[str, ...],
+            _runner: rollout.CommandRunner,
+            _environment: Mapping[str, str],
+        ) -> subprocess.CompletedProcess[str] | None:
+            return None
+
+        def no_pull_request(
+            _consumer: rollout.Consumer,
+            _version: str,
+            _runner: rollout.CommandRunner,
+        ) -> dict[str, object] | None:
+            return None
+
+        monkeypatch.setattr(rollout, "status_one", missing_status)
+        monkeypatch.setattr(rollout, "prepare_branch", fresh_branch)
+        monkeypatch.setattr(tempfile, "TemporaryDirectory", fixed_temporary_directory)
+        monkeypatch.setattr(rollout, "provision_consumer_tools", provisioned_tools)
+        monkeypatch.setattr(adoption_doctor, "plan_version_pin_updates", no_version_pin_updates)
+        monkeypatch.setattr(rollout, "run_consumer_bootstrap", no_bootstrap)
+        monkeypatch.setattr(rollout, "pull_request", no_pull_request)
+
+        result = rollout.apply_one(consumer(), "5.8.1", runner)
+
+        assert result.state == expected_state
+        assert runner.verification_runs == expected_verification_runs
+        assert not subprocess.run(
+            ("git", "status", "--porcelain"), cwd=repo, check=True, capture_output=True, text=True
+        ).stdout
+        assert (
+            subprocess.run(
+                ("git", "rev-list", "--count", base_sha + "..HEAD"),
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            == "1"
+        )
+        expected_eslint = f'export default ["generated-{max(dirty_runs)}"];\n' if dirty_runs else "export default [];\n"
+        assert eslint.read_text(encoding="utf-8") == expected_eslint
+        pull_request_command = next(command for command in runner.commands if command[:3] == ("gh", "pr", "create"))
+        pull_request_body = pull_request_command[pull_request_command.index("--body") + 1]
+        if dirty_runs == frozenset({1, 2}):
+            assert "did not converge" in pull_request_body
 
     def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
         old_sha = "a" * 40
