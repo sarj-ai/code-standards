@@ -17,26 +17,16 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     is_dump_file,
     is_mysql,
+    mask_sql_literals_and_comments,
 )
 
 
 RESERVED_KEYWORDS = frozenset({"foreign", "key", "constraint", "alter", "table", "create", "add", "column"})
 
 
-class _IndexedColumn(NamedTuple):
+class _IndexedColumns(NamedTuple):
     table: str
-    column: str
-
-
-def _mask_literals_and_comments(sql: str) -> str:
-    sql = re.sub(r"--[^\n]*", lambda m: " " * len(m.group(0)), sql)
-    sql = re.sub(r"/\*[\s\S]*?\*/", lambda m: re.sub(r"[^\n]", " ", m.group(0)), sql)
-
-    def mask_literal(m: re.Match[str]) -> str:
-        s = m.group(0)
-        return f"'{re.sub(r'[^\n]', ' ', s[1:-1])}'"
-
-    return re.sub(r"'(?:''|[^'])*'", mask_literal, sql)
+    columns: tuple[str, ...]
 
 
 CREATE_INDEX_PATTERN = re.compile(
@@ -131,10 +121,10 @@ def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounde
 
 
 @lru_cache(maxsize=64)
-def _tree_leading_indexed(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
+def _tree_indexes(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
     root: Path,
-) -> frozenset[_IndexedColumn]:
-    pairs: set[_IndexedColumn] = set()
+) -> frozenset[_IndexedColumns]:
+    indexes: set[_IndexedColumns] = set()
     try:
         candidates = sorted(root.rglob("*.sql"))[:_MAX_TREE_FILES]
     except OSError:
@@ -146,12 +136,12 @@ def _tree_leading_indexed(  # sarj-noqa: SARJ023 — bounded tree helpers stay a
             text = candidate.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for table, cols in _collect_indexes(_mask_literals_and_comments(text)).items():
-            pairs.update(_IndexedColumn(table, idx[0]) for idx in cols if idx)
-    return frozenset(pairs)
+        for table, cols in _collect_indexes(mask_sql_literals_and_comments(text)).items():
+            indexes.update(_IndexedColumns(table, index) for index in cols if index)
+    return frozenset(indexes)
 
 
-def _sibling_indexed(path: Path, tables: tuple[str, ...]) -> set[str]:
+def _sibling_indexes(path: Path, tables: tuple[str, ...]) -> set[tuple[str, ...]]:
     if not tables:
         return set()
     try:
@@ -163,7 +153,15 @@ def _sibling_indexed(path: Path, tables: tuple[str, ...]) -> set[str]:
     if root is None:
         return set()
     wanted = set(tables)
-    return {col for table, col in _tree_leading_indexed(root) if table in wanted}
+    return {columns for table, columns in _tree_indexes(root) if table in wanted}
+
+
+def _has_covering_index(indexes: set[tuple[str, ...]], columns: tuple[str, ...]) -> bool:
+    return any(_index_covers(index, columns) for index in indexes)
+
+
+def _index_covers(index: tuple[str, ...], columns: tuple[str, ...]) -> bool:
+    return len(index) >= len(columns) and set(index[: len(columns)]) == set(columns)
 
 
 @dataclass(frozen=True)
@@ -226,7 +224,7 @@ class RequireFkIndex(Rule):
         if is_mysql(source):
             return []
         diags: list[Diagnostic] = []
-        masked = _mask_literals_and_comments(source)
+        masked = mask_sql_literals_and_comments(source)
         indexed_cols_by_table = _collect_indexes(masked)
         is_dump = is_dump_file(source, path)
 
@@ -238,11 +236,10 @@ class RequireFkIndex(Rule):
                 table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(
                     base_table, set()
                 )
-                leading_indexed = {idx[0] for idx in table_indexes if idx}
-                leading_indexed |= _sibling_indexed(path, (full_table, base_table))
+                table_indexes |= _sibling_indexes(path, (full_table, base_table))
 
                 ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end(), is_dump)
-                diags.extend(self._check_fk_constraints(ctx, leading_indexed))
+                diags.extend(self._check_fk_constraints(ctx, table_indexes))
 
             char_offset += len(stmt) + 1
         return diags
@@ -250,14 +247,13 @@ class RequireFkIndex(Rule):
     def _check_fk_constraints(
         self,
         ctx: _StmtContext,
-        leading_indexed: set[str],
+        indexes: set[tuple[str, ...]],
     ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
 
         for fk_match in TABLE_FK_PATTERN.finditer(ctx.stmt):
             fk_cols = tuple(_normalize_name(c) for c in fk_match.group(1).split(","))
-            leading_col = fk_cols[0] if fk_cols else ""
-            if leading_col and leading_col not in leading_indexed:
+            if fk_cols and not _has_covering_index(indexes, fk_cols):
                 # `fk_match.start()`, NOT `ctx.stmt.find(fk_match.group(0))` — the
                 # latter re-finds the clause by value and resolves to the first
                 # identical one, mis-attributing the line and so making the
@@ -271,7 +267,7 @@ class RequireFkIndex(Rule):
                         line=lineno,
                         col=max(1, col_pos),
                         code=self.code,
-                        message=_message(leading_col, ctx.full_table, is_dump=ctx.is_dump),
+                        message=_message(", ".join(fk_cols), ctx.full_table, is_dump=ctx.is_dump),
                     )
                 )
 
@@ -289,7 +285,7 @@ class RequireFkIndex(Rule):
                 and "FOREIGN KEY" not in segment.upper()
             ) and (col_match := INLINE_COLUMN_PATTERN.search(segment)):
                 col_name = _normalize_name(col_match.group(1))
-                if col_name not in RESERVED_KEYWORDS and col_name not in leading_indexed:
+                if col_name not in RESERVED_KEYWORDS and not _has_covering_index(indexes, (col_name,)):
                     # Point at the column token itself, not the segment start,
                     # so a multi-line column definition lands on its own line.
                     col_offset = ctx.char_offset + segment_start + col_match.start(1)

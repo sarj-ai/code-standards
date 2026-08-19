@@ -446,7 +446,8 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         executable = shutil.which("uvx")
         if executable is None:
             print(
-                "error: uvx is required to resolve the latest standards release; install uv or pass --offline",
+                "error: uvx is required to resolve the latest standards release; install uv and retry "
+                "(--offline only reconverges the executing bundle)",
                 file=sys.stderr,
             )
             return 2
@@ -477,7 +478,8 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             ).returncode
         except subprocess.TimeoutExpired:
             print(
-                "error: resolving the requested standards release timed out; check the network or pass --offline",
+                "error: resolving the requested standards release timed out; check the network and retry "
+                "(--offline only reconverges the executing bundle)",
                 file=sys.stderr,
             )
             return 2
@@ -593,6 +595,7 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             print(f"      {shlex.join(command.argv)}  (in {command.cwd})")
         return 0
     print(f"updated: {root} now uses standards {__version__}")
+    print("next: run `sarj-standards check --trust-repository-code` and review every new finding")
     return 0
 
 
@@ -1804,12 +1807,12 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     fix.add_argument("--staged", action="store_true", help="fix only files staged in Git")
     fix.add_argument("files", nargs="*", help="selected paths; when omitted, fix the complete repository")
 
-    update = sub.add_parser("update", help="upgrade the complete coherent Standards bundle")
+    update = sub.add_parser("update", help="upgrade to the latest published coherent Standards bundle")
     update.add_argument("--check", action="store_true", help="preview without writing; exit 1 when changes exist")
     update.add_argument(
         "--offline",
         action="store_true",
-        help="use the executing bundle and skip every network-dependent install",
+        help="reconverge the executing bundle and skip every network-dependent install; does not resolve latest",
     )
     update.add_argument(
         "--to",

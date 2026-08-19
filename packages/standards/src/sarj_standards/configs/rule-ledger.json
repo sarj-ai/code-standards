@@ -78,6 +78,7 @@
       "prefer-namedtuple-over-tuple-return",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
+      "prefer-one-for-required-row",
       "prefer-or-pattern",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
@@ -304,7 +305,8 @@
       "SARJ418",
       "SARJ419",
       "SARJ420",
-      "SARJ421"
+      "SARJ421",
+      "SARJ422"
     ],
     "sql": [
       "SARJ101",

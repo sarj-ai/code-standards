@@ -8,7 +8,15 @@ import shlex
 import sys
 import tomllib
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import (
+    TYPE_CHECKING,
+    Final,
+    NamedTuple,
+    cast,  # ruff: ignore[banned-api] -- typed boundary for PyYAML nodes.
+)
+
+import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.rules.contracts import (
@@ -58,6 +66,11 @@ class _AttachedComment(NamedTuple):
     line: int
     owner_indent: int
     weak: bool
+
+
+class _YamlPair(NamedTuple):
+    key: Node
+    value: Node
 
 
 _TEXT_SUFFIXES: Final = frozenset(
@@ -179,7 +192,6 @@ _MARKDOWN_HIDDEN_DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _MARKDOWN_ATX_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
-_WORKFLOW_ACTION_RE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<value>[^\s#]+)", re.IGNORECASE)
 _FULL_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 _FULL_IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
 _MARKDOWN_SUPPRESSION_RE = re.compile(
@@ -880,16 +892,22 @@ def _shell_uses_variable(tokens: Sequence[str], name: str) -> bool:
 def _workflow_action_findings(path: Path, relative: str, source: str) -> list[Finding]:
     if not relative.startswith(".github/workflows/") or path.suffix.lower() not in {".yaml", ".yml"}:
         return []
+    try:
+        document = cast(
+            "Node | None",
+            yaml.compose(  # pyright: ignore[reportUnknownMemberType] -- PyYAML's compose signature leaves stream unknown.
+                source, Loader=yaml.SafeLoader
+            ),
+        )
+    except yaml.YAMLError:
+        return []
     lines = source.splitlines()
     findings: list[Finding] = []
-    for index, line in enumerate(lines):
-        match = _WORKFLOW_ACTION_RE.match(line)
-        if match is None:
+    for action in _workflow_action_nodes(document):
+        index = action.start_mark.line
+        if _suppresses_previous_line(lines, index, "SARJ303"):
             continue
-        indent = len(line) - len(line.lstrip())
-        if _inside_yaml_block_scalar(lines, index, indent) or _suppresses_previous_line(lines, index, "SARJ303"):
-            continue
-        value = match.group("value").strip("\"'")
+        value = cast("str", action.value)
         if value.startswith("./"):
             continue
         if value.startswith("docker://"):
@@ -908,6 +926,46 @@ def _workflow_action_findings(path: Path, relative: str, source: str) -> list[Fi
                 )
             )
     return findings
+
+
+def _workflow_action_nodes(document: Node | None) -> tuple[ScalarNode, ...]:
+    if not isinstance(document, MappingNode):
+        return ()
+    jobs = _yaml_mapping_value(document, "jobs")
+    if not isinstance(jobs, MappingNode):
+        return ()
+    actions: list[ScalarNode] = []
+    for _, job in _yaml_pairs(jobs):
+        if not isinstance(job, MappingNode):
+            continue
+        reusable = _yaml_mapping_value(job, "uses")
+        if isinstance(reusable, ScalarNode):
+            actions.append(reusable)
+        steps = _yaml_mapping_value(job, "steps")
+        if not isinstance(steps, SequenceNode):
+            continue
+        for step in cast("list[Node]", steps.value):
+            if not isinstance(step, MappingNode):
+                continue
+            action = _yaml_mapping_value(step, "uses")
+            if isinstance(action, ScalarNode):
+                actions.append(action)
+    return tuple(actions)
+
+
+def _yaml_mapping_value(mapping: MappingNode, key: str) -> Node | None:
+    return next(
+        (
+            value
+            for candidate, value in _yaml_pairs(mapping)
+            if isinstance(candidate, ScalarNode) and cast("str", candidate.value) == key
+        ),
+        None,
+    )
+
+
+def _yaml_pairs(mapping: MappingNode) -> list[_YamlPair]:
+    return cast("list[_YamlPair]", mapping.value)
 
 
 def _suppresses_previous_line(lines: list[str], index: int, code: str) -> bool:

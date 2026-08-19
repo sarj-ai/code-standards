@@ -178,10 +178,21 @@ def test_string_literal_is_masked() -> None:
     assert _mask("SELECT 'DROP TABLE t';") == "SELECT               ;"
 
 
-def test_doubled_quote_escape_keeps_the_scanner_inside_the_literal() -> None:
-    masked = _mask("SELECT 'it''s DROP TABLE t' , 1;")
-    assert "DROP TABLE" not in masked
-    assert masked.endswith(" , 1;")
+@pytest.mark.parametrize(
+    ("source", "hidden", "suffix"),
+    [
+        ("SELECT 'it''s DROP TABLE t' , 1;", "DROP TABLE", " , 1;"),
+        ("SELECT E'it\\'s TIMESTAMP', TIMESTAMPTZ;", "TIMESTAMP'", "TIMESTAMPTZ;"),
+    ],
+    ids=[
+        "doubled-quote-escape-keeps-the-scanner-inside-the-literal",
+        "postgres-escape-string-keeps-backslash-escaped-quote-inside-literal",
+    ],
+)
+def test_literal_escape_keeps_the_scanner_inside_the_literal(source: str, hidden: str, suffix: str) -> None:
+    masked = _mask(source)
+    assert hidden not in masked
+    assert masked.endswith(suffix)
 
 
 def test_quoted_identifier_is_masked() -> None:
@@ -195,6 +206,20 @@ def test_line_and_block_comments_are_masked() -> None:
     assert "DROP TABLE" not in masked
     assert "SELECT 1;" in masked
     assert "SELECT 2;" in masked
+
+
+def test_nested_postgres_block_comments_are_wholly_masked() -> None:
+    source = "/* outer /* inner */ TIMESTAMP */ CREATE TABLE t(created_at TIMESTAMPTZ);"
+    masked = _mask(source)
+
+    assert "outer" not in masked
+    assert "inner" not in masked
+    assert "TIMESTAMP */" not in masked
+    assert masked.endswith("CREATE TABLE t(created_at TIMESTAMPTZ);")
+
+
+def test_unterminated_nested_postgres_block_comment_terminates_safely() -> None:
+    assert not _mask("/* outer /* inner */ TIMESTAMP").strip()
 
 
 def test_semicolon_inside_a_literal_does_not_split_statements() -> None:

@@ -254,6 +254,84 @@ def test_alter_table_only_composite_fk_is_covered_by_a_concurrent_index() -> Non
     assert _check(src) == []
 
 
+def test_composite_fk_is_not_covered_by_only_its_first_column() -> None:
+    source = """
+    CREATE TABLE membership (
+        team_id BIGINT,
+        person_id BIGINT,
+        FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id)
+    );
+    CREATE INDEX membership_team_idx ON membership(team_id);
+    """
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert "team_id, person_id" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    "index_columns",
+    ["team_id, person_id", "person_id, team_id", "team_id, person_id, archived_at"],
+    ids=("exact-order", "reversed-equality-order", "trailing-column"),
+)
+def test_composite_fk_requires_all_columns_in_the_index_prefix(index_columns: str) -> None:
+    source = f"""
+    CREATE TABLE membership (
+        team_id BIGINT,
+        person_id BIGINT,
+        archived_at TIMESTAMPTZ,
+        FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id)
+    );
+    CREATE INDEX membership_person_idx ON membership({index_columns});
+    """
+
+    assert _check(source) == []
+
+
+def test_composite_fk_uses_a_covering_index_from_a_sibling_migration(tmp_path: Path) -> None:
+    root = _tree(
+        tmp_path,
+        {
+            "001_membership": (
+                "CREATE TABLE membership (team_id BIGINT, person_id BIGINT, "
+                "FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id));\n"
+            ),
+            "002_index": "CREATE INDEX membership_person_idx ON membership(person_id, team_id);\n",
+        },
+    )
+    target = root / "001_membership" / "migration.sql"
+
+    assert _check(target.read_text(), target) == []
+
+
+def test_nested_comment_cannot_create_a_foreign_key_or_index() -> None:
+    source = """
+    /* outer /* inner */
+       CREATE INDEX fake ON child(parent_id);
+       FOREIGN KEY (other_id) REFERENCES other(id)
+    */
+    CREATE TABLE child (parent_id BIGINT REFERENCES parent(id));
+    """
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert "parent_id" in diagnostics[0].message
+
+
+def test_postgres_escape_string_cannot_create_a_foreign_key_or_index() -> None:
+    source = """
+    SELECT E'it\\'s CREATE INDEX fake ON child(parent_id)';
+    CREATE TABLE child (parent_id BIGINT REFERENCES parent(id));
+    """
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert "parent_id" in diagnostics[0].message
+
+
 def test_alter_add_column_if_not_exists_uses_the_real_fk_column_name() -> None:
     src = """
     ALTER TABLE provisioned_number
