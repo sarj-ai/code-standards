@@ -8,6 +8,7 @@ import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
 import noCorsWildcardWithCredentials from "./rules/no-cors-wildcard-with-credentials.js";
 import noDuplicateLifecycleRefreshListeners from "./rules/no-duplicate-lifecycle-refresh-listeners.js";
+import noDangerouslyAllowSvg from "./rules/no-dangerously-allow-svg.js";
 import noDynamicSql from "./rules/no-dynamic-sql.js";
 import noEnum from "./rules/no-enum.js";
 import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
@@ -23,6 +24,7 @@ import noVagueSuppressionDescription from "./rules/no-vague-suppression-descript
 import noGenericSingleExportModule from "./rules/no-generic-single-export-module.js";
 import noOffsetPagination from "./rules/no-offset-pagination.js";
 import noPositionalTupleReturn from "./rules/no-positional-tuple-return.js";
+import noProductionBrowserSourceMaps from "./rules/no-production-browser-source-maps.js";
 import noRawEnv from "./rules/no-raw-env.js";
 import noRawFetchOutsideClients from "./rules/no-raw-fetch-outside-clients.js";
 import noRestrictedLibraryLoad from "./rules/no-restricted-library-load.js";
@@ -31,6 +33,7 @@ import noRepeatedStringLiteral from "./rules/no-repeated-string-literal.js";
 import noRestatedComment from "./rules/no-restated-comment.js";
 import noRestatedJsdoc from "./rules/no-restated-jsdoc.js";
 import noSecretInLog from "./rules/no-secret-in-log.js";
+import noServerEnvInClientComponent from "./rules/no-server-env-in-client-component.js";
 import noSelectStar from "./rules/no-select-star.js";
 import noSentinelReturnOnCatch from "./rules/no-sentinel-return-on-catch.js";
 import noSilentPromiseCatch from "./rules/no-silent-promise-catch.js";
@@ -68,6 +71,8 @@ import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
 import requirePortForService from "./rules/require-port-for-service.js";
 import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
+import requireUseFormDefaultValues from "./rules/require-use-form-default-values.js";
+import requireUseServerInActionsFile from "./rules/require-use-server-in-actions-file.js";
 import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 import stepdown from "./rules/stepdown.js";
@@ -85,6 +90,7 @@ const rules = {
   "no-comment-cruft": noCommentCruft,
   "no-cors-wildcard-with-credentials": noCorsWildcardWithCredentials,
   "no-duplicate-lifecycle-refresh-listeners": noDuplicateLifecycleRefreshListeners,
+  "no-dangerously-allow-svg": noDangerouslyAllowSvg,
   "no-dynamic-sql": noDynamicSql,
   "no-enum": noEnum,
   "no-fat-try-blocks": noFatTryBlocks,
@@ -100,6 +106,7 @@ const rules = {
   "no-generic-single-export-module": noGenericSingleExportModule,
   "no-offset-pagination": noOffsetPagination,
   "no-positional-tuple-return": noPositionalTupleReturn,
+  "no-production-browser-source-maps": noProductionBrowserSourceMaps,
   "no-raw-env": noRawEnv,
   "no-raw-fetch-outside-clients": noRawFetchOutsideClients,
   "no-restricted-library-load": noRestrictedLibraryLoad,
@@ -108,6 +115,7 @@ const rules = {
   "no-restated-comment": noRestatedComment,
   "no-restated-jsdoc": noRestatedJsdoc,
   "no-secret-in-log": noSecretInLog,
+  "no-server-env-in-client-component": noServerEnvInClientComponent,
   "no-select-star": noSelectStar,
   "no-sentinel-return-on-catch": noSentinelReturnOnCatch,
   "no-silent-promise-catch": noSilentPromiseCatch,
@@ -123,6 +131,8 @@ const rules = {
   "no-unnecessary-use-client": noUnnecessaryUseClient,
   "no-unsafe-mock-casting": noUnsafeMockCasting,
   "no-zod-native-enum": noZodNativeEnum,
+  "require-use-form-default-values": requireUseFormDefaultValues,
+  "require-use-server-in-actions-file": requireUseServerInActionsFile,
   "test-loops-over-literal-cases": testLoopsOverLiteralCases,
   "test-phase-label-comment": testPhaseLabelComment,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
@@ -154,7 +164,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.11.0",
+  version: "15.12.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -167,10 +177,15 @@ const applicationOnlyRules = [
 /** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
 const advisoryRules = [
   "no-bare-return-from-test-catch",
+  "no-dangerously-allow-svg",
   "no-duplicate-lifecycle-refresh-listeners",
+  "no-production-browser-source-maps",
   "no-router-refresh-polling",
+  "no-server-env-in-client-component",
   "iac-source-coupled-test",
   "repeated-static-call-cases",
+  "require-use-form-default-values",
+  "require-use-server-in-actions-file",
   "source-coupled-test",
   "test-phase-label-comment",
 ] as const;
@@ -191,17 +206,20 @@ const recommendedRules = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "warn",
+  "@sarj/no-dangerously-allow-svg": "warn",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
+  "@sarj/no-production-browser-source-maps": "warn",
   "@sarj/no-repeated-string-literal": "error",
   "@sarj/no-router-refresh-polling": "warn",
   "@sarj/no-restated-comment": "error",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",
+  "@sarj/no-server-env-in-client-component": "warn",
   "@sarj/no-select-star": "error",
   "@sarj/no-sentinel-return-on-catch": "error",
   "@sarj/no-silent-promise-catch": "error",
@@ -235,6 +253,8 @@ const recommendedRules = {
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-static-next-matcher": "error",
+  "@sarj/require-use-form-default-values": "warn",
+  "@sarj/require-use-server-in-actions-file": "warn",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
@@ -260,12 +280,14 @@ const strictRules = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "warn",
+  "@sarj/no-dangerously-allow-svg": "warn",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
+  "@sarj/no-production-browser-source-maps": "warn",
   "@sarj/no-raw-env": "error",
   "@sarj/no-raw-fetch-outside-clients": "error",
   "@sarj/no-repeated-string-literal": "error",
@@ -273,6 +295,7 @@ const strictRules = {
   "@sarj/no-restated-comment": "error",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",
+  "@sarj/no-server-env-in-client-component": "warn",
   "@sarj/no-select-star": "error",
   "@sarj/no-sentinel-return-on-catch": "error",
   "@sarj/no-silent-promise-catch": "error",
@@ -307,6 +330,8 @@ const strictRules = {
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-static-next-matcher": "error",
+  "@sarj/require-use-form-default-values": "warn",
+  "@sarj/require-use-server-in-actions-file": "warn",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",

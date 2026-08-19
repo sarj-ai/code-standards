@@ -138,5 +138,6 @@
   "SARJ423": "no-redundant-literal-description",
   "SARJ424": "require-nodecode-for-splitting-settings-field",
   "SARJ425": "no-nested-pydantic-field-validator",
-  "SARJ426": "no-conftest-test-module-import"
+  "SARJ426": "no-conftest-test-module-import",
+  "SARJ427": "no-fastapi-on-event"
 }

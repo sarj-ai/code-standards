@@ -38,6 +38,7 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
+from sarj_python_lint.rules.no_fastapi_on_event import NoFastapiOnEvent
 from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import NoFileLevelEscapeHatchNoqa
 from sarj_python_lint.rules.no_first_party_private_import import (
     NoFirstPartyPrivateImport,
@@ -205,6 +206,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoGenRandomUuidInSql.id: NoGenRandomUuidInSql,
         NoHiddenConstructorFallback.id: NoHiddenConstructorFallback,
         NoFileLevelEscapeHatchNoqa.id: NoFileLevelEscapeHatchNoqa,
+        NoFastapiOnEvent.id: NoFastapiOnEvent,
         NoOptionalTenantPredicate.id: NoOptionalTenantPredicate,
         NoTautologicalExpect.id: NoTautologicalExpect,
         PreferLibraryFake.id: PreferLibraryFake,
