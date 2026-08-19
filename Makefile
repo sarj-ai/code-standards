@@ -74,7 +74,7 @@ test: check-versions-synced
 	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
 	  && uv venv --quiet --clear dist/test-venv \
-	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 ./dist/deps/*.whl ./dist/sarj_standards-*.whl \
+	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 'jsonschema>=4.26,<5' ./dist/deps/*.whl ./dist/sarj_standards-*.whl \
 	  && dist/test-venv/bin/python -m pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 

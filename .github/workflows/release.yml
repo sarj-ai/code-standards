@@ -732,7 +732,7 @@ jobs:
       - name: Test against the built wheel
         run: |
           uv venv --clear --python 3.14 --seed
-          uv pip install ./dist/deps/*.whl ./dist/sarj_standards-*.whl pytest==9.1.1 ruff
+          uv pip install ./dist/deps/*.whl ./dist/sarj_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff
           uv run --no-project pytest -q tests/
       - name: Smoke test the source distribution
         run: |
