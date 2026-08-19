@@ -437,7 +437,7 @@
       "kind": "eslint",
       "status": "removed",
       "replacement": null,
-      "note": "Delete the config entry and suppressions. A three-repository audit measured 5.9% precision: sentence count does not distinguish durable rationale from noise. Use the narrower no-comment-cruft, no-restated-comment, and no-long-comment rules."
+      "note": "Delete the config entry and suppressions. Sentence count does not distinguish durable rationale from noise. Use the narrower no-comment-cruft, no-restated-comment, and no-long-comment rules."
     },
     {
       "id": "@sarj/prefer-string-literal-union",
@@ -633,7 +633,7 @@
       "kind": "code",
       "status": "removed",
       "replacement": null,
-      "note": "Delete SARJ090 suppressions and baseline keys. A three-repository audit measured 20% precision: sentence count does not distinguish durable rationale from noise."
+      "note": "Delete SARJ090 suppressions and baseline keys. Sentence count does not distinguish durable rationale from noise."
     },
     {
       "id": "SARJ405",
@@ -731,7 +731,7 @@
       "kind": "python",
       "status": "removed",
       "replacement": null,
-      "note": "removed in sarj-python-lint 0.34.0: 25 corpus findings read, 3 true positives. Delete the `sarj-no-patching-system-under-test` pre-commit hook."
+      "note": "Removed in sarj-python-lint 0.34.0 because syntax cannot reliably distinguish harmful patching from valid test seams. Delete the `sarj-no-patching-system-under-test` pre-commit hook."
     },
     {
       "id": "no-raw-sql-in-tests",
@@ -787,7 +787,7 @@
       "kind": "python",
       "status": "removed",
       "replacement": null,
-      "note": "Remove this pre-commit hook. A three-repository audit measured 20% precision; use the narrower no-comment-cruft, no-restated-comment, and no-long-comment hooks."
+      "note": "Remove this pre-commit hook. Sentence count does not distinguish durable rationale from noise; use the narrower no-comment-cruft, no-restated-comment, and no-long-comment hooks."
     },
     {
       "id": "single-public-export",
