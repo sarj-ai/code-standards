@@ -127,7 +127,7 @@ jobs:
       - name: Install built wheel + test deps into a fresh venv
         run: |
           uv venv --clear --python 3.14 --seed
-          uv pip install ./dist/deps/*.whl ./dist/sarj_standards-*.whl pytest==9.1.1 ruff
+          uv pip install ./dist/deps/*.whl ./dist/sarj_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff
       - name: Pytest
         run: uv run --no-project pytest -q
       - name: CLI smoke

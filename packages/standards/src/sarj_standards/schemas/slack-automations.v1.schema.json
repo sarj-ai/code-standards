@@ -1,0 +1,1751 @@
+{
+  "$defs": {
+    "AppConfiguration": {
+      "discriminator": {
+        "mapping": {
+          "external": "#/$defs/ExternalConfiguration",
+          "repository-manifest": "#/$defs/RepositoryManifestConfiguration"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/RepositoryManifestConfiguration"
+        },
+        {
+          "$ref": "#/$defs/ExternalConfiguration"
+        }
+      ]
+    },
+    "BotApp": {
+      "discriminator": {
+        "mapping": {
+          "dedicated": "#/$defs/DedicatedBotApp",
+          "shared": "#/$defs/SharedBotApp"
+        },
+        "propertyName": "identityKind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DedicatedBotApp"
+        },
+        {
+          "$ref": "#/$defs/SharedBotApp"
+        }
+      ]
+    },
+    "BotCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "connectedSystemIds": {
+          "items": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Connectedsystemids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "personaIds": {
+          "items": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Personaids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "summary": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "$ref": "#/$defs/Trigger"
+          },
+          "minItems": 1,
+          "title": "Triggers",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "summary",
+        "connectedSystemIds",
+        "triggers",
+        "personaIds"
+      ],
+      "title": "BotCapability",
+      "type": "object"
+    },
+    "Cadence": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "hourly",
+            "daily",
+            "weekly",
+            "biweekly",
+            "periodic"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Cadence",
+      "type": "object"
+    },
+    "DedicatedBotApp": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/BotCapability"
+          },
+          "minItems": 1,
+          "title": "Capabilities",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "configuration": {
+          "$ref": "#/$defs/AppConfiguration"
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "identityKind": {
+          "const": "dedicated",
+          "title": "Identitykind",
+          "type": "string"
+        },
+        "kind": {
+          "const": "bot-app",
+          "title": "Kind",
+          "type": "string"
+        },
+        "personas": {
+          "maxItems": 1,
+          "minItems": 1,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/Persona"
+            }
+          ],
+          "title": "Personas",
+          "type": "array"
+        },
+        "sourcePaths": {
+          "items": {
+            "pattern": "^(?!\\.?\\.?$)(?!\\.?\\.?/)(?!.*//)(?!.*(?:/\\.?\\.?)(?:/|$))[^/]+(?:/[^/]+)*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Sourcepaths",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "active",
+            "dark",
+            "retired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "summary",
+        "status",
+        "sourcePaths",
+        "kind",
+        "configuration",
+        "capabilities",
+        "personas",
+        "identityKind"
+      ],
+      "title": "DedicatedBotApp",
+      "type": "object"
+    },
+    "ExternalConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "external",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "ExternalConfiguration",
+      "type": "object"
+    },
+    "ExternalWebhookTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "external-webhook",
+          "title": "Kind",
+          "type": "string"
+        },
+        "sourceSystemId": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Sourcesystemid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "kind",
+        "sourceSystemId"
+      ],
+      "title": "ExternalWebhookTrigger",
+      "type": "object"
+    },
+    "Integration": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization": {
+          "$ref": "#/$defs/UserTokenAuthorization"
+        },
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/IntegrationCapability"
+          },
+          "minItems": 1,
+          "title": "Capabilities",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "consumerBotAppIds": {
+          "items": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "title": "Consumerbotappids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "integration",
+          "title": "Kind",
+          "type": "string"
+        },
+        "sourcePaths": {
+          "items": {
+            "pattern": "^(?!\\.?\\.?$)(?!\\.?\\.?/)(?!.*//)(?!.*(?:/\\.?\\.?)(?:/|$))[^/]+(?:/[^/]+)*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Sourcepaths",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "active",
+            "dark",
+            "retired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "summary",
+        "status",
+        "sourcePaths",
+        "kind",
+        "authorization",
+        "capabilities",
+        "consumerBotAppIds"
+      ],
+      "title": "Integration",
+      "type": "object"
+    },
+    "IntegrationCapability": {
+      "additionalProperties": false,
+      "properties": {
+        "connectedSystemIds": {
+          "items": {
+            "maxLength": 80,
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Connectedsystemids",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "summary": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "$ref": "#/$defs/Trigger"
+          },
+          "minItems": 1,
+          "title": "Triggers",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "summary",
+        "connectedSystemIds",
+        "triggers"
+      ],
+      "title": "IntegrationCapability",
+      "type": "object"
+    },
+    "IntegrationPrivilege": {
+      "enum": [
+        "channels:read",
+        "channels:write",
+        "profiles:write",
+        "user-groups:read",
+        "user-groups:write",
+        "workspace-members:read"
+      ],
+      "type": "string"
+    },
+    "InternalEventTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "eventName": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Eventname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "internal-event",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "kind",
+        "eventName"
+      ],
+      "title": "InternalEventTrigger",
+      "type": "object"
+    },
+    "ManualTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "manual",
+          "title": "Kind",
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "operator",
+            "test"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "kind",
+        "mode"
+      ],
+      "title": "ManualTrigger",
+      "type": "object"
+    },
+    "Persona": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "summary": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "summary"
+      ],
+      "title": "Persona",
+      "type": "object"
+    },
+    "ReadPrivilege": {
+      "enum": [
+        "channels:read",
+        "user-groups:read",
+        "workspace-members:read"
+      ],
+      "type": "string"
+    },
+    "ReadUserTokenAuthorization": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "const": "read",
+          "title": "Authority",
+          "type": "string"
+        },
+        "kind": {
+          "const": "user-token",
+          "title": "Kind",
+          "type": "string"
+        },
+        "privileges": {
+          "items": {
+            "$ref": "#/$defs/ReadPrivilege"
+          },
+          "minItems": 1,
+          "title": "Privileges",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "authority",
+        "privileges"
+      ],
+      "title": "ReadUserTokenAuthorization",
+      "type": "object"
+    },
+    "RepositoryManifestConfiguration": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "repository-manifest",
+          "title": "Kind",
+          "type": "string"
+        },
+        "manifestPath": {
+          "pattern": "^(?!\\.?\\.?$)(?!\\.?\\.?/)(?!.*//)(?!.*(?:/\\.?\\.?)(?:/|$))[^/]+(?:/[^/]+)*$",
+          "title": "Manifestpath",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "manifestPath"
+      ],
+      "title": "RepositoryManifestConfiguration",
+      "type": "object"
+    },
+    "ScheduleTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "cadence": {
+          "$ref": "#/$defs/Cadence"
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "schedule",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "kind",
+        "cadence"
+      ],
+      "title": "ScheduleTrigger",
+      "type": "object"
+    },
+    "SharedBotApp": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/BotCapability"
+          },
+          "minItems": 1,
+          "title": "Capabilities",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "configuration": {
+          "$ref": "#/$defs/AppConfiguration"
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "identityKind": {
+          "const": "shared",
+          "title": "Identitykind",
+          "type": "string"
+        },
+        "kind": {
+          "const": "bot-app",
+          "title": "Kind",
+          "type": "string"
+        },
+        "personas": {
+          "items": {
+            "$ref": "#/$defs/Persona"
+          },
+          "minItems": 2,
+          "title": "Personas",
+          "type": "array"
+        },
+        "sourcePaths": {
+          "items": {
+            "pattern": "^(?!\\.?\\.?$)(?!\\.?\\.?/)(?!.*//)(?!.*(?:/\\.?\\.?)(?:/|$))[^/]+(?:/[^/]+)*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Sourcepaths",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "active",
+            "dark",
+            "retired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 320,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "summary",
+        "status",
+        "sourcePaths",
+        "kind",
+        "configuration",
+        "capabilities",
+        "personas",
+        "identityKind"
+      ],
+      "title": "SharedBotApp",
+      "type": "object"
+    },
+    "SlackEventTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "eventTypes": {
+          "items": {
+            "allOf": [
+              {
+                "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+              },
+              {
+                "not": {
+                  "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+                }
+              },
+              {
+                "not": {
+                  "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+                }
+              },
+              {
+                "not": {
+                  "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+                }
+              },
+              {
+                "not": {
+                  "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+                }
+              },
+              {
+                "not": {
+                  "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+                }
+              },
+              {
+                "not": {
+                  "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+                }
+              }
+            ],
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Eventtypes",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "slack-event",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "kind",
+        "eventTypes"
+      ],
+      "title": "SlackEventTrigger",
+      "type": "object"
+    },
+    "SlackInteractionTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "interactionTypes": {
+          "items": {
+            "enum": [
+              "action",
+              "shortcut",
+              "view-submission"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Interactiontypes",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "kind": {
+          "const": "slack-interaction",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "kind",
+        "interactionTypes"
+      ],
+      "title": "SlackInteractionTrigger",
+      "type": "object"
+    },
+    "SlackSystem": {
+      "additionalProperties": false,
+      "properties": {
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName"
+      ],
+      "title": "SlackSystem",
+      "type": "object"
+    },
+    "SlashCommandTrigger": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "maxLength": 82,
+          "minLength": 2,
+          "pattern": "^/[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Command",
+          "type": "string"
+        },
+        "displayName": {
+          "allOf": [
+            {
+              "pattern": "^(?!\\s)(?:[^\\r\\n]*\\S)$|^\\S$"
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Z0-9])[ABCDEGTUVW][A-Z0-9]{8,}(?:$|[^A-Z0-9])"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[xX][oO][xX][bBaApPrRsS]-|[bB][eE][aA][rR][eE][rR]\\s+[A-Za-z0-9._-]+|-----BEGIN [A-Z ]+PRIVATE KEY-----"
+              }
+            },
+            {
+              "not": {
+                "pattern": "\\b[A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API_KEY)\\b"
+              }
+            },
+            {
+              "not": {
+                "pattern": "(?:^|[^A-Za-z0-9_])#[A-Za-z0-9][A-Za-z0-9_-]*|/archives/[CGcg][A-Za-z0-9]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[pP][rR][iI][vV][aA][tT][eE][-_ ][cC][hH][aA][nN][nN][eE][lL][-_ ](?:[iI][dD]|[nN][aA][mM][eE])\\s*[:=]\\s*[A-Za-z0-9_-]+"
+              }
+            },
+            {
+              "not": {
+                "pattern": "[hH][tT][tT][pP][sS]?://[^\\s]+/(?:[aA][dD][mM][iI][nN]|[iI][nN][tT][eE][rR][nN][aA][lL])(?:[/#?]|[^A-Za-z0-9_]|$)"
+              }
+            }
+          ],
+          "maxLength": 80,
+          "minLength": 1,
+          "title": "Displayname",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 80,
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "slash-command",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "displayName",
+        "kind",
+        "command"
+      ],
+      "title": "SlashCommandTrigger",
+      "type": "object"
+    },
+    "Trigger": {
+      "discriminator": {
+        "mapping": {
+          "external-webhook": "#/$defs/ExternalWebhookTrigger",
+          "internal-event": "#/$defs/InternalEventTrigger",
+          "manual": "#/$defs/ManualTrigger",
+          "schedule": "#/$defs/ScheduleTrigger",
+          "slack-event": "#/$defs/SlackEventTrigger",
+          "slack-interaction": "#/$defs/SlackInteractionTrigger",
+          "slash-command": "#/$defs/SlashCommandTrigger"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/SlackEventTrigger"
+        },
+        {
+          "$ref": "#/$defs/SlackInteractionTrigger"
+        },
+        {
+          "$ref": "#/$defs/SlashCommandTrigger"
+        },
+        {
+          "$ref": "#/$defs/ScheduleTrigger"
+        },
+        {
+          "$ref": "#/$defs/ExternalWebhookTrigger"
+        },
+        {
+          "$ref": "#/$defs/InternalEventTrigger"
+        },
+        {
+          "$ref": "#/$defs/ManualTrigger"
+        }
+      ]
+    },
+    "UserTokenAuthorization": {
+      "discriminator": {
+        "mapping": {
+          "read": "#/$defs/ReadUserTokenAuthorization",
+          "write": "#/$defs/WriteUserTokenAuthorization"
+        },
+        "propertyName": "authority"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ReadUserTokenAuthorization"
+        },
+        {
+          "$ref": "#/$defs/WriteUserTokenAuthorization"
+        }
+      ]
+    },
+    "WriteUserTokenAuthorization": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "const": "write",
+          "title": "Authority",
+          "type": "string"
+        },
+        "kind": {
+          "const": "user-token",
+          "title": "Kind",
+          "type": "string"
+        },
+        "privileges": {
+          "contains": {
+            "enum": [
+              "channels:write",
+              "profiles:write",
+              "user-groups:write"
+            ]
+          },
+          "items": {
+            "$ref": "#/$defs/IntegrationPrivilege"
+          },
+          "minContains": 1,
+          "minItems": 1,
+          "title": "Privileges",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "kind",
+        "authority",
+        "privileges"
+      ],
+      "title": "WriteUserTokenAuthorization",
+      "type": "object"
+    }
+  },
+  "$id": "https://standards.sarj.ai/schemas/slack-app-catalog/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": {
+        "botApps": {
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "integrations": {
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "properties": {
+    "botApps": {
+      "items": {
+        "$ref": "#/$defs/BotApp"
+      },
+      "title": "Botapps",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "integrations": {
+      "items": {
+        "$ref": "#/$defs/Integration"
+      },
+      "title": "Integrations",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "repository": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?/[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$",
+      "title": "Repository",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "title": "Schemaversion",
+      "type": "integer"
+    },
+    "systems": {
+      "items": {
+        "$ref": "#/$defs/SlackSystem"
+      },
+      "minItems": 1,
+      "title": "Systems",
+      "type": "array",
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "repository",
+    "systems",
+    "botApps",
+    "integrations"
+  ],
+  "title": "SlackAutomationCatalog",
+  "type": "object"
+}

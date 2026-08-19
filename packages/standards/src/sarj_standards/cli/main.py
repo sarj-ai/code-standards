@@ -128,6 +128,7 @@ class _Args(argparse.Namespace):
     package: list[str]
     exclude_subtree: list[str]
     allow_increase: bool = False
+    slack_catalog: Path = Path()
 
     def __init__(self) -> None:
         super().__init__()
@@ -773,6 +774,9 @@ def cmd_check(args: _Args) -> int:
     from sarj_standards.libs.linting import external, runner  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
+    catalog_status = _check_conventional_slack_catalog(args, root)
+    if catalog_status:
+        return catalog_status
     repository_wide = not args.files
     pull_request_scoped = False
     if args.staged:
@@ -870,6 +874,68 @@ def cmd_check(args: _Args) -> int:
     if not args.files:
         return cmd_verify(args)
     return _run_canonical_check(root, list(args.files), trusted=args.trust_repository_code, staged=args.staged)
+
+
+def cmd_validate_slack_automations(args: _Args) -> int:
+    root = _resolve_dest(args.dest)
+    path = _catalog_path(root, args.slack_catalog)
+    return _render_slack_catalog_findings(args, root, path)
+
+
+def _check_conventional_slack_catalog(args: _Args, root: Path) -> int:
+    from sarj_standards.libs.catalogs import CONVENTIONAL_PATH  # ruff: ignore[import-outside-top-level]
+
+    path = root / CONVENTIONAL_PATH
+    return _render_slack_catalog_findings(args, root, path) if path.exists() or path.is_symlink() else 0
+
+
+def _catalog_path(root: Path, value: Path) -> Path:
+    path = value if value.is_absolute() else root / value
+    if not path.resolve().is_relative_to(root):
+        _user_error(f"catalog path escapes repository root: {value}")
+    if not path.is_file():
+        _user_error(f"catalog path is not a file: {value}")
+    return path
+
+
+def _render_slack_catalog_findings(args: _Args, root: Path, path: Path) -> int:
+    from sarj_standards.libs.catalogs import validate_catalog  # ruff: ignore[import-outside-top-level]
+
+    findings = validate_catalog(path, root=root)
+    if not findings:
+        if args.cmd == "validate-slack-automations":
+            print(f"Slack automation catalog ✓ ({path.relative_to(root).as_posix()})")
+        return 0
+    relative = path.relative_to(root)
+    if args.output_format == "text":
+        print("\n".join(finding.render(relative) for finding in findings))
+        return 1
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+        Completion,
+        Diagnostic,
+        Location,
+        Severity,
+        ToolReport,
+    )
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
+
+    diagnostics = tuple(
+        Diagnostic(
+            "slack-automations.invalid",
+            f"{finding.location}: {finding.message}",
+            Severity.ERROR,
+            "sarj-standards-slack-automations",
+            Location(relative.as_posix()),
+            rule_id="slack-automations.invalid",
+            help="run `sarj-standards validate-slack-automations catalog/slack-automations.v1.json`",
+        )
+        for finding in findings
+    )
+    report = report_from_tools(
+        root,
+        (ToolReport("sarj-standards-slack-automations", Completion.COMPLETE, diagnostics=diagnostics),),
+    )
+    return _emit_analysis_report(args, root, report)
 
 
 def _run_canonical_check(
@@ -1642,6 +1708,8 @@ def _dispatch(args: _Args) -> int:
             return cmd_format(args)
         case "check":
             return cmd_check(args)
+        case "validate-slack-automations":
+            return cmd_validate_slack_automations(args)
         case "observe":
             return cmd_observe(args)
         case "show":
@@ -1674,7 +1742,7 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     sub = parser.add_subparsers(
         dest="cmd",
         required=True,
-        metavar="{setup,check,observe,fix,doctor,update,ratchet,exclude,show,maintain}",
+        metavar=("{setup,check,validate-slack-automations,observe,fix,doctor,update,ratchet,exclude,show,maintain}"),
         title="commands",
     )
 
@@ -1770,6 +1838,12 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
         nargs="*",
         help="selected paths; when omitted, check the complete repository",
     )
+
+    validate_slack = sub.add_parser(
+        "validate-slack-automations",
+        help="validate a versioned Slack automation catalog",
+    )
+    validate_slack.add_argument("slack_catalog", type=Path, metavar="PATH")
 
     observe = sub.add_parser(
         "observe",
