@@ -23,14 +23,12 @@ assert.equal(manifest.publishConfig?.access, 'public');
 const workingDirectory = await mkdtemp(join(tmpdir(), 'sarj-docs-ui-contract-'));
 
 try {
-  const packOutput = execFileSync(
-    'npm',
-    ['pack', '--json', '--ignore-scripts', '--pack-destination', workingDirectory],
-    { cwd: packageRoot, encoding: 'utf8' },
-  );
-  const packDescription = JSON.parse(packOutput);
-  const packed = Array.isArray(packDescription) ? packDescription[0] : packDescription;
-  assert.ok(packed, 'npm pack returned no package description');
+  execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', workingDirectory], {
+    cwd: packageRoot,
+    encoding: 'utf8',
+  });
+  const archiveName = `sarj-docs-ui-${manifest.version}.tgz`;
+  const tarballPath = join(workingDirectory, archiveName);
 
   const expectedFiles = new Set([
     'LICENSE',
@@ -41,11 +39,16 @@ try {
     'src/components/ReferencePage.astro',
     'src/styles/theme.css',
   ]);
-  assert.deepEqual(new Set(packed.files.map(({ path }) => path)), expectedFiles);
+  const archiveMembers = execFileSync('tar', ['-tzf', tarballPath], {
+    encoding: 'utf8',
+  })
+    .trim()
+    .split('\n')
+    .map((path) => path.replace(/^package\//, ''));
+  assert.deepEqual(new Set(archiveMembers), expectedFiles);
 
   const consumerRoot = join(workingDirectory, 'consumer');
   await mkdir(join(consumerRoot, 'src', 'pages'), { recursive: true });
-  const tarballPath = join(workingDirectory, packed.filename);
   writeFileSync(
     join(consumerRoot, 'package.json'),
     `${JSON.stringify(
