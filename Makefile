@@ -38,6 +38,7 @@ docs-artifacts-check:
 	@$(STANDARDS) --root . maintain docs check
 
 docs-check: docs-artifacts-check
+	cd packages/docs-ui && npm test
 	cd apps/docs && npm run lint && npm run check && npm run build
 
 format-check:

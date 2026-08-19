@@ -37,6 +37,7 @@ class ReleaseTargetId(StrEnum):
     IAC = "iac"
     STANDARDS = "standards"
     TSCONFIG = "tsconfig"
+    DOCS_UI = "docs-ui"
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +69,7 @@ RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
         ReleaseTargetId.IAC: ReleaseTarget(Path("packages/iac/pyproject.toml"), "toml"),
         ReleaseTargetId.STANDARDS: ReleaseTarget(Path("packages/standards/pyproject.toml"), "toml"),
         ReleaseTargetId.TSCONFIG: ReleaseTarget(Path("packages/tsconfig/package.json"), "json"),
+        ReleaseTargetId.DOCS_UI: ReleaseTarget(Path("packages/docs-ui/package.json"), "json"),
     }
 )
 RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
@@ -79,6 +81,7 @@ RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
         ReleaseTargetId.STANDARDS: ("packages/standards/src/",),
         ReleaseTargetId.TYPESCRIPT: ("packages/typescript/src/",),
         ReleaseTargetId.TSCONFIG: ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
+        ReleaseTargetId.DOCS_UI: ("packages/docs-ui/src/",),
     }
 )
 RELEASE_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(

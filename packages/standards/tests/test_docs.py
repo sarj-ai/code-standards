@@ -20,6 +20,7 @@ GENERATED_READMES = (
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
     Path("packages/tsconfig/README.md"),
+    Path("packages/docs-ui/README.md"),
     Path("plugins/sarj-audit/README.md"),
 )
 
@@ -86,6 +87,10 @@ def _repository(root: Path) -> None:
             "package.json",
             '{"name":"@sarj/tsconfig","version":"1.0.0","description":"TypeScript configs.","license":"MIT"}\n',
         ),
+        "docs-ui": (
+            "package.json",
+            '{"name":"@sarj/docs-ui","version":"0.1.0","description":"Shared documentation UI.","license":"MIT"}\n',
+        ),
     }
     for directory, (filename, content) in packages.items():
         path = root / "packages" / directory / filename
@@ -125,6 +130,7 @@ def _repository(root: Path) -> None:
         "packages/iac/README.md",
         "packages/typescript/README.md",
         "packages/tsconfig/README.md",
+        "packages/docs-ui/README.md",
         "plugins/sarj-audit/README.md",
     ):
         path = root / relative

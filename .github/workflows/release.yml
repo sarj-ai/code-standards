@@ -29,7 +29,8 @@ jobs:
       needs.detect.outputs.sql == 'true' ||
       needs.detect.outputs.iac == 'true' ||
       needs.detect.outputs.standards == 'true' ||
-      needs.detect.outputs.tsconfig == 'true'
+      needs.detect.outputs.tsconfig == 'true' ||
+      needs.detect.outputs.docs_ui == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     permissions:
@@ -56,6 +57,7 @@ jobs:
             'sql-ci.yml|sql CI' \
             'iac-ci.yml|iac CI' \
             'tsconfig-ci.yml|tsconfig CI' \
+            'docs-ui-ci.yml|docs UI CI' \
             'standards-ci.yml|standards CI'; do
             IFS='|' read -r workflow expected_name <<< "$specification"
             while (( SECONDS < deadline )); do
@@ -120,6 +122,7 @@ jobs:
       iac: ${{ steps.c.outputs.iac }}
       standards: ${{ steps.c.outputs.standards }}
       tsconfig: ${{ steps.c.outputs.tsconfig }}
+      docs_ui: ${{ steps.c.outputs['docs-ui'] }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -266,7 +269,8 @@ jobs:
           uv pip install --python "$RUNNER_TEMP/bootstrap-wheel/bin/python" dist/*.whl
           "$RUNNER_TEMP/bootstrap-wheel/bin/python" -c "import sarj_standards_bootstrap"
           mkdir -p "$RUNNER_TEMP/fake-bin"
-          printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "$BOOTSTRAP_CAPTURE"\n' > "$RUNNER_TEMP/fake-bin/uvx"
+          printf '%s\n' '#!/bin/sh' \
+            "printf \"%s\\n\" \"\$@\" > \"\$BOOTSTRAP_CAPTURE\"" > "$RUNNER_TEMP/fake-bin/uvx"
           chmod +x "$RUNNER_TEMP/fake-bin/uvx"
           BOOTSTRAP_CAPTURE="$RUNNER_TEMP/wheel-argv" PATH="$RUNNER_TEMP/fake-bin:$PATH" \
             "$RUNNER_TEMP/bootstrap-wheel/bin/sarj-standards" --root "$GITHUB_WORKSPACE" check
@@ -874,6 +878,104 @@ jobs:
       - name: Verify build-bound artifact digest
         env:
           EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
+        run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
+      - name: Publish with npm trusted publishing
+        run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
+
+  build-docs-ui:
+    needs: [detect, release-safety]
+    if: needs.detect.outputs.docs_ui == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      artifact_sha256: ${{ steps.artifact_identity.outputs.sha256 }}
+    defaults:
+      run:
+        working-directory: packages/docs-ui
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: packages/docs-ui/package-lock.json
+      - run: npm install --global npm@12.0.2 --ignore-scripts
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify packed consumer contract
+        run: npm test
+      - name: Pack publishable artifact
+        run: |
+          install -d -m 700 "$RUNNER_TEMP/npm-artifacts"
+          npm pack --pack-destination "$RUNNER_TEMP/npm-artifacts" --ignore-scripts
+      - name: Normalize the single artifact name
+        run: >-
+          node -e "const fs=require('node:fs'),d=process.env.RUNNER_TEMP+'/npm-artifacts',
+          f=fs.readdirSync(d).filter(x=>x.endsWith('.tgz'));
+          if(f.length!==1)throw new Error('expected exactly one npm artifact');
+          fs.renameSync(d+'/'+f[0],d+'/package.tgz')"
+      - name: Verify artifact identity, surface, and digest
+        id: artifact_identity
+        run: |
+          manifest="$(tar -xOf "$RUNNER_TEMP/npm-artifacts/package.tgz" package/package.json)"
+          actual_name="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).name)")"
+          actual_version="$(printf '%s' "$manifest" | node -e "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).version)")"
+          expected_version="$(node -p "require('./package.json').version")"
+          test "$actual_name" = '@sarj/docs-ui'
+          test "$actual_version" = "$expected_version"
+          tar -tzf "$RUNNER_TEMP/npm-artifacts/package.tgz" > "$RUNNER_TEMP/npm-artifacts/contents.txt"
+          for path in \
+            package/LICENSE \
+            package/README.md \
+            package/package.json \
+            package/src/components/Breadcrumbs.astro \
+            package/src/components/PageAnchor.astro \
+            package/src/components/ReferencePage.astro \
+            package/src/styles/theme.css; do
+            grep -Fxq "$path" "$RUNNER_TEMP/npm-artifacts/contents.txt"
+          done
+          echo "sha256=$(sha256sum "$RUNNER_TEMP/npm-artifacts/package.tgz" | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Upload publishable artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-docs-ui
+          path: ${{ runner.temp }}/npm-artifacts/package.tgz
+          if-no-files-found: error
+
+  publish-docs-ui:
+    needs: build-docs-ui
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: npm-docs-ui-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Download publishable artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: npm-docs-ui
+          path: ${{ runner.temp }}/npm-artifacts
+      - name: Verify build-bound artifact digest
+        env:
+          EXPECTED_SHA256: ${{ needs.build-docs-ui.outputs.artifact_sha256 }}
         run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
       - name: Publish with npm trusted publishing
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts

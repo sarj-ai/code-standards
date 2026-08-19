@@ -1,0 +1,47 @@
+{
+  "name": "@sarj/docs-ui",
+  "version": "0.1.0",
+  "packageManager": "npm@12.0.2",
+  "description": "Shared Astro and Starlight reference UI for Sarj standards sites",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/package-contract.mjs"
+  },
+  "exports": {
+    "./styles.css": "./src/styles/theme.css",
+    "./PageAnchor.astro": "./src/components/PageAnchor.astro",
+    "./ReferencePage.astro": "./src/components/ReferencePage.astro",
+    "./Breadcrumbs.astro": "./src/components/Breadcrumbs.astro"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./src/styles/theme.css"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarj-ai/standards.git",
+    "directory": "packages/docs-ui"
+  },
+  "homepage": "https://code-standards.sarj.ai/",
+  "bugs": {
+    "url": "https://github.com/sarj-ai/standards/issues"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@fontsource-variable/nunito": "5.3.0"
+  },
+  "peerDependencies": {
+    "@astrojs/starlight": ">=0.41.7 <0.42",
+    "astro": ">=7.2.3 <8"
+  },
+  "engines": {
+    "node": ">=22.14.0"
+  }
+}

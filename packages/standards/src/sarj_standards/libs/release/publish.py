@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
-PublishTarget = Literal["typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig"]
+PublishTarget = Literal["typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig", "docs-ui"]
 _EXPECTED_PYTHON_ARTIFACTS = 1
 _PYTHON_TARGETS: Mapping[str, str] = MappingProxyType(
     {
@@ -34,9 +34,9 @@ def publish_target(root: Path, target: PublishTarget, *, runner: ProcessRunner =
     if target == "typescript":
         _ = run_typescript_release("publish", resolved / "packages" / "typescript", runner=runner)
         return
-    if target == "tsconfig":
-        cwd = resolved / "packages" / "tsconfig"
-        with TemporaryDirectory(prefix="sarj-tsconfig-release-") as temporary:
+    if target in {"tsconfig", "docs-ui"}:
+        cwd = resolved / "packages" / target
+        with TemporaryDirectory(prefix=f"sarj-{target}-release-") as temporary:
             destination = Path(temporary)
             result = build_runner(
                 ("npm", "pack", "--json", "--pack-destination", str(destination)),

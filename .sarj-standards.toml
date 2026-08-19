@@ -1,5 +1,5 @@
 schema = 3
-bundle = "6.6.0"
+bundle = "6.6.1"
 rule_profile = "all"
 
 profile = "standard"
@@ -121,6 +121,7 @@ iac = ["packages/iac/pyproject.toml"]
 standards = ["packages/standards/pyproject.toml"]
 typescript = ["packages/typescript/package.json"]
 tsconfig = ["packages/tsconfig/package.json"]
+docs-ui = ["packages/docs-ui/package.json"]
 
 [[repository.version_references]]
 path = "packages/bootstrap/uv.lock"
@@ -225,6 +226,7 @@ manifests = [
   "packages/sql/pyproject.toml",
   "packages/iac/pyproject.toml",
   "packages/standards/pyproject.toml",
+  "packages/docs-ui/package.json",
   "packages/tsconfig/package.json",
   "packages/typescript/package.json",
 ]
@@ -236,5 +238,6 @@ locks = [
   "packages/sql/uv.lock",
   "packages/iac/uv.lock",
   "packages/standards/uv.lock",
+  "packages/docs-ui/package-lock.json",
   "packages/typescript/package-lock.json",
 ]

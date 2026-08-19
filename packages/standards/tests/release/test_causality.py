@@ -57,6 +57,20 @@ def test_json_package_failure_names_its_exact_version_field(tmp_path: Path) -> N
     )
 
 
+def test_docs_ui_source_is_owned_by_the_docs_ui_release(tmp_path: Path) -> None:
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if "--name-only" in argv:
+            return ProcessResult(0, "packages/docs-ui/src/components/ReferencePage.astro\0")
+        return ProcessResult(0, "")
+
+    report = check_release_causality(tmp_path, before="base", after="head", runner=runner)
+
+    assert not report.ok
+    assert report.changed_targets == ("docs-ui",)
+    assert report.violations[0].manifest.as_posix() == "packages/docs-ui/package.json"
+
+
 def test_matching_manifest_bump_satisfies_source_change(tmp_path: Path) -> None:
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output

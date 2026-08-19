@@ -31,6 +31,7 @@ _GENERATED_READMES: Final = (
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
     Path("packages/tsconfig/README.md"),
+    Path("packages/docs-ui/README.md"),
     Path("plugins/sarj-audit/README.md"),
 )
 _EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("CLAUDE.md"),)
@@ -43,6 +44,7 @@ _PACKAGE_DEFINITIONS: Final = (
     ("packages/iac/pyproject.toml", "PyPI", "iac"),
     ("packages/typescript/package.json", "npm", "eslint"),
     ("packages/tsconfig/package.json", "npm", None),
+    ("packages/docs-ui/package.json", "npm", None),
 )
 _DOCUMENTATION_URL: Final = "https://code-standards.sarj.ai/"
 

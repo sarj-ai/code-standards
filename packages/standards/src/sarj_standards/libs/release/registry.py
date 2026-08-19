@@ -69,6 +69,7 @@ _TARGET_PACKAGES: Final[Mapping[str, tuple[RegistryKind, str]]] = MappingProxyTy
         "iac": ("pypi", "sarj-iac-lint"),
         "standards": ("pypi", "sarj-standards"),
         "tsconfig": ("npm", "@sarj/tsconfig"),
+        "docs-ui": ("npm", "@sarj/docs-ui"),
     }
 )
 _EXACT_DEPENDENCY = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^;\s]+)$")
