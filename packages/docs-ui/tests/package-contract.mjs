@@ -28,7 +28,8 @@ try {
     ['pack', '--json', '--ignore-scripts', '--pack-destination', workingDirectory],
     { cwd: packageRoot, encoding: 'utf8' },
   );
-  const [packed] = JSON.parse(packOutput);
+  const packDescription = JSON.parse(packOutput);
+  const packed = Array.isArray(packDescription) ? packDescription[0] : packDescription;
   assert.ok(packed, 'npm pack returned no package description');
 
   const expectedFiles = new Set([
