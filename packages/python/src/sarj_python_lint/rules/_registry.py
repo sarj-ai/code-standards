@@ -33,6 +33,7 @@ from sarj_python_lint.rules.no_aggregation_in_store_query import (
     NoAggregationInStoreQuery,
 )
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
+from sarj_python_lint.rules.no_conftest_test_module_import import NoConftestTestModuleImport
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
@@ -51,11 +52,13 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 )
 from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_long_comment import NoLongComment
+from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_optional_tenant_predicate import (
     NoOptionalTenantPredicate,
 )
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
+from sarj_python_lint.rules.no_redundant_literal_description import NoRedundantLiteralDescription
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
@@ -125,6 +128,9 @@ from sarj_python_lint.rules.repeated_static_call_cases import RepeatedStaticCall
 from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
     RequireKeywordOnlySwapProneParams,
 )
+from sarj_python_lint.rules.require_nodecode_for_splitting_settings_field import (
+    RequireNoDecodeForSplittingSettingsField,
+)
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
     RequirePydanticForExternalJson,
@@ -169,6 +175,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferTimedeltaForDurations.id: PreferTimedeltaForDurations,
         PreferStructOverNamedtuple.id: PreferStructOverNamedtuple,
         NoCommentCruft.id: NoCommentCruft,
+        NoConftestTestModuleImport.id: NoConftestTestModuleImport,
         StoreInsertRequiresOnConflict.id: StoreInsertRequiresOnConflict,
         SourceCoupledTest.id: SourceCoupledTest,
         IacSourceCoupledTest.id: IacSourceCoupledTest,
@@ -226,6 +233,8 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RestatedTestDocstring.id: RestatedTestDocstring,
         TestPhaseLabelComment.id: TestPhaseLabelComment,
         NoLongComment.id: NoLongComment,
+        NoNestedPydanticFieldValidator.id: NoNestedPydanticFieldValidator,
+        NoRedundantLiteralDescription.id: NoRedundantLiteralDescription,
         NoTypedDocSections.id: NoTypedDocSections,
         NoUnnecessaryDocstring.id: NoUnnecessaryDocstring,
         PreferNominalIdTypes.id: PreferNominalIdTypes,
@@ -239,6 +248,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreserveDeclaredNominalId.id: PreserveDeclaredNominalId,
         PreserveEnumTypes.id: PreserveEnumTypes,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
+        RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
     }
 )
