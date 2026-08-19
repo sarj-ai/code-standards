@@ -32,6 +32,33 @@ from sarj_standards.libs.repository import config_generation
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
+_PUBLIC_CONFIGS = (
+    RUFF_STRICT,
+    RUFF_APPLICATION,
+    PYRIGHT_STRICT,
+    ESLINT_STRICT,
+    ESLINT_APPLICATION,
+    CONFIGS_DIR / "rule-ledger.json",
+)
+_PRIVATE_TELEMETRY = {
+    "anonymized repository label": re.compile(r"\brepo\s+[A-Z]\b"),
+    "home-relative path": re.compile(r"(?<!\w)~/"),
+    "evaluation corpus provenance": re.compile(r"\bcorpus(?:-wide)?\b", re.IGNORECASE),
+    "repository fleet description": re.compile(
+        r"\b(?:consumer|first-party|private)\s+repos(?:itories)?\b",
+        re.IGNORECASE,
+    ),
+    "repository measurement": re.compile(
+        r"\b\d[\d,]*(?:\.\d+)?%?\s+(?:findings|files|sites|repos(?:itories)?)\b",
+        re.IGNORECASE,
+    ),
+    "operational incident detail": re.compile(
+        r"\b(?:prod|production)\s+(?:incident|outage)s?\b",
+        re.IGNORECASE,
+    ),
+    "product or dependency context": re.compile(r"\b(?:arabic|livekit)\b", re.IGNORECASE),
+}
+
 #: Expected fallback independent of the module under test.
 _SOURCE_TREE_VERSION = "0.0.0.dev0"
 
@@ -74,6 +101,17 @@ def test_all_six_configs_bundled(path: Path) -> None:
 def test_application_configs_bundled(path: Path) -> None:
     assert path.is_file(), f"missing bundled application config: {path}"
     assert path.stat().st_size > 0
+
+
+def test_public_configs_do_not_ship_repository_telemetry() -> None:
+    violations: list[str] = []
+    for path in _PUBLIC_CONFIGS:
+        text = path.read_text(encoding="utf-8")
+        for description, pattern in _PRIVATE_TELEMETRY.items():
+            if pattern.search(text) is not None:
+                violations.append(f"{path.name}: {description}")
+
+    assert violations == []
 
 
 def test_application_configs_have_no_generation_drift() -> None:

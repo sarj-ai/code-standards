@@ -1,6 +1,5 @@
-# Measured evidence in the comments below cites the two large first-party
-# consumer repos it was taken from as `repo A` and `repo B`; those labels are
-# stable throughout this file.
+# Shared strict Ruff policy. Comments document durable behavior and compatibility
+# constraints; repository-specific evaluation evidence stays outside the package.
 line-length = 120
 extend-exclude = ["sdk"]
 
@@ -22,11 +21,10 @@ preview = true
 # evaluation semantics, so consumer baselines can grandfather existing debt.
 future-annotations = true
 logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (the house logger)
-# TC001/2/3 stay advisory but are NEVER auto-applied: the rewrite is an *unsafe*
-# fix that silently moves runtime-needed FastAPI/pydantic/livekit annotation
-# imports into `TYPE_CHECKING`, breaking them under PEP 649 (repo A shipped two
-# prod outages this way). Marking them unfixable removes the foot-gun while
-# leaving the advisory warning intact.
+# TC001/2/3 stay advisory but are never auto-applied: their unsafe fixes can
+# move runtime-evaluated framework annotations into `TYPE_CHECKING`, changing
+# behavior under deferred annotations. Marking them unfixable preserves the
+# warning without applying a potentially breaking rewrite.
 unfixable = ["TC001", "TC002", "TC003"]
 
 extend-select = [
@@ -97,24 +95,14 @@ extend-select = [
   "FBT003",
 ]
 
-# The ignore list is NO LONGER derived from any consumer's `[tool.ruff.lint]
-# ignore`. It was once the intersection with repo A's, which is how a standard
-# that advertises `select = ["ALL"]` ended up silencing three security checks
-# repo-wide; every remaining entry now has to earn its place with a measurement
-# (see the preamble inside the list). Anything a consumer actively enforces (and
-# this config previously silenced) had already been REMOVED — notably
-# TRY002/TRY003, EM101/EM102, SLF001, RUF067. The docstring-punctuation family is
-# deliberately NOT enforced; see the D/DOC block below for that rule and its
-# reasoning. Naming rules (N801/N802/N806/N999) are never
-# ignored here and stay active.
+# The ignore list is derived from rule semantics rather than consumer
+# suppressions. Security, naming, and correctness checks remain enabled unless a
+# narrower authority owns the concern or the rule conflicts with the formatter.
+# The D/DOC block below documents the deliberate docstring policy.
 ignore = [
-  # Every entry below is measured: each code was force-enabled over this repo,
-  # repo A and repo B, and kept only where the finding is not a defect. Counts
-  # in the comments are `this repo / repo A / repo B`, non-test code unless
-  # stated. A002/A003 (builtin shadowing) were dropped from this list — enabling
-  # them costs 0/1/0 — and S101/S105/S106 moved to `per-file-ignores` for test
-  # code, where the exemption is true, instead of silencing three security
-  # checks repo-wide. Do not re-add them here.
+  # Every entry below has a durable semantic reason. Builtin-shadowing checks
+  # remain enabled, while assertion and hardcoded-secret checks are scoped to
+  # tests instead of being disabled repository-wide.
 
   # Sarj owns these comment concerns with narrower, syntax-aware rules and
   # tracked-reference exemptions. Ruff's generic variants double-report
@@ -125,24 +113,11 @@ ignore = [
   "TD003",
   "TD004",
 
-  # Complexity is a code-smell heuristic, not a correctness rule, and these five
-  # thresholds fight the style this same config mandates:
-  #   C901    (>10 paths)     23 / 57 / 36
-  #   PLR0911 (>6 returns)    29 /  6 /  9
-  #   PLR0912 (>12 branches)   6 / 19 / 23
-  #   PLR0913 (>5 args)        1 / 48 / 99
-  #   PLR0915 (>50 statements) 1 / 24 / 16
-  # PLR0911 is the clearest self-contradiction: RET505-RET508 are ENFORCED here
-  # and rewrite every `else` after a `return` into an early return. All three
-  # repos are 100% RET505-clean, and that same flat guard-clause style is what
-  # puts 44 functions over the 6-return cap. C901/PLR0912 land almost entirely
-  # on this repo's own AST visitors, where the branching IS the algorithm.
-  # PLR0913 counts keyword-only parameters; the harmful case — positional
-  # explosion — is already caught by PLR0917, which this config ENFORCES (118
-  # sites in repo A, 113 in repo B) and which both consumers disable locally.
-  # PLR0904/PLR0914/PLR0916/PLR1702/PLR6301 are enforced here too, so complexity
-  # is not unchecked: these five are the specific heuristics with no defect
-  # behind them, and four of the five fire on this repo's own source today.
+  # Complexity thresholds are heuristics rather than correctness rules. These
+  # limits conflict with enforced guard-clause style, penalize branching that is
+  # intrinsic to visitors and dispatchers, and count keyword-only parameters.
+  # Narrower checks still catch deeply nested code and positional-argument
+  # explosion without imposing arbitrary function-size ceilings.
   "C901",
   "PLR0911",
   "PLR0912",
@@ -206,9 +181,9 @@ ignore = [
   #   DOC502 documented exception that is never raised
   # Also kept: D201/D202/D206-D212/D300/D301 — mechanical whitespace and quote
   # style, formatter-adjacent, no prose implications.
-  # CPY001 missing-copyright-notice — 214 / 838 / 502 findings, one per file.
-  # These are private repositories with no per-file copyright-header policy, so
-  # the rule can only ever report "add a header we do not use".
+  # CPY001 requires per-file headers even when licensing is declared at the
+  # package or repository level. The shared policy does not mandate duplicate
+  # copyright prose in every source file.
   "CPY001",
 
   # COM812 conflicts with the formatter. Reproduced, not assumed: on
@@ -219,69 +194,30 @@ ignore = [
   # `skip-magic-trailing-comma = false` above is what makes that bite.
   "COM812",
 
-  # E501 is the formatter's job. `ruff format` already wraps code at 120; what
-  # survives (3 / 280 / 701) is unsplittable string literals, URLs and messages
-  # inside files the formatter reports as clean, so the rule can only ask for a
-  # hand-mangling that `ruff format` would not perform.
+  # E501 is the formatter's job. Content that remains long after formatting is
+  # generally an unsplittable literal, URL, or message; manually altering it
+  # would not improve code structure.
   "E501",
 
-  # RUF001 ambiguous-unicode-character-string — 0 / 24 / 37, and every finding is
-  # the CORRECT character in an Arabic user-facing string: ARABIC FULL STOP,
-  # ARABIC LETTER ALEF/HEH, ARABIC-INDIC DIGITS, plus EN DASH and RIGHT SINGLE
-  # QUOTATION MARK in copy. `allowed-confusables` cannot rescue it — the
-  # confusable set is most of the Arabic script — and this house ships Arabic
-  # product strings, so the rule is structurally wrong here, not merely noisy.
+  # RUF001 rejects legitimate characters in multilingual user-facing text.
+  # `allowed-confusables` cannot express a whole writing system safely, so this
+  # shared policy does not treat non-ASCII product copy as suspicious by default.
   "RUF001",
 
-  # PLC2701 import-private-name — OFF, replaced by SARJ048
-  # (sarj-no-first-party-private-import).
-  #
-  # PLC2701 cannot tell OUR private names from a DEPENDENCY's. Its only
-  # exemption is "same top-level package", which is not the same question.
-  # Measured over repo A's five packages it produced 74 sites (80 diagnostics),
-  # of which 3 are reaches into livekit-agents internals
-  # (`livekit.agents.inference_runner._InferenceRunner` and friends, private
-  # since 1.6.6). For those three there is no edit that satisfies the rule —
-  # the public API it points at does not exist — so the finding is an
-  # instruction to vendor the library, pin it forever, or write a suppression.
-  # Ruff has no configuration surface that separates the two cases: PLC2701 is
-  # purely lexical and never resolves an import to a location on disk.
-  #
-  # SARJ048 asks the question PLC2701 cannot: it resolves the imported module
-  # against the project tree and fires only when the defining module is
-  # first-party. On the same corpus it reports 60 sites and adds none of its
-  # own; the 14 it drops are exactly the 3 livekit reaches plus 11 imports of
-  # `_infra`, a first-party test-support package whose *own name* is
-  # underscored and which therefore has no public spelling to switch to.
-  #
-  # Consumers who do not run the sarj-python-lint pre-commit hooks should drop
-  # this entry and keep PLC2701 — an over-firing check beats no check.
+  # PLC2701 is replaced by SARJ048 because lexical underscores cannot
+  # distinguish first-party private imports from dependency implementation
+  # imports. SARJ048 resolves modules against the project tree and reports only
+  # first-party boundaries. Consumers without the Sarj Python hooks should
+  # re-enable PLC2701 rather than leaving this concern unchecked.
   "PLC2701",
 ]
 
-# SLF001 private-member-access stays ON, and this is the honest limitation:
-# ruff CANNOT distinguish first-party from third-party for attribute access.
-# The check is name-based — it sees `x._stt` and has no type for `x`, so
-# `session._stt` (livekit AgentSession, no public accessor) and `widget._cache`
-# (ours) are indistinguishable to it. SARJ048 deliberately does not attempt
-# this: resolving the receiver's type needs a type checker, and the AST
-# approximations tried against repo A (constructor calls, parameter
-# annotations) mis-resolved factory returns — `llm = get_llm(...)` is built by
-# a first-party function and returns a livekit object.
-#
-# `[lint.flake8-self] extend-ignore-names` is the only knob and it is blunt:
-# it matches attribute NAMES globally, so ignoring `_opts` to allow the livekit
-# reach also silences every first-party `_opts` forever. It is deliberately NOT
-# set here.
-#
-# The vendor-boundary reach is therefore a per-line decision: `# noqa: SLF001 —
-# <why the public API cannot serve>`, which puts the reason in the diff where a
-# reviewer sees it. A project with a dedicated adapter layer can scope it once
-# via its own `per-file-ignores` (e.g. `"**/lk/custom_models/*" = ["SLF001"]`) —
-# a consumer-side decision about that project's boundaries, not a standard.
-# Note this only silences ruff: pyright's `reportPrivateUsage` fires on the same
-# line and has no first-party/third-party knob either, so the reach site still
-# needs `# pyright: ignore[reportPrivateUsage]`.
+# SLF001 stays enabled, with a documented limitation: Ruff cannot determine
+# whether an underscored attribute belongs to first-party or dependency code.
+# Dependency-boundary access therefore requires an inline, reasoned suppression;
+# projects with adapter layers may scope that exception locally. Pyright's
+# reportPrivateUsage remains independent and may require its own line-level
+# explanation.
 
 [lint.isort]
 force-single-line          = false
@@ -327,19 +263,10 @@ runtime-evaluated-decorators = [
 ]
 
 [lint.flake8-pytest-style]
-# PT011's default list omits RuntimeError, which is the one ambiguous builtin this
-# house raises deliberately — a `pytest.raises(RuntimeError)` with no `match=` cannot
-# tell "the code correctly refused" from "it crashed on the way there". A corpus sweep
-# over repo A, repo B, django, fastapi and celery found 32 such sites, none of which
-# PT011 reports. The other names here are ruff's defaults, restated because setting the
-# key replaces the list rather than extending it.
-#
-# Deliberately NOT added: AttributeError, TypeError, KeyError, IndexError, NameError.
-# Those are raised by the interpreter enforcing a protocol, so the message belongs to
-# CPython and `match=` is both unwritable and version-brittle — pinning `__slots__`
-# via `raises(AttributeError): x.__dict__` is the canonical shape. Judging them added
-# ~250 findings across the same corpus, 251 in django alone, and every one sampled was
-# a legitimate protocol assertion.
+# PT011's defaults omit RuntimeError even though a broad RuntimeError assertion
+# can pass for the wrong failure. Include it with Ruff's defaults. Protocol
+# exceptions such as AttributeError and TypeError remain excluded because their
+# interpreter-owned messages are version-sensitive.
 raises-require-match-for = [
   "BaseException",
   "Exception",
@@ -413,41 +340,19 @@ warns-extend-require-match-for = [
 "ujson".msg = "LIB005: Use orjson; its dumps function returns bytes and option semantics differ. Replace with orjson."
 
 [lint.per-file-ignores]
-# Tests routinely assert, take boolean params, use magic numbers, and shell out
-# to the binary under test (subprocess) — none of that is a smell in a test.
-# subprocess (S404/S603/S607) is for CLI tools that shell out to the binary under
-# test; PLR6301 (test methods that never use self) is a pytest class idiom.
-#
-# S101/S105/S106 live HERE and not in the global `ignore`. Measured with each
-# force-enabled over this repo / repo A / repo B, tests vs non-test code:
-#   S101 assert                    18,975 in tests vs 20 in shipped code
-#   S105 hardcoded-password-string      94 in tests vs  5 in shipped code
-#   S106 hardcoded-password-func-arg   121 in tests vs  0 in shipped code
-# The blanket ignore was buying silence on 25 shipped-code sites at the price of
-# switching three security checks off everywhere — including `assert`, which
-# `python -O` deletes outright. Scoping them to test code costs repo A 25 new
-# findings and this repo and repo B none.
-#
-# INP001 is here for the same reason: pytest test trees are deliberately not
-# packages (adding `__init__.py` changes conftest/module resolution), and this
-# repo's own 97 INP001 findings are all in test trees. In shipped code the rule
-# is a genuine packaging check, so it is no longer globally ignored.
-# S311 is also test-only: standard-library PRNG draws in tests are not security
-# tokens. SARJ410 owns the narrower repeated-unseeded-sampling determinism risk.
-#
-# RUF076 was removed from this list because ruff REMOVED the rule: `--select
-# RUF076` now fails with "Rule `RUF076` was removed and cannot be selected", so
-# the entry silenced nothing.
+# Tests legitimately assert, use fixtures and magic values, and invoke the
+# binary under test. Scope those exemptions to test paths so assertion and
+# hardcoded-secret checks remain active in shipped code. Test trees also need
+# not be importable packages, and deterministic test PRNG use is not a secret
+# generation risk.
 "**/tests/**"             = ["S101", "S105", "S106", "S311", "INP001", "FBT001", "FBT002", "FBT003", "PLR2004", "S404", "S603", "S607", "PLR6301"]
 "**/test/**"              = ["S311"]
 "**/integration_tests/**" = ["S311"]
-# A test-named module outside a test tree is still test code; one consumer has
-# such a module, carrying 7 asserts and 1 INP001.
+# A test-named module outside a test tree is still test code.
 "**/test_*.py"            = ["ANN201", "ANN202", "S101", "S105", "S106", "S311", "INP001"]
 "**/*_test.py"            = ["S311"]
 "**/conftest.py"          = ["S101", "S105", "S106", "S311", "INP001"]
-# Standalone scripts are not importable packages, hence INP001 (7 sites in
-# repo A, 4 in repo B, all under a top-level scripts/).
+# Standalone scripts are not importable packages, so INP001 does not apply.
 "scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]

@@ -48,21 +48,11 @@
   "reportReturnType": "error",
   "reportPropertyTypeMismatch": "error",
   "reportArgumentType": "error",
-  // Stays "error", with a limitation worth stating rather than discovering:
-  // reportPrivateUsage does NOT distinguish our privates from a dependency's.
-  // It fires identically on `from livekit.agents.inference_runner import
-  // _InferenceRunner` ("private and used outside of the module in which it is
-  // declared") and on the same import from one of our own modules, and pyright
-  // exposes no first-party/third-party knob for it — the only scoping available
-  // is `executionEnvironments` by path. So a vendor-boundary reach that ruff
-  // lets through (per-line `# noqa: SLF001`, or SARJ048 replacing PLC2701)
-  // still needs `# pyright: ignore[reportPrivateUsage]` on the same line.
-  // Turning it off is not the trade: it is the only checker here that resolves
-  // the DECLARING class, so it is the only one that knows `self._x` inside a
-  // subclass is reaching into a base class it does not own, and the only one
-  // that does not fire on a private attribute a class legitimately reads on
-  // another instance of itself. Its false positives here are per-line and
-  // documented; its true positives are the ones nothing else can see.
+  // reportPrivateUsage stays at error. Pyright resolves the declaring class and
+  // catches private base-class access that syntax-only checks cannot see, but it
+  // cannot distinguish first-party modules from dependency implementation APIs.
+  // A necessary dependency-boundary reach therefore needs a reasoned line-level
+  // suppression; disabling the check would also hide actionable local defects.
   "reportPrivateUsage": "error",
   // Pin strict-mode defaults that define module API visibility. Explicit keys
   // keep upgrades from silently weakening private imports or dynamic exports.

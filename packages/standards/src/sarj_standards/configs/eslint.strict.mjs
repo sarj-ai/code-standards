@@ -81,15 +81,10 @@ const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
   "**/eslint.config*.{js,cjs,mjs,ts,cts,mts}",
 ];
 
-// unicorn ships 341 rules; this config used to run 12 of them. The set below
-// was chosen by RUNNING every non-deprecated unicorn 72 rule over 4,356 deduped
-// first-party production `.ts`/`.tsx` files (deduped by content hash — two of
-// the repos in the corpus are ~97% byte-identical, so an un-deduped count is
-// inflated roughly 2x) and deciding rule by rule. Trailing numbers are
-// `total / total excluding the two near-duplicate repos`; a rule with no number
-// measured ZERO findings and is enabled as a RATCHET, which is the whole point
-// for the correctness family: the cost today is nothing and the pattern can
-// never enter.
+// Unicorn ships a broad rule set. The enabled subset below was selected by
+// evaluating each non-deprecated rule for correctness, runtime compatibility,
+// overlap with existing authorities, and whether its fix preserves semantics.
+// Correctness rules also act as ratchets against newly introduced defects.
 //
 // Rules are declared as two objects rather than inline so the version guard
 // below can check them, and so the two intents stay separable.
@@ -116,12 +111,12 @@ const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
 const UNICORN_CORRECTNESS_RULES = {
   "unicorn/class-reference-in-static-methods": "error",
   "unicorn/consistent-assert": "error",
-  "unicorn/consistent-date-clone": "error",  // 4 / 0
+  "unicorn/consistent-date-clone": "error",
   "unicorn/consistent-empty-array-spread": "error",
   "unicorn/consistent-json-file-read": "error",
-  "unicorn/error-message": "error",  // 6 / 6
+  "unicorn/error-message": "error",
   "unicorn/explicit-timer-delay": "error",
-  "unicorn/new-for-builtins": "error",  // 17 / 15
+  "unicorn/new-for-builtins": "error",
   "unicorn/no-accessor-recursion": "error",
   "unicorn/no-accidental-bitwise-operator": "error",
   "unicorn/no-array-concat-in-loop": "error",
@@ -138,26 +133,26 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-collection-bracket-access": "error",
   "unicorn/no-confusing-array-splice": "error",
   "unicorn/no-confusing-array-with": "error",
-  "unicorn/no-constant-zero-expression": "error",  // 2 / 2
+  "unicorn/no-constant-zero-expression": "error",
   "unicorn/no-document-cookie": "error",
   "unicorn/no-double-comparison": "error",
-  "unicorn/no-duplicate-if-branches": "error",  // 4 / 3
+  "unicorn/no-duplicate-if-branches": "error",
   "unicorn/no-duplicate-logical-operands": "error",
-  "unicorn/no-duplicate-loops": "error",  // 5 / 4
-  "unicorn/no-duplicate-set-values": "error",  // 2 / 0
+  "unicorn/no-duplicate-loops": "error",
+  "unicorn/no-duplicate-set-values": "error",
   "unicorn/no-empty-file": "error",
   "unicorn/no-error-property-assignment": "error",
-  "unicorn/no-exports-in-scripts": "error",  // 2 / 0
-  "unicorn/no-global-object-property-assignment": "error",  // 4 / 2
-  "unicorn/no-immediate-mutation": "error",  // 3 / 0
+  "unicorn/no-exports-in-scripts": "error",
+  "unicorn/no-global-object-property-assignment": "error",
+  "unicorn/no-immediate-mutation": "error",
   "unicorn/no-impossible-length-comparison": "error",
   "unicorn/no-incorrect-query-selector": "error",
-  "unicorn/no-incorrect-template-string-interpolation": "error",  // 18 / 6
+  "unicorn/no-incorrect-template-string-interpolation": "error",
   "unicorn/no-instanceof-builtins": "error",
   "unicorn/no-invalid-argument-count": "error",
   "unicorn/no-invalid-character-comparison": "error",
   "unicorn/no-invalid-fetch-options": "error",
-  "unicorn/no-invalid-file-input-accept": "error",  // 6 / 3
+  "unicorn/no-invalid-file-input-accept": "error",
   "unicorn/no-invalid-remove-event-listener": "error",
   "unicorn/no-invalid-well-known-symbol-methods": "error",
   "unicorn/no-late-current-target-access": "error",
@@ -169,13 +164,13 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-missing-local-resource": "error",
   "unicorn/no-multiple-promise-resolver-calls": "error",
   "unicorn/no-negation-in-equality-check": "error",
-  "unicorn/no-new-array": "error",  // 18 / 3
+  "unicorn/no-new-array": "error",
   "unicorn/no-new-buffer": "error",
   "unicorn/no-nonstandard-builtin-properties": "error",
   "unicorn/no-object-methods-with-collections": "error",
-  "unicorn/no-optional-chaining-on-undeclared-variable": "error",  // 17 / 2
-  "unicorn/no-redundant-comparison": "error",  // 2 / 0
-  "unicorn/no-return-array-push": "error",  // 14 / 0
+  "unicorn/no-optional-chaining-on-undeclared-variable": "error",
+  "unicorn/no-redundant-comparison": "error",
+  "unicorn/no-return-array-push": "error",
   "unicorn/no-selector-as-dom-name": "error",
   "unicorn/no-shorthand-property-overrides": "error",
   "unicorn/no-single-promise-in-promise-methods": "error",
@@ -184,151 +179,149 @@ const UNICORN_CORRECTNESS_RULES = {
   // standards-compliant data shape even when the key is computed.
   "unicorn/no-thenable": "off",
   "unicorn/no-this-assignment": "error",
-  "unicorn/no-this-outside-of-class": "error",  // 2 / 2
+  "unicorn/no-this-outside-of-class": "error",
   "unicorn/no-typeof-undefined": "error",
-  "unicorn/no-uncalled-method": "error",  // 1 / 1
+  "unicorn/no-uncalled-method": "error",
   "unicorn/no-undeclared-class-members": "error",
   "unicorn/no-unnecessary-array-flat-depth": "error",
   "unicorn/no-unnecessary-array-flat-map": "error",
   "unicorn/no-unnecessary-array-splice-count": "error",
   "unicorn/no-unnecessary-await": "error",
   "unicorn/no-unnecessary-boolean-comparison": "error",
-  "unicorn/no-unnecessary-fetch-options": "error",  // 1 / 1
+  "unicorn/no-unnecessary-fetch-options": "error",
   "unicorn/no-unnecessary-global-this": "error",
-  "unicorn/no-unnecessary-nested-ternary": "error",  // 25 / 4
+  "unicorn/no-unnecessary-nested-ternary": "error",
   "unicorn/no-unnecessary-polyfills": "error",
   "unicorn/no-unnecessary-slice-end": "error",
   "unicorn/no-unnecessary-splice": "error",
-  "unicorn/no-unnecessary-string-trim": "error",  // 6 / 1
+  "unicorn/no-unnecessary-string-trim": "error",
   "unicorn/no-unsafe-buffer-conversion": "error",
-  "unicorn/no-unsafe-dom-html": "error",  // 6 / 1
-  "unicorn/no-unsafe-promise-all-settled-values": "error",  // 1 / 0
+  "unicorn/no-unsafe-dom-html": "error",
+  "unicorn/no-unsafe-promise-all-settled-values": "error",
   "unicorn/no-unsafe-property-key": "error",
-  "unicorn/no-unsafe-string-replacement": "error",  // 25 / 14
+  "unicorn/no-unsafe-string-replacement": "error",
   "unicorn/no-unused-array-method-return": "error",
   "unicorn/no-useless-boolean-cast": "error",
-  "unicorn/no-useless-collection-argument": "error",  // 12 / 8
+  "unicorn/no-useless-collection-argument": "error",
   "unicorn/no-useless-compound-assignment": "error",
-  "unicorn/no-useless-concat": "error",  // 4 / 0
+  "unicorn/no-useless-concat": "error",
   "unicorn/no-useless-continue": "error",
   "unicorn/no-useless-delete-check": "error",
-  "unicorn/no-useless-else": "error",  // 9 / 7
+  "unicorn/no-useless-else": "error",
   "unicorn/no-useless-error-capture-stack-trace": "error",
-  "unicorn/no-useless-fallback-in-spread": "error",  // 12 / 2
+  "unicorn/no-useless-fallback-in-spread": "error",
   "unicorn/no-useless-iterator-to-array": "error",
-  "unicorn/no-useless-length-check": "error",  // 3 / 0
+  "unicorn/no-useless-length-check": "error",
   "unicorn/no-useless-logical-operand": "error",
   "unicorn/no-useless-override": "error",
-  "unicorn/no-useless-promise-resolve-reject": "error",  // 15 / 15
+  "unicorn/no-useless-promise-resolve-reject": "error",
   "unicorn/no-useless-re-export": "error",
-  "unicorn/no-useless-recursion": "error",  // 3 / 1
+  "unicorn/no-useless-recursion": "error",
   "unicorn/no-useless-spread": "error",
   // Explicit union cases are required by switch-exhaustiveness-check even when
   // they share the default branch behavior.
   "unicorn/no-useless-switch-case": "off",
   "unicorn/no-xor-as-exponentiation": "error",
-  "unicorn/prefer-add-event-listener": "error",  // 24 / 9
-  "unicorn/prefer-add-event-listener-options": "error",  // 5 / 2
+  "unicorn/prefer-add-event-listener": "error",
+  "unicorn/prefer-add-event-listener-options": "error",
   "unicorn/prefer-keyboard-event-key": "error",
   "unicorn/require-array-join-separator": "error",
-  "unicorn/require-css-escape": "error",  // 2 / 0
+  "unicorn/require-css-escape": "error",
   "unicorn/require-module-attributes": "error",
   "unicorn/require-module-specifiers": "error",
   "unicorn/require-number-to-fixed-digits-argument": "error",
   "unicorn/require-passive-events": "error",
   "unicorn/require-post-message-target-origin": "error",
   "unicorn/require-proxy-trap-boolean-return": "error",
-  "unicorn/text-encoding-identifier-case": "error",  // 26 / 18
+  "unicorn/text-encoding-identifier-case": "error",
 };
 
 // Modernisation. Enabled only where the fix is mechanical (autofix or a
 // one-line suggestion), semantics-preserving, and reaches a platform API that
-// actually EXISTS on the declared floor (Node 22 / `lib: ES2025`). That last
-// clause is not theoretical: `prefer-error-is-error` is the single largest
-// finding count in the whole corpus (608) and is rejected below precisely
-// because `Error.isError` is absent on Node 22, so taking its autofix converts
-// working `instanceof Error` checks into runtime TypeErrors.
+// exists on the declared floor (Node 22 / `lib: ES2025`). For example,
+// `prefer-error-is-error` remains disabled because `Error.isError` is absent
+// on Node 22 and its autofix would turn valid checks into runtime TypeErrors.
 //
 // Two of these need `lib` >= ES2025 in the CONSUMER to typecheck after the fix
 // (`prefer-iterator-to-array` -> `Iterator#toArray`, `prefer-set-methods` ->
 // `Set#union` and friends). Both are ES2025 library types available in TS today;
 // a consumer still on `lib: ES2024` bumps `lib`, it does not bump its runtime.
 const UNICORN_MODERNISATION_RULES = {
-  "unicorn/no-array-reverse": "error",  // 47 / 2
-  "unicorn/no-array-sort": "error",  // 327 / 135
-  "unicorn/no-for-loop": "error",  // 6 / 3
+  "unicorn/no-array-reverse": "error",
+  "unicorn/no-array-sort": "error",
+  "unicorn/no-for-loop": "error",
   "unicorn/prefer-abort-signal-any": "error",
   "unicorn/prefer-abort-signal-timeout": "error",
   "unicorn/prefer-aggregate-error": "error",
   "unicorn/prefer-array-flat": "error",
   "unicorn/prefer-array-flat-map": "error",
-  "unicorn/prefer-array-from-async": "error",  // 1 / 1
-  "unicorn/prefer-array-from-map": "error",  // 123 / 62
+  "unicorn/prefer-array-from-async": "error",
+  "unicorn/prefer-array-from-map": "error",
   "unicorn/prefer-array-from-range": "error",
   "unicorn/prefer-array-index-of": "error",
   "unicorn/prefer-array-iterable-methods": "error",
-  "unicorn/prefer-array-last-methods": "error",  // 15 / 0
+  "unicorn/prefer-array-last-methods": "error",
   "unicorn/prefer-array-slice": "error",
-  "unicorn/prefer-array-some": "error",  // 15 / 2
-  "unicorn/prefer-at": "error",  // 79 / 18
+  "unicorn/prefer-array-some": "error",
+  "unicorn/prefer-at": "error",
   "unicorn/prefer-bigint-literals": "error",
-  "unicorn/prefer-blob-reading-methods": "error",  // 1 / 1
+  "unicorn/prefer-blob-reading-methods": "error",
   "unicorn/prefer-class-fields": "error",
-  "unicorn/prefer-code-point": "error",  // 73 / 13
+  "unicorn/prefer-code-point": "error",
   "unicorn/prefer-date-now": "error",
-  "unicorn/prefer-default-parameters": "error",  // 8 / 1
-  "unicorn/prefer-direct-iteration": "error",  // 47 / 12
+  "unicorn/prefer-default-parameters": "error",
+  "unicorn/prefer-direct-iteration": "error",
   "unicorn/prefer-event-target": "error",
-  "unicorn/prefer-export-from": "error",  // 75 / 44
+  "unicorn/prefer-export-from": "error",
   "unicorn/prefer-flat-math-min-max": "error",
-  "unicorn/prefer-global-number-constants": "error",  // 10 / 4
+  "unicorn/prefer-global-number-constants": "error",
   "unicorn/prefer-group-by": "error",
   "unicorn/prefer-has-check": "error",
-  "unicorn/prefer-https": "error",  // 38 / 25
+  "unicorn/prefer-https": "error",
   "unicorn/prefer-identifier-import-export-specifiers": "error",
-  "unicorn/prefer-import-meta-properties": "error",  // 6 / 6
-  "unicorn/prefer-iterable-in-constructor": "error",  // 1 / 1
-  "unicorn/prefer-iterator-concat": "error",  // 15 / 11
-  "unicorn/prefer-iterator-to-array": "error",  // 79 / 43
+  "unicorn/prefer-import-meta-properties": "error",
+  "unicorn/prefer-iterable-in-constructor": "error",
+  "unicorn/prefer-iterator-concat": "error",
+  "unicorn/prefer-iterator-to-array": "error",
   "unicorn/prefer-map-from-entries": "error",
-  "unicorn/prefer-math-abs": "error",  // 2 / 0
+  "unicorn/prefer-math-abs": "error",
   "unicorn/prefer-math-constants": "error",
-  "unicorn/prefer-math-min-max": "error",  // 5 / 4
-  "unicorn/prefer-math-trunc": "error",  // 19 / 3
-  "unicorn/prefer-modern-math-apis": "error",  // 3 / 0
+  "unicorn/prefer-math-min-max": "error",
+  "unicorn/prefer-math-trunc": "error",
+  "unicorn/prefer-modern-math-apis": "error",
   "unicorn/prefer-module": "error",
-  "unicorn/prefer-native-coercion-functions": "error",  // 21 / 0
+  "unicorn/prefer-native-coercion-functions": "error",
   "unicorn/prefer-negative-index": "error",
-  "unicorn/prefer-number-is-safe-integer": "error",  // 22 / 6
-  "unicorn/prefer-number-properties": "error",  // 210 / 108
-  "unicorn/prefer-object-define-properties": "error",  // 1 / 1
+  "unicorn/prefer-number-is-safe-integer": "error",
+  "unicorn/prefer-number-properties": "error",
+  "unicorn/prefer-object-define-properties": "error",
   "unicorn/prefer-object-destructuring-defaults": "error",
-  "unicorn/prefer-object-from-entries": "error",  // 1 / 1
-  "unicorn/prefer-object-iterable-methods": "error",  // 2 / 0
-  "unicorn/prefer-optional-catch-binding": "error",  // 8 / 4
+  "unicorn/prefer-object-from-entries": "error",
+  "unicorn/prefer-object-iterable-methods": "error",
+  "unicorn/prefer-optional-catch-binding": "error",
   "unicorn/prefer-promise-with-resolvers": "error",
   "unicorn/prefer-queue-microtask": "error",
-  "unicorn/prefer-regexp-test": "error",  // 2 / 2
-  "unicorn/prefer-response-static-json": "error",  // 10 / 8
-  "unicorn/prefer-set-has": "error",  // 40 / 9
-  "unicorn/prefer-set-methods": "error",  // 3 / 3
+  "unicorn/prefer-regexp-test": "error",
+  "unicorn/prefer-response-static-json": "error",
+  "unicorn/prefer-set-has": "error",
+  "unicorn/prefer-set-methods": "error",
   "unicorn/prefer-set-size": "error",
-  "unicorn/prefer-simple-sort-comparator": "error",  // 6 / 0
+  "unicorn/prefer-simple-sort-comparator": "error",
   "unicorn/prefer-simplified-conditions": "error",
   "unicorn/prefer-single-array-predicate": "error",
   "unicorn/prefer-single-replace": "error",
-  "unicorn/prefer-split-limit": "error",  // 123 / 51
-  "unicorn/prefer-spread": "error",  // 124 / 39
+  "unicorn/prefer-split-limit": "error",
+  "unicorn/prefer-spread": "error",
   "unicorn/prefer-string-match-all": "error",
   "unicorn/prefer-string-pad-start-end": "error",
-  "unicorn/prefer-string-raw": "error",  // 78 / 36
-  "unicorn/prefer-string-repeat": "error",  // 9 / 5
-  "unicorn/prefer-string-slice": "error",  // 20 / 12
+  "unicorn/prefer-string-raw": "error",
+  "unicorn/prefer-string-repeat": "error",
+  "unicorn/prefer-string-slice": "error",
   "unicorn/prefer-string-trim-start-end": "error",
   "unicorn/prefer-then-catch": "error",
-  "unicorn/prefer-type-error": "error",  // 4 / 4
+  "unicorn/prefer-type-error": "error",
   "unicorn/prefer-unary-minus": "error",
-  "unicorn/prefer-unicode-code-point-escapes": "error",  // 45 / 31
+  "unicorn/prefer-unicode-code-point-escapes": "error",
   "unicorn/prefer-url-can-parse": "error",
   "unicorn/prefer-url-search-parameters": "error",
   "unicorn/prefer-while-loop-condition": "error",
@@ -354,116 +347,32 @@ if (missingUnicornRules.length > 0) {
   );
 }
 
-// Rules deliberately NOT enabled. A rejection is a decision, not an omission, so
-// each family says why. Counts are `total / excluding the two near-duplicate
-// repos` over the same 4,356-file corpus.
+// Rules deliberately not enabled are grouped by durable reason:
 //
-// 1. UNAVAILABLE ON THE DECLARED FLOOR (Node 22 / lib ES2025). Their autofix
-//    produces code that throws at runtime, so a big count is a trap, not a
-//    backlog:
-//      prefer-error-is-error (608/364) `Error.isError` is ES2026; `typeof
-//        Error.isError` is "undefined" on Node 22. This is the LARGEST single
-//        count in the corpus and it is still a reject.
-//      prefer-temporal (1808/695) `Temporal` is not in any consumer runtime;
-//        migrating every `Date` is a rewrite, not a lint fix.
-//      prefer-uint8array-base64 (5/5), prefer-regexp-escape (4/3),
-//      prefer-promise-try (0), prefer-get-or-insert-computed (0) — all absent
-//        on Node 22.
-//      prefer-dispose (1/1) needs `using` plus a bundled `Symbol.dispose`.
+// 1. APIs unavailable on Node 22 or `lib: ES2025`, including Error.isError,
+//    Temporal, newer Uint8Array helpers, RegExp.escape, Promise.try, and explicit
+//    resource management. Autofixes must not produce unsupported runtime calls.
 //
-// 2. DUPLICATES OF A RULE THIS CONFIG ALREADY OWNS. The repo rule is one
-//    diagnostic per concern; a second plugin reporting the same line is noise:
-//      prefer-includes (9/1) -> @typescript-eslint/prefer-includes
-//      prefer-array-find (2/1) -> @typescript-eslint/prefer-find
-//      prefer-string-starts-ends-with (4/0) -> the @typescript-eslint twin
-//      require-array-sort-compare (36/19) -> the @typescript-eslint twin
-//      no-useless-coercion (11/0) -> @typescript-eslint/no-unnecessary-type-conversion
-//      no-useless-template-literals (6/0) -> @typescript-eslint/no-unnecessary-template-expression
-//      try-complexity (1339/292) -> @sarj/no-fat-try-blocks, the declared single
-//        owner of the oversized-try concern
-//      no-for-each (210/58) -> the `no-restricted-syntax` forEach selector below
-//      no-abusive-eslint-disable (0) -> @eslint-community/eslint-comments/no-unlimited-disable
-//    ...and two that would actively FIGHT an enabled rule:
-//      consistent-class-member-order (22/19) vs perfectionist/sort-classes
-//      prefer-type-literal-last (14/9) vs perfectionist/sort-union-types
-//      prefer-number-coercion (258/115) tells you to delete the `parseInt` that
-//        prefer-number-properties just told you to qualify as `Number.parseInt`.
+// 2. Duplicate authorities already owned by typescript-eslint, eslint-comments,
+//    perfectionist, or a narrower Sarj rule. One concern should yield one
+//    diagnostic, and enabled rules must not prescribe contradictory rewrites.
 //
-// 3. MASS NAMING / NULL CHURN — the famous ones, measured so the rejection is a
-//    number rather than a vibe:
-//      name-replacements (13493/5331) the unicorn 72 successor to
-//        prevent-abbreviations, which is itself DEPRECATED in 72. Renaming
-//        ~5.3k identifiers outside the demo repos alone is not a lint rollout.
-//      no-null (9626/4060) `null` is load-bearing in JSON payloads, database
-//        rows and React refs across every consumer.
-//      no-keyword-prefix (4589/1658), consistent-boolean-name (1766/491),
-//      consistent-compound-words (21/4), catch-error-name (984/354),
-//      no-non-function-verb-prefix (0) — same family, same answer.
+// 3. Naming, null, formatting, and readability preferences that create broad
+//    churn without establishing correctness. Prettier owns formatting, while
+//    domain models retain authority over names, nullable values, and control flow.
 //
-// 4. FORMATTING PRETTIER ALREADY OWNS, or pure cosmetics:
-//      numeric-separators-style (4220/97), switch-case-braces (1355/492),
-//      no-zero-fractions (576/20), empty-brace-spaces (267/0),
-//      no-manually-wrapped-comments (255/3),
-//      no-asterisk-prefix-in-documentation-comments (810/207),
-//      number-literal-case (40/16), template-indent (26/4), escape-case (1/1).
+// 4. Rules whose suggestions can change short-circuiting, TypeScript narrowing,
+//    async error boundaries, memoization, or other observable behavior. These
+//    require human design review rather than a shared autofix.
 //
-// 5. READABILITY OPINION, not correctness. High volume, low signal, and each is
-//    a taste this config has no business legislating:
-//      no-nested-ternary (1292/278), no-unreadable-new-expression (1143/376),
-//      explicit-length-check (665/304), no-negated-condition (560/187),
-//      max-nested-calls (368/169), no-declarations-before-early-exit (184/52),
-//      prefer-early-return (157/59), no-break-in-nested-loop (122/85),
-//      consistent-conditional-object-spread (113/56), prefer-minimal-ternary
-//      (99/7), no-unreadable-for-of-expression (68/40), no-array-reduce
-//      (67/16), consistent-existence-index-check (63/37), no-negated-array-
-//      predicate (47/16), prefer-single-call (40/4), prefer-ternary (35/16),
-//      prefer-else-if (31/6), prefer-continue (22/7), default-export-style
-//      (19/0), no-lonely-if (14/9), prefer-boolean-return (7/4),
-//      prefer-short-arrow-method (5/5), prefer-hoisting-branch-code (3/1),
-//      and the rest of the `consistent-*` / `no-unreadable-*` tail.
+// 5. Rules that need project-specific vocabulary, entrypoint, or TODO policy.
+//    Shared configuration cannot infer those boundaries safely.
 //
-// 6. MEASURED FALSE-POSITIVE RATE TOO HIGH. These were sampled by hand, not
-//    judged from the docs:
-//      prefer-simple-condition-first (247/107) reorders `&&`/`||` operands; its
-//        own message says "after verifying short-circuit behavior", and every
-//        sample was a correct guard chain (`!room || !input.trim() || ...`).
-//        Reordering also breaks TypeScript narrowing order.
-//      no-array-callback-reference (202/41) every sample was a typed one-arg
-//        local passed to `.map`. The bug it exists for (`map(parseInt)`) is
-//        already a compile error under strict TS.
-//      no-computed-property-existence-check (274/30) every sample was idiomatic
-//        `if (!record[key])`, which `noUncheckedIndexedAccess` already types.
-//      no-top-level-assignment-in-function (227/52) fires on the standard
-//        lazy-singleton / memoised-init pattern.
-//      prefer-includes-over-repeated-comparisons (103/39) `a === "x" || a ===
-//        "y"` NARROWS the union in TypeScript; `.includes` does not.
-//      prefer-await (881/125) suggestion-only, and mechanically rewriting a
-//        promise chain into `await` changes which errors are caught where.
-//      no-unused-properties (25/6), prefer-private-class-fields (5/5),
-//      custom-error-definition (9/9), consistent-destructuring (4/4).
+// 6. DOM modernisation rules. Direct DOM access in component applications is an
+//    intentional escape hatch; DOM correctness rules remain enabled above.
 //
-// 7. NEEDS PER-REPO CONFIGURATION to mean anything, so a SHARED config cannot
-//    set it: import-style (12/8), comment-content (53/8), string-content (0),
-//    id-match (0), expiring-todo-comments (0), require-frontmatter-fields (0),
-//    no-top-level-side-effects (139/134, fires on every app entrypoint),
-//    no-process-exit (37/7, legitimate in CLI entrypoints).
-//
-// 8. DOM MODERNISATION, as opposed to the DOM correctness rules enabled above.
-//    In a React/Next codebase direct DOM manipulation is deliberate escape-hatch
-//    code, so rewriting it buys nothing: prefer-query-selector (23/13),
-//    prefer-dom-node-append (25/11), dom-node-dataset (23/13),
-//    prefer-observer-apis (12/6), prefer-dom-node-remove (6/6),
-//    prefer-classlist-toggle (4/1), prefer-toggle-attribute (3/0),
-//    prefer-location-assign (8/3), prefer-url-href (29/20),
-//    prefer-dom-node-replace-children (1/1), prefer-modern-dom-apis (0),
-//    better-dom-traversing (0), prefer-scoped-selector (0), prefer-path2d (0).
-//
-// 9. DEPRECATED IN UNICORN 72 and therefore never a candidate: better-regex,
-//    no-instanceof-array, no-length-as-slice-end, no-hex-escape,
-//    no-array-push-push, prevent-abbreviations, prefer-json-parse-buffer,
-//    prefer-dom-node-dataset. `prefer-explicit-viewport-units` is a CSS-language
-//    rule and cannot be enabled in a JS config at all.
-
+// 7. Rules deprecated by Unicorn, plus CSS-language rules that cannot run in a
+//    JavaScript configuration.
 
 // eslint-plugin-react 7 still uses APIs removed by ESLint 10. ESLint's official
 // compatibility layer restores those APIs, keeping every React rule active
@@ -475,14 +384,9 @@ const compatibleReact = fixupPluginRules(react);
 // 9/10 ignore only `node_modules/` and `.git/` by default, so `eslint .` in an
 // adopting repo lints its own compiled output at `error` severity.
 //
-// MEASURED, 2026-07-31, over 175,852 content-deduplicated `.ts/.tsx/.js/.jsx`
-// files from four first-party repos and 61 OSS repos: 30,498 of the 125,037
-// `@sarj/*` findings — 24.4% — landed on generated paths, and 32,670 of the
-// files (18.6%) were build output. One published component library alone
-// contributed 21,284 `no-unnecessary-use-client` reports, every one of them on a
-// compiled `lib/**/*.js` carrying `_interopRequireDefault` and
-// `Object.defineProperty(exports, "__esModule")`. That is the first thing a team
-// sees after adopting this config, and none of it is actionable.
+// Generated output contains transformed syntax and duplicated source that the
+// author cannot fix directly. Excluding it keeps diagnostics attached to the
+// source or generator that owns the change.
 //
 // The Python CLI has skipped exactly these directories since it shipped
 // (`SKIP_DIR_NAMES` in `sarj_python_lint/__main__.py`), so the two halves of the
@@ -741,8 +645,7 @@ export function createConfig(options = {}) {
       // `unicorn/no-useless-else` (enabled below) is a strict superset: it flags
       // `else` after `throw`, `break` and `continue` as well as after `return`.
       // Keeping both would double-report the return case, which this config
-      // treats as a bug (one diagnostic per concern). Measured at 9 findings
-      // corpus-wide, so the superset is not a churn event.
+      // treats as a bug: one diagnostic per concern.
 
       "react/jsx-no-leaked-render": [
         "error",
@@ -792,12 +695,8 @@ export function createConfig(options = {}) {
       // before the FIRST dot, so `vite.config.ts`, `foo.test.ts` and
       // `app.module.css.ts` all pass on the stem alone.
       //
-      // Measured over 11,088 tracked `.ts`/`.tsx` files in 50 repos under
-      // ~/code, the shapes people assume need exemptions do not: Next.js
-      // special files (`page`/`layout`/`route`/`loading`/`error`, 1,924 files)
-      // produce ZERO violations, as do `*.config.ts` (338), `.d.ts` (123) and
-      // barrel `index.*` (176). Everything is App Router; `_app.tsx` and
-      // `_document.tsx` do not occur at all.
+      // Framework-reserved names, config files, declarations, and barrel files
+      // already satisfy the stem check or are covered by the explicit exceptions.
       //
       // The `ignore` list below is therefore short and each entry is earned:
       //   - `^__root\.`   TanStack Router's root route (a rename breaks routing)
@@ -811,12 +710,8 @@ export function createConfig(options = {}) {
       // already ignores the `.d` middle segment) and over-broad — it let
       // `apiTypes.d.ts` through, which is a genuine violation.
       //
-      // `checkDirectories` is deliberately NOT passed. The version argument for
-      // withholding it is moot now that this config carries a hard `>= 72`
-      // floor. The surviving reason is the measured one: on the real corpus it
-      // earns nothing — 4 findings, all 4 false positives on App Router
-      // directories whose names ARE the public URL, where a rename silently
-      // changes a user-visible route.
+      // `checkDirectories` is deliberately omitted because route-directory
+      // names are often public URLs; renaming one can change user-visible behavior.
       "unicorn/filename-case": [
         "error",
         {
@@ -848,31 +743,16 @@ export function createConfig(options = {}) {
       ...UNICORN_MODERNISATION_RULES,
 
       "zod/prefer-enum-over-literal-union": "error",
-      // A type hand-written beside the Zod schema it restates drifts the moment
-      // the schema gains a field. Measured over 30,759 files in 17 repos: 5
-      // reports, 5 true positives. `requireIdenticalShape: false` widens it to
-      // name correlation alone (8 reports, 1 of them noise).
+      // A type hand-written beside the Zod schema it restates drifts when the
+      // schema changes. Requiring an identical shape keeps the diagnostic tied
+      // to structural evidence instead of name correlation.
       "@sarj/prefer-zod-infer": "error",
 
-      // Two candidate in-house rules were dropped in favour of these, because a
-      // maintained upstream rule that already reports the exact position beats a
-      // local copy of it. Measured over 30,546 .ts/.tsx files in 17 repos
-      // (7 first-party + zod, trpc, dub, openstatus, formbricks, documenso,
-      // unkey, midday, papermark, cal.com), non-test source only:
-      //
-      //   prefer-nullish  691 hits in 12 of the 17 repos. `.nullable().optional()`
-      //     IS `.nullish()` by Zod's own definition, so the rewrite is exact and
-      //     the rule ships an autofix. Collapsing the two spellings to one also
-      //     makes the tri-state `T | null | undefined` legible at review time
-      //     instead of hiding behind a two-word chain.
-      //   no-any-schema   159 hits in 10 of the 17 repos. `z.any()` puts `any`
-      //     into the INFERRED type, which is the one place
-      //     `@typescript-eslint/no-explicit-any` cannot see it: there is no
-      //     `any` keyword to flag. `z.unknown()` accepts the same inputs and
-      //     forces the narrowing that was skipped.
-      //
-      // Verified with ESLint#calculateConfigForFile against this file: of the
-      // 204 rules it resolved as enabled, none reported at either position.
+      // Maintained upstream rules own these concerns instead of local copies.
+      // `.nullable().optional()` is exactly `.nullish()`, so prefer-nullish
+      // provides a semantics-preserving autofix. `z.any()` leaks `any` through
+      // inference where no-explicit-any cannot see it; `z.unknown()` accepts the
+      // same inputs while requiring explicit narrowing.
       "zod/prefer-nullish": "error",
       "zod/no-any-schema": "error",
 
