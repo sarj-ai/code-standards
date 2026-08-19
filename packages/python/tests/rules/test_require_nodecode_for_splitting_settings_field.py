@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from textwrap import dedent
+from textwrap import dedent, indent
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,6 +17,24 @@ if TYPE_CHECKING:
 
 def _check(source: str, path: str = "settings.py"):
     return RequireNoDecodeForSplittingSettingsField().check(Path(path), dedent(source))
+
+
+def _settings_with_config(config: str) -> str:
+    config_block = indent(dedent(config).strip(), "    ")
+    return f"""\
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+DECODING_ENABLED = False
+def make_config(**values):
+    return values
+class Settings(BaseSettings):
+    emails: list[str]
+{config_block}
+    @field_validator("emails", mode="before")
+    @classmethod
+    def split_emails(cls, value):
+        return value.split(",")
+"""
 
 
 _PUBLIC_EXAMPLES = RequireNoDecodeForSplittingSettingsField.public_examples()
@@ -108,6 +126,68 @@ def test_reports_raw_splitter_without_nodecode(source: str) -> None:
 )
 def test_ignores_safe_or_unrelated_validators(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        "model_config = SettingsConfigDict(enable_decoding=False)",
+        'model_config = {"enable_decoding": False}',
+        "model_config = dict(enable_decoding=False)",
+        "class Config:\n    enable_decoding = False",
+        "class Config:\n    enable_decoding: bool = False",
+    ],
+)
+def test_ignores_settings_classes_that_statically_disable_decoding(config: str) -> None:
+    assert _check(_settings_with_config(config)) == []
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        "model_config = SettingsConfigDict(enable_decoding=True)",
+        'model_config = {"enable_decoding": DECODING_ENABLED}',
+        "model_config = make_config(enable_decoding=False)",
+        "class Config:\n    enable_decoding = DECODING_ENABLED",
+    ],
+)
+def test_does_not_assume_dynamic_or_unrelated_config_disables_decoding(config: str) -> None:
+    assert len(_check(_settings_with_config(config))) == 1
+
+
+def test_ignores_class_with_custom_settings_sources() -> None:
+    source = """
+        from pydantic import field_validator
+        from pydantic_settings import BaseSettings
+        class Settings(BaseSettings):
+            emails: list[str]
+            @classmethod
+            def settings_customise_sources(cls, settings_cls, **sources):
+                return (sources["env_settings"],)
+            @field_validator("emails", mode="before")
+            @classmethod
+            def split_emails(cls, value):
+                return value.split(",")
+    """
+    assert _check(source) == []
+
+
+def test_force_decode_retains_finding_when_class_disables_decoding() -> None:
+    source = """
+        from typing import Annotated
+        from pydantic import field_validator
+        from pydantic_settings import BaseSettings, ForceDecode, SettingsConfigDict
+        class Settings(BaseSettings):
+            model_config = SettingsConfigDict(enable_decoding=False)
+            emails: Annotated[list[str], ForceDecode]
+            @field_validator("emails", mode="before")
+            @classmethod
+            def split_emails(cls, value):
+                return value.split(",")
+    """
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ423"
 
 
 def test_reports_each_affected_field_once() -> None:

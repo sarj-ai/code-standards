@@ -42,7 +42,7 @@ class NoNestedPydanticFieldValidator(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only direct BaseModel subclasses and validators directly owned by one nested class are inspected.",
-            "Nested BaseModel subclasses validating their own fields are excluded.",
+            "Nested classes with bases are excluded because inherited Pydantic fields cannot be resolved locally.",
             "Test and generated files are excluded.",
         ),
         examples=(
@@ -106,7 +106,10 @@ class NoNestedPydanticFieldValidator(Rule):
                 continue
             outer_fields = _direct_fields(outer)
             for nested in (statement for statement in outer.body if isinstance(statement, ast.ClassDef)):
-                if _is_direct_model(nested, imports):
+                # A based nested class may be an indirect Pydantic model whose inherited
+                # fields are unavailable to this file-local analysis. Only base-less
+                # Config/helper classes provide a deterministic ownership mistake.
+                if nested.bases:
                     continue
                 nested_fields = _direct_fields(nested)
                 for function in (

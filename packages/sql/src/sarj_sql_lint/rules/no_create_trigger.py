@@ -35,16 +35,21 @@ class NoCreateTrigger(Rule):
     id = "no-create-trigger"
     code = "SARJ114"
     documentation = RuleDocumentation(
-        summary="Keep invariants in application checks and constraints instead of PostgreSQL triggers.",
+        summary="This project keeps database behavior explicit instead of introducing PostgreSQL triggers.",
         rationale=(
-            "Triggers hide writes and state transitions from engineers reading application code and make the "
-            "behavior difficult to exercise through ordinary unit-test seams."
+            "Under a single-writer application architecture, triggers hide writes and state transitions from "
+            "engineers reading application code and make the behavior difficult to exercise through ordinary "
+            "unit-test seams. Triggers may still be appropriate for approved multi-writer integrity or audit needs."
         ),
-        remediation="Replace the trigger with explicit application behavior and declarative database constraints.",
+        remediation=(
+            "Use a declarative database constraint where possible or explicit transactional application behavior; "
+            "suppress this policy when an approved database-owned invariant requires a trigger."
+        ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "PostgreSQL CREATE TRIGGER and CREATE CONSTRAINT TRIGGER statements are reported.",
+            "This is an organization-specific single-writer architecture policy, not a claim that triggers are invalid.",
             "Dump files and non-PostgreSQL dialects are excluded.",
             "Generated migrations report against their owning model when one can be identified.",
         ),
@@ -101,8 +106,8 @@ class NoCreateTrigger(Rule):
                     col=col,
                     code=self.code,
                     message=(
-                        "PostgreSQL trigger hides application behavior; use explicit application checks and "
-                        "declarative constraints."
+                        "Project architecture keeps database behavior explicit; use a declarative constraint or "
+                        "transactional application behavior, or suppress for an approved database-owned invariant."
                     ),
                 )
             )

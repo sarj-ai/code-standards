@@ -34,9 +34,7 @@ _GENERATED_READMES: Final = (
     Path("plugins/sarj-audit/README.md"),
 )
 _EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("CLAUDE.md"),)
-_AUTHORED_DOCUMENTS: Final = (
-    Path("docs/audits/rule-usefulness-audit.md"),
-)
+_AUTHORED_DOCUMENTS: Final = (Path("docs/audits/rule-usefulness-audit.md"),)
 _PACKAGE_DEFINITIONS: Final = (
     ("packages/standards/pyproject.toml", "PyPI", "text"),
     ("packages/bootstrap/pyproject.toml", "PyPI", None),

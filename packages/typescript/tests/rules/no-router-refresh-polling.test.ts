@@ -18,6 +18,9 @@ ruleTester.run("no-router-refresh-polling", rule, {
     { name: "allows another object's refresh in a timer", code: `const cache = createCache(); setInterval(() => cache.refresh(), 1000);` },
     { name: "allows a dedicated polling action", code: `const router = useRouter(); setInterval(() => fetchStatus(), POLLING_INTERVAL_MS);` },
     { name: "allows a shadowed non-router binding", code: `import { useRouter } from "next/navigation"; const router = useRouter(); function poll(cache) { const router = cache; setInterval(() => router.refresh(), 1000); }` },
+    { name: "allows a shadowed setInterval function", code: `import { useRouter } from "next/navigation"; const router = useRouter(); function run(setInterval) { setInterval(() => router.refresh(), 1000); }` },
+    { name: "allows a shadowed window object", code: `import { useRouter } from "next/navigation"; const router = useRouter(); function run(window) { window.setInterval(() => router.refresh(), 1000); }` },
+    { name: "allows a shadowed globalThis object", code: `import { useRouter } from "next/navigation"; const router = useRouter(); function run(globalThis) { globalThis.setInterval(() => router.refresh(), 1000); }` },
     { name: "ignores refresh inside an uncalled nested function", code: `import { useRouter } from "next/navigation"; const router = useRouter(); setInterval(() => { const later = () => router.refresh(); }, 1000);` },
     { name: "ignores generated code", code: `const router = useRouter(); setInterval(() => router.refresh(), 1000);`, filename: "/repo/generated/client.ts" },
   ],
@@ -26,6 +29,16 @@ ruleTester.run("no-router-refresh-polling", rule, {
     {
       name: "reports aliased Next useRouter bindings",
       code: `import { useRouter as useNavigation } from "next/navigation"; const navigation = useNavigation(); window.setInterval(async () => { await tick(); navigation.refresh(); }, POLL_MS);`,
+      errors: [{ messageId: "routerRefreshPolling" }],
+    },
+    {
+      name: "reports globalThis polling",
+      code: `import { useRouter } from "next/navigation"; const router = useRouter(); globalThis.setInterval(() => router.refresh(), POLL_MS);`,
+      errors: [{ messageId: "routerRefreshPolling" }],
+    },
+    {
+      name: "reports one diagnostic for one polling callback with multiple refresh calls",
+      code: `import { useRouter } from "next/navigation"; const router = useRouter(); setInterval(() => { router.refresh(); if (stale) router.refresh(); }, POLL_MS);`,
       errors: [{ messageId: "routerRefreshPolling" }],
     },
   ],

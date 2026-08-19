@@ -29,7 +29,10 @@ function importedName(node: TSESTree.ImportSpecifier): string | null {
 }
 
 function enclosingIntervalCallback(
-  sourceCode: Readonly<{ getAncestors(node: TSESTree.Node): readonly TSESTree.Node[] }>,
+  sourceCode: Readonly<{
+    getAncestors(node: TSESTree.Node): readonly TSESTree.Node[];
+    getScope(node: TSESTree.Node): TSESLint.Scope.Scope;
+  }>,
   node: TSESTree.Node,
 ): TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | null {
   const ancestors = sourceCode.getAncestors(node);
@@ -41,19 +44,32 @@ function enclosingIntervalCallback(
     ) continue;
     const parent = ancestor.parent;
     return parent.type === AST_NODE_TYPES.CallExpression && parent.arguments[0] === ancestor &&
-      isIntervalCallee(parent.callee) ? ancestor : null;
+      isIntervalCallee(sourceCode, parent.callee) ? ancestor : null;
   }
   return null;
 }
 
-function isIntervalCallee(node: TSESTree.Expression): boolean {
-  return node.type === AST_NODE_TYPES.Identifier && node.name === "setInterval" ||
+function isIntervalCallee(
+  sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
+  node: TSESTree.Expression,
+): boolean {
+  return node.type === AST_NODE_TYPES.Identifier && node.name === "setInterval" &&
+      isUnshadowedGlobal(sourceCode, node) ||
     node.type === AST_NODE_TYPES.MemberExpression &&
       !node.computed &&
       node.object.type === AST_NODE_TYPES.Identifier &&
-      node.object.name === "window" &&
+      (node.object.name === "window" || node.object.name === "globalThis") &&
+      isUnshadowedGlobal(sourceCode, node.object) &&
       node.property.type === AST_NODE_TYPES.Identifier &&
       node.property.name === "setInterval";
+}
+
+function isUnshadowedGlobal(
+  sourceCode: Readonly<{ getScope(node: TSESTree.Node): TSESLint.Scope.Scope }>,
+  node: TSESTree.Identifier,
+): boolean {
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+  return variable === null || variable.defs.length === 0;
 }
 
 export default createRule<Options, MessageIds>({
@@ -70,6 +86,7 @@ export default createRule<Options, MessageIds>({
     if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
     const routerHooks = new Set<TSESLint.Scope.Variable>();
     const routers = new Set<TSESLint.Scope.Variable>();
+    const reportedCallbacks = new WeakSet<TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression>();
 
     return {
       ImportDeclaration(node): void {
@@ -104,7 +121,10 @@ export default createRule<Options, MessageIds>({
         );
         if (router === null || !routers.has(router)) return;
         const callback = enclosingIntervalCallback(context.sourceCode, node);
-        if (callback !== null) context.report({ node: callback, messageId: "routerRefreshPolling" });
+        if (callback !== null && !reportedCallbacks.has(callback)) {
+          reportedCallbacks.add(callback);
+          context.report({ node: callback, messageId: "routerRefreshPolling" });
+        }
       },
     };
   },

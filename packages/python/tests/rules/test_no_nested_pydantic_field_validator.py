@@ -70,6 +70,29 @@ def test_reports_validator_accidentally_owned_by_nested_class() -> None:
                     return value.lower()
         """,
         """
+        from pydantic import BaseModel, field_validator
+        class DomainModel(BaseModel):
+            language: str
+        class Outer(BaseModel):
+            language: str
+            class Inner(DomainModel):
+                @field_validator("language")
+                @classmethod
+                def validate_language(cls, value):
+                    return value.lower()
+        """,
+        """
+        from pydantic import BaseModel, field_validator
+        from app.models import ProjectModel
+        class Outer(BaseModel):
+            language: str
+            class Inner(ProjectModel):
+                @field_validator("language")
+                @classmethod
+                def validate_language(cls, value):
+                    return value.lower()
+        """,
+        """
         from pydantic import BaseModel
         class Settings(BaseModel):
             language: str

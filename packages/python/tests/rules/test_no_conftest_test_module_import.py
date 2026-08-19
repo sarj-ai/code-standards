@@ -32,7 +32,6 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         "from tests.test_api import make_client",
         "from .test_api import make_client",
         "import tests.integration.test_api as api_tests",
-        "from tests import test_api",
         "from tests.api_test import make_client",
     ],
 )
@@ -49,6 +48,11 @@ def test_reports_imports_from_test_modules(source: str) -> None:
         "from .support import make_client",
         "import test.support",
         "from app.testing import fake_client",
+        "from app.testing import test_client",
+        "from tests.helpers import test_client",
+        "from pytest import test_api",
+        "from tests import test_api",
+        "from . import test_api",
     ],
 )
 def test_allows_dedicated_support_modules(source: str) -> None:

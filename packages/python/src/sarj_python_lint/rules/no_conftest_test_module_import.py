@@ -36,7 +36,7 @@ class NoConftestTestModuleImport(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only files named conftest.py are inspected.",
-            "A test module is recognized by a path component or imported symbol beginning with `test_` or ending with `_test`.",
+            "A test module is recognized only when an explicit module-path component begins with `test_` or ends with `_test`.",
         ),
         examples=(
             RuleExample(
@@ -77,7 +77,6 @@ class NoConftestTestModuleImport(Rule):
                 case ast.ImportFrom(module=module, names=names):
                     if module is not None and _module_has_test_leaf(module):
                         targets.append(module)
-                    targets.extend(alias.name for alias in names if _is_test_module_name(alias.name))
                 case _:
                     continue
             if not targets:
