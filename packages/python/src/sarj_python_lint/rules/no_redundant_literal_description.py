@@ -35,7 +35,7 @@ _QUOTED_VALUE = re.compile(r"(['\"])(?P<value>.+?)\1")
 @final
 class NoRedundantLiteralDescription(Rule):
     id = "no-redundant-literal-description"
-    code = "SARJ422"
+    code = "SARJ423"
     documentation = RuleDocumentation(
         summary="Do not restate a Literal or Enum field's closed domain in its Pydantic description.",
         rationale=(

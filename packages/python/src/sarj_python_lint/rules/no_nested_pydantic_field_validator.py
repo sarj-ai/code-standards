@@ -30,7 +30,7 @@ _PYDANTIC_SOURCES = frozenset({"pydantic", "pydantic.functional_validators"})
 @final
 class NoNestedPydanticFieldValidator(Rule):
     id = "no-nested-pydantic-field-validator"
-    code = "SARJ424"
+    code = "SARJ425"
     documentation = RuleDocumentation(
         summary="Do not place an outer Pydantic model's field validator inside a nested helper class.",
         rationale=(

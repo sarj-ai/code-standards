@@ -41,7 +41,7 @@ def test_reports_validator_accidentally_owned_by_nested_class() -> None:
         """
     )
     assert len(findings) == 1
-    assert findings[0].code == "SARJ424"
+    assert findings[0].code == "SARJ425"
 
 
 @pytest.mark.parametrize(

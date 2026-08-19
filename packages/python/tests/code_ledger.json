@@ -134,5 +134,9 @@
   "SARJ419": "no-vague-suppression-description",
   "SARJ420": "no-unnecessary-docstring",
   "SARJ421": "get-delegates-to-get-many",
-  "SARJ422": "prefer-one-for-required-row"
+  "SARJ422": "prefer-one-for-required-row",
+  "SARJ423": "no-redundant-literal-description",
+  "SARJ424": "require-nodecode-for-splitting-settings-field",
+  "SARJ425": "no-nested-pydantic-field-validator",
+  "SARJ426": "no-conftest-test-module-import"
 }

@@ -34,7 +34,7 @@ _COMPLEX_BUILTINS = frozenset({"dict", "frozenset", "list", "set", "tuple"})
 @final
 class RequireNoDecodeForSplittingSettingsField(Rule):
     id = "require-nodecode-for-splitting-settings-field"
-    code = "SARJ423"
+    code = "SARJ424"
     documentation = RuleDocumentation(
         summary="Require NoDecode when a before-validator splits a complex pydantic-settings field.",
         rationale=(

@@ -38,7 +38,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 def test_reports_imports_from_test_modules(source: str) -> None:
     findings = _check(source)
     assert len(findings) == 1
-    assert findings[0].code == "SARJ425"
+    assert findings[0].code == "SARJ426"
 
 
 @pytest.mark.parametrize(

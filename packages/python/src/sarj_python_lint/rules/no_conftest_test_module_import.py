@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 @final
 class NoConftestTestModuleImport(Rule):
     id = "no-conftest-test-module-import"
-    code = "SARJ425"
+    code = "SARJ426"
     documentation = RuleDocumentation(
         summary="Do not import individual test modules from conftest.py.",
         rationale=(

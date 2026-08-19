@@ -76,7 +76,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 def test_reports_raw_splitter_without_nodecode(source: str) -> None:
     findings = _check(source)
     assert len(findings) == 1
-    assert findings[0].code == "SARJ423"
+    assert findings[0].code == "SARJ424"
 
 
 @pytest.mark.parametrize(
@@ -187,7 +187,7 @@ def test_force_decode_retains_finding_when_class_disables_decoding() -> None:
     """
     findings = _check(source)
     assert len(findings) == 1
-    assert findings[0].code == "SARJ423"
+    assert findings[0].code == "SARJ424"
 
 
 def test_reports_each_affected_field_once() -> None:
