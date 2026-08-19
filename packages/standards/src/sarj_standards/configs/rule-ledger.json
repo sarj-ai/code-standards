@@ -32,6 +32,7 @@
       "duplicated-override-docstring",
       "fastapi-openapi-contract",
       "fixture-returns-bare-tuple",
+      "get-delegates-to-get-many",
       "iac-source-coupled-test",
       "invalid-pydantic-field-default",
       "kwarg-heavy-construction-in-test",
@@ -42,7 +43,6 @@
       "no-cors-wildcard-with-credentials",
       "no-duplicate-dunder-all-entry",
       "no-file-level-escape-hatch-noqa",
-      "no-file-level-suppression",
       "no-first-party-private-import",
       "no-frozen-after-validator-field-write",
       "no-gen-random-uuid-in-sql",
@@ -242,7 +242,6 @@
       "SARJ028",
       "SARJ032",
       "SARJ034",
-      "SARJ038",
       "SARJ039",
       "SARJ040",
       "SARJ042",
@@ -304,7 +303,8 @@
       "SARJ417",
       "SARJ418",
       "SARJ419",
-      "SARJ420"
+      "SARJ420",
+      "SARJ421"
     ],
     "sql": [
       "SARJ101",
@@ -531,6 +531,13 @@
       "note": "Delete SARJ036 suppressions and baseline keys; syntax cannot prove whether a production write API can represent the fixture state."
     },
     {
+      "id": "SARJ038",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ038 suppressions and baseline keys; enabled Ruff PGH003 owns unscoped type-checker suppression comments."
+    },
+    {
       "id": "SARJ041",
       "kind": "code",
       "status": "removed",
@@ -676,6 +683,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; syntax cannot distinguish an accidental broad handler from a deliberate whole-operation fallback or terminal fault boundary."
+    },
+    {
+      "id": "no-file-level-suppression",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this custom rule configuration; enabled Ruff PGH003 owns unscoped type-checker suppression comments."
     },
     {
       "id": "no-fstring-in-log",

@@ -132,5 +132,6 @@
   "SARJ417": "preserve-enum-types",
   "SARJ418": "require-pydantic-ordinal-lower-bound",
   "SARJ419": "no-vague-suppression-description",
-  "SARJ420": "no-unnecessary-docstring"
+  "SARJ420": "no-unnecessary-docstring",
+  "SARJ421": "get-delegates-to-get-many"
 }

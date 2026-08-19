@@ -10,7 +10,6 @@ from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import (
     ESCAPE_HATCH_CODES,
     NoFileLevelEscapeHatchNoqa,
 )
-from sarj_python_lint.rules.no_file_level_suppression import NoFileLevelSuppression
 
 
 if TYPE_CHECKING:
@@ -106,7 +105,7 @@ def test_reasoned_sarj_noqa_suppresses_a_deliberate_file_level_hatch():
 
 
 def test_sarj_noqa_for_another_rule_does_not_suppress_the_hatch():
-    src = "# ruff: noqa: TID251  # sarj-noqa: SARJ038 — vendored SDK test harness\n"
+    src = "# ruff: noqa: TID251  # sarj-noqa: SARJ016 — vendored SDK test harness\n"
     diagnostic = _check(src)[0]
     assert not is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 
@@ -116,8 +115,7 @@ def test_escape_hatch_set_is_exactly_the_banned_api_code():
     assert frozenset({"TID251"}) == ESCAPE_HATCH_CODES
 
 
-def test_owns_scoped_ruff_hatch_while_pgh004_owns_the_bare_blanket():
+def test_owns_scoped_ruff_hatch_while_ruff_owns_the_bare_blanket():
     src = "# ruff: noqa\n# ruff: noqa: TID251\nimport os\n"
     path = Path("svc/app/thing.py")
-    assert NoFileLevelSuppression().check(path, src) == []
     assert [d.line for d in NoFileLevelEscapeHatchNoqa().check(path, src)] == [2]

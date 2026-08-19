@@ -34,6 +34,7 @@ _GENERATED_READMES: Final = (
     Path("plugins/sarj-audit/README.md"),
 )
 _EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("CLAUDE.md"),)
+_AUTHORED_DOCUMENTS: Final = (Path("docs/audits/rule-usefulness-audit.md"),)
 _PACKAGE_DEFINITIONS: Final = (
     ("packages/standards/pyproject.toml", "PyPI", "text"),
     ("packages/bootstrap/pyproject.toml", "PyPI", None),
@@ -232,7 +233,7 @@ def _validate_markdown_allowlist(root: Path) -> None:
 
 
 def _allowed_document(relative: Path) -> bool:
-    if relative in _GENERATED_READMES or relative in _EXECUTABLE_OR_LEGAL_DOCUMENTS:
+    if relative in _GENERATED_READMES or relative in _EXECUTABLE_OR_LEGAL_DOCUMENTS or relative in _AUTHORED_DOCUMENTS:
         return True
     match relative.parts:
         case ("plugins", _plugin, "commands", filename):
@@ -251,6 +252,7 @@ def _documentation_paths(root: Path) -> tuple[Path, ...]:
         *(root / path for path in _EXECUTABLE_OR_LEGAL_DOCUMENTS),
     }
     maintained = {
+        *(root / path for path in _AUTHORED_DOCUMENTS if (root / path).is_file()),
         *root.glob("plugins/*/commands/*.md"),
         *root.glob("plugins/*/skills/*/SKILL.md"),
         *root.glob("plugins/*/skills/*/references/*.md"),
