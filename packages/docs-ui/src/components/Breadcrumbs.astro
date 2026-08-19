@@ -1,0 +1,20 @@
+---
+interface Ancestor {
+  label: string;
+  href: string;
+}
+
+interface Props {
+  ancestors: readonly Ancestor[];
+  current: string;
+}
+
+const { ancestors, current } = Astro.props;
+---
+
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    {ancestors.map((ancestor) => <li><a href={ancestor.href}>{ancestor.label}</a></li>)}
+    <li><span aria-current="page">{current}</span></li>
+  </ol>
+</nav>

@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+import pytest
+
 import sarj_standards.cli.main as cli
 from sarj_standards.libs import release
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def test_changes_cli_passes_keyword_revisions(
@@ -108,9 +108,15 @@ def test_release_process_failure_is_a_clean_cli_error(
     assert capsys.readouterr().err == "error: uv publish failed with exit code 1\n"
 
 
-def test_release_cli_accepts_bootstrap_as_a_publish_target(
+@pytest.mark.parametrize(
+    "target",
+    ["bootstrap", "docs-ui"],
+    ids=("bootstrap", "docs-ui"),
+)
+def test_release_cli_accepts_publish_target(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    target: release.PublishTarget,
 ) -> None:
     calls: list[tuple[Path, release.PublishTarget]] = []
 
@@ -119,10 +125,10 @@ def test_release_cli_accepts_bootstrap_as_a_publish_target(
 
     monkeypatch.setattr(release, "publish_target", publish)
 
-    status = cli.main(["--root", str(tmp_path), "maintain", "release", "publish", "bootstrap"])
+    status = cli.main(["--root", str(tmp_path), "maintain", "release", "publish", target])
 
     assert status == 0
-    assert calls == [(tmp_path.resolve(), "bootstrap")]
+    assert calls == [(tmp_path.resolve(), target)]
 
 
 def test_verify_tags_without_commit_preserves_missing_tag_mode(

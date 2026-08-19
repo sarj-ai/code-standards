@@ -39,7 +39,7 @@ export default defineConfig({
       description: 'Deterministic code standards, diagnostics, and remediation.',
       favicon: '/sarj-logo-light.png',
       disable404Route: true,
-      customCss: ['./src/styles/global.css'],
+      customCss: ['@sarj/docs-ui/styles.css', './src/styles/global.css'],
       sidebar: [
         { label: 'About', link: '/' },
         { label: 'Rules', link: '/rules/' },
@@ -52,7 +52,7 @@ export default defineConfig({
       tableOfContents: false,
       credits: false,
       components: {
-        PageTitle: './src/components/ReferencePageTitle.astro',
+        PageTitle: '@sarj/docs-ui/PageAnchor.astro',
       },
     }),
     cloudflareArtifacts(),

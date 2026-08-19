@@ -1,0 +1,55 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import type { StarlightUserConfig } from '@astrojs/starlight/types';
+
+type Sidebar = NonNullable<StarlightUserConfig['sidebar']>;
+type Discovery = 'searchable' | 'navigation-only' | 'unlisted';
+
+interface Props {
+  title: string;
+  description: string;
+  sidebar: Sidebar;
+  discovery?: Discovery;
+  hasSidebar?: boolean;
+  template?: 'doc' | 'splash';
+}
+
+const {
+  title,
+  description,
+  sidebar,
+  discovery = 'searchable',
+  hasSidebar = true,
+  template = 'doc',
+} = Astro.props;
+const pagefind = discovery === 'searchable';
+const noindex = discovery === 'unlisted';
+---
+
+<StarlightPage
+  frontmatter={{
+    title,
+    description,
+    template,
+    pagefind,
+    prev: false,
+    next: false,
+    head: noindex ? [{ tag: 'meta', attrs: { name: 'robots', content: 'noindex, nofollow' } }] : [],
+  }}
+  sidebar={sidebar}
+  hasSidebar={hasSidebar}
+>
+  <div data-pagefind-body={pagefind ? true : undefined} data-pagefind-ignore={pagefind ? undefined : true}>
+    <slot />
+  </div>
+</StarlightPage>
+
+<script>
+  const menu = document.querySelector('starlight-menu-button');
+  const menuButton = menu?.querySelector('button');
+  if (menu instanceof HTMLElement && menuButton instanceof HTMLButtonElement) {
+    const syncExpanded = () => menuButton.setAttribute('aria-expanded', menu.getAttribute('aria-expanded') ?? 'false');
+    syncExpanded();
+    new MutationObserver(syncExpanded).observe(menu, { attributes: true, attributeFilter: ['aria-expanded'] });
+  }
+</script>
