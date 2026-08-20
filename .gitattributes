@@ -1,0 +1,6 @@
+# Review-size policy is read from the trusted pull-request base revision.
+**/yarn.lock pr-size-excluded
+**/uv.lock pr-size-excluded
+**/pnpm-lock.yaml pr-size-excluded
+**/package-lock.json pr-size-excluded
+**/bun.lock pr-size-excluded
