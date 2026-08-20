@@ -133,9 +133,11 @@ const sidebar = [{ label: 'Home', link: '/' }];
   });
   const explicit = readFileSync(join(consumerRoot, 'dist', 'explicit', 'index.html'), 'utf8');
   assert.match(explicit, /name="robots" content="noindex, nofollow"/u);
+  assert.doesNotMatch(explicit, /data-pagefind-body/u);
   const index = readFileSync(join(consumerRoot, 'dist', 'index.html'), 'utf8');
   assert.match(index, /rel="prev"/u);
   assert.match(index, /aria-keyshortcuts="ArrowRight"/u);
+  assert.doesNotMatch(index, /data-pagefind-body/u);
 } finally {
   await rm(workingDirectory, { recursive: true, force: true });
 }
