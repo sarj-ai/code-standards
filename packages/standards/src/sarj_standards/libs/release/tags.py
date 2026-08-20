@@ -131,7 +131,6 @@ _TAG_PATTERN: Final = re.compile(r"^(?P<target>[a-z][a-z0-9-]*)-v(?P<version>[^\
 
 
 def release_manifests(target: ReleaseTarget) -> tuple[tuple[Path, ManifestFormat], ...]:
-    """Return every version-bearing manifest governed by one atomic release target."""
     return (
         (target.manifest, target.format),
         *(

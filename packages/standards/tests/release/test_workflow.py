@@ -206,7 +206,9 @@ def test_typescript_release_verifies_its_own_registry_artifact() -> None:
 def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
-    assert workflow.count("verify_registry_publication.py pypi") == 5
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        workflow.count("verify_registry_publication.py pypi") == 5
+    )
     assert workflow.count("skip-existing: true") == 5
     for project, environment in (
         ("sarj-standards-bootstrap", "pypi-bootstrap-release"),
@@ -217,8 +219,9 @@ def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:
         assert f"--dist verified-dist --project {project}" in workflow
         assert f"--environment {environment}" in workflow
     assert "--project code-standards --project sarj-standards" in workflow
-    assert "pypi-attestations==0.0.30" in (REPO_ROOT / "scripts/verify_registry_publication.py").read_text(
-        encoding="utf-8"
+    assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
+        "pypi-attestations==0.0.30"
+        in (REPO_ROOT / "scripts/verify_registry_publication.py").read_text(encoding="utf-8")
     )
 
 

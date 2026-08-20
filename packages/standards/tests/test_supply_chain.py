@@ -164,8 +164,13 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert release.count("artifact_sha256:") == 8
     assert release.count("Verify build-bound artifact digest") == 8
     assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
-    assert release.count("Verify registry bytes and provenance") == 3
-    assert release.count("dist.attestations.provenance.predicateType") == 3
+    assert release.count("Verify registry bytes and source-bound provenance") == 3
+    verifier = (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
+        REPO_ROOT / "scripts/verify_registry_publication.py"
+    ).read_text(encoding="utf-8")
+    assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
+        'entry.get("predicateType") != "https://slsa.dev/provenance/v1"' in verifier
+    )
 
 
 def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks() -> None:
