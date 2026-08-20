@@ -1,0 +1,80 @@
+---
+import Breadcrumbs from '@sarj/docs-ui/Breadcrumbs.astro';
+import ReferencePage from '@sarj/docs-ui/ReferencePage.astro';
+import RulePager from '@sarj/docs-ui/RulePager.astro';
+import { componentCatalog, themeTokenCatalog } from '@sarj/docs-ui/catalog';
+
+const exportsByComponent = Object.entries(componentCatalog);
+---
+
+<ReferencePage
+  title="Documentation UI"
+  description="Live exports and tokens from @sarj/docs-ui."
+  sidebar={[]}
+  hasSidebar={false}
+>
+  <article class="inspection-bench">
+    <header class="bench-header">
+      <p class="eyebrow">@sarj/docs-ui</p>
+      <h1>Documentation UI</h1>
+      <p>Live exports and tokens from <code>@sarj/docs-ui</code>.</p>
+      <dl class="surface-counts">
+        <div><dt>Components</dt><dd>{exportsByComponent.length}</dd></div>
+        <div><dt>Tokens</dt><dd>{themeTokenCatalog.length}</dd></div>
+      </dl>
+    </header>
+
+    <section aria-labelledby="tokens-heading">
+      <div class="section-heading"><p class="eyebrow">Color contract</p><h2 id="tokens-heading">Tokens</h2></div>
+      <div class="token-grid">
+        {themeTokenCatalog.map((token) => (
+          <article class="token-card">
+            <div class="token-swatches" aria-label={`${token.cssName} in light and dark themes`}>
+              <span aria-hidden="true" style={`background:${token.light}`}></span>
+              <span aria-hidden="true" style={`background:${token.dark}`}></span>
+            </div>
+            <code>{token.cssName}</code>
+            <p>{token.purpose}</p>
+            <small>{token.light} · {token.dark}</small>
+          </article>
+        ))}
+      </div>
+    </section>
+
+    <section aria-labelledby="components-heading">
+      <div class="section-heading"><p class="eyebrow">Published surface</p><h2 id="components-heading">Components</h2></div>
+      <div class="component-list">
+        {exportsByComponent.map(([name, definition]) => (
+          <article class="component-card" id={name.toLowerCase()}>
+            <header><h3>{name}</h3><code>{definition.exportPath}</code></header>
+            <p>{definition.purpose}</p>
+            {name === 'Breadcrumbs' && (
+              <div class="specimen" aria-label="Breadcrumbs specimen">
+                <Breadcrumbs
+                  ancestors={[{ label: 'Components', href: '#components-heading' }, { label: 'Navigation', href: '#breadcrumbs' }]}
+                  current="Breadcrumbs"
+                />
+              </div>
+            )}
+            {name === 'PageAnchor' && (
+              <div class="specimen"><a href="#_top">Focus the live PageAnchor at the top of this page</a></div>
+            )}
+            {name === 'ReferencePage' && (
+              <div class="specimen shell-specimen">
+                <span>Header</span><strong>ReferencePage</strong><span>Document surface</span>
+              </div>
+            )}
+            {name === 'RulePager' && (
+              <div class="specimen"><RulePager previous={{ href: '#referencepage', label: 'ReferencePage' }} next={{ href: '#tokens-heading', label: 'Tokens' }} /></div>
+            )}
+            <dl class="property-list">
+              {Object.entries(definition.properties).map(([property, purpose]) => (
+                <div><dt><code>{property}</code></dt><dd>{purpose}</dd></div>
+              ))}
+            </dl>
+          </article>
+        ))}
+      </div>
+    </section>
+  </article>
+</ReferencePage>

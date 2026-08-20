@@ -14,8 +14,6 @@ const lines = [
   '- [All rules](https://code-standards.sarj.ai/rules/)',
   '- [Catalog JSON](https://code-standards.sarj.ai/api/v1/catalog.json)',
   '- [Catalog schema](https://code-standards.sarj.ai/api/v1/rule-catalog.schema.json)',
-  '- [Documentation UI](https://code-standards.sarj.ai/design-system/)',
-  '- [Documentation UI contract](https://code-standards.sarj.ai/api/v1/docs-ui.json)',
   '',
   '## Rule families',
   '',

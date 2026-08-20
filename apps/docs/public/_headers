@@ -20,10 +20,5 @@
   Cache-Control: public, max-age=0, must-revalidate
   Content-Type: application/schema+json; charset=utf-8
 
-/api/v1/docs-ui.json
-  Access-Control-Allow-Origin: *
-  Cache-Control: public, max-age=0, must-revalidate
-  Content-Type: application/json; charset=utf-8
-
 /health.json
   Cache-Control: no-store

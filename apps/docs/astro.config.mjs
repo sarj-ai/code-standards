@@ -26,7 +26,6 @@ export default defineConfig({
       scriptDirective: {
         resources: [
           { resource: "'self'", kind: 'element' },
-          { resource: "'wasm-unsafe-eval'", kind: 'element' },
         ],
       },
       styleDirective: {
@@ -40,21 +39,21 @@ export default defineConfig({
       description: 'Deterministic code standards, diagnostics, and remediation.',
       favicon: '/sarj-logo-light.png',
       disable404Route: true,
-      customCss: ['@sarj/docs-ui/styles.css', './src/styles/global.css'],
+      customCss: ['@sarj/docs-ui/starlight.css', './src/styles/global.css'],
       sidebar: [
         { label: 'About', link: '/' },
         { label: 'Rules', link: '/rules/' },
         { label: 'CLI', link: '/cli/' },
-        { label: 'Documentation UI', link: '/design-system/' },
       ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/code-standards' },
       ],
-      pagefind: true,
+      pagefind: false,
       tableOfContents: false,
       credits: false,
       components: {
         PageTitle: '@sarj/docs-ui/PageAnchor.astro',
+        Search: './src/components/NoSearch.astro',
       },
     }),
     cloudflareArtifacts(),

@@ -12,25 +12,26 @@ export interface BreadcrumbsProps {
   current: string;
 }
 
-export type ReferenceSidebar = NonNullable<StarlightUserConfig['sidebar']>;
+export interface RulePagerLink {
+  href: string;
+  label: string;
+}
 
-/**
- * Legacy discovery shorthand. `unlisted` affects search and robots metadata;
- * it is not access control and the rendered page remains public.
- */
-export type ReferenceDiscovery = 'searchable' | 'navigation-only' | 'unlisted';
+/** Public properties accepted by {@link RulePager}. */
+export interface RulePagerProps {
+  previous?: RulePagerLink | null;
+  next?: RulePagerLink | null;
+}
+
+export type ReferenceSidebar = NonNullable<StarlightUserConfig['sidebar']>;
 
 /** Public properties accepted by {@link ReferencePage}. */
 export interface ReferencePageProps {
   title: string;
   description: string;
   sidebar: ReferenceSidebar;
-  /** Include the page body in Pagefind. Defaults to true. */
-  searchable?: boolean;
   /** Allow search engines to index the page. Defaults to true. */
   indexable?: boolean;
-  /** @deprecated Prefer the explicit `searchable` and `indexable` properties. */
-  discovery?: ReferenceDiscovery;
   hasSidebar?: boolean;
   template?: 'doc' | 'splash';
 }

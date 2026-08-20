@@ -38,8 +38,10 @@ docs-artifacts-check:
 	@$(STANDARDS) --root . maintain docs check
 
 docs-check: docs-artifacts-check
+	cd packages/typescript && npm run build
 	cd packages/docs-ui && npm test
 	cd apps/docs && npm run lint && npm run check && npm run build
+	cd apps/docs-ui && npm run lint && npm run check && npm run build
 
 format-check:
 	uv run --project packages/standards --frozen ruff format --check \
