@@ -1775,8 +1775,26 @@ def test_show_ci_syncs_every_uv_workspace_package_and_runs_configured_bootstrap(
 
     assert rendered.returncode == 0, rendered.stderr
     assert "uv sync --locked --project python --all-packages" in rendered.stdout
-    assert 'run: "uv run --project python generate-api"' in rendered.stdout
-    assert 'run: "yarn generate"' in rendered.stdout
+    assert "run: |\n          uv run --project python generate-api" in rendered.stdout
+    assert "run: |\n          yarn generate" in rendered.stdout
+
+
+def test_show_ci_preserves_github_expressions_in_bootstrap_shell_commands(tmp_path: Path) -> None:
+    command = 'bash -c \'base="${{ github.event.pull_request.base.sha || github.event.before }}"; echo "$base"\''
+    adopted = manifest.Manifest(
+        __version__,
+        manifest.default_configs(has_python=False, has_typescript=False),
+        ".",
+        ".",
+        ci_bootstrap=(command,),
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    rendered = _cli("--root", str(tmp_path), "show", "ci")
+
+    assert rendered.returncode == 0, rendered.stderr
+    assert f"run: |\n          {command}" in rendered.stdout
+    assert f'run: "{command}' not in rendered.stdout
 
 
 def test_generated_ci_is_recognized_as_an_executable_standards_gate(tmp_path: Path) -> None:
