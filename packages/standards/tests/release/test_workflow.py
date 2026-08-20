@@ -172,10 +172,11 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     assert 'maintain release verify-tags --commit "$TARGET_SHA"' in workflow
 
 
-def test_docs_ui_release_packs_once_and_publishes_the_verified_artifact() -> None:
+def test_additional_npm_releases_publish_verified_registry_artifacts() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     build = workflow.split("  build-docs-ui:", 1)[1].split("  publish-docs-ui:", 1)[0]
     publish = workflow.split("  publish-docs-ui:", 1)[1]
+    tsconfig_publish = workflow.split("  publish-tsconfig:", 1)[1].split("  build-docs-ui:", 1)[0]
 
     assert "needs.detect.outputs.docs_ui == 'true'" in build
     assert "test \"$actual_name\" = '@sarj/docs-ui'" in build
@@ -183,6 +184,13 @@ def test_docs_ui_release_packs_once_and_publishes_the_verified_artifact() -> Non
     assert "environment: npm-docs-ui-release" in publish
     assert "needs.build-docs-ui.outputs.artifact_sha256" in publish
     assert 'npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz"' in publish
+    assert 'npm pack "@sarj/docs-ui@$version"' in publish
+    assert 'npm view "@sarj/docs-ui@$version"' in publish
+    assert "dist.attestations.provenance.predicateType" in publish
+    assert "needs.build-tsconfig.outputs.artifact_sha256" in tsconfig_publish
+    assert 'npm pack "@sarj/tsconfig@$version"' in tsconfig_publish
+    assert 'npm view "@sarj/tsconfig@$version"' in tsconfig_publish
+    assert "dist.attestations.provenance.predicateType" in tsconfig_publish
 
 
 def test_typescript_release_verifies_its_own_registry_artifact() -> None:
