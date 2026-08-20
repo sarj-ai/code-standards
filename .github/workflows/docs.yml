@@ -2,14 +2,6 @@ name: documentation
 
 on:
   pull_request:
-    paths:
-      - 'apps/docs/**'
-      - 'packages/docs-ui/**'
-      - 'packages/**/src/**'
-      - 'packages/**/package.json'
-      - 'packages/**/pyproject.toml'
-      - 'Makefile'
-      - '.github/workflows/docs.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -23,6 +15,7 @@ concurrency:
 
 jobs:
   build:
+    name: documentation build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -115,17 +108,4 @@ jobs:
       - name: Verify deployed revision and catalog
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
-        run: >-
-          node -e "const crypto = require('node:crypto'); const base = 'https://code-standards.sarj.ai/';
-          const wait = ms => new Promise(resolve => setTimeout(resolve, ms)); (async () => { let lastError;
-          for (let attempt = 1; attempt <= 10; attempt += 1) { try { const query = '?commit=' + process.env.EXPECTED_COMMIT +
-          '&attempt=' + attempt; const [healthResponse, catalogResponse] = await Promise.all([
-          fetch(base + 'health.json' + query, {cache:'no-store'}), fetch(base + 'api/v1/catalog.json' + query, {cache:'no-store'})]);
-          if (!healthResponse.ok) throw new Error('health returned ' + healthResponse.status); if (!catalogResponse.ok)
-          throw new Error('catalog returned ' + catalogResponse.status); const health = await healthResponse.json();
-          const catalog = await catalogResponse.text(); if (health.commit !== process.env.EXPECTED_COMMIT)
-          throw new Error('live commit ' + health.commit + ' does not match ' + process.env.EXPECTED_COMMIT);
-          const digest = crypto.createHash('sha256').update(catalog).digest('hex'); if (health.catalogSha256 !== digest)
-          throw new Error('catalog digest ' + digest + ' does not match health ' + health.catalogSha256);
-          console.log('verified live commit and catalog ' + health.commit); return; } catch (error) { lastError = error;
-          if (attempt < 10) await wait(3000); } } throw lastError; })()"
+        run: npm run verify:deployment

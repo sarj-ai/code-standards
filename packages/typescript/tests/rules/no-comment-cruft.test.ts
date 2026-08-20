@@ -72,7 +72,7 @@ ruleTester.run("no-comment-cruft", rule, {
       code: "/**\n * @fileoverview does a thing\n * with detail\n * across lines\n * and more\n */\nexport const x = 1;",
     },
     // Directive comments are ignored (TODO/FIXME carry an owner elsewhere).
-    { code: "// TODO@nmaswood(JIRA-1234): return cachedValue();\nconst x = 1;" },
+    { code: "// TODO@example-owner(JIRA-1234): return cachedValue();\nconst x = 1;" },
     { code: "// prettier-ignore\nconst x = 1;" },
     {
       name: "preserves tool directives",

@@ -35,6 +35,7 @@ _GENERATED_READMES: Final = (
     Path("packages/docs-ui/README.md"),
     Path("plugins/sarj-audit/README.md"),
 )
+_GENERATED_SECURITY_POLICY: Final = Path(".github/SECURITY.md")
 _EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("CLAUDE.md"),)
 _AUTHORED_DOCUMENTS: Final = (Path("docs/audits/rule-usefulness-audit.md"),)
 _PACKAGE_DEFINITIONS: Final = (
@@ -95,6 +96,7 @@ def _render_readmes(root: Path) -> dict[Path, str]:
     for manifest_path, registry, engine, metadata in packages:
         rendered[manifest_path.parent / "README.md"] = _package_readme(root, manifest_path, registry, engine, metadata)
     rendered[root / "plugins/sarj-audit/README.md"] = _plugin_readme(root)
+    rendered[root / _GENERATED_SECURITY_POLICY] = _security_policy()
     return dict(sorted(rendered.items()))
 
 
@@ -144,13 +146,13 @@ def _package_readme(
         f"# {name}",
         _string(metadata, "description"),
         f"```bash\n{_install_command(name, registry)}\n```",
-        _package_usage(name, engine, version=_string(metadata, "version")),
+        _package_usage(name, engine, version=_string(metadata, "version"), metadata=metadata),
         f"[Documentation]({_homepage(metadata)}) · [Source]({_source_url(metadata)})",
     ]
     return "\n\n".join(sections) + "\n"
 
 
-def _package_usage(name: str, engine: str | None, *, version: str) -> str:
+def _package_usage(name: str, engine: str | None, *, version: str, metadata: dict[str, object]) -> str:
     if name == "code-standards":
         return (
             "Use it from pre-commit with a coding agent so violations are flagged and fixed before commit.\n\n"
@@ -179,6 +181,16 @@ def _package_usage(name: str, engine: str | None, *, version: str) -> str:
             "policy. `--no-config --isolated` prevents consumer project configuration and installed tools from "
             "changing the selected bootstrap or Standards bundle."
         )
+    if name == "@sarj/docs-ui":
+        exports = metadata.get("exports")
+        export_names = sorted(exports) if _is_object_table(exports) else []
+        rendered_exports = "\n".join(f"- `{name}{export_name.removeprefix('.')}`" for export_name in export_names)
+        return (
+            "Import `@sarj/docs-ui/styles.css` once, then compose the typed Astro components. "
+            "The live component and theme contract is published at "
+            "[code-standards.sarj.ai/design-system/](https://code-standards.sarj.ai/design-system/).\n\n"
+            f"Public exports:\n\n{rendered_exports}"
+        )
     executable = (
         None
         if engine is None
@@ -201,6 +213,24 @@ def _plugin_readme(root: Path) -> str:
         f"# {_title(_string(metadata, 'name'))}",
         _string(metadata, "description"),
         f"[Documentation]({_DOCUMENTATION_URL}) · [Source](https://github.com/sarj-ai/code-standards/tree/main/plugins/sarj-audit)",
+    ]
+    return "\n\n".join(sections) + "\n"
+
+
+def _security_policy() -> str:
+    sections = [
+        _GENERATED_SENTINEL,
+        "# Security",
+        (
+            "Report vulnerabilities privately through the "
+            "[GitHub security advisory form]"
+            "(https://github.com/sarj-ai/code-standards/security/advisories/new). "
+            "Do not open a public issue for an undisclosed vulnerability."
+        ),
+        (
+            "The default branch and latest published version of each package receive security fixes. "
+            "Maintainers will acknowledge a report within two business days and coordinate disclosure after a fix."
+        ),
     ]
     return "\n\n".join(sections) + "\n"
 
@@ -242,7 +272,12 @@ def _validate_markdown_allowlist(root: Path) -> None:
 
 
 def _allowed_document(relative: Path) -> bool:
-    if relative in _GENERATED_READMES or relative in _EXECUTABLE_OR_LEGAL_DOCUMENTS or relative in _AUTHORED_DOCUMENTS:
+    if (
+        relative in _GENERATED_READMES
+        or relative == _GENERATED_SECURITY_POLICY
+        or relative in _EXECUTABLE_OR_LEGAL_DOCUMENTS
+        or relative in _AUTHORED_DOCUMENTS
+    ):
         return True
     match relative.parts:
         case ("plugins", _plugin, "commands", filename):
@@ -258,6 +293,7 @@ def _allowed_document(relative: Path) -> bool:
 def _documentation_paths(root: Path) -> tuple[Path, ...]:
     required = {
         *(root / path for path in _GENERATED_READMES),
+        root / _GENERATED_SECURITY_POLICY,
         *(root / path for path in _EXECUTABLE_OR_LEGAL_DOCUMENTS),
     }
     maintained = {
@@ -267,7 +303,11 @@ def _documentation_paths(root: Path) -> tuple[Path, ...]:
         *root.glob("plugins/*/skills/*/references/*.md"),
     }
     missing = [
-        path for path in sorted(required) if not path.is_file() and path.relative_to(root) not in _GENERATED_READMES
+        path
+        for path in sorted(required)
+        if not path.is_file()
+        and path.relative_to(root) not in _GENERATED_READMES
+        and path.relative_to(root) != _GENERATED_SECURITY_POLICY
     ]
     if missing:
         msg = f"required documentation is missing: {', '.join(str(path) for path in missing)}"

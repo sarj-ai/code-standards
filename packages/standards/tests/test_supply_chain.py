@@ -271,6 +271,7 @@ def test_pre_push_keeps_complete_tests_in_ci() -> None:
 
 def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
     workflow = (REPO_ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
+    verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.mjs").read_text(encoding="utf-8")
 
     assert "branches: [main]" in workflow  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
     assert "schedule:" not in workflow
@@ -279,7 +280,11 @@ def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
     assert "actions/upload-artifact@" in workflow
     assert "actions/download-artifact@" in workflow
     assert "Verify deployed revision" in workflow
-    assert "h.commit !== process.env.EXPECTED_COMMIT" in workflow
+    assert "npm run verify:deployment" in workflow  # sarj-noqa: SARJ402 -- deployment-policy contract
+    assert "assert.equal(health.commit, expectedCommit" in verifier  # sarj-noqa: SARJ402 -- deployment contract
+    assert "health.catalogSha256" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
+    assert "api/v1/docs-ui.json" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
+    assert "design-system/" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
 
 
 @pytest.mark.parametrize(

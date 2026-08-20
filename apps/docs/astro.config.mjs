@@ -16,7 +16,9 @@ export default defineConfig({
       directives: [
         "base-uri 'self'",
         "connect-src 'self'",
+        "default-src 'none'",
         "font-src 'self'",
+        "frame-ancestors 'none'",
         "form-action 'self'",
         "img-src 'self' data:",
         "object-src 'none'",
@@ -24,8 +26,7 @@ export default defineConfig({
       scriptDirective: {
         resources: [
           { resource: "'self'", kind: 'element' },
-          { resource: "'self'", kind: 'default' },
-          { resource: "'wasm-unsafe-eval'", kind: 'default' },
+          { resource: "'wasm-unsafe-eval'", kind: 'element' },
         ],
       },
       styleDirective: {
@@ -44,6 +45,7 @@ export default defineConfig({
         { label: 'About', link: '/' },
         { label: 'Rules', link: '/rules/' },
         { label: 'CLI', link: '/cli/' },
+        { label: 'Documentation UI', link: '/design-system/' },
       ],
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/code-standards' },
