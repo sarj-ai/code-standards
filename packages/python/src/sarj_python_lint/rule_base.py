@@ -12,11 +12,12 @@ from typing import TYPE_CHECKING, ClassVar, Final, Self
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from sarj_python_lint._analysis_session import AnalysisSession
     from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
 # Each rule points directly to its executable examples.
-REPO_BLOB: Final = "https://github.com/sarj-ai/standards/blob/main"
+REPO_BLOB: Final = "https://github.com/sarj-ai/code-standards/blob/main"
 TESTS_DIR: Final = "packages/python/tests/rules"
 
 
@@ -237,6 +238,10 @@ class Rule(ABC):
     code: str
     description: str
     documentation: ClassVar[RuleDocumentation | None] = None
+    _analysis_session: AnalysisSession | None = None
+
+    def prepare_session(self, session: AnalysisSession) -> None:
+        self._analysis_session = session
 
     @abstractmethod
     def check(self, path: Path, source: str) -> list[Diagnostic]:

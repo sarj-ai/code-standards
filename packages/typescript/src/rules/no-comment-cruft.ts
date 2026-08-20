@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-comment-cruft — commented-out code, section banners and file-header preambles are volume the reader pays for and nothing maintains.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-comment-cruft.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-comment-cruft.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

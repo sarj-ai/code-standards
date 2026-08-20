@@ -365,7 +365,7 @@ def _missing_eslint_issue(project: Path, root: Path) -> ExecutionIssue | None:
     relative = project.resolve().relative_to(repository).as_posix() or "."
     message = (
         f"ESLint is not installed locally for {relative}; node_modules/.bin/eslint is missing. "
-        "Run the repository's locked package install or rerun `sarj-standards setup`, then retry."
+        "Run the repository's locked package install or rerun `code-standards setup`, then retry."
     )
     return ExecutionIssue("eslint", "missing-dependency", message)
 
@@ -606,7 +606,7 @@ def _missing_local_binary_issue(name: str, project: Path, root: Path) -> Executi
     relative = project.relative_to(repository).as_posix() or "."
     message = (
         f"{name} is not installed locally for {relative}; node_modules/.bin/{name} is missing. "
-        "Run the repository's locked package install or rerun `sarj-standards setup`, then retry."
+        "Run the repository's locked package install or rerun `code-standards setup`, then retry."
     )
     return ExecutionIssue(name, "missing-dependency", message)
 

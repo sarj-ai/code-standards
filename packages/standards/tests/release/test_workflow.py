@@ -112,7 +112,7 @@ def _run_release_tag_preflight(
         "GH_TOKEN": "test-token",
         "TARGET_SHA": "a" * 40,
         "GITHUB_API_URL": "https://api.github.invalid",
-        "GITHUB_REPOSITORY": "sarj-ai/standards",
+        "GITHUB_REPOSITORY": "sarj-ai/code-standards",
     }
     result = subprocess.run(
         ["bash", "-euo", "pipefail", "-c", _release_tag_preflight_script()],

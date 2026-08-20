@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-hand-rolled-spinner — border-ring loading indicators should use the design-system spinner.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-spinner.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-spinner.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "15.12.0",
+  "version": "15.12.1",
   "packageManager": "npm@12.0.2",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -25,12 +25,12 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sarj-ai/standards.git",
+    "url": "git+https://github.com/sarj-ai/code-standards.git",
     "directory": "packages/typescript"
   },
   "homepage": "https://code-standards.sarj.ai/rules/eslint/",
   "bugs": {
-    "url": "https://github.com/sarj-ai/standards/issues"
+    "url": "https://github.com/sarj-ai/code-standards/issues"
   },
   "scripts": {
     "build": "tsup",

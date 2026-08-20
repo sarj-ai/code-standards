@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-positional-tuple-return — a positional tuple return names its fields only at the call site, so call sites disagree.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-positional-tuple-return.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-positional-tuple-return.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

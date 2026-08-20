@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._first_party import (
+    FirstPartyFacts,
     has_first_party_source,
     is_first_party_module,
     own_top_package,
@@ -84,11 +85,12 @@ class NoFirstPartyPrivateImport(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        own_top = own_top_package(path)
+        facts = self._analysis_session.first_party if self._analysis_session is not None else FirstPartyFacts()
+        own_top = own_top_package(path, facts=facts)
         diags = [
             Diagnostic(path=path, line=hit.line, col=hit.col, code=self.code, message=_message(hit.module, hit.name))
             for hit in _private_imports(tree)
-            if _is_ours(hit.module, path, own_top) and not _is_our_own_internals(hit, path)
+            if _is_ours(hit.module, path, own_top, facts) and not _is_our_own_internals(hit, path, facts)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -106,12 +108,12 @@ class _PrivateImport:
     names_public: bool
 
 
-def _is_our_own_internals(hit: _PrivateImport, path: Path) -> bool:
+def _is_our_own_internals(hit: _PrivateImport, path: Path, facts: FirstPartyFacts) -> bool:
     if not hit.is_segment:
         return False
-    if not has_first_party_source(hit.module, path):
+    if not has_first_party_source(hit.module, path, facts=facts):
         return True
-    return hit.names_public and same_distribution(hit.module, path)
+    return hit.names_public and same_distribution(hit.module, path, facts=facts)
 
 
 def _message(module: str, name: str) -> str:
@@ -122,11 +124,11 @@ def _message(module: str, name: str) -> str:
     )
 
 
-def _is_ours(module: str, path: Path, own_top: str | None) -> bool:
+def _is_ours(module: str, path: Path, own_top: str | None, facts: FirstPartyFacts) -> bool:
     top = module.partition(".")[0]
     if own_top is not None and top == own_top:
         return False
-    return is_first_party_module(module, path)
+    return is_first_party_module(module, path, facts=facts)
 
 
 def _private_imports(tree: ast.Module) -> list[_PrivateImport]:

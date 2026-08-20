@@ -566,7 +566,7 @@ def test_file_conventions_reject_drifted_managed_root_config(tmp_path: Path) -> 
     assert [(finding.where, finding.message) for finding in findings] == [
         (
             ".ruff-strict.toml",
-            "generated config drifted from configs/ruff.strict.toml; run `sarj-standards setup`",
+            "generated config drifted from configs/ruff.strict.toml; run `code-standards setup`",
         )
     ]
 

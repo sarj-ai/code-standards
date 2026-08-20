@@ -35,9 +35,9 @@ running or reporting a corpus evaluation.
    strict config, ledger entry, tests, docs, and owning package version. Keep a
    new judgment-heavy rule at warning severity. From the Standards repository,
    stage its lifecycle and synchronize all derived rule artifacts with:
-   `sarj-standards --root . maintain rules stage-warning ENGINE:RULE-ID`.
+   `code-standards --root . maintain rules stage-warning ENGINE:RULE-ID`.
 6. Run focused tests, Ruff/ESLint, type checking, package tests, and the
-   repository's own `sarj-standards check`. Fix contradictions and diagnostic
+   repository's own `code-standards check`. Fix contradictions and diagnostic
    thrashing rather than adding broad suppressions.
 7. Evaluate against pinned, already-local corpora under the protocol. Inspect
    every match when feasible; otherwise use a deterministic unbiased sample and
@@ -53,7 +53,7 @@ running or reporting a corpus evaluation.
     interactions, timings, limitations, and promotion recommendation.
 
 Before opening the PR, run
-`sarj-standards --root . maintain rules changes --before origin/main --after HEAD`
+`code-standards --root . maintain rules changes --before origin/main --after HEAD`
 and `make verify`. Do not manually clone or modify consumer repositories during
 rule authoring; downstream propagation starts only after publication through
 the rollout controller.

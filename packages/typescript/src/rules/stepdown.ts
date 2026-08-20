@@ -1,7 +1,7 @@
 /**
  * @fileoverview stepdown — a private helper with one direct same-scope caller belongs below that caller.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/stepdown.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/stepdown.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

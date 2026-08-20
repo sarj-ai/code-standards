@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
-from functools import lru_cache
+from dataclasses import dataclass, field
 import os
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
@@ -19,12 +18,14 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
-from sarj_python_lint.rules._first_party import distribution_root
+from sarj_python_lint.rules._first_party import FirstPartyFacts, distribution_root
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from sarj_python_lint._analysis_session import AnalysisSession
 
 
 _MIGRATION_PARTS = frozenset({"alembic", "migration", "migrations", "versions"})
@@ -73,8 +74,16 @@ class _CanonicalSymbol(NamedTuple):
     symbol: str
 
 
+@dataclass(slots=True)
+class _ConstructorFacts:
+    modules: dict[Path, ast.Module] = field(default_factory=dict)
+    composition_calls: dict[tuple[Path, str, str], bool] = field(default_factory=dict)
+    canonical_symbols: dict[tuple[Path, str, str], _CanonicalSymbol] = field(default_factory=dict)
+
+
 @final
 class NoHiddenConstructorFallback(Rule):
+    _constructor_facts: _ConstructorFacts | None = None
     id = "no-hidden-constructor-fallback"
     code = "SARJ095"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
@@ -145,6 +154,11 @@ class NoHiddenConstructorFallback(Rule):
     description = documentation.summary
 
     @override
+    def prepare_session(self, session: AnalysisSession) -> None:
+        super().prepare_session(session)
+        self._constructor_facts = _ConstructorFacts()
+
+    @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if (
             is_test_path(path)
@@ -156,7 +170,11 @@ class NoHiddenConstructorFallback(Rule):
         if tree is None:
             return []
 
-        resolver = _RuntimeConfigResolver(path, tree)
+        first_party = self._analysis_session.first_party if self._analysis_session is not None else FirstPartyFacts()
+        facts = self._constructor_facts if self._analysis_session is not None else _ConstructorFacts()
+        if facts is None:
+            facts = _ConstructorFacts()
+        resolver = _RuntimeConfigResolver(path, tree, first_party, facts)
         diagnostics: list[Diagnostic] = []
         for class_node in nodes(tree, ast.ClassDef):
             init = next(
@@ -170,7 +188,7 @@ class NoHiddenConstructorFallback(Rule):
             if init is None or _is_descriptor(init):
                 continue
             hidden = _hidden_parameters(init, resolver)
-            if not hidden or not _has_composition_call(path, class_node.name):
+            if not hidden or not _has_composition_call(path, class_node.name, first_party, facts):
                 continue
             names = ", ".join(f"`{match.parameter.arg}`" for match in hidden)
             noun = "parameter" if len(hidden) == 1 else "parameters"
@@ -343,10 +361,17 @@ def _is_name(expression: ast.expr, name: str) -> bool:
 
 @final
 class _RuntimeConfigResolver:
-    def __init__(self, path: Path, tree: ast.Module) -> None:
+    def __init__(
+        self,
+        path: Path,
+        tree: ast.Module,
+        first_party: FirstPartyFacts,
+        facts: _ConstructorFacts,
+    ) -> None:
         self._path = path
         self._tree = tree
-        self._root = distribution_root(path)
+        self._facts = facts
+        self._root = distribution_root(path, facts=first_party)
         self._module = _module_name(path, self._root)
         self._imports = _imports(tree, self._module, is_package=path.name == "__init__.py")
         self._settings_cache: dict[tuple[str, str], bool] = {}
@@ -454,7 +479,7 @@ class _RuntimeConfigResolver:
         path = _module_path(module, self._root)
         if path is None:
             return None
-        return _LoadedModule(_read_module(path), path)
+        return _LoadedModule(_read_module(path, self._facts), path)
 
 
 def _imports(tree: ast.Module, current_module: str | None, *, is_package: bool = False) -> dict[str, _Binding]:
@@ -582,12 +607,16 @@ def _module_path(module: str, root: Path | None) -> Path | None:
     return next((candidate for candidate in candidates if candidate.is_file()), None)
 
 
-@lru_cache(maxsize=4096)
-def _read_module(path: Path) -> ast.Module:
+def _read_module(path: Path, facts: _ConstructorFacts) -> ast.Module:
+    cached = facts.modules.get(path)
+    if cached is not None:
+        return cached
     try:
-        return ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
     except OSError, SyntaxError:
-        return ast.Module(body=[], type_ignores=[])
+        tree = ast.Module(body=[], type_ignores=[])
+    facts.modules[path] = tree
+    return tree
 
 
 def _tail(expression: ast.expr) -> str | None:
@@ -595,16 +624,39 @@ def _tail(expression: ast.expr) -> str | None:
     return parts[-1] if parts else None
 
 
-def _has_composition_call(path: Path, class_name: str) -> bool:
-    root = distribution_root(path)
+def _has_composition_call(
+    path: Path,
+    class_name: str,
+    first_party: FirstPartyFacts,
+    facts: _ConstructorFacts,
+) -> bool:
+    root = distribution_root(path, facts=first_party)
     module = _module_name(path, root)
     if root is None or module is None:
         return False
-    return _distribution_calls_class(root, module, class_name)
+    return _distribution_calls_class(root, module, class_name, facts)
 
 
-@lru_cache(maxsize=1024)
-def _distribution_calls_class(root: Path, target_module: str, class_name: str) -> bool:
+def _distribution_calls_class(
+    root: Path,
+    target_module: str,
+    class_name: str,
+    facts: _ConstructorFacts,
+) -> bool:
+    key = (root, target_module, class_name)
+    if key in facts.composition_calls:
+        return facts.composition_calls[key]
+    result = _distribution_calls_class_uncached(root, target_module, class_name, facts)
+    facts.composition_calls[key] = result
+    return result
+
+
+def _distribution_calls_class_uncached(
+    root: Path,
+    target_module: str,
+    class_name: str,
+    facts: _ConstructorFacts,
+) -> bool:
     skip_directories = _SCAN_SKIP_PARTS | _MIGRATION_PARTS | {"test", "tests"}
     for directory, directory_names, file_names in os.walk(root):
         directory_names[:] = [name for name in directory_names if name.lower() not in skip_directories]
@@ -641,15 +693,25 @@ def _distribution_calls_class(root: Path, target_module: str, class_name: str) -
                     continue
                 if called_symbol != class_name:
                     continue
-                canonical = _canonical_symbol(root, called_module, called_symbol)
+                canonical = _canonical_symbol(root, called_module, called_symbol, facts)
                 if canonical == _CanonicalSymbol(target_module, class_name):
                     return True
     return False
 
 
-@lru_cache(maxsize=4096)
-def _canonical_symbol(root: Path, module: str, symbol: str) -> _CanonicalSymbol:
-    return _canonical_symbol_inner(root, module, symbol, frozenset())
+def _canonical_symbol(
+    root: Path,
+    module: str,
+    symbol: str,
+    facts: _ConstructorFacts,
+) -> _CanonicalSymbol:
+    key = (root, module, symbol)
+    cached = facts.canonical_symbols.get(key)
+    if cached is not None:
+        return cached
+    canonical = _canonical_symbol_inner(root, module, symbol, frozenset(), facts)
+    facts.canonical_symbols[key] = canonical
+    return canonical
 
 
 def _canonical_symbol_inner(
@@ -657,6 +719,7 @@ def _canonical_symbol_inner(
     module: str,
     symbol: str,
     seen: frozenset[tuple[str, str]],
+    facts: _ConstructorFacts,
 ) -> _CanonicalSymbol:
     key = (module, symbol)
     if key in seen:
@@ -664,10 +727,10 @@ def _canonical_symbol_inner(
     path = _module_path(module, root)
     if path is None:
         return _CanonicalSymbol(module, symbol)
-    binding = _imports(_read_module(path), module, is_package=path.name == "__init__.py").get(symbol)
+    binding = _imports(_read_module(path, facts), module, is_package=path.name == "__init__.py").get(symbol)
     if binding is None or binding.symbol is None:
         return _CanonicalSymbol(module, symbol)
-    return _canonical_symbol_inner(root, binding.module, binding.symbol, seen | {key})
+    return _canonical_symbol_inner(root, binding.module, binding.symbol, seen | {key}, facts)
 
 
 def _calls_with_shadowing(

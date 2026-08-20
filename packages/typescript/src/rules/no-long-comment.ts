@@ -1,6 +1,6 @@
 /**
  * @fileoverview no-long-comment — catch only unusually large, unstructured JSDoc blocks.
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-long-comment.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-long-comment.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";

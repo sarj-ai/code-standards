@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-duplicate-lifecycle-refresh-listeners — tab activation must not refresh the same route twice.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-duplicate-lifecycle-refresh-listeners.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-duplicate-lifecycle-refresh-listeners.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

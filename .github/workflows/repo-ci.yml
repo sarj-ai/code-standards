@@ -44,20 +44,20 @@ jobs:
         env:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: uv run --project packages/standards --frozen sarj-standards --root . maintain release causality --before "$BEFORE" --after "$AFTER"
+        run: uv run --project packages/standards --frozen code-standards --root . maintain release causality --before "$BEFORE" --after "$AFTER"
       - name: New custom rules start warning-only
         env:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          changes="$(uv run --project packages/standards --frozen sarj-standards --root . \
+          changes="$(uv run --project packages/standards --frozen code-standards --root . \
             maintain rules changes --before "$BEFORE" --after "$AFTER" --format json)"
           invalid="$(jq -r '.changes[] | select(.kind == "added" and .after.defaultLevel != "warning") | .key' <<< "$changes")"
           if [[ -n "$invalid" ]]; then
             echo "::error::new judgment rules must enter the fleet at warning level"
             while IFS= read -r selector; do
-              echo "Run: uv run --project packages/standards sarj-standards --root . maintain rules stage-warning $selector"
+              echo "Run: uv run --project packages/standards code-standards --root . maintain rules stage-warning $selector"
             done <<< "$invalid"
             exit 1
           fi

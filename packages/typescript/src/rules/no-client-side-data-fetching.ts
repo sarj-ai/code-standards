@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-client-side-data-fetching — fetching in `useEffect` is a render -> effect -> fetch -> re-render waterfall with no server cache.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-client-side-data-fetching.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-client-side-data-fetching.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

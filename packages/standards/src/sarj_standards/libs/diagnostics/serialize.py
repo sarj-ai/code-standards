@@ -23,8 +23,8 @@ def to_sarif(report: AnalysisReport) -> str:
             {
                 "tool": {
                     "driver": {
-                        "name": "sarj-standards",
-                        "informationUri": "https://github.com/sarj-ai/standards",
+                        "name": "code-standards",
+                        "informationUri": "https://github.com/sarj-ai/code-standards",
                         "rules": rules,
                     }
                 },
@@ -96,7 +96,7 @@ def to_github(report: AnalysisReport, *, max_annotations_per_level: int = _GITHU
     )
     if omitted:
         lines.append(
-            f"sarj-standards: {omitted} annotation(s) omitted by GitHub's per-level limits; "
+            f"code-standards: {omitted} annotation(s) omitted by GitHub's per-level limits; "
             "use JSON or SARIF for the complete report"
         )
     lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
@@ -170,13 +170,13 @@ def _summary(report: AnalysisReport) -> str:
         for diagnostic in tool.diagnostics:
             counts[diagnostic.severity] += 1
     return (
-        f"sarj-standards: {counts[Severity.ERROR]} error(s), {counts[Severity.WARNING]} warning(s), "
+        f"code-standards: {counts[Severity.ERROR]} error(s), {counts[Severity.WARNING]} warning(s), "
         f"{counts[Severity.INFO]} notice(s), {len(report.issues)} execution issue(s)"
     )
 
 
 def _coverage_line(source: str, reason: str, file_count: int) -> str:
-    return f"sarj-standards coverage: {source} did not analyze {file_count} selected file(s): {reason}"
+    return f"code-standards coverage: {source} did not analyze {file_count} selected file(s): {reason}"
 
 
 def _sarif_rules(report: AnalysisReport) -> list[dict[str, object]]:

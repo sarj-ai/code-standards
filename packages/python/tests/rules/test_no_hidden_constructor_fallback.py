@@ -477,6 +477,28 @@ class RareGenerator:
     assert parse_calls < 10
 
 
+def test_a_new_analysis_observes_a_new_project_composition_call(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    service.write_text(service.read_text().replace("\ngenerator = Generator(model='explicit')\n", "\n"))
+    source = service.read_text()
+
+    assert _check(source, service) == []
+
+    (service.parent / "composition.py").write_text(
+        "from app.service import Generator\ngenerator = Generator(model='explicit')\n"
+    )
+
+    assert len(_check(source, service)) == 1
+
+
 def test_last_duplicate_constructor_definition_wins(tmp_path: Path) -> None:
     service = _settings_project(
         tmp_path,

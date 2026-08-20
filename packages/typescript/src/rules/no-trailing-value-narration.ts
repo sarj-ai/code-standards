@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-trailing-value-narration — a trailing comment restating the literal beside it drifts the moment someone edits the arithmetic.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-trailing-value-narration.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-trailing-value-narration.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

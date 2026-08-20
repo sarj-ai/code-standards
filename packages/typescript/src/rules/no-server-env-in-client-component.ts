@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-server-env-in-client-component — client bundles cannot read server-only settings.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-server-env-in-client-component.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-server-env-in-client-component.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

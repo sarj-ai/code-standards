@@ -51,4 +51,4 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - name: Pack and verify the publishable artifact
-        run: uv run --project ../standards --frozen sarj-standards --root ../.. maintain release typescript pack --output "$RUNNER_TEMP/npm-artifacts"
+        run: uv run --project ../standards --frozen code-standards --root ../.. maintain release typescript pack --output "$RUNNER_TEMP/npm-artifacts"

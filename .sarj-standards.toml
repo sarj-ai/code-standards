@@ -1,5 +1,5 @@
 schema = 3
-bundle = "6.6.1"
+bundle = "7.0.0"
 rule_profile = "all"
 
 profile = "standard"
@@ -118,7 +118,7 @@ bootstrap = ["packages/bootstrap/pyproject.toml"]
 python = ["pyproject.toml", "packages/python/pyproject.toml"]
 sql = ["packages/sql/pyproject.toml"]
 iac = ["packages/iac/pyproject.toml"]
-standards = ["packages/standards/pyproject.toml"]
+standards = ["packages/standards/pyproject.toml", "packages/standards-compat/pyproject.toml"]
 typescript = ["packages/typescript/package.json"]
 tsconfig = ["packages/tsconfig/package.json"]
 docs-ui = ["packages/docs-ui/package.json"]
@@ -163,7 +163,13 @@ selector = "sarj-iac-lint"
 path = "packages/standards/uv.lock"
 format = "uv-lock"
 version = "standards"
-selector = "sarj-standards"
+selector = "code-standards"
+
+[[repository.version_references]]
+path = "packages/standards-compat/pyproject.toml"
+format = "exact-pin"
+version = "standards"
+selector = "code-standards"
 
 [[repository.version_references]]
 path = "packages/standards/pyproject.toml"
@@ -226,6 +232,7 @@ manifests = [
   "packages/sql/pyproject.toml",
   "packages/iac/pyproject.toml",
   "packages/standards/pyproject.toml",
+  "packages/standards-compat/pyproject.toml",
   "packages/docs-ui/package.json",
   "packages/tsconfig/package.json",
   "packages/typescript/package.json",

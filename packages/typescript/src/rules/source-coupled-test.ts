@@ -1,7 +1,7 @@
 /**
  * @fileoverview source-coupled-test — raw repository source text is not a behavioral oracle.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/source-coupled-test.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/source-coupled-test.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

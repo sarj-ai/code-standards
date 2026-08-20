@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-restricted-library-load — literal runtime module loads must obey the same library policy as static imports.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-restricted-library-load.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-restricted-library-load.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";

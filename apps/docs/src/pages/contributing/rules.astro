@@ -3,10 +3,10 @@ import ReferencePage from '../../components/ReferencePage.astro';
 import { Code } from '@astrojs/starlight/components';
 
 const prepare = [
-  "sarj-standards --root . maintain rules new python:no-example-rule --category correctness --summary 'Describe the rule claim'",
-  "sarj-standards --root . maintain rules new python:no-example-rule --category correctness --summary 'Describe the rule claim' --apply",
-  'sarj-standards --root . maintain rules prepare python:no-example-rule',
-  'sarj-standards --root . maintain rules changes --before origin/main --after HEAD',
+  "code-standards --root . maintain rules new python:no-example-rule --category correctness --summary 'Describe the rule claim'",
+  "code-standards --root . maintain rules new python:no-example-rule --category correctness --summary 'Describe the rule claim' --apply",
+  'code-standards --root . maintain rules prepare python:no-example-rule',
+  'code-standards --root . maintain rules changes --before origin/main --after HEAD',
   'make verify',
 ].join('\n');
 ---

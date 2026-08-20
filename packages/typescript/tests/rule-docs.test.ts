@@ -95,7 +95,7 @@ function commentLines(source: string): { line: number; text: string }[] {
 
 describe("the executable-example links are derived, not typed", () => {
   it("links to this repository's main branch", () => {
-    expect(REPO_BLOB).toBe("https://github.com/sarj-ai/standards/blob/main");
+    expect(REPO_BLOB).toBe("https://github.com/sarj-ai/code-standards/blob/main");
   });
 
   it("keeps executable examples in the rule test directory", () => {

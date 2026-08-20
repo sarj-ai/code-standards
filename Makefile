@@ -3,7 +3,7 @@ SHELL := bash
 MAKEFLAGS += --warn-undefined-variables --no-builtin-rules
 
 CONFIG_SRC := packages/standards/src/sarj_standards/configs
-STANDARDS := uv run --project packages/standards --frozen sarj-standards
+STANDARDS := uv run --project packages/standards --frozen code-standards
 ROLLOUT := uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout
 VERSION ?=
 REGISTRY ?= .sarj-standards-rollout.toml
@@ -57,6 +57,7 @@ build:
 	cd packages/sql            && uv build
 	cd packages/iac            && uv build
 	cd packages/standards   && uv build
+	cd packages/standards-compat && uv build
 
 test: check-versions-synced
 	cd packages/typescript     && npm test
@@ -65,7 +66,7 @@ test: check-versions-synced
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
 	# Sibling wheels are built and installed alongside, mirroring standards-ci.yml.
-	# `sarj-standards` pins its siblings exactly, so resolving them from PyPI fails
+	# `code-standards` pins its siblings exactly, so resolving them from PyPI fails
 	# for the whole window between bumping a pin and publishing that version -- which
 	# is exactly when this target most needs to run. Building them locally keeps
 	# `make test` usable on a version-bump branch.
@@ -75,7 +76,7 @@ test: check-versions-synced
 	  && uv build --wheel --project ../sql    --out-dir dist/deps >/dev/null \
 	  && uv build --wheel --project ../iac    --out-dir dist/deps >/dev/null \
 	  && uv venv --quiet --clear dist/test-venv \
-	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 'jsonschema>=4.26,<5' ./dist/deps/*.whl ./dist/sarj_standards-*.whl \
+	  && uv pip install --quiet --python dist/test-venv/bin/python pytest==9.1.1 'jsonschema>=4.26,<5' ./dist/deps/*.whl ./dist/code_standards-*.whl \
 	  && dist/test-venv/bin/python -m pytest -q tests/
 	cd packages/tsconfig       && node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))" && node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
 
@@ -90,7 +91,7 @@ lint:
 	# `standards-ci.yml` runs the custom SARJ rules over this package and
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
-	uv run --project packages/standards --frozen sarj-standards --root . check \
+	uv run --project packages/standards --frozen code-standards --root . check \
 	  packages/standards/src packages/standards/tests
 
 # Run every shipped custom rule over maintained implementation and test source.

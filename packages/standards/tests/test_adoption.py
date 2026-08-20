@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.3 sarj-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards"
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -378,7 +378,7 @@ def test_fix_rejects_an_unadopted_repository_with_setup_guidance(tmp_path: Path)
 
     assert proc.returncode == 2
     assert not proc.stdout
-    assert "sarj-standards setup" in proc.stderr
+    assert "code-standards setup" in proc.stderr
 
 
 def test_check_preserves_invalid_configuration_exit_status(tmp_path: Path) -> None:
@@ -1384,7 +1384,7 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
         # Run the CLI the hook names, through the interpreter the tests already
         # use, so this exercises the generated command shape without needing a
         # network fetch or a uv-managed virtualenv inside tmp_path.
-        subcommand = entry.rsplit(" sarj-standards ", 1)[1].split()
+        subcommand = entry.rsplit(" code-standards ", 1)[1].split()
         if not pass_filenames_false:
             subcommand.append("src/app.py")
         proc = _cli(*subcommand, cwd=tmp_path)
@@ -1462,7 +1462,7 @@ def test_doctor_warns_when_selected_lefthook_is_not_installed(tmp_path: Path) ->
 
     assert len(warnings) == 1
     assert warnings[0].level is doctor.Level.WARN
-    assert warnings[0].remediation == "run `sarj-standards maintain hooks install`"
+    assert warnings[0].remediation == "run `code-standards maintain hooks install`"
 
 
 @pytest.mark.parametrize(
@@ -1875,7 +1875,7 @@ def test_doctor_explains_source_controlled_config_drift(tmp_path: Path) -> None:
     assert "update or rebase the Standards source checkout" in proc.stdout
 
 
-def test_doctor_migrates_the_exact_legacy_in_project_bundle(tmp_path: Path) -> None:
+def test_doctor_migrates_the_exact_in_project_bundle(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     _add_python_bundle_pins(tmp_path)
@@ -1884,7 +1884,7 @@ def test_doctor_migrates_the_exact_legacy_in_project_bundle(tmp_path: Path) -> N
 
     assert proc.returncode == 1, proc.stdout
     assert "doctor.python.legacy-in-project-tool" in proc.stdout
-    assert "uv remove --dev sarj-standards" in proc.stdout
+    assert "uv remove --dev code-standards" in proc.stdout
 
 
 def test_doctor_accepts_exact_local_bundle_projects_for_source_workspace(tmp_path: Path) -> None:
@@ -1927,7 +1927,7 @@ def test_doctor_rejects_non_exact_python_bundle_range(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     versions = manifest.installed_versions()
-    bundle = ", ".join(f'"{name}{">=" if name == "sarj-standards" else "=="}{pin}"' for name, pin in versions.items())
+    bundle = ", ".join(f'"{name}{">=" if name == "code-standards" else "=="}{pin}"' for name, pin in versions.items())
     with (tmp_path / "pyproject.toml").open("a", encoding="utf-8") as handle:
         _ = handle.write(f"\n[dependency-groups]\ndev = [{bundle}]\n")
 
@@ -2198,9 +2198,9 @@ def test_doctor_warns_when_no_manifest_exists(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "doctor")
     assert proc.returncode == 1, "an unadopted repo requires an actionable init"
-    assert "run `sarj-standards setup`" in proc.stdout
-    assert "fix: run `sarj-standards setup`" in proc.stdout
-    assert "fix: run `sarj-standards update`" not in proc.stdout
+    assert "run `code-standards setup`" in proc.stdout
+    assert "fix: run `code-standards setup`" in proc.stdout
+    assert "fix: run `code-standards update`" not in proc.stdout
 
 
 def test_doctor_reports_manifest_version_drift(tmp_path: Path) -> None:
@@ -2230,7 +2230,7 @@ def test_doctor_json_has_a_stable_schema_and_actionable_ids(tmp_path: Path) -> N
     findings = manifest.list_field(payload, "findings")
     first = manifest.as_table(findings[0])
     assert first["id"] == "doctor.manifest.absent"
-    assert first["remediation"] == "run `sarj-standards setup`"
+    assert first["remediation"] == "run `code-standards setup`"
 
 
 def test_doctor_reports_a_malformed_manifest_without_a_traceback(tmp_path: Path) -> None:

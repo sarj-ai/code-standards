@@ -5,7 +5,7 @@ description: Shared read-only discovery, review, and reporting protocol for ever
 
 # Audit protocol
 
-Every audit command follows this read-only workflow unless the user separately requests implementation. Domain commands contain only judgment checks. Deterministic checks are centralized in `sarj-standards`; do not duplicate their findings in an audit report.
+Every audit command follows this read-only workflow unless the user separately requests implementation. Domain commands contain only judgment checks. Deterministic checks are centralized in `code-standards`; do not duplicate their findings in an audit report.
 
 ## Discover
 

@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-zod-native-enum — `z.nativeEnum` exists to wrap a TypeScript `enum`, which `no-enum` already bans.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-zod-native-enum.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-zod-native-enum.test.ts
  */
 
 import {

@@ -29,7 +29,7 @@ _MAX_JOB_DEPTH: Final = 64
 _REPO_LINE: Final = re.compile(r"^(?P<indent> *)-\s+repo:\s*(?P<value>[^\r\n]+)(?:\r?\n)?$")
 _OFFICIAL_STANDARDS_REPO: Final = re.compile(
     r"(?i)(?:https?://github\.com/|ssh://git@github\.com/|git@github\.com:)"
-    r"sarj-ai/standards(?:\.git)?/?"
+    r"sarj-ai/(?:code-)?standards(?:\.git)?/?"
 )
 
 
@@ -349,7 +349,7 @@ def _runs_staged_check(value: object) -> bool:
 def _canonical_lefthook_command(root: Path | None = None) -> str:
     if root is not None and (root / "packages" / "standards" / "pyproject.toml").is_file():
         return (
-            "uv run --project packages/standards --frozen sarj-standards check --staged "
+            "uv run --project packages/standards --frozen code-standards check --staged "
             "--trust-repository-code -- {staged_files}"
         )
     return f"{launcher.repository_command()} check --staged --trust-repository-code -- {{staged_files}}"

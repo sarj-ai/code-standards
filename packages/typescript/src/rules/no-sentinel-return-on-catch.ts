@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-sentinel-return-on-catch — a `catch` returning `null` / `[]` / `{}` discards the error, so callers cannot tell empty from failed.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-sentinel-return-on-catch.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-sentinel-return-on-catch.test.ts
  */
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";

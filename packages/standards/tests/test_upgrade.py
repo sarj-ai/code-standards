@@ -13,7 +13,7 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold, transaction, upgrade
 
 
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.3 sarj-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards"
 
 
 class _LaterWriteError(OSError):
@@ -148,23 +148,23 @@ def test_upgrade_plan_normalizes_a_repository_alias(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("suffix", ["+corp", "_rc1"])
 def test_pin_rewrite_does_not_accept_a_version_suffix_as_the_installed_release(suffix: str) -> None:
-    current = manifest.installed_versions()["sarj-standards"]
+    current = manifest.installed_versions()["code-standards"]
     text = f"sarj-standards=={current}{suffix}\n"
 
     rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": current})
 
-    assert rewritten.contents == f"sarj-standards=={current}\n"
-    assert rewritten.packages == ("sarj-standards",)
+    assert rewritten.contents == f"code-standards=={current}\n"
+    assert rewritten.packages == ("code-standards",)
 
 
 def test_pin_rewrite_isolates_custom_uvx_launcher_from_consumer_config() -> None:
-    current = manifest.installed_versions()["sarj-standards"]
+    current = manifest.installed_versions()["code-standards"]
     text = f"run: uvx --isolated --python 3.14 --from sarj-standards=={current} sarj-standards check\n"
 
     rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": current})
 
     assert rewritten.contents == f"run: {BOOTSTRAP_COMMAND} check\n"
-    assert rewritten.packages == ("sarj-standards",)
+    assert rewritten.packages == ("code-standards",)
 
 
 def test_pin_rewrite_migrates_a_multiline_shell_launcher() -> None:
@@ -179,7 +179,7 @@ def test_pin_rewrite_migrates_a_multiline_shell_launcher() -> None:
         f"          {BOOTSTRAP_COMMAND}"
         ' check --staged --trust-repository-code --format github -- "${changed_files[@]}"\n'
     )
-    assert rewritten.packages == ("sarj-standards",)
+    assert rewritten.packages == ("code-standards",)
 
 
 def test_pin_rewrite_migrates_repository_owned_launcher_expectation() -> None:
@@ -188,7 +188,7 @@ def test_pin_rewrite_migrates_repository_owned_launcher_expectation() -> None:
     rewritten = doctor.rewrite_version_pins(text, {"sarj-standards": "6.0.1"})
 
     assert rewritten.contents == (f'required = (\n    "{BOOTSTRAP_COMMAND} check",\n)\n')
-    assert rewritten.packages == ("sarj-standards",)
+    assert rewritten.packages == ("code-standards",)
 
 
 def test_upgrade_migrates_legacy_generated_ci_hooks_and_scripts_to_one_launcher(tmp_path: Path) -> None:
@@ -519,8 +519,8 @@ def test_upgrade_migrates_python_argv_launcher_in_scripts(tmp_path: Path) -> Non
     [updated] = [update.contents for update in updates if update.path == script]
     assert '    "uvx",\n' in updated
     assert '    "--from",\n' in updated
-    assert '    "sarj-standards-bootstrap==1.0.3",\n' in updated
-    assert '    "sarj-standards",\n' in updated
+    assert '    "sarj-standards-bootstrap==2.0.0",\n' in updated
+    assert '    "code-standards",\n' in updated
     assert '    "check",\n' in updated
     assert "sarj-standards==" not in updated
 
@@ -789,7 +789,7 @@ def test_update_check_explains_the_safe_legacy_migration(tmp_path: Path, capsys:
 
     error = capsys.readouterr().err
     assert status == 2
-    assert "sarj-standards doctor --repair --no-install" in error
+    assert "code-standards doctor --repair --no-install" in error
 
 
 @pytest.mark.parametrize("check", [False, True])
@@ -841,7 +841,7 @@ def test_upgrade_no_install_explains_incomplete_setup_and_next_command(
     assert "setup is incomplete" in output
     assert "pending: doctor.python.legacy-in-project-tool" in output
     assert "the isolated launcher owns the tool runtime" in output
-    assert "then `sarj-standards doctor`" in output
+    assert "then `code-standards doctor`" in output
     assert "upgraded:" not in output
 
 
@@ -1175,7 +1175,7 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
 
     plan = upgrade.build_plan(tmp_path)
 
-    assert "refresh sarj-standards version pin" in upgrade.render(plan.changes)
+    assert "refresh code-standards version pin" in upgrade.render(plan.changes)
     status = upgrade.apply(plan, install=False)
     remaining = [finding for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT]
     assert status == 0, remaining

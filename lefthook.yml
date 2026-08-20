@@ -26,7 +26,7 @@ pre-commit:
         drifted from its packaged source. Fix the reported path and retry.
 
     standards:
-      run: uv run --project packages/standards --frozen sarj-standards check --staged --trust-repository-code -- {staged_files}
+      run: uv run --project packages/standards --frozen code-standards check --staged --trust-repository-code -- {staged_files}
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:
@@ -47,7 +47,7 @@ pre-push:
       fail_text: >-
         Standards static verification failed. Fix the reported failures before pushing.
     private-refs-commit-messages:
-      run: if test -f .sarj-private-refs.toml; then uv run --project packages/standards --frozen sarj-standards --root . maintain check --only private-refs --commits "$(git merge-base origin/main HEAD)..HEAD"; else echo "private-reference scan delegated to trusted CI"; fi
+      run: if test -f .sarj-private-refs.toml; then uv run --project packages/standards --frozen code-standards --root . maintain check --only private-refs --commits "$(git merge-base origin/main HEAD)..HEAD"; else echo "private-reference scan delegated to trusted CI"; fi
       fail_text: >-
         A commit message you are pushing names a private repo or client.
         Reword it (git rebase -i, or squash) and push again.

@@ -224,8 +224,8 @@ def test_machine_check_tells_an_unadopted_repository_to_run_setup(
     output = capsys.readouterr()
     assert status == 1
     assert "doctor.manifest.absent" in output.out
-    assert "sarj-standards setup" in output.out
-    assert "sarj-standards update" not in output.out
+    assert "code-standards setup" in output.out
+    assert "code-standards update" not in output.out
 
 
 @pytest.mark.parametrize("output_format", ["json", "sarif", "github"])

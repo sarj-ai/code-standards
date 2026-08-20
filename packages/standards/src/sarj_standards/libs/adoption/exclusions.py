@@ -24,7 +24,7 @@ class Change:
 def read(root: Path) -> manifest.Manifest:
     adopted = manifest.load(root.resolve())
     if adopted is None:
-        msg = "repository is not adopted; run `sarj-standards setup` first"
+        msg = "repository is not adopted; run `code-standards setup` first"
         raise ValueError(msg)
     return adopted
 

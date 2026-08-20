@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-dangerously-allow-svg — unsafe SVG delivery from Next Image can execute active content.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-dangerously-allow-svg.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-dangerously-allow-svg.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

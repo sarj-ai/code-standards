@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-vague-suppression-description — a suppression reason must name the concrete mismatch or invariant, not merely claim the suppression is needed.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-vague-suppression-description.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-vague-suppression-description.test.ts
  */
 
 import { createRule, type RuleDocumentation } from "./_docs.js";

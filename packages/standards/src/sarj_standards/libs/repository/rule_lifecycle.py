@@ -109,7 +109,7 @@ def _unknown_selector_message(selector: RuleSelector, known: set[RuleSelector]) 
     suggestion = get_close_matches(requested, (str(item) for item in known), n=1, cutoff=0.6)
     if suggestion:
         return f"unknown live rule selector: {requested}; did you mean {suggestion[0]}?"
-    return f"unknown live rule selector: {requested}; run `sarj-standards maintain rules manifest` to list selectors"
+    return f"unknown live rule selector: {requested}; run `code-standards maintain rules manifest` to list selectors"
 
 
 def _derived_current(repository: Path) -> bool:

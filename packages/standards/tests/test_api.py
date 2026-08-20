@@ -336,8 +336,8 @@ def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monke
             "3.14",
             "--refresh",
             "--from",
-            "sarj-standards",
-            "sarj-standards",
+            "code-standards",
+            "code-standards",
             "--root",
             str(tmp_path),
             "update",
@@ -363,7 +363,7 @@ def test_standards_facade_update_exposes_exact_offline_target(tmp_path: Path, mo
     result = api.Standards(tmp_path).update(version="5.14.1", offline=True, install=False)
 
     assert result.status is api.Status.CHANGED
-    assert "sarj-standards==5.14.1" in commands[0]
+    assert "code-standards==5.14.1" in commands[0]
     assert "--refresh" not in commands[0]
     assert commands[0][-4:] == ["--offline", "--to", "5.14.1", "--no-install"]
 

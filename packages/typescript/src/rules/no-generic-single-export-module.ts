@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-generic-single-export-module — a generic module name hides the responsibility expressed by its sole runtime export.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-generic-single-export-module.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-generic-single-export-module.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

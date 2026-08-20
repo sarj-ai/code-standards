@@ -33,9 +33,9 @@ class AuthoringPlan:
         lines.extend(
             (
                 f"next: implement the TODOs and register the rule in {registry}",
-                f"then: run the focused test and `sarj-standards maintain rules verify {self.selector}`",
-                f"then: run `sarj-standards maintain rules evaluate --rule {self.selector} --scope corpus`",
-                f"finally: run `sarj-standards maintain rules prepare {self.selector}`",
+                f"then: run the focused test and `code-standards maintain rules verify {self.selector}`",
+                f"then: run `code-standards maintain rules evaluate --rule {self.selector} --scope corpus`",
+                f"finally: run `code-standards maintain rules prepare {self.selector}`",
             )
         )
         return "\n".join(lines)

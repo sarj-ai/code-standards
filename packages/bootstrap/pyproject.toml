@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards-bootstrap"
-version = "1.0.3"
+version = "2.0.0"
 description = "Manifest-driven launcher for an exact Sarj Standards bundle."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -18,14 +18,15 @@ classifiers = [
 dependencies = []
 
 [project.scripts]
+code-standards = "sarj_standards_bootstrap:main"
 sarj-standards = "sarj_standards_bootstrap:main"
 
 [project.urls]
 Homepage = "https://code-standards.sarj.ai/"
 Documentation = "https://code-standards.sarj.ai/cli/"
-Changelog = "https://github.com/sarj-ai/standards/releases"
-Repository = "https://github.com/sarj-ai/standards"
-Issues = "https://github.com/sarj-ai/standards/issues"
+Changelog = "https://github.com/sarj-ai/code-standards/releases"
+Repository = "https://github.com/sarj-ai/code-standards"
+Issues = "https://github.com/sarj-ai/code-standards/issues"
 
 [dependency-groups]
 dev = [

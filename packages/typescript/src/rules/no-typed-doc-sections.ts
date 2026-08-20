@@ -1,6 +1,6 @@
 /**
  * @fileoverview no-typed-doc-sections — typed signatures do not need parameter or return tables.
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-typed-doc-sections.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-typed-doc-sections.test.ts
  */
 
 import { createRule, type RuleDocumentation } from "./_docs.js";

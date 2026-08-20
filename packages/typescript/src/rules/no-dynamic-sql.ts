@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-dynamic-sql — a runtime value interpolated into statement text is SQL injection, and it defeats the prepared-statement cache.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-dynamic-sql.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-dynamic-sql.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

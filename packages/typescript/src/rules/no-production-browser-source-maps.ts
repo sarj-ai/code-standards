@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-production-browser-source-maps — public source maps disclose shipped application source.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-production-browser-source-maps.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-production-browser-source-maps.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

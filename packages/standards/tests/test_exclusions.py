@@ -151,4 +151,4 @@ def test_cli_exposes_one_concise_exclusion_workflow(tmp_path: Path, capsys: pyte
 
 def test_cli_requires_adoption_before_mutating(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--root", str(tmp_path), "exclude", "add", "path", "generated/**"]) == 2
-    assert "run `sarj-standards setup` first" in capsys.readouterr().err
+    assert "run `code-standards setup` first" in capsys.readouterr().err

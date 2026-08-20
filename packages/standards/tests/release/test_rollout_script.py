@@ -327,7 +327,7 @@ class TestStatus:
 
 class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-machine cases share one fake runner
     def test_latest_version_refreshes_the_registry_backed_tool(self) -> None:
-        runner = FakeRunner([(0, "sarj-standards 6.0.5")])
+        runner = FakeRunner([(0, "code-standards 6.0.5")])
 
         assert rollout.latest_version(runner) == "6.0.5"
         assert runner.commands == [
@@ -337,10 +337,10 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 "--python",
                 "3.14",
                 "--refresh-package",
-                "sarj-standards",
+                "code-standards",
                 "--from",
-                "sarj-standards",
-                "sarj-standards",
+                "code-standards",
+                "code-standards",
                 "--version",
             )
         ]
@@ -349,7 +349,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         sha = "a" * 40
         runner = FakeRunner(
             [
-                (0, "sarj-standards 5.8.1"),
+                (0, "code-standards 5.8.1"),
                 (
                     0,
                     f"{'c' * 40}\trefs/tags/standards-v5.8.1\n{sha}\trefs/tags/standards-v5.8.1^{{}}\n",
@@ -358,7 +358,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         )
 
         assert rollout.verify_release("5.8.1", runner) == sha
-        assert "sarj-standards==5.8.1" in runner.commands[0]
+        assert "code-standards==5.8.1" in runner.commands[0]
         assert "--refresh-package" in runner.commands[0]
         assert "refs/tags/standards-v5.8.1^{}" in runner.commands[1]
 
@@ -368,7 +368,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         runner = FakeRunner(
             [
                 (1, ""),
-                (0, "sarj-standards 5.8.1"),
+                (0, "code-standards 5.8.1"),
                 (
                     0,
                     f"{'c' * 40}\trefs/tags/standards-v5.8.1\n{sha}\trefs/tags/standards-v5.8.1^{{}}\n",
@@ -381,7 +381,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         assert runner.commands[0] == runner.commands[1]
 
     def test_release_rejects_version_substring(self) -> None:
-        runner = FakeRunner([(0, "sarj-standards 15.8.10")])
+        runner = FakeRunner([(0, "code-standards 15.8.10")])
 
         with pytest.raises(rollout.RolloutError, match="did not report"):
             rollout.verify_release("5.8.1", runner, sleep=lambda _: None)
@@ -390,7 +390,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         sha = "b" * 40
         registry = rollout.load_registry(registry_path(tmp_path))
         responses: list[tuple[int, str]] = [
-            (0, "sarj-standards 5.8.1"),
+            (0, "code-standards 5.8.1"),
             (
                 0,
                 f"{'c' * 40}\trefs/tags/standards-v5.8.1\n{sha}\trefs/tags/standards-v5.8.1^{{}}\n",

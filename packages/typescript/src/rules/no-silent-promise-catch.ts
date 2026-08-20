@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-silent-promise-catch — a silent `.catch` or second `.then` handler deletes the rejection and returns a sentinel.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

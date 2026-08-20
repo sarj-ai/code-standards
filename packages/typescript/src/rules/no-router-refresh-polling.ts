@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-router-refresh-polling — polling should fetch named data instead of refreshing the whole route.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-router-refresh-polling.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-router-refresh-polling.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

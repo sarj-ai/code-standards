@@ -1,7 +1,7 @@
 /**
  * @fileoverview require-use-server-in-actions-file — route action modules must establish the server boundary.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-use-server-in-actions-file.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-use-server-in-actions-file.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

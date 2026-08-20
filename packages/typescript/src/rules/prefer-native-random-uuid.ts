@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-native-random-uuid — Node 22's native UUID generator makes the dependency unnecessary for UUID v4 calls.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-native-random-uuid.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-native-random-uuid.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

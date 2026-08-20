@@ -10,7 +10,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
-from sarj_python_lint.rules._first_party import project_root
+from sarj_python_lint.rules._first_party import FirstPartyFacts, project_root
 
 
 if TYPE_CHECKING:
@@ -111,8 +111,14 @@ class ProjectIndexSet:
         self._nominals = MappingProxyType({key: frozenset(value) for key, value in nominals.items()})
 
     @classmethod
-    def build(cls, paths: Sequence[Path], loaded: Mapping[Path, str]) -> Self:
-        roots = _project_roots(paths)
+    def build(
+        cls,
+        paths: Sequence[Path],
+        loaded: Mapping[Path, str],
+        *,
+        facts: FirstPartyFacts | None = None,
+    ) -> Self:
+        roots = _project_roots(paths, facts=facts)
         sources: dict[Path, str] = {}
         for path, source in loaded.items():
             try:
@@ -283,11 +289,11 @@ def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
     return ".".join(parts)
 
 
-def _project_roots(paths: Sequence[Path]) -> tuple[Path, ...]:
+def _project_roots(paths: Sequence[Path], *, facts: FirstPartyFacts | None = None) -> tuple[Path, ...]:
     candidates: set[Path] = set()
     for path in paths:
         try:
-            root = project_root(path.resolve())
+            root = project_root(path.resolve(), facts=facts)
         except OSError:
             continue
         if root is not None:

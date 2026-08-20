@@ -318,7 +318,7 @@ def sync(root: Path, parser: argparse.ArgumentParser, *, check: bool) -> Referen
         return ReferenceSyncResult(
             1,
             "drift: cli-reference.v1.json differs from the parser graph; "
-            "run `sarj-standards maintain cli-reference sync`",
+            "run `code-standards maintain cli-reference sync`",
         )
     transaction.atomic_write_text(root.resolve(), destination, expected)
     return ReferenceSyncResult(0, "updated: cli-reference.v1.json")

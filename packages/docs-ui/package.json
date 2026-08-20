@@ -1,6 +1,6 @@
 {
   "name": "@sarj/docs-ui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packageManager": "npm@12.0.2",
   "description": "Shared Astro and Starlight reference UI for Sarj standards sites",
   "type": "module",
@@ -26,12 +26,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sarj-ai/standards.git",
+    "url": "git+https://github.com/sarj-ai/code-standards.git",
     "directory": "packages/docs-ui"
   },
   "homepage": "https://code-standards.sarj.ai/",
   "bugs": {
-    "url": "https://github.com/sarj-ai/standards/issues"
+    "url": "https://github.com/sarj-ai/code-standards/issues"
   },
   "license": "MIT",
   "dependencies": {

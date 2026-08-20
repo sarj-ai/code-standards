@@ -1,7 +1,7 @@
 /**
  * @fileoverview test-phase-label-comment — bare phase labels narrate test structure without adding behavior.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/test-phase-label-comment.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/test-phase-label-comment.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

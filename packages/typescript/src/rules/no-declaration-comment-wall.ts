@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-declaration-comment-wall — an enum body or class body whose member comments mostly re-spell the members is a wall the reader pays for by the block.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-declaration-comment-wall.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-declaration-comment-wall.test.ts
  */
 
 import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";

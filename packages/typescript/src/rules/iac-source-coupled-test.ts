@@ -1,7 +1,7 @@
 /**
  * @fileoverview iac-source-coupled-test — IaC source text is not a behavioral test oracle.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/iac-source-coupled-test.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/iac-source-coupled-test.test.ts
  */
 
 import { type RuleDocumentation } from "./_docs.js";

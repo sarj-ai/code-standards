@@ -540,7 +540,7 @@ def test_text_renderer_keeps_truthful_location_and_summary(tmp_path: Path) -> No
 
     assert to_text(report) == (
         "README.md:3:5: warning TEST005 be concise [fixture]\n"
-        "sarj-standards: 0 error(s), 1 warning(s), 0 notice(s), 0 execution issue(s)\n"
+        "code-standards: 0 error(s), 1 warning(s), 0 notice(s), 0 execution issue(s)\n"
     )
 
 

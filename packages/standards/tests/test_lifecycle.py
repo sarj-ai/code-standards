@@ -92,7 +92,7 @@ def test_fix_routes_to_the_adopted_nested_typescript_destination(
     (web / "package.json").write_text('{"name":"web","private":true}\n', encoding="utf-8")
     (tmp_path / ".sarj-standards.toml").write_text(
         manifest.Manifest(
-            version=distribution_version("sarj-standards"),
+            version=distribution_version("code-standards"),
             configs=("eslint",),
             python_dest=".",
             typescript_dest="apps/web",

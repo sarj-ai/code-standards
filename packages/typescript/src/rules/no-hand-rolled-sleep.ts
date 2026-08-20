@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-hand-rolled-sleep — a hand-rolled promisified timer cannot be cancelled; the stdlib form takes an `AbortSignal`.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
