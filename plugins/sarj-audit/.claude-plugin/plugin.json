@@ -3,6 +3,6 @@
   "description": "Judgment-layer codebase audits that complement deterministic Sarj lint rules",
   "version": "2.2.0",
   "author": { "name": "sarj-ai" },
-  "homepage": "https://github.com/sarj-ai/standards",
-  "repository": "https://github.com/sarj-ai/standards"
+  "homepage": "https://github.com/sarj-ai/code-standards",
+  "repository": "https://github.com/sarj-ai/code-standards"
 }
