@@ -166,7 +166,7 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
     assert release.count("Verify registry bytes and source-bound provenance") == 3
     verifier = (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
-        REPO_ROOT / "scripts/verify_registry_publication.py"
+        REPO_ROOT / ".github/scripts/verify_registry_publication.py"
     ).read_text(encoding="utf-8")
     assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         'entry.get("predicateType") != "https://slsa.dev/provenance/v1"' in verifier

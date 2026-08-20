@@ -236,7 +236,7 @@ jobs:
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
-          python3 scripts/verify_registry_publication.py npm
+          python3 .github/scripts/verify_registry_publication.py npm
           --tarball "$RUNNER_TEMP/npm-artifacts/package.tgz"
           --commit "$EXPECTED_COMMIT" --environment npm-typescript-release
 
@@ -351,7 +351,7 @@ jobs:
           skip-existing: true
       - name: Verify exact PyPI bytes and trusted-publisher attestations
         run: >-
-          python3 scripts/verify_registry_publication.py pypi
+          python3 .github/scripts/verify_registry_publication.py pypi
           --dist verified-dist --project sarj-standards-bootstrap
           --environment pypi-bootstrap-release
 
@@ -458,7 +458,7 @@ jobs:
           skip-existing: true
       - name: Verify exact PyPI bytes and trusted-publisher attestations
         run: >-
-          python3 scripts/verify_registry_publication.py pypi
+          python3 .github/scripts/verify_registry_publication.py pypi
           --dist verified-dist --project sarj-python-lint
           --environment pypi-python-release
 
@@ -565,7 +565,7 @@ jobs:
           skip-existing: true
       - name: Verify exact PyPI bytes and trusted-publisher attestations
         run: >-
-          python3 scripts/verify_registry_publication.py pypi
+          python3 .github/scripts/verify_registry_publication.py pypi
           --dist verified-dist --project sarj-sql-lint
           --environment pypi-sql-release
 
@@ -672,7 +672,7 @@ jobs:
           skip-existing: true
       - name: Verify exact PyPI bytes and trusted-publisher attestations
         run: >-
-          python3 scripts/verify_registry_publication.py pypi
+          python3 .github/scripts/verify_registry_publication.py pypi
           --dist verified-dist --project sarj-iac-lint
           --environment pypi-iac-release
 
@@ -860,7 +860,7 @@ jobs:
           skip-existing: true
       - name: Verify exact PyPI bytes and trusted-publisher attestations
         run: >-
-          python3 scripts/verify_registry_publication.py pypi
+          python3 .github/scripts/verify_registry_publication.py pypi
           --dist verified-dist --project code-standards --project sarj-standards
           --environment pypi-standards-release
 
@@ -960,7 +960,7 @@ jobs:
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
-          python3 scripts/verify_registry_publication.py npm
+          python3 .github/scripts/verify_registry_publication.py npm
           --tarball "$RUNNER_TEMP/npm-artifacts/package.tgz"
           --commit "$EXPECTED_COMMIT" --environment npm-tsconfig-release
 
@@ -1058,6 +1058,6 @@ jobs:
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
-          python3 scripts/verify_registry_publication.py npm
+          python3 .github/scripts/verify_registry_publication.py npm
           --tarball "$RUNNER_TEMP/npm-artifacts/package.tgz"
           --commit "$EXPECTED_COMMIT" --environment npm-docs-ui-release
