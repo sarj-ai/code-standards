@@ -1486,7 +1486,7 @@ def github_ci_workflow(root: Path) -> str:
             lines.extend(("      - name: Install Python dependencies", f"        run: {shlex.join(python_install)}"))
     for index, command in enumerate(() if adopted is None else adopted.ci_bootstrap, start=1):
         label = "Bootstrap analysis inputs" if index == 1 else f"Bootstrap analysis inputs ({index})"
-        lines.extend((f"      - name: {label}", f"        run: {json.dumps(command)}"))
+        lines.extend((f"      - name: {label}", "        run: |", f"          {command}"))
     lines.extend(
         (
             "      - name: Run standards",
