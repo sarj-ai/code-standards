@@ -231,18 +231,18 @@ jobs:
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
       - name: Verify registry bytes and provenance
         env:
-          EXPECTED_SHA256: ${{ needs.build-docs-ui.outputs.artifact_sha256 }}
+          EXPECTED_SHA256: ${{ needs.build-typescript.outputs.artifact_sha256 }}
         run: |
           set -euo pipefail
           version="$(tar -xOf "$RUNNER_TEMP/npm-artifacts/package.tgz" package/package.json | node -e \
             "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).version)")"
           install -d -m 700 "$RUNNER_TEMP/npm-registry"
           for attempt in $(seq 1 12); do
-            if filename="$(npm pack "@sarj/docs-ui@$version" --pack-destination "$RUNNER_TEMP/npm-registry" --ignore-scripts 2>/dev/null)"; then
+            if filename="$(npm pack "@sarj/eslint-plugin@$version" --pack-destination "$RUNNER_TEMP/npm-registry" --ignore-scripts 2>/dev/null)"; then
               actual_sha256="$(sha256sum "$RUNNER_TEMP/npm-registry/$filename" | cut -d ' ' -f1)"
-              provenance="$(npm view "@sarj/docs-ui@$version" dist.attestations.provenance.predicateType)"
+              provenance="$(npm view "@sarj/eslint-plugin@$version" dist.attestations.provenance.predicateType)"
               if [[ "$actual_sha256" == "$EXPECTED_SHA256" && "$provenance" == 'https://slsa.dev/provenance/v1' ]]; then
-                echo "verified @sarj/docs-ui@$version registry bytes and provenance"
+                echo "verified @sarj/eslint-plugin@$version registry bytes and provenance"
                 exit 0
               fi
             fi

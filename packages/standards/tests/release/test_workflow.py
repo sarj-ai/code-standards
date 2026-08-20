@@ -185,6 +185,17 @@ def test_docs_ui_release_packs_once_and_publishes_the_verified_artifact() -> Non
     assert 'npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz"' in publish
 
 
+def test_typescript_release_verifies_its_own_registry_artifact() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    publish = workflow.split("  publish-typescript:", 1)[1].split("  build-bootstrap:", 1)[0]
+
+    assert "needs.build-typescript.outputs.artifact_sha256" in publish
+    assert 'npm pack "@sarj/eslint-plugin@$version"' in publish
+    assert 'npm view "@sarj/eslint-plugin@$version"' in publish
+    assert "needs.build-docs-ui" not in publish
+    assert "@sarj/docs-ui" not in publish
+
+
 @pytest.mark.parametrize(
     ("git_mode", "http_status", "expected_recovery"),
     [
