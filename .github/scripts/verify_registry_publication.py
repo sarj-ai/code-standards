@@ -1,22 +1,23 @@
-"""Verify published registry bytes and cryptographic provenance against the release job."""
-
 # pyright: basic
+# ruff: file-ignore[implicit-namespace-package]
 
 from __future__ import annotations
 
 import argparse
 import base64
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import timedelta
 from email.parser import BytesParser
 import hashlib
 import json
 from pathlib import Path
-import subprocess
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- this workflow helper executes only fixed trusted tool argv.
 import sys
 import tarfile
 import tempfile
 import time
-from typing import Any, NoReturn, cast
+from typing import Any, NoReturn
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 import zipfile
@@ -28,11 +29,17 @@ WORKFLOW = "release.yml"
 REF = "refs/heads/main"
 PYPI_ATTESTATIONS = "pypi-attestations==0.0.30"
 ATTEMPTS = 6
-DELAY_SECONDS = 10
+RETRY_DELAY = timedelta(seconds=10)
 
 
 class VerificationError(Exception):
     """Registry bytes or provenance do not match the staged release."""
+
+
+@dataclass(frozen=True)
+class PackageIdentity:
+    name: str
+    version: str
 
 
 def _fail(message: str) -> NoReturn:
@@ -40,17 +47,25 @@ def _fail(message: str) -> NoReturn:
 
 
 def _json(url: str) -> dict[str, Any]:
-    request = Request(url, headers={"Accept": "application/json"})
-    with urlopen(request, timeout=30) as response:
+    request = Request(  # ruff: ignore[suspicious-url-open-usage] -- callers construct URLs from fixed HTTPS registries.
+        url, headers={"Accept": "application/json"}
+    )
+    with urlopen(  # ruff: ignore[suspicious-url-open-usage] -- the validated request targets a fixed HTTPS registry.
+        request, timeout=30
+    ) as response:
         value: object = json.load(response)
     if not isinstance(value, dict):
         _fail(f"registry returned a non-object document: {url}")
-    return cast("dict[str, Any]", value)
+    return value
 
 
 def _bytes(url: str) -> bytes:
-    request = Request(url, headers={"Accept": "application/octet-stream"})
-    with urlopen(request, timeout=30) as response:
+    request = Request(  # ruff: ignore[suspicious-url-open-usage] -- callers construct URLs from fixed HTTPS registries.
+        url, headers={"Accept": "application/octet-stream"}
+    )
+    with urlopen(  # ruff: ignore[suspicious-url-open-usage] -- the validated request targets a fixed HTTPS registry.
+        request, timeout=30
+    ) as response:
         return response.read()
 
 
@@ -58,7 +73,9 @@ def _digest(data: bytes, algorithm: str) -> str:
     return hashlib.new(algorithm, data).hexdigest()
 
 
-def _metadata(artifact: Path) -> tuple[str, str]:
+def _metadata(  # sarj-noqa: SARJ023 -- format decoding belongs beside its registry primitives.
+    artifact: Path,
+) -> PackageIdentity:
     if artifact.suffix == ".whl":
         with zipfile.ZipFile(artifact) as archive:
             candidates = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
@@ -75,7 +92,7 @@ def _metadata(artifact: Path) -> tuple[str, str]:
     name, version = metadata["Name"], metadata["Version"]
     if not name or not version:
         _fail(f"{artifact.name} has incomplete package identity")
-    return name, version
+    return PackageIdentity(name, version)
 
 
 def _statement(envelope: dict[str, Any], *, field: str) -> dict[str, Any]:
@@ -85,7 +102,7 @@ def _statement(envelope: dict[str, Any], *, field: str) -> dict[str, Any]:
     value: object = json.loads(base64.b64decode(encoded))
     if not isinstance(value, dict):
         _fail("attestation statement is not an object")
-    return cast("dict[str, Any]", value)
+    return value
 
 
 def _subject_matches(statement: dict[str, Any], *, filename: str, algorithm: str, digest: str) -> bool:
@@ -99,7 +116,9 @@ def _subject_matches(statement: dict[str, Any], *, filename: str, algorithm: str
     )
 
 
-def _verify_pypi_file(artifact: Path, *, name: str, version: str, environment: str) -> None:
+def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes the retry coordinator.
+    artifact: Path, *, name: str, version: str, environment: str
+) -> None:
     release = _json(f"https://pypi.org/pypi/{quote(name, safe='')}/{quote(version, safe='')}/json")
     urls = release.get("urls")
     if not isinstance(urls, list):
@@ -150,8 +169,8 @@ def _verify_pypi_file(artifact: Path, *, name: str, version: str, environment: s
                     )
     if not matching_publisher or not matching_subject:
         _fail(f"PyPI provenance does not bind {artifact.name} to {WORKFLOW}/{environment}")
-    subprocess.run(
-        (
+    subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is fixed and shell execution is disabled.
+        (  # ruff: ignore[start-process-with-partial-path] -- setup-uv provides trusted uvx.
             "uvx",
             "--from",
             PYPI_ATTESTATIONS,
@@ -170,8 +189,8 @@ def verify_pypi(dist: Path, projects: tuple[str, ...], environment: str) -> None
     artifacts = tuple(sorted((*dist.glob("*.whl"), *dist.glob("*.tar.gz"))))
     grouped: dict[str, list[tuple[Path, str]]] = defaultdict(list)
     for artifact in artifacts:
-        name, version = _metadata(artifact)
-        grouped[name].append((artifact, version))
+        identity = _metadata(artifact)
+        grouped[identity.name].append((artifact, identity.version))
     if set(grouped) != set(projects):
         _fail(f"staged projects {sorted(grouped)} do not equal expected projects {sorted(projects)}")
     if any(len({version for _, version in items}) != 1 for items in grouped.values()):
@@ -184,12 +203,14 @@ def verify_pypi(dist: Path, projects: tuple[str, ...], environment: str) -> None
         except OSError, subprocess.CalledProcessError, VerificationError:
             if attempt + 1 == ATTEMPTS:
                 raise
-            time.sleep(DELAY_SECONDS)
+            time.sleep(RETRY_DELAY.total_seconds())
         else:
             return
 
 
-def _npm_identity(tarball: Path) -> tuple[str, str]:
+def _npm_identity(  # sarj-noqa: SARJ023 -- format decoding belongs beside its registry primitives.
+    tarball: Path,
+) -> PackageIdentity:
     with tarfile.open(tarball, "r:gz") as archive:
         stream = archive.extractfile("package/package.json")
         if stream is None:
@@ -201,10 +222,10 @@ def _npm_identity(tarball: Path) -> tuple[str, str]:
         or not isinstance(manifest.get("version"), str)
     ):
         _fail("npm tarball has incomplete package identity")
-    return manifest["name"], manifest["version"]
+    return PackageIdentity(manifest["name"], manifest["version"])
 
 
-def _npm_provenance_matches(
+def _npm_provenance_matches(  # sarj-noqa: SARJ023 -- predicate decoding precedes its coordinator.
     entry: object,
     *,
     expected_subject: str,
@@ -222,7 +243,14 @@ def _npm_provenance_matches(
     if not isinstance(envelope, dict) or not isinstance(raw_certificate, str):
         return False
     certificate_text = subprocess.run(
-        ("openssl", "x509", "-inform", "DER", "-text", "-noout"),
+        (  # ruff: ignore[start-process-with-partial-path] -- hosted runners provide trusted OpenSSL.
+            "openssl",
+            "x509",
+            "-inform",
+            "DER",
+            "-text",
+            "-noout",
+        ),
         input=base64.b64decode(raw_certificate),
         capture_output=True,
         check=True,
@@ -249,8 +277,11 @@ def _npm_provenance_matches(
     )
 
 
-def _verify_npm_once(tarball: Path, *, commit: str, environment: str) -> None:
-    name, version = _npm_identity(tarball)
+def _verify_npm_once(  # sarj-noqa: SARJ023 -- one-attempt verification precedes retry coordination.
+    tarball: Path, *, commit: str, environment: str
+) -> None:
+    identity = _npm_identity(tarball)
+    name, version = identity.name, identity.version
     metadata = _json(f"https://registry.npmjs.org/{quote(name, safe='')}/{quote(version, safe='')}")
     dist = metadata.get("dist")
     if not isinstance(dist, dict) or not isinstance(dist.get("tarball"), str):
@@ -278,13 +309,23 @@ def _verify_npm_once(tarball: Path, *, commit: str, environment: str) -> None:
     if not matched:
         _fail(f"npm provenance does not bind {name}@{version} to {commit}/{WORKFLOW}")
     with tempfile.TemporaryDirectory() as temporary:
-        subprocess.run(
-            ("npm", "install", "--ignore-scripts", "--package-lock=false", f"{name}@{version}"),
+        subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- package identity comes from the staged trusted tarball.
+            (  # ruff: ignore[start-process-with-partial-path] -- setup-node provides trusted npm.
+                "npm",
+                "install",
+                "--ignore-scripts",
+                "--package-lock=false",
+                f"{name}@{version}",
+            ),
             cwd=temporary,
             check=True,
             stdout=subprocess.DEVNULL,
         )
-        subprocess.run(("npm", "audit", "signatures"), cwd=temporary, check=True)
+        subprocess.run(
+            ("npm", "audit", "signatures"),  # ruff: ignore[start-process-with-partial-path] -- setup-node provides trusted npm.
+            cwd=temporary,
+            check=True,
+        )
 
 
 def verify_npm(tarball: Path, *, commit: str, environment: str) -> None:
@@ -294,7 +335,7 @@ def verify_npm(tarball: Path, *, commit: str, environment: str) -> None:
         except OSError, subprocess.CalledProcessError, VerificationError:
             if attempt + 1 == ATTEMPTS:
                 raise
-            time.sleep(DELAY_SECONDS)
+            time.sleep(RETRY_DELAY.total_seconds())
         else:
             return
 
@@ -317,7 +358,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             verify_npm(args.tarball, commit=args.commit, environment=args.environment)
     except (OSError, subprocess.CalledProcessError, VerificationError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        sys.stderr.write(f"error: {exc}\n")
         return 2
     return 0
 
