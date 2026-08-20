@@ -474,6 +474,6 @@ def sync(root: Path, *, check: bool) -> CatalogSyncResult:
     if current == expected:
         return CatalogSyncResult(0, "ok: rule-catalog.v1.json matches source-owned metadata")
     if check:
-        return CatalogSyncResult(1, "drift: rule-catalog.v1.json differs; run `sarj-standards maintain catalog sync`")
+        return CatalogSyncResult(1, "drift: rule-catalog.v1.json differs; run `code-standards maintain catalog sync`")
     transaction.atomic_write_text(resolved, destination, expected)
     return CatalogSyncResult(0, "updated: rule-catalog.v1.json")

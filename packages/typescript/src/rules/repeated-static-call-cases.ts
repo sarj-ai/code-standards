@@ -1,6 +1,6 @@
 /**
  * @fileoverview repeated-static-call-cases — repeated literal call assertions should be named, independently reported cases.
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/repeated-static-call-cases.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/repeated-static-call-cases.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

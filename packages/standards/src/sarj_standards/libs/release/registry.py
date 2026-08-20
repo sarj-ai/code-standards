@@ -67,7 +67,7 @@ _TARGET_PACKAGES: Final[Mapping[str, tuple[RegistryKind, str]]] = MappingProxyTy
         "python": ("pypi", "sarj-python-lint"),
         "sql": ("pypi", "sarj-sql-lint"),
         "iac": ("pypi", "sarj-iac-lint"),
-        "standards": ("pypi", "sarj-standards"),
+        "standards": ("pypi", "code-standards"),
         "tsconfig": ("npm", "@sarj/tsconfig"),
         "docs-ui": ("npm", "@sarj/docs-ui"),
     }

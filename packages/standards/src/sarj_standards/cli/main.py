@@ -36,7 +36,7 @@ _NEXT_STEPS = (
     "\nnext: in your pyproject.toml, add:\n"
     "  [tool.ruff]\n"
     '  extend = ".ruff-strict.toml"\n'
-    "\n(or run `sarj-standards setup`, which writes that and the rest of the wiring)\n"
+    "\n(or run `code-standards setup`, which writes that and the rest of the wiring)\n"
 )
 _BOOTSTRAP_TIMEOUT = timedelta(seconds=120)
 _GIT_SAFE_ENV = frozenset(
@@ -298,7 +298,7 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
                 print(f"error: cannot repair invalid adoption manifest: {details}", file=sys.stderr)
                 return 2
         if adopted is None:
-            print("error: repository is not adopted; run `sarj-standards setup`", file=sys.stderr)
+            print("error: repository is not adopted; run `code-standards setup`", file=sys.stderr)
             return 2
         plan = upgrade.build_plan(root)
         blockers = upgrade.unsafe_retired_findings(plan)
@@ -362,7 +362,7 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             print(f"{finding.level.value:6s} {finding.id} {finding.where}  --  {finding.detail}")
         print(f"\nchecked {len(findings)} configuration site(s); {drifted} drifted; {warned} warning(s).")
         remediations = (
-            ["run `sarj-standards setup`"]
+            ["run `code-standards setup`"]
             if unadopted
             else list(
                 dict.fromkeys(
@@ -384,7 +384,7 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
 
     legacy = manifest.load_for_setup(root)
     if legacy is None:
-        msg = "repository is not adopted; run `sarj-standards setup`"
+        msg = "repository is not adopted; run `code-standards setup`"
         raise ValueError(msg)
     migration = service.plan_init(
         root,
@@ -503,7 +503,7 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         if args.check:
             print(
                 "error: the adoption manifest needs a one-way migration; run "
-                "`sarj-standards doctor --repair --no-install`, then retry update",
+                "`code-standards doctor --repair --no-install`, then retry update",
                 file=sys.stderr,
             )
             return 2
@@ -591,12 +591,12 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         )
         for finding in pending:
             print(f"pending: {finding.id} {finding.where} -- {finding.detail}")
-        print("next: run the skipped setup command(s), then `sarj-standards doctor`:")
+        print("next: run the skipped setup command(s), then `code-standards doctor`:")
         for command in skipped_commands:
             print(f"      {shlex.join(command.argv)}  (in {command.cwd})")
         return 0
     print(f"updated: {root} now uses standards {__version__}")
-    print("next: run `sarj-standards check --trust-repository-code` and review every new finding")
+    print("next: run `code-standards check --trust-repository-code` and review every new finding")
     return 0
 
 
@@ -927,7 +927,7 @@ def _render_slack_catalog_findings(args: _Args, root: Path, path: Path) -> int:
             "sarj-standards-slack-automations",
             Location(relative.as_posix()),
             rule_id="slack-automations.invalid",
-            help="run `sarj-standards validate-slack-automations catalog/slack-automations.v1.json`",
+            help="run `code-standards validate-slack-automations catalog/slack-automations.v1.json`",
         )
         for finding in findings
     )
@@ -1013,7 +1013,7 @@ def cmd_observe(args: _Args) -> int:
         rendered = ", ".join(map(str, invalid))
         print(
             f"error: observe accepts warning-stage rules only: {rendered}\n"
-            f"next: sarj-standards maintain rules stage-warning {invalid[0]}",
+            f"next: code-standards maintain rules stage-warning {invalid[0]}",
             file=sys.stderr,
         )
         return 2
@@ -1052,7 +1052,7 @@ def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) 
     lines.extend(
         (
             "next: review these findings for false positives; stage an approved rule with:",
-            f"  sarj-standards maintain rules stage-warning {min(selectors)}",
+            f"  code-standards maintain rules stage-warning {min(selectors)}",
         )
     )
     return "\n".join(lines)
@@ -1130,7 +1130,7 @@ def _machine_adoption_gate(root: Path) -> object | None:
             "sarj-standards-doctor",
             Location(manifest.MANIFEST_NAME),
             rule_id=absent.id,
-            help=absent.remediation or "run `sarj-standards setup`",
+            help=absent.remediation or "run `code-standards setup`",
         )
         return report_from_tools(
             root,
@@ -1175,7 +1175,7 @@ def _machine_adoption_gate(root: Path) -> object | None:
                     "sarj-standards-config",
                     Location(relative),
                     rule_id="standards.config.sync",
-                    help="run `sarj-standards update --offline`",
+                    help="run `code-standards update --offline`",
                 )
             )
         sync_diagnostics = tuple(sync_diagnostics_list)
@@ -1493,13 +1493,13 @@ def cmd_format(args: _Args) -> int:
     root = _resolve_dest(args.dest)
     diagnosed = doctor.diagnose(root)
     if any(finding.id == "doctor.manifest.absent" for finding in diagnosed):
-        print("error: repository is not adopted; run `sarj-standards setup`", file=sys.stderr)
+        print("error: repository is not adopted; run `code-standards setup`", file=sys.stderr)
         return 2
     drifted = [finding for finding in diagnosed if finding.level is doctor.Level.DRIFT]
     if drifted:
         for finding in drifted:
             print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
-        print("fix: run `sarj-standards doctor --repair`, then retry", file=sys.stderr)
+        print("fix: run `code-standards doctor --repair`, then retry", file=sys.stderr)
         return 2 if any(finding.id in _INVALID_DOCTOR_IDS for finding in drifted) else 1
     if args.staged:
         try:
@@ -1600,7 +1600,7 @@ def cmd_ratchet(args: _Args) -> int:
     baseline = args.baseline if args.baseline is not None else root / "suppression-baseline.json"
     if args.ratchet_cmd == "init" and baseline.exists():
         print(
-            f"error: suppression budget already exists: {baseline}; use `sarj-standards ratchet update`",
+            f"error: suppression budget already exists: {baseline}; use `code-standards ratchet update`",
             file=sys.stderr,
         )
         return 2
@@ -1627,7 +1627,7 @@ def cmd_baseline(args: _Args) -> int:
     output = args.output if args.output is not None else root / _DEFAULT_DIAGNOSTIC_BASELINE
     if args.baseline_cmd == "init" and output.exists():
         print(
-            f"error: diagnostic baseline already exists: {output}; use `sarj-standards baseline update`",
+            f"error: diagnostic baseline already exists: {output}; use `code-standards baseline update`",
             file=sys.stderr,
         )
         return 2
@@ -1728,11 +1728,11 @@ def _dispatch(args: _Args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] -- parser sections mirror public verbs.
     parser = argparse.ArgumentParser(
-        prog="sarj-standards",
+        prog="code-standards",
         description=f"Adopt, check, fix, diagnose, and update sarj-ai standards (v{__version__}).",
-        epilog="Start with `sarj-standards setup`, then use `sarj-standards check`.",
+        epilog="Start with `code-standards setup`, then use `code-standards check`.",
     )
-    parser.add_argument("--version", action="version", version=f"sarj-standards {__version__}")
+    parser.add_argument("--version", action="version", version=f"code-standards {__version__}")
     parser.add_argument(
         "--root",
         dest="dest",
@@ -2143,7 +2143,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             result = docs.check(root)
             for path in result.changed:
                 print(f"drift: {path.relative_to(root)}")
-            print("documentation is current" if not result.changed else "run `sarj-standards maintain docs sync`")
+            print("documentation is current" if not result.changed else "run `code-standards maintain docs sync`")
             return result.status
         result = docs.sync(root)
         for path in result.changed:
@@ -2269,10 +2269,10 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
 def _rule_author_next_steps(selector: RuleSelector) -> str:
     return (
         "next: validate the staged rule locally\n"
-        f"  sarj-standards --root . maintain rules evaluate --rule {selector} --scope corpus\n"
+        f"  code-standards --root . maintain rules evaluate --rule {selector} --scope corpus\n"
         "  make verify\n"
         "after committing the result:\n"
-        "  sarj-standards --root . maintain rules changes --before origin/main --after HEAD"
+        "  code-standards --root . maintain rules changes --before origin/main --after HEAD"
     )
 
 

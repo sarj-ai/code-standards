@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-module-level-constant — a literal-only collection or regex declared inside a function is rebuilt on every call.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-module-level-constant.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-constant.test.ts
  */
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";

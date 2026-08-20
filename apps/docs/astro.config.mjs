@@ -46,7 +46,7 @@ export default defineConfig({
         { label: 'CLI', link: '/cli/' },
       ],
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/standards' },
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/code-standards' },
       ],
       pagefind: true,
       tableOfContents: false,

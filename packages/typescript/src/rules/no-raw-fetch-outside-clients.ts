@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-raw-fetch-outside-clients — a bare `fetch` outside the client layer opts out of retry, timeout and status handling, and cannot be stubbed.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-raw-fetch-outside-clients.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-fetch-outside-clients.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";

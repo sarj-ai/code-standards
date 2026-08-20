@@ -139,7 +139,7 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
-        run: uv run --project packages/standards --frozen sarj-standards --root . maintain release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
+        run: uv run --project packages/standards --frozen code-standards --root . maintain release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
 
   build-typescript:
     needs: [detect, release-safety]
@@ -175,7 +175,7 @@ jobs:
           version: '0.12.5'
       - run: npm install --global npm@12.0.2 --ignore-scripts
       - name: Enforce lockfile release-age quarantine
-        run: uv run --project ../standards --frozen sarj-standards --root ../.. maintain release lock-age packages/typescript/package-lock.json --minimum-days 0 --exclude-file .github/release-age-exclusions.txt
+        run: uv run --project ../standards --frozen code-standards --root ../.. maintain release lock-age packages/typescript/package-lock.json --minimum-days 0 --exclude-file .github/release-age-exclusions.txt
       # Dependency lifecycle scripts are an unnecessary code-execution surface.
       # esbuild's platform binary is installed as an optional dependency, so the
       # release build does not need package install hooks.
@@ -183,7 +183,7 @@ jobs:
       - run: npm run build
       - run: npm test
       - name: Pack publishable artifact
-        run: uv run --project ../standards --frozen sarj-standards --root ../.. maintain release typescript pack --output "$RUNNER_TEMP/npm-artifacts"
+        run: uv run --project ../standards --frozen code-standards --root ../.. maintain release typescript pack --output "$RUNNER_TEMP/npm-artifacts"
       - name: Normalize the single verified artifact name
         run: >-
           node -e "const fs=require('node:fs'),d=process.env.RUNNER_TEMP+'/npm-artifacts',
@@ -262,7 +262,7 @@ jobs:
       - run: uv run basedpyright
       - run: uv build
       - name: Verify wheel license
-        run: uv run --project ../standards --frozen sarj-standards maintain release verify-wheel dist/*.whl
+        run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/bootstrap-wheel"
@@ -273,17 +273,17 @@ jobs:
             "printf \"%s\\n\" \"\$@\" > \"\$BOOTSTRAP_CAPTURE\"" > "$RUNNER_TEMP/fake-bin/uvx"
           chmod +x "$RUNNER_TEMP/fake-bin/uvx"
           BOOTSTRAP_CAPTURE="$RUNNER_TEMP/wheel-argv" PATH="$RUNNER_TEMP/fake-bin:$PATH" \
-            "$RUNNER_TEMP/bootstrap-wheel/bin/sarj-standards" --root "$GITHUB_WORKSPACE" check
-          grep -Fx -- 'sarj-standards' "$RUNNER_TEMP/wheel-argv"
-          grep -E '^sarj-standards==[0-9]+\.[0-9]+\.[0-9]+$' "$RUNNER_TEMP/wheel-argv"
+            "$RUNNER_TEMP/bootstrap-wheel/bin/code-standards" --root "$GITHUB_WORKSPACE" check
+          grep -Fx -- 'code-standards' "$RUNNER_TEMP/wheel-argv"
+          grep -E '^code-standards==[0-9]+\.[0-9]+\.[0-9]+$' "$RUNNER_TEMP/wheel-argv"
       - name: Smoke test the source distribution
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/bootstrap-sdist"
           uv pip install --python "$RUNNER_TEMP/bootstrap-sdist/bin/python" dist/*.tar.gz
           BOOTSTRAP_CAPTURE="$RUNNER_TEMP/sdist-argv" PATH="$RUNNER_TEMP/fake-bin:$PATH" \
-            "$RUNNER_TEMP/bootstrap-sdist/bin/sarj-standards" --root "$GITHUB_WORKSPACE" check
-          grep -Fx -- 'sarj-standards' "$RUNNER_TEMP/sdist-argv"
-          grep -E '^sarj-standards==[0-9]+\.[0-9]+\.[0-9]+$' "$RUNNER_TEMP/sdist-argv"
+            "$RUNNER_TEMP/bootstrap-sdist/bin/code-standards" --root "$GITHUB_WORKSPACE" check
+          grep -Fx -- 'code-standards' "$RUNNER_TEMP/sdist-argv"
+          grep -E '^code-standards==[0-9]+\.[0-9]+\.[0-9]+$' "$RUNNER_TEMP/sdist-argv"
       - name: Bind artifact digest to the build job
         id: artifact_identity
         run: |
@@ -367,7 +367,7 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
       - name: Verify wheel license
-        run: uv run --project ../standards --frozen sarj-standards maintain release verify-wheel dist/*.whl
+        run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/python-wheel"
@@ -462,7 +462,7 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
       - name: Verify wheel license
-        run: uv run --project ../standards --frozen sarj-standards maintain release verify-wheel dist/*.whl
+        run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/sql-wheel"
@@ -557,7 +557,7 @@ jobs:
       - run: uv run pytest -q
       - run: uv build
       - name: Verify wheel license
-        run: uv run --project ../standards --frozen sarj-standards maintain release verify-wheel dist/*.whl
+        run: uv run --project ../standards --frozen code-standards maintain release verify-wheel dist/*.whl
       - name: Smoke test the exact wheel
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/iac-wheel"
@@ -723,26 +723,27 @@ jobs:
           enable-cache: false
       - run: uv python install 3.14
       - name: Require every exact Standards sibling to be public
-        run: uv run --frozen sarj-standards --root ../.. maintain release verify-publications
+        run: uv run --frozen code-standards --root ../.. maintain release verify-publications
       - run: uv audit --locked
       - name: Build package and exact local dependency wheels
         run: |
           uv build
+          uv build --project ../standards-compat --out-dir dist
           uv build --wheel --project ../python --out-dir dist/deps
           uv build --wheel --project ../sql --out-dir dist/deps
           uv build --wheel --project ../iac --out-dir dist/deps
       - name: Verify wheel licenses
-        run: uv run --frozen sarj-standards maintain release verify-wheel dist/*.whl dist/deps/*.whl
+        run: uv run --frozen code-standards maintain release verify-wheel dist/*.whl dist/deps/*.whl
       - name: Test against the built wheel
         run: |
           uv venv --clear --python 3.14 --seed
-          uv pip install ./dist/deps/*.whl ./dist/sarj_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff
+          uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff
           uv run --no-project pytest -q tests/
       - name: Smoke test the source distribution
         run: |
           uv venv --python 3.14 "$RUNNER_TEMP/standards-sdist"
           uv pip install --python "$RUNNER_TEMP/standards-sdist/bin/python" --find-links dist/deps dist/*.tar.gz
-          "$RUNNER_TEMP/standards-sdist/bin/sarj-standards" --help
+          "$RUNNER_TEMP/standards-sdist/bin/code-standards" --help
       - name: Bind artifact digest to the build job
         id: artifact_identity
         run: |

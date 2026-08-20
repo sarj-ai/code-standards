@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           version="$REQUESTED_VERSION"
           if [[ -z "$version" && "$EVENT_NAME" == schedule ]]; then
-            version="$(uvx --no-config --isolated --python 3.14 --refresh-package sarj-standards --from sarj-standards sarj-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
+            version="$(uvx --no-config --isolated --python 3.14 --refresh-package code-standards --from code-standards code-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
           fi
           if [[ -z "$version" ]]; then
             version="$(python3 - <<'PY'
@@ -171,7 +171,7 @@ jobs:
           # The backticks below are intentional Markdown literals.
           # shellcheck disable=SC2016
           {
-            printf 'Automated rollout of `sarj-standards==%s` is **%s**.\n\n' "$VERSION" "$RESULT"
+            printf 'Automated rollout of `code-standards==%s` is **%s**.\n\n' "$VERSION" "$RESULT"
             printf -- '- Workflow: %s\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             printf -- '- Operation exit status: `%s`\n' "$OPERATION_STATUS"
             printf -- '- Fleet status exit status: `%s`\n\n' "$STATUS_STATUS"

@@ -81,7 +81,7 @@ def test_pending_release_targets_publish_only_current_versions_missing_from_regi
     assert pending["standards"] is False
     assert pending["python"] is True
     assert pending["sql"] is False
-    assert "sarj-standards" in checked
+    assert "code-standards" in checked
 
 
 def test_pending_release_target_changed_but_already_public_is_a_noop(tmp_path: Path) -> None:

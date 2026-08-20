@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-module-level-schema — a Zod schema built inside a function is rebuilt on every call, every request, every render.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-module-level-schema.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-schema.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

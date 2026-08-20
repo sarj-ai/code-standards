@@ -5,7 +5,7 @@ import pytest
 from sarj_standards.libs.adoption import launcher
 
 
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==1.0.3 sarj-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards"
 
 
 def test_repository_wiring_uses_the_exact_immutable_bootstrap() -> None:

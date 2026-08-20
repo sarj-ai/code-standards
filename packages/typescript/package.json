@@ -25,12 +25,12 @@
   "sideEffects": false,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sarj-ai/standards.git",
+    "url": "git+https://github.com/sarj-ai/code-standards.git",
     "directory": "packages/typescript"
   },
   "homepage": "https://code-standards.sarj.ai/rules/eslint/",
   "bugs": {
-    "url": "https://github.com/sarj-ai/standards/issues"
+    "url": "https://github.com/sarj-ai/code-standards/issues"
   },
   "scripts": {
     "build": "tsup",

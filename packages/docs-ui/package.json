@@ -26,12 +26,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sarj-ai/standards.git",
+    "url": "git+https://github.com/sarj-ai/code-standards.git",
     "directory": "packages/docs-ui"
   },
   "homepage": "https://code-standards.sarj.ai/",
   "bugs": {
-    "url": "https://github.com/sarj-ai/standards/issues"
+    "url": "https://github.com/sarj-ai/code-standards/issues"
   },
   "license": "MIT",
   "dependencies": {

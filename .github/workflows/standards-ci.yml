@@ -117,7 +117,7 @@ jobs:
           # but Standards is adopted at the repository root. Dogfood that real
           # manifest and its verification paths instead of treating the package
           # subdirectory as an unadopted consumer.
-          uv run sarj-standards --root ../.. check
+          uv run code-standards --root ../.. check
       - name: Build wheel
         run: |
           uv build --wheel
@@ -132,13 +132,13 @@ jobs:
         run: uv run --no-project pytest -q
       - name: CLI smoke
         run: |
-          uv run --no-project sarj-standards show configs
-          uv run --no-project sarj-standards show config ruff
-          uv run --no-project sarj-standards show peers
+          uv run --no-project code-standards show configs
+          uv run --no-project code-standards show config ruff
+          uv run --no-project code-standards show peers
           fresh="$(mktemp -d)"
           printf '"""Fresh wheel smoke test."""\n\nVALUE = 1\n' > "$fresh/example.py"
-          (cd "$fresh" && "$GITHUB_WORKSPACE/packages/standards/.venv/bin/sarj-standards" check example.py)
-          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/sarj-standards"
+          (cd "$fresh" && "$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards" check example.py)
+          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
           "$cli" --root "$fresh" check --format json --output "$fresh/report.json" example.py
           python -c "import json,sys; p=json.load(open(sys.argv[1])); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$fresh/report.json"
       - name: Adoption smoke -- setup a fresh repo, then prove convergence
@@ -147,7 +147,7 @@ jobs:
           wheelhouse="$(mktemp -d)"
           cp dist/*.whl dist/deps/*.whl "$wheelhouse/"
           printf '[project]\nname = "smoke"\nversion = "0.1.0"\n' > "$repo/pyproject.toml"
-          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/sarj-standards"
+          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
           UV_FIND_LINKS="$wheelhouse" "$cli" --root "$repo" setup
           "$cli" --root "$repo" doctor
           UV_FIND_LINKS="$wheelhouse" "$cli" --root "$repo" setup
@@ -161,7 +161,7 @@ jobs:
         run: |
           repo="$(mktemp -d)"
           printf '{ "name": "smoke", "private": true }\n' > "$repo/package.json"
-          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/sarj-standards"
+          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
           "$cli" --root "$repo" setup --no-install
           python -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'eslint-plugin-react' in d.get('overrides', {}) else 1)" "$repo/package.json"
           npm --prefix "$repo" pkg delete 'devDependencies.@sarj/eslint-plugin'

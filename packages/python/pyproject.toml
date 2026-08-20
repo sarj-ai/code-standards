@@ -24,9 +24,9 @@ sarj-ratchet = "sarj_python_lint._ratchet_cli:main"
 [project.urls]
 Homepage = "https://code-standards.sarj.ai/rules/python/"
 Documentation = "https://code-standards.sarj.ai/rules/python/"
-Changelog = "https://github.com/sarj-ai/standards/releases"
-Repository = "https://github.com/sarj-ai/standards"
-Issues = "https://github.com/sarj-ai/standards/issues"
+Changelog = "https://github.com/sarj-ai/code-standards/releases"
+Repository = "https://github.com/sarj-ai/code-standards"
+Issues = "https://github.com/sarj-ai/code-standards/issues"
 
 [dependency-groups]
 dev = [

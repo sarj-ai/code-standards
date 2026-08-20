@@ -1,7 +1,7 @@
 /**
  * @fileoverview require-use-form-default-values — react-hook-form forms need a stable initial value shape.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-use-form-default-values.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-use-form-default-values.test.ts
  */
 
 import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

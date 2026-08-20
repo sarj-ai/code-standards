@@ -454,7 +454,7 @@ def inspection_json(root: Path) -> str:
 def _environment_binary(name: str) -> str:
     found = shutil.which(name, path=str(Path(sys.executable).parent))
     if found is None:
-        msg = f"{name} is missing from the sarj-standards environment"
+        msg = f"{name} is missing from the code-standards environment"
         raise OSError(msg)
     return found
 

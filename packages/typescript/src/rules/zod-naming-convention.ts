@@ -1,7 +1,7 @@
 /**
  * @fileoverview zod-naming-convention — a schema you cannot recognise at its use site sends every reader back to the declaration.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/zod-naming-convention.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/zod-naming-convention.test.ts
  */
 
 import {

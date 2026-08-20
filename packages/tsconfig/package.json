@@ -20,12 +20,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sarj-ai/standards.git",
+    "url": "git+https://github.com/sarj-ai/code-standards.git",
     "directory": "packages/tsconfig"
   },
   "homepage": "https://code-standards.sarj.ai/cli/",
   "bugs": {
-    "url": "https://github.com/sarj-ai/standards/issues"
+    "url": "https://github.com/sarj-ai/code-standards/issues"
   },
   "keywords": [
     "typescript",

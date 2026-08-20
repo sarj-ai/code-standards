@@ -46,6 +46,51 @@ wheels = [
 ]
 
 [[package]]
+name = "code-standards"
+version = "7.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "basedpyright" },
+    { name = "lefthook" },
+    { name = "packaging" },
+    { name = "pathspec" },
+    { name = "pre-commit" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "ruff" },
+    { name = "sarj-iac-lint" },
+    { name = "sarj-python-lint" },
+    { name = "sarj-sql-lint" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "jsonschema" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "basedpyright", specifier = "==1.39.10" },
+    { name = "lefthook", specifier = "==2.1.10" },
+    { name = "packaging", specifier = "==26.3" },
+    { name = "pathspec", specifier = "==1.1.1" },
+    { name = "pre-commit", specifier = "==4.6.2" },
+    { name = "pydantic", specifier = "==2.13.4" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "ruff", specifier = "==0.16.3" },
+    { name = "sarj-iac-lint", editable = "../iac" },
+    { name = "sarj-python-lint", editable = "../python" },
+    { name = "sarj-sql-lint", editable = "../sql" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "jsonschema", specifier = ">=4.26,<5" },
+    { name = "pytest", specifier = ">=9.1.1" },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -471,51 +516,6 @@ dev = [
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-benchmark", specifier = ">=5.2.3" },
     { name = "ruff", specifier = ">=0.16.3" },
-]
-
-[[package]]
-name = "sarj-standards"
-version = "6.6.1"
-source = { editable = "." }
-dependencies = [
-    { name = "basedpyright" },
-    { name = "lefthook" },
-    { name = "packaging" },
-    { name = "pathspec" },
-    { name = "pre-commit" },
-    { name = "pydantic" },
-    { name = "pyyaml" },
-    { name = "ruff" },
-    { name = "sarj-iac-lint" },
-    { name = "sarj-python-lint" },
-    { name = "sarj-sql-lint" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "jsonschema" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "basedpyright", specifier = "==1.39.10" },
-    { name = "lefthook", specifier = "==2.1.10" },
-    { name = "packaging", specifier = "==26.3" },
-    { name = "pathspec", specifier = "==1.1.1" },
-    { name = "pre-commit", specifier = "==4.6.2" },
-    { name = "pydantic", specifier = "==2.13.4" },
-    { name = "pyyaml", specifier = "==6.0.3" },
-    { name = "ruff", specifier = "==0.16.3" },
-    { name = "sarj-iac-lint", editable = "../iac" },
-    { name = "sarj-python-lint", editable = "../python" },
-    { name = "sarj-sql-lint", editable = "../sql" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "jsonschema", specifier = ">=4.26,<5" },
-    { name = "pytest", specifier = ">=9.1.1" },
 ]
 
 [[package]]

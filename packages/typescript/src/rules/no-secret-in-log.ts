@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-secret-in-log — a secret passed to a logging call persists in log sinks far beyond its intended lifetime.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-secret-in-log.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-secret-in-log.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

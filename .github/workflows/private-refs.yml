@@ -62,7 +62,7 @@ jobs:
           trap 'rm -f "$policy_file"' EXIT
           install -m 600 /dev/null "$policy_file"
           printf '%s' "$PRIVATE_REFS_TOML" > "$policy_file"
-          trusted/packages/standards/.venv/bin/sarj-standards --root candidate maintain check \
+          trusted/packages/standards/.venv/bin/code-standards --root candidate maintain check \
             --policy-root trusted \
             --private-refs-file "$policy_file" \
             --only private-refs \

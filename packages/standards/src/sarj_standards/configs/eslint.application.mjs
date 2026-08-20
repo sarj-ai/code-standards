@@ -340,7 +340,7 @@ const missingUnicornRules = [
 
 if (missingUnicornRules.length > 0) {
   throw new Error(
-    `sarj-standards: ${String(missingUnicornRules.length)} rule(s) this config enables do not exist ` +
+    `code-standards: ${String(missingUnicornRules.length)} rule(s) this config enables do not exist ` +
       `in the installed eslint-plugin-unicorn (${missingUnicornRules.slice(0, 5).join(", ")}). ` +
       `Either the plugin is older than the required >= 72 (which also needs eslint >= 10.4), ` +
       `or a rule name in this config is a typo or was renamed upstream.`,

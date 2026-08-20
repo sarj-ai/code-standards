@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-await-in-async-return — replace a directly returned Promise `.then` transform with explicit async control flow.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-await-in-async-return.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-await-in-async-return.test.ts
  */
 
 import {

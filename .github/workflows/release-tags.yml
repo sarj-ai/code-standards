@@ -53,7 +53,7 @@ jobs:
           )"
 
           set +e
-          uv run --project packages/standards --frozen sarj-standards --root . \
+          uv run --project packages/standards --frozen code-standards --root . \
             maintain release verify-tags --commit "$TARGET_SHA"
           tag_status=$?
           set -e
@@ -194,7 +194,7 @@ jobs:
         env:
           PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: >-
-          uv run --project packages/standards --frozen sarj-standards --root .
+          uv run --project packages/standards --frozen code-standards --root .
           maintain release create-tags typescript bootstrap python sql iac standards tsconfig docs-ui
           --commit "$PUBLISHED_SHA"
       - name: Publish the Standards GitHub Release

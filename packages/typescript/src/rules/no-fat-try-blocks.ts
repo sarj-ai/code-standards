@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-fat-try-blocks — a `try` holding more than three throwing statements catches failures its handler was never written for.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-fat-try-blocks.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-fat-try-blocks.test.ts
  */
 
 import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";

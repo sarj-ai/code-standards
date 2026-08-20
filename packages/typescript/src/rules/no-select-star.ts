@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-select-star — `SELECT *` over-fetches and leaves the row contract implicit, so a schema change breaks row parsing silently.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-select-star.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-select-star.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

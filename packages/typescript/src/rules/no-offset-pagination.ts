@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-offset-pagination — `OFFSET m` scans and discards m rows per page and shifts under concurrent writes, so rows repeat or vanish.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-offset-pagination.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-offset-pagination.test.ts
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";

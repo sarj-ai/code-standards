@@ -1,7 +1,7 @@
 /**
  * @fileoverview duplicate-test-body — sibling tests with the same substantial body are copy-paste cases that should be parameterized.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/duplicate-test-body.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/duplicate-test-body.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

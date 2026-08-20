@@ -41,7 +41,7 @@ def test_update_to_bootstraps_the_exact_requested_version(
     assert status == 0
     command = observed["command"]
     assert isinstance(command, list)
-    assert "sarj-standards==5.7.1" in command
+    assert "code-standards==5.7.1" in command
     assert command[-3:] == ["--to", "5.7.1", "--check"]
     assert "--offline" not in command
     environment = observed["environment"]

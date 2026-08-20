@@ -11,7 +11,7 @@
     "`eslint <= ^9.7`. npm refuses the tree outright. Copying the config and deleting",
     "imports was the only path that worked, which is why consumers vendor.",
     "",
-    "`sarj-standards setup` writes the overrides block and prints the install",
+    "`code-standards setup` writes the overrides block and prints the install",
     "command. `packages/typescript` installs exactly this set, so CI proves it",
     "resolves and that ESLint can load the config with it."
   ],

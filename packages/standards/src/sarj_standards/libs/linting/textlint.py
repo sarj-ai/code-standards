@@ -431,7 +431,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     title="A durable operations guide records current usage",
                     outcome=ExpectedOutcome.NO_MATCH,
                     path="docs/operations.md",
-                    source="# Operations\n\nRun `sarj-standards check` before merging.\n",
+                    source="# Operations\n\nRun `code-standards check` before merging.\n",
                     expected_count=0,
                 ),
             ),

@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 # Each rule points directly to its executable examples.
-REPO_BLOB: Final = "https://github.com/sarj-ai/standards/blob/main"
+REPO_BLOB: Final = "https://github.com/sarj-ai/code-standards/blob/main"
 TESTS_DIR: Final = "packages/python/tests/rules"
 
 

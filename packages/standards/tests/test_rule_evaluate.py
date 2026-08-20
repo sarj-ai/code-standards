@@ -109,7 +109,7 @@ def test_text_evaluation_summarizes_per_rule_findings_and_next_step(
     assert status == 1
     assert f"  {_SELECTOR}: 1 finding" in output
     assert "next: review these findings for false positives" in output
-    assert f"sarj-standards maintain rules stage-warning {_SELECTOR}" in output
+    assert f"code-standards maintain rules stage-warning {_SELECTOR}" in output
 
 
 def test_observe_rejects_a_rule_that_is_not_warning_stage(
@@ -135,7 +135,7 @@ def test_observe_rejects_a_rule_that_is_not_warning_stage(
 
     assert status == 2
     assert "warning-stage rules only" in captured.err
-    assert f"next: sarj-standards maintain rules stage-warning {_SELECTOR}" in captured.err
+    assert f"next: code-standards maintain rules stage-warning {_SELECTOR}" in captured.err
 
 
 @pytest.mark.parametrize(

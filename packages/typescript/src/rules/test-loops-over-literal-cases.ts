@@ -1,7 +1,7 @@
 /**
  * @fileoverview test-loops-over-literal-cases — a literal case loop hides independently reportable test cases inside one test.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/test-loops-over-literal-cases.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/test-loops-over-literal-cases.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";

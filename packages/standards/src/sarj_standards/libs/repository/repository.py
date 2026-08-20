@@ -468,7 +468,7 @@ def _check_config_copies(root: Path, tracked: Sequence[str], canonical_dir: str)
                     Finding(
                         "file-conventions",
                         relative,
-                        f"generated config drifted from {managed_source.relative_to(root)}; run `sarj-standards setup`",
+                        f"generated config drifted from {managed_source.relative_to(root)}; run `code-standards setup`",
                     )
                 )
             continue

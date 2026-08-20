@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 try:
-    __version__ = version("sarj-standards")
+    __version__ = version("code-standards")
 except PackageNotFoundError:  # running from an uninstalled source tree
     __version__ = "0.0.0.dev0"
 

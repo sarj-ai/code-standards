@@ -118,8 +118,8 @@ def command(uvx: str, root: Path, selected_bundle: str, arguments: Sequence[str]
         "--python",
         TOOL_PYTHON,
         "--from",
-        f"sarj-standards=={selected_bundle}",
-        "sarj-standards",
+        f"code-standards=={selected_bundle}",
+        "code-standards",
         "--root",
         str(root),
         *arguments,
@@ -173,5 +173,5 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         run(sys.argv[1:] if argv is None else argv, cwd=Path.cwd())
     except BootstrapError as exc:
-        sys.stderr.write(f"sarj-standards bootstrap: {exc}\n")
+        sys.stderr.write(f"code-standards bootstrap: {exc}\n")
         return 2

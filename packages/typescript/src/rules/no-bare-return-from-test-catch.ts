@@ -1,6 +1,6 @@
 /**
  * @fileoverview no-bare-return-from-test-catch — returning from a caught failure can silently pass the rest of a test.
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-bare-return-from-test-catch.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-bare-return-from-test-catch.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";

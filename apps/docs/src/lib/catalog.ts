@@ -231,5 +231,5 @@ export function rulesForEngine(engine: Engine): Rule[] {
 }
 
 export function sourceUrl(path: string): string {
-  return `https://github.com/sarj-ai/standards/blob/${sourceRevision}/${path.split('/').map(encodeURIComponent).join('/')}`;
+  return `https://github.com/sarj-ai/code-standards/blob/${sourceRevision}/${path.split('/').map(encodeURIComponent).join('/')}`;
 }

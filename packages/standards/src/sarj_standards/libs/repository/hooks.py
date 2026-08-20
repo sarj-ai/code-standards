@@ -57,7 +57,7 @@ def _run(args: list[str]) -> int:
     root = Path(_git(Path.cwd(), "rev-parse", "--show-toplevel").strip())
     binary = _binary("lefthook")
     if _installed_version(binary) != _VERSION:
-        msg = f"lefthook {_VERSION} is required; reinstall sarj-standards"
+        msg = f"lefthook {_VERSION} is required; reinstall code-standards"
         raise RuntimeError(msg)
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
         [str(binary), *args], cwd=root, check=False
@@ -67,7 +67,7 @@ def _run(args: list[str]) -> int:
 def _binary(name: str) -> Path:
     executable = shutil.which(name, path=str(Path(sys.executable).parent))
     if executable is None:
-        msg = f"{name} is missing from the sarj-standards environment"
+        msg = f"{name} is missing from the code-standards environment"
         raise OSError(msg)
     return Path(executable)
 
@@ -85,7 +85,7 @@ def _native_binary() -> Path:
         / f"lefthook{suffix}"
     )
     if not binary.is_file():
-        msg = f"native Lefthook binary is missing from the sarj-standards environment: {binary}"
+        msg = f"native Lefthook binary is missing from the code-standards environment: {binary}"
         raise OSError(msg)
     return binary
 

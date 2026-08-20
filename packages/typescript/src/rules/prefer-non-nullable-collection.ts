@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-non-nullable-collection — report only when local control flow proves a nullish array is just an empty array.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree, type TSESLint } from "@typescript-eslint/utils";

@@ -83,7 +83,7 @@ def test_rollout_uses_one_deterministic_interface_for_every_entrypoint() -> None
     assert f'{module} --registry "$registry" plan --version "$VERSION"' in workflow
     assert f'{module} --registry "$registry" apply --version "$VERSION"' in workflow
     assert f'{module} --registry "$registry" reconcile --version "$VERSION"' in workflow
-    assert "--refresh-package sarj-standards --from sarj-standards" in workflow
+    assert "--refresh-package code-standards --from code-standards" in workflow
     assert f'{module} --registry "$registry" status --version "$VERSION"' in workflow
     assert "github.event.workflow_run.head_sha || github.sha" in workflow
     assert "packages/standards/pyproject.toml" in workflow

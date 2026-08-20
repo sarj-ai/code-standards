@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-immutable-module-constant — module constants should expose readonly collection state.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-immutable-module-constant.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-immutable-module-constant.test.ts
  */
 
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";

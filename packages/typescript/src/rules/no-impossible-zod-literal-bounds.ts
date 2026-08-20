@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-impossible-zod-literal-bounds — literal Zod bounds must admit at least one value.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-impossible-zod-literal-bounds.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-impossible-zod-literal-bounds.test.ts
  */
 
 import {

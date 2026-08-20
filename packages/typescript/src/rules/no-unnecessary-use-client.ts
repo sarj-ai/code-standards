@@ -1,7 +1,7 @@
 /**
  * @fileoverview no-unnecessary-use-client — a `'use client'` file with no hooks, handlers or browser globals ships to the client for nothing.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/no-unnecessary-use-client.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unnecessary-use-client.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

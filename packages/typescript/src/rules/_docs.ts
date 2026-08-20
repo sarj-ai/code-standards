@@ -5,7 +5,7 @@
 
 import { ESLintUtils } from "@typescript-eslint/utils";
 
-export const REPO_BLOB = "https://github.com/sarj-ai/standards/blob/main";
+export const REPO_BLOB = "https://github.com/sarj-ai/code-standards/blob/main";
 export const TESTS_DIR = "packages/typescript/tests/rules";
 
 export const examplesPath = (name: string): string =>

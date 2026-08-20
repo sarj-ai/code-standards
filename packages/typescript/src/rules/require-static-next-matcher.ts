@@ -1,7 +1,7 @@
 /**
  * @fileoverview require-static-next-matcher — Next.js matcher configuration must be statically analyzable at build time.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/require-static-next-matcher.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-static-next-matcher.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

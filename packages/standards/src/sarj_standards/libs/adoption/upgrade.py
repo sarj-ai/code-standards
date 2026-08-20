@@ -95,14 +95,14 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         raise ValueError(msg)
     adopted = manifest.load(root)
     if adopted is None:
-        msg = "repository is not adopted; run `sarj-standards setup` first"
+        msg = "repository is not adopted; run `code-standards setup` first"
         raise ValueError(msg)
     executing_version = Version(manifest.adopted_version())
     declared_version = Version(adopted.version)
     if declared_version > executing_version:
         msg = (
             f"repository uses newer standards {adopted.version}; executing bundle is "
-            f"{manifest.adopted_version()}. Install the newer sarj-standards release and rerun update"
+            f"{manifest.adopted_version()}. Install the newer code-standards release and rerun update"
         )
         raise ValueError(msg)
     path = manifest.manifest_path(root)

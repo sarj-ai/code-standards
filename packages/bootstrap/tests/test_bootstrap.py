@@ -106,8 +106,8 @@ def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatc
         "--python",
         "3.14",
         "--from",
-        "sarj-standards==5.16.5",
-        "sarj-standards",
+        "code-standards==5.16.5",
+        "code-standards",
         "--root",
         str(tmp_path),
         "check",
@@ -180,5 +180,5 @@ def test_fake_uvx_receives_arguments_and_owns_exit_status(tmp_path: Path, fake_u
 
     assert completed.returncode == 7
     assert f"cwd={nested}" in completed.stdout
-    assert "--from sarj-standards==9.8.7 sarj-standards" in completed.stdout
+    assert "--from code-standards==9.8.7 code-standards" in completed.stdout
     assert f"--root {repo} check" in completed.stdout

@@ -1,6 +1,6 @@
 [project]
-name = "sarj-standards"
-version = "6.6.1"
+name = "code-standards"
+version = "7.0.0"
 description = "One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -30,14 +30,15 @@ dependencies = [
 ]
 
 [project.scripts]
+code-standards = "sarj_standards.__main__:main"
 sarj-standards = "sarj_standards.__main__:main"
 
 [project.urls]
 Homepage = "https://code-standards.sarj.ai/"
 Documentation = "https://code-standards.sarj.ai/cli/"
-Changelog = "https://github.com/sarj-ai/standards/releases"
-Repository = "https://github.com/sarj-ai/standards"
-Issues = "https://github.com/sarj-ai/standards/issues"
+Changelog = "https://github.com/sarj-ai/code-standards/releases"
+Repository = "https://github.com/sarj-ai/code-standards"
+Issues = "https://github.com/sarj-ai/code-standards/issues"
 
 [build-system]
 requires = ["hatchling==1.32.0"]

@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-constant-time-secret-compare — `===` on a secret short-circuits on the first differing byte, so the response time leaks the secret.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-constant-time-secret-compare.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-constant-time-secret-compare.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";

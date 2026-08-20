@@ -78,6 +78,17 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     assert "pypa/gh-action-pypi-publish@" in release
 
 
+def test_standards_release_builds_the_legacy_distribution_bridge() -> None:
+    release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        "uv build --project ../standards-compat --out-dir dist" in release
+    )
+    assert (
+        "./dist/code_standards-*.whl" in release
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+
+
 def test_release_waits_for_exact_revision_safety_checks() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
@@ -274,7 +285,7 @@ def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
 @pytest.mark.parametrize(
     ("package", "module", "executable"),
     [
-        ("bootstrap", "sarj_standards_bootstrap", "sarj-standards"),
+        ("bootstrap", "sarj_standards_bootstrap", "code-standards"),
         ("python", "sarj_python_lint", "sarj-python-lint"),
         ("sql", "sarj_sql_lint", "sarj-sql-lint"),
         ("iac", "sarj_iac_lint", "sarj-iac-lint"),
@@ -293,4 +304,4 @@ def test_python_publishers_smoke_and_bind_wheels_and_sdists(
     assert f"import {module}" in release
     assert f'bin/{executable}" --help' in release
     assert release.count("sha256sum --check --strict SHA256SUMS") == 5
-    assert "sarj_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff" in release
+    assert "code_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff" in release

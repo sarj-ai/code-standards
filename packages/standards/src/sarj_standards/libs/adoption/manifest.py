@@ -32,8 +32,8 @@ _ESLINT_RULE_KEY: Final = re.compile(
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
 
-#: Sibling distributions pinned exactly by `sarj-standards`.
-LINT_CONFIGS: Final = "sarj-standards"
+#: Sibling distributions pinned exactly by `code-standards`.
+LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
 
@@ -101,7 +101,7 @@ class Manifest:
         durable_text = ", ".join(json.dumps(value) for value in self.durable_artifacts)
         sections = [
             (
-                "# Managed by `sarj-standards setup`; commit this file.\n"
+                "# Managed by `code-standards setup`; commit this file.\n"
                 f"schema = {MANIFEST_SCHEMA}\n"
                 f'bundle = "{self.version}"\n'
                 f'profile = "{self.profile}"\n'

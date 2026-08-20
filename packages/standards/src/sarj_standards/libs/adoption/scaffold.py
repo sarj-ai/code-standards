@@ -336,7 +336,7 @@ def build_plan(
             force=force,
             reason=(
                 "exists; preserve repository-specific CI changes or regenerate explicitly with "
-                "`sarj-standards show ci --output .github/workflows/standards.yml`"
+                "`code-standards show ci --output .github/workflows/standards.yml`"
             ),
         )
     _note_subproject_destinations(root, plan)
@@ -350,8 +350,8 @@ def _is_managed_workflow(path: Path) -> bool:
         return False
     return (
         re.fullmatch(
-            r"# Managed by sarj-standards(?: [0-9]+\.[0-9]+\.[0-9]+)?; regenerate with "
-            r"`sarj-standards show ci --output \.github/workflows/standards\.yml`\.",
+            r"# Managed by (?:code-standards|sarj-standards)(?: [0-9]+\.[0-9]+\.[0-9]+)?; regenerate with "
+            r"`code-standards show ci --output \.github/workflows/standards\.yml`\.",
             first_line,
         )
         is not None
@@ -1051,7 +1051,7 @@ def _indent_of(text: str) -> int | str:
 
 def _eslint_entrypoint() -> str:
     return """// Flat config entrypoint. `eslint.strict.mjs` next to this file is SYNCED --
-// `sarj-standards setup` overwrites it, and `setup --dry-run` fails CI if
+// `code-standards setup` overwrites it, and `setup --dry-run` fails CI if
 // you edit it. Put every repo-specific decision HERE instead, in the override
 // block below: later entries win, so you can relax a rule, add a framework
 // exemption, or scope one to a directory without forking the canonical file.
@@ -1415,7 +1415,7 @@ def github_ci_workflow(root: Path) -> str:
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = launcher.repository_command()
     lines = [
-        "# Managed by sarj-standards; regenerate with `sarj-standards show ci --output .github/workflows/standards.yml`.",
+        "# Managed by code-standards; regenerate with `code-standards show ci --output .github/workflows/standards.yml`.",
         "name: Standards",
         "",
         "on:",
@@ -1575,7 +1575,9 @@ def _tokens_execute_standards_check(tokens: tuple[str, ...], *, source_checkout:
     if not source_checkout:
         return False
     try:
-        executable_index = next(index for index, token in enumerate(tokens) if Path(token).name == "sarj-standards")
+        executable_index = next(
+            index for index, token in enumerate(tokens) if Path(token).name in {"code-standards", "sarj-standards"}
+        )
     except StopIteration:
         return False
     command_prefix = tokens[:executable_index]

@@ -7,9 +7,9 @@ from typing import Final, NamedTuple
 
 
 TOOL_PYTHON: Final = "3.14"
-PACKAGE: Final = "sarj-standards"
-COMMAND: Final = "sarj-standards"
-BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==1.0.3"
+PACKAGE: Final = "code-standards"
+COMMAND: Final = "code-standards"
+BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==2.0.0"
 RETIRED_REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
 RETIRED_LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
@@ -158,7 +158,7 @@ def _python_repository_argv(match: re.Match[str]) -> str:
 
 
 def retired_repository_script() -> str:
-    return f"""# Managed by sarj-standards launcher protocol {RETIRED_LAUNCHER_PROTOCOL}; do not edit.
+    return f"""# Managed by code-standards launcher protocol {RETIRED_LAUNCHER_PROTOCOL}; do not edit.
 from __future__ import annotations
 
 import os
@@ -178,7 +178,7 @@ MANIFEST = ROOT / ".sarj-standards.toml"
 
 
 def fail(message: str) -> int:
-    print(f"sarj-standards launcher: {{message}}", file=sys.stderr)
+    print(f"code-standards launcher: {{message}}", file=sys.stderr)
     return 2
 
 
@@ -215,8 +215,8 @@ def main() -> int:
         "--python",
         TOOL_PYTHON,
         "--from",
-        f"sarj-standards=={{bundle}}",
-        "sarj-standards",
+        f"code-standards=={{bundle}}",
+        "code-standards",
         "--root",
         str(ROOT),
         *sys.argv[1:],

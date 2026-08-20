@@ -68,9 +68,9 @@ class _PackageEslintPinRewrite(NamedTuple):
     changed: bool
 
 
-#: `sarj-python-lint==0.25.0`, `"sarj-standards>=0.9"`, `--from sarj-sql-lint==1.2.3`.
+#: `sarj-python-lint==0.25.0`, `"code-standards>=0.9"`, `--from sarj-sql-lint==1.2.3`.
 _PIN = re.compile(
-    r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards)\s*(?P<op>==|>=|~=)\s*"
+    r"(?P<name>sarj-(?:python|sql|iac)-lint|(?:code|sarj)-standards)\s*(?P<op>==|>=|~=)\s*"
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
 )
 _PREAPPROVED_ESLINT = re.compile(
@@ -91,7 +91,7 @@ _PACKAGE_ESLINT_PIN = re.compile(
 #: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
 #: particular, ``exclude-newer`` can make a just-published exact bundle appear
 #: unavailable in CI for days. Keep custom pin-bearing launchers isolated too.
-_UVX_STANDARDS = re.compile(r"\buvx(?P<args>[^\n]*?--from\s+sarj-standards(?:==[^\s]+)?)")
+_UVX_STANDARDS = re.compile(r"\buvx(?P<args>[^\n]*?--from\s+(?:code|sarj)-standards(?:==[^\s]+)?)")
 _PERSISTED_CREDENTIALS_OFF = re.compile(r"(?m)^(?P<indent>[ \t]*)persist-credentials:\s*false\s*$")
 
 #: `rev: python-v0.19.0`, `rev: "standards-v0.10.0"`, `rev: 9d073e83b2...`.
@@ -260,7 +260,7 @@ def _check_repository_launcher(root: Path) -> Iterator[Finding]:
         launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix(),
         "repository-local launcher protocol 1 is retired; immutable bootstrap owns repository dispatch",
         "doctor.launcher.retired",
-        "run `sarj-standards setup`",
+        "run `code-standards setup`",
     )
 
 
@@ -321,7 +321,7 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
             manifest.MANIFEST_NAME,
             f"declares {adopted.hook_manager}, but a canonical {names} Standards hook is also active",
             "doctor.hooks.manager-conflict",
-            f"rerun `sarj-standards setup --hooks {adopted.hook_manager}` to keep one hook owner",
+            f"rerun `code-standards setup --hooks {adopted.hook_manager}` to keep one hook owner",
         )
     installed = _installed_hook_managers(root) if _git_worktree(root) else frozenset[str]()
     unexpected_installed = installed - {adopted.hook_manager}
@@ -333,9 +333,9 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
             f"installed hook chain includes {names}, but the manifest selects {adopted.hook_manager}",
             "doctor.hooks.manager-conflict",
             (
-                "run `sarj-standards maintain hooks install`"
+                "run `code-standards maintain hooks install`"
                 if adopted.hook_manager == "lefthook"
-                else f"reinstall the selected manager with `sarj-standards setup --hooks {adopted.hook_manager}`"
+                else f"reinstall the selected manager with `code-standards setup --hooks {adopted.hook_manager}`"
             ),
         )
     if adopted.hook_manager == "pre-commit":
@@ -352,15 +352,15 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
                     ".git/hooks/pre-commit",
                     "the configuration is healthy, but this checkout has no installed commit hook",
                     "doctor.hooks.precommit-install",
-                    "run `sarj-standards doctor --repair`",
+                    "run `code-standards doctor --repair`",
                 )
             return
         yield Finding(
             Level.DRIFT,
             ".pre-commit-config.yaml",
-            "pre-commit does not run exactly one canonical `sarj-standards check --staged` hook",
+            "pre-commit does not run exactly one canonical `code-standards check --staged` hook",
             "doctor.hooks.precommit",
-            "run `sarj-standards update --offline`",
+            "run `code-standards update --offline`",
         )
         return
     path = hooks.lefthook_config(root)
@@ -372,15 +372,15 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
                 ".git/hooks/pre-commit",
                 "the configuration is healthy, but this checkout has no installed Lefthook commit hook",
                 "doctor.hooks.lefthook-install",
-                "run `sarj-standards maintain hooks install`",
+                "run `code-standards maintain hooks install`",
             )
         return
     yield Finding(
         Level.DRIFT,
         "lefthook.yml",
-        "Lefthook does not run `sarj-standards check --staged` during pre-commit",
+        "Lefthook does not run `code-standards check --staged` during pre-commit",
         "doctor.hooks.lefthook",
-        "add a Lefthook pre-commit command that runs `sarj-standards check --staged`",
+        "add a Lefthook pre-commit command that runs `code-standards check --staged`",
     )
 
 
@@ -618,7 +618,7 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
             manifest.MANIFEST_NAME,
             str(exc),
             "doctor.manifest.invalid",
-            "repair the named manifest field, then run `sarj-standards doctor` again",
+            "repair the named manifest field, then run `code-standards doctor` again",
         )
         return
 
@@ -626,9 +626,9 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
         yield Finding(
             Level.WARN,
             manifest.MANIFEST_NAME,
-            "absent -- run `sarj-standards setup` so the adopted version has one home",
+            "absent -- run `code-standards setup` so the adopted version has one home",
             "doctor.manifest.absent",
-            "run `sarj-standards setup`",
+            "run `code-standards setup`",
         )
         return
 
@@ -640,9 +640,9 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
         Level.DRIFT,
         manifest.MANIFEST_NAME,
         f"declares {found.version} but the installed wheel is {current}"
-        " -- run `sarj-standards update` so every owned site moves together",
+        " -- run `code-standards update` so every owned site moves together",
         "doctor.manifest.version",
-        "run `sarj-standards update`",
+        "run `code-standards update`",
     )
 
 
@@ -652,7 +652,8 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
         for match in _PIN.finditer(_read(path)):
             name = match.group("name")
             pinned = match.group("version")
-            current = installed.get(name)
+            canonical = "code-standards" if name == "sarj-standards" else name
+            current = installed.get(canonical)
             where = f"{path.relative_to(root)}: {name}{match.group('op')}{pinned}"
             if current is None:
                 yield Finding(
@@ -661,15 +662,16 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                     f"{name} is not installed here, so the pin is unverified",
                     "doctor.version.unverified",
                 )
-            elif pinned == current and match.group("op") == "==":
+            elif name == canonical and pinned == current and match.group("op") == "==":
                 yield Finding(Level.OK, where, "matches the installed wheel", "doctor.version.pin")
             else:
                 yield Finding(
                     Level.DRIFT,
                     where,
-                    f"installed {name} is {current}; Sarj toolchain dependencies must use exact `==` pins",
+                    f"installed {canonical} is {current}; Sarj toolchain dependencies must use the canonical name "
+                    "and exact `==` pins",
                     "doctor.version.pin",
-                    "run `sarj-standards update`",
+                    "run `code-standards update`",
                 )
         for match in _PREAPPROVED_ESLINT.finditer(_read(path)):
             pinned = match.group("version")
@@ -690,7 +692,7 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                     where,
                     f"the tested internal plugin is {_ESLINT_PLUGIN}@{current}",
                     "doctor.version.pin",
-                    "run `sarj-standards update`",
+                    "run `code-standards update`",
                 )
 
 
@@ -706,15 +708,19 @@ def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
         return
     pyproject = python_root / "pyproject.toml"
     text = _read(pyproject) if pyproject.is_file() else ""
-    if not any(match.group("name") == "sarj-standards" for match in _PIN.finditer(text)):
+    installed_names = {
+        name for match in _PIN.finditer(text) if (name := match.group("name")) in {"code-standards", "sarj-standards"}
+    }
+    if not installed_names:
         return
+    removal = " ".join(sorted(installed_names))
     where = str(pyproject.relative_to(root))
     yield Finding(
         Level.DRIFT,
         where,
-        "sarj-standards is installed inside the consumer project; the isolated launcher owns the tool runtime",
+        "code-standards is installed inside the consumer project; the isolated launcher owns the tool runtime",
         "doctor.python.legacy-in-project-tool",
-        f"run `uv remove --dev sarj-standards` in {python_root.relative_to(root).as_posix() or '.'}",
+        f"run `uv remove --dev {removal}` in {python_root.relative_to(root).as_posix() or '.'}",
     )
 
 
@@ -745,23 +751,23 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
     changed: set[str] = set()
     text, migrated_launchers = launcher.rewrite_legacy_repository_invocations(text)
     if migrated_launchers:
-        changed.add("sarj-standards")
+        changed.add("code-standards")
 
     def isolate_launcher(match: re.Match[str]) -> str:
         if "--no-config" in match.group("args").split():
             return match.group(0)
-        changed.add("sarj-standards")
+        changed.add("code-standards")
         return f"uvx --no-config{match.group('args')}"
 
     def replacement(match: re.Match[str]) -> str:
         name = match.group("name")
-        current = installed.get(name)
-        if current is None or (match.group("version") == current and match.group("op") == "=="):
+        canonical = "code-standards" if name == "sarj-standards" else name
+        current = installed.get(canonical) or installed.get(name)
+        if current is None or (name == canonical and match.group("version") == current and match.group("op") == "=="):
             return match.group(0)
-        changed.add(name)
-        relative_start = match.start("op") - match.start()
+        changed.add(canonical)
         relative_end = match.end("version") - match.start()
-        return f"{match.group(0)[:relative_start]}=={current}{match.group(0)[relative_end:]}"
+        return f"{canonical}=={current}{match.group(0)[relative_end:]}"
 
     def preapproved_eslint(match: re.Match[str]) -> str:
         current = installed.get(_ESLINT_PLUGIN)
@@ -771,14 +777,18 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
         return f"{match.group('prefix')}{current}{match.group('suffix')}"
 
     isolated = _UVX_STANDARDS.sub(isolate_launcher, text)
-    if "sarj-standards" in isolated and "actions/checkout@" in isolated and "fetch-depth:" not in isolated:
+    if (
+        any(name in isolated for name in ("code-standards", "sarj-standards"))
+        and "actions/checkout@" in isolated
+        and "fetch-depth:" not in isolated
+    ):
         migrated = _PERSISTED_CREDENTIALS_OFF.sub(
             r"\g<0>\n\g<indent>fetch-depth: 0",
             isolated,
             count=1,
         )
         if migrated != isolated:
-            changed.add("sarj-standards")
+            changed.add("code-standards")
             isolated = migrated
     pinned = _PIN.sub(replacement, isolated)
     return VersionPinRewrite(_PREAPPROVED_ESLINT.sub(preapproved_eslint, pinned), tuple(sorted(changed)))
@@ -887,9 +897,9 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
                 Level.DRIFT,
                 where,
                 f"the bundled eslint.strict.mjs is tested against {floor};"
-                " see `sarj-standards show peers` for the whole resolvable set",
+                " see `code-standards show peers` for the whole resolvable set",
                 "doctor.eslint.plugin",
-                "run `sarj-standards update`",
+                "run `code-standards update`",
             )
 
 
@@ -952,7 +962,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 str(target.relative_to(root)),
                 f"declared {name} config is missing",
                 "doctor.config.missing",
-                "run `sarj-standards update`",
+                "run `code-standards update`",
             )
         elif target.read_bytes() != expected.read_bytes():
             if is_link_like(target):
@@ -970,7 +980,7 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 str(target.relative_to(root)),
                 f"declared {name} config differs from the installed bundle",
                 "doctor.config.drift",
-                "run `sarj-standards update`",
+                "run `code-standards update`",
             )
         else:
             yield Finding(Level.OK, str(target.relative_to(root)), f"{name} config is current", "doctor.config.current")
@@ -1061,9 +1071,9 @@ def _check_ci_gate(root: Path) -> Iterator[Finding]:
     yield Finding(
         Level.DRIFT,
         ".github/workflows",
-        "no executable workflow step runs `sarj-standards ... check`",
+        "no executable workflow step runs `code-standards ... check`",
         "doctor.ci.gate",
-        "run `sarj-standards show ci --output .github/workflows/standards.yml`",
+        "run `code-standards show ci --output .github/workflows/standards.yml`",
     )
 
 
@@ -1192,7 +1202,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             f"{package_json.relative_to(root)}: {name}",
             f"expected exact tested peer {expected}, found {actual!r}",
             "doctor.eslint.peer",
-            "run `sarj-standards update`",
+            "run `code-standards update`",
         )
 
     client = packagemanager.detect(package_root)
@@ -1205,7 +1215,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
                 str(pnpm_workspace.relative_to(root)),
                 "required pnpm 11 workspace policy is missing",
                 "doctor.eslint.override",
-                "run `sarj-standards update`",
+                "run `code-standards update`",
             )
             return
         workspace_text = _read(pnpm_workspace)
@@ -1217,7 +1227,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             str(pnpm_workspace.relative_to(root)),
             "required pnpm peer override is missing",
             "doctor.eslint.override",
-            "run `sarj-standards update`",
+            "run `code-standards update`",
         )
         return
     table: Mapping[str, object] = document
@@ -1229,7 +1239,7 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
             str(package_json.relative_to(root)),
             f"required {client} peer override is missing",
             "doctor.eslint.override",
-            "run `sarj-standards update`",
+            "run `code-standards update`",
         )
 
 

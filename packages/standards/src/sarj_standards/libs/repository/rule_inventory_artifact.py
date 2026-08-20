@@ -136,7 +136,7 @@ def sync(root: Path, *, check: bool) -> InventorySyncResult:
     if check:
         return InventorySyncResult(
             1,
-            "drift: rule-inventory.v1.json differs from live registries; run `sarj-standards maintain rules sync`",
+            "drift: rule-inventory.v1.json differs from live registries; run `code-standards maintain rules sync`",
         )
     transaction.atomic_write_text(root.resolve(), destination, expected)
     return InventorySyncResult(0, "updated: rule-inventory.v1.json")

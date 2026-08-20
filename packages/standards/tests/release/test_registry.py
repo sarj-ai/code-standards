@@ -25,7 +25,7 @@ def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3") -> None:
     manifest = root / "packages/standards/pyproject.toml"
     manifest.parent.mkdir(parents=True)
     manifest.write_text(
-        f'[project]\nname = "sarj-standards"\nversion = "4.0.0"\ndependencies = ["{python_pin}", "ruff==1.0.0"]\n',
+        f'[project]\nname = "code-standards"\nversion = "4.0.0"\ndependencies = ["{python_pin}", "ruff==1.0.0"]\n',
         encoding="utf-8",
     )
     peers = root / "packages/standards/src/sarj_standards/configs/eslint.peers.json"

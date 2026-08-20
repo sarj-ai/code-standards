@@ -1,7 +1,7 @@
 /**
  * @fileoverview prefer-shadcn-primitives — visible application UI should use shared shadcn primitives.
  *
- * Examples: https://github.com/sarj-ai/standards/blob/main/packages/typescript/tests/rules/prefer-shadcn-primitives.test.ts
+ * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-shadcn-primitives.test.ts
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
