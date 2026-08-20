@@ -1,13 +1,5 @@
 ---
-interface Ancestor {
-  label: string;
-  href: string;
-}
-
-interface Props {
-  ancestors: readonly Ancestor[];
-  current: string;
-}
+import type { BreadcrumbsProps as Props } from '../contracts';
 
 const { ancestors, current } = Astro.props;
 ---

@@ -1,5 +1,6 @@
 ---
 import ReferencePage from '../../../components/ReferencePage.astro';
+import ReferenceHero from '../../../components/ReferenceHero.astro';
 import RuleTable from '../../../components/RuleTable.astro';
 import { ENGINES, catalog, engineLabel, rulesForEngine, type Engine } from '../../../lib/catalog';
 import { referenceSidebar } from '../../../lib/navigation';
@@ -22,5 +23,9 @@ const rules = rulesForEngine(engine);
   sidebar={[...referenceSidebar]}
   pagefind={false}
 >
+  <ReferenceHero
+    title={`${engineLabel(engine)} rules`}
+    description={`${rules.length} active ${engineLabel(engine)} rules in Sarj Standards.`}
+  />
   <RuleTable rules={rules} />
 </ReferencePage>

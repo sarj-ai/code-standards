@@ -1,5 +1,6 @@
 ---
 import ReferencePage from '../../components/ReferencePage.astro';
+import ReferenceHero from '../../components/ReferenceHero.astro';
 import RuleTable from '../../components/RuleTable.astro';
 import { catalog } from '../../lib/catalog';
 ---
@@ -9,5 +10,6 @@ import { catalog } from '../../lib/catalog';
   description={`${catalog.rules.length} code standards with tested examples.`}
   pagefind={false}
 >
+  <ReferenceHero title="Rules" description={`${catalog.rules.length} code standards with tested examples.`} />
   <RuleTable rules={catalog.rules} />
 </ReferencePage>

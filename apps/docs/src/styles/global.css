@@ -22,7 +22,7 @@ body {
 }
 
 .page > header.header {
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
   box-shadow: none;
 }
 
@@ -101,6 +101,9 @@ starlight-menu-button {
 
 starlight-menu-button button {
   top: calc((var(--sl-nav-height) - 2.75rem) / 2);
+  border: 1px solid var(--sarj-color-rule);
+  background: var(--sl-color-gray-6);
+  color: var(--sl-color-white);
 }
 
 .sl-markdown-content h1,
@@ -186,7 +189,7 @@ starlight-menu-button button {
 
 .reference-hero {
   padding-block: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
 }
 
 .reference-hero--compact {
@@ -210,16 +213,16 @@ starlight-menu-button button {
   min-height: 44px;
   align-items: center;
   padding: 0.35rem 0.6rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   text-decoration: none;
 }
 
 .command-block {
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--sarj-color-rule);
 }
 
 .command-block:last-child {
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
 }
 
 .command-block > div {
@@ -238,7 +241,7 @@ starlight-menu-button button {
 
 .cli-setup {
   padding-block: 2rem;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
 }
 
 .cli-setup h1 {
@@ -254,7 +257,7 @@ starlight-menu-button button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0 0 2rem;
   padding: 0;
-  border-block: 1px solid var(--rule);
+  border-block: 1px solid var(--sarj-color-rule);
   list-style: none;
 }
 
@@ -263,8 +266,8 @@ starlight-menu-button button {
   grid-template-columns: 5rem 1fr;
   gap: 0.75rem;
   padding: 0.85rem;
-  border-right: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
+  border-right: 1px solid var(--sarj-color-rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
 }
 
 .cli-workflow li:nth-child(even) {
@@ -285,7 +288,7 @@ starlight-menu-button button {
 
 .option-list {
   margin-block: 1.25rem;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--sarj-color-rule);
 }
 
 .option-list > div {
@@ -293,7 +296,7 @@ starlight-menu-button button {
   grid-template-columns: minmax(10rem, 0.65fr) 1fr;
   gap: 1rem;
   padding-block: 0.8rem;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
 }
 
 .option-list dd {
@@ -343,7 +346,7 @@ starlight-menu-button button {
 .directory-filters button {
   min-height: 36px;
   padding: 0.3rem 1.8rem 0.3rem 0.55rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   border-radius: 0.3rem;
   background: var(--sl-color-black);
   color: var(--sl-color-white);
@@ -359,7 +362,7 @@ starlight-menu-button button {
 
 .rule-table-wrap {
   overflow-x: auto;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   border-radius: 0.55rem;
 }
 
@@ -374,7 +377,7 @@ starlight-menu-button button {
 .rule-table th,
 .rule-table td {
   padding: 0.78rem 0.9rem;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
   text-align: left;
   vertical-align: top;
 }
@@ -422,7 +425,7 @@ starlight-menu-button button {
   height: 1.65rem;
   flex: 0 0 1.65rem;
   place-items: center;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   border-radius: 0.28rem;
   color: var(--sl-color-gray-1);
   font-family: var(--sl-font-mono);
@@ -439,9 +442,9 @@ starlight-menu-button button {
 
 .engine-mark--python {
   border-color: #3776ab;
-  background: linear-gradient(135deg, #3776ab 0 50%, #ffd343 50% 100%);
+  background: #3776ab;
+  box-shadow: inset 0 -0.25rem #ffd343;
   color: #fff;
-  text-shadow: 0 1px 1px #17202a;
 }
 
 .engine-mark--sql {
@@ -481,19 +484,19 @@ starlight-menu-button button {
 .level {
   display: inline-block;
   padding: 0.18rem 0.42rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   font-family: var(--sl-font-mono);
   font-size: 0.67rem;
 }
 
 .level--error {
-  border-color: color-mix(in srgb, var(--report) 65%, var(--rule));
-  color: var(--report);
+  border-color: color-mix(in srgb, var(--sarj-color-report) 65%, var(--sarj-color-rule));
+  color: var(--sarj-color-report);
 }
 
 .level--warning {
-  border-color: #a97708;
-  color: #a97708;
+  border-color: var(--sarj-color-warning);
+  color: var(--sarj-color-warning);
 }
 
 .level--off {
@@ -502,7 +505,7 @@ starlight-menu-button button {
 
 .rule-detail__header {
   padding-block: 1.15rem 1.4rem;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
 }
 
 .rule-detail__toolbar {
@@ -600,7 +603,7 @@ starlight-menu-button button {
   min-inline-size: 0;
   max-inline-size: 100%;
   overflow: hidden;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   border-radius: 0.55rem;
   background: var(--sl-color-black);
 }
@@ -627,7 +630,7 @@ starlight-menu-button button {
   display: block;
   min-inline-size: 0;
   padding: 0.75rem 0.9rem;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--sarj-color-rule);
 }
 
 .example h3,
@@ -648,7 +651,7 @@ starlight-menu-button button {
 .example details {
   margin: 0 1rem 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--sarj-color-rule);
 }
 
 .example .expressive-code,
@@ -663,7 +666,7 @@ starlight-menu-button button {
 
 .example .expressive-code figure {
   border: 0;
-  border-top: 1px solid var(--rule);
+  border-top: 1px solid var(--sarj-color-rule);
   border-radius: 0;
 }
 
@@ -682,7 +685,7 @@ starlight-menu-button button {
   display: block;
   margin-top: 4rem;
   padding-block: 2rem;
-  border-block: 1px solid var(--rule);
+  border-block: 1px solid var(--sarj-color-rule);
 }
 
 .rule-contract h2,
@@ -700,7 +703,7 @@ starlight-menu-button button {
   min-inline-size: 0;
   max-inline-size: 100%;
   padding: 0.3rem 0.5rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   overflow-wrap: anywhere;
   white-space: normal;
 }
@@ -733,7 +736,7 @@ starlight-menu-button button {
   align-items: center;
   gap: 0.3rem;
   padding: 0.35rem 0.55rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   border-radius: 0.4rem;
   color: var(--sl-color-white);
   font-size: 0.75rem;
@@ -747,7 +750,7 @@ starlight-menu-button button {
 
 .rule-stepper kbd {
   padding: 0.05rem 0.28rem;
-  border: 1px solid var(--rule);
+  border: 1px solid var(--sarj-color-rule);
   border-radius: 0.2rem;
   background: var(--sl-color-gray-6);
   font-family: var(--sl-font-mono);
@@ -785,7 +788,7 @@ starlight-menu-button button {
 
   .cli-workflow li + li {
     border-inline-start: 0;
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--sarj-color-rule);
   }
 
   .directory-toolbar {
@@ -838,7 +841,7 @@ starlight-menu-button button {
     max-inline-size: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 0.5rem 0.75rem;
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--sarj-color-rule);
   }
 
   .rule-table th,

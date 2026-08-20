@@ -2,6 +2,7 @@
 import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleExample from '../../../components/RuleExample.astro';
 import EngineMark from '../../../components/EngineMark.astro';
+import InlineCodeText from '../../../components/InlineCodeText.astro';
 import { Code } from '@astrojs/starlight/components';
 import { catalog, engineLabel, ruleHref, sourceUrl, type Rule } from '../../../lib/catalog';
 import { referenceSidebar } from '../../../lib/navigation';
@@ -67,7 +68,7 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
         </nav>
       </div>
       <h1>{rule.id}</h1>
-      <p class="lede">{rule.summary}</p>
+      <p class="lede"><InlineCodeText text={rule.summary} /></p>
       <div class="rule-header-links" data-pagefind-ignore>
         {rule.code && <code>{rule.code}</code>}
         {rule.messageIds.map((messageId) => <code>{messageId}</code>)}
@@ -80,11 +81,11 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
     <section class="rule-prose">
       <div>
         <h2>Why</h2>
-        <p>{rule.rationale}</p>
+        <p><InlineCodeText text={rule.rationale} /></p>
       </div>
       <div>
         <h2>Fix</h2>
-        <p>{rule.remediation}</p>
+        <p><InlineCodeText text={rule.remediation} /></p>
       </div>
     </section>
 

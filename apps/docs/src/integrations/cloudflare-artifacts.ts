@@ -38,6 +38,10 @@ async function writeContentSecurityPolicyHeader(dir: URL): Promise<void> {
   }
   const hashes = inlineScriptHashes(documents.map(([, document]) => document));
   const policy = appendDirectiveValues(generatedPolicy, 'script-src-elem', hashes);
+  const policyHeader = `  Content-Security-Policy: ${policy}`;
+  if (Buffer.byteLength(policyHeader, 'utf8') > 2_000) {
+    throw new Error('Cloudflare Content-Security-Policy header exceeds the 2,000-byte line limit');
+  }
 
   await Promise.all(
     documents.map(async ([path, document]) => {
@@ -55,7 +59,7 @@ async function writeContentSecurityPolicyHeader(dir: URL): Promise<void> {
 
   const generated = headers.replace(
     rootHeader,
-    `${rootHeader}  Content-Security-Policy: ${policy}\n`,
+    `${rootHeader}${policyHeader}\n`,
   );
   await writeFile(headersUrl, generated, 'utf8');
 }

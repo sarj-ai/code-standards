@@ -36,7 +36,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
     // No number in the comment.
     { code: "const staleTime = 5 * 60 * 1000; // minutes" },
     // A directive.
-    { code: "const staleTime = 5 * 60 * 1000; // TODO@nmaswood: 5 minutes" },
+    { code: "const staleTime = 5 * 60 * 1000; // TODO@example-owner: 5 minutes" },
     // Without a unit, the comment can state a domain fact or value mapping.
     { code: "const ounceToG = poundToG / 16; // 16 ounces to a pound" },
     { code: "for (let serviceNum = 0; serviceNum < 10; serviceNum++) {} // 10 services" },

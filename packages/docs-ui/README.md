@@ -8,6 +8,15 @@ Shared Astro and Starlight reference UI for Sarj standards sites
 npm install --save-dev @sarj/docs-ui
 ```
 
-Rules and configuration are documented in the generated rule directory.
+Import `@sarj/docs-ui/styles.css` once, then compose the typed Astro components. The live component and theme contract is published at [code-standards.sarj.ai/design-system/](https://code-standards.sarj.ai/design-system/).
+
+Public exports:
+
+- `@sarj/docs-ui/Breadcrumbs.astro`
+- `@sarj/docs-ui/PageAnchor.astro`
+- `@sarj/docs-ui/ReferencePage.astro`
+- `@sarj/docs-ui/catalog`
+- `@sarj/docs-ui/contracts`
+- `@sarj/docs-ui/styles.css`
 
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/code-standards)

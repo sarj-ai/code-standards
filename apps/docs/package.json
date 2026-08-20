@@ -11,13 +11,12 @@
     "dev": "astro dev",
     "preview": "astro preview",
     "deploy": "wrangler deploy",
-    "deploy:preview": "wrangler versions upload"
+    "verify:deployment": "node scripts/verify-deployment.mjs"
   },
   "dependencies": {
     "@astrojs/starlight": "0.41.7",
-    "@fontsource-variable/nunito": "5.3.0",
     "@sarj/docs-ui": "file:../../packages/docs-ui",
-    "astro": "7.2.3"
+    "astro": "7.2.4"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",

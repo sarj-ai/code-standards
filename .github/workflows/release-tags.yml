@@ -116,6 +116,7 @@ jobs:
             'iac-ci.yml|iac CI' \
             'tsconfig-ci.yml|tsconfig CI' \
             'docs-ui-ci.yml|docs UI CI' \
+            'docs.yml|documentation' \
             'standards-ci.yml|standards CI'; do
             IFS='|' read -r workflow expected_name <<< "$specification"
             while (( SECONDS < deadline )); do

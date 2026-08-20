@@ -30,7 +30,8 @@ const {
   sidebar={sidebar}
   hasSidebar={hasSidebar}
   template={template}
-  discovery={noindex ? 'unlisted' : pagefind ? 'searchable' : 'navigation-only'}
+  searchable={pagefind}
+  indexable={!noindex}
 >
   <slot />
 </SharedReferencePage>
