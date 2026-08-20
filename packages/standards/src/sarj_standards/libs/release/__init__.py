@@ -33,6 +33,7 @@ from sarj_standards.libs.release.release_age import (
 )
 from sarj_standards.libs.release.tags import (
     RELEASE_TARGETS,
+    ReleasePublication,
     ReleaseTarget,
     ReleaseTargetId,
     TagSyncResult,
@@ -67,6 +68,7 @@ __all__ = (
     "ReleaseAgeReport",
     "ReleaseCausalityReport",
     "ReleaseMode",
+    "ReleasePublication",
     "ReleaseTarget",
     "ReleaseTargetId",
     "TagSyncResult",

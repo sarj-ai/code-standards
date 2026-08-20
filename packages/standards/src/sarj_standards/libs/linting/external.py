@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 import tomllib
-from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, Protocol
+from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, Protocol
 
 from pathspec import PathSpec
 from pydantic import BaseModel, ConfigDict, Field
@@ -66,6 +66,7 @@ _MAX_ESLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
+_ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _REACT_RUNTIME_PACKAGES = frozenset(
     {
         "@astrojs/react",
@@ -211,6 +212,7 @@ def analyze_external(
     react_doctor_staged: bool = False,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
+    execute_eslint = _run_eslint_process if runner is None else runner
     try:
         normalized_trust = TrustMode(trust)
         root, _contained, routed = _prepare_inputs(files, root, policy=policy, grouped=grouped)
@@ -306,7 +308,7 @@ def analyze_external(
                 else _eslint_json_argv(command.argv),
                 cwd=command.cwd,
                 root=root,
-                runner=execute,
+                runner=execute_eslint,
                 parser=parse_eslint,
                 invocation_id=command.cwd.relative_to(root).as_posix() or ".",
                 file_count=_argv_file_count(command.argv),
@@ -831,6 +833,16 @@ def _nearest_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
 
 
 def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+    return _run_process(argv, cwd=cwd, environment=_analysis_environment())
+
+
+def _run_eslint_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+    environment = _analysis_environment()
+    environment["NODE_OPTIONS"] = _ESLINT_NODE_OPTIONS
+    return _run_process(argv, cwd=cwd, environment=environment)
+
+
+def _run_process(argv: Sequence[str], *, cwd: Path, environment: dict[str, str]) -> ProcessOutput:
     executable = _analyzer_executable(argv[0])
     if executable is None:
         msg = f"required analyzer executable is missing: {argv[0]}"
@@ -842,7 +854,7 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=os.name == "posix",
-        env=_analysis_environment(),
+        env=environment,
     )
     stdout = process.stdout
     stderr = process.stderr

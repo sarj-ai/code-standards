@@ -78,6 +78,9 @@ def _write_release_manifests(root: Path) -> None:
         manifest.parent.mkdir(parents=True, exist_ok=True)
         contents = '{"version":"1.2.3"}' if target.format == "json" else '[project]\nversion = "1.2.3"\n'
         manifest.write_text(contents, encoding="utf-8")
+    compatibility = root / "packages/standards-compat/pyproject.toml"
+    compatibility.parent.mkdir(parents=True, exist_ok=True)
+    compatibility.write_text('[project]\nversion = "1.2.3"\n', encoding="utf-8")
 
 
 def _git(root: Path, *args: str) -> str:
@@ -311,6 +314,25 @@ def test_create_release_tags_rejects_an_unpublished_manifest_version(tmp_path: P
         ("git", "rev-parse", "--verify", "publish-sha^{commit}"),
         ("git", "ls-remote", "--exit-code", "--tags", "origin", "refs/tags/python-v1.2.3"),
     ]
+
+
+def test_create_standards_tag_requires_both_registry_projects(tmp_path: Path) -> None:
+    _write_release_manifests(tmp_path)
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if argv[:3] == ("git", "rev-parse", "--verify"):
+            return ProcessResult(0)
+        raise ProcessFailureError(argv, 2)
+
+    with pytest.raises(ValueError, match=r"sarj-standards@1\.2\.3"):
+        create_release_tags(
+            tmp_path,
+            ("standards",),
+            commit="publish-sha",
+            runner=runner,
+            publication_checker=lambda requirement: requirement.name == "code-standards",
+        )
 
 
 def test_create_release_tags_retries_registry_propagation(tmp_path: Path) -> None:

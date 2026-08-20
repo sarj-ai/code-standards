@@ -21,6 +21,9 @@ def _manifests(root: Path) -> None:
         manifest.parent.mkdir(parents=True, exist_ok=True)
         contents = '{"version":"1.0.0"}\n' if target.format == "json" else 'version = "1.0.0"\n'
         manifest.write_text(contents, encoding="utf-8")
+    compatibility = root / "packages/standards-compat/pyproject.toml"
+    compatibility.parent.mkdir(parents=True, exist_ok=True)
+    compatibility.write_text('version = "1.0.0"\n', encoding="utf-8")
 
 
 def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: Path) -> None:
@@ -82,6 +85,24 @@ def test_pending_release_targets_publish_only_current_versions_missing_from_regi
     assert pending["python"] is True
     assert pending["sql"] is False
     assert "code-standards" in checked
+
+
+def test_pending_standards_release_recovers_when_only_compatibility_project_is_missing(tmp_path: Path) -> None:
+    _manifests(tmp_path)
+
+    def unchanged(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = argv, cwd, capture_output
+        return ProcessResult(0, "")
+
+    pending = pending_release_targets(
+        tmp_path,
+        before="before",
+        after="after",
+        runner=unchanged,
+        checker=lambda requirement: requirement.name != "sarj-standards",
+    )
+
+    assert pending["standards"] is True
 
 
 def test_pending_release_target_changed_but_already_public_is_a_noop(tmp_path: Path) -> None:

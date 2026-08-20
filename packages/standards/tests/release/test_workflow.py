@@ -184,13 +184,12 @@ def test_additional_npm_releases_publish_verified_registry_artifacts() -> None:
     assert "environment: npm-docs-ui-release" in publish
     assert "needs.build-docs-ui.outputs.artifact_sha256" in publish
     assert 'npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz"' in publish
-    assert 'npm pack "@sarj/docs-ui@$version"' in publish
-    assert 'npm view "@sarj/docs-ui@$version"' in publish
-    assert "dist.attestations.provenance.predicateType" in publish
+    assert "verify_registry_publication.py npm" in publish
+    assert "--environment npm-docs-ui-release" in publish
+    assert '--commit "$EXPECTED_COMMIT"' in publish
     assert "needs.build-tsconfig.outputs.artifact_sha256" in tsconfig_publish
-    assert 'npm pack "@sarj/tsconfig@$version"' in tsconfig_publish
-    assert 'npm view "@sarj/tsconfig@$version"' in tsconfig_publish
-    assert "dist.attestations.provenance.predicateType" in tsconfig_publish
+    assert "verify_registry_publication.py npm" in tsconfig_publish
+    assert "--environment npm-tsconfig-release" in tsconfig_publish
 
 
 def test_typescript_release_verifies_its_own_registry_artifact() -> None:
@@ -198,10 +197,29 @@ def test_typescript_release_verifies_its_own_registry_artifact() -> None:
     publish = workflow.split("  publish-typescript:", 1)[1].split("  build-bootstrap:", 1)[0]
 
     assert "needs.build-typescript.outputs.artifact_sha256" in publish
-    assert 'npm pack "@sarj/eslint-plugin@$version"' in publish
-    assert 'npm view "@sarj/eslint-plugin@$version"' in publish
+    assert "verify_registry_publication.py npm" in publish
+    assert "--environment npm-typescript-release" in publish
     assert "needs.build-docs-ui" not in publish
     assert "@sarj/docs-ui" not in publish
+
+
+def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert workflow.count("verify_registry_publication.py pypi") == 5
+    assert workflow.count("skip-existing: true") == 5
+    for project, environment in (
+        ("sarj-standards-bootstrap", "pypi-bootstrap-release"),
+        ("sarj-python-lint", "pypi-python-release"),
+        ("sarj-sql-lint", "pypi-sql-release"),
+        ("sarj-iac-lint", "pypi-iac-release"),
+    ):
+        assert f"--dist verified-dist --project {project}" in workflow
+        assert f"--environment {environment}" in workflow
+    assert "--project code-standards --project sarj-standards" in workflow
+    assert "pypi-attestations==0.0.30" in (REPO_ROOT / "scripts/verify_registry_publication.py").read_text(
+        encoding="utf-8"
+    )
 
 
 @pytest.mark.parametrize(

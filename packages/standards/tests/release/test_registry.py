@@ -12,6 +12,7 @@ from sarj_standards.libs.release.registry import (
     lint_config_requirements,
     require_lint_config_dependencies,
     target_requirement,
+    target_requirements,
     wait_for_lint_config_dependencies,
 )
 
@@ -78,6 +79,32 @@ def test_docs_ui_requirement_uses_its_authoritative_manifest(tmp_path: Path) -> 
     manifest.write_text('{"name":"@sarj/docs-ui","version":"0.1.0"}\n', encoding="utf-8")
 
     assert target_requirement(tmp_path, "docs-ui") == RegistryRequirement("npm", "@sarj/docs-ui", "0.1.0")
+
+
+def test_standards_target_requires_canonical_and_compatibility_publications(tmp_path: Path) -> None:
+    canonical = tmp_path / "packages/standards/pyproject.toml"
+    compatibility = tmp_path / "packages/standards-compat/pyproject.toml"
+    canonical.parent.mkdir(parents=True)
+    compatibility.parent.mkdir(parents=True)
+    canonical.write_text('[project]\nversion = "7.1.0"\n', encoding="utf-8")
+    compatibility.write_text('[project]\nversion = "7.1.0"\n', encoding="utf-8")
+
+    assert target_requirements(tmp_path, "standards") == (
+        RegistryRequirement("pypi", "code-standards", "7.1.0"),
+        RegistryRequirement("pypi", "sarj-standards", "7.1.0"),
+    )
+
+
+def test_standards_target_rejects_compatibility_version_drift(tmp_path: Path) -> None:
+    canonical = tmp_path / "packages/standards/pyproject.toml"
+    compatibility = tmp_path / "packages/standards-compat/pyproject.toml"
+    canonical.parent.mkdir(parents=True)
+    compatibility.parent.mkdir(parents=True)
+    canonical.write_text('[project]\nversion = "7.1.0"\n', encoding="utf-8")
+    compatibility.write_text('[project]\nversion = "7.0.3"\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="atomic release target versions disagree"):
+        target_requirements(tmp_path, "standards")
 
 
 def test_lint_config_preflight_waits_for_registry_propagation(tmp_path: Path) -> None:
