@@ -480,14 +480,37 @@ def test_non_default_branch_is_not_treated_as_a_push_for_other_github_events(
 
 def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SARJ_AUDIT_SECRET", "must-not-leak")
+    monkeypatch.setenv("NODE_OPTIONS", "--require=/tmp/untrusted-preload.cjs")
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setenv("LC_ALL", "C")
 
     environment = external_module._analysis_environment()  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
     assert "SARJ_AUDIT_SECRET" not in environment
+    assert "NODE_OPTIONS" not in environment
     assert environment["PATH"] == "/usr/bin"
     assert environment["LC_ALL"] == "C"
+
+
+def test_only_eslint_receives_the_fixed_node_heap_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("NODE_OPTIONS", "--require=/tmp/untrusted-preload.cjs")
+    command = (
+        sys.executable,
+        "-c",
+        "import os; print(os.environ.get('NODE_OPTIONS', 'missing'))",
+    )
+
+    generic = external_module.run_process(command, cwd=tmp_path)
+    eslint = external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        command,
+        cwd=tmp_path,
+    )
+
+    assert generic.stdout.strip() == "missing"
+    assert eslint.stdout.strip() == "--max-old-space-size=4096"
 
 
 def test_external_analyzers_prefer_the_isolated_python_environment(
@@ -619,7 +642,7 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
         called.append(tuple(argv))
         return ProcessOutput(0, "[]", "")
 
-    monkeypatch.setattr(external_module, "run_process", successful)
+    monkeypatch.setattr(external_module, "_run_eslint_process", successful)
 
     reports = analyze_external([str(source)], root=root, trust=TrustMode.TRUSTED)
 

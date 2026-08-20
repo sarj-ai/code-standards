@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 
 ManifestFormat = Literal["json", "toml"]
+RegistryKind = Literal["npm", "pypi"]
 _GIT_NO_MATCH = 2
 _GIT_MISSING_REVISION_CODES = frozenset((1, 128))
 _TAGGER_EMAIL = "release-automation@sarj.ai"
@@ -44,6 +45,15 @@ class ReleaseTargetId(StrEnum):
 class ReleaseTarget:
     manifest: Path
     format: ManifestFormat
+    publications: tuple["ReleasePublication", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ReleasePublication:
+    registry: RegistryKind
+    name: str
+    manifest: Path | None = None
+    format: ManifestFormat | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,14 +72,35 @@ class TagSyncResult:
 
 RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
     {
-        ReleaseTargetId.TYPESCRIPT: ReleaseTarget(Path("packages/typescript/package.json"), "json"),
-        ReleaseTargetId.BOOTSTRAP: ReleaseTarget(Path("packages/bootstrap/pyproject.toml"), "toml"),
-        ReleaseTargetId.PYTHON: ReleaseTarget(Path("packages/python/pyproject.toml"), "toml"),
-        ReleaseTargetId.SQL: ReleaseTarget(Path("packages/sql/pyproject.toml"), "toml"),
-        ReleaseTargetId.IAC: ReleaseTarget(Path("packages/iac/pyproject.toml"), "toml"),
-        ReleaseTargetId.STANDARDS: ReleaseTarget(Path("packages/standards/pyproject.toml"), "toml"),
-        ReleaseTargetId.TSCONFIG: ReleaseTarget(Path("packages/tsconfig/package.json"), "json"),
-        ReleaseTargetId.DOCS_UI: ReleaseTarget(Path("packages/docs-ui/package.json"), "json"),
+        ReleaseTargetId.TYPESCRIPT: ReleaseTarget(
+            Path("packages/typescript/package.json"), "json", (ReleasePublication("npm", "@sarj/eslint-plugin"),)
+        ),
+        ReleaseTargetId.BOOTSTRAP: ReleaseTarget(
+            Path("packages/bootstrap/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-standards-bootstrap"),)
+        ),
+        ReleaseTargetId.PYTHON: ReleaseTarget(
+            Path("packages/python/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-python-lint"),)
+        ),
+        ReleaseTargetId.SQL: ReleaseTarget(
+            Path("packages/sql/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-sql-lint"),)
+        ),
+        ReleaseTargetId.IAC: ReleaseTarget(
+            Path("packages/iac/pyproject.toml"), "toml", (ReleasePublication("pypi", "sarj-iac-lint"),)
+        ),
+        ReleaseTargetId.STANDARDS: ReleaseTarget(
+            Path("packages/standards/pyproject.toml"),
+            "toml",
+            (
+                ReleasePublication("pypi", "code-standards"),
+                ReleasePublication("pypi", "sarj-standards", Path("packages/standards-compat/pyproject.toml"), "toml"),
+            ),
+        ),
+        ReleaseTargetId.TSCONFIG: ReleaseTarget(
+            Path("packages/tsconfig/package.json"), "json", (ReleasePublication("npm", "@sarj/tsconfig"),)
+        ),
+        ReleaseTargetId.DOCS_UI: ReleaseTarget(
+            Path("packages/docs-ui/package.json"), "json", (ReleasePublication("npm", "@sarj/docs-ui"),)
+        ),
     }
 )
 RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
@@ -78,7 +109,7 @@ RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
         ReleaseTargetId.PYTHON: ("packages/python/src/",),
         ReleaseTargetId.SQL: ("packages/sql/src/",),
         ReleaseTargetId.IAC: ("packages/iac/src/",),
-        ReleaseTargetId.STANDARDS: ("packages/standards/src/",),
+        ReleaseTargetId.STANDARDS: ("packages/standards/src/", "packages/standards-compat/src/"),
         ReleaseTargetId.TYPESCRIPT: ("packages/typescript/src/",),
         ReleaseTargetId.TSCONFIG: ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
         ReleaseTargetId.DOCS_UI: ("packages/docs-ui/src/",),
@@ -86,11 +117,28 @@ RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
 )
 RELEASE_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
     {
-        name: (target.manifest.as_posix(), str(target.manifest.parent / "LICENSE"))
+        name: tuple(
+            dict.fromkeys(
+                path.as_posix()
+                for manifest in (target.manifest, *(item.manifest for item in target.publications if item.manifest))
+                for path in (manifest, manifest.parent / "LICENSE")
+            )
+        )
         for name, target in RELEASE_TARGETS.items()
     }
 )
 _TAG_PATTERN: Final = re.compile(r"^(?P<target>[a-z][a-z0-9-]*)-v(?P<version>[^\s/]+)$")
+
+
+def release_manifests(target: ReleaseTarget) -> tuple[tuple[Path, ManifestFormat], ...]:
+    return (
+        (target.manifest, target.format),
+        *(
+            (publication.manifest, publication.format)
+            for publication in target.publications
+            if publication.manifest is not None and publication.format is not None
+        ),
+    )
 
 
 def read_manifest_version(path: Path, manifest_format: ManifestFormat) -> str:
@@ -222,7 +270,7 @@ def create_release_tags(
     from sarj_standards.libs.release.registry import (  # ruff: ignore[import-outside-top-level] -- avoid the tags/registry import cycle
         publication_exists,
         require_publication,
-        target_requirement,
+        target_requirements,
     )
 
     resolved = root.resolve()
@@ -258,10 +306,11 @@ def create_release_tags(
             _require_remote_tag_commit(resolved, tag, target, resolved_commit, runner=runner)
             existing.append(tag)
             continue
-        requirement = target_requirement(resolved, target)
+        requirements = target_requirements(resolved, target)
         for attempt in range(attempts):
             try:
-                require_publication(requirement, checker=checker)
+                for requirement in requirements:
+                    require_publication(requirement, checker=checker)
                 break
             except OSError, ValueError:
                 if attempt + 1 == attempts:

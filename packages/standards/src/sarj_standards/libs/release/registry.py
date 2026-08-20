@@ -10,8 +10,7 @@ import re
 import sys
 import time
 import tomllib
-from types import MappingProxyType
-from typing import TYPE_CHECKING, ClassVar, Final, Literal, Protocol
+from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -25,7 +24,7 @@ from sarj_standards.libs.release.tags import RELEASE_TARGETS, read_manifest_vers
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Sequence
 
 
 RegistryKind = Literal["npm", "pypi"]
@@ -60,32 +59,37 @@ class _Args(argparse.Namespace):
     delay: timedelta = timedelta(seconds=10)
 
 
-_TARGET_PACKAGES: Final[Mapping[str, tuple[RegistryKind, str]]] = MappingProxyType(
-    {
-        "typescript": ("npm", "@sarj/eslint-plugin"),
-        "bootstrap": ("pypi", "sarj-standards-bootstrap"),
-        "python": ("pypi", "sarj-python-lint"),
-        "sql": ("pypi", "sarj-sql-lint"),
-        "iac": ("pypi", "sarj-iac-lint"),
-        "standards": ("pypi", "code-standards"),
-        "tsconfig": ("npm", "@sarj/tsconfig"),
-        "docs-ui": ("npm", "@sarj/docs-ui"),
-    }
-)
 _EXACT_DEPENDENCY = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^;\s]+)$")
 _HTTP_OK = 200
 _HTTP_NOT_FOUND = 404
 
 
 def target_requirement(root: Path, target_name: str) -> RegistryRequirement:
+    requirements = target_requirements(root, target_name)
+    if len(requirements) != 1:
+        msg = f"release target has multiple registry publications: {target_name}"
+        raise ValueError(msg)
+    return requirements[0]
+
+
+def target_requirements(root: Path, target_name: str) -> tuple[RegistryRequirement, ...]:
     target = RELEASE_TARGETS.get(target_name)
-    package = _TARGET_PACKAGES.get(target_name)
-    if target is None or package is None:
+    if target is None or not target.publications:
         msg = f"unsupported release target: {target_name}"
         raise ValueError(msg)
-    registry, name = package
-    version = read_manifest_version(root.resolve() / target.manifest, target.format)
-    return RegistryRequirement(registry, name, version)
+    resolved = root.resolve()
+    requirements: list[RegistryRequirement] = []
+    for publication in target.publications:
+        manifest = target.manifest if publication.manifest is None else publication.manifest
+        manifest_format = target.format if publication.format is None else publication.format
+        version = read_manifest_version(resolved / manifest, manifest_format)
+        requirements.append(RegistryRequirement(publication.registry, publication.name, version))
+    primary_version = requirements[0].version
+    if any(item.version != primary_version for item in requirements[1:]):
+        rendered = ", ".join(f"{item.name}=={item.version}" for item in requirements)
+        msg = f"atomic release target versions disagree: {target_name}: {rendered}"
+        raise ValueError(msg)
+    return tuple(requirements)
 
 
 def publication_exists(requirement: RegistryRequirement) -> bool:

@@ -4,8 +4,8 @@ import re
 from typing import TYPE_CHECKING
 
 from sarj_standards.libs.release.process import ProcessRunner, run_process
-from sarj_standards.libs.release.registry import PublicationChecker, publication_exists, target_requirement
-from sarj_standards.libs.release.tags import RELEASE_TARGETS
+from sarj_standards.libs.release.registry import PublicationChecker, publication_exists, target_requirements
+from sarj_standards.libs.release.tags import RELEASE_TARGETS, release_manifests
 
 
 if TYPE_CHECKING:
@@ -26,13 +26,17 @@ def changed_release_targets(
 ) -> Mapping[str, bool]:
     changed: dict[str, bool] = {}
     for name, target in RELEASE_TARGETS.items():
-        result = runner(
-            ("git", "diff", "--no-color", before, after, "--", target.manifest.as_posix()),
-            cwd=root,
-            capture_output=True,
+        changed[name] = any(
+            (_ADDED_JSON_VERSION if manifest_format == "json" else _ADDED_TOML_VERSION).search(
+                runner(
+                    ("git", "diff", "--no-color", before, after, "--", manifest.as_posix()),
+                    cwd=root,
+                    capture_output=True,
+                ).stdout
+            )
+            is not None
+            for manifest, manifest_format in release_manifests(target)
         )
-        pattern = _ADDED_JSON_VERSION if target.format == "json" else _ADDED_TOML_VERSION
-        changed[name] = pattern.search(result.stdout) is not None
     return changed
 
 
@@ -45,4 +49,4 @@ def pending_release_targets(
     checker: PublicationChecker = publication_exists,
 ) -> Mapping[str, bool]:
     _ = changed_release_targets(root, before=before, after=after, runner=runner)
-    return {name: not checker(target_requirement(root, name)) for name in RELEASE_TARGETS}
+    return {name: not all(checker(item) for item in target_requirements(root, name)) for name in RELEASE_TARGETS}
