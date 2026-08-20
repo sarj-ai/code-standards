@@ -26,4 +26,4 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@428b125396fce0baa5fa27ab9d0f8903fc50f8cb # v0.8.0
+        uses: sarj-ai/repo-standards@db799e823164708ec3784be44e82b3f8b4d57f21 # v1.0.0
