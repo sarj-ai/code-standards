@@ -1,0 +1,11 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic credentials used in documentation and rule fixtures"
+regexTarget = "secret"
+regexes = [
+  '''^NBJC_zYX6NWNek9v7tVv64YZz4K5sAgpoC4WGkQYv6I=$''',
+  '''^qZKGV7V0bPMsO5fOvuYhpvvBcGd9FWBX$''',
+  '''^(key-123|sig-456|jws_signature=)$''',
+]

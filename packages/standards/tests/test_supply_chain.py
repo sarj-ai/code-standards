@@ -164,6 +164,21 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert release.count("artifact_sha256:") == 8
     assert release.count("Verify build-bound artifact digest") == 8
     assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
+    assert release.count("Verify registry bytes and provenance") == 3
+    assert release.count("dist.attestations.provenance.predicateType") == 3
+
+
+def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks() -> None:
+    security = (REPO_ROOT / ".github/workflows/security.yml").read_text(encoding="utf-8")
+
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the security-policy contract
+        "gitleaks_8.30.1_linux_x64.tar.gz" in security
+    )
+    assert "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb" in security
+    assert "fetch-depth: 0" in security
+    assert 'gitleaks" dir . --config .gitleaks.toml' in security
+    assert 'gitleaks" git --config .gitleaks.toml' in security
+    assert "--log-opts='--all'" in security
 
 
 @pytest.mark.parametrize(

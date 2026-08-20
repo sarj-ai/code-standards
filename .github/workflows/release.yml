@@ -904,6 +904,27 @@ jobs:
         run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
       - name: Publish with npm trusted publishing
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
+      - name: Verify registry bytes and provenance
+        env:
+          EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
+        run: |
+          set -euo pipefail
+          version="$(tar -xOf "$RUNNER_TEMP/npm-artifacts/package.tgz" package/package.json | node -e \
+            "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).version)")"
+          install -d -m 700 "$RUNNER_TEMP/npm-registry"
+          for attempt in $(seq 1 12); do
+            if filename="$(npm pack "@sarj/tsconfig@$version" --pack-destination "$RUNNER_TEMP/npm-registry" --ignore-scripts 2>/dev/null)"; then
+              actual_sha256="$(sha256sum "$RUNNER_TEMP/npm-registry/$filename" | cut -d ' ' -f1)"
+              provenance="$(npm view "@sarj/tsconfig@$version" dist.attestations.provenance.predicateType)"
+              if [[ "$actual_sha256" == "$EXPECTED_SHA256" && "$provenance" == 'https://slsa.dev/provenance/v1' ]]; then
+                echo "verified @sarj/tsconfig@$version registry bytes and provenance"
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "registry did not converge to the published artifact and provenance" >&2
+          exit 1
 
   build-docs-ui:
     needs: [detect, release-safety]
@@ -992,3 +1013,24 @@ jobs:
         run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
       - name: Publish with npm trusted publishing
         run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
+      - name: Verify registry bytes and provenance
+        env:
+          EXPECTED_SHA256: ${{ needs.build-docs-ui.outputs.artifact_sha256 }}
+        run: |
+          set -euo pipefail
+          version="$(tar -xOf "$RUNNER_TEMP/npm-artifacts/package.tgz" package/package.json | node -e \
+            "const fs=require('node:fs');process.stdout.write(JSON.parse(fs.readFileSync(0,'utf8')).version)")"
+          install -d -m 700 "$RUNNER_TEMP/npm-registry"
+          for attempt in $(seq 1 12); do
+            if filename="$(npm pack "@sarj/docs-ui@$version" --pack-destination "$RUNNER_TEMP/npm-registry" --ignore-scripts 2>/dev/null)"; then
+              actual_sha256="$(sha256sum "$RUNNER_TEMP/npm-registry/$filename" | cut -d ' ' -f1)"
+              provenance="$(npm view "@sarj/docs-ui@$version" dist.attestations.provenance.predicateType)"
+              if [[ "$actual_sha256" == "$EXPECTED_SHA256" && "$provenance" == 'https://slsa.dev/provenance/v1' ]]; then
+                echo "verified @sarj/docs-ui@$version registry bytes and provenance"
+                exit 0
+              fi
+            fi
+            sleep 5
+          done
+          echo "registry did not converge to the published artifact and provenance" >&2
+          exit 1
