@@ -310,10 +310,13 @@ def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
     assert "actions/download-artifact@" in workflow
     assert "Verify deployed revision" in workflow
     assert "npm run verify:deployment" in workflow  # sarj-noqa: SARJ402 -- deployment-policy contract
+    assert "name: docs-ui-site" in workflow  # sarj-noqa: SARJ402 -- immutable deployment artifact contract
+    assert "Deploy documentation UI first" in workflow  # sarj-noqa: SARJ402 -- ordered migration contract
+    assert workflow.index("Deploy documentation UI first") < workflow.index("Deploy immutable build")
     assert "assert.equal(health.commit, expectedCommit" in verifier  # sarj-noqa: SARJ402 -- deployment contract
     assert "health.catalogSha256" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
-    assert "api/v1/docs-ui.json" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
-    assert "design-system/" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
+    assert "pagefind/pagefind.js" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
+    assert "wasm-unsafe-eval" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
 
 
 @pytest.mark.parametrize(

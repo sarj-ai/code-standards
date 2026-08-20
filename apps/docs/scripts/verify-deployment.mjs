@@ -9,41 +9,34 @@ const base = new URL(process.env.DOCS_BASE_URL ?? 'https://code-standards.sarj.a
 
 async function verify() {
   const nonce = `?commit=${encodeURIComponent(expectedCommit)}`;
-  const [healthResponse, catalogResponse, uiResponse, galleryResponse] = await Promise.all([
+  const [healthResponse, catalogResponse, pageResponse] = await Promise.all([
     response(`health.json${nonce}`),
     response('api/v1/catalog.json'),
-    response('api/v1/docs-ui.json'),
-    response('design-system/'),
+    response(''),
   ]);
-  for (const [name, candidate] of Object.entries({ healthResponse, catalogResponse, uiResponse, galleryResponse })) {
+  for (const [name, candidate] of Object.entries({ healthResponse, catalogResponse, pageResponse })) {
     assert.ok(candidate.ok, `${name} returned ${String(candidate.status)}`);
   }
 
   const health = await healthResponse.json();
   const catalogText = await catalogResponse.text();
-  const ui = await uiResponse.json();
-  const gallery = await galleryResponse.text();
+  const page = await pageResponse.text();
   assert.equal(health.commit, expectedCommit, `live commit ${String(health.commit)} does not match ${expectedCommit}`);
   assert.equal(createHash('sha256').update(catalogText).digest('hex'), health.catalogSha256);
-  assert.equal(ui.schemaVersion, 1);
-  assert.ok(ui.components.ReferencePage);
-  assert.ok(ui.themeTokens.some(({ cssName }) => cssName === '--sarj-color-rule'));
-  assert.match(gallery, /<h1[^>]*>Documentation UI<\/h1>/u);
-
-  const csp = galleryResponse.headers.get('content-security-policy') ?? '';
+  assert.doesNotMatch(page, /site-search|pagefind|type="search"/iu);
+  const csp = pageResponse.headers.get('content-security-policy') ?? '';
   assert.match(csp, /default-src 'none'/u);
   assert.match(csp, /frame-ancestors 'none'/u);
-  assert.equal(galleryResponse.headers.get('cross-origin-resource-policy'), 'same-origin');
-  assert.equal(galleryResponse.headers.get('x-content-type-options'), 'nosniff');
+  assert.doesNotMatch(csp, /wasm-unsafe-eval/u);
+  assert.equal(pageResponse.headers.get('cross-origin-resource-policy'), 'same-origin');
+  assert.equal(pageResponse.headers.get('x-content-type-options'), 'nosniff');
   assert.match(catalogResponse.headers.get('cache-control') ?? '', /must-revalidate/u);
-  assert.equal(uiResponse.headers.get('access-control-allow-origin'), '*');
+  assert.equal((await response('pagefind/pagefind.js')).status, 404);
+  assert.equal((await response('design-system/')).status, 404);
+  assert.equal((await response('api/v1/docs-ui.json')).status, 404);
 
   const missing = await response(`definitely-not-a-page-${expectedCommit}/`, { redirect: 'manual' });
   assert.equal(missing.status, 404);
-  const slashRedirect = await response('design-system', { redirect: 'manual' });
-  assert.ok(slashRedirect.status >= 300 && slashRedirect.status < 400);
-  assert.equal(new URL(slashRedirect.headers.get('location'), base).pathname, '/design-system/');
-
   const catalog = JSON.parse(catalogText);
   const aliasedRule = catalog.rules.find(({ aliases }) => aliases.length > 0);
   assert.ok(aliasedRule, 'catalog must contain an alias redirect fixture');

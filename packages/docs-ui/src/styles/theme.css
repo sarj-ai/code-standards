@@ -48,3 +48,39 @@
   --sarj-color-paper: #0b0c10;
   --sarj-color-ink: #f4f5f8;
 }
+
+.breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.breadcrumbs li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.breadcrumbs li + li::before {
+  color: var(--sl-color-gray-3);
+  content: '/';
+}
+
+.breadcrumbs a,
+.breadcrumbs [aria-current='page'] {
+  overflow-wrap: anywhere;
+}
+
+.breadcrumbs a {
+  border-radius: 0.2rem;
+  color: var(--sl-color-accent-high);
+}
+
+.breadcrumbs a:focus-visible {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 3px;
+}

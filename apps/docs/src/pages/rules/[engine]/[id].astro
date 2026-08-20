@@ -4,6 +4,7 @@ import RuleExample from '../../../components/RuleExample.astro';
 import EngineMark from '../../../components/EngineMark.astro';
 import InlineCodeText from '../../../components/InlineCodeText.astro';
 import { Code } from '@astrojs/starlight/components';
+import RulePager from '@sarj/docs-ui/RulePager.astro';
 import { catalog, engineLabel, ruleHref, sourceUrl, type Rule } from '../../../lib/catalog';
 import { referenceSidebar } from '../../../lib/navigation';
 
@@ -32,7 +33,7 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
 ---
 
 <ReferencePage title={`${rule.id} · ${engineLabel(rule.engine)}`} description={rule.summary} sidebar={[...referenceSidebar]}>
-  <article class="rule-detail" data-pagefind-meta={`rule:${rule.key}`}>
+  <article class="rule-detail">
     <header class="rule-detail__header">
       <div class="rule-detail__toolbar">
         <nav class="rule-breadcrumb" aria-label="Breadcrumb">
@@ -40,36 +41,14 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
           <span aria-hidden="true">·</span>
           <a href={`/rules/?category=${rule.category}`}>{rule.category}</a>
         </nav>
-        <nav class="rule-stepper" aria-label="Rule navigation" data-pagefind-ignore>
-          {previousRule && (
-            <a
-              href={ruleHref(previousRule)}
-              rel="prev"
-              data-rule-previous
-              aria-keyshortcuts="ArrowLeft"
-              aria-label={`Previous rule: ${previousRule.id}`}
-              title={previousRule.id}
-            >
-              <kbd aria-hidden="true">←</kbd><span class="rule-stepper__label">Previous</span>
-            </a>
-          )}
-          {nextRule && (
-            <a
-              href={ruleHref(nextRule)}
-              rel="next"
-              data-rule-next
-              aria-keyshortcuts="ArrowRight"
-              aria-label={`Next rule: ${nextRule.id}`}
-              title={nextRule.id}
-            >
-              <span class="rule-stepper__label">Next</span><kbd aria-hidden="true">→</kbd>
-            </a>
-          )}
-        </nav>
+        <RulePager
+          previous={previousRule ? { href: ruleHref(previousRule), label: previousRule.id } : null}
+          next={nextRule ? { href: ruleHref(nextRule), label: nextRule.id } : null}
+        />
       </div>
       <h1>{rule.id}</h1>
       <p class="lede"><InlineCodeText text={rule.summary} /></p>
-      <div class="rule-header-links" data-pagefind-ignore>
+      <div class="rule-header-links">
         {rule.code && <code>{rule.code}</code>}
         {rule.messageIds.map((messageId) => <code>{messageId}</code>)}
         <a href={sourceUrl(rule.source)}>Rule source</a>
@@ -118,28 +97,13 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
     )}
 
     {rule.references.length > 0 && (
-      <section class="references" data-pagefind-ignore>
+      <section class="references">
         <h2>References</h2>
         <ul>{rule.references.map((reference) => <li><a href={reference}>{reference}</a></li>)}</ul>
       </section>
     )}
 
-    {rule.aliases.length > 0 && <p class="aliases" data-pagefind-meta={`aliases:${rule.aliases.join(',')}`}>Formerly: {rule.aliases.join(', ')}</p>}
+    {rule.aliases.length > 0 && <p class="aliases">Formerly: {rule.aliases.join(', ')}</p>}
 
   </article>
 </ReferencePage>
-
-<script>
-  document.addEventListener('keydown', (event) => {
-    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    const target = event.target;
-    if (target instanceof Element && target.closest('a, button, input, select, textarea, summary, [contenteditable]')) return;
-    const selector = event.key === 'ArrowLeft' ? '[data-rule-previous]' : event.key === 'ArrowRight' ? '[data-rule-next]' : null;
-    if (!selector) return;
-    const link = document.querySelector(selector);
-    if (link instanceof HTMLAnchorElement) {
-      event.preventDefault();
-      location.assign(link.href);
-    }
-  });
-</script>

@@ -1,0 +1,32 @@
+---
+import type { RulePagerProps as Props } from '../contracts';
+
+const { previous, next } = Astro.props;
+---
+
+<nav class="sarj-rule-pager" aria-label="Rule navigation">
+  {previous && (
+    <a href={previous.href} rel="prev" data-rule-previous aria-keyshortcuts="ArrowLeft" aria-label={`Previous rule: ${previous.label}`} title={previous.label}>
+      <kbd aria-hidden="true">←</kbd><span>Previous</span>
+    </a>
+  )}
+  {next && (
+    <a href={next.href} rel="next" data-rule-next aria-keyshortcuts="ArrowRight" aria-label={`Next rule: ${next.label}`} title={next.label}>
+      <span>Next</span><kbd aria-hidden="true">→</kbd>
+    </a>
+  )}
+</nav>
+
+<script>
+  document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, summary, [contenteditable]')) return;
+    const selector = event.key === 'ArrowLeft' ? '[data-rule-previous]' : event.key === 'ArrowRight' ? '[data-rule-next]' : null;
+    if (!selector) return;
+    const link = document.querySelector(selector);
+    if (link instanceof HTMLAnchorElement) {
+      event.preventDefault();
+      location.assign(link.href);
+    }
+  });
+</script>

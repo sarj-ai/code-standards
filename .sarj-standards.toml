@@ -239,6 +239,7 @@ manifests = [
 ]
 locks = [
   "apps/docs/package-lock.json",
+  "apps/docs-ui/package-lock.json",
   "packages/bootstrap/uv.lock",
   "uv.lock",
   "packages/python/uv.lock",

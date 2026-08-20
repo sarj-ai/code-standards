@@ -4,13 +4,11 @@ import { defineConfig } from 'astro/config';
 import cloudflareArtifacts from './src/integrations/cloudflare-artifacts.ts';
 
 export default defineConfig({
-  site: 'https://code-standards.sarj.ai',
+  site: 'https://docs-ui.sarj.ai',
   output: 'static',
   trailingSlash: 'always',
   compressHTML: true,
-  markdown: {
-    syntaxHighlight: 'prism',
-  },
+  markdown: { syntaxHighlight: 'prism' },
   security: {
     csp: {
       directives: [
@@ -23,31 +21,18 @@ export default defineConfig({
         "img-src 'self' data:",
         "object-src 'none'",
       ],
-      scriptDirective: {
-        resources: [
-          { resource: "'self'", kind: 'element' },
-        ],
-      },
-      styleDirective: {
-        resources: [{ resource: "'unsafe-inline'", kind: 'attribute' }],
-      },
+      scriptDirective: { resources: [{ resource: "'self'", kind: 'element' }] },
+      styleDirective: { resources: [{ resource: "'unsafe-inline'", kind: 'attribute' }] },
     },
   },
   integrations: [
     starlight({
-      title: 'Sarj Standards',
-      description: 'Deterministic code standards, diagnostics, and remediation.',
-      favicon: '/sarj-logo-light.png',
+      title: '@sarj/docs-ui',
+      description: 'Live components and tokens from the shared Sarj documentation UI package.',
       disable404Route: true,
       customCss: ['@sarj/docs-ui/starlight.css', './src/styles/global.css'],
-      sidebar: [
-        { label: 'About', link: '/' },
-        { label: 'Rules', link: '/rules/' },
-        { label: 'CLI', link: '/cli/' },
-      ],
-      social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/code-standards' },
-      ],
+      sidebar: [],
+      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/sarj-ai/code-standards/tree/main/packages/docs-ui' }],
       pagefind: false,
       tableOfContents: false,
       credits: false,

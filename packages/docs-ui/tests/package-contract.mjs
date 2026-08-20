@@ -19,12 +19,16 @@ assert.deepEqual(
   componentExportNames,
 );
 assert.deepEqual(manifest.files, ['src', 'README.md', 'LICENSE']);
-assert.deepEqual(manifest.sideEffects, ['./src/styles/theme.css']);
+assert.deepEqual(manifest.sideEffects, ['./src/styles/theme.css', './src/styles/starlight.css']);
 assert.equal(manifest.publishConfig?.access, 'public');
 
 const themeSource = readFileSync(join(packageRoot, 'src', 'styles', 'theme.css'), 'utf8');
 const declaredTokens = [...themeSource.matchAll(/^\s*(--sarj-[a-z-]+):/gmu)].map((match) => match[1]);
 assert.deepEqual(new Set(declaredTokens), new Set(themeTokenCatalog.map(({ cssName }) => cssName)));
+for (const token of themeTokenCatalog) {
+  assert.match(themeSource, new RegExp(`${token.cssName}: ${token.light}`, 'u'));
+  assert.match(themeSource, new RegExp(`${token.cssName}: ${token.dark}`, 'u'));
+}
 
 const workingDirectory = await mkdtemp(join(tmpdir(), 'sarj-docs-ui-contract-'));
 
@@ -70,7 +74,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'Consumer',
-      customCss: ['@sarj/docs-ui/styles.css'],
+      customCss: ['@sarj/docs-ui/starlight.css'],
       components: { PageTitle: '@sarj/docs-ui/PageAnchor.astro' },
       sidebar: [{ label: 'Home', link: '/' }],
     }),
@@ -87,6 +91,7 @@ export default defineConfig({
     `---
 import Breadcrumbs from '@sarj/docs-ui/Breadcrumbs.astro';
 import ReferencePage from '@sarj/docs-ui/ReferencePage.astro';
+import RulePager from '@sarj/docs-ui/RulePager.astro';
 import { componentCatalog } from '@sarj/docs-ui/catalog';
 import type { BreadcrumbsProps } from '@sarj/docs-ui/contracts';
 
@@ -99,6 +104,7 @@ const breadcrumbs = {
 
 <ReferencePage title="Consumer" description="Package consumer smoke test" {sidebar}>
   <Breadcrumbs {...breadcrumbs} />
+  <RulePager previous={{ href: '/previous/', label: 'Previous fixture' }} next={{ href: '/next/', label: 'Next fixture' }} />
   <h1>Consumer</h1>
 </ReferencePage>
 `,
@@ -111,18 +117,7 @@ const sidebar = [{ label: 'Home', link: '/' }];
   <h1>Behavior</h1>
 </ReferencePage>
 `;
-  writeFileSync(
-    join(consumerRoot, 'src', 'pages', 'explicit.astro'),
-    behaviorPage('searchable={false} indexable={false}'),
-  );
-  writeFileSync(
-    join(consumerRoot, 'src', 'pages', 'legacy.astro'),
-    behaviorPage('discovery="unlisted"'),
-  );
-  writeFileSync(
-    join(consumerRoot, 'src', 'pages', 'precedence.astro'),
-    behaviorPage('discovery="unlisted" searchable={true} indexable={true}'),
-  );
+  writeFileSync(join(consumerRoot, 'src', 'pages', 'explicit.astro'), behaviorPage('indexable={false}'));
 
   execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: consumerRoot,
@@ -138,13 +133,9 @@ const sidebar = [{ label: 'Home', link: '/' }];
   });
   const explicit = readFileSync(join(consumerRoot, 'dist', 'explicit', 'index.html'), 'utf8');
   assert.match(explicit, /name="robots" content="noindex, nofollow"/u);
-  assert.match(explicit, /data-pagefind-ignore="true"/u);
-  const legacy = readFileSync(join(consumerRoot, 'dist', 'legacy', 'index.html'), 'utf8');
-  assert.match(legacy, /name="robots" content="noindex, nofollow"/u);
-  assert.match(legacy, /data-pagefind-ignore="true"/u);
-  const precedence = readFileSync(join(consumerRoot, 'dist', 'precedence', 'index.html'), 'utf8');
-  assert.doesNotMatch(precedence, /name="robots" content="noindex, nofollow"/u);
-  assert.match(precedence, /data-pagefind-body="true"/u);
+  const index = readFileSync(join(consumerRoot, 'dist', 'index.html'), 'utf8');
+  assert.match(index, /rel="prev"/u);
+  assert.match(index, /aria-keyshortcuts="ArrowRight"/u);
 } finally {
   await rm(workingDirectory, { recursive: true, force: true });
 }

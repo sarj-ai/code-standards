@@ -13,6 +13,4 @@ export const referenceSidebar = Object.freeze([
     attrs: { class: 'sidebar-engine-link' },
   })),
   { label: 'CLI', link: '/cli/' },
-  { label: 'Documentation UI', link: '/design-system/' },
-  { label: 'Author a rule', link: '/contributing/rules/' },
 ] satisfies Sidebar);

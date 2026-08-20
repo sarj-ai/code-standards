@@ -185,9 +185,9 @@ def _package_usage(name: str, engine: str | None, *, version: str, metadata: dic
         export_names = sorted(exports) if _is_object_table(exports) else []
         rendered_exports = "\n".join(f"- `{name}{export_name.removeprefix('.')}`" for export_name in export_names)
         return (
-            "Import `@sarj/docs-ui/styles.css` once, then compose the typed Astro components. "
+            "Import `@sarj/docs-ui/starlight.css` once, then compose the typed Astro components. "
             "The live component and theme contract is published at "
-            "[code-standards.sarj.ai/design-system/](https://code-standards.sarj.ai/design-system/).\n\n"
+            "[docs-ui.sarj.ai](https://docs-ui.sarj.ai/).\n\n"
             f"Public exports:\n\n{rendered_exports}"
         )
     executable = (

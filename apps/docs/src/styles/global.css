@@ -109,7 +109,6 @@ starlight-menu-button button {
 .sl-markdown-content h1,
 .sl-markdown-content h2,
 .sl-markdown-content h3,
-.reference-hero h1,
 .rule-detail__header h1,
 .not-found h1 {
   color: var(--sl-color-white);
@@ -119,7 +118,6 @@ starlight-menu-button button {
 }
 
 .sl-markdown-content h1,
-.reference-hero h1,
 .rule-detail__header h1 {
   font-size: clamp(1.8rem, 3.5vw, 2.35rem);
   line-height: 1.08;
@@ -187,18 +185,19 @@ starlight-menu-button button {
   margin-top: 0;
 }
 
-.reference-hero {
-  padding-block: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--sarj-color-rule);
-}
-
-.reference-hero--compact {
-  padding-bottom: 1rem;
-}
-
-.reference-hero h1,
 .rule-detail__header h1 {
   margin-block: 0 1.25rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .command-index {
@@ -723,38 +722,6 @@ starlight-menu-button button {
   font-size: 0.7rem;
 }
 
-.rule-stepper {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 0.35rem;
-  margin: 0;
-}
-
-.rule-stepper a {
-  display: inline-flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.35rem 0.55rem;
-  border: 1px solid var(--sarj-color-rule);
-  border-radius: 0.4rem;
-  color: var(--sl-color-white);
-  font-size: 0.75rem;
-  text-decoration: none;
-}
-
-.rule-stepper a:hover,
-.rule-stepper a:focus-visible {
-  border-color: var(--sl-color-accent);
-}
-
-.rule-stepper kbd {
-  padding: 0.05rem 0.28rem;
-  border: 1px solid var(--sarj-color-rule);
-  border-radius: 0.2rem;
-  background: var(--sl-color-gray-6);
-  font-family: var(--sl-font-mono);
-}
 
 .not-found {
   display: grid;
@@ -908,10 +875,6 @@ starlight-menu-button button {
     flex: initial;
   }
 
-  .rule-stepper a {
-    min-height: 44px;
-  }
-
 }
 
 @media (max-width: 22rem) {
@@ -919,21 +882,6 @@ starlight-menu-button button {
     gap: 0.5rem;
   }
 
-  .rule-stepper a {
-    width: 44px;
-    justify-content: center;
-    padding-inline: 0;
-  }
-
-  .rule-stepper__label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    clip-path: inset(50%);
-  }
 }
 
 @media (min-width: 50rem) and (max-width: 56rem) {
