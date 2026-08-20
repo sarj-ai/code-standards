@@ -45,6 +45,17 @@ def test_a_directory_without_an_init_is_not_a_package(tmp_path: Path) -> None:
     assert not is_first_party_module("livekit", root / "svc.py")
 
 
+def test_a_new_analysis_observes_a_package_created_in_the_same_project(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    caller = root / "svc.py"
+
+    assert not is_first_party_module("app", caller)
+
+    _ = _package(root, "app")
+
+    assert is_first_party_module("app", caller)
+
+
 def test_a_file_outside_any_project_resolves_to_nothing(tmp_path: Path) -> None:
     # No `.git` and no `pyproject.toml` anywhere above: there is no project to
     # be first-party to, and guessing "ours" is the failure mode this module

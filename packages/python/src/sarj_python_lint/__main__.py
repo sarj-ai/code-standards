@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import NamedTuple
 
 from sarj_python_lint import __version__
+from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
@@ -77,6 +78,9 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
     rules = [REGISTRY[rid]() for rid in rule_ids]
+    session = AnalysisSession()
+    for rule in rules:
+        rule.prepare_session(session)
     clear_path_caches()
     expanded = _expand_paths(paths)
     loaded: dict[Path, str] = {}
@@ -87,7 +91,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
             continue
     project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
     if project_rules:
-        indexes = ProjectIndexSet.build(expanded, loaded)
+        indexes = ProjectIndexSet.build(expanded, loaded, facts=session.first_party)
         for rule in project_rules:
             rule.prepare(indexes)
     diags: list[Diagnostic] = []

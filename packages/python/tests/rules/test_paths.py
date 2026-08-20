@@ -145,6 +145,20 @@ def test_a_codegen_marker_makes_the_subtree_generated(tmp_path: Path, marker: st
     assert is_generated_path(target)
 
 
+def test_a_new_analysis_observes_a_codegen_marker_created_in_the_same_tree(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    generated = repo / "sdk" / "output"
+    generated.mkdir(parents=True)
+    (repo / ".git").mkdir()
+    source = generated / "client.py"
+
+    assert not is_generated_path(source)
+
+    (repo / "sdk" / "codegen.yml").write_text("")
+
+    assert is_generated_path(source)
+
+
 def test_the_generator_script_next_to_its_config_stays_linted(tmp_path: Path) -> None:
     # A generator's driver script is hand-written and sits beside its config;
     # exempting the whole tree would drop its findings (12, in the corpus this

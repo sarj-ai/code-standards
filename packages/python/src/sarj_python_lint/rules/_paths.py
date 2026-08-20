@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-from functools import lru_cache
 from io import StringIO
 import re
 import tokenize
@@ -103,16 +102,6 @@ def _leading_header_bodies(source: str) -> list[str]:
     return bodies
 
 
-@lru_cache(maxsize=256)
-def _is_codegen_root(directory: Path) -> bool:
-    return any((directory / name).exists() for name in _CODEGEN_MARKER_NAMES)
-
-
-@lru_cache(maxsize=256)
-def _is_repo_root(directory: Path) -> bool:
-    return any((directory / name).exists() for name in _REPO_ROOT_MARKERS)
-
-
 def is_generated_path(path: Path) -> bool:
     if any(part.lower() in _GENERATED_DIR_NAMES for part in path.parts):
         return True
@@ -128,9 +117,16 @@ def is_generated_path(path: Path) -> bool:
     return False
 
 
+def _is_codegen_root(directory: Path) -> bool:
+    return any((directory / name).exists() for name in _CODEGEN_MARKER_NAMES)
+
+
+def _is_repo_root(directory: Path) -> bool:
+    return any((directory / name).exists() for name in _REPO_ROOT_MARKERS)
+
+
 def clear_path_caches() -> None:
-    _is_codegen_root.cache_clear()
-    _is_repo_root.cache_clear()
+    """Compatibility no-op; path topology is intentionally observed fresh."""
 
 
 def is_generated(path: Path, source: str) -> bool:
