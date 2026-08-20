@@ -16,7 +16,7 @@ _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][
 _SHELL_WHITESPACE: Final = r"(?:\s|\\\r?\n)+"
 _LEGACY_REPOSITORY_INVOCATION: Final = re.compile(
     rf"\buvx{_SHELL_WHITESPACE}(?:(?!--from\b)[^\s;&|\\]+{_SHELL_WHITESPACE})*"
-    rf"--from{_SHELL_WHITESPACE}['\"]?sarj-standards==[^\s;&|\\'\"]+['\"]?"
+    rf"--from{_SHELL_WHITESPACE}['\"]?sarj-standards(?:-bootstrap)?==[^\s;&|\\'\"]+['\"]?"
     rf"{_SHELL_WHITESPACE}sarj-standards"
     rf"(?:{_SHELL_WHITESPACE}--root(?:{_SHELL_WHITESPACE}|=)(?:\.|['\"]\.['\"]))?"
 )
@@ -35,7 +35,7 @@ _LEGACY_MAKE_RUN: Final = re.compile(
 )
 _LEGACY_MAKE_RUN_ASSIGNMENT: Final = re.compile(
     r"(?m)^[ \t]*STANDARDS_RUN[ \t]*:?=[ \t]*uvx[^\r\n]*"
-    r"sarj-standards==(?:['\"])?\$\(STANDARDS_VERSION\)(?:['\"])?[^\r\n]*(?:\r?\n)?"
+    r"sarj-standards(?:-bootstrap)?==(?:['\"])?\$\(STANDARDS_VERSION\)(?:['\"])?[^\r\n]*(?:\r?\n)?"
 )
 _LEGACY_MAKE_VERSION_ASSIGNMENT: Final = re.compile(r"(?m)^[ \t]*STANDARDS_VERSION[ \t]*:?=[ \t]*[^\r\n]+(?:\r?\n)?")
 _LEGACY_MAKE_VERSION_PRINT: Final = re.compile(
@@ -48,10 +48,10 @@ _LEGACY_PYTHON_ARGV_INVOCATION: Final = re.compile(
     r"(?P=indent)['\"]--python['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]3\.14['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]--from['\"],[ \t]*\r?\n"
-    r"(?P=indent)['\"]sarj-standards==[^'\"\r\n]+['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]sarj-standards(?:-bootstrap)?==[^'\"\r\n]+['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]sarj-standards['\"],[ \t]*\r?\n"
-    r"(?P=indent)['\"]--root['\"],[ \t]*\r?\n"
-    r"(?P=indent)['\"]\.['\"],[ \t]*\r?\n"
+    r"(?:(?P=indent)['\"]--root['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"]\.['\"],[ \t]*\r?\n)?"
 )
 _REPOSITORY_PYTHON_ARGV_INVOCATION: Final = re.compile(
     r"(?m)^(?P<indent>[ \t]*)['\"]uv['\"],[ \t]*\r?\n"
