@@ -24,9 +24,9 @@ dependencies = [
   "pydantic==2.13.4",
   "PyYAML==6.0.3",
   "ruff==0.16.3",
-  "sarj-iac-lint==0.14.2",
-  "sarj-python-lint==0.77.0",
-  "sarj-sql-lint==0.16.0",
+  "sarj-iac-lint==0.14.3",
+  "sarj-python-lint==0.77.1",
+  "sarj-sql-lint==0.16.1",
 ]
 
 [project.scripts]
