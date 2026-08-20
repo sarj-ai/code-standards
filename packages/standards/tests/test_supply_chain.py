@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 import re
 
@@ -171,6 +172,14 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         'entry.get("predicateType") != "https://slsa.dev/provenance/v1"' in verifier
     )
+
+
+def test_registry_verifier_parses_on_release_runner_python() -> None:
+    verifier = (
+        REPO_ROOT / ".github/scripts/verify_registry_publication.py"
+    ).read_text(encoding="utf-8")
+
+    ast.parse(verifier, feature_version=(3, 12))
 
 
 def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks() -> None:

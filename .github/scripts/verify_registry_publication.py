@@ -36,6 +36,9 @@ class VerificationError(Exception):
     """Registry bytes or provenance do not match the staged release."""
 
 
+RETRYABLE_EXCEPTIONS = (OSError, subprocess.CalledProcessError, VerificationError)
+
+
 @dataclass(frozen=True)
 class PackageIdentity:
     name: str
@@ -200,7 +203,7 @@ def verify_pypi(dist: Path, projects: tuple[str, ...], environment: str) -> None
             for name in projects:
                 for artifact, version in grouped[name]:
                     _verify_pypi_file(artifact, name=name, version=version, environment=environment)
-        except OSError, subprocess.CalledProcessError, VerificationError:
+        except RETRYABLE_EXCEPTIONS:
             if attempt + 1 == ATTEMPTS:
                 raise
             time.sleep(RETRY_DELAY.total_seconds())
@@ -332,7 +335,7 @@ def verify_npm(tarball: Path, *, commit: str, environment: str) -> None:
     for attempt in range(ATTEMPTS):
         try:
             _verify_npm_once(tarball, commit=commit, environment=environment)
-        except OSError, subprocess.CalledProcessError, VerificationError:
+        except RETRYABLE_EXCEPTIONS:
             if attempt + 1 == ATTEMPTS:
                 raise
             time.sleep(RETRY_DELAY.total_seconds())
