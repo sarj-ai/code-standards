@@ -1,31 +1,46 @@
 ---
+import CodeComparison from '@sarj/docs-ui/CodeComparison.astro';
+import { changedLineMarks } from '@sarj/docs-ui/line-diff';
 import { Code } from '@astrojs/starlight/components';
 
 import type { Language, RuleExample } from '../lib/catalog';
 import { languageForPath } from '../lib/code';
 
 interface Props {
-  example: RuleExample;
+  id: string;
+  before: RuleExample;
+  after: RuleExample;
   languages: readonly Language[];
 }
 
-const { example, languages } = Astro.props;
-const visibleFiles = example.files.filter((file) => file.source.trim().length > 0);
-const visibleFixedFiles = example.fixedFiles.filter((file) => file.source.trim().length > 0);
+const { id, before, after, languages } = Astro.props;
+const afterFilesByPath = new Map(after.files.map((file) => [file.path, file]));
+const beforeFilesByPath = new Map(before.files.map((file) => [file.path, file]));
+const beforeFiles = before.files.map((file) => ({
+  source: file.source,
+  language: languageForPath(file.path, languages),
+  title: file.path,
+  marks: afterFilesByPath.has(file.path)
+    ? changedLineMarks(file.source, afterFilesByPath.get(file.path)!.source).before
+    : undefined,
+}));
+const afterFiles = after.files.map((file) => ({
+  source: file.source,
+  language: languageForPath(file.path, languages),
+  title: file.path,
+  marks: beforeFilesByPath.has(file.path)
+    ? changedLineMarks(beforeFilesByPath.get(file.path)!.source, file.source).after
+    : undefined,
+}));
+const visibleFixedFiles = before.fixedFiles.filter((file) => file.source.trim().length > 0);
 ---
 
-<section class:list={['example', `example--${example.outcome}`]}>
-  <header>
-    <div>
-      <p class="eyebrow">{example.outcome === 'reject' ? 'Before' : 'After'}</p>
-      <h3>{example.title}</h3>
-    </div>
-  </header>
-  <div class="example__code">
-    {visibleFiles.map((file) => (
-      <Code code={file.source} lang={languageForPath(file.path, languages)} title={file.path} frame="code" wrap />
-    ))}
-  </div>
+<div class="rule-example-pair">
+  <CodeComparison
+    {id}
+    before={{ label: 'Before — rejected', title: before.title, files: beforeFiles }}
+    after={{ label: 'After — preferred', title: after.title, files: afterFiles }}
+  />
   {visibleFixedFiles.length > 0 && (
     <details>
       <summary>Autofix output</summary>
@@ -34,4 +49,4 @@ const visibleFixedFiles = example.fixedFiles.filter((file) => file.source.trim()
       ))}
     </details>
   )}
-</section>
+</div>
