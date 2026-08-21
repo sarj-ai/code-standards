@@ -22,7 +22,7 @@ async function verify() {
   const page = await pageResponse.text();
   assert.equal(health.commit, expectedCommit);
   assert.equal(createHash('sha256').update(contractText).digest('hex'), health.contractSha256);
-  assert.deepEqual(Object.keys(contract.components).sort(), ['Breadcrumbs', 'PageAnchor', 'ReferencePage', 'RulePager']);
+  assert.deepEqual(Object.keys(contract.components).sort(), ['Breadcrumbs', 'CodeComparison', 'PageAnchor', 'ReferencePage', 'RulePager']);
   assert.equal(contract.themeTokens.length, 6);
   for (const name of Object.keys(contract.components)) assert.match(page, new RegExp(`id="${name.toLowerCase()}"`, 'u'));
   for (const token of contract.themeTokens) assert.match(page, new RegExp(token.cssName, 'u'));
