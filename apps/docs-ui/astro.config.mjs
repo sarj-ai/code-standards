@@ -47,7 +47,6 @@ export default defineConfig({
       credits: false,
       components: {
         PageTitle: '@sarj/docs-ui/PageAnchor.astro',
-        Search: './src/components/NoSearch.astro',
       },
     }),
     cloudflareArtifacts(),

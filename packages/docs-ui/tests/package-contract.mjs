@@ -48,6 +48,20 @@ for (const token of themeTokenCatalog) {
   assert.match(themeSource, new RegExp(`${token.cssName}: ${token.dark}`, 'u'));
 }
 
+const starlightSource = readFileSync(join(packageRoot, 'src', 'styles', 'starlight.css'), 'utf8');
+assert.match(starlightSource, /\.sarj-visually-hidden\s*\{/u);
+for (const declaration of [
+  'position: absolute',
+  'width: 1px',
+  'height: 1px',
+  'overflow: hidden',
+  'clip: rect(0 0 0 0)',
+  'clip-path: inset(50%)',
+  'white-space: nowrap',
+]) {
+  assert.ok(starlightSource.includes(declaration), `missing shared accessibility declaration: ${declaration}`);
+}
+
 const workingDirectory = await mkdtemp(join(tmpdir(), 'sarj-docs-ui-contract-'));
 
 try {
