@@ -28,7 +28,10 @@ REPOSITORY_URL = f"https://github.com/{REPOSITORY}"
 WORKFLOW = "release.yml"
 REF = "refs/heads/main"
 PYPI_ATTESTATIONS = "pypi-attestations==0.0.30"
-ATTEMPTS = 6
+PYPI_ATTEMPTS = 6
+# npm's provenance document is published separately from the package metadata and
+# can remain unavailable for more than a minute after the package itself is live.
+NPM_ATTESTATION_ATTEMPTS = 18
 RETRY_DELAY = timedelta(seconds=10)
 
 
@@ -198,13 +201,13 @@ def verify_pypi(dist: Path, projects: tuple[str, ...], environment: str) -> None
         _fail(f"staged projects {sorted(grouped)} do not equal expected projects {sorted(projects)}")
     if any(len({version for _, version in items}) != 1 for items in grouped.values()):
         _fail("staged files disagree on project version")
-    for attempt in range(ATTEMPTS):
+    for attempt in range(PYPI_ATTEMPTS):
         try:
             for name in projects:
                 for artifact, version in grouped[name]:
                     _verify_pypi_file(artifact, name=name, version=version, environment=environment)
         except RETRYABLE_EXCEPTIONS:
-            if attempt + 1 == ATTEMPTS:
+            if attempt + 1 == PYPI_ATTEMPTS:
                 raise
             time.sleep(RETRY_DELAY.total_seconds())
         else:
@@ -332,11 +335,11 @@ def _verify_npm_once(  # sarj-noqa: SARJ023 -- one-attempt verification precedes
 
 
 def verify_npm(tarball: Path, *, commit: str, environment: str) -> None:
-    for attempt in range(ATTEMPTS):
+    for attempt in range(NPM_ATTESTATION_ATTEMPTS):
         try:
             _verify_npm_once(tarball, commit=commit, environment=environment)
         except RETRYABLE_EXCEPTIONS:
-            if attempt + 1 == ATTEMPTS:
+            if attempt + 1 == NPM_ATTESTATION_ATTEMPTS:
                 raise
             time.sleep(RETRY_DELAY.total_seconds())
         else:

@@ -172,12 +172,12 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         'entry.get("predicateType") != "https://slsa.dev/provenance/v1"' in verifier
     )
+    assert "NPM_ATTESTATION_ATTEMPTS = 18" in verifier
+    assert "range(NPM_ATTESTATION_ATTEMPTS)" in verifier
 
 
 def test_registry_verifier_parses_on_release_runner_python() -> None:
-    verifier = (
-        REPO_ROOT / ".github/scripts/verify_registry_publication.py"
-    ).read_text(encoding="utf-8")
+    verifier = (REPO_ROOT / ".github/scripts/verify_registry_publication.py").read_text(encoding="utf-8")
 
     ast.parse(verifier, feature_version=(3, 12))
 
