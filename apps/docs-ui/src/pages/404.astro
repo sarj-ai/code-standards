@@ -1,11 +1,11 @@
 ---
 import ReferencePage from '@sarj/docs-ui/ReferencePage.astro';
+import { sidebar } from '../lib/navigation';
 ---
 
-<ReferencePage title="Page not found" description="This documentation UI route does not exist." sidebar={[]} hasSidebar={false} indexable={false}>
+<ReferencePage title="Page not found" description="The page does not exist." sidebar={sidebar} indexable={false}>
   <div class="not-found">
-    <p class="eyebrow">404</p>
     <h1>Page not found</h1>
-    <a href="/">Return to the component index</a>
+    <a href="/">Go to About</a>
   </div>
 </ReferencePage>

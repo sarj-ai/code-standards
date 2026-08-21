@@ -1,0 +1,89 @@
+---
+import Breadcrumbs from '@sarj/docs-ui/Breadcrumbs.astro';
+import CodeComparison from '@sarj/docs-ui/CodeComparison.astro';
+import ReferencePage from '@sarj/docs-ui/ReferencePage.astro';
+import RulePager from '@sarj/docs-ui/RulePager.astro';
+import { componentCatalog, themeTokenCatalog } from '@sarj/docs-ui/catalog';
+import { sidebar } from '../../lib/navigation';
+
+const exportsByComponent = Object.entries(componentCatalog);
+---
+
+<ReferencePage
+  title="Components"
+  description="Shared components and theme tokens for Sarj documentation."
+  sidebar={sidebar}
+>
+  <article class="component-reference">
+    <h1>Components</h1>
+
+    <div class="component-list">
+      {exportsByComponent.map(([name, definition]) => (
+        <section class="component-card" id={name.toLowerCase()} aria-labelledby={`${name.toLowerCase()}-heading`}>
+          <header>
+            <h2 id={`${name.toLowerCase()}-heading`}>{name}</h2>
+            <code>{definition.exportPath.slice(definition.exportPath.lastIndexOf('/') + 1)}</code>
+          </header>
+          <p>{definition.purpose}</p>
+          {name === 'Breadcrumbs' && (
+            <div class="specimen" aria-label="Breadcrumbs example">
+              <Breadcrumbs ancestors={[{ label: 'Components', href: '/components/' }]} current="Breadcrumbs" />
+            </div>
+          )}
+          {name === 'CodeComparison' && (
+            <div class="specimen specimen--flush" aria-label="Code comparison example">
+              <CodeComparison
+                id="documentation-ui-example"
+                before={{
+                  label: 'Before — flagged',
+                  files: [{ source: 'const enabled = false;', language: 'ts', marks: { range: '1' } }],
+                }}
+                after={{
+                  label: 'After — passes',
+                  files: [{ source: 'const enabled = true;', language: 'ts', marks: { range: '1' } }],
+                }}
+              />
+            </div>
+          )}
+          {name === 'PageAnchor' && (
+            <div class="specimen"><a href="#_top">Top anchor</a></div>
+          )}
+          {name === 'ReferencePage' && (
+            <div class="specimen shell-specimen" aria-label="Reference page shell example">
+              <span>Header</span><strong>Sidebar</strong><span>Content</span>
+            </div>
+          )}
+          {name === 'RulePager' && (
+            <div class="specimen"><RulePager previous={{ href: '#referencepage', label: 'ReferencePage' }} next={{ href: '#design-tokens', label: 'Design tokens' }} /></div>
+          )}
+          {Object.keys(definition.properties).length > 0 && (
+            <details class="property-details">
+              <summary>Props</summary>
+              <dl class="property-list">
+                {Object.entries(definition.properties).map(([property, purpose]) => (
+                  <div><dt><code>{property}</code></dt><dd>{purpose}</dd></div>
+                ))}
+              </dl>
+            </details>
+          )}
+        </section>
+      ))}
+    </div>
+
+    <section class="theme-reference" aria-labelledby="design-tokens">
+      <h2 id="design-tokens">Design tokens</h2>
+      <div class="token-grid">
+        {themeTokenCatalog.map((token) => (
+          <article class="token-card">
+            <div class="token-swatches" aria-label={`${token.cssName} in light and dark themes`}>
+              <span aria-hidden="true" style={`background:${token.light}`}></span>
+              <span aria-hidden="true" style={`background:${token.dark}`}></span>
+            </div>
+            <code>{token.cssName}</code>
+            <p>{token.purpose}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  </article>
+</ReferencePage>
