@@ -19,10 +19,39 @@ export default function cloudflareArtifacts(): AstroIntegration {
         }
         const body = ['# Generated from rule catalog aliases. Do not edit.', ...[...redirects].sort(), ''].join('\n');
         await writeFile(new URL('_redirects', dir), body, 'utf8');
+        await verifyIndexableSitemap(dir);
         await writeContentSecurityPolicyHeader(dir);
       },
     },
   };
+}
+
+async function verifyIndexableSitemap(dir: URL): Promise<void> {
+  const sitemapIndex = await readFile(new URL('sitemap-index.xml', dir), 'utf8');
+  if (!sitemapIndex.includes('https://code-standards.sarj.ai/sitemap-0.xml')) {
+    throw new Error('Sitemap index does not reference the canonical code-standards sitemap');
+  }
+
+  const sitemap = await readFile(new URL('sitemap-0.xml', dir), 'utf8');
+  const locations = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/gu)].map((match) => match[1]);
+  if (locations.some((location) => new URL(location).pathname === '/about/')) {
+    throw new Error('Non-canonical /about/ alias must not appear in the sitemap');
+  }
+
+  for (const location of locations) {
+    const url = new URL(location);
+    if (url.origin !== 'https://code-standards.sarj.ai') {
+      throw new Error(`Cross-origin sitemap URL: ${location}`);
+    }
+    const relativePath = url.pathname === '/' ? 'index.html' : `${url.pathname.slice(1)}index.html`;
+    const document = await readFile(new URL(relativePath, dir), 'utf8');
+    if (document.includes('name="robots" content="noindex')) {
+      throw new Error(`Sitemap URL is marked noindex: ${location}`);
+    }
+    if (!document.includes(`rel="canonical" href="${location}"`)) {
+      throw new Error(`Sitemap URL is missing its self-canonical link: ${location}`);
+    }
+  }
 }
 
 async function writeContentSecurityPolicyHeader(dir: URL): Promise<void> {

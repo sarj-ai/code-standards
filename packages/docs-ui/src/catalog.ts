@@ -1,4 +1,4 @@
-import type { BreadcrumbsProps, ReferencePageProps, RulePagerProps } from './contracts';
+import type { BreadcrumbsProps, CodeComparisonProps, ReferencePageProps, RulePagerProps } from './contracts';
 
 export interface ComponentDefinition<Props extends object = object> {
   exportPath: string;
@@ -22,6 +22,16 @@ export const componentCatalog = Object.freeze({
       current: 'Current page label, announced with aria-current="page".',
     },
   } satisfies ComponentDefinition<BreadcrumbsProps>,
+  CodeComparison: {
+    exportPath: '@sarj/docs-ui/CodeComparison.astro',
+    purpose: 'Compare independently readable before and after source with accessible change cues.',
+    properties: {
+      id: 'Stable identifier used to connect the comparison and its heading.',
+      title: 'Optional scenario heading shared by both sides.',
+      before: 'Rejected or prior source snapshot and its presentation metadata.',
+      after: 'Preferred or resulting source snapshot and its presentation metadata.',
+    },
+  } satisfies ComponentDefinition<CodeComparisonProps>,
   PageAnchor: {
     exportPath: '@sarj/docs-ui/PageAnchor.astro',
     purpose: 'Provide the focusable top anchor used by Starlight reference pages.',

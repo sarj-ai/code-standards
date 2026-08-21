@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
+    "@astrojs/sitemap": "3.7.3",
     "@eslint/js": "10.0.1",
     "@sarj/eslint-plugin": "file:../../packages/typescript",
     "eslint": "10.8.1",

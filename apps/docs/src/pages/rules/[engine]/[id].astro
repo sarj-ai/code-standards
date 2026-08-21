@@ -73,10 +73,7 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
         <h2>Examples</h2>
         <div class="examples-list">
           {exampleScenarios.map(({ scenarioId, before, after }) => (
-            <div class="examples-grid" data-example-scenario={scenarioId}>
-              <RuleExample example={before} languages={rule.languages} />
-              <RuleExample example={after} languages={rule.languages} />
-            </div>
+            <RuleExample id={`scenario-${scenarioId}`} {before} {after} languages={rule.languages} />
           ))}
         </div>
       </section>

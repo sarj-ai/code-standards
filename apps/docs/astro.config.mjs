@@ -1,5 +1,7 @@
+import sitemap from '@astrojs/sitemap';
 import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
+import { URL } from 'node:url';
 
 import cloudflareArtifacts from './src/integrations/cloudflare-artifacts.ts';
 
@@ -34,10 +36,17 @@ export default defineConfig({
     },
   },
   integrations: [
+    sitemap({ filter: (page) => new URL(page).pathname !== '/about/' }),
     starlight({
       title: 'Sarj Standards',
       description: 'Deterministic code standards, diagnostics, and remediation.',
       favicon: '/sarj-logo-light.png',
+      logo: {
+        alt: 'Sarj',
+        dark: './public/sarj-logo-dark.png',
+        light: './public/sarj-logo-light.png',
+        replacesTitle: true,
+      },
       disable404Route: true,
       customCss: ['@sarj/docs-ui/starlight.css', './src/styles/global.css'],
       sidebar: [

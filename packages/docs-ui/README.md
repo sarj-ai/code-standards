@@ -13,11 +13,13 @@ Import `@sarj/docs-ui/starlight.css` once, then compose the typed Astro componen
 Public exports:
 
 - `@sarj/docs-ui/Breadcrumbs.astro`
+- `@sarj/docs-ui/CodeComparison.astro`
 - `@sarj/docs-ui/PageAnchor.astro`
 - `@sarj/docs-ui/ReferencePage.astro`
 - `@sarj/docs-ui/RulePager.astro`
 - `@sarj/docs-ui/catalog`
 - `@sarj/docs-ui/contracts`
+- `@sarj/docs-ui/line-diff`
 - `@sarj/docs-ui/starlight.css`
 - `@sarj/docs-ui/styles.css`
 
