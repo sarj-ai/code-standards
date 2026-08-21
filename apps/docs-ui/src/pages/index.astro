@@ -1,5 +1,6 @@
 ---
 import Breadcrumbs from '@sarj/docs-ui/Breadcrumbs.astro';
+import CodeComparison from '@sarj/docs-ui/CodeComparison.astro';
 import ReferencePage from '@sarj/docs-ui/ReferencePage.astro';
 import RulePager from '@sarj/docs-ui/RulePager.astro';
 import { componentCatalog, themeTokenCatalog } from '@sarj/docs-ui/catalog';
@@ -53,6 +54,21 @@ const exportsByComponent = Object.entries(componentCatalog);
                 <Breadcrumbs
                   ancestors={[{ label: 'Components', href: '#components-heading' }, { label: 'Navigation', href: '#breadcrumbs' }]}
                   current="Breadcrumbs"
+                />
+              </div>
+            )}
+            {name === 'CodeComparison' && (
+              <div class="specimen" aria-label="Code comparison specimen">
+                <CodeComparison
+                  id="documentation-ui-example"
+                  before={{
+                    label: 'Before — flagged',
+                    files: [{ source: 'const enabled = false;', language: 'ts', marks: { range: '1' } }],
+                  }}
+                  after={{
+                    label: 'After — passes',
+                    files: [{ source: 'const enabled = true;', language: 'ts', marks: { range: '1' } }],
+                  }}
                 />
               </div>
             )}
