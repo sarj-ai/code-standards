@@ -16,6 +16,7 @@
   },
   "serverAuthFunctionNames": ["forRequest"],
   "share": false,
+  "warnings": false,
   "supplyChain": {
     "enabled": false
   }

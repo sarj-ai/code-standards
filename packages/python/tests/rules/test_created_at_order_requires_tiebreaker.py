@@ -62,7 +62,7 @@ def test_reports_created_at_as_final_same_depth_order_item(query: str) -> None:
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ407"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert "tie-break key" in findings[0].message
     assert "`id`" in findings[0].message
 

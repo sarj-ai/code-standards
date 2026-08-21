@@ -123,6 +123,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
         return severity !== "error";
       })
       .map(([rule]) => rule);
-    expect(nonErrors).toEqual(advisoryRules.map((rule) => `@sarj/${rule}`).sort());
+    expect(advisoryRules).toEqual([]);
+    expect(nonErrors).toEqual([]);
   });
 });

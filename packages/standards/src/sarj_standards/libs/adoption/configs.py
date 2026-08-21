@@ -27,6 +27,16 @@ TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProx
         "react-doctor": ("doctor.config.json", "doctor.config.json"),
     }
 )
+PYTHON_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
+    {
+        # BasedPyright's source and synchronized forms use the same relative
+        # parent name, keeping both inheritance graphs independently valid.
+        "pyright-base": ("pyright.strict.json", "pyright.strict.json"),
+        # Keep the upstream-Pyright policy warning-free while shipping the
+        # stricter active BasedPyright layer beside it.
+        "basedpyright": ("basedpyright.strict.json", ".basedpyright-strict.json"),
+    }
+)
 APPLICATION_CONFIG_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
         "ruff": "ruff.application.toml",

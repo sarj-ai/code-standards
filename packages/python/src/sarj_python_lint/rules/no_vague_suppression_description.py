@@ -98,7 +98,7 @@ class NoVagueSuppressionDescription(Rule):
                 col=comment.col,
                 code=self.code,
                 message=self.description,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 column_encoding=ColumnEncoding.CODEPOINTS,
             )
             for comment in comments

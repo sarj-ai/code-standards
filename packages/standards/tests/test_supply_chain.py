@@ -270,8 +270,12 @@ def test_release_ready_is_one_stable_required_gate() -> None:
 def test_warning_first_gate_prints_an_executable_command_for_each_rule() -> None:
     workflow = (REPO_ROOT / ".github/workflows/repo-ci.yml").read_text(encoding="utf-8")
 
-    assert "stage-warning $selector" in workflow  # sarj-noqa: SARJ402 -- workflow text is the author contract
-    assert "stage-warning ENGINE:RULE-ID" not in workflow
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the author contract
+        "new judgment rules must enter the fleet at error level" in workflow
+    )
+    assert (  # sarj-noqa: SARJ402 -- exact remediation is the contract
+        "Promote the rule before release: $selector" in workflow
+    )
 
 
 def test_parallel_package_workflows_are_always_present_with_stable_contexts() -> None:

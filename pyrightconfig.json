@@ -1,4 +1,4 @@
 {
-  "extends": ".pyright-strict.json",
+  "extends": ".basedpyright-strict.json",
   "pythonVersion": "3.14"
 }

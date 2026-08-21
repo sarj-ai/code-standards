@@ -1,0 +1,14 @@
+# Copy this file to the gitignored `.sarj-standards-rollout.toml`, replace the
+# example consumer, and add authorized consumers. Never commit private names or
+# credentials.
+schema = 1
+
+[[consumer]]
+name = "example-consumer"
+repository = "example/consumer"
+branch = "main"
+verify = ["make check"]
+channel = "canary"
+baseline_rules = ["eslint:@sarj/example-promoted-rule"]
+requires_approval = true
+auto_merge = false

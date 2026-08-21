@@ -137,7 +137,7 @@ class PreferImmutableModuleConstant(Rule):
                         statement.col_offset + 1,
                         self.code,
                         _message(name, kind),
-                        Severity.WARNING,
+                        Severity.ERROR,
                     )
                 )
         return findings

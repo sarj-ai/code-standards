@@ -45,7 +45,7 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ096"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert replacement in findings[0].message
 
 

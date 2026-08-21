@@ -112,7 +112,7 @@ class PreserveEnumTypes(ProjectRule):
                                 line=call.lineno,
                                 col=call.col_offset + 1,
                                 code=self.code,
-                                severity=Severity.WARNING,
+                                severity=Severity.ERROR,
                                 message="matched enum is converted to unconstrained `str`; preserve its enum type through the receiving boundary",
                             )
                         )

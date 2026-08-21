@@ -127,7 +127,7 @@ class CreatedAtOrderRequiresTiebreaker(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         "Store query leaves `created_at` as its final ordering item; add a stable tie-break key "
                         "after it, such as `id` (for example, `ORDER BY created_at DESC, id DESC`)."

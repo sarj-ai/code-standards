@@ -41,7 +41,7 @@ def test_reports_exact_required_row_assertions(source: str) -> None:
     diagnostics = _check(source)
 
     assert len(diagnostics) == 1
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
     assert "required-row helper" in diagnostics[0].message
 
 

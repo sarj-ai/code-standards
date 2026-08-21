@@ -120,7 +120,7 @@ def test_react_doctor_v3_json_becomes_a_blocking_canonical_region(tmp_path: Path
     assert finding.location.region is not None
 
 
-def test_react_doctor_accepts_omitted_empty_skipped_projects(tmp_path: Path) -> None:
+def test_react_doctor_rejects_empty_project_coverage(tmp_path: Path) -> None:
     payload = json.dumps(
         {
             "schemaVersion": 3,
@@ -131,7 +131,31 @@ def test_react_doctor_accepts_omitted_empty_skipped_projects(tmp_path: Path) -> 
         }
     )
 
-    assert parse_react_doctor(payload, root=tmp_path) == ()
+    with pytest.raises(ValueError, match="no analyzed projects"):
+        parse_react_doctor(payload, root=tmp_path)
+
+
+def test_react_doctor_accepts_empty_staged_report_without_analyzable_sources(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [],
+            "diagnostics": [],
+            "error": None,
+        }
+    )
+
+    assert (
+        parse_react_doctor(
+            payload,
+            root=tmp_path,
+            expected_projects=frozenset({tmp_path.resolve()}),
+            allow_empty_projects=True,
+        )
+        == ()
+    )
 
 
 def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Path) -> None:
@@ -142,10 +166,15 @@ def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Pat
             "schemaVersion": 3,
             "version": manifest.eslint_peers()["react-doctor"],
             "ok": True,
+            "reactDetected": True,
+            "baselineDegraded": False,
             "projects": [
                 {
                     "directory": str(tmp_path),
                     "complete": True,
+                    "skippedChecks": [],
+                    "analyzedFileCount": 2,
+                    "scannedFileCount": 2,
                     "diagnostics": [
                         {
                             "filePath": "package.json",
@@ -187,6 +216,28 @@ def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="did not complete"):
         parse_react_doctor(payload, root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        ({"reactDetected": False}, "did not detect React"),
+        ({"baselineDegraded": True}, "baseline degraded"),
+    ],
+)
+def test_react_doctor_fails_closed_on_degraded_coverage(tmp_path: Path, extra: dict[str, object], message: str) -> None:
+    payload = {
+        "schemaVersion": 3,
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "projects": [{"directory": str(tmp_path), "complete": True}],
+        "skippedProjects": [],
+        "error": None,
+        **extra,
+    }
+
+    with pytest.raises(ValueError, match=message):
+        parse_react_doctor(json.dumps(payload), root=tmp_path)
 
 
 def test_react_doctor_protocol_rejects_coerced_schema_types(tmp_path: Path) -> None:
@@ -285,6 +336,50 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
     assert selection == (tmp_path, (included.resolve(),))
 
 
+def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path) -> None:
+    package = tmp_path / "package.json"
+    package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        seen.append(tuple(argv))
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "reactDetected": True,
+                    "baselineDegraded": False,
+                    "projects": [
+                        {
+                            "directory": str(cwd),
+                            "complete": True,
+                            "skippedChecks": [],
+                            "analyzedFileCount": 1,
+                            "scannedFileCount": 1,
+                        }
+                    ],
+                    "skippedProjects": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    reports = analyze_external(
+        (str(package),),
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        include_react_doctor=True,
+    )
+
+    assert [item.name for item in reports] == ["react-doctor"]
+    assert any("react-doctor" in item for item in seen[0])
+
+
 def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
     (tmp_path / "package.json").write_text(
@@ -311,10 +406,15 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
                     "schemaVersion": 3,
                     "version": manifest.eslint_peers()["react-doctor"],
                     "ok": True,
+                    "reactDetected": True,
+                    "baselineDegraded": False,
                     "projects": [
                         {
                             "directory": str(tmp_path),
                             "complete": True,
+                            "skippedChecks": [],
+                            "analyzedFileCount": 2,
+                            "scannedFileCount": 2,
                             "diagnostics": [
                                 {
                                     "filePath": str(source),
@@ -391,7 +491,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
         staged=False,
     )
 
-    assert tuple(item.location.path for item in github_report.diagnostics) == ("component.tsx",)
+    assert tuple(item.location.path for item in github_report.diagnostics) == ("component.tsx", "untouched.tsx")
     github_base_index = seen[2].index("--base")
     assert seen[2][github_base_index + 1] == event_base
 
@@ -407,30 +507,14 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     )
 
     assert ci_report.completion is Completion.COMPLETE
-    assert tuple(item.location.path for item in ci_report.diagnostics) == ("component.tsx",)
+    assert tuple(item.location.path for item in ci_report.diagnostics) == ("component.tsx", "untouched.tsx")
 
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
-    assert git_seen == [
-        (
-            "git",
-            "diff",
-            "--name-only",
-            "--diff-filter=ACMR",
-            "-z",
-            f"{event_base}...HEAD",
-            "--",
-        ),
-        (
-            "git",
-            "diff",
-            "--name-only",
-            "--diff-filter=ACMR",
-            "-z",
-            "0123456789abcdef...HEAD",
-            "--",
-        ),
-    ]
+    assert git_seen == []
+    assert "--no-cache" in seen[0]
+    duration_index = seen[0].index("--max-duration")
+    assert seen[0][duration_index + 1] == "12"
 
 
 @pytest.mark.parametrize(

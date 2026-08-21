@@ -10,7 +10,13 @@ from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 
 from . import lifecycle, manifest, scaffold, transaction
-from .configs import APPLICATION_CONFIG_NAMES, CONFIG_NAMES, PYTHON_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
+from .configs import (
+    APPLICATION_CONFIG_NAMES,
+    CONFIG_NAMES,
+    PYTHON_COMPANION_CONFIGS,
+    PYTHON_CONFIGS,
+    TYPESCRIPT_COMPANION_CONFIGS,
+)
 
 
 if TYPE_CHECKING:
@@ -152,6 +158,15 @@ def plan_sync(
         else:
             base = destination(_DestinationKind.DEFAULT, None)
         targets.append(SyncTarget(name, CONFIGS_DIR / source_name, base / target_name))
+        if name == "pyright":
+            for companion, (companion_source, companion_target) in PYTHON_COMPANION_CONFIGS.items():
+                targets.append(
+                    SyncTarget(
+                        companion,
+                        CONFIGS_DIR / companion_source,
+                        base / companion_target,
+                    )
+                )
         if name == "eslint":
             for companion, (companion_source, companion_target) in TYPESCRIPT_COMPANION_CONFIGS.items():
                 targets.append(

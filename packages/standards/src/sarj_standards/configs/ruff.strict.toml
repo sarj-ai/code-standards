@@ -2,6 +2,9 @@
 # constraints; repository-specific evaluation evidence stays outside the package.
 line-length = 120
 extend-exclude = ["sdk"]
+# Standards targets Python 3.14. Keep this explicit so Ruff upgrades cannot
+# silently fall back to an older grammar or withhold 3.14-native diagnostics.
+target-version = "py314"
 
 [format]
 quote-style              = "double"

@@ -1,10 +1,13 @@
 {
-  // Maximally-strict pyright / basedpyright config.
+  // Maximally-strict upstream Pyright config. BasedPyright-only settings live
+  // in basedpyright.strict.json so upstream Pyright never accepts a policy
+  // only after printing "unrecognized setting" warnings.
   //
   // MUST be JSON(C), not TOML: pyright's `extends` silently ignores a bare-key
   // .toml file (it loads JSON only), so a .toml strict config never actually
   // applies — the type checker just runs on its defaults. JSONC keeps comments.
   "typeCheckingMode": "strict",
+  "pythonVersion": "3.14",
   "strictListInference": true,
   "strictDictionaryInference": true,
   "strictSetInference": true,
@@ -76,21 +79,5 @@
   "reportInvalidStubStatement": "error",
   "reportSelfClsParameterName": "error",
   "reportTypeCommentUsage": "error",
-  // basedpyright-only (8 keys): reportInvalidCast, reportUnsafeMultipleInheritance,
-  // reportImplicitRelativeImport, reportExplicitAny, reportIgnoreCommentWithoutRule,
-  // reportPrivateLocalImportUsage, reportAny, reportUnannotatedClassAttribute.
-  // Plain pyright (verified on 1.1.411) prints `Config contains unrecognized
-  // setting "<key>"` once per key and then IGNORES it — the run still exits 0
-  // with "0 errors". The warnings are cosmetic; the keys stay because
-  // basedpyright is the canonical checker and dropping them would silently
-  // weaken it. Consumers on plain pyright lose only these eight checks.
-  "reportInvalidCast": "error",
-  "reportUnsafeMultipleInheritance": "error",
-  "reportImplicitRelativeImport": "error",
-  "reportUnreachable": "error",
-  "reportExplicitAny": "error",
-  "reportIgnoreCommentWithoutRule": "error",
-  "reportPrivateLocalImportUsage": "error",
-  "reportAny": "error",
-  "reportUnannotatedClassAttribute": "error"
+  "reportUnreachable": "error"
 }

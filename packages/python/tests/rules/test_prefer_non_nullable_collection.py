@@ -97,7 +97,7 @@ def test_flags_none_default_used_only_as_an_empty_list(annotation: str) -> None:
 
     assert len(diagnostics) == 1
     assert diagnostics[0].line == 2
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
     assert "Sequence" in diagnostics[0].message
     assert "required" in diagnostics[0].message
 

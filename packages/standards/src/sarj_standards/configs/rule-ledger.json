@@ -146,6 +146,7 @@
       "duplicate-test-body",
       "enforce-file-structure",
       "iac-source-coupled-test",
+      "interface-contract-members-private",
       "no-bare-return-from-test-catch",
       "no-client-side-data-fetching",
       "no-comment-cruft",
@@ -194,6 +195,7 @@
       "prefer-await-in-async-return",
       "prefer-constant-time-secret-compare",
       "prefer-discriminated-union",
+      "prefer-ecmascript-private-members",
       "prefer-immutable-module-constant",
       "prefer-input-group-search",
       "prefer-module-level-constant",
@@ -229,8 +231,7 @@
       "hidden-markdown-heading",
       "iac-source-coupled-test",
       "no-unsafe-command-argument-interpolation",
-      "no-wildcard-secret-read-permission",
-      "unpinned-github-action"
+      "no-wildcard-secret-read-permission"
     ]
   },
   "codes": {
@@ -357,7 +358,6 @@
       "SARJ300",
       "SARJ301",
       "SARJ302",
-      "SARJ303",
       "SARJ304",
       "SARJ305",
       "SARJ306",
@@ -647,6 +647,13 @@
       "note": "Delete SARJ090 suppressions and baseline keys. Sentence count does not distinguish durable rationale from noise."
     },
     {
+      "id": "SARJ303",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ303 suppressions and baseline keys; immutable GitHub Action pinning is no longer a Standards policy. There is no replacement."
+    },
+    {
       "id": "SARJ405",
       "kind": "code",
       "status": "removed",
@@ -827,6 +834,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; a literal test loop may encode one shared scenario, completeness contract, or state evolution that parametrization would change."
+    },
+    {
+      "id": "unpinned-github-action",
+      "kind": "text",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this text rule from configuration; immutable GitHub Action pinning is no longer a Standards policy. There is no replacement."
     },
     {
       "id": "xfail-requires-strict",

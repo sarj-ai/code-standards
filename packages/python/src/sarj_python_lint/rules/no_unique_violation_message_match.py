@@ -105,7 +105,7 @@ class NoUniqueViolationMessageMatch(Rule):
                     "UniqueViolation is classified by substring-matching its message; compare "
                     "`exc.diag.constraint_name` with the expected constraint instead."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for node in findings
         ]

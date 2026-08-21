@@ -110,7 +110,7 @@ def _diagnose(
             line=annotation.lineno,
             col=annotation.col_offset + 1,
             code=code,
-            severity=Severity.WARNING,
+            severity=Severity.ERROR,
             message=f"`{name}` erases declared nominal `{nominal.name}`; propagate the nominal ID type through this boundary",
         )
     ]

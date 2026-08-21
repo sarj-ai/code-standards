@@ -1,0 +1,7 @@
+{
+  // Advisory compatibility profile. Experimental diagnostics stay isolated
+  // here and never leak into the blocking Python 3.14 policy.
+  "extends": "./basedpyright.strict.json",
+  "pythonVersion": "3.15",
+  "enableExperimentalFeatures": true
+}

@@ -287,7 +287,7 @@ class ProductionDerivedTestCases(Rule):
                         line=decorator.lineno,
                         col=decorator.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=(
                             f"`{collection.id}` supplies the cases from production, so removing a member can remove "
                             "the test that should catch the regression; define an independent expected case table and "

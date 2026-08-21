@@ -13,6 +13,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  python315-watch:
+    name: Python 3.15 advisory compatibility
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.15
+      - run: uv sync --locked --dev --python 3.15
+      - name: Exercise Python 3.15 watch profiles
+        run: |
+          uv run --python 3.15 ruff check --config src/sarj_standards/configs/ruff.python315-watch.toml src/ tests/
+          uv run --python 3.15 basedpyright --project src/sarj_standards/configs/basedpyright.python315-watch.json src/sarj_standards/_meta.py
+
   portability-smoke:
     name: standards portability (${{ matrix.os }})
     strategy:
@@ -136,7 +165,7 @@ jobs:
           uv run --no-project code-standards show config ruff
           uv run --no-project code-standards show peers
           fresh="$(mktemp -d)"
-          printf '"""Fresh wheel smoke test."""\n\nVALUE = 1\n' > "$fresh/example.py"
+          printf 'VALUE = 1\n' > "$fresh/example.py"
           (cd "$fresh" && "$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards" check example.py)
           cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
           "$cli" --root "$fresh" check --format json --output "$fresh/report.json" example.py
@@ -146,7 +175,7 @@ jobs:
           repo="$(mktemp -d)"
           wheelhouse="$(mktemp -d)"
           cp dist/*.whl dist/deps/*.whl "$wheelhouse/"
-          printf '[project]\nname = "smoke"\nversion = "0.1.0"\n' > "$repo/pyproject.toml"
+          printf '[project]\nname = "smoke"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n' > "$repo/pyproject.toml"
           cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
           UV_FIND_LINKS="$wheelhouse" "$cli" --root "$repo" setup
           "$cli" --root "$repo" doctor

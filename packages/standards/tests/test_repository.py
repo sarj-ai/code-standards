@@ -571,6 +571,32 @@ def test_file_conventions_reject_drifted_managed_root_config(tmp_path: Path) -> 
     ]
 
 
+@pytest.mark.parametrize(
+    ("destination", "source"),
+    [
+        ("pyright.strict.json", "pyright.strict.json"),
+        (".basedpyright-strict.json", "basedpyright.strict.json"),
+    ],
+)
+def test_file_conventions_reject_drifted_managed_pyright_layers(tmp_path: Path, destination: str, source: str) -> None:
+    _git_repo(
+        tmp_path,
+        {
+            f"configs/{source}": '{"typeCheckingMode": "strict"}\n',
+            destination: '{"typeCheckingMode": "basic"}\n',
+        },
+    )
+
+    findings = repository.check_file_conventions(tmp_path, _policy())
+
+    assert [(finding.where, finding.message) for finding in findings] == [
+        (
+            destination,
+            f"generated config drifted from configs/{source}; run `code-standards setup`",
+        )
+    ]
+
+
 def test_file_conventions_reject_extra_exact_config_copy(tmp_path: Path) -> None:
     config = "line-length = 100\n"
     _git_repo(

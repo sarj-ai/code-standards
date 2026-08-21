@@ -20,6 +20,7 @@ from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
+from .configs import PYTHON_COMPANION_CONFIGS
 
 
 if TYPE_CHECKING:
@@ -114,7 +115,15 @@ _ESLINT_CONFIG_NAMES: Final = (
 )
 _LOCAL_SPECIFIERS: Final = ("file:", "link:", "workspace:", "portal:")
 _PYRIGHT_CONFIG_NAMES: Final = frozenset(
-    {".pyright-strict.json", "pyright.strict.json", "pyrightconfig.json", "pyrightconfig.jsonc", "pyproject.toml"}
+    {
+        ".basedpyright-strict.json",
+        ".pyright-strict.json",
+        "basedpyright.strict.json",
+        "pyright.strict.json",
+        "pyrightconfig.json",
+        "pyrightconfig.jsonc",
+        "pyproject.toml",
+    }
 )
 _PYRIGHT_REPORT_DEPRECATED = re.compile(
     r"^\s*[\"']?reportDeprecated[\"']?\s*(?::|=)\s*(?P<value>[^,#/\n]+)", re.MULTILINE
@@ -984,6 +993,33 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
             )
         else:
             yield Finding(Level.OK, str(target.relative_to(root)), f"{name} config is current", "doctor.config.current")
+        if name == "pyright":
+            for companion_name, (companion_source, companion_target) in PYTHON_COMPANION_CONFIGS.items():
+                companion = destination / companion_target
+                companion_expected = CONFIGS_DIR / companion_source
+                if not companion.is_file():
+                    yield Finding(
+                        Level.DRIFT,
+                        str(companion.relative_to(root)),
+                        f"{companion_name} companion config is missing",
+                        "doctor.config.missing",
+                        "run `code-standards update`",
+                    )
+                elif companion.read_bytes() != companion_expected.read_bytes():
+                    yield Finding(
+                        Level.DRIFT,
+                        str(companion.relative_to(root)),
+                        f"{companion_name} companion config differs from the installed bundle",
+                        "doctor.config.drift",
+                        "run `code-standards update`",
+                    )
+                else:
+                    yield Finding(
+                        Level.OK,
+                        str(companion.relative_to(root)),
+                        f"{companion_name} companion config is current",
+                        "doctor.config.current",
+                    )
 
     python_root = destinations["python"]
     if python_root is not None:
@@ -1011,9 +1047,9 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
             yield from _check_text_wiring(
                 root,
                 active,
-                ".pyright-strict.json",
+                ".basedpyright-strict.json",
                 "doctor.pyright.wiring",
-                "set `extends` to `.pyright-strict.json`",
+                "set `extends` to `.basedpyright-strict.json`",
             )
 
     typescript_root = destinations["typescript"]

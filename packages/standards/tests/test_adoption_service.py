@@ -60,6 +60,8 @@ def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> Non
     assert result.status == 0
     assert (tmp_path / ".ruff-strict.toml").is_file()
     assert (tmp_path / ".pyright-strict.json").is_file()
+    assert (tmp_path / ".basedpyright-strict.json").is_file()
+    assert (tmp_path / "pyright.strict.json").is_file()
     assert manifest.load(tmp_path) is not None
     assert 'extend = ".ruff-strict.toml"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     assert (tmp_path / ".github" / "workflows" / "standards.yml").is_file()

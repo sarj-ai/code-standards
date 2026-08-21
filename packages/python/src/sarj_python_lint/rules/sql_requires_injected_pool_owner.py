@@ -121,7 +121,7 @@ class SqlRequiresInjectedPoolOwner(Rule):
                         line=call.lineno,
                         col=call.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message="database execution is outside a constructor-injected pool owner; route it through the owning store/service API",
                     )
                 )

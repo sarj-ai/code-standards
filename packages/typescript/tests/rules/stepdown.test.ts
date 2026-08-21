@@ -16,6 +16,16 @@ const DEEP_CYCLE = Array.from(
   { length: DEEP_CYCLE_SIZE },
   (_unused, index) => `function f${index}() { return f${(index + 1) % DEEP_CYCLE_SIZE}(); }`,
 ).join("\n");
+const DEEP_CHAIN_SIZE = 14;
+const DEEP_CHAIN = `class Service { ${Array.from(
+  { length: DEEP_CHAIN_SIZE },
+  (_unused, offset) => {
+    const index = DEEP_CHAIN_SIZE - offset - 1;
+    return index === DEEP_CHAIN_SIZE - 1
+      ? `private helper${index}() { return 1; }`
+      : `private helper${index}() { return this.helper${index + 1}(); }`;
+  },
+).join(" ")} }`;
 
 ruleTester.run("stepdown", rule, {
   valid: [
@@ -132,10 +142,6 @@ ruleTester.run("stepdown", rule, {
       code: "function helper() { return 1; }\nfunction run() { return helper(); }",
     },
     {
-      name: "leaves public-before-private ordering to member-ordering",
-      code: "class Service { private load() { return 1; } public run() { return this.load(); } }",
-    },
-    {
       name: "allows an external bracket reference to a private method",
       code: "class Service { private load() { return 1; } private run() { return this.load(); } }\nnew Service()['load']();",
     },
@@ -146,6 +152,18 @@ ruleTester.run("stepdown", rule, {
   ],
   invalid: [
     { name: "reports the documented helper-first order", code: stepdownDocumentation.examples[1].files[0].source, errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
+    {
+      name: "keeps an overlapping deep dependency chain report-only instead of partially rewriting it",
+      code: DEEP_CHAIN,
+      output: null,
+      errors: DEEP_CHAIN_SIZE - 1,
+    },
+    {
+      name: "moves a private helper below its public interface method caller",
+      code: "class Service { private load() { return 1; } public run() { return this.load(); } }",
+      output: "class Service { public run() { return this.load(); } private load() { return 1; } }",
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
     {
       name: "counts an overloaded implementation as the helper's sole caller",
       code: "function load() { return 1; }\nfunction get(x: string): string;\nfunction get(x: number): number;\nfunction get(x: unknown) { return String(load()) + String(x); }",
@@ -164,6 +182,7 @@ ruleTester.run("stepdown", rule, {
     {
       name: "self recursion does not hide a private method's sole external caller",
       code: "class Service { private walk(n: number): number { return n <= 0 ? 0 : this.walk(n - 1); } private run() { return this.walk(2); } }",
+      output: "class Service { private run() { return this.walk(2); } private walk(n: number): number { return n <= 0 ? 0 : this.walk(n - 1); } }",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "walk", caller: "run" } }],
     },
     {
@@ -179,6 +198,7 @@ ruleTester.run("stepdown", rule, {
     {
       name: "resolves a class expression through its outer const binding",
       code: "const Service = class { private static load() { return 1; } private static run() { return Service.load(); } };",
+      output: "const Service = class { private static run() { return Service.load(); } private static load() { return 1; } };",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {
@@ -193,27 +213,32 @@ ruleTester.run("stepdown", rule, {
     },
     {
       name: "reports an explicitly private method above its sole private caller",
-      code: "class Service { private load() { return 1; } private run() { return this.load(); } }",
+      code: "class Service {\n  private load() { return 1; }\n  private run() { return this.load(); }\n}",
+      output: "class Service {\n  private run() { return this.load(); }\n  private load() { return 1; }\n}",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {
       name: "reports a hash-private method above its sole private caller",
       code: "class Service { #load() { return 1; } private run() { return this.#load(); } }",
+      output: "class Service { private run() { return this.#load(); } #load() { return 1; } }",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "#load", caller: "run" } }],
     },
     {
       name: "reports a hash-private helper above a hash-private caller",
       code: "class Service { #load() { return 1; } #run() { return this.#load(); } }",
+      output: "class Service { #run() { return this.#load(); } #load() { return 1; } }",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "#load", caller: "#run" } }],
     },
     {
       name: "reports a private static helper called through the class binding",
       code: "class Service { private static load() { return 1; } private static run() { return Service.load(); } }",
+      output: "class Service { private static run() { return Service.load(); } private static load() { return 1; } }",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {
       name: "reports a helper called by a parameter default",
       code: "class Service { private load() { return 1; } private run(value = this.load()) { return value; } }",
+      output: "class Service { private run(value = this.load()) { return value; } private load() { return 1; } }",
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
   ],

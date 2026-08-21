@@ -17,6 +17,8 @@ _OWNED_NAMES: Final = frozenset(
         ".sarj-standards.toml",
         ".ruff-strict.toml",
         ".pyright-strict.json",
+        ".basedpyright-strict.json",
+        "pyright.strict.json",
         ".markdownlint.yaml",
         ".taplo.toml",
         ".yamllint.yaml",

@@ -44,8 +44,38 @@ REPOSITORY_VERSION_PIN = re.compile(r"^(STANDARDS_VERSION[ \t]*:?=[ \t]*)\S+[ \t
 PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyright[ \t]*$")
 VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed -->"
 RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
-SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".sql"})
+SOURCE_SUFFIXES = frozenset(
+    {".py", ".pyi", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".sql"}
+)
+ROLLOUT_CHANNELS = ("canary", "early", "stable")
 MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
+MANAGED_ROLLOUT_NAMES = frozenset(
+    {
+        ".basedpyright-strict.json",
+        ".lefthook.yml",
+        ".lefthook.yaml",
+        ".markdownlint.yaml",
+        ".pre-commit-config.yaml",
+        ".pre-commit-config.yml",
+        ".pyright-strict.json",
+        ".ruff-strict.toml",
+        ".taplo.toml",
+        ".tool-versions",
+        ".yamllint.yaml",
+        "bun.lock",
+        "doctor.config.json",
+        "eslint.config.mjs",
+        "eslint.strict.mjs",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pyproject.toml",
+        "pyrightconfig.json",
+        "uv.lock",
+        "yarn.lock",
+    }
+)
+DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset({MANIFEST, "uv.lock", "eslint.config.mjs", *MANAGED_WORKFLOW_PATHS})
 MAX_VERIFICATION_ATTEMPTS = 2
 MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
 COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
@@ -113,6 +143,7 @@ class RolloutArgs(argparse.Namespace):
     command: str = ""
     version: str | None = None
     dry_run: bool = False
+    channel: str = "stable"
 
 
 class CommandRunner(Protocol):
@@ -149,6 +180,7 @@ class Consumer:
     requires_approval: bool = False
     auto_merge: bool = False
     channel: str = "stable"
+    baseline_rules: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -210,6 +242,7 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
             "requires_approval",
             "auto_merge",
             "channel",
+            "baseline_rules",
         }:
             msg = f"invalid registry entry keys: {entry_value!r}"
             raise RolloutError(msg)
@@ -221,11 +254,17 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
         requires_approval = optional_bool(entry, "requires_approval")
         auto_merge = optional_bool(entry, "auto_merge")
         channel_value = entry.get("channel", "stable")
-        if not isinstance(channel_value, str) or re.fullmatch(r"[a-z0-9][a-z0-9-]*", channel_value) is None:
+        baseline_rules_value = entry.get("baseline_rules", [])
+        if channel_value not in ROLLOUT_CHANNELS:
             msg = f"invalid rollout channel: {channel_value!r}"
             raise RolloutError(msg)
         if not is_array(verify_value) or not verify_value:
             msg = f"invalid registry verification command: {entry!r}"
+            raise RolloutError(msg)
+        if not is_array(baseline_rules_value) or not all(
+            isinstance(item, str) and item for item in baseline_rules_value
+        ):
+            msg = f"invalid promoted baseline rules: {entry!r}"
             raise RolloutError(msg)
         if not all(isinstance(item, str) and item for item in verify_value):
             msg = f"invalid registry values: {entry!r}"
@@ -239,6 +278,7 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
             requires_approval=requires_approval,
             auto_merge=auto_merge,
             channel=channel_value,
+            baseline_rules=tuple(item for item in baseline_rules_value if isinstance(item, str)),
         )
         consumers.append(consumer)
     identities = tuple((item.repository, item.branch) for item in consumers)
@@ -249,6 +289,14 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
         msg = "at most one consumer may enable rollout auto-merge"
         raise RolloutError(msg)
     return tuple(consumers)
+
+
+def select_channel(consumers: Sequence[Consumer], channel: str) -> tuple[Consumer, ...]:
+    if channel not in ROLLOUT_CHANNELS:
+        msg = f"invalid rollout channel: {channel!r}"
+        raise RolloutError(msg)
+    ceiling = ROLLOUT_CHANNELS.index(channel)
+    return tuple(item for item in consumers if ROLLOUT_CHANNELS.index(item.channel) <= ceiling)
 
 
 def validate_version(version: str) -> str:
@@ -507,6 +555,8 @@ def reject_unsafe_diff(
     *,
     allowed_source_paths: frozenset[str] = frozenset(),
     allowed_workflow_paths: frozenset[str] = frozenset(),
+    allowed_baseline_paths: frozenset[str] = frozenset(),
+    allowed_paths: frozenset[str] = DEFAULT_ALLOWED_ROLLOUT_PATHS,
 ) -> None:
     if not paths:
         msg = "the update produced no changes but the base manifest is not current"
@@ -521,11 +571,16 @@ def reject_unsafe_diff(
             and rendered not in allowed_workflow_paths
         )
         source_is_unsafe = (
-            rendered not in allowed_source_paths
-            and path.suffix in SOURCE_SUFFIXES
-            and any(part in {"src", "app", "apps"} for part in path.parts)
+            rendered not in allowed_source_paths and rendered not in allowed_paths and path.suffix in SOURCE_SUFFIXES
         )
-        if workflow_is_unsafe or source_is_unsafe or "baseline" in lowered or "exclusion" in lowered:
+        baseline_is_unsafe = "baseline" in lowered and rendered not in allowed_baseline_paths
+        path_is_unsafe = (
+            rendered not in allowed_paths
+            and rendered not in allowed_baseline_paths
+            and rendered not in allowed_workflow_paths
+            and rendered not in allowed_source_paths
+        )
+        if workflow_is_unsafe or source_is_unsafe or baseline_is_unsafe or path_is_unsafe or "exclusion" in lowered:
             unsafe.append(rendered)
     if unsafe:
         msg = "update touched protected paths: " + ", ".join(unsafe)
@@ -537,11 +592,18 @@ def amend_safe_changes(
     runner: CommandRunner,
     *,
     allowed_workflow_paths: frozenset[str],
+    allowed_baseline_paths: frozenset[str] = frozenset(),
+    allowed_paths: frozenset[str] = DEFAULT_ALLOWED_ROLLOUT_PATHS,
 ) -> bool:
     paths = changed_paths(repo, runner)
     if not paths:
         return False
-    reject_unsafe_diff(paths, allowed_workflow_paths=allowed_workflow_paths)
+    reject_unsafe_diff(
+        paths,
+        allowed_workflow_paths=allowed_workflow_paths,
+        allowed_baseline_paths=allowed_baseline_paths,
+        allowed_paths=allowed_paths,
+    )
     reject_git_metadata(repo, paths, runner)
     runner.run(("git", "add", "--", *paths), cwd=repo)
     runner.run(
@@ -580,8 +642,34 @@ def unauthenticated_environment() -> dict[str, str]:
 
 def consumer_verification_environment(environment: Mapping[str, str], base_sha: str) -> dict[str, str]:
     prepared = dict(environment)
-    prepared["SARJ_REACT_DOCTOR_BASE"] = base_sha
+    prepared["SARJ_STANDARDS_BASE"] = base_sha
+    prepared.pop("SARJ_REACT_DOCTOR_BASE", None)
     return prepared
+
+
+def assert_baseline_unchanged(path: Path | None, expected: bytes | None) -> None:
+    if path is None:
+        return
+    if not path.is_file() or path.read_bytes() != expected:
+        msg = f"consumer verification mutated controller-owned diagnostic baseline: {path}"
+        raise RolloutError(msg)
+
+
+def managed_rollout_paths(repo: Path, workflow_paths: frozenset[str]) -> frozenset[str]:
+    allowed = set(DEFAULT_ALLOWED_ROLLOUT_PATHS)
+    allowed.update(workflow_paths)
+    for path in repo.rglob("*"):
+        if path.is_file() and path.name in MANAGED_ROLLOUT_NAMES:
+            allowed.add(path.relative_to(repo).as_posix())
+    adopted = adoption_manifest.load_for_setup(repo)
+    roots = {repo}
+    if adopted is not None:
+        roots.update({repo / adopted.python_dest, repo / adopted.typescript_dest})
+    for root in roots:
+        allowed.update((root / name).relative_to(repo).as_posix() for name in MANAGED_ROLLOUT_NAMES)
+    allowed.update({path.as_posix() for path in MISE_CONFIG_PATHS})
+    allowed.add("Makefile")
+    return frozenset(allowed)
 
 
 def declared_workflow_tools(repo: Path) -> tuple[str, ...]:
@@ -939,18 +1027,56 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             for update in adoption_doctor.plan_version_pin_updates(repo)
             if (relative := update.path.relative_to(repo).as_posix()).startswith(".github/workflows/")
         )
+        allowed_paths = managed_rollout_paths(repo, allowed_workflow_paths)
         failures: list[str] = []
         try:
             runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=unauthenticated)
         except subprocess.CalledProcessError as exc:
             msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
             raise RolloutError(msg + process_failure_detail(exc)) from exc
+        adopted = adoption_manifest.load(repo)
+        baseline_relative = None if adopted is None else adopted.diagnostic_baseline
+        allowed_baseline_paths = frozenset(() if baseline_relative is None else (baseline_relative,))
+        baseline_path = None if baseline_relative is None else repo / baseline_relative
+        if consumer.baseline_rules and (baseline_path is None or baseline_relative is None):
+            msg = (
+                f"{consumer.name}: registry declares promoted baseline rules, but the updated "
+                "consumer manifest does not declare diagnostic_baseline"
+            )
+            raise RolloutError(msg)
+        if baseline_path is not None and baseline_relative is not None and consumer.baseline_rules:
+            baseline_command = [
+                *tool_prefix,
+                *tool,
+                "baseline",
+                "update",
+                "--output",
+                baseline_relative,
+                "--trust-repository-code",
+            ]
+            for selector in consumer.baseline_rules:
+                baseline_command.extend(("--rule", selector))
+            try:
+                runner.run(tuple(baseline_command), cwd=repo, env=unauthenticated)
+            except subprocess.CalledProcessError as exc:
+                msg = f"{consumer.name}: scoped diagnostic baseline generation failed:\n"
+                raise RolloutError(msg + process_failure_detail(exc)) from exc
+            if not baseline_path.is_file():
+                msg = f"{consumer.name}: scoped diagnostic baseline generation did not create {baseline_path}"
+                raise RolloutError(msg)
+        expected_baseline = None if baseline_path is None or not baseline_path.is_file() else baseline_path.read_bytes()
         doctor = runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
         bootstrap = run_consumer_bootstrap(repo, tool_prefix, runner, unauthenticated)
+        assert_baseline_unchanged(baseline_path, expected_baseline)
         worktree_paths = changed_paths(repo, runner)
-        reject_unsafe_diff(worktree_paths, allowed_workflow_paths=allowed_workflow_paths)
+        reject_unsafe_diff(
+            worktree_paths,
+            allowed_workflow_paths=allowed_workflow_paths,
+            allowed_baseline_paths=allowed_baseline_paths,
+            allowed_paths=allowed_paths,
+        )
         reject_git_metadata(repo, worktree_paths, runner)
         runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
         message = f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}"
@@ -966,7 +1092,14 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                     env=consumer_verification_environment(unauthenticated, base_sha),
                     check=False,
                 )
-                mutated = amend_safe_changes(repo, runner, allowed_workflow_paths=allowed_workflow_paths)
+                assert_baseline_unchanged(baseline_path, expected_baseline)
+                mutated = amend_safe_changes(
+                    repo,
+                    runner,
+                    allowed_workflow_paths=allowed_workflow_paths,
+                    allowed_baseline_paths=allowed_baseline_paths,
+                    allowed_paths=allowed_paths,
+                )
                 if verification.returncode == 0 and not mutated:
                     break
                 if mutated and attempt + 1 < MAX_VERIFICATION_ATTEMPTS:
@@ -979,7 +1112,12 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 failures.append("consumer verification failed:\n" + verification_failure_detail)
         verification_failure = "\n\n".join(failures)[-4000:]
         branch_paths = committed_paths(repo, consumer.branch, runner)
-        reject_unsafe_diff(branch_paths, allowed_workflow_paths=allowed_workflow_paths)
+        reject_unsafe_diff(
+            branch_paths,
+            allowed_workflow_paths=allowed_workflow_paths,
+            allowed_baseline_paths=allowed_baseline_paths,
+            allowed_paths=allowed_paths,
+        )
         reject_git_metadata(
             repo,
             branch_paths,
@@ -1051,6 +1189,17 @@ def apply(
     dry_run: bool = False,
 ) -> tuple[Outcome, ...]:
     verify_release(version, runner)
+    selected_channel = max((ROLLOUT_CHANNELS.index(item.channel) for item in consumers), default=0)
+    prior = tuple(item for item in consumers if ROLLOUT_CHANNELS.index(item.channel) < selected_channel)
+    if prior:
+        prior_status = status(version, prior, runner)
+        if any(item.state not in {"merged", "already-current"} for item in prior_status):
+            blocked = tuple(
+                Outcome(item, "blocked", detail="prior rollout wave has not merged cleanly")
+                for item in consumers
+                if item not in prior
+            )
+            return (*prior_status, *blocked)
     outcomes: list[Outcome] = []
     for consumer in consumers:
         try:
@@ -1113,16 +1262,21 @@ def parser() -> argparse.ArgumentParser:
     for name in ("plan", "apply", "status"):
         command = commands.add_parser(name)
         command.add_argument("--version", required=True)
+        command.add_argument("--channel", choices=ROLLOUT_CHANNELS, default="stable")
         if name == "apply":
             command.add_argument("--dry-run", action="store_true")
     reconcile = commands.add_parser("reconcile")
     reconcile.add_argument("--version", help="default: latest published version")
     reconcile.add_argument("--dry-run", action="store_true")
+    reconcile.add_argument("--channel", choices=ROLLOUT_CHANNELS, default="stable")
     return result
 
 
 def execute(args: RolloutArgs, runner: CommandRunner) -> int:
-    consumers = load_registry(args.registry)
+    consumers = select_channel(load_registry(args.registry), args.channel)
+    if not consumers:
+        msg = f"rollout channel {args.channel!r} selects no consumers"
+        raise RolloutError(msg)
     version = validate_version(args.version) if args.version else latest_version(runner)
     if args.command == "plan":
         rollout_plan = plan(version, consumers, runner)

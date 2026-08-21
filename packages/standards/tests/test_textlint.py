@@ -479,7 +479,6 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "iac-source-coupled-test",
         "no-unsafe-command-argument-interpolation",
         "no-wildcard-secret-read-permission",
-        "unpinned-github-action",
     }
 
     for rule_id, meta in textlint.REGISTRY.items():
@@ -494,6 +493,17 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         assert spec.autofix == "none"
         assert spec.message_ids == ()
         assert {example.outcome for example in meta.public_examples} == {"match", "no-match"}
+
+
+def test_mutable_github_action_is_no_longer_a_textlint_finding(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github/workflows/ci.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n",
+        encoding="utf-8",
+    )
+
+    assert "SARJ303" not in _codes(workflow, root=tmp_path)
 
 
 def test_historical_text_aliases_are_documentation_only() -> None:
@@ -785,14 +795,12 @@ def test_flags_named_ai_execution_artifacts(tmp_path: Path, filename: str) -> No
     assert _codes(path, root=tmp_path) == ["SARJ302"]
 
 
-def test_new_artifact_rule_warns_without_blocking_its_first_release(
-    capsys: pytest.CaptureFixture[str], tmp_path: Path
-) -> None:
+def test_new_artifact_rule_blocks(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     path = tmp_path / "FIX-BRIEF.md"
     path.write_text("# Temporary execution record\n")
 
-    assert textlint.run([str(path)]) == 0
-    assert "SARJ302 warning:" in capsys.readouterr().out
+    assert textlint.run([str(path)]) == 1
+    assert "SARJ302 warning:" not in capsys.readouterr().out
 
 
 def test_markdown_artifact_suppression_is_exact_code_specific(tmp_path: Path) -> None:
@@ -846,7 +854,7 @@ def test_exact_config_restatement_preserves_scalar_punctuation(tmp_path: Path, c
     assert _codes(path, root=tmp_path) == []
 
 
-def test_comment_reduction_rules_warn_without_blocking(
+def test_comment_reduction_rules_block(
     capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     markdown = tmp_path / "README.md"
@@ -855,11 +863,11 @@ def test_comment_reduction_rules_warn_without_blocking(
     config.write_text("# Retry count is 3\nretry_count = 3\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    assert textlint.run([markdown.name, config.name]) == 0
+    assert textlint.run([markdown.name, config.name]) == 1
     output = capsys.readouterr().out
     assert "SARJ305 " in output
     assert "SARJ306 " in output
-    assert output.count("warning:") == 2
+    assert "warning:" not in output
 
 
 def test_exact_restatements_take_precedence_over_generic_comment_wall(tmp_path: Path) -> None:
@@ -895,150 +903,6 @@ def test_established_text_rules_remain_blocking(tmp_path: Path) -> None:
     path.write_text("# timeout = 30\n")
 
     assert textlint.run([str(path)]) == 1
-
-
-@pytest.mark.parametrize(
-    "uses",
-    [
-        "actions/checkout@v4",
-        "actions/checkout@a1b2c3d",
-        '"actions/checkout@v4"',
-        "owner/action@main",
-        "owner/repo/path@release-1",
-        "docker://alpine:3.22",
-        "${{ matrix.action }}",
-    ],
-    ids=[
-        "tag",
-        "short-sha",
-        "quoted-tag",
-        "branch",
-        "reusable-workflow-tag",
-        "container-tag",
-        "expression",
-    ],
-)
-def test_warns_for_mutable_remote_workflow_actions(tmp_path: Path, uses: str) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text(f"jobs:\n  test:\n    steps:\n      - uses: {uses}\n", encoding="utf-8")
-
-    assert _codes(workflow, root=tmp_path) == ["SARJ303"]
-
-
-@pytest.mark.parametrize(
-    "uses",
-    [
-        "actions/checkout@0123456789abcdef0123456789abcdef01234567",
-        "owner/repo/.github/workflows/ci.yml@ABCDEF0123456789ABCDEF0123456789ABCDEF01",
-        "docker://alpine@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-        "./.github/actions/local",
-        "./.github/workflows/reusable.yml",
-    ],
-    ids=["sha", "uppercase-sha", "container-digest", "local-action", "local-workflow"],
-)
-def test_allows_immutable_or_local_workflow_actions(tmp_path: Path, uses: str) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yaml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text(f"jobs:\n  test:\n    steps:\n      - uses: {uses}\n", encoding="utf-8")
-
-    assert _codes(workflow, root=tmp_path) == []
-
-
-def test_workflow_action_rule_ignores_examples_and_non_workflow_yaml(tmp_path: Path) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text("script: |\n  - uses: actions/checkout@v4\n", encoding="utf-8")
-    example = tmp_path / "examples/workflow.yml"
-    example.parent.mkdir()
-    example.write_text("- uses: actions/checkout@v4\n", encoding="utf-8")
-
-    assert _codes(workflow, root=tmp_path) == []
-    assert _codes(example, root=tmp_path) == []
-
-
-def test_workflow_action_rule_only_inspects_semantic_action_positions(tmp_path: Path) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text(
-        "jobs:\n"
-        "  test:\n"
-        "    env:\n"
-        "      uses: owner/not-an-action@main\n"
-        "    steps:\n"
-        "      - run: |\n"
-        "          echo 'uses: owner/not-an-action@main'\n"
-        "      - with: {uses: owner/not-an-action@main}\n",
-        encoding="utf-8",
-    )
-
-    assert _codes(workflow, root=tmp_path) == []
-
-
-def test_workflow_action_rule_supports_quoted_flow_and_reusable_workflow_keys(tmp_path: Path) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text(
-        "jobs:\n"
-        "  action:\n"
-        '    steps: [{"uses": owner/action@v1}]\n'
-        "  reusable: {uses: owner/repo/.github/workflows/ci.yml@main}\n",
-        encoding="utf-8",
-    )
-
-    findings = textlint.check_paths([str(workflow)], root=tmp_path)
-
-    assert [(finding.code, finding.line) for finding in findings] == [("SARJ303", 3), ("SARJ303", 4)]
-
-
-def test_workflow_action_rule_defers_malformed_yaml_to_yaml_validation(tmp_path: Path) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text("jobs: [\n  - uses: owner/action@main\n", encoding="utf-8")
-
-    assert _codes(workflow, root=tmp_path) == []
-
-
-def test_workflow_action_rule_has_exact_local_suppression(tmp_path: Path) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text(
-        "jobs:\n"
-        "  test:\n"
-        "    steps:\n"
-        "      # sarj-noqa: SARJ303\n"
-        "      - uses: owner/action@main\n"
-        "      # sarj-noqa: SARJ301\n"
-        "      - uses: owner/other@main\n",
-        encoding="utf-8",
-    )
-
-    findings = textlint.check_paths([str(workflow)], root=tmp_path)
-    assert [(finding.code, finding.line) for finding in findings] == [("SARJ303", 7)]
-
-
-def test_workflow_action_rule_reports_each_mutable_use(tmp_path: Path) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text(
-        "jobs:\n  test:\n    steps:\n      - uses: owner/first@main\n      - uses: owner/second@v2\n",
-        encoding="utf-8",
-    )
-
-    findings = textlint.check_paths([str(workflow)], root=tmp_path)
-    assert [(finding.code, finding.line) for finding in findings] == [("SARJ303", 4), ("SARJ303", 5)]
-
-
-def test_workflow_action_rule_blocks(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    workflow = tmp_path / ".github/workflows/ci.yml"
-    workflow.parent.mkdir(parents=True)
-    workflow.write_text("jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
-
-    assert textlint.run([str(workflow.relative_to(tmp_path))]) == 1
-    assert "SARJ303 warning:" not in capsys.readouterr().out
 
 
 def test_flags_change_diary_inside_readme(tmp_path: Path) -> None:

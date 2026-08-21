@@ -80,6 +80,8 @@ _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.cts",
 )
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
+_PYRIGHT_POLICY_PARENT: Final = ".basedpyright-strict.json"
+_LEGACY_PYRIGHT_POLICY_PARENT: Final = ".pyright-strict.json"
 _STANDALONE_RUFF_CONFIG_NAMES: Final = (".ruff.toml", "ruff.toml")
 _PRECOMMIT_CONFIG_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
 _ECOSYSTEM_CONFIGS: Final = frozenset((*manifest.PYTHON_CONFIGS, *manifest.TYPESCRIPT_CONFIGS))
@@ -613,7 +615,24 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
             plan.errors.append(f"cannot safely wire {pyproject}: {exc}")
             return
         document = manifest.as_table(parsed)
+        project = manifest.table_field(document, "project")
+        requires_python = project.get("requires-python")
         python_target = _python_target(document)
+        # Transaction validation owns link rejection. Do not inspect a linked
+        # document deeply enough to replace the clearer mutation-safety error.
+        if not is_link_like(pyproject) and (not isinstance(requires_python, str) or python_target is None):
+            plan.errors.append(
+                f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
+                "[project].requires-python must be a valid specifier that includes Python 3.14"
+            )
+            return
+        if not is_link_like(pyproject) and python_target != "3.14":
+            plan.errors.append(
+                f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
+                f"the project targets Python {python_target}; use a Python 3.14-compatible range or the advisory "
+                "Python 3.15 watch profile"
+            )
+            return
         tool = manifest.as_table(document.get("tool"))
         pyright_tables = tuple(name for name in ("pyright", "basedpyright") if name in tool)
         if pyright_tables:
@@ -663,7 +682,7 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
         competing = f" alongside {pyright}" if pyright.is_file() else ""
         plan.errors.append(
             f"cannot safely wire {pyright_jsonc}{competing}; Pyright JSONC may contain comments and only one "
-            "extends parent, so compose .pyright-strict.json manually before rerunning setup"
+            f"extends parent, so compose {_PYRIGHT_POLICY_PARENT} manually before rerunning setup"
         )
         return
     if pyright.is_file():
@@ -672,24 +691,24 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
             plan.errors.append(f"cannot safely wire {pyright}: {error}")
         elif document is not None:
             existing_pyright_extend = document.get("extends")
-            if existing_pyright_extend is not None and existing_pyright_extend != ".pyright-strict.json":
+            if existing_pyright_extend not in {None, _LEGACY_PYRIGHT_POLICY_PARENT, _PYRIGHT_POLICY_PARENT}:
                 plan.errors.append(
                     f"cannot safely wire {pyright}: it already extends {existing_pyright_extend!r}; "
-                    "Pyright supports one parent, so preserve that config chain manually before adding "
-                    ".pyright-strict.json"
+                    f"Pyright supports one parent, so preserve that config chain manually before adding "
+                    f"{_PYRIGHT_POLICY_PARENT}"
                 )
                 return
-            changed = existing_pyright_extend != ".pyright-strict.json"
-            document["extends"] = ".pyright-strict.json"
+            changed = existing_pyright_extend != _PYRIGHT_POLICY_PARENT
+            document["extends"] = _PYRIGHT_POLICY_PARENT
             if python_target is not None and "pythonVersion" not in document:
                 document["pythonVersion"] = python_target
                 changed = True
             if changed:
                 plan.writes.append((pyright, json.dumps(document, indent=_indent_of(pyright.read_text())) + "\n"))
             else:
-                plan.skips.append((pyright, "already extends .pyright-strict.json"))
+                plan.skips.append((pyright, f"already extends {_PYRIGHT_POLICY_PARENT}"))
     else:
-        generated_document: dict[str, object] = {"extends": ".pyright-strict.json"}
+        generated_document: dict[str, object] = {"extends": _PYRIGHT_POLICY_PARENT}
         if python_target is not None:
             generated_document["pythonVersion"] = python_target
         _record(
@@ -697,7 +716,7 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
             pyright,
             json.dumps(generated_document, indent=2) + "\n",
             force=force,
-            reason='exists; add `"extends": ".pyright-strict.json"` yourself',
+            reason=f'exists; add `"extends": "{_PYRIGHT_POLICY_PARENT}"` yourself',
         )
 
 
@@ -715,7 +734,7 @@ def _python_target(document: Mapping[str, object]) -> str | None:
             boundary_versions.append(Version(specifier.version.rstrip(".*")))
         except InvalidVersion:
             continue
-    for minor in range(8, 15):
+    for minor in range(8, 16):
         candidates = [Version(f"3.{minor}.0"), Version(f"3.{minor}.999"), *boundary_versions]
         if any(
             candidate.major == _PYTHON_MAJOR and candidate.minor == minor and candidate in specifiers
@@ -1491,7 +1510,7 @@ def github_ci_workflow(root: Path) -> str:
         (
             "      - name: Run standards",
             "        env:",
-            "          SARJ_REACT_DOCTOR_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}",
+            "          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}",
             f"        run: {runner} check --trust-repository-code --format github",
         )
     )

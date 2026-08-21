@@ -49,10 +49,10 @@ async def stop() -> None:
     findings = _check(source)
 
     assert [(finding.line, finding.code, finding.severity) for finding in findings] == [
-        (1, "SARJ420", Severity.WARNING),
-        (4, "SARJ420", Severity.WARNING),
-        (7, "SARJ420", Severity.WARNING),
-        (11, "SARJ420", Severity.WARNING),
+        (1, "SARJ420", Severity.ERROR),
+        (4, "SARJ420", Severity.ERROR),
+        (7, "SARJ420", Severity.ERROR),
+        (11, "SARJ420", Severity.ERROR),
     ]
     assert {finding.message for finding in findings} == {
         "No docstring consumer detected — delete it; make author-controlled names, types, and structure explain the code."

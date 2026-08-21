@@ -48,7 +48,7 @@ def test_flags_supported_psycopg_imports(import_line: str, caught: str) -> None:
                 raise
     """)
     assert len(diagnostics) == 1
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
 
 
 def test_flags_each_direct_comparison_in_source_order() -> None:

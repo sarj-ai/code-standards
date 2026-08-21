@@ -649,7 +649,7 @@ def test_two_branch_ladder_is_an_advisory_sarj080_finding():
         return None
     """
     diags = _check(source)
-    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.WARNING)]
+    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.ERROR)]
     assert "2-branch isinstance dispatch" in diags[0].message
 
 
@@ -682,7 +682,7 @@ def test_flags_guarded_two_branch_ladder_as_advisory():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_skips_guard_that_rebinds_dispatch_subject():
@@ -710,7 +710,7 @@ def test_two_branch_stdlib_ast_visitor_is_advisory():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_sequential_stdlib_ast_early_returns_are_advisory():
@@ -726,7 +726,7 @@ def test_sequential_stdlib_ast_early_returns_are_advisory():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_two_branch_private_class_dispatch_is_advisory():
@@ -740,7 +740,7 @@ def test_two_branch_private_class_dispatch_is_advisory():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_flags_terminating_sibling_isinstance_dispatch():
@@ -769,7 +769,7 @@ def test_two_terminating_sibling_branches_are_advisory():
         raise TypeError(value)
     """
     diags = _check(source)
-    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.WARNING)]
+    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.ERROR)]
     assert "2-branch terminating isinstance dispatch" in diags[0].message
 
 
@@ -806,7 +806,7 @@ def test_two_terminating_try_branches_are_advisory():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_flags_terminating_sibling_isinstance_dispatch_with_case_guards():
@@ -946,7 +946,7 @@ def test_reports_dispatch_after_subject_mutation_as_a_new_stable_run():
     diags = _check(source)
     assert len(diags) == 1
     assert diags[0].line == 6
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_sequential_passthrough_guards_report_once():
@@ -1206,7 +1206,7 @@ def test_flags_two_branch_isinstance_choice_as_warning():
     """
     diags = _check(source)
     assert len(diags) == 1
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
 
 
 def test_skips_isinstance_ladder_on_different_subjects():

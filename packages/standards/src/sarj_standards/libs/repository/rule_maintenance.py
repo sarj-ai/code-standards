@@ -6,7 +6,7 @@ from importlib import import_module
 import json
 from operator import itemgetter
 import re
-from typing import TYPE_CHECKING, Final, NamedTuple, Protocol
+from typing import TYPE_CHECKING, Final, NamedTuple, Protocol, TypeIs
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.linting import textlint
@@ -163,11 +163,29 @@ def _load_ledger(path: Path) -> dict[str, object]:
 
 def _registry(module_name: str) -> Mapping[str, type[Rule]]:
     module = import_module(module_name)
-    value = getattr(module, "REGISTRY", None)
+    value: object = getattr(module, "REGISTRY", None)
     if not isinstance(value, Mapping):
         msg = f"{module_name} has no registry"
         raise TypeError(msg)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    registry: dict[str, object] = {}
+    for rule_id, rule in value.items():  # pyright: ignore[reportUnknownVariableType]
+        if not isinstance(rule_id, str):
+            msg = f"{module_name} registry keys must be rule IDs"
+            raise TypeError(msg)
+        registry[rule_id] = rule
+    if not all(_is_rule_class(rule) for rule in registry.values()):
+        msg = f"{module_name} registry must map rule IDs to rule classes"
+        raise TypeError(msg)
+    return {rule_id: rule for rule_id, rule in registry.items() if _is_rule_class(rule)}
+
+
+def _is_rule_class(value: object) -> TypeIs[type[Rule]]:
+    return (
+        isinstance(value, type)
+        and isinstance(getattr(value, "code", None), str)
+        and isinstance(getattr(value, "__module__", None), str)
+        and hasattr(value, "documentation")
+    )
 
 
 def _retired(
