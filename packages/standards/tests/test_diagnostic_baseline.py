@@ -20,6 +20,7 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     baseline,
 )
+from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.analysis import report_from_tools
 
 
@@ -380,7 +381,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     assert captured == [[str(tmp_path / "src"), str(tmp_path / "test")]]
 
 
-def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
+def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -394,14 +395,22 @@ def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
         ),
         encoding="utf-8",
     )
-    captured: list[object] = []
+    captured: list[tuple[object, object]] = []
 
     def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
         _ = self, paths
-        captured.append(kwargs.get("rules"))
+        captured.append((paths, kwargs.get("rules")))
         return report_from_tools(tmp_path, ())
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    external_calls: list[object] = []
+
+    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        external_calls.append((files, kwargs.get("capabilities"), kwargs.get("include_react_doctor")))
+        return ()
+
+    monkeypatch.setattr(external, "analyze_external", analyze_eslint)
 
     assert (
         cli_main(
@@ -418,7 +427,8 @@ def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
         )
         == 0
     )
-    assert captured == [None]
+    assert captured == []
+    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
