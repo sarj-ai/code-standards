@@ -65,15 +65,6 @@ jobs:
           path: apps/docs/dist
           if-no-files-found: error
           retention-days: 1
-      - name: Upload generated documentation UI
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: docs-ui-site
-          path: apps/docs-ui/dist
-          if-no-files-found: error
-          retention-days: 1
-
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
@@ -104,31 +95,12 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: |
-            apps/docs/package-lock.json
-            apps/docs-ui/package-lock.json
+          cache-dependency-path: apps/docs/package-lock.json
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: code-standards-site
           path: apps/docs/dist
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: docs-ui-site
-          path: apps/docs-ui/dist
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - working-directory: apps/docs-ui
-        run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Deploy documentation UI first
-        working-directory: apps/docs-ui
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npm run deploy
-      - name: Verify deployed documentation UI
-        working-directory: apps/docs-ui
-        env:
-          EXPECTED_COMMIT: ${{ github.sha }}
-        run: npm run verify:deployment
       - name: Deploy immutable build to Cloudflare Workers
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
