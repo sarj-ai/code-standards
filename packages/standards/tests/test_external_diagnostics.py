@@ -158,6 +158,32 @@ def test_react_doctor_accepts_empty_staged_report_without_analyzable_sources(tmp
     )
 
 
+def test_react_doctor_rejects_empty_report_with_top_level_diagnostics(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [],
+            "diagnostics": [
+                {
+                    "filePath": "component.tsx",
+                    "plugin": "react-doctor",
+                    "rule": "example",
+                    "severity": "warning",
+                    "message": "example",
+                    "line": 1,
+                    "column": 1,
+                }
+            ],
+            "error": None,
+        }
+    )
+
+    with pytest.raises(ValueError, match="diagnostics without an analyzed project"):
+        parse_react_doctor(payload, root=tmp_path, allow_empty_projects=True)
+
+
 def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Path) -> None:
     source = tmp_path / "package.json"
     source.write_text('{"private": true}\n', encoding="utf-8")
@@ -404,6 +430,113 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path) -> None:
     assert any("react-doctor" in item for item in seen[0])
 
 
+@pytest.mark.parametrize(
+    ("changed", "expected_completion"),
+    [
+        ("doctor.config.json\0package.json\0diagnostic-baseline.json\0", Completion.COMPLETE),
+        ("apps/web/src/component.tsx\0", Completion.FAILED),
+    ],
+)
+def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    changed: str,
+    expected_completion: Completion,
+) -> None:
+    base = "a" * 40
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        if argv[0] == "git":
+            return ProcessOutput(0, changed, "")
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "mode": "diff",
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "baselineDegraded": True,
+                    "projects": [],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert report.completion is expected_completion
+    assert seen[0] == (
+        "git",
+        "diff",
+        f"{base}...HEAD",
+        "--name-only",
+        "--diff-filter=ACMR",
+        "-z",
+        "--",
+    )
+    if expected_completion is Completion.FAILED:
+        assert "baseline degraded" in report.issues[0].message
+
+
+def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", "b" * 40)
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        if argv[0] == "git":
+            return ProcessOutput(128, "", "invalid base")
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "baselineDegraded": True,
+                    "projects": [],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert "baseline degraded" in report.issues[0].message
+
+
 def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
     (tmp_path / "package.json").write_text(
@@ -535,7 +668,10 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
-    assert git_seen == []
+    assert git_seen == [
+        ("git", "diff", f"{event_base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
+        ("git", "diff", "0123456789abcdef...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
+    ]
     assert "--no-cache" in seen[0]
     duration_index = seen[0].index("--max-duration")
     assert seen[0][duration_index + 1] == "12"

@@ -69,6 +69,7 @@ _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
 _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
 _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
+_REACT_DOCTOR_SOURCE_SUFFIXES = frozenset({".astro", ".htm", ".html", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
 _REACT_RUNTIME_PACKAGES = frozenset(
@@ -163,6 +164,7 @@ class _ReactDoctorReport(_ReactDoctorProtocolModel):
     version: str = Field(min_length=1)
     ok: bool
     projects: tuple[_ReactDoctorProject, ...]
+    diagnostics: tuple[_ReactDoctorDiagnostic, ...] = ()
     react_detected: bool | None = Field(default=None, alias="reactDetected")
     # The v3 serializer emits this field only when degradation occurred.
     baseline_degraded: bool = Field(default=False, alias="baselineDegraded")
@@ -510,6 +512,12 @@ def _invoke_react_doctor(
     # and cross-file diagnostics remain relevant when their primary location
     # was not itself changed.
     scope_args = _react_doctor_scope_args(staged=staged)
+    allow_empty_projects = allow_empty_projects or _react_doctor_changed_scope_has_no_source(
+        projects,
+        root=root,
+        runner=runner,
+        staged=staged,
+    )
     duration = _react_doctor_max_duration(file_count)
     argv = packagemanager.exec_argv(
         client,
@@ -561,6 +569,40 @@ def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
     if base:
         return ("--scope", "changed", "--base", base)
     return ("--scope", "changed")
+
+
+def _react_doctor_changed_scope_has_no_source(
+    projects: Sequence[Path],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    staged: bool,
+) -> bool:
+    if staged:
+        return False
+    base = change_scope_base()
+    if not base:
+        return False
+    changed = runner(
+        ("git", "diff", f"{base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
+        cwd=root,
+    )
+    if changed.returncode != 0:
+        return False
+    resolved_root = root.resolve()
+    resolved_projects = tuple(project.resolve() for project in projects)
+    for relative in (item for item in changed.stdout.split("\0") if item):
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            return False
+        # Keep containment lexical: resolving a changed symlink could move its
+        # apparent path outside the React project and incorrectly waive it.
+        candidate = resolved_root / relative_path
+        if candidate.suffix.casefold() not in _REACT_DOCTOR_SOURCE_SUFFIXES:
+            continue
+        if any(candidate.is_relative_to(project) for project in resolved_projects):
+            return False
+    return True
 
 
 def change_scope_base() -> str:
@@ -1212,12 +1254,15 @@ def parse_react_doctor(
     if report.react_detected is False:
         msg = "React Doctor did not detect React in an expected project"
         raise ValueError(msg)
+    if not report.projects and allow_empty_projects:
+        if report.diagnostics:
+            msg = "React Doctor returned diagnostics without an analyzed project"
+            raise ValueError(msg)
+        return ()
     if report.baseline_degraded:
         msg = "React Doctor changed-scope baseline degraded"
         raise ValueError(msg)
     if not report.projects:
-        if allow_empty_projects:
-            return ()
         msg = "React Doctor returned no analyzed projects"
         raise ValueError(msg)
     if expected_projects is not None:
