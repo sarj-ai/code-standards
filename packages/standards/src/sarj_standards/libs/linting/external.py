@@ -362,7 +362,6 @@ def analyze_external(
                 file_count=max(len(routed.typescript), 1),
                 staged=react_doctor_staged,
                 full_scan=react_doctor_full_scan,
-                allow_empty_projects=react_doctor_staged and not routed.typescript,
             )
         )
     if policy is None:
@@ -518,7 +517,7 @@ def _invoke_react_doctor(
     # baseline promotion explicitly requests a full scan so existing debt can be
     # recorded even though the rollout itself changes no React source files.
     scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan)
-    allow_empty_projects = allow_empty_projects or _react_doctor_changed_scope_has_no_source(
+    allow_empty_projects = allow_empty_projects or _react_doctor_scope_has_no_source(
         projects,
         root=root,
         runner=runner,
@@ -661,7 +660,7 @@ def _react_doctor_scope_args(*, staged: bool, full_scan: bool = False) -> tuple[
     return ("--scope", "changed")
 
 
-def _react_doctor_changed_scope_has_no_source(
+def _react_doctor_scope_has_no_source(
     projects: Sequence[Path],
     *,
     root: Path,
@@ -669,12 +668,14 @@ def _react_doctor_changed_scope_has_no_source(
     staged: bool,
 ) -> bool:
     if staged:
-        return False
-    base = change_scope_base()
-    if not base:
-        return False
+        diff_args = ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+    else:
+        base = change_scope_base()
+        if not base:
+            return False
+        diff_args = ("git", "diff", f"{base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--")
     changed = runner(
-        ("git", "diff", f"{base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
+        diff_args,
         cwd=root,
     )
     if changed.returncode != 0:
