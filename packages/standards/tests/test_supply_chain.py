@@ -302,7 +302,7 @@ def test_pre_push_keeps_complete_tests_in_ci() -> None:
     assert "make verify" not in pre_push
 
 
-def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
+def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site() -> None:
     workflow = (REPO_ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
     verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.mjs").read_text(encoding="utf-8")
 
@@ -314,9 +314,8 @@ def test_documentation_deploy_is_revision_bound_and_self_verifying() -> None:
     assert "actions/download-artifact@" in workflow
     assert "Verify deployed revision" in workflow
     assert "npm run verify:deployment" in workflow  # sarj-noqa: SARJ402 -- deployment-policy contract
-    assert "name: docs-ui-site" in workflow  # sarj-noqa: SARJ402 -- immutable deployment artifact contract
-    assert "Deploy documentation UI first" in workflow  # sarj-noqa: SARJ402 -- ordered migration contract
-    assert workflow.index("Deploy documentation UI first") < workflow.index("Deploy immutable build")
+    assert "name: docs-ui-site" not in workflow  # sarj-noqa: SARJ402 -- standalone repository owns this deployment
+    assert "Deploy documentation UI first" not in workflow  # sarj-noqa: SARJ402 -- prevent competing production writers
     assert "assert.equal(health.commit, expectedCommit" in verifier  # sarj-noqa: SARJ402 -- deployment contract
     assert "health.catalogSha256" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
     assert "pagefind/pagefind.js" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
