@@ -139,14 +139,10 @@ class TestRegistry:
             'baseline_paths=["generated.json"]\nbaseline_update=["true"]',
         ],
     )
-    def test_registry_rejects_unpaired_or_unsafe_consumer_baselines(
-        self, tmp_path: Path, fields: str
-    ) -> None:
+    def test_registry_rejects_unpaired_or_unsafe_consumer_baselines(self, tmp_path: Path, fields: str) -> None:
         path = tmp_path / "registry.toml"
         path.write_text(
-            'schema=1\n[[consumer]]\nname="one"\nrepository="r"\nbranch="main"\nverify=["true"]\n'
-            + fields
-            + "\n",
+            'schema=1\n[[consumer]]\nname="one"\nrepository="r"\nbranch="main"\nverify=["true"]\n' + fields + "\n",
             encoding="utf-8",
         )
 

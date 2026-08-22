@@ -290,10 +290,7 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
             raise RolloutError(msg)
         baseline_paths = tuple(item for item in baseline_paths_value if isinstance(item, str))
         if len(set(baseline_paths)) != len(baseline_paths) or any(
-            Path(item).is_absolute()
-            or "\\" in item
-            or ".." in Path(item).parts
-            or "baseline" not in item.casefold()
+            Path(item).is_absolute() or "\\" in item or ".." in Path(item).parts or "baseline" not in item.casefold()
             for item in baseline_paths
         ):
             msg = f"unsafe consumer baseline paths: {entry!r}"
