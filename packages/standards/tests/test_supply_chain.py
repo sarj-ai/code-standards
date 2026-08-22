@@ -109,7 +109,6 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
         "iac-ci.yml|iac CI",
         "tsconfig-ci.yml|tsconfig CI",
         "standards-ci.yml|standards CI",
-        "docs-ui-ci.yml|docs UI CI",
     ):
         assert specification in release
     assert "head_sha == $sha" in release
@@ -118,7 +117,7 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     assert "actions/runs/$run_id/jobs" in release
     assert "pending_jobs == 0 && successful_jobs > 0" in release
     assert "timed out waiting for $expected_name" in release
-    assert release.count("needs: [detect, release-safety]") == 8
+    assert release.count("needs: [detect, release-safety]") == 7
     assert "needs.release-safety.result == 'success'" in release
 
 
@@ -162,10 +161,10 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert "environment: npm-typescript-release" in release
     assert "environment: npm-tsconfig-release" in release
     assert "environment: pypi-bootstrap-release" in release
-    assert release.count("artifact_sha256:") == 8
-    assert release.count("Verify build-bound artifact digest") == 8
+    assert release.count("artifact_sha256:") == 7
+    assert release.count("Verify build-bound artifact digest") == 7
     assert "test \"$actual_name\" = '@sarj/tsconfig'" in release
-    assert release.count("Verify registry bytes and source-bound provenance") == 3
+    assert release.count("Verify registry bytes and source-bound provenance") == 2
     verifier = (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         REPO_ROOT / ".github/scripts/verify_registry_publication.py"
     ).read_text(encoding="utf-8")
@@ -223,7 +222,7 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
     assert (  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
         "npm ci --ignore-scripts --no-audit --no-fund" in typescript_ci
     )
-    assert release.count("npm install --global npm@12.0.2 --ignore-scripts") == 3
+    assert release.count("npm install --global npm@12.0.2 --ignore-scripts") == 2
 
     def assert_dependency_free(job: str) -> None:
         match = re.search(rf"(?ms)^  {job}:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", release)
@@ -234,7 +233,6 @@ def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_fr
 
     assert_dependency_free("publish-typescript")
     assert_dependency_free("publish-tsconfig")
-    assert_dependency_free("publish-docs-ui")
 
 
 def test_every_workflow_job_has_a_timeout() -> None:

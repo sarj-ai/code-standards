@@ -115,7 +115,6 @@ jobs:
             'sql-ci.yml|sql CI' \
             'iac-ci.yml|iac CI' \
             'tsconfig-ci.yml|tsconfig CI' \
-            'docs-ui-ci.yml|docs UI CI' \
             'docs.yml|documentation' \
             'standards-ci.yml|standards CI'; do
             IFS='|' read -r workflow expected_name <<< "$specification"
@@ -196,7 +195,7 @@ jobs:
           PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: >-
           uv run --project packages/standards --frozen code-standards --root .
-          maintain release create-tags typescript bootstrap python sql iac standards tsconfig docs-ui
+          maintain release create-tags typescript bootstrap python sql iac standards tsconfig
           --commit "$PUBLISHED_SHA"
       - name: Publish the Standards GitHub Release
         env:

@@ -2379,8 +2379,6 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
                 publish_target = "standards"
             elif target == "tsconfig":
                 publish_target = "tsconfig"
-            elif target == "docs-ui":
-                publish_target = "docs-ui"
             else:
                 return 2
             release.publish_target(root, publish_target)
@@ -2566,7 +2564,7 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     create_tags.add_argument(
         "release_targets",
         nargs="+",
-        choices=("typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig", "docs-ui"),
+        choices=("typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig"),
     )
     create_tags.add_argument("--commit", dest="release_commit", required=True, help="exact commit that was published")
     create_tags.add_argument("--attempts", type=int, default=6)
@@ -2616,7 +2614,7 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     publish = release_commands.add_parser("publish", help="build and publish one package through its native client")
     publish.add_argument(
         "release_target",
-        choices=("typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig", "docs-ui"),
+        choices=("typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig"),
     )
     check = commands.add_parser("check", help="run repository policy gates")
     check.add_argument(

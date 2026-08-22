@@ -38,7 +38,6 @@ class ReleaseTargetId(StrEnum):
     IAC = "iac"
     STANDARDS = "standards"
     TSCONFIG = "tsconfig"
-    DOCS_UI = "docs-ui"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,9 +97,6 @@ RELEASE_TARGETS: Final[Mapping[str, ReleaseTarget]] = MappingProxyType(
         ReleaseTargetId.TSCONFIG: ReleaseTarget(
             Path("packages/tsconfig/package.json"), "json", (ReleasePublication("npm", "@sarj/tsconfig"),)
         ),
-        ReleaseTargetId.DOCS_UI: ReleaseTarget(
-            Path("packages/docs-ui/package.json"), "json", (ReleasePublication("npm", "@sarj/docs-ui"),)
-        ),
     }
 )
 RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(
@@ -112,7 +108,6 @@ RELEASE_ARTIFACT_PREFIXES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyTy
         ReleaseTargetId.STANDARDS: ("packages/standards/src/", "packages/standards-compat/src/"),
         ReleaseTargetId.TYPESCRIPT: ("packages/typescript/src/",),
         ReleaseTargetId.TSCONFIG: ("packages/tsconfig/base.json", "packages/tsconfig/strict.json"),
-        ReleaseTargetId.DOCS_UI: ("packages/docs-ui/src/",),
     }
 )
 RELEASE_ARTIFACT_FILES: Final[Mapping[str, tuple[str, ...]]] = MappingProxyType(

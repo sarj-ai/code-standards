@@ -21,7 +21,6 @@ GENERATED_READMES = (
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
     Path("packages/tsconfig/README.md"),
-    Path("packages/docs-ui/README.md"),
     Path("plugins/sarj-audit/README.md"),
     Path(".github/SECURITY.md"),
 )
@@ -97,13 +96,6 @@ def _repository(root: Path) -> None:
             "package.json",
             '{"name":"@sarj/tsconfig","version":"1.0.0","description":"TypeScript configs.","license":"MIT"}\n',
         ),
-        "docs-ui": (
-            "package.json",
-            (
-                '{"name":"@sarj/docs-ui","version":"0.1.0","description":"Shared documentation UI.",'
-                '"license":"MIT","exports":{"./styles.css":"./src/styles/theme.css"}}\n'
-            ),
-        ),
     }
     for directory, (filename, content) in packages.items():
         path = root / "packages" / directory / filename
@@ -143,7 +135,6 @@ def _repository(root: Path) -> None:
         "packages/iac/README.md",
         "packages/typescript/README.md",
         "packages/tsconfig/README.md",
-        "packages/docs-ui/README.md",
         "plugins/sarj-audit/README.md",
     ):
         path = root / relative
@@ -180,9 +171,6 @@ def test_sync_is_deterministic_and_check_then_passes(tmp_path: Path) -> None:
     bootstrap_readme = (tmp_path / "packages/bootstrap/README.md").read_text(encoding="utf-8")
     assert "sarj-standards-bootstrap==1.0.0 code-standards check" in bootstrap_readme
     assert "inherits UV/PIP registry, proxy, certificate, cache, and offline environment policy" in bootstrap_readme
-    docs_ui_readme = (tmp_path / "packages/docs-ui/README.md").read_text(encoding="utf-8")
-    assert "Rules and configuration" not in docs_ui_readme
-    assert "live component and theme contract" in docs_ui_readme
     security_policy = (tmp_path / ".github/SECURITY.md").read_text(encoding="utf-8")
     assert "/security/advisories/new" in security_policy
     assert "within two business days" in security_policy

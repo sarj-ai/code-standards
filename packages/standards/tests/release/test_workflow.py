@@ -43,12 +43,11 @@ def _run_release_tag_preflight(
         "iac": "4.0.0",
         "standards": "5.0.0",
         "tsconfig": "6.0.0",
-        "docs-ui": "0.1.0",
     }
     for target, version in versions.items():
         package = tmp_path / "packages" / target
         package.mkdir(parents=True)
-        if target in {"typescript", "tsconfig", "docs-ui"}:
+        if target in {"typescript", "tsconfig"}:
             value = "42" if malformed_manifest and target == "typescript" else f'{{"version":"{version}"}}'
             (package / "package.json").write_text(value, encoding="utf-8")
         else:
@@ -160,33 +159,21 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
         "sql-ci.yml|sql CI",
         "iac-ci.yml|iac CI",
         "tsconfig-ci.yml|tsconfig CI",
-        "docs-ui-ci.yml|docs UI CI",
         "standards-ci.yml|standards CI",
     ):
         assert specification in workflow
     assert "head_repository.full_name == $repo" in workflow
     assert "actions/runs/$run_id/jobs" in workflow
     assert "pending_jobs == 0 && successful_jobs > 0" in workflow
-    assert "maintain release create-tags typescript bootstrap python sql iac standards tsconfig docs-ui" in workflow
+    assert "maintain release create-tags typescript bootstrap python sql iac standards tsconfig" in workflow
     assert '--commit "$PUBLISHED_SHA"' in workflow
     assert 'maintain release verify-tags --commit "$TARGET_SHA"' in workflow
 
 
-def test_additional_npm_releases_publish_verified_registry_artifacts() -> None:
+def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    build = workflow.split("  build-docs-ui:", 1)[1].split("  publish-docs-ui:", 1)[0]
-    publish = workflow.split("  publish-docs-ui:", 1)[1]
-    tsconfig_publish = workflow.split("  publish-tsconfig:", 1)[1].split("  build-docs-ui:", 1)[0]
+    tsconfig_publish = workflow.split("  publish-tsconfig:", 1)[1]
 
-    assert "needs.detect.outputs.docs_ui == 'true'" in build
-    assert "test \"$actual_name\" = '@sarj/docs-ui'" in build
-    assert "name: npm-docs-ui" in build
-    assert "environment: npm-docs-ui-release" in publish
-    assert "needs.build-docs-ui.outputs.artifact_sha256" in publish
-    assert 'npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz"' in publish
-    assert "verify_registry_publication.py npm" in publish
-    assert "--environment npm-docs-ui-release" in publish
-    assert '--commit "$EXPECTED_COMMIT"' in publish
     assert "needs.build-tsconfig.outputs.artifact_sha256" in tsconfig_publish
     assert "verify_registry_publication.py npm" in tsconfig_publish
     assert "--environment npm-tsconfig-release" in tsconfig_publish

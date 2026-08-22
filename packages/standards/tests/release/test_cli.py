@@ -3,14 +3,14 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-import pytest
-
 import sarj_standards.cli.main as cli
 from sarj_standards.libs import release
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import pytest
 
 
 def test_changes_cli_passes_keyword_revisions(
@@ -108,16 +108,11 @@ def test_release_process_failure_is_a_clean_cli_error(
     assert capsys.readouterr().err == "error: uv publish failed with exit code 1\n"
 
 
-@pytest.mark.parametrize(
-    "target",
-    ["bootstrap", "docs-ui"],
-    ids=("bootstrap", "docs-ui"),
-)
 def test_release_cli_accepts_publish_target(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    target: release.PublishTarget,
 ) -> None:
+    target: release.PublishTarget = "bootstrap"
     calls: list[tuple[Path, release.PublishTarget]] = []
 
     def publish(root: Path, target: release.PublishTarget) -> None:
