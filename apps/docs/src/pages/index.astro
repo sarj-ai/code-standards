@@ -1,15 +1,7 @@
 ---
-import { Code } from '@astrojs/starlight/components';
-
+import CodeBlock from '../components/CodeBlock.astro';
 import ReferencePage from '../components/ReferencePage.astro';
-import { cliReference } from '../lib/cli';
-
-const quickSetup = [
-  cliReference.launcher.install,
-  `${cliReference.program} setup`,
-  `${cliReference.program} doctor`,
-  `${cliReference.program} check`,
-].join('\n');
+import { formattedStaticCode } from '../lib/display-code';
 ---
 
 <ReferencePage
@@ -25,7 +17,7 @@ const quickSetup = [
 
     <section>
       <h2>Quick setup</h2>
-      <Code code={quickSetup} lang="bash" frame="terminal" wrap />
+      <CodeBlock code={formattedStaticCode.quickSetup} lang="bash" frame="terminal" wrap />
       <p><a href="/cli/">CLI reference</a></p>
     </section>
 

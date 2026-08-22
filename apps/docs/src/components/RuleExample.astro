@@ -1,10 +1,9 @@
 ---
 import CodeComparison from '@sarj/docs-ui/CodeComparison.astro';
 import { changedLineMarks } from '@sarj/docs-ui/line-diff';
-import { Code } from '@astrojs/starlight/components';
-
 import type { Language, RuleExample } from '../lib/catalog';
 import { languageForPath } from '../lib/code';
+import CodeBlock from './CodeBlock.astro';
 
 interface Props {
   id: string;
@@ -45,7 +44,7 @@ const visibleFixedFiles = before.fixedFiles.filter((file) => file.source.trim().
     <details>
       <summary>Autofix output</summary>
       {visibleFixedFiles.map((file) => (
-        <Code code={file.source} lang={languageForPath(file.path, languages)} title={file.path} frame="code" wrap />
+        <CodeBlock code={file.source} lang={languageForPath(file.path, languages)} title={file.path} frame="code" wrap />
       ))}
     </details>
   )}
