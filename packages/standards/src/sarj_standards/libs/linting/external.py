@@ -525,40 +525,121 @@ def _invoke_react_doctor(
         staged=staged,
     )
     duration = _react_doctor_max_duration(file_count)
-    argv = packagemanager.exec_argv(
-        client,
-        name,
-        ".",
-        "--project",
-        ",".join(item.relative_to(project).as_posix() or "." for item in projects),
-        *scope_args,
-        "--blocking",
-        "error",
-        "--no-warnings",
-        "--no-dead-code",
-        "--no-supply-chain",
-        "--no-score",
-        "--no-cache",
-        "--max-duration",
-        str(int(duration.total_seconds())),
-        "--json",
-        "--json-compact",
-        "--no-color",
+
+    def doctor_argv(selected_scope: Sequence[str]) -> tuple[str, ...]:
+        selected_duration = _REACT_DOCTOR_MAX_DURATION if tuple(selected_scope) == ("--scope", "full") else duration
+        argv = packagemanager.exec_argv(
+            client,
+            name,
+            ".",
+            "--project",
+            ",".join(item.relative_to(project).as_posix() or "." for item in projects),
+            *selected_scope,
+            "--blocking",
+            "error",
+            "--no-warnings",
+            "--no-dead-code",
+            "--no-supply-chain",
+            "--no-score",
+            "--no-cache",
+            "--max-duration",
+            str(int(selected_duration.total_seconds())),
+            "--json",
+            "--json-compact",
+            "--no-color",
+        )
+        return _local_node_binary_argv(name, argv, project, root) if use_local_binary else tuple(argv)
+
+    expected_projects = frozenset(item.resolve() for item in projects)
+    argv = doctor_argv(scope_args)
+    parser: ProtocolParser = partial(
+        parse_react_doctor,
+        expected_projects=expected_projects,
+        allow_empty_projects=allow_empty_projects,
     )
+    if staged and not full_scan:
+        parser = partial(
+            _parse_react_doctor_staged_with_full_fallback,
+            expected_projects=expected_projects,
+            allow_empty_projects=allow_empty_projects,
+            runner=runner,
+            cwd=project,
+            full_argv=doctor_argv(("--scope", "full")),
+        )
     return _invoke(
         name,
-        _local_node_binary_argv(name, argv, project, root) if use_local_binary else argv,
+        argv,
         cwd=project,
         root=root,
         runner=runner,
-        parser=partial(
-            parse_react_doctor,
-            expected_projects=frozenset(item.resolve() for item in projects),
-            allow_empty_projects=allow_empty_projects,
-        ),
+        parser=parser,
         invocation_id=project.relative_to(root).as_posix() or None,
         file_count=file_count,
     )
+
+
+def _parse_react_doctor_staged_with_full_fallback(
+    payload: str,
+    *,
+    root: Path,
+    expected_projects: frozenset[Path],
+    allow_empty_projects: bool,
+    runner: ProcessRunner,
+    cwd: Path,
+    full_argv: Sequence[str],
+) -> tuple[Diagnostic, ...]:
+    report = _ReactDoctorReport.model_validate_json(payload)
+    if report.react_detected is not False:
+        return _parse_react_doctor_report(
+            report,
+            root=root,
+            expected_projects=expected_projects,
+            allow_empty_projects=allow_empty_projects,
+            include_warnings=False,
+            require_react_detection=True,
+        )
+
+    # Validate every staged coverage guarantee before using a full scan to
+    # recover diagnostics omitted by React Doctor's scoped project metadata.
+    _parse_react_doctor_report(
+        report,
+        root=root,
+        expected_projects=expected_projects,
+        allow_empty_projects=allow_empty_projects,
+        include_warnings=False,
+        require_react_detection=False,
+    )
+    staged_paths = _react_doctor_staged_paths(root, runner=runner)
+    output = runner(full_argv, cwd=cwd)
+    if output.returncode not in {0, 1}:
+        msg = output.stderr.strip() or f"React Doctor full fallback exited {output.returncode}"
+        raise OSError(msg)
+    if not output.stdout.strip():
+        msg = output.stderr.strip() or "React Doctor full fallback returned empty structured output"
+        raise ValueError(msg)
+    diagnostics = parse_react_doctor(output.stdout, root=root, expected_projects=expected_projects)
+    if output.returncode == 1 and not diagnostics:
+        msg = output.stderr.strip() or "React Doctor full fallback exited 1 but reported no diagnostics"
+        raise ValueError(msg)
+    return tuple(item for item in diagnostics if item.location.path in staged_paths)
+
+
+def _react_doctor_staged_paths(root: Path, *, runner: ProcessRunner) -> frozenset[str]:
+    output = runner(
+        ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"),
+        cwd=root,
+    )
+    if output.returncode != 0:
+        msg = output.stderr.strip() or "git diff --cached failed while recovering React Doctor coverage"
+        raise OSError(msg)
+    paths: set[str] = set()
+    for value in (item for item in output.stdout.split("\0") if item):
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            msg = f"git diff --cached returned an unsafe path: {value!r}"
+            raise ValueError(msg)
+        paths.add(path.as_posix())
+    return frozenset(paths)
 
 
 def _react_doctor_max_duration(file_count: int) -> timedelta:
@@ -1248,6 +1329,25 @@ def parse_react_doctor(
     include_warnings: bool = False,
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
+    return _parse_react_doctor_report(
+        report,
+        root=root,
+        expected_projects=expected_projects,
+        allow_empty_projects=allow_empty_projects,
+        include_warnings=include_warnings,
+        require_react_detection=True,
+    )
+
+
+def _parse_react_doctor_report(
+    report: _ReactDoctorReport,
+    *,
+    root: Path,
+    expected_projects: frozenset[Path] | None,
+    allow_empty_projects: bool,
+    include_warnings: bool,
+    require_react_detection: bool,
+) -> tuple[Diagnostic, ...]:
     expected_version = manifest.eslint_peers()["react-doctor"]
     if report.version != expected_version:
         msg = f"React Doctor reported version {report.version!r}; expected {expected_version!r}"
@@ -1261,7 +1361,7 @@ def parse_react_doctor(
     if report.skipped_projects:
         msg = f"React Doctor skipped {len(report.skipped_projects)} project(s) before analysis"
         raise ValueError(msg)
-    if report.react_detected is False:
+    if report.react_detected is False and require_react_detection:
         msg = "React Doctor did not detect React in an expected project"
         raise ValueError(msg)
     if not report.projects and allow_empty_projects:
@@ -1276,7 +1376,7 @@ def parse_react_doctor(
         msg = "React Doctor returned no analyzed projects"
         raise ValueError(msg)
     if expected_projects is not None:
-        if report.react_detected is not True or report.baseline_degraded is not False:
+        if (report.react_detected is not True and require_react_detection) or report.baseline_degraded is not False:
             msg = "React Doctor omitted required v3 detection or baseline-completeness metadata"
             raise ValueError(msg)
         reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
