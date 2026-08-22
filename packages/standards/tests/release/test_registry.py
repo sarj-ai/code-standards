@@ -73,14 +73,6 @@ def test_bootstrap_requirement_uses_its_authoritative_manifest(tmp_path: Path) -
     assert target_requirement(tmp_path, "bootstrap") == RegistryRequirement("pypi", "sarj-standards-bootstrap", "1.0.0")
 
 
-def test_docs_ui_requirement_uses_its_authoritative_manifest(tmp_path: Path) -> None:
-    manifest = tmp_path / "packages/docs-ui/package.json"
-    manifest.parent.mkdir(parents=True)
-    manifest.write_text('{"name":"@sarj/docs-ui","version":"0.1.0"}\n', encoding="utf-8")
-
-    assert target_requirement(tmp_path, "docs-ui") == RegistryRequirement("npm", "@sarj/docs-ui", "0.1.0")
-
-
 def test_standards_target_requires_canonical_and_compatibility_publications(tmp_path: Path) -> None:
     canonical = tmp_path / "packages/standards/pyproject.toml"
     compatibility = tmp_path / "packages/standards-compat/pyproject.toml"

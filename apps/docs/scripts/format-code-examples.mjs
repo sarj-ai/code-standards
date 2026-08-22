@@ -21,7 +21,6 @@ const cliPath = resolve(
   'packages/standards/src/sarj_standards/configs/cli-reference.v1.json',
 );
 const docsProjectionPath = resolve(appRoot, 'src/generated/formatted-code.v1.json');
-const docsUiProjectionPath = resolve(repositoryRoot, 'apps/docs-ui/src/generated/formatted-code.v1.json');
 const mode = process.argv[2];
 
 if (mode !== '--check' && mode !== '--write') {
@@ -297,15 +296,6 @@ const docsProjection = {
   },
 };
 
-const docsUiProjection = {
-  schemaVersion: 1,
-  formatterVersions: docsProjection.formatterVersions,
-  static: {
-    comparisonBefore: await formatCode('const enabled=false;', 'example.ts', 'docs-ui/comparisonBefore'),
-    comparisonAfter: await formatCode('const enabled=true;', 'example.ts', 'docs-ui/comparisonAfter'),
-  },
-};
-
 function render(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -324,4 +314,3 @@ function sync(path, expected) {
 }
 
 sync(docsProjectionPath, render(docsProjection));
-sync(docsUiProjectionPath, render(docsUiProjection));

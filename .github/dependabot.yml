@@ -16,25 +16,11 @@ updates:
       tsconfig-tooling:
         patterns: ["*"]
   - package-ecosystem: npm
-    directory: /packages/docs-ui
-    schedule:
-      interval: weekly
-    groups:
-      docs-ui-tooling:
-        patterns: ["*"]
-  - package-ecosystem: npm
     directory: /apps/docs
     schedule:
       interval: weekly
     groups:
       documentation-tooling:
-        patterns: ["*"]
-  - package-ecosystem: npm
-    directory: /apps/docs-ui
-    schedule:
-      interval: weekly
-    groups:
-      documentation-ui-site-tooling:
         patterns: ["*"]
   - package-ecosystem: pip
     directory: /packages/python

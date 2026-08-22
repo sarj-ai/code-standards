@@ -66,23 +66,3 @@ def test_tsconfig_publish_uses_exact_native_command(tmp_path: Path) -> None:
     assert Path(publish[0][2]).name == "example-1.0.0.tgz"
     assert publish[0][-3:] == ("--access", "public", "--ignore-scripts")
     assert pack[1] == publish[1] == tmp_path / "packages" / "tsconfig"
-
-
-def test_docs_ui_publish_uses_exact_native_command(tmp_path: Path) -> None:
-    calls: list[tuple[tuple[str, ...], Path]] = []
-
-    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
-        _ = capture_output
-        calls.append((argv, cwd))
-        if argv[:2] == ("npm", "pack"):
-            destination = Path(argv[-1])
-            (destination / "sarj-docs-ui-0.1.0.tgz").write_bytes(b"archive")
-            return ProcessResult(0, json.dumps([{"filename": "sarj-docs-ui-0.1.0.tgz"}]))
-        return ProcessResult(0)
-
-    publish_target(tmp_path, "docs-ui", runner=runner)
-
-    pack, publish = calls
-    assert pack[0][:3] == ("npm", "pack", "--json")
-    assert publish[0][-3:] == ("--access", "public", "--ignore-scripts")
-    assert pack[1] == publish[1] == tmp_path / "packages" / "docs-ui"

@@ -32,7 +32,6 @@ _GENERATED_READMES: Final = (
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
     Path("packages/tsconfig/README.md"),
-    Path("packages/docs-ui/README.md"),
     Path("plugins/sarj-audit/README.md"),
 )
 _GENERATED_SECURITY_POLICY: Final = Path(".github/SECURITY.md")
@@ -46,7 +45,6 @@ _PACKAGE_DEFINITIONS: Final = (
     ("packages/iac/pyproject.toml", "PyPI", "iac"),
     ("packages/typescript/package.json", "npm", "eslint"),
     ("packages/tsconfig/package.json", "npm", None),
-    ("packages/docs-ui/package.json", "npm", None),
 )
 _DOCUMENTATION_URL: Final = "https://code-standards.sarj.ai/"
 
@@ -145,13 +143,13 @@ def _package_readme(
         f"# {name}",
         _string(metadata, "description"),
         f"```bash\n{_install_command(name, registry)}\n```",
-        _package_usage(name, engine, version=_string(metadata, "version"), metadata=metadata),
+        _package_usage(name, engine, version=_string(metadata, "version")),
         f"[Documentation]({_homepage(metadata)}) · [Source]({_source_url(metadata)})",
     ]
     return "\n\n".join(sections) + "\n"
 
 
-def _package_usage(name: str, engine: str | None, *, version: str, metadata: dict[str, object]) -> str:
+def _package_usage(name: str, engine: str | None, *, version: str) -> str:
     if name == "code-standards":
         return (
             "Use it from pre-commit with a coding agent so violations are flagged and fixed before commit.\n\n"
@@ -179,16 +177,6 @@ def _package_usage(name: str, engine: str | None, *, version: str, metadata: dic
             "The bootstrap deliberately inherits UV/PIP registry, proxy, certificate, cache, and offline environment "
             "policy. `--no-config --isolated` prevents consumer project configuration and installed tools from "
             "changing the selected bootstrap or Standards bundle."
-        )
-    if name == "@sarj/docs-ui":
-        exports = metadata.get("exports")
-        export_names = sorted(exports) if _is_object_table(exports) else []
-        rendered_exports = "\n".join(f"- `{name}{export_name.removeprefix('.')}`" for export_name in export_names)
-        return (
-            "Import `@sarj/docs-ui/starlight.css` once, then compose the typed Astro components. "
-            "The live component and theme contract is published at "
-            "[docs-ui.sarj.ai](https://docs-ui.sarj.ai/).\n\n"
-            f"Public exports:\n\n{rendered_exports}"
         )
     executable = (
         None

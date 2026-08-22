@@ -61,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        directory: [apps/docs, apps/docs-ui, packages/docs-ui]
+        directory: [apps/docs]
     defaults:
       run:
         working-directory: ${{ matrix.directory }}
