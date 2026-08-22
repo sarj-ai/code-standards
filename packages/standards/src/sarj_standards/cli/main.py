@@ -77,6 +77,8 @@ _BASELINE_RULE_SOURCE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
 _BASELINE_RULE_ENGINE_SOURCES: Final[Mapping[str, str]] = MappingProxyType(
     {engine: source for source, engine in _BASELINE_RULE_SOURCE_ALIASES.items()}
 )
+_REACT_DOCTOR_RULE_SOURCES: Final = frozenset({"react-doctor", "react-hooks-js"})
+_REACT_DOCTOR_RULE_PREFIXES: Final = tuple(f"{source}/" for source in sorted(_REACT_DOCTOR_RULE_SOURCES))
 
 
 class _EvaluationScope(StrEnum):
@@ -1698,11 +1700,11 @@ def cmd_baseline(args: _Args) -> int:
     try:
         # `analyze` rejects anything outside the repository, so normalize the paths a
         # caller naturally types (absolute, or relative to the shell) before handing over.
-        selected = _selected_paths(root, args.files) if args.files else None
-        if selected is None and args.baseline_cmd == "update" and args.baseline_rules:
-            adopted = manifest.load(root)
-            if adopted is not None:
-                selected = [str(root / path) for path in adopted.verify_paths]
+        selected = _baseline_selected_paths(
+            root,
+            args.files,
+            scoped=args.baseline_cmd == "update" and bool(args.baseline_rules),
+        )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1740,18 +1742,14 @@ def cmd_baseline(args: _Args) -> int:
             ),
         )
         reports.append(external)
+    if _react_doctor_rules_for_baseline(args.baseline_rules):
+        reports.append(_react_doctor_baseline_report(root, selected, trust))
     blocked = [issue for report in reports for issue in report.issues if issue.kind != "baseline-failure"]
     if blocked:
         for issue in blocked:
             print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
         return 2
-    eligible = tuple(
-        item
-        for report in reports
-        for item in report.diagnostics
-        if baseline.is_baselineable(item)
-        and (not upstream_eslint or report is not reports[-1] or _diagnostic_matches(item, upstream_eslint))
-    )
+    eligible = _eligible_baseline_diagnostics(reports, args.baseline_rules)
     provenance = {
         "bundle_version": __version__,
         "consumer_base_sha": baseline.repository_base_sha(root),
@@ -1784,12 +1782,60 @@ def cmd_baseline(args: _Args) -> int:
     return 0
 
 
+def _baseline_selected_paths(root: Path, files: Sequence[str], *, scoped: bool) -> list[str] | None:
+    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
+
+    selected = _selected_paths(root, files) if files else None
+    if selected is not None or not scoped or (adopted := manifest.load(root)) is None:
+        return selected
+    verified = (str(root / path) for path in adopted.verify_paths)
+    return list(dict.fromkeys((*verified, *baseline.tracked_terraform_test_paths(root))))
+
+
+def _react_doctor_baseline_report(root: Path, selected: Sequence[str] | None, trust: str) -> AnalysisReport:
+    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+        report_from_tools,
+    )
+    from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
+        analyze_external,
+    )
+
+    return report_from_tools(
+        root,
+        analyze_external(
+            selected or [str(root)],
+            root=root,
+            trust=trust,
+            capabilities=frozenset({"react-doctor"}),
+            include_react_doctor=True,
+            force_react_doctor=True,
+            react_doctor_full_scan=True,
+        ),
+    )
+
+
+def _eligible_baseline_diagnostics(
+    reports: Sequence[AnalysisReport], selectors: Sequence[str]
+) -> tuple[Diagnostic, ...]:
+    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
+
+    selected = frozenset(_baseline_merge_selectors(selectors))
+    return tuple(
+        item
+        for report in reports
+        for item in report.diagnostics
+        if baseline.is_baselineable(item) and (not selectors or _diagnostic_matches(item, selected))
+    )
+
+
 def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
     if not selectors:
         return None
     normalized: list[str] = []
     for selector in selectors:
         source, separator, rule_id = selector.partition(":")
+        if _is_react_doctor_selector(source=source, rule_id=rule_id, separator=bool(separator)):
+            continue
         if separator and source in _BASELINE_RULE_SOURCE_ALIASES:
             normalized.append(f"{_BASELINE_RULE_SOURCE_ALIASES[source]}:{rule_id}")
         elif selector.startswith("eslint:@sarj/"):
@@ -1809,7 +1855,27 @@ def _upstream_eslint_rules_for_baseline(selectors: Sequence[str]) -> frozenset[s
         if selector.startswith("eslint:")
         and not selector.startswith("eslint:@sarj/")
         and selector not in _baseline_catalog_selectors()
+        and not _is_react_doctor_rule_id(selector.removeprefix("eslint:"))
     )
+
+
+def _react_doctor_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
+    return frozenset(
+        selector
+        for selector in selectors
+        if (source := selector.partition(":")[0]) in _REACT_DOCTOR_RULE_SOURCES
+        or (source == "eslint" and _is_react_doctor_rule_id(selector.partition(":")[2]))
+    )
+
+
+def _is_react_doctor_selector(*, source: str, rule_id: str, separator: bool) -> bool:
+    return separator and (
+        source in _REACT_DOCTOR_RULE_SOURCES or (source == "eslint" and _is_react_doctor_rule_id(rule_id))
+    )
+
+
+def _is_react_doctor_rule_id(rule_id: str) -> bool:
+    return rule_id.startswith(_REACT_DOCTOR_RULE_PREFIXES)
 
 
 def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
@@ -1818,7 +1884,14 @@ def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
         source, separator, rule_id = selector.partition(":")
         resolved.append(selector)
         native_source = _BASELINE_RULE_ENGINE_SOURCES.get(source)
-        if separator and native_source is not None:
+        if separator and source == "eslint" and _is_react_doctor_rule_id(rule_id):
+            plugin, _, plugin_rule_id = rule_id.partition("/")
+            resolved.extend((f"react-doctor:{rule_id}", f"{plugin}:{plugin_rule_id}"))
+        elif separator and source == "react-hooks-js":
+            resolved.append(f"react-doctor:react-hooks-js/{rule_id}")
+        elif separator and source == "react-doctor" and not _is_react_doctor_rule_id(rule_id):
+            resolved.append(f"react-doctor:react-doctor/{rule_id}")
+        elif separator and native_source is not None:
             resolved.append(f"{native_source}:{rule_id}")
         elif separator and source == "eslint" and selector in _baseline_catalog_selectors():
             resolved.append(f"eslint:@sarj/{rule_id}")

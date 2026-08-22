@@ -655,22 +655,7 @@ def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisM
 
 
 def _with_tracked_terraform_tests(root: Path, selected: list[str]) -> list[str]:
-    git = shutil.which("git")
-    if git is None:
-        return selected
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed git argv.
-        (git, "-C", str(root), "ls-files", "-z"),
-        check=False,
-        capture_output=True,
-    )
-    if completed.returncode != 0:
-        return selected
-    tracked = [
-        str(root / item)
-        for item in completed.stdout.decode("utf-8", errors="replace").split("\0")
-        if item.casefold().endswith((".tftest.hcl", ".tftest.json"))
-    ]
-    return list(dict.fromkeys((*selected, *tracked)))
+    return list(dict.fromkeys((*selected, *diagnostic_baseline.tracked_terraform_test_paths(root))))
 
 
 def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelection | None:
