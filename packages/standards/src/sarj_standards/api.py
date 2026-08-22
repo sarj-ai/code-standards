@@ -374,6 +374,7 @@ class Standards:
                     active_selected,
                     root=self.root,
                     trust=normalized_trust,
+                    capabilities=frozenset({"eslint"}) if rule_selection is not None else None,
                     grouped=selected_groups,
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
@@ -603,7 +604,7 @@ def _without_baselined_diagnostics(
     remaining = counts.copy()
 
     def active(diagnostic: Diagnostic) -> bool:
-        if not diagnostic_baseline.is_baselineable(diagnostic) or diagnostic.code == "SARJ206":
+        if not diagnostic_baseline.is_baselineable(diagnostic):
             return True
         if diagnostic_baseline.touches_changed_lines(diagnostic, changed_scope):
             return True

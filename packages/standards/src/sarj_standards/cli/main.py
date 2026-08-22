@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from sarj_standards.libs.adoption import service
+    from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic
     from sarj_standards.libs.rules import RuleSelector
 
 
@@ -1685,24 +1686,59 @@ def cmd_baseline(args: _Args) -> int:
         # `analyze` rejects anything outside the repository, so normalize the paths a
         # caller naturally types (absolute, or relative to the shell) before handing over.
         selected = _selected_paths(root, args.files) if args.files else None
+        if selected is None and args.baseline_cmd == "update" and args.baseline_rules:
+            adopted = manifest.load(root)
+            if adopted is not None:
+                selected = [str(root / path) for path in adopted.verify_paths]
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    trust = TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE
+    reports: list[AnalysisReport] = []
     scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
-    report = Standards(root).analyze(
-        selected,
-        external=True,
-        trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
-        mode=AnalysisMode.RAW,
-        rules=scoped_rules,
-        include_react_doctor=False,
-    )
-    blocked = [issue for issue in report.issues if issue.kind != "baseline-failure"]
+    if scoped_rules is None or scoped_rules:
+        reports.append(
+            Standards(root).analyze(
+                selected,
+                external=True,
+                trust=trust,
+                mode=AnalysisMode.RAW,
+                rules=scoped_rules,
+                include_react_doctor=False,
+            )
+        )
+    upstream_eslint = _upstream_eslint_rules_for_baseline(args.baseline_rules)
+    if upstream_eslint:
+        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+            report_from_tools,
+        )
+        from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
+            analyze_external,
+        )
+
+        external = report_from_tools(
+            root,
+            analyze_external(
+                selected or [str(root)],
+                root=root,
+                trust=trust,
+                capabilities=frozenset({"eslint"}),
+                include_react_doctor=False,
+            ),
+        )
+        reports.append(external)
+    blocked = [issue for report in reports for issue in report.issues if issue.kind != "baseline-failure"]
     if blocked:
         for issue in blocked:
             print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
         return 2
-    eligible = tuple(item for item in report.diagnostics if baseline.is_baselineable(item))
+    eligible = tuple(
+        item
+        for report in reports
+        for item in report.diagnostics
+        if baseline.is_baselineable(item)
+        and (not upstream_eslint or report is not reports[-1] or _diagnostic_matches(item, upstream_eslint))
+    )
     provenance = {
         "bundle_version": __version__,
         "consumer_base_sha": baseline.repository_base_sha(root),
@@ -1738,10 +1774,22 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
         if selector.startswith("eslint:@sarj/"):
             normalized.append("eslint:" + selector.removeprefix("eslint:@sarj/"))
         elif selector.startswith("eslint:@"):
-            return None
+            continue
         else:
             normalized.append(selector)
     return normalized
+
+
+def _upstream_eslint_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
+    return frozenset(
+        selector
+        for selector in selectors
+        if selector.startswith("eslint:@") and not selector.startswith("eslint:@sarj/")
+    )
+
+
+def _diagnostic_matches(item: Diagnostic, selectors: frozenset[str]) -> bool:
+    return item.rule_id is not None and f"{item.source}:{item.rule_id}" in selectors
 
 
 def main(argv: list[str] | None = None) -> int:

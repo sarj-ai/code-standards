@@ -116,6 +116,39 @@ class TestRegistry:
 
         assert rollout.load_registry(path)[0].baseline_rules == ("eslint:@sarj/new-rule",)
 
+    def test_registry_carries_a_path_constrained_consumer_baseline_update(self, tmp_path: Path) -> None:
+        path = tmp_path / "registry.toml"
+        path.write_text(
+            'schema=1\n[[consumer]]\nname="one"\nrepository="r"\nbranch="main"\nverify=["true"]\n'
+            'baseline_paths=["python-standards-baseline.json"]\n'
+            'baseline_update=["uv","run","update-baseline"]\n',
+            encoding="utf-8",
+        )
+
+        consumer = rollout.load_registry(path)[0]
+
+        assert consumer.baseline_paths == ("python-standards-baseline.json",)
+        assert consumer.baseline_update == ("uv", "run", "update-baseline")
+
+    @pytest.mark.parametrize(
+        "fields",
+        [
+            'baseline_paths=["python-standards-baseline.json"]',
+            'baseline_update=["uv","run","update-baseline"]',
+            'baseline_paths=["../python-standards-baseline.json"]\nbaseline_update=["true"]',
+            'baseline_paths=["generated.json"]\nbaseline_update=["true"]',
+        ],
+    )
+    def test_registry_rejects_unpaired_or_unsafe_consumer_baselines(self, tmp_path: Path, fields: str) -> None:
+        path = tmp_path / "registry.toml"
+        path.write_text(
+            f'schema=1\n[[consumer]]\nname="one"\nrepository="r"\nbranch="main"\nverify=["true"]\n{fields}\n',
+            encoding="utf-8",
+        )
+
+        with pytest.raises(rollout.RolloutError, match="baseline"):
+            rollout.load_registry(path)
+
 
 def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.MonkeyPatch) -> None:
     canary = rollout.Consumer("canary", "r/c", "main", ("true",), channel="canary")

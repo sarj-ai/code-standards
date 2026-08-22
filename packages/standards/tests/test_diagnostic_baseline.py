@@ -20,6 +20,7 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     baseline,
 )
+from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.analysis import report_from_tools
 
 
@@ -64,7 +65,7 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     assert [item.code for item in raw_again.diagnostics] == ["SARJ052"]
 
 
-def test_terraform_test_ban_cannot_be_diagnostic_baselined(tmp_path: Path) -> None:
+def test_terraform_test_ban_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
     source = tmp_path / "routing.tftest.json"
     source.write_text("{}\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
@@ -72,9 +73,11 @@ def test_terraform_test_ban_cannot_be_diagnostic_baselined(tmp_path: Path) -> No
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
 
-    policy = api.Standards(tmp_path).analyze([str(source)])
+    new_source = tmp_path / "new-routing.tftest.json"
+    new_source.write_text("{}\n", encoding="utf-8")
+    policy = api.Standards(tmp_path).analyze([str(source), str(new_source)])
 
-    assert [item.code for item in policy.diagnostics] == ["SARJ206"]
+    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.json"]
 
 
 def test_missing_diagnostic_baseline_is_an_execution_failure(tmp_path: Path) -> None:
@@ -327,7 +330,7 @@ def test_scoped_baseline_update_normalizes_native_sarj_eslint_rule(
     assert captured == [(["eslint:prefer-ecmascript-private-members"], False)]
 
 
-def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
+def test_scoped_baseline_update_uses_manifest_verification_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -341,14 +344,73 @@ def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
         ),
         encoding="utf-8",
     )
+    adopted = Manifest(
+        version=api.__version__,
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        verify_paths=("src", "test"),
+        diagnostic_baseline=baseline_path.name,
+    )
+    (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
     def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, paths
-        captured.append(kwargs.get("rules"))
+        _ = self, kwargs
+        captured.append(paths)
         return report_from_tools(tmp_path, ())
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "eslint:unicorn/prefer-iterator-helpers",
+            ]
+        )
+        == 0
+    )
+    assert captured == [[str(tmp_path / "src"), str(tmp_path / "test")]]
+
+
+def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    captured: list[tuple[object, object]] = []
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, paths
+        captured.append((paths, kwargs.get("rules")))
+        return report_from_tools(tmp_path, ())
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    external_calls: list[object] = []
+
+    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        external_calls.append((files, kwargs.get("capabilities"), kwargs.get("include_react_doctor")))
+        return ()
+
+    monkeypatch.setattr(external, "analyze_external", analyze_eslint)
 
     assert (
         cli_main(
@@ -365,7 +427,8 @@ def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
         )
         == 0
     )
-    assert captured == [None]
+    assert captured == []
+    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
