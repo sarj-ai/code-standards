@@ -537,6 +537,221 @@ def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
     assert "baseline degraded" in report.issues[0].message
 
 
+def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_paths(tmp_path: Path) -> None:
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    staged_source = project / "staged.tsx"
+    staged_source.write_text('export const Image = () => <img src="avatar.png" />;\n', encoding="utf-8")
+    unrelated_source = project / "unrelated.tsx"
+    unrelated_source.write_text('export const Other = () => <img src="other.png" />;\n', encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+
+    def diagnostic(path: Path) -> dict[str, object]:
+        return {
+            "filePath": str(path),
+            "plugin": "react-doctor",
+            "rule": "alt-text",
+            "severity": "error",
+            "message": "Image elements must have alternative text.",
+            "line": 1,
+            "column": 28,
+        }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        if argv[0] == "git":
+            return ProcessOutput(0, "apps/web/staged.tsx\0", "")
+        is_full = "--scope" in argv and argv[argv.index("--scope") + 1] == "full"
+        diagnostics = [diagnostic(staged_source), diagnostic(unrelated_source)] if is_full else []
+        return ProcessOutput(
+            1 if diagnostics else 0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "reactDetected": is_full,
+                    "projects": [
+                        {
+                            "directory": str(project),
+                            "complete": True,
+                            "skippedChecks": [],
+                            "analyzedFileCount": 2 if is_full else 1,
+                            "scannedFileCount": 2 if is_full else 1,
+                            "diagnostics": diagnostics,
+                        }
+                    ],
+                    "diagnostics": diagnostics,
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=True,
+    )
+
+    assert report.completion is Completion.COMPLETE
+    assert tuple(item.location.path for item in report.diagnostics) == ("apps/web/staged.tsx",)
+    assert report.diagnostics[0].code == "react-doctor/alt-text"
+    assert "--staged" in seen[0]
+    assert seen[1] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+    scope_index = seen[2].index("--scope")
+    assert seen[2][scope_index + 1] == "full"
+    duration_index = seen[2].index("--max-duration")
+    assert int(seen[2][duration_index + 1]) >= 60
+
+
+def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> None:
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = argv
+        assert cwd == tmp_path
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "reactDetected": False,
+                    "projects": [{"directory": str(project), "complete": True}],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+        full_scan=True,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert "did not detect React" in report.issues[0].message
+
+
+def test_react_doctor_staged_fallback_rejects_malformed_scoped_coverage(tmp_path: Path) -> None:
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "reactDetected": False,
+                    "projects": [{"directory": str(project), "complete": False}],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=True,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert "did not complete" in report.issues[0].message
+    assert len(seen) == 1
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected_message"),
+    [
+        ("git", "index unavailable"),
+        ("full-exit", "full scan crashed"),
+        ("full-empty", "empty structured output"),
+    ],
+)
+def test_react_doctor_staged_fallback_failures_remain_blocking(
+    tmp_path: Path,
+    failure: str,
+    expected_message: str,
+) -> None:
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        if argv[0] == "git":
+            if failure == "git":
+                return ProcessOutput(128, "", "index unavailable")
+            return ProcessOutput(0, "apps/web/staged.tsx\0", "")
+        if "--scope" in argv:
+            if failure == "full-exit":
+                return ProcessOutput(2, "", "full scan crashed")
+            return ProcessOutput(0, "", "")
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "reactDetected": False,
+                    "projects": [
+                        {
+                            "directory": str(project),
+                            "complete": True,
+                            "skippedChecks": [],
+                            "analyzedFileCount": 1,
+                            "scannedFileCount": 1,
+                            "diagnostics": [],
+                        }
+                    ],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=True,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert expected_message in report.issues[0].message
+
+
 def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
     (tmp_path / "package.json").write_text(
