@@ -452,7 +452,11 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         seen.append(tuple(argv))
-        if argv[0] == "git":
+        if argv[:2] == ("git", "rev-parse"):
+            return ProcessOutput(0, f"{base}\n", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "diff"):
             return ProcessOutput(0, changed, "")
         return ProcessOutput(
             0,
@@ -463,6 +467,10 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
                     "version": manifest.eslint_peers()["react-doctor"],
                     "ok": True,
                     "baselineDegraded": True,
+                    "diff": {
+                        "baseBranch": base,
+                        "changedFileCount": len(tuple(item for item in changed.split("\0") if item)),
+                    },
                     "projects": [],
                     "diagnostics": [],
                     "error": None,
@@ -482,7 +490,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
     )
 
     assert report.completion is expected_completion
-    assert seen[0] == (
+    assert (
         "git",
         "diff",
         f"{base}...HEAD",
@@ -490,7 +498,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
         "--diff-filter=ACMR",
         "-z",
         "--",
-    )
+    ) in seen
     if expected_completion is Completion.FAILED:
         assert "baseline degraded" in report.issues[0].message
 
@@ -979,6 +987,7 @@ def test_react_doctor_staged_fallback_failures_remain_blocking(
 
 def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
+    monkeypatch.delenv("SARJ_STANDARDS_BASE", raising=False)
     (tmp_path / "package.json").write_text(
         '{"packageManager":"npm@11.5.2","dependencies":{"react":"19.0.0"}}\n',
         encoding="utf-8",
@@ -1110,11 +1119,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
-    assert git_seen == [
-        ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"),
-        ("git", "diff", f"{event_base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
-        ("git", "diff", "0123456789abcdef...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
-    ]
+    assert git_seen == [("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")]
     assert "--no-cache" in seen[0]
     duration_index = seen[0].index("--max-duration")
     assert seen[0][duration_index + 1] == "12"

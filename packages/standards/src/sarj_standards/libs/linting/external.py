@@ -523,12 +523,13 @@ def _invoke_react_doctor(
     # baseline promotion explicitly requests a full scan so existing debt can be
     # recorded even though the rollout itself changes no React source files.
     scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan)
-    allow_empty_projects = allow_empty_projects or _react_doctor_scope_has_no_source(
-        projects,
-        root=root,
-        runner=runner,
-        staged=staged,
-    )
+    if staged and not full_scan:
+        allow_empty_projects = allow_empty_projects or _react_doctor_scope_has_no_source(
+            projects,
+            root=root,
+            runner=runner,
+            staged=True,
+        )
     duration = _react_doctor_max_duration(file_count)
 
     def doctor_argv(selected_scope: Sequence[str]) -> tuple[str, ...]:
