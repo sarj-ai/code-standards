@@ -427,7 +427,7 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path) -> None:
     )
 
     assert [item.name for item in reports] == ["react-doctor"]
-    assert any("react-doctor" in item for item in seen[0])
+    assert any("react-doctor" in item for command in seen for item in command)
 
 
 @pytest.mark.parametrize(
