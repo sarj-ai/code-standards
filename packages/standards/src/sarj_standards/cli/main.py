@@ -1688,7 +1688,7 @@ def cmd_baseline(args: _Args) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    scoped_rules = args.baseline_rules if args.baseline_cmd == "update" and args.baseline_rules else None
+    scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
     report = Standards(root).analyze(
         selected,
         external=True,
@@ -1728,6 +1728,20 @@ def cmd_baseline(args: _Args) -> int:
         relative = output.relative_to(root) if output.is_relative_to(root) else output
         print(f'point the manifest at it: [baseline] diagnostics = "{relative}"')
     return 0
+
+
+def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
+    if not selectors:
+        return None
+    normalized: list[str] = []
+    for selector in selectors:
+        if selector.startswith("eslint:@sarj/"):
+            normalized.append("eslint:" + selector.removeprefix("eslint:@sarj/"))
+        elif selector.startswith("eslint:@"):
+            return None
+        else:
+            normalized.append(selector)
+    return normalized
 
 
 def main(argv: list[str] | None = None) -> int:

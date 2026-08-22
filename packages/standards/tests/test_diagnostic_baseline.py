@@ -286,7 +286,7 @@ def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) 
     assert cli_main(["--root", str(tmp_path), "baseline", "update"]) == 0
 
 
-def test_scoped_baseline_update_analyzes_only_selected_rules(
+def test_scoped_baseline_update_normalizes_native_sarj_eslint_rule(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -319,12 +319,53 @@ def test_scoped_baseline_update_analyzes_only_selected_rules(
                 "--output",
                 str(baseline_path),
                 "--rule",
+                "eslint:@sarj/prefer-ecmascript-private-members",
+            ]
+        )
+        == 0
+    )
+    assert captured == [(["eslint:prefer-ecmascript-private-members"], False)]
+
+
+def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    captured: list[object] = []
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, paths
+        captured.append(kwargs.get("rules"))
+        return report_from_tools(tmp_path, ())
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
                 "eslint:@typescript-eslint/naming-convention",
             ]
         )
         == 0
     )
-    assert captured == [(["eslint:@typescript-eslint/naming-convention"], False)]
+    assert captured == [None]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
