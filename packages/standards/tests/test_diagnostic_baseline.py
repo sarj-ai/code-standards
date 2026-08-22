@@ -289,9 +289,26 @@ def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) 
     assert cli_main(["--root", str(tmp_path), "baseline", "update"]) == 0
 
 
-def test_scoped_baseline_update_normalizes_native_sarj_eslint_rule(
+@pytest.mark.parametrize(
+    ("selector", "expected"),
+    [
+        ("eslint:@sarj/prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
+        ("eslint:prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
+        ("sarj-iac-lint:no-restated-comment", "iac:no-restated-comment"),
+        ("iac:no-restated-comment", "iac:no-restated-comment"),
+        ("sarj-python-lint:no-unnecessary-docstring", "python:no-unnecessary-docstring"),
+        ("python:no-unnecessary-docstring", "python:no-unnecessary-docstring"),
+        ("sarj-sql-lint:no-create-trigger", "sql:no-create-trigger"),
+        ("sql:no-create-trigger", "sql:no-create-trigger"),
+        ("sarj-text-lint:hidden-markdown-heading", "text:hidden-markdown-heading"),
+        ("text:hidden-markdown-heading", "text:hidden-markdown-heading"),
+    ],
+)
+def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    selector: str,
+    expected: str,
 ) -> None:
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(
@@ -322,12 +339,84 @@ def test_scoped_baseline_update_normalizes_native_sarj_eslint_rule(
                 "--output",
                 str(baseline_path),
                 "--rule",
-                "eslint:@sarj/prefer-ecmascript-private-members",
+                selector,
             ]
         )
         == 0
     )
-    assert captured == [(["eslint:prefer-ecmascript-private-members"], False)]
+    assert captured == [([expected], False)]
+
+
+@pytest.mark.parametrize(
+    ("source", "rule_id", "selector"),
+    [
+        ("eslint", "@sarj/prefer-ecmascript-private-members", "eslint:prefer-ecmascript-private-members"),
+        ("sarj-iac-lint", "no-restated-comment", "iac:no-restated-comment"),
+        ("sarj-python-lint", "no-unnecessary-docstring", "python:no-unnecessary-docstring"),
+        ("sarj-sql-lint", "no-create-trigger", "sql:no-create-trigger"),
+        ("sarj-text-lint", "hidden-markdown-heading", "text:hidden-markdown-heading"),
+    ],
+)
+def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    source: str,
+    rule_id: str,
+    selector: str,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    old = Diagnostic(
+        "OLD",
+        "old",
+        Severity.ERROR,
+        source,
+        Location("old.txt"),
+        rule_id=rule_id,
+        fingerprint="a" * 64,
+    )
+    baseline_path.write_text(
+        baseline.render(
+            (old,),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    replacement = Diagnostic(
+        "NEW",
+        "replacement",
+        Severity.ERROR,
+        source,
+        Location("new.txt"),
+        rule_id=rule_id,
+        fingerprint="b" * 64,
+    )
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, paths, kwargs
+        return report_from_tools(tmp_path, (ToolReport(source, Completion.COMPLETE, (replacement,)),))
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                selector,
+            ]
+        )
+        == 0
+    )
+    updated = baseline.load(baseline_path)
+    assert "a" * 64 not in updated
+    assert updated == {"b" * 64: 1}
 
 
 def test_scoped_baseline_update_uses_manifest_verification_paths(

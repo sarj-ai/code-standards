@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from datetime import timedelta
 from enum import StrEnum
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,8 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository commands report failures from fixed-argument child processes.
 import sys
 import tempfile
-from typing import TYPE_CHECKING, NoReturn
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Final, NoReturn
 
 from packaging.version import InvalidVersion, Version
 
@@ -26,7 +28,7 @@ from sarj_standards.libs.filesystem import is_link_like
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable, Mapping, Sequence
 
     from sarj_standards.libs.adoption import service
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic
@@ -64,6 +66,17 @@ _REACT_DOCTOR_METADATA = frozenset(
     }
 )
 _REACT_DOCTOR_TYPESCRIPT_SUFFIXES = frozenset({".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"})
+_BASELINE_RULE_SOURCE_ALIASES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "sarj-iac-lint": "iac",
+        "sarj-python-lint": "python",
+        "sarj-sql-lint": "sql",
+        "sarj-text-lint": "text",
+    }
+)
+_BASELINE_RULE_ENGINE_SOURCES: Final[Mapping[str, str]] = MappingProxyType(
+    {engine: source for source, engine in _BASELINE_RULE_SOURCE_ALIASES.items()}
+)
 
 
 class _EvaluationScope(StrEnum):
@@ -1748,7 +1761,12 @@ def cmd_baseline(args: _Args) -> int:
         if not output.is_file():
             print(f"error: scoped diagnostic baseline update requires an existing baseline: {output}", file=sys.stderr)
             return 2
-        rendered = baseline.merge_scoped(output, eligible, selectors=args.baseline_rules, **provenance)
+        rendered = baseline.merge_scoped(
+            output,
+            eligible,
+            selectors=_baseline_merge_selectors(args.baseline_rules),
+            **provenance,
+        )
     else:
         rendered = baseline.render(eligible, **provenance)
     try:
@@ -1771,10 +1789,14 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
         return None
     normalized: list[str] = []
     for selector in selectors:
-        if selector.startswith("eslint:@sarj/"):
+        source, separator, rule_id = selector.partition(":")
+        if separator and source in _BASELINE_RULE_SOURCE_ALIASES:
+            normalized.append(f"{_BASELINE_RULE_SOURCE_ALIASES[source]}:{rule_id}")
+        elif selector.startswith("eslint:@sarj/"):
             normalized.append("eslint:" + selector.removeprefix("eslint:@sarj/"))
         elif selector.startswith("eslint:"):
-            continue
+            if selector in _baseline_catalog_selectors():
+                normalized.append(selector)
         else:
             normalized.append(selector)
     return normalized
@@ -1784,8 +1806,47 @@ def _upstream_eslint_rules_for_baseline(selectors: Sequence[str]) -> frozenset[s
     return frozenset(
         selector
         for selector in selectors
-        if selector.startswith("eslint:") and not selector.startswith("eslint:@sarj/")
+        if selector.startswith("eslint:")
+        and not selector.startswith("eslint:@sarj/")
+        and selector not in _baseline_catalog_selectors()
     )
+
+
+def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
+    resolved: list[str] = []
+    for selector in selectors:
+        source, separator, rule_id = selector.partition(":")
+        resolved.append(selector)
+        native_source = _BASELINE_RULE_ENGINE_SOURCES.get(source)
+        if separator and native_source is not None:
+            resolved.append(f"{native_source}:{rule_id}")
+        elif separator and source == "eslint" and selector in _baseline_catalog_selectors():
+            resolved.append(f"eslint:@sarj/{rule_id}")
+    return tuple(dict.fromkeys(resolved))
+
+
+@lru_cache(maxsize=1)
+def _baseline_catalog_selectors() -> frozenset[str]:
+    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+
+    payload = rule_catalog_artifact.load()
+    rules = payload.get("rules")
+    if not isinstance(rules, list):
+        msg = "invalid bundled rule catalog"
+        raise TypeError(msg)
+    values: list[object] = rules  # pyright: ignore[reportUnknownVariableType]
+    selectors: set[str] = set()
+    for value in values:
+        if not isinstance(value, dict):
+            msg = "invalid bundled rule catalog selector"
+            raise TypeError(msg)
+        entry: dict[str, object] = value  # pyright: ignore[reportUnknownVariableType]
+        key = entry.get("key")
+        if not isinstance(key, str):
+            msg = "invalid bundled rule catalog selector"
+            raise TypeError(msg)
+        selectors.add(key)
+    return frozenset(selectors)
 
 
 def _diagnostic_matches(item: Diagnostic, selectors: frozenset[str]) -> bool:
