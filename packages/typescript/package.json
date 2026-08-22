@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "15.13.0",
+  "version": "15.13.1",
   "packageManager": "npm@12.0.2",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -34,7 +34,7 @@
   },
   "scripts": {
     "build": "tsup",
-    "dogfood": "npm run build && eslint --config eslint.dogfood.config.mjs src tests eslint.config.mjs eslint.dogfood.config.mjs tsup.config.ts vitest.config.ts --max-warnings 0 && node -e \"import('./dist/index.js').then(({default:p}) => console.log('dogfood: '+Object.keys(p.rules).length+' TypeScript rules, 0 diagnostics'))\"",
+    "dogfood": "npm run build && eslint --config eslint.dogfood.config.mjs src tests eslint.config.mjs eslint.dogfood.config.mjs eslint.naming-options.mjs tsup.config.ts vitest.config.ts --max-warnings 0 && node -e \"import('./dist/index.js').then(({default:p}) => console.log('dogfood: '+Object.keys(p.rules).length+' TypeScript rules, 0 diagnostics'))\"",
     "lint": "eslint . --max-warnings 0",
     "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",

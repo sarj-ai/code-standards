@@ -553,6 +553,29 @@ export function createConfig(options = {}) {
       "@typescript-eslint/naming-convention": [
         "error",
         {
+          selector: "variable",
+          modifiers: ["const", "global"],
+          filter: {
+            regex:
+              "^(Route|action|clientAction|clientLoader|config|csr|dynamic|dynamicParams|entries|fetchCache|handle|headers|instant|links|loader|maxDuration|meta|metadata|partial|prefetch|preferredRegion|prerender|revalidate|runtime|shouldRevalidate|ssr|trailingSlash|viewport)$",
+            match: true,
+          },
+          format: null,
+        },
+        {
+          selector: "variable",
+          modifiers: ["const", "global"],
+          types: ["function"],
+          format: ["camelCase", "PascalCase", "UPPER_CASE"],
+          leadingUnderscore: "allow",
+        },
+        {
+          selector: "variable",
+          modifiers: ["const", "global"],
+          format: ["UPPER_CASE"],
+          leadingUnderscore: "allow",
+        },
+        {
           selector: "default",
           format: ["camelCase"],
           leadingUnderscore: "allow",
@@ -1029,6 +1052,29 @@ export function createConfig(options = {}) {
       // a particular framework/compiler setup.
       "@typescript-eslint/naming-convention": [
         "error",
+        {
+          selector: "variable",
+          modifiers: ["const", "global"],
+          filter: {
+            regex:
+              "^(Route|action|clientAction|clientLoader|config|csr|dynamic|dynamicParams|entries|fetchCache|handle|headers|instant|links|loader|maxDuration|meta|metadata|partial|prefetch|preferredRegion|prerender|revalidate|runtime|shouldRevalidate|ssr|trailingSlash|viewport)$",
+            match: true,
+          },
+          format: null,
+        },
+        {
+          selector: "variable",
+          modifiers: ["const", "global"],
+          types: ["function"],
+          format: ["camelCase", "PascalCase", "UPPER_CASE"],
+          leadingUnderscore: "allow",
+        },
+        {
+          selector: "variable",
+          modifiers: ["const", "global"],
+          format: ["UPPER_CASE"],
+          leadingUnderscore: "allow",
+        },
         {
           selector: "default",
           format: ["camelCase", "PascalCase"],

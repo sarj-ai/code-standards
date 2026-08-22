@@ -187,6 +187,28 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   );
 
   it.each(CONFIG_FACTORIES)(
+    "%s requires module constants to use UPPER_CASE without renaming function APIs",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/src/constant-naming.ts"),
+      ]);
+      const namingMessages = result?.messages.filter(
+        (message) => message.ruleId === "@typescript-eslint/naming-convention",
+      );
+
+      expect(namingMessages?.map((message) => message.message)).toEqual([
+        "Variable name `moduleMetadata` must match one of the following formats: UPPER_CASE",
+      ]);
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
     "%s lets consumers keep an owned Vite config type-aware",
     async (_name, createConfig) => {
       const config = createConfig({

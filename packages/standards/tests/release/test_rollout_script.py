@@ -159,6 +159,20 @@ class TestSafety:
             (MANIFEST, "uv.lock", "eslint.config.mjs", ".github/workflows/standards.yml", ".github/workflows/ci.yml")
         )
 
+    def test_managed_paths_cover_generated_nested_type_configs_and_package_manager_policy(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / MANIFEST).write_text(
+            'schema = 3\nbundle = "7.1.0"\n\n[dest]\npython = "backend"\ntypescript = "typescript"\n',
+            encoding="utf-8",
+        )
+        allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+        assert "backend/pyright.strict.json" in allowed
+        assert "typescript/.yarnrc.yml" in allowed
+        assert "pnpm-workspace.yaml" in allowed
+
     def test_prevalidated_pin_bearing_workflow_is_allowed(self) -> None:
         workflow = ".github/workflows/ci-internal-tools.yml"
 

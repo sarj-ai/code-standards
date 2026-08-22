@@ -2,6 +2,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 import sarj, { strictRules } from "./dist/index.js";
+import { MODULE_CONSTANT_NAMING_OPTIONS } from "./eslint.naming-options.mjs";
 
 const allSarjRules = Object.fromEntries(
   Object.keys(sarj.rules)
@@ -21,7 +22,7 @@ export default defineConfig(
   {
     name: "sarj/all-custom-rules-dogfood",
     files: ["**/*.{ts,tsx,mts,cts,mjs}"],
-    plugins: { "@sarj": sarj },
+    plugins: { "@sarj": sarj, "@typescript-eslint": tseslint.plugin },
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
@@ -31,7 +32,10 @@ export default defineConfig(
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    rules: dogfoodRules,
+    rules: {
+      ...dogfoodRules,
+      "@typescript-eslint/naming-convention": ["error", ...MODULE_CONSTANT_NAMING_OPTIONS],
+    },
   },
   ...Object.entries(sourceOwnedRejectedExamples).map(([file, rule]) => ({
     name: `sarj/source-owned-rejected-example/${rule}`,

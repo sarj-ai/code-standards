@@ -23,7 +23,7 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "preferEcmascriptPrivate";
 type Options = readonly [];
 
-export const preferEcmascriptPrivateMembersDocumentation = {
+export const PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION = {
   summary: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members.",
   rationale: "ECMAScript private names enforce encapsulation at runtime instead of erasing the boundary during compilation.",
   remediation: "Replace the TypeScript `private` modifier and all proven same-class references with an ECMAScript private name.",
@@ -125,7 +125,7 @@ function isConvertible(member: TSESTree.ClassElement): member is PrivateConverti
 
 export default createRule<Options, MessageIds>({
   name: "prefer-ecmascript-private-members",
-  documentation: preferEcmascriptPrivateMembersDocumentation,
+  documentation: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members." },

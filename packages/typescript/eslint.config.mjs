@@ -2,6 +2,8 @@ import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
+import { MODULE_CONSTANT_NAMING_OPTIONS } from "./eslint.naming-options.mjs";
+
 export default defineConfig(
   { ignores: ["dist/**", "eslint.dogfood.config.mjs", "tests/fixtures/**"] },
   {
@@ -28,5 +30,12 @@ export default defineConfig(
     name: "sarj/estree-discriminants",
     files: ["src/rules/**/*.{ts,tsx,mts,cts}"],
     rules: { "@typescript-eslint/no-unsafe-enum-comparison": "off" },
+  },
+  {
+    name: "sarj/module-constant-naming",
+    files: ["**/*.{ts,tsx,mts,cts,mjs}"],
+    rules: {
+      "@typescript-eslint/naming-convention": ["error", ...MODULE_CONSTANT_NAMING_OPTIONS],
+    },
   },
 );
