@@ -1,6 +1,8 @@
 import type { Language } from './catalog';
 
 const COMPOUND_EXTENSIONS = [
+  ['.tftest.hcl', 'terraform'],
+  ['.git/keep', 'text'],
   ['.d.ts', 'typescript'],
   ['.test.ts', 'typescript'],
   ['.spec.ts', 'typescript'],

@@ -35,8 +35,24 @@ export default defineConfig(
   {
     files: ['**/*.astro'],
     rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@astrojs/starlight/components',
+              importNames: ['Code'],
+              message: 'Render block code through CodeBlock.astro and the formatted-code projection.',
+            },
+          ],
+        },
+      ],
       // This React/shadcn policy is inapplicable to framework-native Astro markup.
       '@sarj/prefer-shadcn-primitives': 'off',
     },
+  },
+  {
+    files: ['src/components/CodeBlock.astro'],
+    rules: { 'no-restricted-imports': 'off' },
   },
 );

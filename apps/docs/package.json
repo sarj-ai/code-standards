@@ -5,6 +5,11 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "code-examples:check": "node scripts/format-code-examples.mjs --check",
+    "code-examples:sync": "node scripts/format-code-examples.mjs --write",
+    "prebuild": "npm run code-examples:check",
+    "precheck": "npm run code-examples:check",
+    "predev": "npm run code-examples:check",
     "build": "astro build",
     "check": "astro check",
     "lint": "eslint . --max-warnings 0",
@@ -25,6 +30,10 @@
     "@sarj/eslint-plugin": "file:../../packages/typescript",
     "eslint": "10.8.1",
     "eslint-plugin-astro": "3.1.0",
+    "prettier": "3.9.6",
+    "prettier-plugin-sh": "0.19.0",
+    "prettier-plugin-toml": "2.0.6",
+    "sql-formatter": "15.8.2",
     "typescript": "6.0.3",
     "typescript-eslint": "8.67.0",
     "wrangler": "4.125.0"

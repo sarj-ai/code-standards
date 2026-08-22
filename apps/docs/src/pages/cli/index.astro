@@ -1,17 +1,11 @@
 ---
 import ReferencePage from '../../components/ReferencePage.astro';
-import { Code } from '@astrojs/starlight/components';
+import CodeBlock from '../../components/CodeBlock.astro';
 import { cliReference, commandAnchor, flattenCommands, invocation, optionLabel } from '../../lib/cli';
+import { formattedStaticCode } from '../../lib/display-code';
 
 const commands = flattenCommands().filter((command) => command.path[0] !== 'maintain');
 const commandGroups = cliReference.commands.filter((command) => command.name !== 'maintain');
-const quickStart = [
-  cliReference.launcher.install,
-  `${cliReference.program} setup`,
-  `${cliReference.program} doctor`,
-  `${cliReference.program} check`,
-].join('\n');
-const runOnce = `${cliReference.launcher.runLatest} setup`;
 const workflow = [
   ['setup', 'Install the shared configuration and repository hooks.'],
   ['doctor', 'Check the installation and repair configuration drift.'],
@@ -28,10 +22,10 @@ const workflow = [
     <div>
       <h1>Setup</h1>
       <p>Install once, set up the repository, verify it, then run the full check.</p>
-      <Code code={quickStart} lang="bash" frame="terminal" wrap />
+      <CodeBlock code={formattedStaticCode.quickSetup} lang="bash" frame="terminal" wrap />
       <details>
         <summary>Run once</summary>
-        <Code code={runOnce} lang="bash" frame="terminal" wrap />
+        <CodeBlock code={formattedStaticCode.runOnce} lang="bash" frame="terminal" wrap />
       </details>
     </div>
   </section>
@@ -48,8 +42,8 @@ const workflow = [
         in <code>.sarj-standards.toml</code>. <code>show ci</code> emits them after dependency installation and before
         analysis; Standards never guesses a repository build script.
       </p>
-      <Code
-        code={'[ci]\nbootstrap = ["yarn generate", "uv run --project python generate-api"]'}
+      <CodeBlock
+        code={formattedStaticCode.bootstrap}
         lang="toml"
         frame="code"
         wrap
@@ -86,7 +80,7 @@ const workflow = [
         <div>
           <h2><code>{invocation(command)}</code></h2>
           {command.summary && <p>{command.summary}</p>}
-          <Code code={command.usage} lang="text" title="Usage" frame="code" wrap />
+          <CodeBlock code={formattedStaticCode.usage[command.path.join('/')]!} lang="text" title="Usage" frame="code" wrap />
           {command.options.filter((option) => !option.names.includes('--help')).length > 0 && (
             <details class="command-options">
               <summary>Options ({command.options.filter((option) => !option.names.includes('--help')).length})</summary>

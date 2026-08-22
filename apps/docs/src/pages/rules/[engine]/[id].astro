@@ -3,9 +3,10 @@ import ReferencePage from '../../../components/ReferencePage.astro';
 import RuleExample from '../../../components/RuleExample.astro';
 import EngineMark from '../../../components/EngineMark.astro';
 import InlineCodeText from '../../../components/InlineCodeText.astro';
-import { Code } from '@astrojs/starlight/components';
+import CodeBlock from '../../../components/CodeBlock.astro';
 import RulePager from '@sarj/docs-ui/RulePager.astro';
 import { catalog, engineLabel, ruleHref, sourceUrl, type Rule } from '../../../lib/catalog';
+import { displayRule } from '../../../lib/display-code';
 import { referenceSidebar } from '../../../lib/navigation';
 
 export function getStaticPaths() {
@@ -25,10 +26,11 @@ interface Props {
   nextRule: Rule | null;
 }
 const { rule, previousRule, nextRule } = Astro.props;
-const exampleScenarios = [...new Set(rule.examples.map((example) => example.scenarioId))].map((scenarioId) => ({
+const displayed = displayRule(rule);
+const exampleScenarios = [...new Set(displayed.examples.map((example) => example.scenarioId))].map((scenarioId) => ({
   scenarioId,
-  before: rule.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'reject')!,
-  after: rule.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'accept')!,
+  before: displayed.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'reject')!,
+  after: displayed.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'accept')!,
 }));
 ---
 
@@ -89,7 +91,7 @@ const exampleScenarios = [...new Set(rule.examples.map((example) => example.scen
     {rule.optionsSchema && (
       <section class="options-schema">
         <h2>Options</h2>
-        <Code code={JSON.stringify(rule.optionsSchema, null, 2)} lang="json" frame="code" wrap />
+        <CodeBlock code={displayed.optionsSchemaSource!} lang="json" frame="code" wrap />
       </section>
     )}
 

@@ -50,6 +50,11 @@ for (const token of themeTokenCatalog) {
 
 const starlightSource = readFileSync(join(packageRoot, 'src', 'styles', 'starlight.css'), 'utf8');
 assert.match(starlightSource, /\.sarj-visually-hidden\s*\{/u);
+assert.match(starlightSource, /@container \(min-width: 52rem\)[\s\S]*grid-template-rows: subgrid/u);
+assert.match(
+  starlightSource,
+  /\.sarj-code-comparison__files > \.expressive-code:last-child > figure > pre/u,
+);
 for (const declaration of [
   'position: absolute',
   'width: 1px',

@@ -9,7 +9,7 @@ VERSION ?=
 CHANNEL ?= stable
 REGISTRY ?= .sarj-standards-rollout.toml
 
-.PHONY: help setup build verify doctor docs-artifacts-check docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout
+.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
@@ -38,9 +38,13 @@ docs-artifacts-check:
 	@$(STANDARDS) --root . maintain cli-reference check
 	@$(STANDARDS) --root . maintain docs check
 
+docs-code-sync:
+	cd apps/docs && npm run code-examples:sync
+
 docs-check: docs-artifacts-check
 	cd packages/typescript && npm run build
 	cd packages/docs-ui && npm test
+	cd apps/docs && npm run code-examples:check
 	cd apps/docs && npm run lint && npm run check && npm run build
 	cd apps/docs-ui && npm run lint && npm run check && npm run build
 
