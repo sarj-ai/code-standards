@@ -159,6 +159,11 @@ class _ReactDoctorProject(_ReactDoctorProtocolModel):
     scanned_file_count: int | None = Field(default=None, alias="scannedFileCount", ge=0)
 
 
+class _ReactDoctorDiff(_ReactDoctorProtocolModel):
+    base_branch: str = Field(alias="baseBranch", min_length=1)
+    changed_file_count: int = Field(alias="changedFileCount", ge=0)
+
+
 class _ReactDoctorReport(_ReactDoctorProtocolModel):
     schema_version: Literal[3] = Field(alias="schemaVersion")
     version: str = Field(min_length=1)
@@ -168,6 +173,7 @@ class _ReactDoctorReport(_ReactDoctorProtocolModel):
     react_detected: bool | None = Field(default=None, alias="reactDetected")
     # The v3 serializer emits this field only when degradation occurred.
     baseline_degraded: bool = Field(default=False, alias="baselineDegraded")
+    diff: _ReactDoctorDiff | None = None
     skipped_projects: tuple[object, ...] = Field(default=(), alias="skippedProjects")
     error: _ReactDoctorFailure | None
 
@@ -517,12 +523,13 @@ def _invoke_react_doctor(
     # baseline promotion explicitly requests a full scan so existing debt can be
     # recorded even though the rollout itself changes no React source files.
     scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan)
-    allow_empty_projects = allow_empty_projects or _react_doctor_scope_has_no_source(
-        projects,
-        root=root,
-        runner=runner,
-        staged=staged,
-    )
+    if staged and not full_scan:
+        allow_empty_projects = allow_empty_projects or _react_doctor_scope_has_no_source(
+            projects,
+            root=root,
+            runner=runner,
+            staged=True,
+        )
     duration = _react_doctor_max_duration(file_count)
 
     def doctor_argv(selected_scope: Sequence[str]) -> tuple[str, ...]:
@@ -564,6 +571,14 @@ def _invoke_react_doctor(
             runner=runner,
             cwd=project,
             full_argv=doctor_argv(("--scope", "full")),
+        )
+    elif not full_scan:
+        parser = partial(
+            _parse_react_doctor_changed_scope,
+            expected_projects=expected_projects,
+            allow_empty_projects=allow_empty_projects,
+            runner=runner,
+            projects=projects,
         )
     return _invoke(
         name,
@@ -623,6 +638,51 @@ def _parse_react_doctor_staged_with_full_fallback(
     return tuple(item for item in diagnostics if item.location.path in staged_paths)
 
 
+def _parse_react_doctor_changed_scope(
+    payload: str,
+    *,
+    root: Path,
+    expected_projects: frozenset[Path],
+    allow_empty_projects: bool,
+    runner: ProcessRunner,
+    projects: Sequence[Path],
+) -> tuple[Diagnostic, ...]:
+    report = _ReactDoctorReport.model_validate_json(payload)
+    allow_empty_projects = allow_empty_projects or _react_doctor_degraded_scope_has_no_source(
+        report,
+        projects=projects,
+        root=root,
+        runner=runner,
+    )
+    return _parse_react_doctor_report(
+        report,
+        root=root,
+        expected_projects=expected_projects,
+        allow_empty_projects=allow_empty_projects,
+        include_warnings=False,
+        require_react_detection=True,
+    )
+
+
+def _react_doctor_degraded_scope_has_no_source(
+    report: _ReactDoctorReport,
+    *,
+    projects: Sequence[Path],
+    root: Path,
+    runner: ProcessRunner,
+) -> bool:
+    if not report.baseline_degraded or report.projects or report.diagnostics or report.diff is None:
+        return False
+    return _react_doctor_scope_has_no_source(
+        projects,
+        root=root,
+        runner=runner,
+        staged=False,
+        reported_base=report.diff.base_branch,
+        reported_changed_file_count=report.diff.changed_file_count,
+    )
+
+
 def _react_doctor_staged_paths(root: Path, *, runner: ProcessRunner) -> frozenset[str]:
     output = runner(
         ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"),
@@ -666,13 +726,29 @@ def _react_doctor_scope_has_no_source(
     root: Path,
     runner: ProcessRunner,
     staged: bool,
+    reported_base: str | None = None,
+    reported_changed_file_count: int | None = None,
 ) -> bool:
     if staged:
         diff_args = ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
     else:
-        base = change_scope_base()
+        base = reported_base or change_scope_base()
         if not base:
             return False
+        if reported_base is not None:
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", base) or ".." in base or "@{" in base:
+                return False
+            resolved = runner(
+                ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
+                cwd=root,
+            )
+            resolved_base = resolved.stdout.strip()
+            if resolved.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None:
+                return False
+            ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, "HEAD"), cwd=root)
+            if ancestor.returncode != 0:
+                return False
+            base = resolved_base
         diff_args = ("git", "diff", f"{base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--")
     changed = runner(
         diff_args,
@@ -682,7 +758,10 @@ def _react_doctor_scope_has_no_source(
         return False
     resolved_root = root.resolve()
     resolved_projects = tuple(project.resolve() for project in projects)
-    for relative in (item for item in changed.stdout.split("\0") if item):
+    changed_paths = tuple(item for item in changed.stdout.split("\0") if item)
+    if reported_changed_file_count is not None and len(changed_paths) != reported_changed_file_count:
+        return False
+    for relative in changed_paths:
         relative_path = Path(relative)
         if relative_path.is_absolute() or ".." in relative_path.parts:
             return False
