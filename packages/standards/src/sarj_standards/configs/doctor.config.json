@@ -1,7 +1,7 @@
 {
   "$schema": "https://react.doctor/schema/config.json",
   "adoptExistingLintConfig": false,
-  "blocking": "warning",
+  "blocking": "error",
   "buckets": {
     "compiler-cleanup": "off"
   },

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, final
 import pytest
 
 from sarj_standards.libs.adoption import doctor as adoption_doctor
+from sarj_standards.libs.adoption import manifest as adoption_manifest
 from sarj_standards.libs.release import rollout
 
 
@@ -115,6 +116,51 @@ class TestRegistry:
         )
 
         assert rollout.load_registry(path)[0].baseline_rules == ("eslint:@sarj/new-rule",)
+
+    def test_react_doctor_policy_change_adds_one_source_wildcard(self) -> None:
+        selected = rollout.rollout_baseline_rules(
+            rollout.Consumer(
+                "one",
+                "r/one",
+                "main",
+                ("true",),
+                baseline_rules=("eslint:@sarj/new-rule",),
+            ),
+            rollout.ReactDoctorPolicy(b'{"blocking":"warning"}', "0.9.12"),
+            rollout.ReactDoctorPolicy(b'{"blocking":"error"}', "0.9.12"),
+        )
+
+        assert selected == ("eslint:@sarj/new-rule", "react-doctor:*")
+
+    def test_unchanged_react_doctor_policy_does_not_rebaseline(self) -> None:
+        policy = rollout.ReactDoctorPolicy(b'{"blocking":"error"}', "0.9.12")
+
+        assert rollout.rollout_baseline_rules(consumer(), policy, policy) == ()
+
+    def test_react_doctor_policy_snapshot_reads_managed_config_and_direct_pin(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        project = tmp_path / "frontend"
+        project.mkdir()
+        config = b'{"blocking":"error"}\n'
+        (project / "doctor.config.json").write_bytes(config)
+        (project / "package.json").write_text(
+            '{"devDependencies":{"react-doctor":"0.9.12"}}\n',
+            encoding="utf-8",
+        )
+
+        @final
+        class Adopted:
+            typescript_dest: str = "frontend"
+
+        def load_adopted(_root: Path) -> Adopted:
+            return Adopted()
+
+        monkeypatch.setattr(adoption_manifest, "load", load_adopted)
+
+        assert rollout.react_doctor_policy_snapshot(tmp_path) == rollout.ReactDoctorPolicy(config, "0.9.12")
 
     def test_registry_carries_a_path_constrained_consumer_baseline_update(self, tmp_path: Path) -> None:
         path = tmp_path / "registry.toml"
@@ -548,7 +594,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         def fresh_branch(*_args: object) -> rollout.BranchPreparation:
             return rollout.BranchPreparation("standards-rollout/current", None)
 
-        def fixed_temporary_directory(**_kwargs: object) -> FixedTemporaryDirectory:
+        def fixed_temporary_directory(**kwargs: object) -> FixedTemporaryDirectory:
+            assert kwargs == {"prefix": "standards-rollout-", "ignore_cleanup_errors": True}
             return FixedTemporaryDirectory()
 
         def provisioned_tools(*_args: object) -> rollout.ProvisionedTools:

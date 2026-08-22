@@ -223,6 +223,11 @@ class ProvisionedTools(NamedTuple):
     command_prefix: tuple[str, ...]
 
 
+class ReactDoctorPolicy(NamedTuple):
+    config: bytes | None
+    package_pin: str | None
+
+
 def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-locals] -- schema fields stay explicit
     with path.open("rb") as stream:
         parsed: object = tomllib.load(stream)
@@ -1004,6 +1009,40 @@ def prepare_branch(
     return BranchPreparation(branch, previous_sha)
 
 
+def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
+    adopted = adoption_manifest.load(repo)
+    if adopted is None:
+        return ReactDoctorPolicy(None, None)
+    project = repo / adopted.typescript_dest
+    config_path = project / "doctor.config.json"
+    config = config_path.read_bytes() if config_path.is_file() else None
+    package_path = project / "package.json"
+    package_pin: str | None = None
+    if package_path.is_file():
+        try:
+            parsed: object = json.loads(package_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        except OSError, ValueError:
+            parsed = None
+        if is_object(parsed):
+            for field in ("dependencies", "devDependencies", "peerDependencies"):
+                dependencies = parsed.get(field)
+                if is_object(dependencies) and isinstance(pin := dependencies.get("react-doctor"), str):
+                    package_pin = pin
+                    break
+    return ReactDoctorPolicy(config, package_pin)
+
+
+def rollout_baseline_rules(
+    consumer: Consumer,
+    before: ReactDoctorPolicy,
+    after: ReactDoctorPolicy,
+) -> tuple[str, ...]:
+    selectors = list(consumer.baseline_rules)
+    if before != after and (after.config is not None or after.package_pin is not None):
+        selectors.append("react-doctor:*")
+    return tuple(dict.fromkeys(selectors))
+
+
 def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verification and mutation state bound
     consumer: Consumer,
     version: str,
@@ -1020,7 +1059,11 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         return existing
     if dry_run:
         return Outcome(consumer, "would-create", detail=rollout_branch(version))
-    with tempfile.TemporaryDirectory(prefix="standards-rollout-") as temporary:
+    # Consumer package managers can leave short-lived background cleanup work
+    # behind after their command exits. The hosted runner discards this
+    # workspace, so a best-effort temporary-directory cleanup must never mask
+    # the rollout outcome or prevent later consumers from being reconciled.
+    with tempfile.TemporaryDirectory(prefix="standards-rollout-", ignore_cleanup_errors=True) as temporary:
         repo = Path(temporary) / "repo"
         runner.run(
             (
@@ -1041,6 +1084,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         preparation = prepare_branch(repo, version, base_sha, runner)
         branch = preparation.branch
         previous_sha = preparation.previous_sha
+        previous_react_doctor_policy = react_doctor_policy_snapshot(repo)
         tool = (
             "uvx",
             "--isolated",
@@ -1070,19 +1114,24 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         except subprocess.CalledProcessError as exc:
             msg = f"{consumer.name}: dependency installation failed before a coherent rollout patch was prepared:\n"
             raise RolloutError(msg + process_failure_detail(exc)) from exc
+        baseline_rules = rollout_baseline_rules(
+            consumer,
+            previous_react_doctor_policy,
+            react_doctor_policy_snapshot(repo),
+        )
         adopted = adoption_manifest.load(repo)
         baseline_relative = None if adopted is None else adopted.diagnostic_baseline
         allowed_baseline_paths = frozenset(
             (*(() if baseline_relative is None else (baseline_relative,)), *consumer.baseline_paths)
         )
         baseline_path = None if baseline_relative is None else repo / baseline_relative
-        if consumer.baseline_rules and (baseline_path is None or baseline_relative is None):
+        if baseline_rules and (baseline_path is None or baseline_relative is None):
             msg = (
                 f"{consumer.name}: registry declares promoted baseline rules, but the updated "
                 "consumer manifest does not declare diagnostic_baseline"
             )
             raise RolloutError(msg)
-        if baseline_path is not None and baseline_relative is not None and consumer.baseline_rules:
+        if baseline_path is not None and baseline_relative is not None and baseline_rules:
             baseline_command = [
                 *tool_prefix,
                 *tool,
@@ -1092,7 +1141,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 baseline_relative,
                 "--trust-repository-code",
             ]
-            for selector in consumer.baseline_rules:
+            for selector in baseline_rules:
                 baseline_command.extend(("--rule", selector))
             try:
                 runner.run(tuple(baseline_command), cwd=repo, env=unauthenticated)

@@ -272,7 +272,7 @@ def _entry_selected(entry: dict[str, object], selectors: frozenset[str]) -> bool
     return (
         isinstance(source, str)
         and isinstance(rule_id, str)
-        and (rule_id in selectors or f"{source}:{rule_id}" in selectors)
+        and (rule_id in selectors or f"{source}:*" in selectors or f"{source}:{rule_id}" in selectors)
     )
 
 

@@ -221,7 +221,7 @@ def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Pat
         }
     )
 
-    finding = parse_react_doctor(payload, root=tmp_path)[0]
+    finding = parse_react_doctor(payload, root=tmp_path, include_warnings=True)[0]
 
     assert finding.location.path == "package.json"
     assert finding.location.position is None
@@ -577,7 +577,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
                                     "filePath": str(source),
                                     "plugin": "react-doctor",
                                     "rule": "button-has-type",
-                                    "severity": "warning",
+                                    "severity": "error",
                                     "message": "Button needs an explicit type.",
                                     "line": 1,
                                     "column": 32,
@@ -612,12 +612,14 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     )
 
     assert report.completion is Completion.COMPLETE
+    assert tuple(item.location.path for item in report.diagnostics) == ("component.tsx",)
     assert report.diagnostics[0].severity is Severity.ERROR
     assert report_from_tools(tmp_path, (report,)).exit_code == 1
     assert "--staged" in seen[0]
     assert "--scope" not in seen[0]
     blocking_index = seen[0].index("--blocking")
-    assert seen[0][blocking_index + 1] == "warning"
+    assert seen[0][blocking_index + 1] == "error"
+    assert "--no-warnings" in seen[0]
 
     changed_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
         tmp_path,
@@ -648,7 +650,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
         staged=False,
     )
 
-    assert tuple(item.location.path for item in github_report.diagnostics) == ("component.tsx", "untouched.tsx")
+    assert tuple(item.location.path for item in github_report.diagnostics) == ("component.tsx",)
     github_base_index = seen[2].index("--base")
     assert seen[2][github_base_index + 1] == event_base
 
@@ -664,7 +666,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     )
 
     assert ci_report.completion is Completion.COMPLETE
-    assert tuple(item.location.path for item in ci_report.diagnostics) == ("component.tsx", "untouched.tsx")
+    assert tuple(item.location.path for item in ci_report.diagnostics) == ("component.tsx",)
 
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"

@@ -533,7 +533,8 @@ def _invoke_react_doctor(
         ",".join(item.relative_to(project).as_posix() or "." for item in projects),
         *scope_args,
         "--blocking",
-        "warning",
+        "error",
+        "--no-warnings",
         "--no-dead-code",
         "--no-supply-chain",
         "--no-score",
@@ -1244,6 +1245,7 @@ def parse_react_doctor(
     root: Path,
     expected_projects: frozenset[Path] | None = None,
     allow_empty_projects: bool = False,
+    include_warnings: bool = False,
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
     expected_version = manifest.eslint_peers()["react-doctor"]
@@ -1301,6 +1303,12 @@ def parse_react_doctor(
             raise ValueError(msg)
         directory = _contained_report_directory(project, root)
         for item in project.diagnostics:
+            # The 0.9.x compact JSON protocol can retain warning diagnostics
+            # even when both config and argv disable warnings. Standards only
+            # promotes React Doctor's error surface, so enforce that boundary
+            # after validating the complete upstream report.
+            if item.severity == "warning" and not include_warnings:
+                continue
             path = _react_doctor_path(item, directory, root)
             location = _react_doctor_location(item, path, root, documents)
             rule = f"{item.plugin}/{item.rule}"
