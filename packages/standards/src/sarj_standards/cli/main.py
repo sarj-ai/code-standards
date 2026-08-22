@@ -1695,6 +1695,7 @@ def cmd_baseline(args: _Args) -> int:
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=AnalysisMode.RAW,
         rules=scoped_rules,
+        include_react_doctor=False,
     )
     blocked = [issue for issue in report.issues if issue.kind != "baseline-failure"]
     if blocked:

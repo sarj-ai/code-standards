@@ -202,6 +202,30 @@ def test_react_doctor_zero_coordinates_become_a_path_only_location(tmp_path: Pat
     assert finding.location.region is None
 
 
+def test_react_doctor_accepts_omitted_false_baseline_degraded_metadata(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "reactDetected": True,
+            "projects": [
+                {
+                    "directory": str(tmp_path),
+                    "complete": True,
+                    "skippedChecks": [],
+                    "analyzedFileCount": 1,
+                    "scannedFileCount": 1,
+                }
+            ],
+            "skippedProjects": [],
+            "error": None,
+        }
+    )
+
+    assert parse_react_doctor(payload, root=tmp_path, expected_projects=frozenset({tmp_path.resolve()})) == ()
+
+
 def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
     payload = json.dumps(
         {
@@ -627,7 +651,7 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
                 "--",
                 "eslint",
                 "--format",
-                "json",
+                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
                 "--no-warn-ignored",
                 "--no-cache",
                 "--",
@@ -637,7 +661,17 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
         ),
         pytest.param(
             ("pnpm", "exec", "eslint", "--", "app.ts"),
-            ("pnpm", "exec", "eslint", "--format", "json", "--no-warn-ignored", "--no-cache", "--", "app.ts"),
+            (
+                "pnpm",
+                "exec",
+                "eslint",
+                "--format",
+                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+                "--no-warn-ignored",
+                "--no-cache",
+                "--",
+                "app.ts",
+            ),
             id="pnpm-local-exec",
         ),
     ],
@@ -732,7 +766,12 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
 
     assert called
     assert called[0][0] == str(binary)
-    assert called[0][1:5] == ("--format", "json", "--no-warn-ignored", "--no-cache")
+    assert called[0][1:5] == (
+        "--format",
+        str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        "--no-warn-ignored",
+        "--no-cache",
+    )
     assert reports[0].completion is Completion.COMPLETE
 
 

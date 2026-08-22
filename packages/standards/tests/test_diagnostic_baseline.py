@@ -10,7 +10,16 @@ from sarj_standards import api
 from sarj_standards.cli.main import main as cli_main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.adoption.manifest import load as load_manifest
-from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Position, Severity, ToolReport, baseline
+from sarj_standards.libs.diagnostics import (
+    AnalysisReport,
+    Completion,
+    Diagnostic,
+    Location,
+    Position,
+    Severity,
+    ToolReport,
+    baseline,
+)
 from sarj_standards.libs.linting.analysis import report_from_tools
 
 
@@ -291,15 +300,11 @@ def test_scoped_baseline_update_analyzes_only_selected_rules(
         ),
         encoding="utf-8",
     )
-    captured: dict[str, object] = {}
+    captured: list[tuple[object, object]] = []
 
-    def analyze(
-        self: api.Standards,
-        paths: object = None,
-        **kwargs: object,
-    ) -> api.AnalysisReport:
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
         _ = self, paths
-        captured.update(kwargs)
+        captured.append((kwargs.get("rules"), kwargs.get("include_react_doctor")))
         return report_from_tools(tmp_path, ())
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)
@@ -314,12 +319,12 @@ def test_scoped_baseline_update_analyzes_only_selected_rules(
                 "--output",
                 str(baseline_path),
                 "--rule",
-                "python:no-print",
+                "eslint:@typescript-eslint/naming-convention",
             ]
         )
         == 0
     )
-    assert captured["rules"] == ["python:no-print"]
+    assert captured == [(["eslint:@typescript-eslint/naming-convention"], False)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:

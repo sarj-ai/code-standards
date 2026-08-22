@@ -70,6 +70,7 @@ _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
 _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
 _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
+_ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
 _REACT_RUNTIME_PACKAGES = frozenset(
     {
         "@astrojs/react",
@@ -163,7 +164,8 @@ class _ReactDoctorReport(_ReactDoctorProtocolModel):
     ok: bool
     projects: tuple[_ReactDoctorProject, ...]
     react_detected: bool | None = Field(default=None, alias="reactDetected")
-    baseline_degraded: bool | None = Field(default=None, alias="baselineDegraded")
+    # The v3 serializer emits this field only when degradation occurred.
+    baseline_degraded: bool = Field(default=False, alias="baselineDegraded")
     skipped_projects: tuple[object, ...] = Field(default=(), alias="skippedProjects")
     error: _ReactDoctorFailure | None
 
@@ -1318,7 +1320,7 @@ def _eslint_json_argv(argv: Sequence[str]) -> tuple[str, ...]:
     except ValueError as exc:
         msg = "ESLint command does not contain an eslint executable"
         raise ValueError(msg) from exc
-    values[index:index] = ["--format", "json", "--no-warn-ignored", "--no-cache"]
+    values[index:index] = ["--format", str(_ESLINT_FORMATTER), "--no-warn-ignored", "--no-cache"]
     return tuple(values)
 
 
