@@ -327,6 +327,57 @@ def test_scoped_baseline_update_normalizes_native_sarj_eslint_rule(
     assert captured == [(["eslint:prefer-ecmascript-private-members"], False)]
 
 
+def test_scoped_baseline_update_uses_manifest_verification_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    adopted = Manifest(
+        version=api.__version__,
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        verify_paths=("src", "test"),
+        diagnostic_baseline=baseline_path.name,
+    )
+    (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    captured: list[object] = []
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, kwargs
+        captured.append(paths)
+        return report_from_tools(tmp_path, ())
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "eslint:unicorn/prefer-iterator-helpers",
+            ]
+        )
+        == 0
+    )
+    assert captured == [[str(tmp_path / "src"), str(tmp_path / "test")]]
+
+
 def test_scoped_baseline_update_analyzes_all_rules_for_upstream_eslint_selector(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

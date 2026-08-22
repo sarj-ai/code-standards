@@ -1685,6 +1685,10 @@ def cmd_baseline(args: _Args) -> int:
         # `analyze` rejects anything outside the repository, so normalize the paths a
         # caller naturally types (absolute, or relative to the shell) before handing over.
         selected = _selected_paths(root, args.files) if args.files else None
+        if selected is None and args.baseline_cmd == "update" and args.baseline_rules:
+            adopted = manifest.load(root)
+            if adopted is not None:
+                selected = [str(root / path) for path in adopted.verify_paths]
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

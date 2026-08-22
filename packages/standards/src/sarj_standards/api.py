@@ -374,6 +374,7 @@ class Standards:
                     active_selected,
                     root=self.root,
                     trust=normalized_trust,
+                    capabilities=frozenset({"eslint"}) if rule_selection is not None else None,
                     grouped=selected_groups,
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,

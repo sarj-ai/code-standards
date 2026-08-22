@@ -841,6 +841,30 @@ def test_basedpyright_utf16_range_preserves_astral_character(tmp_path: Path) -> 
     assert finding.location.region.end.byte_offset == 13
 
 
+def test_basedpyright_preserves_project_diagnostic_without_range(tmp_path: Path) -> None:
+    source = tmp_path / "theme.py"
+    source.write_text("from . import ui\n", encoding="utf-8")
+    payload = json.dumps(
+        {
+            "generalDiagnostics": [
+                {
+                    "file": str(source),
+                    "severity": "error",
+                    "message": "Cycle detected in import chain",
+                    "rule": "reportImportCycles",
+                }
+            ]
+        }
+    )
+
+    finding = parse_basedpyright(payload, root=tmp_path)[0]
+
+    assert finding.code == "reportImportCycles"
+    assert finding.location.path == "theme.py"
+    assert finding.location.position is None
+    assert finding.location.region is None
+
+
 def test_basedpyright_accepts_range_ending_at_trailing_newline_eof(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")

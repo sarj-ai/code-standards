@@ -191,7 +191,9 @@ class _BasedPyrightDiagnostic(BaseModel):
     severity: str = Field(min_length=1)
     message: str = Field(min_length=1)
     rule: str | None = None
-    range: _BasedPyrightRange
+    # BasedPyright omits the range for project-level diagnostics such as
+    # reportImportCycles. Preserve those findings with a file-only location.
+    range: _BasedPyrightRange | None = None
 
 
 class _BasedPyrightReport(BaseModel):
@@ -1116,8 +1118,11 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     diagnostics: list[Diagnostic] = []
     for item in report.general_diagnostics:
         path = _reported_path(item.file, root)
-        start = _basedpyright_position(item.range.start, path, documents)
-        end = _basedpyright_position(item.range.end, path, documents)
+        location = Location(_relative(path, root))
+        if item.range is not None:
+            start = _basedpyright_position(item.range.start, path, documents)
+            end = _basedpyright_position(item.range.end, path, documents)
+            location = Location(_relative(path, root), region=Region(start, end))
         rule = item.rule or "basedpyright"
         diagnostics.append(
             Diagnostic(
@@ -1125,7 +1130,7 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
                 _redact_message(item.message, root),
                 _severity_text(item.severity),
                 "basedpyright",
-                Location(_relative(path, root), region=Region(start, end)),
+                location,
                 rule_id=rule,
             )
         )

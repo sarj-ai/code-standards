@@ -396,6 +396,30 @@ def test_disabled_external_capabilities_are_not_executed(monkeypatch: pytest.Mon
     assert not called
 
 
+def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "app.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    captured: list[object] = []
+
+    def analyze_external(*_args: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        captured.append(kwargs.get("capabilities"))
+        return ()
+
+    monkeypatch.setattr(api, "analyze_external", analyze_external)
+
+    api.Standards(tmp_path).analyze(
+        [str(source)],
+        external=True,
+        trust=TrustMode.TRUSTED,
+        mode=api.AnalysisMode.RAW,
+        rules=["eslint:prefer-ecmascript-private-members"],
+    )
+
+    assert captured == [frozenset({"eslint"})]
+
+
 def test_fix_rejects_overlapping_edits() -> None:
     first = TextEdit(Location("example.py", region=Region(Position(0, 0, 0), Position(0, 3, 3))), "a")
     second = TextEdit(Location("example.py", region=Region(Position(0, 2, 2), Position(0, 4, 4))), "b")
