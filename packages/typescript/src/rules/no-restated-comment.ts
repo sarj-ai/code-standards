@@ -44,7 +44,7 @@ const WALL_NARRATION_RE =
 const WALL_CLUSTER_MAX_LINE_GAP = 8;
 const WALL_CLUSTER_MIN_COMMENTS = 3;
 
-export const noRestatedCommentDocumentation = {
+export const NO_RESTATED_COMMENT_DOCUMENTATION = {
   summary: "Flag a single-line comment whose every word already appears on the statement below it.",
   rationale: "A comment that only repeats code adds no context and can become stale independently.",
   remediation: "Delete the comment or replace it with the reason, constraint, or consequence absent from the code.",
@@ -86,7 +86,7 @@ function headsSiblingRun(node: TSESTree.Node): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-restated-comment",
-  documentation: noRestatedCommentDocumentation,
+  documentation: NO_RESTATED_COMMENT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     hasSuggestions: true,

@@ -13,7 +13,7 @@ import { createSqlListener } from "./_sql.js";
 type MessageIds = "storeInsertRequiresOnConflict";
 type Options = readonly [];
 
-export const storeInsertRequiresOnConflictDocumentation = {
+export const STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION = {
   summary: "Require embedded inserts in explicitly replayable callables to carry conflict handling.",
   rationale: "A callable named as an enqueue, seed, migration, schedule, ensure, or upsert promises replay safety.",
   remediation: "Add an appropriate `ON CONFLICT` action or supported replay-safe insert form.",
@@ -69,7 +69,7 @@ const INSERT_GATE = /insert/i;
 
 export default createRule<Options, MessageIds>({
   name: "store-insert-requires-on-conflict",
-  documentation: storeInsertRequiresOnConflictDocumentation,
+  documentation: STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -59,7 +59,7 @@ interface LexicalScope {
   readonly rawOrigins: Map<string, Set<string>>;
 }
 
-export const sourceCoupledTestDocumentation = {
+export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
   summary: "Disallow raw repository source text as a test oracle; parse or execute the artifact instead.",
   rationale: "Substring and regex checks can pass on comments or unreachable configuration and fail after behavior-preserving formatting changes.",
   remediation: "Parse the artifact, execute its validator, or assert on another runtime contract.",
@@ -343,6 +343,6 @@ export function createSourceCoupledRule(
 
 export default createSourceCoupledRule(
   "source-coupled-test",
-  sourceCoupledTestDocumentation,
+  SOURCE_COUPLED_TEST_DOCUMENTATION,
   GENERAL_SOURCE_SUFFIX_RE,
 );

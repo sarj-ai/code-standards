@@ -8,11 +8,11 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
 });
 
-ruleTester.run("no-server-env-in-client-component", rule, {
+RULE_TESTER.run("no-server-env-in-client-component", rule, {
   valid: [
     "import { SERVER_SETTINGS } from '@/server-settings';",
     "'use client'; import { CLIENT_SETTINGS } from '@/client-settings';",

@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { enforceFileStructureDocumentation } from "../../src/rules/enforce-file-structure.js";
+import rule, { ENFORCE_FILE_STRUCTURE_DOCUMENTATION } from "../../src/rules/enforce-file-structure.js";
 
 // Bind vitest to RuleTester for proper test reporting
 RuleTester.afterAll = afterAll;
@@ -9,17 +9,17 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
 const NON_ACTION_FILENAME = "src/components/some-component.ts";
 const ACTION_FILENAME = "src/actions/create-user.ts";
 
-ruleTester.run("enforce-file-structure", rule, {
+RULE_TESTER.run("enforce-file-structure", rule, {
   valid: [
     // Canonical ordering: imports → types → constants → functions → exports
     {
       filename: NON_ACTION_FILENAME,
-      code: enforceFileStructureDocumentation.examples[0].files[0].source,
+      code: ENFORCE_FILE_STRUCTURE_DOCUMENTATION.examples[0].files[0].source,
     },
     // Only imports
     {
@@ -230,7 +230,7 @@ ruleTester.run("enforce-file-structure", rule, {
     // Import after a body statement (an exported const) — imports must be first.
     {
       filename: NON_ACTION_FILENAME,
-      code: enforceFileStructureDocumentation.examples[1].files[0].source,
+      code: ENFORCE_FILE_STRUCTURE_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "importsFirst" }],
     },
     // Import after a type declaration — still imports-first.

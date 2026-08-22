@@ -3,7 +3,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noStringConcatInLoopDocumentation,
+  NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION,
 } from "../../src/rules/no-string-concat-in-loop.js";
 
 RuleTester.afterAll = afterAll;
@@ -11,13 +11,13 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-string-concat-in-loop", rule, {
+RULE_TESTER.run("no-string-concat-in-loop", rule, {
   valid: [
     {
       name: "ignores numeric reduce accumulation",
@@ -47,7 +47,7 @@ ruleTester.run("no-string-concat-in-loop", rule, {
     },
     {
       name: "allows collecting parts and joining after the loop",
-      code: noStringConcatInLoopDocumentation.examples[0].files[0].source,
+      code: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "allows a statically tiny loop",
@@ -264,7 +264,7 @@ ruleTester.run("no-string-concat-in-loop", rule, {
     },
     {
       name: "reports a template-literal rebuild in a loop",
-      code: noStringConcatInLoopDocumentation.examples[1].files[0].source,
+      code: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
     {

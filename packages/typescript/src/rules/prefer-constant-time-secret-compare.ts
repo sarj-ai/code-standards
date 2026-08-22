@@ -13,7 +13,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "preferConstantTimeSecretCompare";
 type Options = readonly [];
 
-export const preferConstantTimeSecretCompareDocumentation = {
+export const PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION = {
   summary: "Disallow `===`/`!==` on a secret-like value; short-circuiting comparison leaks the secret through timing. Use a constant-time compare.",
   rationale: "Ordinary equality stops at the first differing byte, allowing repeated measurements to reveal secret material.",
   remediation: "Compare equal-length cryptographic digests with a constant-time comparison primitive.",
@@ -109,7 +109,7 @@ function secretNameOf(node: TSESTree.Node): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "prefer-constant-time-secret-compare",
-  documentation: preferConstantTimeSecretCompareDocumentation,
+  documentation: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

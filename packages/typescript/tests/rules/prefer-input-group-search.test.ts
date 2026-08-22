@@ -2,27 +2,27 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferInputGroupSearchDocumentation } from "../../src/rules/prefer-input-group-search.js";
+import rule, { PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION } from "../../src/rules/prefer-input-group-search.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: { ecmaFeatures: { jsx: true } },
   },
 });
 
-const imports = `
+const IMPORTS = `
   import { Search } from "lucide-react";
   import { Input } from "@/components/ui/input";
   import { InputGroup } from "@/components/ui/input-group";
 `;
 
-ruleTester.run("prefer-input-group-search", rule, {
+RULE_TESTER.run("prefer-input-group-search", rule, {
   valid: [
     {
       name: "does not prescribe an optional primitive without local adoption evidence",
@@ -32,7 +32,7 @@ ruleTester.run("prefer-input-group-search", rule, {
       name: "does not confuse a search action with input decoration",
       code: `import { Search } from "lucide-react"; import { Input } from "@/components/ui/input"; <div><button><Search /></button><Input placeholder="Rename file" /></div>`,
     },
-    { name: "public no-match example", filename: preferInputGroupSearchDocumentation.examples[0].focusPath, code: preferInputGroupSearchDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[0].focusPath, code: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "accepts the shared input group",
       code: `
@@ -67,15 +67,15 @@ ruleTester.run("prefer-input-group-search", rule, {
     },
     {
       name: "accepts search and input in separate visual regions",
-      code: `${imports}<form><header><Search /></header><section><div><Input /></div></section></form>`,
+      code: `${IMPORTS}<form><header><Search /></header><section><div><Input /></div></section></form>`,
     },
     {
       name: "accepts an input without a search icon",
-      code: `${imports}<div><Input /></div>`,
+      code: `${IMPORTS}<div><Input /></div>`,
     },
     {
       name: "accepts a search icon without an input",
-      code: `${imports}<div><Search /></div>`,
+      code: `${IMPORTS}<div><Search /></div>`,
     },
   ],
   invalid: [
@@ -84,15 +84,15 @@ ruleTester.run("prefer-input-group-search", rule, {
       code: `import { SearchIcon } from "lucide-react"; import { Input } from "@/components/ui/input"; import { InputGroup } from "@/components/ui/input-group"; <div><SearchIcon /><Input /></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
-    { name: "public match example", filename: preferInputGroupSearchDocumentation.examples[1].focusPath, code: preferInputGroupSearchDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferInputGroup" }] },
+    { name: "public match example", filename: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[1].focusPath, code: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferInputGroup" }] },
     {
       name: "rejects direct search and input siblings",
-      code: `${imports}<div><Search /><Input /></div>`,
+      code: `${IMPORTS}<div><Search /><Input /></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
     {
       name: "rejects reversed controls with intervening siblings",
-      code: `${imports}<div><Input /><span>Search</span><Search /></div>`,
+      code: `${IMPORTS}<div><Input /><span>Search</span><Search /></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
     {
@@ -107,32 +107,32 @@ ruleTester.run("prefer-input-group-search", rule, {
     },
     {
       name: "rejects a nested icon",
-      code: `${imports}<div><span><Search /></span><Input /></div>`,
+      code: `${IMPORTS}<div><span><Search /></span><Input /></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
     {
       name: "rejects a nested input",
-      code: `${imports}<div><Search /><span><Input /></span></div>`,
+      code: `${IMPORTS}<div><Search /><span><Input /></span></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
     {
       name: "rejects a loading search wrapper",
-      code: `${imports}<div><Search /><Input />{pending ? <Spinner /> : null}</div>`,
+      code: `${IMPORTS}<div><Search /><Input />{pending ? <Spinner /> : null}</div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
     {
       name: "rejects a clearable search wrapper",
-      code: `${imports}<div><Search /><Input />{value ? <Button><X /></Button> : null}</div>`,
+      code: `${IMPORTS}<div><Search /><Input />{value ? <Button><X /></Button> : null}</div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
     {
       name: "rejects a constrained search wrapper",
-      code: `${imports}<div className="relative max-w-md"><Search className="absolute" /><Input placeholder="Search" /></div>`,
+      code: `${IMPORTS}<div className="relative max-w-md"><Search className="absolute" /><Input placeholder="Search" /></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
     {
       name: "reports a wrapper once when it contains multiple inputs",
-      code: `${imports}<div><Search /><Input /><Input /></div>`,
+      code: `${IMPORTS}<div><Search /><Input /><Input /></div>`,
       errors: [{ messageId: "preferInputGroup" }],
     },
   ],

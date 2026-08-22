@@ -2,7 +2,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noUnionInCommentDocumentation,
+  NO_UNION_IN_COMMENT_DOCUMENTATION,
 } from "../../src/rules/no-union-in-comment.js";
 
 RuleTester.afterAll = afterAll;
@@ -10,9 +10,9 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-union-in-comment", rule, {
+RULE_TESTER.run("no-union-in-comment", rule, {
   valid: [
     {
       name: "allows unquoted value lists because they are indistinguishable from prose",
@@ -27,7 +27,7 @@ ruleTester.run("no-union-in-comment", rule, {
       code: "interface R { confidence: number; // 0..1\n}",
     },
     // Already a union: the type holds the set, so there is nothing to move.
-    { code: noUnionInCommentDocumentation.examples[0].files[0].source },
+    { code: NO_UNION_IN_COMMENT_DOCUMENTATION.examples[0].files[0].source },
     // The comment restates a union the declaration already spells. That is a
     // restatement, which `no-restated-comment` owns — not a missing type.
     { code: "interface R { kind: 'aa' | 'bb'; // 'aa' | 'bb'\n}" },
@@ -77,7 +77,7 @@ ruleTester.run("no-union-in-comment", rule, {
   invalid: [
     // The shape as first-party schema code writes it.
     {
-      code: noUnionInCommentDocumentation.examples[1].files[0].source,
+      code: NO_UNION_IN_COMMENT_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "unionInComment" }],
     },
     // Above the member rather than beside it.

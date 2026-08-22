@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { zodNamingConventionDocumentation } from "../../src/rules/zod-naming-convention.js";
+import rule, { ZOD_NAMING_CONVENTION_DOCUMENTATION } from "../../src/rules/zod-naming-convention.js";
 
 // Bind vitest to RuleTester for proper test reporting
 RuleTester.afterAll = afterAll;
@@ -9,12 +9,12 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 const zod = (code: string): string => `import { z } from "zod"; ${code}`;
 
-ruleTester.run("zod-naming-convention", rule, {
+RULE_TESTER.run("zod-naming-convention", rule, {
   valid: [
-    { name: "accepts the documented recognizable schema name", code: zodNamingConventionDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented recognizable schema name", code: ZOD_NAMING_CONVENTION_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "ignores test-local schemas",
       code: 'const a = z.lazy(() => z.string());',
@@ -133,7 +133,7 @@ ruleTester.run("zod-naming-convention", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented unmarked schema name", code: zodNamingConventionDocumentation.examples[1].files[0].source, errors: [{ messageId: "zodSchemaName" }] },
+    { name: "reports the documented unmarked schema name", code: ZOD_NAMING_CONVENTION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "zodSchemaName" }] },
     {
       name: "does not treat a benchmarking filename as a benchmark directory",
       code: zod("const user = z.object({ a: z.string() });"),

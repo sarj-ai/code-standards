@@ -4,14 +4,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { requireAssertNeverDocumentation } from "../../src/rules/require-assert-never.js";
+import rule, { REQUIRE_ASSERT_NEVER_DOCUMENTATION } from "../../src/rules/require-assert-never.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: {
@@ -23,9 +23,9 @@ const ruleTester = new RuleTester({
   },
 });
 
-ruleTester.run("require-assert-never", rule, {
+RULE_TESTER.run("require-assert-never", rule, {
   valid: [
-    { name: "accepts the documented exhaustive default", code: requireAssertNeverDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented exhaustive default", code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows a switch with no default",
       code: `
@@ -212,7 +212,7 @@ ruleTester.run("require-assert-never", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented empty default", code: requireAssertNeverDocumentation.examples[1].files[0].source, errors: [{ messageId: "missingAssertNever" }], output: null },
+    { name: "reports the documented empty default", code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "missingAssertNever" }], output: null },
     {
       name: "reports an undocumented empty default",
       code: `declare const kind: 'a' | 'b';

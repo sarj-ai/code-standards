@@ -4,19 +4,19 @@ import { Linter } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
 import duplicateTestBody from "../../src/rules/duplicate-test-body.js";
-import rule, { repeatedStaticCallCasesDocumentation } from "../../src/rules/repeated-static-call-cases.js";
+import rule, { REPEATED_STATIC_CALL_CASES_DOCUMENTATION } from "../../src/rules/repeated-static-call-cases.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 const TEST_FILE = "/repo/src/parser.test.ts";
 
-ruleTester.run("repeated-static-call-cases", rule, {
+RULE_TESTER.run("repeated-static-call-cases", rule, {
   valid: [
-    { name: "public no-match example", filename: repeatedStaticCallCasesDocumentation.examples[0].focusPath, code: repeatedStaticCallCasesDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[0].focusPath, code: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[0].files[0].source },
     { name: "requires three cases", filename: TEST_FILE, code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); });" },
     { name: "requires varying cases", filename: TEST_FILE, code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('a')).toBe(1); expect(parse('a')).toBe(1); });" },
     { name: "excludes zero argument state sequences", filename: TEST_FILE, code: "test('x', () => { expect(next()).toBe(1); expect(next()).toBe(2); expect(next()).toBe(3); });" },
@@ -36,7 +36,7 @@ ruleTester.run("repeated-static-call-cases", rule, {
     { name: "ignores generated headers", filename: TEST_FILE, code: "// @generated\ntest('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); expect(parse('c')).toBe(3); });" },
   ],
   invalid: [
-    { name: "public match example", filename: repeatedStaticCallCasesDocumentation.examples[1].focusPath, code: repeatedStaticCallCasesDocumentation.examples[1].files[0].source, errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
+    { name: "public match example", filename: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[1].focusPath, code: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
     { name: "supports imported aliases and modifiers", filename: TEST_FILE, code: "import { test as check, expect as verify } from 'vitest'; check.only('x', () => { verify(parse('a')).not.toBe(1); verify(parse('b')).not.toBe(2); verify(parse('c')).not.toBe(3); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },
     { name: "reports once for a longer run", filename: TEST_FILE, code: "it('x', () => { expect(parse('a', 1)).toEqual(true); expect(parse('b', 2)).toEqual(false); expect(parse('c', 3)).toEqual(true); expect(parse('d', 4)).toEqual(false); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "4" } }] },
     { name: "allows static arrays and objects", filename: TEST_FILE, code: "test.concurrent('x', () => { expect(parse({ x: 1 })).toEqual(['a']); expect(parse({ x: 2 })).toEqual(['b']); expect(parse({ x: 3 })).toEqual(['c']); });", errors: [{ messageId: "repeatedStaticCallCases", data: { count: "3" } }] },

@@ -12,7 +12,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "genericSingleExport";
 type Options = [];
 
-export const noGenericSingleExportModuleDocumentation = {
+export const NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION = {
   summary: "Disallow generic module stems when one runtime export already names the responsibility.",
   rationale: "A generic filename hides the sole exported responsibility and makes navigation less descriptive.",
   remediation: "Choose a responsibility-bearing module name or colocate the export with its domain.",
@@ -195,7 +195,7 @@ function memberPropertyName(node: TSESTree.MemberExpression): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-generic-single-export-module",
-  documentation: noGenericSingleExportModuleDocumentation,
+  documentation: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Disallow generic module stems when one runtime export already names the responsibility." },

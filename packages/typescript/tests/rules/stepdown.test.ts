@@ -2,14 +2,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { stepdownDocumentation } from "../../src/rules/stepdown.js";
+import rule, { STEPDOWN_DOCUMENTATION } from "../../src/rules/stepdown.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 const DEEP_CYCLE_SIZE = 12_000;
 const DEEP_CYCLE = Array.from(
@@ -27,9 +27,9 @@ const DEEP_CHAIN = `class Service { ${Array.from(
   },
 ).join(" ")} }`;
 
-ruleTester.run("stepdown", rule, {
+RULE_TESTER.run("stepdown", rule, {
   valid: [
-    { name: "accepts the documented caller-first order", code: stepdownDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented caller-first order", code: STEPDOWN_DOCUMENTATION.examples[0].files[0].source },
     { name: "handles a deep cyclic graph without recursive stack overflow", code: DEEP_CYCLE },
     {
       name: "allows a module helper below its sole caller",
@@ -151,7 +151,7 @@ ruleTester.run("stepdown", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented helper-first order", code: stepdownDocumentation.examples[1].files[0].source, errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
+    { name: "reports the documented helper-first order", code: STEPDOWN_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
     {
       name: "keeps an overlapping deep dependency chain report-only instead of partially rewriting it",
       code: DEEP_CHAIN,

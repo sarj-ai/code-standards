@@ -13,7 +13,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "preferAsConst" | "preferReadonlyCollection";
 type Options = readonly [];
 
-export const preferImmutableModuleConstantDocumentation = {
+export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
   summary: "Require module-level constant collections to expose readonly state.",
   rationale:
     "A const binding prevents reassignment but does not stop callers from mutating its array, object, Set, or Map contents.",
@@ -237,7 +237,7 @@ function referenceMutates(identifier: TSESTree.Identifier, isUnshadowedGlobal: G
 
 export default createRule<Options, MessageIds>({
   name: "prefer-immutable-module-constant",
-  documentation: preferImmutableModuleConstantDocumentation,
+  documentation: PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

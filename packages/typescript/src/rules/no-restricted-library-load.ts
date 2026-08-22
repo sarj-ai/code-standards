@@ -22,7 +22,7 @@ type Options = readonly [
   },
 ];
 
-export const noRestrictedLibraryLoadDocumentation = {
+export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
   summary: "Apply a configured library-replacement policy to literal dynamic imports, CommonJS loads, and TypeScript import-equals declarations.",
   rationale: "Runtime module loads can bypass the replacement policy enforced for static imports.",
   remediation: "Load the configured replacement library instead of the restricted module.",
@@ -46,7 +46,7 @@ function matchesModule(source: string, module: string): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-restricted-library-load",
-  documentation: noRestrictedLibraryLoadDocumentation,
+  documentation: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

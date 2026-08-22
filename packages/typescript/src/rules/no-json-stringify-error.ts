@@ -12,7 +12,7 @@ import type { Scope, SourceCode } from "@typescript-eslint/utils/ts-eslint";
 type MessageIds = "noJsonStringifyError";
 type Options = readonly [];
 
-export const noJsonStringifyErrorDocumentation = {
+export const NO_JSON_STRINGIFY_ERROR_DOCUMENTATION = {
   summary: "Disallow `JSON.stringify` on an Error value; it yields `{}` because `message`/`stack` are non-enumerable.",
   rationale: "Native Error details are non-enumerable, so generic JSON serialization discards diagnostic information.",
   remediation: "Serialize explicit error fields or use an error-aware serializer.",
@@ -320,7 +320,7 @@ function memberSuggestsError(
 
 export default createRule<Options, MessageIds>({
   name: "no-json-stringify-error",
-  documentation: noJsonStringifyErrorDocumentation,
+  documentation: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

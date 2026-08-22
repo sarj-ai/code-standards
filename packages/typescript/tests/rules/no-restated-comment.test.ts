@@ -1,18 +1,18 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noRestatedCommentDocumentation } from "../../src/rules/no-restated-comment.js";
+import rule, { NO_RESTATED_COMMENT_DOCUMENTATION } from "../../src/rules/no-restated-comment.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-restated-comment", rule, {
+RULE_TESTER.run("no-restated-comment", rule, {
   valid: [
-    { name: "accepts the documented reason comment", code: noRestatedCommentDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented reason comment", code: NO_RESTATED_COMMENT_DOCUMENTATION.examples[0].files[0].source },
     { name: "accepts the result of the deletion suggestion", code: "const key = serialize(input);" },
     // One unmatched word means the comment carries something the code does not.
     {
@@ -86,7 +86,7 @@ ruleTester.run("no-restated-comment", rule, {
   invalid: [
     {
       name: "offers whole-line deletion without applying an autofix",
-      code: noRestatedCommentDocumentation.examples[1].files[0].source,
+      code: NO_RESTATED_COMMENT_DOCUMENTATION.examples[1].files[0].source,
       output: null,
       errors: [
         {

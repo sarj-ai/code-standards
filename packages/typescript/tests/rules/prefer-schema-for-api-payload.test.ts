@@ -1,18 +1,18 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferSchemaForApiPayloadDocumentation } from "../../src/rules/prefer-schema-for-api-payload.js";
+import rule, { PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION } from "../../src/rules/prefer-schema-for-api-payload.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("prefer-schema-for-api-payload", rule, {
+RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
   valid: [
-    { name: "public no-match example", filename: preferSchemaForApiPayloadDocumentation.examples[0].focusPath, code: preferSchemaForApiPayloadDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[0].focusPath, code: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows integration scripts to inspect the real transport payload",
       filename: "/repo/scripts/e2e-scenario.mjs",
@@ -186,7 +186,7 @@ ruleTester.run("prefer-schema-for-api-payload", rule, {
     },
   ],
   invalid: [
-    { name: "public match example", filename: preferSchemaForApiPayloadDocumentation.examples[1].focusPath, code: preferSchemaForApiPayloadDocumentation.examples[1].files[0].source, errors: [{ messageId: "unparsedJsonAccess" }] },
+    { name: "public match example", filename: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[1].focusPath, code: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "unparsedJsonAccess" }] },
     // The trust boundary still fires: a network payload read outside an assertion.
     {
       code: "async function f(res) { const body = await res.json(); return body.id; }",

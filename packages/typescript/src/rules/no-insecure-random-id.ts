@@ -12,7 +12,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "insecureRandomId";
 type Options = readonly [];
 
-export const noInsecureRandomIdDocumentation = {
+export const NO_INSECURE_RANDOM_ID_DOCUMENTATION = {
   summary: "Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
   rationale: "Math.random is predictable and lacks the entropy required for security-sensitive values.",
   remediation: "Generate the value with crypto.randomUUID or crypto.getRandomValues.",
@@ -253,7 +253,7 @@ function collectStaticStringParts(
 
 export default createRule<Options, MessageIds>({
   name: "no-insecure-random-id",
-  documentation: noInsecureRandomIdDocumentation,
+  documentation: NO_INSECURE_RANDOM_ID_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

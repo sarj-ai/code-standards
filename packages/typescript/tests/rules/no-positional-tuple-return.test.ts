@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noPositionalTupleReturnDocumentation } from "../../src/rules/no-positional-tuple-return.js";
+import rule, { NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION } from "../../src/rules/no-positional-tuple-return.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-positional-tuple-return", rule, {
+RULE_TESTER.run("no-positional-tuple-return", rule, {
   valid: [
-    { name: "accepts the documented named object", code: noPositionalTupleReturnDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented named object", code: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "does not collide a nested interface name with an exported top-level interface",
       code: "export interface Loader {} namespace Internal { interface Loader { load(): [string, number]; } }",
@@ -44,7 +44,7 @@ ruleTester.run("no-positional-tuple-return", rule, {
     { name: "explicit non-tuple contract wins over const implementation", code: "function pair(): unknown { return ['a', 1] as const; }" },
   ],
   invalid: [
-    { name: "reports the documented tuple return", code: noPositionalTupleReturnDocumentation.examples[1].files[0].source, errors: [{ messageId: "noPositionalTupleReturn" }] },
+    { name: "reports the documented tuple return", code: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noPositionalTupleReturn" }] },
     {
       name: "rejects a private method",
       code: "export class Loader { private load(): [string, number] { return impl(); } public run(): void {} }",

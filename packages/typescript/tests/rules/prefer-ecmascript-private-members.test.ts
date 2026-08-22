@@ -13,7 +13,7 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: {
@@ -23,7 +23,7 @@ const ruleTester = new RuleTester({
   },
 });
 
-ruleTester.run("prefer-ecmascript-private-members", rule, {
+RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
   valid: [
     PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[0].files[0].source,
     "class Service { public run() {} protected extend() {} }",

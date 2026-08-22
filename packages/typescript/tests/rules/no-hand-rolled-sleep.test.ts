@@ -2,14 +2,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noHandRolledSleepDocumentation } from "../../src/rules/no-hand-rolled-sleep.js";
+import rule, { NO_HAND_ROLLED_SLEEP_DOCUMENTATION } from "../../src/rules/no-hand-rolled-sleep.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
@@ -17,11 +17,11 @@ const ruleTester = new RuleTester({
 
 const SERVER = "/repo/src/lib/queue.ts";
 
-ruleTester.run("no-hand-rolled-sleep", rule, {
+RULE_TESTER.run("no-hand-rolled-sleep", rule, {
   valid: [
     {
       name: "accepts the cancellable Node timer",
-      code: noHandRolledSleepDocumentation.examples[0].files[0].source,
+      code: NO_HAND_ROLLED_SLEEP_DOCUMENTATION.examples[0].files[0].source,
       filename: SERVER,
     },
     {
@@ -204,7 +204,7 @@ ruleTester.run("no-hand-rolled-sleep", rule, {
     },
     {
       name: "reports a concise sleep",
-      code: noHandRolledSleepDocumentation.examples[1].files[0].source,
+      code: NO_HAND_ROLLED_SLEEP_DOCUMENTATION.examples[1].files[0].source,
       filename: SERVER,
       errors: [{ messageId: "handRolledSleep" }],
     },

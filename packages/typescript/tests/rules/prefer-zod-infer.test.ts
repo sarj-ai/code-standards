@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferZodInferDocumentation } from "../../src/rules/prefer-zod-infer.js";
+import rule, { PREFER_ZOD_INFER_DOCUMENTATION } from "../../src/rules/prefer-zod-infer.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: { parser: tsParser },
 });
 
 const IMPORT = 'import { z } from "zod";\n';
 
-ruleTester.run("prefer-zod-infer", rule, {
+RULE_TESTER.run("prefer-zod-infer", rule, {
   valid: [
-    { name: "accepts the documented inferred type", code: preferZodInferDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented inferred type", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[0].files[0].source },
     // The supported shape: the type is derived, so it cannot drift.
     `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
      type User = z.infer<typeof UserSchema>;`,
@@ -194,7 +194,7 @@ ruleTester.run("prefer-zod-infer", rule, {
   ],
 
   invalid: [
-    { name: "reports the documented hand-written twin", code: preferZodInferDocumentation.examples[1].files[0].source, errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }] },
+    { name: "reports the documented hand-written twin", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }] },
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
              interface User { id: string; name: string }`,

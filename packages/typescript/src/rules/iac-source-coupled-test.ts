@@ -9,7 +9,7 @@ import { createSourceCoupledRule } from "./source-coupled-test.js";
 
 const IAC_SOURCE_SUFFIX_RE = /(?:\.tf\.json|\.tftest\.(?:hcl|json)|\.(?:hcl|tf|tfvars))$/iu;
 
-export const iacSourceCoupledTestDocumentation = {
+export const IAC_SOURCE_COUPLED_TEST_DOCUMENTATION = {
   summary: "Disallow raw IaC source text as a test oracle; inspect a rendered plan, provider state, or runtime behavior.",
   rationale: "Substring and regex checks can pass on comments, formatting, or unreachable Terraform configuration while clients fail silently.",
   remediation: "Parse rendered plan JSON, query the provider, or exercise the deployed runtime contract.",
@@ -42,6 +42,6 @@ export const iacSourceCoupledTestDocumentation = {
 
 export default createSourceCoupledRule(
   "iac-source-coupled-test",
-  iacSourceCoupledTestDocumentation,
+  IAC_SOURCE_COUPLED_TEST_DOCUMENTATION,
   IAC_SOURCE_SUFFIX_RE,
 );

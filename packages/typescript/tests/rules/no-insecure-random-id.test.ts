@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noInsecureRandomIdDocumentation } from "../../src/rules/no-insecure-random-id.js";
+import rule, { NO_INSECURE_RANDOM_ID_DOCUMENTATION } from "../../src/rules/no-insecure-random-id.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-insecure-random-id", rule, {
+RULE_TESTER.run("no-insecure-random-id", rule, {
   valid: [
-    { code: noInsecureRandomIdDocumentation.examples[0].files[0].source },
+    { code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[0].files[0].source },
     // Bare `Math.random()` for jitter — not an identifier.
     { code: "const jitter = Math.random() * 100;" },
     // Sampling / probability roll.
@@ -87,7 +87,7 @@ ruleTester.run("no-insecure-random-id", rule, {
     },
   ],
   invalid: [
-    { code: noInsecureRandomIdDocumentation.examples[1].files[0].source, errors: [{ messageId: "insecureRandomId" }] },
+    { code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "insecureRandomId" }] },
     // Genuine security-token shapes with the toString(36) idiom are flagged.
     {
       code: "const token = Math.random().toString(36);",
@@ -141,7 +141,7 @@ ruleTester.run("no-insecure-random-id", rule, {
   ],
 });
 
-ruleTester.run("no-insecure-random-id security-name contract", rule, {
+RULE_TESTER.run("no-insecure-random-id security-name contract", rule, {
   valid: [],
   invalid: [
     {
@@ -183,7 +183,7 @@ ruleTester.run("no-insecure-random-id security-name contract", rule, {
   ],
 });
 
-ruleTester.run("no-insecure-random-id non-security-name exceptions", rule, {
+RULE_TESTER.run("no-insecure-random-id non-security-name exceptions", rule, {
   valid: [
     { code: "const tempId = Math.random().toString(36);" },
     { code: "const tmpId = Math.random().toString(36);" },
@@ -209,7 +209,7 @@ ruleTester.run("no-insecure-random-id non-security-name exceptions", rule, {
   ],
 });
 
-ruleTester.run("no-insecure-random-id path and DOM exceptions", rule, {
+RULE_TESTER.run("no-insecure-random-id path and DOM exceptions", rule, {
   valid: [
     { code: "const output = `tmp/${Math.random().toString(36)}`;" },
     { code: "const output = `tmp\\\\${Math.random().toString(36)}`;" },
@@ -224,7 +224,7 @@ ruleTester.run("no-insecure-random-id path and DOM exceptions", rule, {
   ],
 });
 
-ruleTester.run("no-insecure-random-id production-file boundary", rule, {
+RULE_TESTER.run("no-insecure-random-id production-file boundary", rule, {
   valid: [
     {
       code: "const token = Math.random().toString(36);",
@@ -240,7 +240,7 @@ ruleTester.run("no-insecure-random-id production-file boundary", rule, {
   ],
 });
 
-ruleTester.run("no-insecure-random-id arithmetic-chain limitation", rule, {
+RULE_TESTER.run("no-insecure-random-id arithmetic-chain limitation", rule, {
   valid: [{ code: "const x = (Math.random() * 1e9).toString(36);" }],
   invalid: [
     {

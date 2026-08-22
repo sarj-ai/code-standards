@@ -14,7 +14,7 @@ import { documentsTypedFunction } from "./_prose-budget.js";
 type MessageIds = "restatesSignature" | "deleteBlock";
 type Options = readonly [];
 
-export const noRestatedJsdocDocumentation = {
+export const NO_RESTATED_JSDOC_DOCUMENTATION = {
   summary: "Flag a JSDoc block whose description and tags only re-spell the signature they document.",
   rationale: "Signature-only JSDoc duplicates type information and drifts without helping callers.",
   remediation: "Delete the block or document behavior, constraints, failures, or context the signature cannot express.",
@@ -153,7 +153,7 @@ function tokensOf(names: readonly string[]): Set<string> {
 
 export default createRule<Options, MessageIds>({
   name: "no-restated-jsdoc",
-  documentation: noRestatedJsdocDocumentation,
+  documentation: NO_RESTATED_JSDOC_DOCUMENTATION,
   meta: {
     type: "suggestion",
     hasSuggestions: true,

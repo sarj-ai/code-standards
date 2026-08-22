@@ -11,7 +11,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 type MessageIds = "noClientFetch";
 type Options = readonly [];
 
-export const noClientSideDataFetchingDocumentation = {
+export const NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION = {
   summary: "Disallow direct data fetching inside `useEffect` or `useLayoutEffect`.",
   rationale:
     "Effect-driven reads begin after rendering and can create request waterfalls, duplicate fetches, and loading-state layout shifts.",
@@ -202,7 +202,7 @@ function extractUrlString(node: TSESTree.CallExpression): string {
 
 export default createRule<Options, MessageIds>({
   name: "no-client-side-data-fetching",
-  documentation: noClientSideDataFetchingDocumentation,
+  documentation: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

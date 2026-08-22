@@ -7,14 +7,14 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-import plugin, { rules } from "../src/index.js";
+import plugin, { RULES } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RULE_TESTS_DIR = resolve(HERE, "rules");
 
 /** Every rule name the plugin exports or wires into a preset, de-duplicated. */
 function ruleNamesUnderTest(): string[] {
-  const names = new Set(Object.keys(rules));
+  const names = new Set(Object.keys(RULES));
   for (const preset of Object.values(plugin.configs)) {
     for (const key of Object.keys(preset.rules)) {
       names.add(key.replace(/^@sarj\//u, ""));

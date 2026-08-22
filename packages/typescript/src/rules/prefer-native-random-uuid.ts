@@ -11,7 +11,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 type MessageIds = "preferNative" | "replaceWithNative";
 type Options = readonly [];
 
-export const preferNativeRandomUuidDocumentation = {
+export const PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION = {
   summary: "Prefer `globalThis.crypto.randomUUID()` over resolved zero-argument UUID v4 bindings from the `uuid` package.",
   rationale: "The platform implementation avoids an unnecessary dependency for standard random UUID generation.",
   remediation: "Call `globalThis.crypto.randomUUID()` and remove the unused `uuid` v4 import when possible.",
@@ -39,7 +39,7 @@ function requireUuid(node: TSESTree.Node | null): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "prefer-native-random-uuid",
-  documentation: preferNativeRandomUuidDocumentation,
+  documentation: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

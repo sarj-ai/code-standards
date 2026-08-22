@@ -28,7 +28,7 @@ type MessageIds =
   | "untrackedTodo";
 type Options = readonly [];
 
-export const noCommentCruftDocumentation = {
+export const NO_COMMENT_CRUFT_DOCUMENTATION = {
   summary: "Flag commented-out code, section-banner comments, and leading file-header comment preambles.",
   rationale:
     "Decorative, narrated, or dead-code comments obscure the constraints and rationale that comments should preserve.",
@@ -518,7 +518,7 @@ function hasCommentedOutCode(
 
 export default createRule<Options, MessageIds>({
   name: "no-comment-cruft",
-  documentation: noCommentCruftDocumentation,
+  documentation: NO_COMMENT_CRUFT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

@@ -3,7 +3,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noTautologicalExpectDocumentation,
+  NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION,
 } from "../../src/rules/no-tautological-expect.js";
 
 RuleTester.afterAll = afterAll;
@@ -11,7 +11,7 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
@@ -19,7 +19,7 @@ const ruleTester = new RuleTester({
 
 const TEST_FILE = "/repo/src/tests/dummy.test.ts";
 
-ruleTester.run("no-tautological-expect", rule, {
+RULE_TESTER.run("no-tautological-expect", rule, {
   valid: [
     {
       name: "allows determinism assertions on call results",
@@ -44,7 +44,7 @@ ruleTester.run("no-tautological-expect", rule, {
     {
       name: "allows a produced value compared with a literal",
       filename: TEST_FILE,
-      code: noTautologicalExpectDocumentation.examples[0].files[0].source,
+      code: NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "allows a literal compared with a produced value",
@@ -146,7 +146,7 @@ ruleTester.run("no-tautological-expect", rule, {
     {
       name: "reports an identical boolean comparison",
       filename: TEST_FILE,
-      code: noTautologicalExpectDocumentation.examples[1].files[0].source,
+      code: NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "tautologicalComparison" }],
     },
     {

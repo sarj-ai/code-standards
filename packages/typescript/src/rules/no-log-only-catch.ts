@@ -17,7 +17,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "noLogOnlyCatch" | "emptyCatch";
 type Options = readonly [LoggingOptions?];
 
-export const noLogOnlyCatchDocumentation = {
+export const NO_LOG_ONLY_CATCH_DOCUMENTATION = {
   summary: "Disallow `catch` clauses that only log (or silently do nothing) and then swallow the error; rethrow or handle it instead.",
   rationale: "Swallowing an exception after logging lets execution continue as if the operation succeeded.",
   remediation: "Rethrow the error, return an explicit fallback, or perform concrete recovery.",
@@ -142,7 +142,7 @@ function isSeedValue(node: TSESTree.Expression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-log-only-catch",
-  documentation: noLogOnlyCatchDocumentation,
+  documentation: NO_LOG_ONLY_CATCH_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

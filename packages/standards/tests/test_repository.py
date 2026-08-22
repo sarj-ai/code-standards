@@ -1079,3 +1079,15 @@ def test_live_rule_inventory_does_not_depend_on_consumer_repository_layout(tmp_p
     typescript = [item for item in inventory if item["family"] == "typescript"]
     assert typescript
     assert {item["id"] for item in typescript} == set(ledger.load().rules[ledger.ESLINT])
+
+
+@pytest.mark.parametrize("registry_name", ["RULES", "rules"])
+def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(tmp_path: Path, registry_name: str) -> None:
+    index = tmp_path / "packages/typescript/src/index.ts"
+    index.parent.mkdir(parents=True)
+    index.write_text(
+        f'const {registry_name} = {{\n  "prefer-modern-syntax": implementation,\n}};\n',
+        encoding="utf-8",
+    )
+
+    assert repository.eslint_rule_names(tmp_path) == ["prefer-modern-syntax"]

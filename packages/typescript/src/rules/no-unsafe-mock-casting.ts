@@ -33,7 +33,7 @@ const MOCK_MODULES: ReadonlySet<string> = new Set([
   "@jest/globals",
 ]);
 
-export const noUnsafeMockCastingDocumentation = {
+export const NO_UNSAFE_MOCK_CASTING_DOCUMENTATION = {
   summary: "Disallow casting to mock types like `jest.Mock` or `vi.Mock`. Use `vi.mocked()` or `jest.mocked()` instead.",
   rationale: "A type assertion can claim an unmocked value is a mock and bypass checking between the original callable and the mock API.",
   remediation: "Use the test framework's `mocked` helper to obtain the typed mock reference.",
@@ -63,7 +63,7 @@ export const noUnsafeMockCastingDocumentation = {
 
 export default createRule<[], MessageIds>({
   name: "no-unsafe-mock-casting",
-  documentation: noUnsafeMockCastingDocumentation,
+  documentation: NO_UNSAFE_MOCK_CASTING_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

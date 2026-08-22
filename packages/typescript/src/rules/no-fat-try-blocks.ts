@@ -15,7 +15,7 @@ export interface RuleOptions {
 }
 type Options = readonly [RuleOptions?];
 
-export const noFatTryBlocksDocumentation = {
+export const NO_FAT_TRY_BLOCKS_DOCUMENTATION = {
   summary: "Disallow `try` blocks containing more than three top-level operations that can throw.",
   rationale:
     "A broad `try` block obscures which operation failed and encourages one catch clause to recover from unrelated errors.",
@@ -481,7 +481,7 @@ const handlerReturnsSuccessShaped = (handler: TSESTree.CatchClause): boolean =>
 
 export default createRule<Options, MessageIds>({
   name: "no-fat-try-blocks",
-  documentation: noFatTryBlocksDocumentation,
+  documentation: NO_FAT_TRY_BLOCKS_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

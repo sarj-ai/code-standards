@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rules } from "../src/index.js";
+import { RULES } from "../src/index.js";
 import {
   createRule,
   documentationWarnings,
@@ -161,6 +161,6 @@ describe("source-owned TypeScript rule metadata", () => {
 
 describe("warning-first rollout", () => {
   it("requires source-owned documentation for every published rule", () => {
-    expect(documentationWarnings(rules)).toEqual([]);
+    expect(documentationWarnings(RULES)).toEqual([]);
   });
 });

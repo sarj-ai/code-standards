@@ -5,7 +5,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  interfaceContractMembersPrivateDocumentation,
+  INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
 } from "../../src/rules/interface-contract-members-private.js";
 
 RuleTester.afterAll = afterAll;
@@ -13,7 +13,7 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: {
@@ -23,9 +23,9 @@ const ruleTester = new RuleTester({
   },
 });
 
-ruleTester.run("interface-contract-members-private", rule, {
+RULE_TESTER.run("interface-contract-members-private", rule, {
   valid: [
-    interfaceContractMembersPrivateDocumentation.examples[0].files[0].source,
+    INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION.examples[0].files[0].source,
     "class Standalone { helper() {} }",
     "interface Base { load(): void } interface Store extends Base {} class DiskStore implements Store { load() {} }",
     "interface Store { readonly value: number } class DiskStore implements Store { get value() { return 1; } }",
@@ -40,7 +40,7 @@ ruleTester.run("interface-contract-members-private", rule, {
   invalid: [
     {
       name: "reports the documented extra method without choosing its public API",
-      code: interfaceContractMembersPrivateDocumentation.examples[1].files[0].source,
+      code: INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION.examples[1].files[0].source,
       output: null,
       errors: [{ messageId: "nonContractMemberMustBePrivate", data: { name: "read" } }],
     },

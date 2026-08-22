@@ -13,7 +13,7 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "noStringConcatInLoop" | "noStringReduce";
 type Options = readonly [];
 
-export const noStringConcatInLoopDocumentation = {
+export const NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION = {
   summary:
     "Disallow O(n^2) string building via `+=` on a string variable inside a loop; push parts to an array and `join` instead.",
   rationale:
@@ -299,7 +299,7 @@ function isStringSeededReduce(node: TSESTree.CallExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-string-concat-in-loop",
-  documentation: noStringConcatInLoopDocumentation,
+  documentation: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

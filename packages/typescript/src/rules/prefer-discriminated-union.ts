@@ -13,7 +13,7 @@ import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 type MessageIds = "preferDiscriminatedUnion";
 type Options = readonly [];
 
-export const preferDiscriminatedUnionDocumentation = {
+export const PREFER_DISCRIMINATED_UNION_DOCUMENTATION = {
   summary: "Flag flat result objects with a required positive boolean status and optional success/failure payloads.",
   rationale: "A boolean status plus optional branch data permits contradictory and incomplete states.",
   remediation: "Represent each result branch as a discriminated union member with its required payload.",
@@ -165,7 +165,7 @@ function inlineReturnTypeLiteral(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-discriminated-union",
-  documentation: preferDiscriminatedUnionDocumentation,
+  documentation: PREFER_DISCRIMINATED_UNION_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

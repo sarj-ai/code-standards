@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import plugin, { renamedRules, retiredRules, rules } from "../src/index.js";
+import plugin, { RENAMED_RULES, RETIRED_RULES, RULES } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LEDGER_PATH = resolve(
@@ -41,24 +41,24 @@ interface Ledger {
   readonly retired: readonly RetiredEntry[];
 }
 
-const ledger = JSON.parse(readFileSync(LEDGER_PATH, "utf8")) as Ledger;
+const LEDGER = JSON.parse(readFileSync(LEDGER_PATH, "utf8")) as Ledger;
 
 describe("rule ledger", () => {
   it("lists exactly the rules this plugin exports", () => {
-    expect([...ledger.rules.eslint].sort()).toEqual(Object.keys(rules).sort());
+    expect([...LEDGER.rules.eslint].sort()).toEqual(Object.keys(RULES).sort());
   });
 
   it("does not claim a live rule was retired", () => {
-    const live = new Set(Object.keys(rules).map((name) => `@sarj/${name}`));
-    const resurrected = ledger.retired
+    const live = new Set(Object.keys(RULES).map((name) => `@sarj/${name}`));
+    const resurrected = LEDGER.retired
       .filter((entry) => entry.kind === "eslint" && live.has(entry.id))
       .map((entry) => entry.id);
     expect(resurrected).toEqual([]);
   });
 
   it("points every ESLint rename at a rule that exists", () => {
-    const live = new Set(Object.keys(rules).map((name) => `@sarj/${name}`));
-    for (const entry of ledger.retired.filter(
+    const live = new Set(Object.keys(RULES).map((name) => `@sarj/${name}`));
+    for (const entry of LEDGER.retired.filter(
       (candidate) => candidate.kind === "eslint" && candidate.status === "renamed",
     )) {
       expect(live.has(entry.replacement ?? "")).toBe(true);
@@ -71,7 +71,7 @@ describe("rule ledger", () => {
     // change a line that works; saying nothing about one it no longer registers
     // leaves them with `ESLint: exit 2` and no replacement to reach for.
     const registered = Object.keys(plugin.rules);
-    const stillLive = ledger.retired
+    const stillLive = LEDGER.retired
       .filter((entry) => entry.kind === "eslint" && entry.status === "renamed")
       .map((entry) => entry.id)
       .filter((id) => registered.includes(id.replace("@sarj/", "")));
@@ -80,28 +80,28 @@ describe("rule ledger", () => {
 
   it("records every rename the plugin itself declares", () => {
     const ledgerRenames = Object.fromEntries(
-      ledger.retired
+      LEDGER.retired
         .filter((entry) => entry.kind === "eslint" && entry.status === "renamed")
         .map((entry) => [entry.id, entry.replacement]),
     );
     const expected = Object.fromEntries(
-      Object.entries(renamedRules).map(([from, to]) => [`@sarj/${from}`, `@sarj/${to}`]),
+      Object.entries(RENAMED_RULES).map(([from, to]) => [`@sarj/${from}`, `@sarj/${to}`]),
     );
     expect(ledgerRenames).toEqual(expected);
   });
 
   it("records every withdrawn plugin name as removed with no replacement", () => {
     const removed = Object.fromEntries(
-      ledger.retired
+      LEDGER.retired
         .filter((entry) => entry.kind === "eslint" && entry.status === "removed")
         .map((entry) => [entry.id.replace("@sarj/", ""), entry.replacement]),
     );
-    const expected = Object.fromEntries(Object.keys(retiredRules).map((name) => [name, null]));
+    const expected = Object.fromEntries(Object.keys(RETIRED_RULES).map((name) => [name, null]));
     expect(removed).toEqual(expected);
   });
 
   it("gives every withdrawn name a release and an actionable migration", () => {
-    for (const entry of Object.values(retiredRules)) {
+    for (const entry of Object.values(RETIRED_RULES)) {
       expect(entry.removedIn).toMatch(/^\d+\.\d+\.\d+$/u);
       expect(entry.reason).toMatch(/^Delete\b/u);
       expect(entry.reason.match(/[.!?](?:\s|$)/gu)).toHaveLength(1);

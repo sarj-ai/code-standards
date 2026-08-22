@@ -87,7 +87,7 @@ def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str)
         test = root / "packages/typescript/tests/rules" / f"{slug}.test.ts"
         files = (
             (implementation, _eslint_implementation(slug, class_name, category, summary)),
-            (test, _eslint_test(slug, class_name)),
+            (test, _eslint_test(slug)),
         )
     else:
         package = selector.engine.value
@@ -207,12 +207,13 @@ def test_documented_examples_are_present() -> None:
 
 def _eslint_implementation(slug: str, name: str, category: str, summary: str) -> str:
     message = name[0].lower() + name[1:]
+    documentation = f"{slug.upper().replace('-', '_')}_DOCUMENTATION"
     return f"""import {{ createRule, type RuleDocumentation }} from "./_docs.js";
 
 type MessageIds = "{message}";
 type Options = readonly [];
 
-export const {message}Documentation = {{
+export const {documentation} = {{
   summary: {summary!r},
   rationale: "TODO: explain the concrete failure mode.",
   remediation: "TODO: give the smallest safe remediation.",
@@ -226,21 +227,21 @@ export const {message}Documentation = {{
 
 export default createRule<Options, MessageIds>({{
   name: "{slug}",
-  meta: {{ type: "problem", docs: {{ description: {message}Documentation.summary }}, schema: [], messages: {{ {message}: {summary!r} }} }},
+  meta: {{ type: "problem", docs: {{ description: {documentation}.summary }}, schema: [], messages: {{ {message}: {summary!r} }} }},
   defaultOptions: [],
   create() {{ throw new Error("TODO: implement conservative detection"); }},
 }});
 """
 
 
-def _eslint_test(slug: str, name: str) -> str:
-    message = name[0].lower() + name[1:]
+def _eslint_test(slug: str) -> str:
+    documentation = f"{slug.upper().replace('-', '_')}_DOCUMENTATION"
     return f"""import {{ describe, expect, it }} from "vitest";
-import {{ {message}Documentation }} from "../../src/rules/{slug}.js";
+import {{ {documentation} }} from "../../src/rules/{slug}.js";
 
 describe("{slug}", () => {{
   it("declares public accept and reject examples", () => {{
-    expect({message}Documentation.examples.map((item) => item.outcome).sort()).toEqual(["match", "no-match"]);
+    expect({documentation}.examples.map((item) => item.outcome).sort()).toEqual(["match", "no-match"]);
   }});
 }});
 """

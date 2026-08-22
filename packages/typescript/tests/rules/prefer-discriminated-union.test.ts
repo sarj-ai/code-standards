@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferDiscriminatedUnionDocumentation } from "../../src/rules/prefer-discriminated-union.js";
+import rule, { PREFER_DISCRIMINATED_UNION_DOCUMENTATION } from "../../src/rules/prefer-discriminated-union.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("prefer-discriminated-union", rule, {
+RULE_TESTER.run("prefer-discriminated-union", rule, {
   valid: [
-    { name: "public no-match example", filename: preferDiscriminatedUnionDocumentation.examples[0].focusPath, code: preferDiscriminatedUnionDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[0].focusPath, code: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows independent all-boolean flag sets",
       code: "interface StateDependencies { data?: boolean; error?: boolean; isValidating?: boolean; isLoading?: boolean }",
@@ -152,7 +152,7 @@ ruleTester.run("prefer-discriminated-union", rule, {
     },
   ],
   invalid: [
-    { name: "public match example", filename: preferDiscriminatedUnionDocumentation.examples[1].focusPath, code: preferDiscriminatedUnionDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferDiscriminatedUnion" }] },
+    { name: "public match example", filename: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[1].focusPath, code: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferDiscriminatedUnion" }] },
     {
       name: "rejects a direct inline function return shape",
       code: "declare function load(): { ok: boolean; data?: string; error?: string };",

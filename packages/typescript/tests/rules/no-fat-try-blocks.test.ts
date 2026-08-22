@@ -2,14 +2,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noFatTryBlocksDocumentation } from "../../src/rules/no-fat-try-blocks.js";
+import rule, { NO_FAT_TRY_BLOCKS_DOCUMENTATION } from "../../src/rules/no-fat-try-blocks.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
@@ -20,7 +20,7 @@ const ruleTester = new RuleTester({
 // what they were written to pin (which statements count toward the limit).
 // Fixtures that exercise the exemption itself are grouped at the end of each
 // list and say so.
-ruleTester.run("no-fat-try-blocks", rule, {
+RULE_TESTER.run("no-fat-try-blocks", rule, {
   valid: [
     {
       name: "allows a higher calibrated threshold",
@@ -44,7 +44,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
     // Exactly three throwing (result-using) statements — at the limit.
     {
-      code: noFatTryBlocksDocumentation.examples[0].files[0].source,
+      code: NO_FAT_TRY_BLOCKS_DOCUMENTATION.examples[0].files[0].source,
     },
     // Exactly three awaits — at the limit.
     {
@@ -860,7 +860,7 @@ ruleTester.run("no-fat-try-blocks", rule, {
     },
     // Four result-using calls — boundary just over the limit.
     {
-      code: noFatTryBlocksDocumentation.examples[1].files[0].source,
+      code: NO_FAT_TRY_BLOCKS_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "fatTryBlock" }],
     },
     // Four awaits — multiple independent I/O ops under one swallowing catch.

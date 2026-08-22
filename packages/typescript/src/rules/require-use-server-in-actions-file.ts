@@ -13,7 +13,7 @@ type Options = readonly [];
 
 const ACTION_MODULE_RE = /(?:^|\/)app\/.*\/(?:actions|[^/]+-actions)\.[cm]?[jt]s$/u;
 
-export const requireUseServerInActionsFileDocumentation = {
+export const REQUIRE_USE_SERVER_IN_ACTIONS_FILE_DOCUMENTATION = {
   summary: "route action module missing the use server directive",
   rationale:
     "An exported async function is not callable as a Server Action merely because its file is named actions.ts. Without the module directive, a client import can fail or pull server-only implementation details across the client boundary.",
@@ -57,10 +57,10 @@ function isExportedAsyncFunction(node: TSESTree.ExportNamedDeclaration): boolean
 
 export default createRule<Options, MessageIds>({
   name: "require-use-server-in-actions-file",
-  documentation: requireUseServerInActionsFileDocumentation,
+  documentation: REQUIRE_USE_SERVER_IN_ACTIONS_FILE_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: { description: requireUseServerInActionsFileDocumentation.summary },
+    docs: { description: REQUIRE_USE_SERVER_IN_ACTIONS_FILE_DOCUMENTATION.summary },
     schema: [],
     messages: {
       requireUseServerInActionsFile:

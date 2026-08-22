@@ -12,7 +12,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "routerRefreshPolling";
 type Options = readonly [];
 
-export const noRouterRefreshPollingDocumentation = {
+export const NO_ROUTER_REFRESH_POLLING_DOCUMENTATION = {
   summary: "Do not poll by calling a Next.js router's refresh method from a timer.",
   rationale: "A route refresh refetches and rerenders the whole route on every tick instead of loading the named resource that changed.",
   remediation: "Call the dedicated fetch or server action from the timer and keep the polling interval in a named constant.",
@@ -74,7 +74,7 @@ function isUnshadowedGlobal(
 
 export default createRule<Options, MessageIds>({
   name: "no-router-refresh-polling",
-  documentation: noRouterRefreshPollingDocumentation,
+  documentation: NO_ROUTER_REFRESH_POLLING_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Do not poll by calling a Next.js router's refresh method from a timer." },

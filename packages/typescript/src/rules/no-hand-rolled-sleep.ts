@@ -17,7 +17,7 @@ type Options = readonly [
   }?,
 ];
 
-export const noHandRolledSleepDocumentation = {
+export const NO_HAND_ROLLED_SLEEP_DOCUMENTATION = {
   summary: "Disallow uncancellable promisified timers and timeout arms.",
   rationale:
     "A timer that outlives an aborted operation or a lost promise race retains work and can keep the process alive until it fires.",
@@ -184,7 +184,7 @@ function isRaceArm(node: TSESTree.NewExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-hand-rolled-sleep",
-  documentation: noHandRolledSleepDocumentation,
+  documentation: NO_HAND_ROLLED_SLEEP_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

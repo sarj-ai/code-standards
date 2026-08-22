@@ -3,7 +3,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noCorsWildcardWithCredentialsDocumentation,
+  NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION,
 } from "../../src/rules/no-cors-wildcard-with-credentials.js";
 
 RuleTester.afterAll = afterAll;
@@ -11,13 +11,13 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-cors-wildcard-with-credentials", rule, {
+RULE_TESTER.run("no-cors-wildcard-with-credentials", rule, {
   valid: [
     // Wildcard origin WITHOUT credentials — safe (browser blocks credentialed
     // wildcard anyway). This is a real first-party CORS shape.
@@ -28,7 +28,7 @@ ruleTester.run("no-cors-wildcard-with-credentials", rule, {
     { code: "res.setHeader('Access-Control-Allow-Origin', '*');" },
     // Credentials WITH a specific origin — safe.
     {
-      code: noCorsWildcardWithCredentialsDocumentation.examples[0].files[0].source,
+      code: NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       code: "app.use(cors({ origin: ['https://a.example.com', 'https://b.example.com'], credentials: true }));",
@@ -103,7 +103,7 @@ ruleTester.run("no-cors-wildcard-with-credentials", rule, {
   invalid: [
     // cors() bare "*" origin + credentials.
     {
-      code: noCorsWildcardWithCredentialsDocumentation.examples[1].files[0].source,
+      code: NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "corsWildcardWithCredentials" }],
     },
     // cors() array ["*"] origin + credentials.

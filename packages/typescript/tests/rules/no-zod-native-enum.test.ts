@@ -5,7 +5,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noZodNativeEnumDocumentation,
+  NO_ZOD_NATIVE_ENUM_DOCUMENTATION,
 } from "../../src/rules/no-zod-native-enum.js";
 
 RuleTester.afterAll = afterAll;
@@ -13,7 +13,7 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: {
@@ -26,7 +26,7 @@ const ruleTester = new RuleTester({
 });
 const withZod = (code: string): string => `import { z } from "zod"; ${code}`;
 
-ruleTester.run("no-zod-native-enum", rule, {
+RULE_TESTER.run("no-zod-native-enum", rule, {
   valid: [
     {
       name: "allows nativeEnum coverage in test files",
@@ -35,7 +35,7 @@ ruleTester.run("no-zod-native-enum", rule, {
     },
     {
       name: "allows z.enum with inline string literals",
-      code: noZodNativeEnumDocumentation.examples[0].files[0].source,
+      code: NO_ZOD_NATIVE_ENUM_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "allows z.enum with an as-const string array",
@@ -120,8 +120,8 @@ ruleTester.run("no-zod-native-enum", rule, {
     },
     {
       name: "fixes an inline string-valued object",
-      code: noZodNativeEnumDocumentation.examples[1].files[0].source,
-      output: noZodNativeEnumDocumentation.examples[1].fixedFiles[0].source,
+      code: NO_ZOD_NATIVE_ENUM_DOCUMENTATION.examples[1].files[0].source,
+      output: NO_ZOD_NATIVE_ENUM_DOCUMENTATION.examples[1].fixedFiles[0].source,
       errors: [{ messageId: "nativeEnum" }],
     },
     {

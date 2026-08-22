@@ -19,7 +19,7 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "noSentinelReturn";
 type Options = readonly [LoggingOptions?];
 
-export const noSentinelReturnOnCatchDocumentation = {
+export const NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION = {
   summary: "Disallow swallowing a caught error by returning an empty sentinel unless the error is handled or the sentinel is part of the function contract.",
   rationale: "An unreported fallback makes operational failure indistinguishable from a legitimate empty result.",
   remediation: "Rethrow, report the error before returning, or model expected absence with an explicit predicate, safe-parse, or result contract.",
@@ -582,7 +582,7 @@ function isWithin(node: TSESTree.Node, ancestor: TSESTree.Node): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-sentinel-return-on-catch",
-  documentation: noSentinelReturnOnCatchDocumentation,
+  documentation: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -2,23 +2,23 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferNonNullableCollectionDocumentation } from "../../src/rules/prefer-non-nullable-collection.js";
+import rule, { PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION } from "../../src/rules/prefer-non-nullable-collection.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: { ecmaVersion: "latest", sourceType: "module" },
   },
 });
 
-ruleTester.run("prefer-non-nullable-collection", rule, {
+RULE_TESTER.run("prefer-non-nullable-collection", rule, {
   valid: [
-    { name: "public no-match example", filename: preferNonNullableCollectionDocumentation.examples[0].focusPath, code: preferNonNullableCollectionDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[0].focusPath, code: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[0].files[0].source },
     "interface Input { organizationIds: OrganizationId[]; }",
     "type Response = { items: Array<string> };",
     "interface Input { value: string | string[] | null; }",
@@ -123,7 +123,7 @@ ruleTester.run("prefer-non-nullable-collection", rule, {
     },
   ],
   invalid: [
-    { name: "public match example", filename: preferNonNullableCollectionDocumentation.examples[1].focusPath, code: preferNonNullableCollectionDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferNonNullableCollection" }] },
+    { name: "public match example", filename: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[1].focusPath, code: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferNonNullableCollection" }] },
     {
       name: "reports an undefined array defaulted during destructuring",
       code: [

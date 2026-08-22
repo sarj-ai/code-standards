@@ -29,7 +29,7 @@ type MessageIds = "commentWall";
 
 type Options = readonly [Partial<WallOptions>?];
 
-export const noDeclarationCommentWallDocumentation = {
+export const NO_DECLARATION_COMMENT_WALL_DOCUMENTATION = {
   summary: "Flag an enum body or class body whose member comments mostly re-spell the members' own names.",
   rationale: "A dense block of repetitive member comments obscures the few comments that add information and drifts with renamed members.",
   remediation: "Delete comments that restate member names and retain comments that explain constraints, lifecycle, or behavior.",
@@ -79,7 +79,7 @@ function named(node: TSESTree.Node): Judged | undefined {
 
 export default createRule<Options, MessageIds>({
   name: "no-declaration-comment-wall",
-  documentation: noDeclarationCommentWallDocumentation,
+  documentation: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

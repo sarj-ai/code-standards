@@ -18,7 +18,7 @@ export interface RuleOptions {
 
 type Options = readonly [RuleOptions?];
 
-export const noRawFetchOutsideClientsDocumentation = {
+export const NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION = {
   summary: "Disallow calling the global `fetch` outside the client layer; route outbound HTTP through a client module that owns retry, timeout and status handling.",
   rationale: "Scattered fetch calls bypass shared transport policy and are harder to stub and observe consistently.",
   remediation: "Move the request into a client module and call that abstraction from application code.",
@@ -236,7 +236,7 @@ function compile(patterns: readonly string[]): RegExp[] {
 
 export default createRule<Options, MessageIds>({
   name: "no-raw-fetch-outside-clients",
-  documentation: noRawFetchOutsideClientsDocumentation,
+  documentation: NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noSecretInLogDocumentation } from "../../src/rules/no-secret-in-log.js";
+import rule, { NO_SECRET_IN_LOG_DOCUMENTATION } from "../../src/rules/no-secret-in-log.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-secret-in-log", rule, {
+RULE_TESTER.run("no-secret-in-log", rule, {
   valid: [
-    { name: "accepts the documented redaction", code: noSecretInLogDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented redaction", code: NO_SECRET_IN_LOG_DOCUMENTATION.examples[0].files[0].source },
     // Innocuous trailing token: usage counter, not the secret.
     { code: 'logger.info("usage", { tokenCount });' },
     // Row-id of a key, not the key material.
@@ -191,7 +191,7 @@ ruleTester.run("no-secret-in-log", rule, {
       code: 'console.error("request failed", await response.text());',
       errors: [{ messageId: "noRawBodyInLog" }],
     },
-    { name: "reports the documented secret", code: noSecretInLogDocumentation.examples[1].files[0].source, errors: [{ messageId: "noSecretInLog" }] },
+    { name: "reports the documented secret", code: NO_SECRET_IN_LOG_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSecretInLog" }] },
     // Object property: shorthand secret names.
     {
       code: 'logger.error("failed", { token });',

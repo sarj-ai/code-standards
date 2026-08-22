@@ -12,7 +12,7 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "unionInComment";
 type Options = readonly [];
 
-export const noUnionInCommentDocumentation = {
+export const NO_UNION_IN_COMMENT_DOCUMENTATION = {
   summary: "Flag a comment that lists a `string` field's allowed values instead of the type listing them.",
   rationale: "A comment cannot prevent callers from supplying strings outside the listed set, and the list can drift from runtime behavior.",
   remediation: "Move the allowed values into a string-literal union and remove the redundant comment.",
@@ -142,7 +142,7 @@ function unionLiterals(body: string): string[] | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-union-in-comment",
-  documentation: noUnionInCommentDocumentation,
+  documentation: NO_UNION_IN_COMMENT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

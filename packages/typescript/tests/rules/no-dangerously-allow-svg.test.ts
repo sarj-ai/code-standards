@@ -8,9 +8,9 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-dangerously-allow-svg", rule, {
+RULE_TESTER.run("no-dangerously-allow-svg", rule, {
   valid: [
     { filename: "next.config.mjs", code: "export default { images: { dangerouslyAllowSVG: false } };" },
     { filename: "next.config.ts", code: "export default { images: {} };" },

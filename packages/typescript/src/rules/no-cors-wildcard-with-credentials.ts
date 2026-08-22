@@ -16,7 +16,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 type MessageIds = "corsWildcardWithCredentials";
 type Options = readonly [];
 
-export const noCorsWildcardWithCredentialsDocumentation = {
+export const NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION = {
   summary: "Disallow wildcard CORS origins when credentials are enabled.",
   rationale:
     "Reflecting every origin while allowing credentials can let an untrusted site read authenticated cross-origin responses.",
@@ -261,7 +261,7 @@ type ReceiverHeaderSets = Map<string, ScopeHeaderSets>;
 
 export default createRule<Options, MessageIds>({
   name: "no-cors-wildcard-with-credentials",
-  documentation: noCorsWildcardWithCredentialsDocumentation,
+  documentation: NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

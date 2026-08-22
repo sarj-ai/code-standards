@@ -16,7 +16,7 @@ type Options = readonly [
   }?,
 ];
 
-export const requireFetchTimeoutDocumentation = {
+export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
   summary: "Require an abort `signal` (e.g. `AbortSignal.timeout(ms)`) on global `fetch()` calls so stalled upstreams cannot hang the caller forever.",
   rationale: "An unbounded request can occupy work indefinitely when an upstream stalls.",
   remediation: "Pass an abort signal, such as `AbortSignal.timeout(ms)`, in the fetch init.",
@@ -92,7 +92,7 @@ function isInlineUrl(
 
 export default createRule<Options, MessageIds>({
   name: "require-fetch-timeout",
-  documentation: requireFetchTimeoutDocumentation,
+  documentation: REQUIRE_FETCH_TIMEOUT_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

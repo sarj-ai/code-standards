@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferConstantTimeSecretCompareDocumentation } from "../../src/rules/prefer-constant-time-secret-compare.js";
+import rule, { PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION } from "../../src/rules/prefer-constant-time-secret-compare.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("prefer-constant-time-secret-compare", rule, {
+RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
   valid: [
-    { name: "public no-match example", filename: preferConstantTimeSecretCompareDocumentation.examples[0].focusPath, code: preferConstantTimeSecretCompareDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[0].focusPath, code: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows identity checks against a camelCase marker ending in Token",
       code: "if (options.queryFn === skipToken) { options.enabled = false; }",
@@ -83,7 +83,7 @@ ruleTester.run("prefer-constant-time-secret-compare", rule, {
     },
   ],
   invalid: [
-    { name: "public match example", filename: preferConstantTimeSecretCompareDocumentation.examples[1].focusPath, code: preferConstantTimeSecretCompareDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
+    { name: "public match example", filename: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].focusPath, code: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
     // The sentinel prefix list must stay narrow: a live credential still fires.
     {
       name: "reports a runtime API-key comparison and prescribes equal-length digest comparison",

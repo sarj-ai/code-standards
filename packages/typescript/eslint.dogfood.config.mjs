@@ -1,16 +1,16 @@
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
-import sarj, { strictRules } from "./dist/index.js";
+import sarj, { STRICT_RULES } from "./dist/index.js";
 import { MODULE_CONSTANT_NAMING_OPTIONS } from "./eslint.naming-options.mjs";
 
-const allSarjRules = Object.fromEntries(
+const ALL_SARJ_RULES = Object.fromEntries(
   Object.keys(sarj.rules)
     .sort()
     .map((name) => [`@sarj/${name}`, "error"]),
 );
-const dogfoodRules = { ...allSarjRules, ...strictRules };
-const sourceOwnedRejectedExamples = {
+const DOGFOOD_RULES = { ...ALL_SARJ_RULES, ...STRICT_RULES };
+const SOURCE_OWNED_REJECTED_EXAMPLES = {
   "src/rules/no-dynamic-sql.ts": "@sarj/no-select-star",
   "src/rules/no-offset-pagination.ts": "@sarj/no-offset-pagination",
   "src/rules/no-select-star.ts": "@sarj/no-select-star",
@@ -33,11 +33,11 @@ export default defineConfig(
       },
     },
     rules: {
-      ...dogfoodRules,
+      ...DOGFOOD_RULES,
       "@typescript-eslint/naming-convention": ["error", ...MODULE_CONSTANT_NAMING_OPTIONS],
     },
   },
-  ...Object.entries(sourceOwnedRejectedExamples).map(([file, rule]) => ({
+  ...Object.entries(SOURCE_OWNED_REJECTED_EXAMPLES).map(([file, rule]) => ({
     name: `sarj/source-owned-rejected-example/${rule}`,
     files: [file],
     rules: { [rule]: "off" },

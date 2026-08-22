@@ -18,7 +18,7 @@ import { isZodModule, ZOD_SCHEMA_NAME_RE } from "./_zod.js";
 type MessageIds = "missingZodValidation";
 type Options = readonly [];
 
-export const requireZodFormValidationDocumentation = {
+export const REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION = {
   summary: "Require Zod validation (`Schema.parse(...)` / `Schema.safeParse(...)`) when reading values out of a `FormData` object.",
   rationale: "FormData values are untrusted strings or files and need runtime validation before use.",
   remediation: "Read the value inside a Zod schema's `parse` or `safeParse` input.",
@@ -79,7 +79,7 @@ const isFormDataMethodCall = (node: TSESTree.Node): boolean => {
 
 export default createRule<Options, MessageIds>({
   name: "require-zod-form-validation",
-  documentation: requireZodFormValidationDocumentation,
+  documentation: REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

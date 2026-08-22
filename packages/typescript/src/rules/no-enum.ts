@@ -16,7 +16,7 @@ type Options = readonly [
   }?,
 ];
 
-export const noEnumDocumentation = {
+export const NO_ENUM_DOCUMENTATION = {
   summary: "Disallow TypeScript `enum`; use string-literal unions or `as const` objects instead.",
   rationale:
     "TypeScript enums emit runtime objects and numeric enums accept values outside their declared members, adding behavior where a type-only model is sufficient.",
@@ -65,7 +65,7 @@ function matchesAnyPattern(
 
 export default createRule<Options, MessageIds>({
   name: "no-enum",
-  documentation: noEnumDocumentation,
+  documentation: NO_ENUM_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

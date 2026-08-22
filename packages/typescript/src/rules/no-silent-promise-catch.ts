@@ -12,7 +12,7 @@ import { isScriptFile, isTestFile } from "./_paths.js";
 type MessageIds = "silentCatch";
 type Options = readonly [];
 
-export const noSilentPromiseCatchDocumentation = {
+export const NO_SILENT_PROMISE_CATCH_DOCUMENTATION = {
   summary: "Disallow `.catch()` and second-argument `.then()` handlers that silently swallow a rejection; log, rethrow, or handle the error.",
   rationale: "A swallowed rejection hides failures and gives callers an indistinguishable fallback value.",
   remediation: "Log, rethrow, or explicitly recover from the rejection; explain intentional teardown suppression.",
@@ -143,7 +143,7 @@ function isSilentExpression(node: TSESTree.Expression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-silent-promise-catch",
-  documentation: noSilentPromiseCatchDocumentation,
+  documentation: NO_SILENT_PROMISE_CATCH_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -19,7 +19,7 @@ const PHASE_RE = new RegExp(
   "iu",
 );
 
-export const testPhaseLabelCommentDocumentation = {
+export const TEST_PHASE_LABEL_COMMENT_DOCUMENTATION = {
   summary: "Tests must not use bare Arrange, Act, Assert, Given, When, or Then phase comments.",
   rationale: "Phase labels narrate test structure without explaining behavior and often hide unclear names or oversized tests.",
   remediation: "Delete the label; if the phases remain hard to follow, extract a named helper or split the test.",
@@ -82,11 +82,11 @@ function continuesProseRun(comments: readonly TSESTree.Comment[], index: number)
 
 export default createRule<Options, MessageIds>({
   name: "test-phase-label-comment",
-  documentation: testPhaseLabelCommentDocumentation,
+  documentation: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     fixable: "code",
-    docs: { description: testPhaseLabelCommentDocumentation.summary },
+    docs: { description: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION.summary },
     schema: [],
     messages: { removeLabel: "Bare test phase label — delete it and let the test names and helpers carry the structure." },
   },

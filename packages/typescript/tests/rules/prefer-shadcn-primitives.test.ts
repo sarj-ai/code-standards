@@ -2,14 +2,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferShadcnPrimitivesDocumentation } from "../../src/rules/prefer-shadcn-primitives.js";
+import rule, { PREFER_SHADCN_PRIMITIVES_DOCUMENTATION } from "../../src/rules/prefer-shadcn-primitives.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: { ecmaFeatures: { jsx: true } },
@@ -17,9 +17,9 @@ const ruleTester = new RuleTester({
 });
 const ASSUME_AVAILABLE = [{ assumeAvailable: true }] as const;
 
-ruleTester.run("prefer-shadcn-primitives", rule, {
+RULE_TESTER.run("prefer-shadcn-primitives", rule, {
   valid: [
-    { name: "public no-match example", filename: preferShadcnPrimitivesDocumentation.examples[0].focusPath, code: preferShadcnPrimitivesDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[0].focusPath, code: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "accepts shared primitives",
       code: `
@@ -106,7 +106,7 @@ ruleTester.run("prefer-shadcn-primitives", rule, {
     },
   ],
   invalid: [
-    { name: "public match example", filename: preferShadcnPrimitivesDocumentation.examples[1].focusPath, code: preferShadcnPrimitivesDocumentation.examples[1].files[0].source, options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
+    { name: "public match example", filename: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[1].focusPath, code: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[1].files[0].source, options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
     {
       name: "rejects a raw button",
       code: `<button>Save</button>`,

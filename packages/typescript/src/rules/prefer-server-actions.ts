@@ -11,7 +11,7 @@ import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "preferServerAction";
 
-export const preferServerActionsDocumentation = {
+export const PREFER_SERVER_ACTIONS_DOCUMENTATION = {
   summary: "Prefer Next.js Server Actions over /api/* mutations.",
   rationale: "Server Actions preserve typed application calls and avoid an internal JSON request-response boundary.",
   remediation: "Move the mutation into a Server Action and invoke that action from the React client.",
@@ -187,7 +187,7 @@ function getPropertyNode(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-server-actions",
-  documentation: preferServerActionsDocumentation,
+  documentation: PREFER_SERVER_ACTIONS_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

@@ -81,10 +81,10 @@ import stepdown from "./rules/stepdown.js";
 import sourceCoupledTest from "./rules/source-coupled-test.js";
 import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import zodNamingConvention from "./rules/zod-naming-convention.js";
-import { renamedRules } from "./rules/_renames.js";
-import { retiredRules } from "./rules/_retired.js";
+import { RENAMED_RULES } from "./rules/_renames.js";
+import { RETIRED_RULES } from "./rules/_retired.js";
 
-const rules = {
+const RULES = {
   "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
   "enforce-file-structure": enforceFileStructure,
@@ -168,20 +168,20 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.13.1",
+  version: "15.13.2",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
-const applicationOnlyRules = [
+const APPLICATION_ONLY_RULES = [
   "no-restricted-library-load",
   "prefer-native-random-uuid",
   "prefer-shadcn-primitives",
 ] as const;
 
 /** No active rule remains advisory; retained as a public compatibility export. */
-const advisoryRules = [] as const;
+const ADVISORY_RULES = [] as const;
 
-const recommendedRules = {
+const RECOMMENDED_RULES = {
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
@@ -256,7 +256,7 @@ const recommendedRules = {
   "@sarj/zod-naming-convention": "error",
 } as const;
 
-const strictRules = {
+const STRICT_RULES = {
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
@@ -341,27 +341,39 @@ type FlatPreset = {
   readonly rules: Record<string, unknown>;
 };
 
-const plugin = {
+const PLUGIN = {
   meta,
-  rules,
-  retiredRules,
+  rules: RULES,
+  retiredRules: RETIRED_RULES,
   get configs(): { readonly recommended: FlatPreset; readonly strict: FlatPreset } {
     return {
       recommended: {
         name: "@sarj/recommended",
-        plugins: { "@sarj": plugin },
-        rules: recommendedRules,
+        plugins: { "@sarj": PLUGIN },
+        rules: RECOMMENDED_RULES,
       },
       strict: {
         name: "@sarj/strict",
-        plugins: { "@sarj": plugin },
-        rules: strictRules,
+        plugins: { "@sarj": PLUGIN },
+        rules: STRICT_RULES,
       },
     };
   },
 } as const;
 
-export default plugin;
+export default PLUGIN;
 export { publicDocumentation } from "./rules/_docs.js";
-export { type RetiredRule, retiredRules } from "./rules/_retired.js";
-export { advisoryRules, applicationOnlyRules, recommendedRules, renamedRules, rules, strictRules };
+export {
+  type RetiredRule,
+  RETIRED_RULES,
+  RETIRED_RULES as retiredRules,
+} from "./rules/_retired.js";
+export { ADVISORY_RULES, APPLICATION_ONLY_RULES, RECOMMENDED_RULES, RENAMED_RULES, RULES, STRICT_RULES };
+export {
+  ADVISORY_RULES as advisoryRules,
+  APPLICATION_ONLY_RULES as applicationOnlyRules,
+  RECOMMENDED_RULES as recommendedRules,
+  RENAMED_RULES as renamedRules,
+  RULES as rules,
+  STRICT_RULES as strictRules,
+};

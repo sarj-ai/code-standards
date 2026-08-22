@@ -24,7 +24,7 @@ _PRIVATE_REFS_FILE: Final = ".sarj-private-refs.toml"
 _TEST_COMMAND_RE: Final = re.compile(r"(?:npm test|pytest|make (?:verify|test)\b)")
 _PYPROJECT_VERSION_RE: Final = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
 _ESLINT_RULE_RE: Final = re.compile(r'^\s*"([a-z0-9-]+)":', re.MULTILINE)
-_ESLINT_MAP_RE: Final = re.compile(r"^const rules = \{$(?P<body>.*?)^\};$", re.MULTILINE | re.DOTALL)
+_ESLINT_MAP_RE: Final = re.compile(r"^const (?:RULES|rules) = \{$(?P<body>.*?)^\};$", re.MULTILINE | re.DOTALL)
 _MARKDOWN_LOCATIONS: Final = (
     ".github/SECURITY.md",
     ".github/PULL_REQUEST_TEMPLATE.md",

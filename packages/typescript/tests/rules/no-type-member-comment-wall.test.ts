@@ -2,7 +2,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noTypeMemberCommentWallDocumentation,
+  NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
 } from "../../src/rules/no-type-member-comment-wall.js";
 
 RuleTester.afterAll = afterAll;
@@ -10,12 +10,12 @@ RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-type-member-comment-wall", rule, {
+RULE_TESTER.run("no-type-member-comment-wall", rule, {
   valid: [
     // No member comments at all — 79% of the OSS corpus.
-    { code: noTypeMemberCommentWallDocumentation.examples[0].files[0].source },
+    { code: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "preserves rationale in consecutive line-comment blocks",
       code: [
@@ -508,7 +508,7 @@ ruleTester.run("no-type-member-comment-wall", rule, {
     // typeorm/src/driver/sap/SapConnectionCredentialsOptions.ts:4 — ten members,
     // ten comments, every one "Database <the member's name>."
     {
-      code: noTypeMemberCommentWallDocumentation.examples[1].files[0].source,
+      code: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "commentWall" }],
     },
     // A comment that IS its member's name, blank-line separated exactly like

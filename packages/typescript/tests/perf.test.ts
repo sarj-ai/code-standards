@@ -89,9 +89,9 @@ const RELATIVE_OUTLIER_FACTOR = 10;
  */
 const RELATIVE_SLACK_VS_PARSE = 0.01;
 
-const ruleNames = Object.keys(plugin.rules);
+const RULE_NAMES = Object.keys(plugin.rules);
 
-const linter = new Linter();
+const LINTER = new Linter();
 
 function configFor(rules: Linter.RulesRecord): Linter.Config[] {
   return [
@@ -127,49 +127,49 @@ function median(values: number[]): number {
  */
 // Parsed once. Handing `verify` a `SourceCode` is what takes the parser out of
 // every subsequent measurement.
-linter.verify(SOURCE, NO_RULES, "synthetic.tsx");
-const parsed: SourceCode = linter.getSourceCode();
+LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx");
+const PARSED: SourceCode = LINTER.getSourceCode();
 
-const ruleSamples = new Map(ruleNames.map((name) => [name, [] as number[]]));
-const ratioSamples = new Map(ruleNames.map((name) => [name, [] as number[]]));
-const parseSamples: number[] = [];
+const RULE_SAMPLES = new Map(RULE_NAMES.map((name) => [name, [] as number[]]));
+const RATIO_SAMPLES = new Map(RULE_NAMES.map((name) => [name, [] as number[]]));
+const PARSE_SAMPLES: number[] = [];
 const MEASUREMENT_ROUNDS = 7;
 
-for (const name of ruleNames) {
-  linter.verify(parsed, configFor({ [`@sarj/${name}`]: "error" }), "synthetic.tsx");
+for (const name of RULE_NAMES) {
+  LINTER.verify(PARSED, configFor({ [`@sarj/${name}`]: "error" }), "synthetic.tsx");
 }
 
 for (let round = 0; round < MEASUREMENT_ROUNDS; round++) {
-  const parseBefore = elapsedMs(() => linter.verify(SOURCE, NO_RULES, "synthetic.tsx"));
-  const offset = round % ruleNames.length;
-  const orderedNames = [...ruleNames.slice(offset), ...ruleNames.slice(0, offset)];
+  const parseBefore = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+  const offset = round % RULE_NAMES.length;
+  const orderedNames = [...RULE_NAMES.slice(offset), ...RULE_NAMES.slice(0, offset)];
   const roundSamples = new Map<string, number>();
 
   for (const name of orderedNames) {
     const config = configFor({ [`@sarj/${name}`]: "error" });
     roundSamples.set(
       name,
-      elapsedMs(() => linter.verify(parsed, config, "synthetic.tsx")),
+      elapsedMs(() => LINTER.verify(PARSED, config, "synthetic.tsx")),
     );
   }
 
-  const parseAfter = elapsedMs(() => linter.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+  const parseAfter = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
   const roundParseMs = (parseBefore + parseAfter) / 2;
-  parseSamples.push(roundParseMs);
+  PARSE_SAMPLES.push(roundParseMs);
   for (const [name, milliseconds] of roundSamples) {
-    ruleSamples.get(name)?.push(milliseconds);
-    ratioSamples.get(name)?.push(milliseconds / roundParseMs);
+    RULE_SAMPLES.get(name)?.push(milliseconds);
+    RATIO_SAMPLES.get(name)?.push(milliseconds / roundParseMs);
   }
 }
 
-const parseMs = median(parseSamples);
+const PARSE_MS = median(PARSE_SAMPLES);
 
 function ruleMs(ruleName: string): number {
-  return median(ruleSamples.get(ruleName) ?? []);
+  return median(RULE_SAMPLES.get(ruleName) ?? []);
 }
 
 function ruleRatio(ruleName: string): number {
-  return median(ratioSamples.get(ruleName) ?? []);
+  return median(RATIO_SAMPLES.get(ruleName) ?? []);
 }
 
 const PERF_TIMEOUT_MS = 120_000;
@@ -180,8 +180,8 @@ describe("rule performance", () => {
     // `verify` a string, every timing silently becomes a parse timing again and
     // both gates below stop meaning anything. A rule cannot plausibly cost as
     // much as a full parse.
-    expect(parseMs, "parse of the synthetic source did not register").toBeGreaterThan(1);
-    const worstRatio = Math.max(...ruleNames.map((name) => ruleRatio(name)));
+    expect(PARSE_MS, "parse of the synthetic source did not register").toBeGreaterThan(1);
+    const worstRatio = Math.max(...RULE_NAMES.map((name) => ruleRatio(name)));
     expect(
       worstRatio,
       `slowest rule is ${worstRatio.toFixed(3)}x the parse — timings look like parse timings`,
@@ -189,7 +189,7 @@ describe("rule performance", () => {
   }, PERF_TIMEOUT_MS);
 
   it("no rule costs more than a fraction of parsing the same file", () => {
-    for (const name of ruleNames) {
+    for (const name of RULE_NAMES) {
       const ratio = ruleRatio(name);
       expect(
         ratio,
@@ -199,27 +199,27 @@ describe("rule performance", () => {
   }, PERF_TIMEOUT_MS);
 
   it("no rule is an algorithmic outlier (>10x median)", () => {
-    const initial = ruleNames.map((name) => ({ name, ms: ruleMs(name) }));
+    const initial = RULE_NAMES.map((name) => ({ name, ms: ruleMs(name) }));
     const initialSorted = [...initial].map((timing) => timing.ms).sort((a, b) => a - b);
     const initialMedian = initialSorted[Math.floor(initialSorted.length / 2)] ?? 0;
     const initialCeiling =
-      initialMedian * RELATIVE_OUTLIER_FACTOR + parseMs * RELATIVE_SLACK_VS_PARSE;
+      initialMedian * RELATIVE_OUTLIER_FACTOR + PARSE_MS * RELATIVE_SLACK_VS_PARSE;
     const timings = initial.map((timing) => {
       if (timing.ms <= initialCeiling) return timing;
       const config = configFor({ [`@sarj/${timing.name}`]: "error" });
       const confirmation = Array.from({ length: 5 }, () =>
         elapsedMs(() => {
-          linter.verify(parsed, config, "synthetic.tsx");
+          LINTER.verify(PARSED, config, "synthetic.tsx");
         }),
       );
       return {
         name: timing.name,
-        ms: median([...(ruleSamples.get(timing.name) ?? []), ...confirmation]),
+        ms: median([...(RULE_SAMPLES.get(timing.name) ?? []), ...confirmation]),
       };
     });
     const sorted = [...timings].map((t) => t.ms).sort((a, b) => a - b);
     const medianMs = sorted[Math.floor(sorted.length / 2)] ?? 0;
-    const ceiling = medianMs * RELATIVE_OUTLIER_FACTOR + parseMs * RELATIVE_SLACK_VS_PARSE;
+    const ceiling = medianMs * RELATIVE_OUTLIER_FACTOR + PARSE_MS * RELATIVE_SLACK_VS_PARSE;
     const slow = timings.filter((t) => t.ms > ceiling);
     expect(
       slow,

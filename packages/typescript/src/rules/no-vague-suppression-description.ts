@@ -13,7 +13,7 @@ type Options = readonly [];
 const DIRECTIVE_WITH_DESCRIPTION_RE = /^(?:eslint-(?:disable|disable-next-line|disable-line)\b[^:\n]*?|@ts-expect-error\b)\s*(?::|--)\s*(.+?)\s*$/iu;
 const VAGUE_RE = /^(?:needed|required|intentional(?:ly)?|ignore(?:d)?|false positive|type error|typescript|to satisfy (?:the )?(?:linter|typescript|type checker))\.?$/iu;
 
-export const noVagueSuppressionDescriptionDocumentation = {
+export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
   summary:
     "Require suppression descriptions to name the concrete mismatch or invariant instead of a generic non-reason.",
   rationale:
@@ -61,7 +61,7 @@ export const noVagueSuppressionDescriptionDocumentation = {
 
 export default createRule<Options, MessageIds>({
   name: "no-vague-suppression-description",
-  documentation: noVagueSuppressionDescriptionDocumentation,
+  documentation: NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

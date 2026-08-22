@@ -2,19 +2,19 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noBareReturnFromTestCatchDocumentation } from "../../src/rules/no-bare-return-from-test-catch.js";
+import rule, { NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION } from "../../src/rules/no-bare-return-from-test-catch.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 const TEST_FILE = "/repo/src/codec.test.ts";
 
-ruleTester.run("no-bare-return-from-test-catch", rule, {
+RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
   valid: [
-    { name: "public no-match example", filename: noBareReturnFromTestCatchDocumentation.examples[0].focusPath, code: noBareReturnFromTestCatchDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[0].focusPath, code: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[0].files[0].source },
     { name: "requires a later assertion", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { return; } cleanup(); });" },
     { name: "allows returned values", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { return fallback; } expect(done).toBe(true); });" },
     { name: "allows rethrow in catch", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { if (fatal) throw error; return; } expect(done).toBe(true); });" },
@@ -30,7 +30,7 @@ ruleTester.run("no-bare-return-from-test-catch", rule, {
     { name: "ignores generated headers", filename: TEST_FILE, code: "// @generated\ntest('x', () => { try { run(); } catch { return; } expect(done).toBe(true); });" },
   ],
   invalid: [
-    { name: "public match example", filename: noBareReturnFromTestCatchDocumentation.examples[1].focusPath, code: noBareReturnFromTestCatchDocumentation.examples[1].files[0].source, errors: [{ messageId: "bareReturnFromTestCatch", type: "ReturnStatement" }] },
+    { name: "public match example", filename: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[1].focusPath, code: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "bareReturnFromTestCatch", type: "ReturnStatement" }] },
     { name: "supports imported aliases and modifiers", filename: TEST_FILE, code: "import { test as check, expect as verify } from 'vitest'; check.only('x', () => { try { run(); } catch { return; } verify(done).toBe(true); });", errors: [{ messageId: "bareReturnFromTestCatch" }] },
     { name: "supports assertions nested in later control flow", filename: TEST_FILE, code: "it('x', () => { try { run(); } catch { if (optional) return; } if (ready) { expect(done).toBe(true); } });", errors: [{ messageId: "bareReturnFromTestCatch" }] },
     { name: "supports node assert", filename: TEST_FILE, code: "import { test } from 'node:test'; import { strict as verify } from 'node:assert'; test('x', () => { try { run(); } catch { return; } verify.equal(done, true); });", errors: [{ messageId: "bareReturnFromTestCatch" }] },

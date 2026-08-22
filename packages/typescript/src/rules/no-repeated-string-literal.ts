@@ -28,7 +28,7 @@ const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.ArrowFunctionExpression,
 ]);
 
-export const noRepeatedStringLiteralDocumentation = {
+export const NO_REPEATED_STRING_LITERAL_DOCUMENTATION = {
   summary: "Disallow a long structured string literal repeated across functions; the copies drift when one is edited. Extract a module-level constant.",
   rationale: "Independent copies of a query, route template, or identifier can diverge and silently change behavior.",
   remediation: "Extract the repeated value to one module-level constant and reference it from each function.",
@@ -96,7 +96,7 @@ function isScaffolding(node: TSESTree.Node): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-repeated-string-literal",
-  documentation: noRepeatedStringLiteralDocumentation,
+  documentation: NO_REPEATED_STRING_LITERAL_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

@@ -2,20 +2,20 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noGenericSingleExportModuleDocumentation } from "../../src/rules/no-generic-single-export-module.js";
+import rule, { NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION } from "../../src/rules/no-generic-single-export-module.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: { parser: tsParser, sourceType: "module" },
 });
 
-ruleTester.run("no-generic-single-export-module", rule, {
+RULE_TESTER.run("no-generic-single-export-module", rule, {
   valid: [
-    { filename: "/repo/src/order-parser.ts", code: noGenericSingleExportModuleDocumentation.examples[0].files[0].source },
+    { filename: "/repo/src/order-parser.ts", code: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION.examples[0].files[0].source },
     { filename: "/repo/src/utils.ts", code: "export function parseOrder() { return {}; }\nexport function formatOrder() { return ''; }" },
     { filename: "/repo/src/types.ts", code: "export interface Order { id: string }" },
     {
@@ -65,7 +65,7 @@ ruleTester.run("no-generic-single-export-module", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented generic module", filename: "/repo/src/utils.ts", code: noGenericSingleExportModuleDocumentation.examples[1].files[0].source, errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }] },
+    { name: "reports the documented generic module", filename: "/repo/src/utils.ts", code: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "genericSingleExport", data: { stem: "utils", exported: "parseOrder", expected: "parse-order.ts" } }] },
     {
       name: "a generic export does not make a generic filename informative",
       filename: "/repo/src/utils.ts",

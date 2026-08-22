@@ -5,7 +5,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  preferAwaitInAsyncReturnDocumentation,
+  PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
 } from "../../src/rules/prefer-await-in-async-return.js";
 
 RuleTester.afterAll = afterAll;
@@ -13,7 +13,7 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const typedRuleTester = new RuleTester({
+const TYPED_RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: {
@@ -25,11 +25,11 @@ const typedRuleTester = new RuleTester({
   },
 });
 
-typedRuleTester.run("prefer-await-in-async-return", rule, {
+TYPED_RULE_TESTER.run("prefer-await-in-async-return", rule, {
   valid: [
     {
       name: "accepts the documented explicit await",
-      code: preferAwaitInAsyncReturnDocumentation.examples[0].files[0].source,
+      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "allows a dynamic import adapter in a non-async function",
@@ -119,7 +119,7 @@ typedRuleTester.run("prefer-await-in-async-return", rule, {
   invalid: [
     {
       name: "reports the documented direct async return",
-      code: preferAwaitInAsyncReturnDocumentation.examples[1].files[0].source,
+      code: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "preferAwait" }],
     },
     {
@@ -164,11 +164,11 @@ typedRuleTester.run("prefer-await-in-async-return", rule, {
   ],
 });
 
-const untypedRuleTester = new RuleTester({
+const UNTYPED_RULE_TESTER = new RuleTester({
   languageOptions: { parser: tsParser },
 });
 
-untypedRuleTester.run("prefer-await-in-async-return without type services", rule, {
+UNTYPED_RULE_TESTER.run("prefer-await-in-async-return without type services", rule, {
   valid: [{
     name: "stays silent when the parser has no type information",
     code: `async function load() {

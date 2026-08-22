@@ -11,7 +11,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "preferNonNullableCollection";
 
-export const preferNonNullableCollectionDocumentation = {
+export const PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION = {
   summary: "Suggest non-null arrays only when local control flow proves the nullish state is equivalent to an empty collection.",
   rationale: "A redundant nullish collection state spreads defaults and guards through consumers without carrying information.",
   remediation: "Use a non-null collection type and normalize omitted input to an empty collection at the boundary.",
@@ -294,7 +294,7 @@ function memberIsOnlyCoalesced(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-non-nullable-collection",
-  documentation: preferNonNullableCollectionDocumentation,
+  documentation: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

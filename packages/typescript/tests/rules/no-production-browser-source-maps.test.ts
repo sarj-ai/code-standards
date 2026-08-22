@@ -8,9 +8,9 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-production-browser-source-maps", rule, {
+RULE_TESTER.run("no-production-browser-source-maps", rule, {
   valid: [
     { filename: "next.config.mjs", code: "export default { productionBrowserSourceMaps: false };" },
     { filename: "next.config.ts", code: "export default {};" },

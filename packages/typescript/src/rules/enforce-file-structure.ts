@@ -12,7 +12,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "importsFirst" | "useServerDirective";
 type Options = readonly [];
 
-export const enforceFileStructureDocumentation = {
+export const ENFORCE_FILE_STRUCTURE_DOCUMENTATION = {
   summary: "Require imports before body statements and require `use server` to be the first statement.",
   rationale:
     "Interleaved imports obscure module dependencies, while a displaced `use server` string is not an active directive.",
@@ -80,7 +80,7 @@ const isUseServerDirective = (
 
 export default createRule<Options, MessageIds>({
   name: "enforce-file-structure",
-  documentation: enforceFileStructureDocumentation,
+  documentation: ENFORCE_FILE_STRUCTURE_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

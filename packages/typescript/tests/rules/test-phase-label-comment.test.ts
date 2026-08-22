@@ -1,18 +1,18 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { testPhaseLabelCommentDocumentation } from "../../src/rules/test-phase-label-comment.js";
+import rule, { TEST_PHASE_LABEL_COMMENT_DOCUMENTATION } from "../../src/rules/test-phase-label-comment.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("test-phase-label-comment", rule, {
+RULE_TESTER.run("test-phase-label-comment", rule, {
   valid: [
-    { code: testPhaseLabelCommentDocumentation.examples[0].files[0].source, filename: "widget.test.ts" },
+    { code: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION.examples[0].files[0].source, filename: "widget.test.ts" },
     { code: "// Arrange\nconst widget = makeWidget();", filename: "widget.ts" },
     { code: "const values = [\n  // Arrange\n  arrangeValue,\n];", filename: "widget.test.ts" },
     { code: "const value = run(); // Act", filename: "widget.test.ts" },
@@ -31,7 +31,7 @@ ruleTester.run("test-phase-label-comment", rule, {
   ],
   invalid: [
     {
-      code: testPhaseLabelCommentDocumentation.examples[1].files[0].source,
+      code: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION.examples[1].files[0].source,
       filename: "widget.test.ts",
       output: "const widget = makeWidget();",
       errors: [{ messageId: "removeLabel" }],

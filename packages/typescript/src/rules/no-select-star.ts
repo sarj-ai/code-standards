@@ -13,7 +13,7 @@ import { createSqlListener } from "./_sql.js";
 type MessageIds = "noSelectStar";
 type Options = readonly [];
 
-export const noSelectStarDocumentation = {
+export const NO_SELECT_STAR_DOCUMENTATION = {
   summary: "Disallow SELECT * in embedded SQL; it over-fetches and leaves the row contract implicit, so a schema change breaks row parsing silently.",
   rationale: "Wildcard projections couple row shape and query cost to unrelated schema changes.",
   remediation: "List every required column explicitly in the projection.",
@@ -74,7 +74,7 @@ function isProjectionStar(sql: string, pos: number): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-select-star",
-  documentation: noSelectStarDocumentation,
+  documentation: NO_SELECT_STAR_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -12,7 +12,7 @@ type MessageIds = "requireUseFormDefaultValues";
 type Options = readonly [];
 type ScopeVariable = NonNullable<ReturnType<typeof ASTUtils.findVariable>>;
 
-export const requireUseFormDefaultValuesDocumentation = {
+export const REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION = {
   summary: "react-hook-form useForm call without defaultValues",
   rationale:
     "Without an explicit initial value, fields can change from uncontrolled to controlled as data arrives, reset behavior becomes ambiguous, and the form's initial shape no longer documents the values users can edit.",
@@ -59,10 +59,10 @@ function hasDefaultValues(options: TSESTree.CallExpressionArgument | undefined):
 
 export default createRule<Options, MessageIds>({
   name: "require-use-form-default-values",
-  documentation: requireUseFormDefaultValuesDocumentation,
+  documentation: REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: { description: requireUseFormDefaultValuesDocumentation.summary },
+    docs: { description: REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION.summary },
     schema: [],
     messages: {
       requireUseFormDefaultValues:

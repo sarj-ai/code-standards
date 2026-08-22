@@ -14,7 +14,7 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "deleteNarration" | "narratesValue" | "removeNarration";
 type Options = readonly [];
 
-export const noTrailingValueNarrationDocumentation = {
+export const NO_TRAILING_VALUE_NARRATION_DOCUMENTATION = {
   summary: "Flag a trailing comment that repeats the line's numeric value only to name its unit.",
   rationale: "A repeated value can disagree with the expression after either the code or comment changes.",
   remediation: "Put the unit in the identifier and keep comments only when they explain a constraint or non-obvious conversion.",
@@ -103,7 +103,7 @@ function nameAlreadyCarriesUnit(code: string): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-trailing-value-narration",
-  documentation: noTrailingValueNarrationDocumentation,
+  documentation: NO_TRAILING_VALUE_NARRATION_DOCUMENTATION,
   meta: {
     type: "suggestion",
     hasSuggestions: true,

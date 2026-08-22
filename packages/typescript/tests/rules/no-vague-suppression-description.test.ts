@@ -12,12 +12,12 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: { parser: tsParser },
   linterOptions: { reportUnusedDisableDirectives: false },
 });
 
-ruleTester.run("no-vague-suppression-description", rule, {
+RULE_TESTER.run("no-vague-suppression-description", rule, {
   valid: [
     "// eslint-disable-next-line no-console -- CLI output is the public interface\nconsole.log(value);",
     "// @ts-expect-error -- vendor declaration omits the runtime overload added in v4\nlegacy.call(value);",

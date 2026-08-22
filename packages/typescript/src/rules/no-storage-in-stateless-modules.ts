@@ -26,7 +26,7 @@ const DEFAULT_METHODS: readonly string[] = [
 
 const MIN_ARGUMENTS: ReadonlyMap<string, number> = new Map([["put", 2]]);
 
-export const noStorageInStatelessModulesDocumentation = {
+export const NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION = {
   summary: "Disallow SQL or key/value access inside configured stateless modules; derive state from a system of record instead.",
   rationale: "Private storage in a stateless workflow creates another source of truth that can silently diverge.",
   remediation: "Read from the system of record or derive state from an artifact the workflow already produces.",
@@ -115,7 +115,7 @@ function identifierWords(name: string): string[] {
 
 export default createRule<Options, MessageIds>({
   name: "no-storage-in-stateless-modules",
-  documentation: noStorageInStatelessModulesDocumentation,
+  documentation: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

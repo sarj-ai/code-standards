@@ -11,7 +11,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 type MessageIds = "preferInputGroup";
 type Options = readonly [];
 
-export const preferInputGroupSearchDocumentation = {
+export const PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION = {
   summary: "Require search icons and shared Input controls in the same visual wrapper to use InputGroup.",
   rationale: "The shared compound control provides consistent spacing, focus behavior, and accessible composition.",
   remediation: "Compose the search icon and field with InputGroup, InputGroupAddon, and InputGroupInput.",
@@ -115,7 +115,7 @@ function isActionIcon(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-input-group-search",
-  documentation: preferInputGroupSearchDocumentation,
+  documentation: PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

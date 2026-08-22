@@ -18,7 +18,7 @@ type MessageIds = "impossibleBounds";
 type Options = readonly [];
 type SchemaKind = "array" | "number" | "string";
 
-export const noImpossibleZodLiteralBoundsDocumentation = {
+export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
   summary:
     "Disallow same-chain literal Zod bounds whose accepted set is mathematically empty.",
   rationale:
@@ -174,7 +174,7 @@ function isOutermostCall(node: TSESTree.CallExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-impossible-zod-literal-bounds",
-  documentation: noImpossibleZodLiteralBoundsDocumentation,
+  documentation: NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

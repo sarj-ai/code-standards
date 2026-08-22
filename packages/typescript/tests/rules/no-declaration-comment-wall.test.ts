@@ -2,7 +2,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noDeclarationCommentWallDocumentation,
+  NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
 } from "../../src/rules/no-declaration-comment-wall.js";
 
 RuleTester.afterAll = afterAll;
@@ -10,12 +10,12 @@ RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-declaration-comment-wall", rule, {
+RULE_TESTER.run("no-declaration-comment-wall", rule, {
   valid: [
     // No member comments at all — the overwhelming majority of declarations.
-    { code: noDeclarationCommentWallDocumentation.examples[0].files[0].source },
+    { code: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "preserves rationale in consecutive line-comment blocks",
       code: [
@@ -283,7 +283,7 @@ ruleTester.run("no-declaration-comment-wall", rule, {
     // The enum arm. medusa/packages/core/utils/src/order/status.ts is this
     // exact shape, twice in one file.
     {
-      code: noDeclarationCommentWallDocumentation.examples[1].files[0].source,
+      code: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "commentWall" }],
     },
 

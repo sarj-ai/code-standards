@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noJsonStringifyErrorDocumentation } from "../../src/rules/no-json-stringify-error.js";
+import rule, { NO_JSON_STRINGIFY_ERROR_DOCUMENTATION } from "../../src/rules/no-json-stringify-error.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-json-stringify-error", rule, {
+RULE_TESTER.run("no-json-stringify-error", rule, {
   valid: [
-    { name: "allows the documented explicit error field", code: noJsonStringifyErrorDocumentation.examples[0].files[0].source },
+    { name: "allows the documented explicit error field", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[0].files[0].source },
     { name: "allows non-error objects", code: "JSON.stringify(user);" },
     {
       name: "allows a conventional short name without Error provenance",
@@ -161,7 +161,7 @@ ruleTester.run("no-json-stringify-error", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented Error payload", code: noJsonStringifyErrorDocumentation.examples[1].files[0].source, errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "reports the documented Error payload", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noJsonStringifyError" }] },
     {
       name: "reports a catch binding nested in an object literal",
       code: "try { f(); } catch (err) { JSON.stringify({ error: err }); }",

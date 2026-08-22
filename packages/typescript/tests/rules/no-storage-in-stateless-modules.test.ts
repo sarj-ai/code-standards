@@ -3,14 +3,14 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { Linter } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
-import rule, { noStorageInStatelessModulesDocumentation } from "../../src/rules/no-storage-in-stateless-modules.js";
+import rule, { NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION } from "../../src/rules/no-storage-in-stateless-modules.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
@@ -44,7 +44,7 @@ it("rejects malformed module patterns instead of silently disabling itself", () 
   ).toThrow(/Invalid regular expression/u);
 });
 
-ruleTester.run("no-storage-in-stateless-modules", rule, {
+RULE_TESTER.run("no-storage-in-stateless-modules", rule, {
   valid: [
     {
       name: "ignores storage doubles in test files",
@@ -52,7 +52,7 @@ ruleTester.run("no-storage-in-stateless-modules", rule, {
       options: [{ modules: ["engineer-digest"] }],
       code: `await mockKv.put("digest:last", timestamp);`,
     },
-    { name: "accepts the documented system-of-record read", filename: noStorageInStatelessModulesDocumentation.examples[0].focusPath, code: noStorageInStatelessModulesDocumentation.examples[0].files[0].source, options: STATELESS_MODULE_OPTIONS },
+    { name: "accepts the documented system-of-record read", filename: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[0].focusPath, code: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[0].files[0].source, options: STATELESS_MODULE_OPTIONS },
     {
       name: "allows prepare until a stateless module is configured",
       code: "db.prepare('select 1');",
@@ -126,7 +126,7 @@ ruleTester.run("no-storage-in-stateless-modules", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented private storage", filename: noStorageInStatelessModulesDocumentation.examples[1].focusPath, code: noStorageInStatelessModulesDocumentation.examples[1].files[0].source, options: STATELESS_MODULE_OPTIONS, errors: [{ messageId: "storageInStatelessModule" }] },
+    { name: "reports the documented private storage", filename: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[1].focusPath, code: NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION.examples[1].files[0].source, options: STATELESS_MODULE_OPTIONS, errors: [{ messageId: "storageInStatelessModule" }] },
     {
       name: "reports SQL prepare inside a configured stateless module",
       code: "const row = db.prepare('select * from digest_state').first();",

@@ -1,7 +1,7 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noLongCommentDocumentation } from "../../src/rules/no-long-comment.js";
+import rule, { NO_LONG_COMMENT_DOCUMENTATION } from "../../src/rules/no-long-comment.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -62,7 +62,7 @@ new RuleTester().run("no-long-comment", rule, {
     "// The cache is process local. Parallel clients need separate keys. This avoids a cross-request race.\nconst key = path;",
     "// First fact.\n// - One supported mode.\n// - Another supported mode.\nconst modes = [];",
     "/* One. Two. Three. Four. Five. Six. Seven. Eight. */\nrun();",
-    noLongCommentDocumentation.examples[0].files[0].source,
+    NO_LONG_COMMENT_DOCUMENTATION.examples[0].files[0].source,
     "/** One. Two. Three. Four. Five. Six. Seven. The `traceparent` value is forwarded. */\nconst value = 1;",
     "/** One. Two. Three. Four. Five. Six. Seven. The deadline is 10 ms. */\nconst value = 1;",
     [
@@ -82,7 +82,7 @@ new RuleTester().run("no-long-comment", rule, {
       errors: [{ messageId: "tooLong" }],
     },
     {
-      code: noLongCommentDocumentation.examples[1].files[0].source,
+      code: NO_LONG_COMMENT_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "tooLong" }],
     },
     {

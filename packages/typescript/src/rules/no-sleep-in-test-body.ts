@@ -12,7 +12,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "noSleepInTestBody";
 type Options = readonly [];
 
-export const noSleepInTestBodyDocumentation = {
+export const NO_SLEEP_IN_TEST_BODY_DOCUMENTATION = {
   summary: "Disallow a fixed timed sleep directly in a test body; it flakes under CI load. Synchronize on the signal or use fake timers.",
   rationale: "Wall-clock delays make test correctness depend on scheduler and machine speed.",
   remediation: "Await the observable signal or advance deterministic fake timers.",
@@ -150,7 +150,7 @@ function testCallerName(callee: TSESTree.Node): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-sleep-in-test-body",
-  documentation: noSleepInTestBodyDocumentation,
+  documentation: NO_SLEEP_IN_TEST_BODY_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

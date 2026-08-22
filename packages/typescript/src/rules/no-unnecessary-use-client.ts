@@ -12,7 +12,7 @@ import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 type MessageIds = "unnecessaryUseClient";
 type Options = readonly [];
 
-export const noUnnecessaryUseClientDocumentation = {
+export const NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION = {
   summary: "Flag `'use client'` files with no hooks or event handlers — they could be RSC.",
   rationale: "An unnecessary client boundary sends the component and its transitive dependencies to the browser without using client-only behavior.",
   remediation: "Remove the directive, or keep it only when the module uses a supported client-side API or boundary dependency.",
@@ -176,7 +176,7 @@ const isGlobalReference = (
 
 export default createRule<Options, MessageIds>({
   name: "no-unnecessary-use-client",
-  documentation: noUnnecessaryUseClientDocumentation,
+  documentation: NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

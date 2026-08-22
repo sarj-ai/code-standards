@@ -75,7 +75,7 @@ function canonicalWord(word: string): string {
   return word;
 }
 
-export const noTypedDocSectionsDocumentation = {
+export const NO_TYPED_DOC_SECTIONS_DOCUMENTATION = {
   summary: "Reject typed-signature repetition while preserving behavior that types cannot express.",
   rationale:
     "Parameter and return tags repeat typed signatures and can drift without adding runtime behavior or constraints.",
@@ -106,7 +106,7 @@ export const noTypedDocSectionsDocumentation = {
 
 export default createRule<Options, MessageIds>({
   name: "no-typed-doc-sections",
-  documentation: noTypedDocSectionsDocumentation,
+  documentation: NO_TYPED_DOC_SECTIONS_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Reject typed-signature repetition while preserving behavior that types cannot express." },

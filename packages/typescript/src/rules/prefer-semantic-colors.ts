@@ -13,7 +13,7 @@ import { classTokens, tailwindBase } from "./_tailwind.js";
 
 type MessageIds = "rawPalette" | "arbitraryColor" | "inlineColor";
 
-export const preferSemanticColorsDocumentation = {
+export const PREFER_SEMANTIC_COLORS_DOCUMENTATION = {
   summary: "Enforce semantic color tokens over raw Tailwind palette classes, arbitrary color values, and inline color literals.",
   rationale: "Semantic tokens keep themes and product meaning consistent while raw colors couple components to a palette value.",
   remediation: "Replace raw palette and literal colors with the closest semantic design-system token or CSS variable.",
@@ -123,13 +123,13 @@ const DEFAULT_WORKSPACE_GLOBS = ["packages/*", "apps/*"] as const;
 const MAX_WORKSPACE_PACKAGES = 512;
 
 /** "Is there a detection file at or above this directory?" — a pure ancestry fact. */
-const ancestryCache = new Map<string, boolean>();
+const ANCESTRY_CACHE = new Map<string, boolean>();
 
 /** "Does any package of this workspace carry a detection file?", keyed by root. */
-const workspaceScanCache = new Map<string, boolean>();
+const WORKSPACE_SCAN_CACHE = new Map<string, boolean>();
 
 /** Nearest workspace root at or above a directory, `null` if there is none. */
-const workspaceRootCache = new Map<string, string | null>();
+const WORKSPACE_ROOT_CACHE = new Map<string, string | null>();
 
 /** SVG container elements whose children carry structural (not UI-token) colors. */
 const SVG_DEFS_CONTAINERS: ReadonlySet<string> = new Set([
@@ -289,7 +289,7 @@ const hasMarkerAtOrAbove = (startDir: string): boolean => {
   let answer: boolean;
 
   for (;;) {
-    const cached = ancestryCache.get(dir);
+    const cached = ANCESTRY_CACHE.get(dir);
     if (cached !== undefined) {
       answer = cached;
       break;
@@ -307,7 +307,7 @@ const hasMarkerAtOrAbove = (startDir: string): boolean => {
     dir = parent;
   }
 
-  for (const seen of visited) ancestryCache.set(seen, answer);
+  for (const seen of visited) ANCESTRY_CACHE.set(seen, answer);
   return answer;
 };
 
@@ -319,7 +319,7 @@ const findWorkspaceRoot = (startDir: string): string | null => {
   let answer: string | null;
 
   for (;;) {
-    const cached = workspaceRootCache.get(dir);
+    const cached = WORKSPACE_ROOT_CACHE.get(dir);
     if (cached !== undefined) {
       answer = cached;
       break;
@@ -340,13 +340,13 @@ const findWorkspaceRoot = (startDir: string): string | null => {
     dir = parent;
   }
 
-  for (const seen of visited) workspaceRootCache.set(seen, answer);
+  for (const seen of visited) WORKSPACE_ROOT_CACHE.set(seen, answer);
   return answer;
 };
 
 /** Scan sibling packages because their token config is not on the source file's ancestry. */
 const workspaceHasMarker = (root: string): boolean => {
-  const cached = workspaceScanCache.get(root);
+  const cached = WORKSPACE_SCAN_CACHE.get(root);
   if (cached !== undefined) return cached;
 
   const globs = readWorkspaceGlobs(root);
@@ -366,7 +366,7 @@ const workspaceHasMarker = (root: string): boolean => {
       break;
     }
   }
-  workspaceScanCache.set(root, found);
+  WORKSPACE_SCAN_CACHE.set(root, found);
   return found;
 };
 
@@ -407,7 +407,7 @@ const staticallyImportsEmailOrPdfRenderer = (program: TSESTree.Program): boolean
 
 export default createRule<Options, MessageIds>({
   name: "prefer-semantic-colors",
-  documentation: preferSemanticColorsDocumentation,
+  documentation: PREFER_SEMANTIC_COLORS_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

@@ -3,7 +3,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  preferImmutableModuleConstantDocumentation,
+  PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION,
 } from "../../src/rules/prefer-immutable-module-constant.js";
 
 RuleTester.afterAll = afterAll;
@@ -11,16 +11,16 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: { ecmaVersion: "latest", sourceType: "module" },
   },
 });
 
-ruleTester.run("prefer-immutable-module-constant", rule, {
+RULE_TESTER.run("prefer-immutable-module-constant", rule, {
   valid: [
-    preferImmutableModuleConstantDocumentation.examples[0].files[0].source,
+    PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION.examples[0].files[0].source,
     "const VALUES = [1, 2, 3] as const satisfies readonly number[];",
     "const VALUES: readonly number[] = [1, 2, 3];",
     "const VALUES: ReadonlyArray<number> = [1, 2, 3];",
@@ -61,7 +61,7 @@ ruleTester.run("prefer-immutable-module-constant", rule, {
   ],
   invalid: [
     {
-      code: preferImmutableModuleConstantDocumentation.examples[1].files[0].source,
+      code: PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "preferAsConst", data: { name: "VALUES" } }],
     },
     {
