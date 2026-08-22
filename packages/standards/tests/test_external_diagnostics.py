@@ -495,6 +495,142 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
         assert "baseline degraded" in report.issues[0].message
 
 
+def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source(tmp_path: Path) -> None:
+    project = tmp_path / "typescript" / "packages" / "app"
+    project.mkdir(parents=True)
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        if argv[0] == "git":
+            return ProcessOutput(
+                0,
+                "typescript/eslint.strict.mjs\0typescript/packages/app/package.json\0diagnostic-baseline.json\0",
+                "",
+            )
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "mode": "staged",
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "projects": [],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=3,
+        staged=True,
+    )
+
+    assert report.completion is Completion.COMPLETE
+    assert report.diagnostics == ()
+    assert report.issues == ()
+    assert seen[0] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+    assert "--staged" in seen[1]
+    assert len(seen) == 2
+
+
+@pytest.mark.parametrize(
+    "staged_path",
+    [
+        "apps/web/src/component.tsx",
+        "apps/web/src/page.astro",
+        "apps/web/public/fragment.html",
+        "../apps/web/src/unsafe.tsx",
+    ],
+)
+def test_react_doctor_rejects_empty_staged_scope_with_candidate_or_unsafe_path(
+    tmp_path: Path,
+    staged_path: str,
+) -> None:
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        if argv[0] == "git":
+            return ProcessOutput(0, f"{staged_path}\0", "")
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "mode": "staged",
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "projects": [],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=True,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert "no analyzed projects" in report.issues[0].message
+
+
+def test_react_doctor_empty_staged_scope_fails_closed_when_git_diff_fails(tmp_path: Path) -> None:
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        if argv[0] == "git":
+            return ProcessOutput(128, "", "index unavailable")
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "mode": "staged",
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "projects": [],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=True,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert "no analyzed projects" in report.issues[0].message
+
+
 def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -602,12 +738,13 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
     assert report.completion is Completion.COMPLETE
     assert tuple(item.location.path for item in report.diagnostics) == ("apps/web/staged.tsx",)
     assert report.diagnostics[0].code == "react-doctor/alt-text"
-    assert "--staged" in seen[0]
-    assert seen[1] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
-    scope_index = seen[2].index("--scope")
-    assert seen[2][scope_index + 1] == "full"
-    duration_index = seen[2].index("--max-duration")
-    assert int(seen[2][duration_index + 1]) >= 60
+    assert seen[0] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+    assert "--staged" in seen[1]
+    assert seen[2] == seen[0]
+    scope_index = seen[3].index("--scope")
+    assert seen[3][scope_index + 1] == "full"
+    duration_index = seen[3].index("--max-duration")
+    assert int(seen[3][duration_index + 1]) >= 60
 
 
 def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> None:
@@ -684,7 +821,7 @@ def test_react_doctor_staged_fallback_rejects_malformed_scoped_coverage(tmp_path
 
     assert report.completion is Completion.FAILED
     assert "did not complete" in report.issues[0].message
-    assert len(seen) == 1
+    assert len(seen) == 2
 
 
 @pytest.mark.parametrize(
@@ -886,6 +1023,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
     assert git_seen == [
+        ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"),
         ("git", "diff", f"{event_base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
         ("git", "diff", "0123456789abcdef...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--"),
     ]
