@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from sarj_standards.libs.adoption import service
-    from sarj_standards.libs.diagnostics import Diagnostic
+    from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic
     from sarj_standards.libs.rules import RuleSelector
 
 
@@ -1694,7 +1694,7 @@ def cmd_baseline(args: _Args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     trust = TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE
-    reports = []
+    reports: list[AnalysisReport] = []
     scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
     if scoped_rules is None or scoped_rules:
         reports.append(
