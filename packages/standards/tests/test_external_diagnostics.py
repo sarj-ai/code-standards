@@ -495,6 +495,94 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
         assert "baseline degraded" in report.issues[0].message
 
 
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            ("a" * 40, ".sarj-standards.toml\0diagnostic-baseline.json\0", 2, 0, 0, Completion.COMPLETE),
+            id="exact-automations-config-only-scope",
+        ),
+        pytest.param(
+            ("a" * 40, "apps/landing-page/src/page.tsx\0", 1, 0, 0, Completion.FAILED),
+            id="react-source-remains-blocking",
+        ),
+        pytest.param(
+            ("a" * 40, ".sarj-standards.toml\0diagnostic-baseline.json\0", 3, 0, 0, Completion.FAILED),
+            id="changed-file-count-mismatch",
+        ),
+        pytest.param(
+            ("../unsafe", ".sarj-standards.toml\0", 1, 0, 0, Completion.FAILED),
+            id="unsafe-reported-base",
+        ),
+        pytest.param(
+            ("main", ".sarj-standards.toml\0", 1, 128, 0, Completion.FAILED),
+            id="unresolved-reported-base",
+        ),
+        pytest.param(
+            ("main", ".sarj-standards.toml\0", 1, 0, 1, Completion.FAILED),
+            id="non-ancestor-reported-base",
+        ),
+    ],
+)
+def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_empty_projects(
+    tmp_path: Path,
+    case: tuple[str, str, int, int, int, Completion],
+) -> None:
+    reported_base, changed, reported_count, resolve_status, ancestor_status, expected_completion = case
+    resolved_base = "b" * 40
+    project = tmp_path / "apps" / "landing-page"
+    project.mkdir(parents=True)
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        seen.append(tuple(argv))
+        if argv[:2] == ("git", "rev-parse"):
+            assert cwd == tmp_path
+            return ProcessOutput(resolve_status, f"{resolved_base}\n" if resolve_status == 0 else "", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            assert cwd == tmp_path
+            return ProcessOutput(ancestor_status, "", "")
+        if argv[:2] == ("git", "diff"):
+            assert cwd == tmp_path
+            return ProcessOutput(0, changed, "")
+        assert cwd == tmp_path
+        return ProcessOutput(
+            0,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "mode": "diff",
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "baselineDegraded": True,
+                    "diff": {"baseBranch": reported_base, "changedFileCount": reported_count},
+                    "projects": [],
+                    "diagnostics": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=2,
+        staged=False,
+    )
+
+    assert report.completion is expected_completion
+    if expected_completion is Completion.COMPLETE:
+        assert report.diagnostics == ()
+        assert report.issues == ()
+        assert ("git", "diff", f"{resolved_base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--") in seen
+    else:
+        assert "baseline degraded" in report.issues[0].message
+
+
 def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source(tmp_path: Path) -> None:
     project = tmp_path / "typescript" / "packages" / "app"
     project.mkdir(parents=True)
