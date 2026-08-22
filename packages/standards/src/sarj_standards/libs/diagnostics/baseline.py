@@ -25,8 +25,8 @@ LEGACY_SCHEMA_VERSION = 1
 _MAX_BYTES = 16 * 1024 * 1024
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
-_NON_BASELINEABLE_SOURCES = frozenset({"react-doctor"})
 _HUNK = re.compile(r"^@@ -(?:\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
+_TERRAFORM_TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,7 +98,8 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
 
 
 def is_baselineable(diagnostic: Diagnostic) -> bool:
-    return diagnostic.source not in _NON_BASELINEABLE_SOURCES
+    _ = diagnostic
+    return True
 
 
 def load(
@@ -312,6 +313,24 @@ def repository_base_sha(root: Path) -> str:
     return candidate
 
 
+def tracked_terraform_test_paths(root: Path) -> tuple[str, ...]:
+    git = shutil.which("git")
+    if git is None:
+        return ()
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed read-only Git argv.
+        (git, "-C", str(root), "ls-files", "-z"),
+        check=False,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        return ()
+    return tuple(
+        str(root / item)
+        for item in completed.stdout.decode("utf-8", errors="replace").split("\0")
+        if item.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
+    )
+
+
 def bundled_catalog_digest() -> str:
     configs = Path(__file__).parents[2] / "configs"
     digest = sha256()
@@ -354,4 +373,5 @@ __all__ = [
     "render",
     "repository_base_sha",
     "touches_changed_lines",
+    "tracked_terraform_test_paths",
 ]

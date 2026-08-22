@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import subprocess
 from typing import TYPE_CHECKING
@@ -206,7 +207,7 @@ def test_staged_changed_lines_cannot_consume_baseline_allowance(tmp_path: Path) 
     assert baseline.touches_changed_lines(new, scope)
 
 
-def test_react_doctor_findings_are_never_recorded_in_a_baseline() -> None:
+def test_react_doctor_findings_are_baselineable_by_fingerprint() -> None:
     finding = Diagnostic(
         "react-doctor/no-array-index-as-key",
         "Do not use an array index as a key.",
@@ -217,10 +218,21 @@ def test_react_doctor_findings_are_never_recorded_in_a_baseline() -> None:
         fingerprint="a" * 64,
     )
 
-    assert json.loads(baseline.render((finding,))) == {"schemaVersion": 1, "diagnostics": []}
+    rendered: dict[str, object] = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
+        baseline.render((finding,))
+    )
+    assert rendered["diagnostics"] == [
+        {
+            "count": 1,
+            "fingerprint": "a" * 64,
+            "path": "app.tsx",
+            "ruleId": "react-doctor/no-array-index-as-key",
+            "source": "react-doctor",
+        }
+    ]
 
 
-def test_existing_baseline_fingerprint_never_hides_react_doctor(tmp_path: Path) -> None:
+def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp_path: Path) -> None:
     finding = Diagnostic(
         "react-doctor/no-array-index-as-key",
         "Do not use an array index as a key.",
@@ -230,13 +242,17 @@ def test_existing_baseline_fingerprint_never_hides_react_doctor(tmp_path: Path) 
         rule_id="react-doctor/no-array-index-as-key",
         fingerprint="a" * 64,
     )
-    report = report_from_tools(tmp_path, (ToolReport("react-doctor", Completion.COMPLETE, (finding,)),))
+    new_finding = replace(finding, fingerprint="b" * 64)
+    report = report_from_tools(
+        tmp_path,
+        (ToolReport("react-doctor", Completion.COMPLETE, (finding, new_finding)),),
+    )
 
     visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
         report, {"a" * 64: 1}
     )
 
-    assert visible.diagnostics == (finding,)
+    assert visible.diagnostics == (new_finding,)
 
 
 def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) -> None:
@@ -419,6 +435,96 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
     assert updated == {"b" * 64: 1}
 
 
+@pytest.mark.parametrize(
+    ("selector", "source", "rule_id"),
+    [
+        ("react-doctor:react-doctor/no-array-index-as-key", "react-doctor", "react-doctor/no-array-index-as-key"),
+        ("react-doctor:no-array-index-as-key", "react-doctor", "react-doctor/no-array-index-as-key"),
+        ("eslint:react-doctor/no-array-index-as-key", "react-doctor", "react-doctor/no-array-index-as-key"),
+        ("eslint:react-doctor/no-array-index-as-key", "react-doctor", "no-array-index-as-key"),
+        (
+            "react-doctor:react-hooks-js/no-useless-custom-hooks",
+            "react-doctor",
+            "react-hooks-js/no-useless-custom-hooks",
+        ),
+        ("eslint:react-hooks-js/no-useless-custom-hooks", "react-doctor", "react-hooks-js/no-useless-custom-hooks"),
+        ("eslint:react-hooks-js/no-useless-custom-hooks", "react-hooks-js", "no-useless-custom-hooks"),
+        ("react-hooks-js:no-useless-custom-hooks", "react-doctor", "react-hooks-js/no-useless-custom-hooks"),
+        ("react-hooks-js:no-useless-custom-hooks", "react-hooks-js", "no-useless-custom-hooks"),
+    ],
+)
+def test_scoped_baseline_update_captures_react_doctor_and_preserves_unrelated_debt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    selector: str,
+    source: str,
+    rule_id: str,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    old = Diagnostic(
+        rule_id,
+        "old selected debt",
+        Severity.ERROR,
+        source,
+        Location("old.tsx"),
+        rule_id=rule_id,
+        fingerprint="a" * 64,
+    )
+    unrelated = Diagnostic(
+        "react-doctor/button-has-type",
+        "unrelated debt",
+        Severity.ERROR,
+        source,
+        Location("button.tsx"),
+        rule_id="react-doctor/button-has-type",
+        fingerprint="c" * 64,
+    )
+    baseline_path.write_text(
+        baseline.render(
+            (old, unrelated),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    replacement = replace(old, message="replacement debt", location=Location("new.tsx"), fingerprint="b" * 64)
+    calls: list[tuple[object, object, object, object]] = []
+
+    def analyze_react_doctor(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        calls.append(
+            (
+                files,
+                kwargs.get("capabilities"),
+                (kwargs.get("include_react_doctor"), kwargs.get("force_react_doctor")),
+                kwargs.get("react_doctor_full_scan"),
+            )
+        )
+        return (ToolReport("react-doctor", Completion.COMPLETE, (replacement, unrelated)),)
+
+    monkeypatch.setattr(external, "analyze_external", analyze_react_doctor)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                selector,
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        ([str(tmp_path)], frozenset({"react-doctor"}), (True, True), True),
+    ]
+    assert baseline.load(baseline_path) == {"b" * 64: 1, "c" * 64: 1}
+
+
 def test_scoped_baseline_update_uses_manifest_verification_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -468,6 +574,74 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
         == 0
     )
     assert captured == [[str(tmp_path / "src"), str(tmp_path / "test")]]
+
+
+def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verification_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "iac" / "bootstrap.tftest.hcl"
+    source.parent.mkdir()
+    source.write_text('run "bootstrap" {}\n', encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", "iac/bootstrap.tftest.hcl"), cwd=tmp_path, check=True)
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    adopted = Manifest(
+        version=api.__version__,
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        verify_paths=("src",),
+        diagnostic_baseline=baseline_path.name,
+    )
+    (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    finding = Diagnostic(
+        "SARJ206",
+        "Terraform native test file",
+        Severity.ERROR,
+        "sarj-iac-lint",
+        Location("iac/bootstrap.tftest.hcl"),
+        rule_id="no-terraform-test-file",
+        fingerprint="d" * 64,
+    )
+    captured: list[object] = []
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, kwargs
+        captured.append(paths)
+        diagnostics = (finding,) if isinstance(paths, list) and str(source) in paths else ()
+        return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, diagnostics),))
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "sarj-iac-lint:no-terraform-test-file",
+            ]
+        )
+        == 0
+    )
+    assert captured == [[str(tmp_path / "src"), str(source)]]
+    assert baseline.load(baseline_path) == {"d" * 64: 1}
 
 
 @pytest.mark.parametrize(

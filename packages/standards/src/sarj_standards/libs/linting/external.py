@@ -237,6 +237,7 @@ def analyze_external(
     include_react_doctor: bool = False,
     react_doctor_staged: bool = False,
     force_react_doctor: bool = False,
+    react_doctor_full_scan: bool = False,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     execute_eslint = _run_eslint_process if runner is None else runner
@@ -360,6 +361,7 @@ def analyze_external(
                 use_local_binary=runner is None,
                 file_count=max(len(routed.typescript), 1),
                 staged=react_doctor_staged,
+                full_scan=react_doctor_full_scan,
                 allow_empty_projects=react_doctor_staged and not routed.typescript,
             )
         )
@@ -435,7 +437,11 @@ def _selected_react_doctor_projects(
     has_typescript: bool,
     capabilities: frozenset[str] | None,
 ) -> _ReactDoctorSelection | None:
-    if not enabled or not has_typescript or (capabilities is not None and "eslint" not in capabilities):
+    if (
+        not enabled
+        or not has_typescript
+        or (capabilities is not None and not capabilities.intersection({"eslint", "react-doctor"}))
+    ):
         return None
     adopted = manifest.load(root)
     project = _react_doctor_root(root, adopted=adopted)
@@ -493,6 +499,7 @@ def _invoke_react_doctor(
     use_local_binary: bool,
     file_count: int,
     staged: bool,
+    full_scan: bool = False,
     allow_empty_projects: bool = False,
 ) -> ToolReport:
     name = "react-doctor"
@@ -507,11 +514,10 @@ def _invoke_react_doctor(
         )
     install_root = packagemanager.workspace_root(project, root)
     client = packagemanager.detect(install_root)
-    # React Doctor is a no-baseline ratchet: hooks inspect the index and CI uses
-    # its native merge-base scope. Never post-filter its result: project-level
-    # and cross-file diagnostics remain relevant when their primary location
-    # was not itself changed.
-    scope_args = _react_doctor_scope_args(staged=staged)
+    # Hooks inspect the index and CI uses the native merge-base scope. A scoped
+    # baseline promotion explicitly requests a full scan so existing debt can be
+    # recorded even though the rollout itself changes no React source files.
+    scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan)
     allow_empty_projects = allow_empty_projects or _react_doctor_changed_scope_has_no_source(
         projects,
         root=root,
@@ -562,7 +568,9 @@ def _react_doctor_max_duration(file_count: int) -> timedelta:
     return _REACT_DOCTOR_MAX_DURATION
 
 
-def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
+def _react_doctor_scope_args(*, staged: bool, full_scan: bool = False) -> tuple[str, ...]:
+    if full_scan:
+        return ("--scope", "full")
     if staged:
         return ("--staged",)
     base = change_scope_base()
