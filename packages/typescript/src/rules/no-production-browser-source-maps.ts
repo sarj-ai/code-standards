@@ -13,7 +13,7 @@ type Options = readonly [];
 
 const NEXT_CONFIG_RE = /(?:^|\/)next\.config\.[cm]?[jt]s$/;
 
-export const noProductionBrowserSourceMapsDocumentation = {
+export const NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION = {
   summary: "Next.js production browser source maps expose application source",
   rationale:
     "Next.js production browser source maps publish original client source and implementation details to every browser that can load the deployment.",
@@ -53,10 +53,10 @@ function propertyName(node: TSESTree.Property): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-production-browser-source-maps",
-  documentation: noProductionBrowserSourceMapsDocumentation,
+  documentation: NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: { description: noProductionBrowserSourceMapsDocumentation.summary },
+    docs: { description: NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION.summary },
     schema: [],
     messages: {
       noProductionBrowserSourceMaps:

@@ -2,14 +2,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noRepeatedStringLiteralDocumentation } from "../../src/rules/no-repeated-string-literal.js";
+import rule, { NO_REPEATED_STRING_LITERAL_DOCUMENTATION } from "../../src/rules/no-repeated-string-literal.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
@@ -17,9 +17,9 @@ const ruleTester = new RuleTester({
 
 const COLUMNS = "id, ashby_candidate_id, dataset_id, status, expires_at";
 
-ruleTester.run("no-repeated-string-literal", rule, {
+RULE_TESTER.run("no-repeated-string-literal", rule, {
   valid: [
-    { name: "accepts the documented shared constant", code: noRepeatedStringLiteralDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented shared constant", code: NO_REPEATED_STRING_LITERAL_DOCUMENTATION.examples[0].files[0].source },
     // Tagged templates are invocations whose tags define their meaning.
     {
       code: [
@@ -167,7 +167,7 @@ ruleTester.run("no-repeated-string-literal", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented repeated query", code: noRepeatedStringLiteralDocumentation.examples[1].files[0].source, errors: [{ messageId: "noRepeatedStringLiteral" }] },
+    { name: "reports the documented repeated query", code: NO_REPEATED_STRING_LITERAL_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noRepeatedStringLiteral" }] },
     // Two distinct functions is the only count threshold, matching SARJ024.
     {
       code: [

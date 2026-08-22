@@ -55,6 +55,22 @@ def test_apply_creates_only_authored_implementation_and_test(tmp_path: Path) -> 
         )
 
 
+def test_eslint_scaffold_uses_screaming_snake_case_documentation_constant(tmp_path: Path) -> None:
+    plan = rule_authoring.plan_new(
+        tmp_path,
+        RuleSelector.parse("eslint:prefer-explicit-clock"),
+        category="testing",
+        summary="Tests should receive an explicit clock.",
+    )
+
+    implementation = plan.files[0][1]
+    test = plan.files[1][1]
+    assert "export const PREFER_EXPLICIT_CLOCK_DOCUMENTATION =" in implementation
+    assert "description: PREFER_EXPLICIT_CLOCK_DOCUMENTATION.summary" in implementation
+    assert "import { PREFER_EXPLICIT_CLOCK_DOCUMENTATION }" in test
+    assert "preferExplicitClockDocumentation" not in implementation + test
+
+
 def test_apply_refuses_a_concurrently_created_target(tmp_path: Path) -> None:
     plan = rule_authoring.plan_new(
         tmp_path,

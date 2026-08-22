@@ -2,14 +2,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { requirePortForServiceDocumentation } from "../../src/rules/require-port-for-service.js";
+import rule, { REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION } from "../../src/rules/require-port-for-service.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.itOnly = it.only;
 RuleTester.it = it;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: { ecmaVersion: "latest", sourceType: "module" },
@@ -18,9 +18,9 @@ const ruleTester = new RuleTester({
 
 const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
-ruleTester.run("require-port-for-service", rule, {
+RULE_TESTER.run("require-port-for-service", rule, {
   valid: [
-    { name: "accepts the documented service port", filename: requirePortForServiceDocumentation.examples[0].focusPath, code: requirePortForServiceDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented service port", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "treats a retained metadata record read through fields as constructor data",
       filename: SRC,
@@ -945,7 +945,7 @@ ruleTester.run("require-port-for-service", rule, {
   ],
 
   invalid: [
-    { name: "reports the documented concrete service", filename: requirePortForServiceDocumentation.examples[1].focusPath, code: requirePortForServiceDocumentation.examples[1].files[0].source, errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }] },
+    { name: "reports the documented concrete service", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }] },
     {
       name: "selects the concrete constructor after overload signatures",
       filename: SRC,

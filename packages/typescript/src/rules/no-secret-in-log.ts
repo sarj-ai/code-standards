@@ -24,7 +24,7 @@ import {
 type MessageIds = "noSecretInLog" | "noRawBodyInLog";
 type Options = readonly [LoggingOptions?];
 
-export const noSecretInLogDocumentation = {
+export const NO_SECRET_IN_LOG_DOCUMENTATION = {
   summary: "Disallow passing a secret-named value or a raw request/response blob to a logging call; both leak to log sinks. Redact or omit.",
   rationale: "Logs are widely retained and distributed, so credentials and raw bodies can become durable data leaks.",
   remediation: "Omit the value or log an explicitly redacted, truncated, or derived non-sensitive field.",
@@ -208,7 +208,7 @@ function propertyKeyName(prop: TSESTree.Property): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-secret-in-log",
-  documentation: noSecretInLogDocumentation,
+  documentation: NO_SECRET_IN_LOG_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -6,20 +6,20 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, expect, it } from "vitest";
 
-import rule, { preferSemanticColorsDocumentation } from "../../src/rules/prefer-semantic-colors.js";
+import rule, { PREFER_SEMANTIC_COLORS_DOCUMENTATION } from "../../src/rules/prefer-semantic-colors.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: { parser: tsParser, parserOptions: { ecmaFeatures: { jsx: true } } },
 });
 
-ruleTester.run("prefer-semantic-colors", rule, {
+RULE_TESTER.run("prefer-semantic-colors", rule, {
   valid: [
-    { name: "public no-match example", filename: preferSemanticColorsDocumentation.examples[0].focusPath, code: preferSemanticColorsDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].focusPath, code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows Radix semantic steps outside Tailwind's palette scale",
       code: `const x = <div className="text-gray-11 bg-gray-12" />;`,
@@ -97,7 +97,7 @@ ruleTester.run("prefer-semantic-colors", rule, {
     { code: `const COLOR_MAP = { connectivity: "bg-red-500", flow: "bg-blue-500" };` },
   ],
   invalid: [
-    { name: "public match example", filename: preferSemanticColorsDocumentation.examples[1].focusPath, code: preferSemanticColorsDocumentation.examples[1].files[0].source, errors: [{ messageId: "rawPalette" }] },
+    { name: "public match example", filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].focusPath, code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "rawPalette" }] },
     {
       code: `const x = <div className="text-red-500" />;`,
       output: null,

@@ -13,7 +13,7 @@ type Options = readonly [];
 
 const SERVER_ENV_MODULE_RE = /(?:^|\/)(?:server-env|server-settings)(?:\.[cm]?[jt]sx?)?$/;
 
-export const noServerEnvInClientComponentDocumentation = {
+export const NO_SERVER_ENV_IN_CLIENT_COMPONENT_DOCUMENTATION = {
   summary: "server-only environment settings imported by a client component",
   rationale:
     "Next.js client modules run in the browser, where server-only environment values are unavailable; importing a server settings module can produce undefined configuration or bundle a secret-bearing module into the client graph.",
@@ -76,10 +76,10 @@ function isTypeOnlyImport(node: TSESTree.ImportDeclaration): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-server-env-in-client-component",
-  documentation: noServerEnvInClientComponentDocumentation,
+  documentation: NO_SERVER_ENV_IN_CLIENT_COMPONENT_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: { description: noServerEnvInClientComponentDocumentation.summary },
+    docs: { description: NO_SERVER_ENV_IN_CLIENT_COMPONENT_DOCUMENTATION.summary },
     schema: [],
     messages: {
       noServerEnvInClientComponent:

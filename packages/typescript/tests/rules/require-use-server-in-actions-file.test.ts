@@ -8,9 +8,9 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("require-use-server-in-actions-file", rule, {
+RULE_TESTER.run("require-use-server-in-actions-file", rule, {
   valid: [
     { filename: "/repo/app/orders/actions.ts", code: "'use server'; export async function save() {}" },
     { filename: "/repo/app/orders/order-actions.ts", code: "'use server'; export const save = async () => {};" },

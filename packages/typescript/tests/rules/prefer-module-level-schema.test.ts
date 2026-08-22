@@ -2,14 +2,14 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferModuleLevelSchemaDocumentation } from "../../src/rules/prefer-module-level-schema.js";
+import rule, { PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION } from "../../src/rules/prefer-module-level-schema.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: { ecmaVersion: "latest", sourceType: "module" },
@@ -18,9 +18,9 @@ const ruleTester = new RuleTester({
 
 const IMPORT = 'import { z } from "zod";\n';
 
-ruleTester.run("prefer-module-level-schema", rule, {
+RULE_TESTER.run("prefer-module-level-schema", rule, {
   valid: [
-    { name: "public no-match example", filename: preferModuleLevelSchemaDocumentation.examples[0].focusPath, code: preferModuleLevelSchemaDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[0].focusPath, code: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[0].files[0].source },
     // The target state — declared once, at module scope.
     {
       code: `${IMPORT}const ZBody = z.object({ id: z.string(), name: z.string() });\nexport function handle(raw: unknown) { return ZBody.parse(raw); }`,
@@ -216,7 +216,7 @@ ruleTester.run("prefer-module-level-schema", rule, {
   ],
 
   invalid: [
-    { name: "public match example", filename: preferModuleLevelSchemaDocumentation.examples[1].focusPath, code: preferModuleLevelSchemaDocumentation.examples[1].files[0].source, errors: [{ messageId: "hoistSchema" }] },
+    { name: "public match example", filename: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[1].focusPath, code: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "hoistSchema" }] },
     // The core case: rebuilt on every call, uses nothing the function owns.
     {
       name: "reports a function-local object schema without autofixing",

@@ -12,7 +12,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "helperAboveOnlyCaller";
 type Options = [];
 
-export const stepdownDocumentation = {
+export const STEPDOWN_DOCUMENTATION = {
   summary: "Place a private helper below its sole direct same-scope caller.",
   rationale: "Caller-first ordering lets a reader follow the main flow before descending into implementation details.",
   remediation: "Move the private helper below its sole caller.",
@@ -549,7 +549,7 @@ function isClassRuntimeBarrier(member: TSESTree.ClassElement): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "stepdown",
-  documentation: stepdownDocumentation,
+  documentation: STEPDOWN_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Place a private helper below its sole direct same-scope caller." },

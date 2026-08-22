@@ -16,7 +16,7 @@ type ListenerOperation = "add" | "remove";
 type CallbackFunction = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | TSESTree.FunctionDeclaration;
 type Registrations = Partial<Record<LifecycleEvent, TSESTree.CallExpression>>;
 
-export const noDuplicateLifecycleRefreshListenersDocumentation = {
+export const NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION = {
   summary: "Do not register one Next.js route-refresh callback for both focus and visibilitychange.",
   rationale: "A browser tab activation can emit both lifecycle signals and invoke the same route-wide refresh twice.",
   remediation: "Choose one lifecycle signal or route both signals through an explicitly debounced refresh policy.",
@@ -89,7 +89,7 @@ function enclosingFunction(
 
 export default createRule<Options, MessageIds>({
   name: "no-duplicate-lifecycle-refresh-listeners",
-  documentation: noDuplicateLifecycleRefreshListenersDocumentation,
+  documentation: NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Do not register one Next.js route-refresh callback for both focus and visibilitychange." },

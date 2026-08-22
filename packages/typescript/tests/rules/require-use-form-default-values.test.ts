@@ -8,9 +8,9 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("require-use-form-default-values", rule, {
+RULE_TESTER.run("require-use-form-default-values", rule, {
   valid: [
     "import { useForm } from 'react-hook-form'; useForm({ defaultValues: { name: '' } });",
     "import { useForm as makeForm } from 'react-hook-form'; makeForm({ 'defaultValues': defaults });",

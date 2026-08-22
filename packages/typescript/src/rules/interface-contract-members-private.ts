@@ -20,7 +20,7 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "nonContractMemberMustBePrivate";
 type Options = readonly [];
 
-export const interfaceContractMembersPrivateDocumentation = {
+export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
   summary: "Require methods outside an implemented interface contract to use ECMAScript private names.",
   rationale: "An implementing class should expose exactly its declared interface while keeping implementation helpers runtime-private.",
   remediation: "Add the method to the interface when it is public API, or make it `#private` and remove external or inherited access.",
@@ -119,7 +119,7 @@ function interfaceNames(
 
 export default createRule<Options, MessageIds>({
   name: "interface-contract-members-private",
-  documentation: interfaceContractMembersPrivateDocumentation,
+  documentation: INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: { description: "Require methods outside an implemented interface contract to use ECMAScript private names." },

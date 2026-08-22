@@ -1,16 +1,16 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noCommentCruftDocumentation } from "../../src/rules/no-comment-cruft.js";
+import rule, { NO_COMMENT_CRUFT_DOCUMENTATION } from "../../src/rules/no-comment-cruft.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-comment-cruft", rule, {
+RULE_TESTER.run("no-comment-cruft", rule, {
   valid: [
     // Preserve prose that happens to open with "region".
     {
@@ -147,7 +147,7 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     // --- "restates the next line": the guards that keep it conservative. ---
     // One unmatched word means the comment carries something the code does not.
-    { code: noCommentCruftDocumentation.examples[0].files[0].source },
+    { code: NO_COMMENT_CRUFT_DOCUMENTATION.examples[0].files[0].source },
     { code: "// guard the race described in PLT-812\nlocked = true;" },
     // A why-comment is longer than narration and does not corroborate anyway.
     {
@@ -534,7 +534,7 @@ ruleTester.run("no-comment-cruft", rule, {
     },
     // --- "restates the next line" — the canonical redundant comment. ---
     {
-      code: noCommentCruftDocumentation.examples[1].files[0].source,
+      code: NO_COMMENT_CRUFT_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "redundantNarration" }],
     },
     {

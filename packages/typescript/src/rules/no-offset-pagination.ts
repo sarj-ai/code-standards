@@ -13,7 +13,7 @@ import { createSqlListener } from "./_sql.js";
 type MessageIds = "noOffsetPagination";
 type Options = readonly [];
 
-export const noOffsetPaginationDocumentation = {
+export const NO_OFFSET_PAGINATION_DOCUMENTATION = {
   summary: "Disallow OFFSET pagination in embedded SQL; it is O(N) per page and drops or repeats rows under concurrent writes. Use a keyset cursor.",
   rationale: "Offset pagination scans skipped rows and shifts page boundaries under concurrent writes.",
   remediation: "Page with a stable ordered key and a cursor predicate.",
@@ -33,7 +33,7 @@ const OFFSET_GATE = /offset/i;
 
 export default createRule<Options, MessageIds>({
   name: "no-offset-pagination",
-  documentation: noOffsetPaginationDocumentation,
+  documentation: NO_OFFSET_PAGINATION_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

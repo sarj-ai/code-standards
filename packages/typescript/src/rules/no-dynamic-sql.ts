@@ -17,7 +17,7 @@ export interface RuleOptions {
 
 type Options = readonly [RuleOptions?];
 
-export const noDynamicSqlDocumentation = {
+export const NO_DYNAMIC_SQL_DOCUMENTATION = {
   summary: "Disallow runtime values embedded inside quoted SQL values passed to statement-execution methods.",
   rationale:
     "Embedding runtime values in SQL bypasses driver parameterization and can introduce injection defects or unstable query plans.",
@@ -190,11 +190,11 @@ function statementMethodName(
 
 export default createRule<Options, MessageIds>({
   name: "no-dynamic-sql",
-  documentation: noDynamicSqlDocumentation,
+  documentation: NO_DYNAMIC_SQL_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {
-      description: noDynamicSqlDocumentation.summary,
+      description: NO_DYNAMIC_SQL_DOCUMENTATION.summary,
     },
     schema: [
       {

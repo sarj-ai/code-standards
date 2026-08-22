@@ -18,7 +18,7 @@ type Options = readonly [
   }?,
 ];
 
-export const preferZodInferDocumentation = {
+export const PREFER_ZOD_INFER_DOCUMENTATION = {
   summary: "Derive a type from its Zod schema with `z.infer` instead of hand-writing a twin declaration beside it.",
   rationale: "A derived type stays synchronized when the runtime schema changes.",
   remediation: "Replace the hand-written twin with `z.infer<typeof Schema>`.",
@@ -451,7 +451,7 @@ function endsWithTokens(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-zod-infer",
-  documentation: preferZodInferDocumentation,
+  documentation: PREFER_ZOD_INFER_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -2,7 +2,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noTypedDocSectionsDocumentation,
+  NO_TYPED_DOC_SECTIONS_DOCUMENTATION,
 } from "../../src/rules/no-typed-doc-sections.js";
 
 RuleTester.afterAll = afterAll;
@@ -14,7 +14,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
   valid: [
     {
       name: "preserves behavioral documentation",
-      code: noTypedDocSectionsDocumentation.examples[0].files[0].source,
+      code: NO_TYPED_DOC_SECTIONS_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "preserves documented side effects",
@@ -81,7 +81,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
     },
     {
       name: "flags a parameter description that only expands its name",
-      code: noTypedDocSectionsDocumentation.examples[1].files[0].source,
+      code: NO_TYPED_DOC_SECTIONS_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "typedSection" }],
     },
     {

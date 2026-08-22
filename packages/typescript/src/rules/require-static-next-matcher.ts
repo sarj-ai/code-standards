@@ -11,7 +11,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 type MessageIds = "dynamicMatcher";
 type Options = readonly [];
 
-export const requireStaticNextMatcherDocumentation = {
+export const REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION = {
   summary: "Require Next.js middleware and proxy matcher configuration to contain only build-time literals.",
   rationale: "Next.js must statically analyze matcher values at build time; computed values are ignored.",
   remediation: "Write matcher strings, arrays, and object fields as literals in the exported config.",
@@ -73,7 +73,7 @@ function propertyName(property: TSESTree.Property): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "require-static-next-matcher",
-  documentation: requireStaticNextMatcherDocumentation,
+  documentation: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

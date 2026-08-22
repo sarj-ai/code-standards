@@ -13,7 +13,7 @@ type Options = readonly [];
 
 const NEXT_CONFIG_RE = /(?:^|\/)next\.config\.[cm]?[jt]s$/;
 
-export const noDangerouslyAllowSvgDocumentation = {
+export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
   summary: "Next.js image configuration enables unsanitized SVG rendering",
   rationale:
     "SVG files can contain scripts and other active content; enabling dangerouslyAllowSVG makes the image optimizer serve that content from the application origin.",
@@ -53,10 +53,10 @@ function propertyName(node: TSESTree.Property): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-dangerously-allow-svg",
-  documentation: noDangerouslyAllowSvgDocumentation,
+  documentation: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: { description: noDangerouslyAllowSvgDocumentation.summary },
+    docs: { description: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION.summary },
     schema: [],
     messages: {
       noDangerouslyAllowSvg:

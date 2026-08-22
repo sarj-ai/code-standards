@@ -12,7 +12,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "tautologicalComparison" | "tautologicalMatcher";
 type Options = readonly [];
 
-export const noTautologicalExpectDocumentation = {
+export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
   summary:
     "Disallow an assertion whose operands are all literals; its outcome is fixed before the code runs, so it can never fail.",
   rationale:
@@ -105,7 +105,7 @@ function expectOperand(callee: TSESTree.MemberExpression): TSESTree.Node | null 
 
 export default createRule<Options, MessageIds>({
   name: "no-tautological-expect",
-  documentation: noTautologicalExpectDocumentation,
+  documentation: NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

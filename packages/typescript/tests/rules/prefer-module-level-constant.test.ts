@@ -2,23 +2,23 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferModuleLevelConstantDocumentation } from "../../src/rules/prefer-module-level-constant.js";
+import rule, { PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION } from "../../src/rules/prefer-module-level-constant.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: { ecmaVersion: "latest", sourceType: "module" },
   },
 });
 
-ruleTester.run("prefer-module-level-constant", rule, {
+RULE_TESTER.run("prefer-module-level-constant", rule, {
   valid: [
-    { name: "public no-match example", filename: preferModuleLevelConstantDocumentation.examples[0].focusPath, code: preferModuleLevelConstantDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].focusPath, code: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].files[0].source },
     // Already at module scope — the target state.
     { code: 'const KEYS = ["a", "b", "c"];\nfunction f(k: string) { return KEYS.includes(k); }' },
 
@@ -198,7 +198,7 @@ ruleTester.run("prefer-module-level-constant", rule, {
   ],
 
   invalid: [
-    { name: "public match example", filename: preferModuleLevelConstantDocumentation.examples[1].focusPath, code: preferModuleLevelConstantDocumentation.examples[1].files[0].source, errors: [{ messageId: "hoistCollection" }] },
+    { name: "public match example", filename: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[1].focusPath, code: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "hoistCollection" }] },
     // Array allow-list read via a non-mutating method.
     {
       name: "reports literal boolean null and number leaves",

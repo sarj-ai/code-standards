@@ -2,20 +2,20 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { preferNativeRandomUuidDocumentation } from "../../src/rules/prefer-native-random-uuid.js";
+import rule, { PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION } from "../../src/rules/prefer-native-random-uuid.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: { parser: tsParser },
 });
 
-ruleTester.run("prefer-native-random-uuid", rule, {
+RULE_TESTER.run("prefer-native-random-uuid", rule, {
   valid: [
-    { name: "public no-match example", filename: preferNativeRandomUuidDocumentation.examples[0].focusPath, code: preferNativeRandomUuidDocumentation.examples[0].files[0].source },
+    { name: "public no-match example", filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[0].focusPath, code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[0].files[0].source },
     { code: 'import { v4 } from "other"; v4();' },
     { code: 'import { v1 } from "uuid"; v1();' },
     { code: 'import { v4 } from "uuid"; v4({ random: bytes });' },
@@ -35,7 +35,7 @@ ruleTester.run("prefer-native-random-uuid", rule, {
     },
   ],
   invalid: [
-    { name: "public match example", filename: preferNativeRandomUuidDocumentation.examples[1].focusPath, code: preferNativeRandomUuidDocumentation.examples[1].files[0].source, errors: [{ messageId: "preferNative", suggestions: 1 }] },
+    { name: "public match example", filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].focusPath, code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferNative", suggestions: 1 }] },
     {
       code: 'import { v4 } from "uuid"; v4();',
       output: null,

@@ -18,7 +18,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 type MessageIds = "missingAssertNever";
 type Options = readonly [];
 
-export const requireAssertNeverDocumentation = {
+export const REQUIRE_ASSERT_NEVER_DOCUMENTATION = {
   summary: "Require an empty switch default to call `assertNever` so discriminated unions remain exhaustive at compile time.",
   rationale: "An empty default silently accepts new union members instead of making the compiler identify the missing case.",
   remediation: "Call `assertNever` with the discriminant in the exhaustive switch default.",
@@ -149,7 +149,7 @@ function finiteTypeKey(
 
 export default createRule<Options, MessageIds>({
   name: "require-assert-never",
-  documentation: requireAssertNeverDocumentation,
+  documentation: REQUIRE_ASSERT_NEVER_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

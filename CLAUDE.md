@@ -39,7 +39,7 @@ example, boundary, or rejected false-positive shape becomes a named test case.
 `packages/typescript/tests/rule-docs.test.ts` and
 `packages/python/tests/test_rule_meta.py` enforce this contract.
 
-Renaming a rule is BREAKING. Record it in `renamedRules` in
+Renaming a rule is BREAKING. Record it in `RENAMED_RULES` in
 `packages/typescript/src/rules/_renames.ts` and run `make sync-rule-ledger`, which
 writes the row `code-standards doctor` reads; update the strict preset, the
 shipped `eslint.strict.mjs`, run `code-standards maintain docs sync`, and update

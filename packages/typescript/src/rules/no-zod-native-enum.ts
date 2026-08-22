@@ -20,7 +20,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "nativeEnum" | "enumOfTsEnum";
 type Options = readonly [];
 
-export const noZodNativeEnumDocumentation = {
+export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
   summary:
     "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
   rationale: "Wrapping a TypeScript enum preserves its emitted runtime object and duplicates the schema's value definition across two constructs.",
@@ -148,7 +148,7 @@ function resolvesToImportedEnum(
 
 export default createRule<Options, MessageIds>({
   name: "no-zod-native-enum",
-  documentation: noZodNativeEnumDocumentation,
+  documentation: NO_ZOD_NATIVE_ENUM_DOCUMENTATION,
   meta: {
     type: "suggestion",
     fixable: "code",

@@ -30,7 +30,7 @@ const MIN_STATEMENTS = 3;
 const MAX_NORMALIZED_STRING_LENGTH = 64;
 const TEST_MODULES: ReadonlySet<string> = new Set(["@jest/globals", "@playwright/test", "bun:test", "node:test", "vitest"]);
 
-export const duplicateTestBodyDocumentation = {
+export const DUPLICATE_TEST_BODY_DOCUMENTATION = {
   summary:
     "Disallow substantial sibling tests with the same body shape; express their differing inputs as a parameterized case table.",
   rationale:
@@ -284,7 +284,7 @@ function isDuplicateTestFrameworkIdentifier(
 
 export default createRule<Options, MessageIds>({
   name: "duplicate-test-body",
-  documentation: duplicateTestBodyDocumentation,
+  documentation: DUPLICATE_TEST_BODY_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

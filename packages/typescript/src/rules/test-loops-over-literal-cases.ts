@@ -12,7 +12,7 @@ import { isTestFile } from "./_paths.js";
 type MessageIds = "literalCaseLoop";
 type Options = readonly [];
 
-export const testLoopsOverLiteralCasesDocumentation = {
+export const TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION = {
   summary: "Disallow assertions over an inline literal case loop in a test; parameterization reports and names every case independently.",
   rationale: "A loop is reported as one test, so failures hide the individual case name and may stop later cases from running.",
   remediation: "Create one named parameterized test or runner-aware subtest for each literal case.",
@@ -198,7 +198,7 @@ const LOOP_CARRIED_CONTROL: ReadonlySet<string> = new Set([
 
 export default createRule<Options, MessageIds>({
   name: "test-loops-over-literal-cases",
-  documentation: testLoopsOverLiteralCasesDocumentation,
+  documentation: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

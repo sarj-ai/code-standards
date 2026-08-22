@@ -30,7 +30,7 @@ const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
 /** A run shorter than this is a single assertion; there is nothing to combine. */
 const MIN_RUN_LENGTH = 2;
 
-export const preferWholeObjectAssertionDocumentation = {
+export const PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION = {
   summary: "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
   rationale: "One whole-object assertion presents related expectations together and produces a complete structural diff.",
   remediation: "Replace consecutive member assertions with one `toMatchObject` assertion.",
@@ -120,7 +120,7 @@ function propertyAccess(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-whole-object-assertion",
-  documentation: preferWholeObjectAssertionDocumentation,
+  documentation: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

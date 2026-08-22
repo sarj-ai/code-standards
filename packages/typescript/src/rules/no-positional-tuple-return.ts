@@ -17,7 +17,7 @@ type FunctionNode =
   | TSESTree.ArrowFunctionExpression
   | TSESTree.TSEmptyBodyFunctionExpression;
 
-export const noPositionalTupleReturnDocumentation = {
+export const NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION = {
   summary: "Disallow returning a multi-field tuple from a named function; return a named object so call sites cannot mismatch slots.",
   rationale: "Tuple fields are identified only by position, so reordering can preserve types while changing meaning.",
   remediation: "Return an object whose property names describe each value.",
@@ -422,7 +422,7 @@ function isExportedInterface(
 
 export default createRule<Options, MessageIds>({
   name: "no-positional-tuple-return",
-  documentation: noPositionalTupleReturnDocumentation,
+  documentation: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

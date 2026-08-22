@@ -8,7 +8,7 @@ export interface RetiredRule {
   readonly reason: string;
 }
 
-export const retiredRules: Readonly<Record<string, RetiredRule>> = {
+export const RETIRED_RULES: Readonly<Record<string, RetiredRule>> = {
   "ban-loose-type-guards-in-tests": {
     removedIn: "5.0.0",
     reason: "Delete the config entry and suppressions; there is no replacement.",

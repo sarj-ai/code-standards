@@ -17,10 +17,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import plugin, {
-  applicationOnlyRules,
-  renamedRules,
-  retiredRules,
-  rules,
+  APPLICATION_ONLY_RULES,
+  RENAMED_RULES,
+  RETIRED_RULES,
+  RULES,
 } from "../src/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -162,7 +162,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     const referenced = referencedRuleNames(text);
     expect(referenced.length).toBeGreaterThan(0);
 
-    const known = new Set(Object.keys(rules));
+    const known = new Set(Object.keys(RULES));
     const missing = referenced.filter((name) => !known.has(name));
     expect(missing).toEqual([]);
   });
@@ -187,10 +187,10 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     const PER_REPO_OPT_IN = new Set([
       "no-storage-in-stateless-modules", // inert without `modules`
       "no-raw-fetch-outside-clients", // needs a repo-specific `allow` list
-      ...applicationOnlyRules, // wired by eslint.application.mjs, not the standard profile
+      ...APPLICATION_ONLY_RULES, // wired by eslint.application.mjs, not the standard profile
     ]);
 
-    const unwired = Object.keys(rules)
+    const unwired = Object.keys(RULES)
       .filter((name) => !referenced.has(name) && !PER_REPO_OPT_IN.has(name))
       .sort();
     expect(unwired).toEqual([]);
@@ -199,7 +199,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     // that referencedRuleNames() ignores comments this is a genuinely separate
     // claim from being wired: "mentioned in the file" vs "configured".
     for (const name of [...PER_REPO_OPT_IN].filter(
-      (candidate) => !applicationOnlyRules.includes(candidate as (typeof applicationOnlyRules)[number]),
+      (candidate) => !APPLICATION_ONLY_RULES.includes(candidate as (typeof APPLICATION_ONLY_RULES)[number]),
     )) {
       expect(documented).toContain(name);
     }
@@ -275,14 +275,14 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
   it("withdrawn rule names are never reused or left configured", () => {
     // `plugin.rules`, not `rules`: a retired name must not come back under any
     // registration the plugin publishes.
-    const live = Object.keys(retiredRules).filter(
+    const live = Object.keys(RETIRED_RULES).filter(
       (name) => name in plugin.rules,
     );
     expect(live).toEqual([]);
 
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
     const referenced = new Set(referencedRuleNames(text));
-    const stillConfigured = Object.keys(retiredRules).filter((name) =>
+    const stillConfigured = Object.keys(RETIRED_RULES).filter((name) =>
       referenced.has(name),
     );
     expect(stillConfigured).toEqual([]);
@@ -306,20 +306,20 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
    * The comparison is a SUBSET, not an equality, and the direction matters.
    * History is an append-only corroborator: it can prove a deletion happened, it
    * can never prove one did not. Any rewrite, shallow clone, graft or subtree
-   * split truncates it. So `deleted ⊆ retiredRules` is asserted — a deletion that
+   * split truncates it. So `deleted ⊆ RETIRED_RULES` is asserted — a deletion that
    * forgets its entry still fails, which is the failure this gate exists for —
    * and the reverse is not. `packages/python/tests/test_rule_meta.py` has always
    * been subset-shaped for the same reason; this now matches it.
    *
    * That reverse direction was asserted until the history was squashed to a
    * single root commit to scrub private names from commit messages. The log went
-   * empty, `retiredRules` still held eleven names, and the gate failed on a tree
+   * empty, `RETIRED_RULES` still held eleven names, and the gate failed on a tree
    * where nothing was wrong. The shallow check below does NOT catch that case:
    * an orphan root is a COMPLETE history that happens to be one commit. The cost
    * of dropping the reverse direction is an invented entry for a rule never
    * deleted, which no longer fails here — `rule-docs.test.ts` still requires
    * every retired name to be absent from `plugin.rules` and disjoint from
-   * `renamedRules`.
+   * `RENAMED_RULES`.
    *
    * `--no-renames` is deliberate: a rule file that MOVED still has to be
    * accounted for, and `_renames.ts` is what distinguishes the two cases. It has
@@ -351,11 +351,11 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
         .filter((path) => path.endsWith(".ts") && !path.endsWith(".test.ts"))
         .map((path) => path.slice(path.lastIndexOf("/") + 1, -".ts".length))
         .filter((name) => !name.startsWith("_"))
-        .filter((name) => !(name in plugin.rules) && !(name in renamedRules)),
+        .filter((name) => !(name in plugin.rules) && !(name in RENAMED_RULES)),
     );
 
     const unrecorded = [...deleted]
-      .filter((name) => !(name in retiredRules))
+      .filter((name) => !(name in RETIRED_RULES))
       .sort();
     expect(
       unrecorded,
@@ -385,7 +385,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
       "--",
       "packages/typescript/src/rules",
     );
-    const recorded = Object.keys(retiredRules).length;
+    const recorded = Object.keys(RETIRED_RULES).length;
 
     warnIfHistoryIsMissing(log, recorded);
 

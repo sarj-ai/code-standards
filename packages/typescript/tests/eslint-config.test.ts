@@ -2,13 +2,13 @@ import { ESLint } from "eslint";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const eslint = new ESLint({ cwd: fileURLToPath(new URL("..", import.meta.url)) });
+const ESLINT = new ESLint({ cwd: fileURLToPath(new URL("..", import.meta.url)) });
 
 describe("self-lint extension coverage", () => {
   it.each(["ts", "tsx", "mts", "cts", "mjs"])(
     "keeps .%s files on the type-aware ruleset",
     async (extension) => {
-      const [result] = await eslint.lintText('async function example() { await "value"; }\nmissing;\n', {
+      const [result] = await ESLINT.lintText('async function example() { await "value"; }\nmissing;\n', {
         filePath: `example.${extension}`,
       });
       const ruleIds = result?.messages.map((message) => message.ruleId);
@@ -18,7 +18,7 @@ describe("self-lint extension coverage", () => {
   );
 
   it.each(["js", "cjs"])("keeps .%s files on the JavaScript ruleset", async (extension) => {
-    const [result] = await eslint.lintText("missing;\n", { filePath: `example.${extension}` });
+    const [result] = await ESLINT.lintText("missing;\n", { filePath: `example.${extension}` });
     const ruleIds = result?.messages.map((message) => message.ruleId);
 
     expect(ruleIds).toContain("no-undef");

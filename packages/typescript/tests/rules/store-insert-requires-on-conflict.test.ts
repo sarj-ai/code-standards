@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { storeInsertRequiresOnConflictDocumentation } from "../../src/rules/store-insert-requires-on-conflict.js";
+import rule, { STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION } from "../../src/rules/store-insert-requires-on-conflict.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("store-insert-requires-on-conflict", rule, {
+RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
   valid: [
-    { name: "accepts the documented conflict-safe insert", code: storeInsertRequiresOnConflictDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented conflict-safe insert", code: STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows an ordinary create contract",
       code: "function createUser() { db.prepare(`INSERT INTO users (id) VALUES (?)`).run(); }",
@@ -116,7 +116,7 @@ ruleTester.run("store-insert-requires-on-conflict", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented bare insert", code: storeInsertRequiresOnConflictDocumentation.examples[1].files[0].source, errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
+    { name: "reports the documented bare insert", code: STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
     {
       name: "reports a replay contract without conflict handling",
       code: "function enqueueCall() { db.prepare(`INSERT INTO call_queue (call_id) VALUES (?)`).run(); }",

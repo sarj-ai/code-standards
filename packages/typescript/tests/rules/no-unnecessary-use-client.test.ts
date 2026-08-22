@@ -2,7 +2,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noUnnecessaryUseClientDocumentation,
+  NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION,
 } from "../../src/rules/no-unnecessary-use-client.js";
 
 RuleTester.afterAll = afterAll;
@@ -10,7 +10,7 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parserOptions: {
       ecmaFeatures: { jsx: true },
@@ -18,7 +18,7 @@ const ruleTester = new RuleTester({
   },
 });
 
-ruleTester.run("no-unnecessary-use-client", rule, {
+RULE_TESTER.run("no-unnecessary-use-client", rule, {
   valid: [
     {
       name: "allows wrappers that render named third-party components",
@@ -53,7 +53,7 @@ ruleTester.run("no-unnecessary-use-client", rule, {
     },
     {
       name: "allows hook calls",
-      code: noUnnecessaryUseClientDocumentation.examples[0].files[0].source,
+      code: NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "allows JSX event handlers",
@@ -203,7 +203,7 @@ ruleTester.run("no-unnecessary-use-client", rule, {
     },
     {
       name: "reports static components",
-      code: noUnnecessaryUseClientDocumentation.examples[1].files[0].source,
+      code: NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "unnecessaryUseClient" }],
     },
     {

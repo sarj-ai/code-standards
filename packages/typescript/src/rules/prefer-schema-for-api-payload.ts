@@ -12,7 +12,7 @@ import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "unparsedJsonAccess";
 
-export const preferSchemaForApiPayloadDocumentation = {
+export const PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION = {
   summary: "Require Zod (or similar) schema validation on `response.json()` / `JSON.parse()` results before property access.",
   rationale: "External JSON is untrusted at runtime even when its expected TypeScript shape is known statically.",
   remediation: "Parse the payload through a schema or establish a recognized runtime validation guard before reading fields.",
@@ -622,7 +622,7 @@ const unvalidatedVariableRef = (
 
 export default createRule<Options, MessageIds>({
   name: "prefer-schema-for-api-payload",
-  documentation: preferSchemaForApiPayloadDocumentation,
+  documentation: PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

@@ -28,7 +28,7 @@ type Options = readonly [
   }?,
 ];
 
-export const zodNamingConventionDocumentation = {
+export const ZOD_NAMING_CONVENTION_DOCUMENTATION = {
   summary: "Enforce a consistent Zod schema naming convention — a `Z` prefix (`ZUser`) or a `Schema` suffix (`userSchema`); both are accepted by default.",
   rationale: "A recognizable schema name distinguishes runtime validators from ordinary values at each use site.",
   remediation: "Rename the schema with a `Z` prefix or `Schema` suffix, according to the configured convention.",
@@ -110,7 +110,7 @@ const calleeChainRoot = (node: TSESTree.Node): TSESTree.Identifier | null => {
 
 export default createRule<Options, MessageIds>({
   name: "zod-naming-convention",
-  documentation: zodNamingConventionDocumentation,
+  documentation: ZOD_NAMING_CONVENTION_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

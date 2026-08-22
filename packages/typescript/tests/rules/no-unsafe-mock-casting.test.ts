@@ -3,7 +3,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noUnsafeMockCastingDocumentation,
+  NO_UNSAFE_MOCK_CASTING_DOCUMENTATION,
 } from "../../src/rules/no-unsafe-mock-casting.js";
 
 RuleTester.afterAll = afterAll;
@@ -11,17 +11,17 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-unsafe-mock-casting", rule, {
+RULE_TESTER.run("no-unsafe-mock-casting", rule, {
   valid: [
     {
       name: "accepts the Vitest typed helper",
-      code: noUnsafeMockCastingDocumentation.examples[0].files[0].source,
+      code: NO_UNSAFE_MOCK_CASTING_DOCUMENTATION.examples[0].files[0].source,
     },
     { name: "accepts the Jest typed helper", code: "const m = jest.mocked(myFn);" },
     {
@@ -60,7 +60,7 @@ ruleTester.run("no-unsafe-mock-casting", rule, {
     },
     {
       name: "reports vi.Mock assertions",
-      code: noUnsafeMockCastingDocumentation.examples[1].files[0].source,
+      code: NO_UNSAFE_MOCK_CASTING_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "unsafeMockCast" }],
     },
     {

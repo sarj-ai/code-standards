@@ -2,24 +2,24 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noDynamicSqlDocumentation } from "../../src/rules/no-dynamic-sql.js";
+import rule, { NO_DYNAMIC_SQL_DOCUMENTATION } from "../../src/rules/no-dynamic-sql.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-dynamic-sql", rule, {
+RULE_TESTER.run("no-dynamic-sql", rule, {
   valid: [
     {
       name: "accepts a question-mark placeholder bound separately",
-      code: noDynamicSqlDocumentation.examples[0].files[0].source,
+      code: NO_DYNAMIC_SQL_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "accepts a positional placeholder bound separately",
@@ -116,7 +116,7 @@ ruleTester.run("no-dynamic-sql", rule, {
     },
     {
       name: "reports runtime template interpolation",
-      code: noDynamicSqlDocumentation.examples[1].files[0].source,
+      code: NO_DYNAMIC_SQL_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "dynamicSql" }],
     },
     {

@@ -40,7 +40,7 @@ import applicationConfig, {
 import strictConfig, {
   createConfig as createStrictConfig,
 } from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
-import { advisoryRules } from "../src/index.js";
+import { ADVISORY_RULES } from "../src/index.js";
 
 /**
  * Paths chosen to exercise every `files:`-scoped block in the config, because a
@@ -199,7 +199,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const warnings = Object.entries(plainConfig.rules ?? {})
       .filter(([, setting]) => severityOf(setting) === 1)
       .map(([rule]) => rule);
-    expect(advisoryRules).toEqual([]);
+    expect(ADVISORY_RULES).toEqual([]);
     expect(warnings).toEqual([]);
 
     // Component identifiers are PascalCase, while component filenames remain
@@ -257,7 +257,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       )
       .filter(([, setting]) => severityOf(setting) !== "error")
       .map(([rule]) => rule));
-    expect(advisoryRules).toEqual([]);
+    expect(ADVISORY_RULES).toEqual([]);
     expect([...nonErrors].sort()).toEqual([]);
   });
 

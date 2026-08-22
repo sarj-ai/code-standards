@@ -12,7 +12,7 @@ import { isZodModule } from "./_zod.js";
 
 type MessageIds = "hoistSchema";
 
-export const preferModuleLevelSchemaDocumentation = {
+export const PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION = {
   summary: "Declare a Zod schema at module scope when it closes over nothing in the enclosing function",
   rationale: "A closed schema created inside a function is rebuilt on every call and cannot be reused or exported for inference.",
   remediation: "Move the closed schema declaration to module scope and reference it from the function.",
@@ -234,7 +234,7 @@ function collectReferences(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-module-level-schema",
-  documentation: preferModuleLevelSchemaDocumentation,
+  documentation: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

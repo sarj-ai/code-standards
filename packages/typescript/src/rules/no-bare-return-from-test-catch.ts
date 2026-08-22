@@ -13,7 +13,7 @@ type Options = readonly [];
 type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression;
 type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
 
-export const noBareReturnFromTestCatchDocumentation = {
+export const NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION = {
   summary: "Disallow a bare return from a test catch block when it skips a later assertion.",
   rationale: "The caught failure turns into a passing test without executing the assertion that follows it.",
   remediation: "Rethrow the error, assert on it, or use the runner's explicit skip mechanism when the capability is optional.",
@@ -108,7 +108,7 @@ function isExplicitSkip(node: TSESTree.Node, context: Context): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-bare-return-from-test-catch",
-  documentation: noBareReturnFromTestCatchDocumentation,
+  documentation: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: { description: "Disallow a bare return from a test catch block when it skips a later assertion." },

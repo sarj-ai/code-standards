@@ -17,7 +17,7 @@ import {
 type MessageIds = "tooLong";
 type Options = readonly [];
 
-export const noLongCommentDocumentation = {
+export const NO_LONG_COMMENT_DOCUMENTATION = {
   summary: "Flag unusually large unstructured JSDoc blocks in implementation code.",
   rationale: "Large narrative comments become stale and obscure the local facts that belong beside the code.",
   remediation: "Keep only durable local constraints and express the remaining behavior in code.",
@@ -105,7 +105,7 @@ function wordUnits(text: string): number {
 
 export default createRule<Options, MessageIds>({
   name: "no-long-comment",
-  documentation: noLongCommentDocumentation,
+  documentation: NO_LONG_COMMENT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Flag unusually large unstructured JSDoc blocks in implementation code." },

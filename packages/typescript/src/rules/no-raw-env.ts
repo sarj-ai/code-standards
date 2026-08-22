@@ -12,7 +12,7 @@ import { isScriptFile, isTestFile } from "./_paths.js";
 type MessageIds = "noRawEnv";
 type Options = readonly [];
 
-export const noRawEnvDocumentation = {
+export const NO_RAW_ENV_DOCUMENTATION = {
   summary: "Disallow direct `process.env` and `import.meta.env` reads outside validated boundaries.",
   rationale: "Raw environment reads are untyped and defer invalid configuration failures until use.",
   remediation: "Validate environment values at startup and import the typed configuration object.",
@@ -115,7 +115,7 @@ function isWholeEnvSpread(node: TSESTree.MemberExpression): boolean {
 
 export default createRule<Options, MessageIds>({
   name: "no-raw-env",
-  documentation: noRawEnvDocumentation,
+  documentation: NO_RAW_ENV_DOCUMENTATION,
   meta: {
     type: "problem",
     docs: {

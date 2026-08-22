@@ -12,7 +12,7 @@ import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths
 type MessageIds = "requireInterface";
 type Options = readonly [];
 
-export const requirePortForServiceDocumentation = {
+export const REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION = {
   summary: "Advise when an exported service with injected collaborators has public methods not covered by its declared ports.",
   rationale: "A declared port keeps consumers coupled to the service capability instead of its concrete implementation.",
   remediation: "Declare and implement an interface covering the service's public methods.",
@@ -811,7 +811,7 @@ function hasServicePort(
 
 export default createRule<Options, MessageIds>({
   name: "require-port-for-service",
-  documentation: requirePortForServiceDocumentation,
+  documentation: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

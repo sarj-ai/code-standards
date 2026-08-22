@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noLogOnlyCatchDocumentation } from "../../src/rules/no-log-only-catch.js";
+import rule, { NO_LOG_ONLY_CATCH_DOCUMENTATION } from "../../src/rules/no-log-only-catch.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-log-only-catch", rule, {
+RULE_TESTER.run("no-log-only-catch", rule, {
   valid: [
-    { name: "accepts the documented rethrow", code: noLogOnlyCatchDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented rethrow", code: NO_LOG_ONLY_CATCH_DOCUMENTATION.examples[0].files[0].source },
     // Logs then rethrows the original error — failure still surfaces.
     {
       code: "try { f(); } catch (e) { console.error(e); throw e; }",
@@ -155,7 +155,7 @@ ruleTester.run("no-log-only-catch", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented swallowed failure", code: noLogOnlyCatchDocumentation.examples[1].files[0].source, errors: [{ messageId: "noLogOnlyCatch" }] },
+    { name: "reports the documented swallowed failure", code: NO_LOG_ONLY_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noLogOnlyCatch" }] },
     // Empty catch with a binding — distinct, accurate `emptyCatch` message.
     {
       code: "try { f(); } catch (e) {}",

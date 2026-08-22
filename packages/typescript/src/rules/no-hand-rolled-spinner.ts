@@ -12,7 +12,7 @@ import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 type MessageIds = "handRolledSpinner";
 type Options = readonly [];
 
-export const noHandRolledSpinnerDocumentation = {
+export const NO_HAND_ROLLED_SPINNER_DOCUMENTATION = {
   summary: "Disallow intrinsic elements styled as Tailwind border-ring spinners outside the design-system implementation.",
   rationale: "One-off loading indicators duplicate a shared primitive and let accessibility and styling diverge.",
   remediation: "Render the design-system Spinner component instead.",
@@ -85,7 +85,7 @@ function staticClassName(attribute: TSESTree.JSXAttribute): string | null {
 
 export default createRule<Options, MessageIds>({
   name: "no-hand-rolled-spinner",
-  documentation: noHandRolledSpinnerDocumentation,
+  documentation: NO_HAND_ROLLED_SPINNER_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

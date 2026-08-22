@@ -1,18 +1,18 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noRawEnvDocumentation } from "../../src/rules/no-raw-env.js";
+import rule, { NO_RAW_ENV_DOCUMENTATION } from "../../src/rules/no-raw-env.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-raw-env", rule, {
+RULE_TESTER.run("no-raw-env", rule, {
   valid: [
-    { name: "accepts the documented validated environment", code: noRawEnvDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented validated environment", code: NO_RAW_ENV_DOCUMENTATION.examples[0].files[0].source },
     // Reading from a validated env module is the prescribed pattern.
     { code: "import { env } from '@/env'; const url = env.DATABASE_URL;" },
     // Unrelated member access is fine.
@@ -133,7 +133,7 @@ ruleTester.run("no-raw-env", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented raw environment read", code: noRawEnvDocumentation.examples[1].files[0].source, errors: [{ messageId: "noRawEnv" }] },
+    { name: "reports the documented raw environment read", code: NO_RAW_ENV_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noRawEnv" }] },
     {
       code: "const url = process.env.DATABASE_URL;",
       errors: [{ messageId: "noRawEnv" }],

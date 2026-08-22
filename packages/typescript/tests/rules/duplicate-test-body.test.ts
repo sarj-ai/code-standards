@@ -2,17 +2,17 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { duplicateTestBodyDocumentation } from "../../src/rules/duplicate-test-body.js";
+import rule, { DUPLICATE_TEST_BODY_DOCUMENTATION } from "../../src/rules/duplicate-test-body.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({ languageOptions: { parser: tsParser } });
+const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 const TEST_FILE = "/repo/src/user.test.ts";
 
-ruleTester.run("duplicate-test-body", rule, {
+RULE_TESTER.run("duplicate-test-body", rule, {
   valid: [
     {
       name: "allows fewer than three statements",
@@ -35,7 +35,7 @@ describe('two', () => { test('b', () => { const x = parse('b'); expect(x.ok).toB
     {
       name: "allows existing parameterization",
       filename: TEST_FILE,
-      code: duplicateTestBodyDocumentation.examples[0].files[0].source,
+      code: DUPLICATE_TEST_BODY_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "does not treat suites or hooks as tests",
@@ -107,12 +107,12 @@ run('two', () => { const x = parse('b'); save(x); return x; });`,
     {
       name: "ignores generated test paths",
       filename: "/repo/src/generated/user.test.ts",
-      code: duplicateTestBodyDocumentation.examples[1].files[0].source,
+      code: DUPLICATE_TEST_BODY_DOCUMENTATION.examples[1].files[0].source,
     },
     {
       name: "ignores generated test headers",
       filename: TEST_FILE,
-      code: `// @generated\n${duplicateTestBodyDocumentation.examples[1].files[0].source}`,
+      code: `// @generated\n${DUPLICATE_TEST_BODY_DOCUMENTATION.examples[1].files[0].source}`,
     },
     {
       name: "ignores a locally defined function named test",
@@ -140,7 +140,7 @@ test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
     {
       name: "reports the later sibling whose body differs only by case literals",
       filename: TEST_FILE,
-      code: duplicateTestBodyDocumentation.examples[1].files[0].source,
+      code: DUPLICATE_TEST_BODY_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "duplicateTestBody", line: 2 }],
     },
     {

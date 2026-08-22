@@ -28,7 +28,7 @@ type MessageIds = "commentWall";
 
 type Options = readonly [Partial<WallOptions>?];
 
-export const noTypeMemberCommentWallDocumentation = {
+export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
   summary: "Flag an object type whose member comments mostly re-spell the members' own names and types.",
   rationale: "Repetitive member comments add scanning cost while hiding the comments that describe facts absent from the type.",
   remediation: "Delete comments that restate member names or types and keep comments that add constraints or behavior.",
@@ -69,7 +69,7 @@ function isNamedMember(node: TSESTree.TypeElement): node is NamedMember {
 
 export default createRule<Options, MessageIds>({
   name: "no-type-member-comment-wall",
-  documentation: noTypeMemberCommentWallDocumentation,
+  documentation: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

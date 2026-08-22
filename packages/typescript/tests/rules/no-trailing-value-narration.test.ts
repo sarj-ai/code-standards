@@ -2,7 +2,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  noTrailingValueNarrationDocumentation,
+  NO_TRAILING_VALUE_NARRATION_DOCUMENTATION,
 } from "../../src/rules/no-trailing-value-narration.js";
 
 RuleTester.afterAll = afterAll;
@@ -10,9 +10,9 @@ RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester();
+const RULE_TESTER = new RuleTester();
 
-ruleTester.run("no-trailing-value-narration", rule, {
+RULE_TESTER.run("no-trailing-value-narration", rule, {
   valid: [
     { name: "accepts the result of the deletion suggestion", code: "const DEFAULT_TTL_MS = 5 * 60 * 1000;" },
     // A conversion the reader cannot do in their head is the comment worth having.
@@ -22,7 +22,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
     { code: "const backoff = 2 * 60; // doubles per attempt, capped by the gateway" },
     {
       name: "allows a unit annotation that also explains a domain constraint",
-      code: noTrailingValueNarrationDocumentation.examples[0].files[0].source,
+      code: NO_TRAILING_VALUE_NARRATION_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "allows a comment when any stated number is absent from the code",
@@ -102,7 +102,7 @@ ruleTester.run("no-trailing-value-narration", rule, {
       errors: [{ messageId: "narratesValue", suggestions: 0 }],
     },
     {
-      code: noTrailingValueNarrationDocumentation.examples[1].files[0].source,
+      code: NO_TRAILING_VALUE_NARRATION_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "narratesValue" }],
     },
     {

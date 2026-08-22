@@ -2,22 +2,22 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noSilentPromiseCatchDocumentation } from "../../src/rules/no-silent-promise-catch.js";
+import rule, { NO_SILENT_PROMISE_CATCH_DOCUMENTATION } from "../../src/rules/no-silent-promise-catch.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-silent-promise-catch", rule, {
+RULE_TESTER.run("no-silent-promise-catch", rule, {
   valid: [
-    { name: "accepts the documented reported rejection", code: noSilentPromiseCatchDocumentation.examples[0].files[0].source },
+    { name: "accepts the documented reported rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows a cancelled optional web-share action",
       code: "await navigator.share(data).catch(() => false);",
@@ -160,7 +160,7 @@ ruleTester.run("no-silent-promise-catch", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented silent rejection", code: noSilentPromiseCatchDocumentation.examples[1].files[0].source, errors: [{ messageId: "silentCatch" }] },
+    { name: "reports the documented silent rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "silentCatch" }] },
     {
       name: "reports a silent catch followed only by finally",
       code: "load().catch(() => null).finally(cleanup);",

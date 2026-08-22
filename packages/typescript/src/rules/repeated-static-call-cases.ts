@@ -13,7 +13,7 @@ type MessageIds = "repeatedStaticCallCases";
 type Options = readonly [];
 type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
 
-export const repeatedStaticCallCasesDocumentation = {
+export const REPEATED_STATIC_CALL_CASES_DOCUMENTATION = {
   summary: "Report three or more consecutive literal call assertions that should be independently named test cases.",
   rationale: "Copy-pasted cases obscure the input table and stop later cases from being reported after the first failure.",
   remediation: "Replace the repeated assertions with a named `test.each` or `it.each` table.",
@@ -142,7 +142,7 @@ function expectCallFromMatcher(node: TSESTree.MemberExpression): { call: TSESTre
 
 export default createRule<Options, MessageIds>({
   name: "repeated-static-call-cases",
-  documentation: repeatedStaticCallCasesDocumentation,
+  documentation: REPEATED_STATIC_CALL_CASES_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: { description: "Report three or more consecutive literal call assertions that should be independently named test cases." },

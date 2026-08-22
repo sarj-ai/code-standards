@@ -15,7 +15,7 @@ export interface RuleOptions {
 }
 type Options = readonly [RuleOptions?];
 
-export const preferShadcnPrimitivesDocumentation = {
+export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
   summary: "Require visible raw JSX controls to use the corresponding shared shadcn primitive.",
   rationale: "Shared primitives centralize interaction, accessibility, and visual behavior across the product.",
   remediation: "Replace the raw visible control with the corresponding shared shadcn component.",
@@ -194,7 +194,7 @@ function replacementFor(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-shadcn-primitives",
-  documentation: preferShadcnPrimitivesDocumentation,
+  documentation: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

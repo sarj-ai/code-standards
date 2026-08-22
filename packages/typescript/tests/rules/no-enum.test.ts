@@ -2,24 +2,24 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { noEnumDocumentation } from "../../src/rules/no-enum.js";
+import rule, { NO_ENUM_DOCUMENTATION } from "../../src/rules/no-enum.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
-const ruleTester = new RuleTester({
+const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
   },
 });
 
-ruleTester.run("no-enum", rule, {
+RULE_TESTER.run("no-enum", rule, {
   valid: [
     {
       name: "accepts a string-literal union",
-      code: noEnumDocumentation.examples[0].files[0].source,
+      code: NO_ENUM_DOCUMENTATION.examples[0].files[0].source,
     },
     {
       name: "accepts an as-const object",
@@ -70,7 +70,7 @@ ruleTester.run("no-enum", rule, {
   invalid: [
     {
       name: "reports a numeric enum",
-      code: noEnumDocumentation.examples[1].files[0].source,
+      code: NO_ENUM_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "noEnum" }],
     },
     {

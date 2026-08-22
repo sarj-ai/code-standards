@@ -11,7 +11,7 @@ import { isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "hoistCollection" | "hoistRegex";
 
-export const preferModuleLevelConstantDocumentation = {
+export const PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION = {
   summary: "Hoist literal-only constant collections and regexes out of function bodies to module scope so they are allocated once.",
   rationale: "Recreating immutable lookup data on every call wastes allocations and obscures its constant nature.",
   remediation: "Declare immutable literal collections and non-stateful regular expressions once at module scope.",
@@ -375,7 +375,7 @@ function isNonRetainingBuiltinCall(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-module-level-constant",
-  documentation: preferModuleLevelConstantDocumentation,
+  documentation: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {

@@ -18,7 +18,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 type MessageIds = "preferAwait";
 type Options = readonly [];
 
-export const preferAwaitInAsyncReturnDocumentation = {
+export const PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION = {
   summary:
     "Prefer explicit `await` when an async function directly returns one typed Promise `.then` transform.",
   rationale:
@@ -158,7 +158,7 @@ function isProvenPromiseLike(
 
 export default createRule<Options, MessageIds>({
   name: "prefer-await-in-async-return",
-  documentation: preferAwaitInAsyncReturnDocumentation,
+  documentation: PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION,
   meta: {
     type: "suggestion",
     docs: {
