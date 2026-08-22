@@ -64,7 +64,7 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     assert [item.code for item in raw_again.diagnostics] == ["SARJ052"]
 
 
-def test_terraform_test_ban_cannot_be_diagnostic_baselined(tmp_path: Path) -> None:
+def test_terraform_test_ban_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
     source = tmp_path / "routing.tftest.json"
     source.write_text("{}\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
@@ -72,9 +72,11 @@ def test_terraform_test_ban_cannot_be_diagnostic_baselined(tmp_path: Path) -> No
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
 
-    policy = api.Standards(tmp_path).analyze([str(source)])
+    new_source = tmp_path / "new-routing.tftest.json"
+    new_source.write_text("{}\n", encoding="utf-8")
+    policy = api.Standards(tmp_path).analyze([str(source), str(new_source)])
 
-    assert [item.code for item in policy.diagnostics] == ["SARJ206"]
+    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.json"]
 
 
 def test_missing_diagnostic_baseline_is_an_execution_failure(tmp_path: Path) -> None:

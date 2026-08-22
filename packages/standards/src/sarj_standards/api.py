@@ -604,7 +604,7 @@ def _without_baselined_diagnostics(
     remaining = counts.copy()
 
     def active(diagnostic: Diagnostic) -> bool:
-        if not diagnostic_baseline.is_baselineable(diagnostic) or diagnostic.code == "SARJ206":
+        if not diagnostic_baseline.is_baselineable(diagnostic):
             return True
         if diagnostic_baseline.touches_changed_lines(diagnostic, changed_scope):
             return True

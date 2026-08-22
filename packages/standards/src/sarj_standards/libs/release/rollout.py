@@ -184,6 +184,8 @@ class Consumer:
     auto_merge: bool = False
     channel: str = "stable"
     baseline_rules: tuple[str, ...] = ()
+    baseline_paths: tuple[str, ...] = ()
+    baseline_update: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -246,6 +248,8 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
             "auto_merge",
             "channel",
             "baseline_rules",
+            "baseline_paths",
+            "baseline_update",
         }:
             msg = f"invalid registry entry keys: {entry_value!r}"
             raise RolloutError(msg)
@@ -258,6 +262,8 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
         auto_merge = optional_bool(entry, "auto_merge")
         channel_value = entry.get("channel", "stable")
         baseline_rules_value = entry.get("baseline_rules", [])
+        baseline_paths_value = entry.get("baseline_paths", [])
+        baseline_update_value = entry.get("baseline_update", [])
         if channel_value not in ROLLOUT_CHANNELS:
             msg = f"invalid rollout channel: {channel_value!r}"
             raise RolloutError(msg)
@@ -268,6 +274,29 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
             isinstance(item, str) and item for item in baseline_rules_value
         ):
             msg = f"invalid promoted baseline rules: {entry!r}"
+            raise RolloutError(msg)
+        if not is_array(baseline_paths_value) or not all(
+            isinstance(item, str) and item for item in baseline_paths_value
+        ):
+            msg = f"invalid consumer baseline paths: {entry!r}"
+            raise RolloutError(msg)
+        if not is_array(baseline_update_value) or not all(
+            isinstance(item, str) and item for item in baseline_update_value
+        ):
+            msg = f"invalid consumer baseline update command: {entry!r}"
+            raise RolloutError(msg)
+        if bool(baseline_paths_value) != bool(baseline_update_value):
+            msg = "consumer baseline_paths and baseline_update must be declared together"
+            raise RolloutError(msg)
+        baseline_paths = tuple(item for item in baseline_paths_value if isinstance(item, str))
+        if len(set(baseline_paths)) != len(baseline_paths) or any(
+            Path(item).is_absolute()
+            or "\\" in item
+            or ".." in Path(item).parts
+            or "baseline" not in item.casefold()
+            for item in baseline_paths
+        ):
+            msg = f"unsafe consumer baseline paths: {entry!r}"
             raise RolloutError(msg)
         if not all(isinstance(item, str) and item for item in verify_value):
             msg = f"invalid registry values: {entry!r}"
@@ -282,6 +311,8 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
             auto_merge=auto_merge,
             channel=channel_value,
             baseline_rules=tuple(item for item in baseline_rules_value if isinstance(item, str)),
+            baseline_paths=baseline_paths,
+            baseline_update=tuple(item for item in baseline_update_value if isinstance(item, str)),
         )
         consumers.append(consumer)
     identities = tuple((item.repository, item.branch) for item in consumers)
@@ -656,6 +687,11 @@ def assert_baseline_unchanged(path: Path | None, expected: bytes | None) -> None
     if not path.is_file() or path.read_bytes() != expected:
         msg = f"consumer verification mutated controller-owned diagnostic baseline: {path}"
         raise RolloutError(msg)
+
+
+def assert_baselines_unchanged(expected: Mapping[Path, bytes]) -> None:
+    for path, contents in expected.items():
+        assert_baseline_unchanged(path, contents)
 
 
 def managed_rollout_paths(repo: Path, workflow_paths: frozenset[str]) -> frozenset[str]:
@@ -1039,7 +1075,9 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             raise RolloutError(msg + process_failure_detail(exc)) from exc
         adopted = adoption_manifest.load(repo)
         baseline_relative = None if adopted is None else adopted.diagnostic_baseline
-        allowed_baseline_paths = frozenset(() if baseline_relative is None else (baseline_relative,))
+        allowed_baseline_paths = frozenset(
+            (*(() if baseline_relative is None else (baseline_relative,)), *consumer.baseline_paths)
+        )
         baseline_path = None if baseline_relative is None else repo / baseline_relative
         if consumer.baseline_rules and (baseline_path is None or baseline_relative is None):
             msg = (
@@ -1073,6 +1111,22 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
         bootstrap = run_consumer_bootstrap(repo, tool_prefix, runner, unauthenticated)
         assert_baseline_unchanged(baseline_path, expected_baseline)
+        if bootstrap is None and consumer.baseline_update:
+            baseline_update = runner.run(
+                (*tool_prefix, *consumer.baseline_update),
+                cwd=repo,
+                env=unauthenticated,
+                check=False,
+            )
+            if baseline_update.returncode != 0:
+                failures.append("consumer baseline update failed:\n" + verification_detail(baseline_update))
+        consumer_baselines: dict[Path, bytes] = {}
+        for relative in consumer.baseline_paths:
+            path = repo / relative
+            if not path.is_file():
+                msg = f"{consumer.name}: consumer baseline update did not create {path}"
+                raise RolloutError(msg)
+            consumer_baselines[path] = path.read_bytes()
         worktree_paths = changed_paths(repo, runner)
         reject_unsafe_diff(
             worktree_paths,
@@ -1096,6 +1150,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                     check=False,
                 )
                 assert_baseline_unchanged(baseline_path, expected_baseline)
+                assert_baselines_unchanged(consumer_baselines)
                 mutated = amend_safe_changes(
                     repo,
                     runner,
