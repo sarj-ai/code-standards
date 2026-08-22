@@ -5,7 +5,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
 import rule, {
-  preferEcmascriptPrivateMembersDocumentation,
+  PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION,
 } from "../../src/rules/prefer-ecmascript-private-members.js";
 
 RuleTester.afterAll = afterAll;
@@ -25,7 +25,7 @@ const ruleTester = new RuleTester({
 
 ruleTester.run("prefer-ecmascript-private-members", rule, {
   valid: [
-    preferEcmascriptPrivateMembersDocumentation.examples[0].files[0].source,
+    PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[0].files[0].source,
     "class Service { public run() {} protected extend() {} }",
     "abstract class Service { abstract privateMethod(): void }",
     "class Service { private ['run']() {} }",
@@ -37,8 +37,8 @@ ruleTester.run("prefer-ecmascript-private-members", rule, {
   invalid: [
     {
       name: "fixes the documented method and its exact reference",
-      code: preferEcmascriptPrivateMembersDocumentation.examples[1].files[0].source,
-      output: preferEcmascriptPrivateMembersDocumentation.examples[1].fixedFiles?.[0]?.source,
+      code: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[1].files[0].source,
+      output: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[1].fixedFiles?.[0]?.source,
       errors: [{ messageId: "preferEcmascriptPrivate", data: { name: "read" } }],
     },
     {
