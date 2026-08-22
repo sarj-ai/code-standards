@@ -150,7 +150,7 @@ class NegativeOnlyHttpStatusAssertion(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
                         "this assertion proves only that the response avoided one server-error shape; assert the "
                         "intended exact status and, when relevant, its domain payload or side effect."

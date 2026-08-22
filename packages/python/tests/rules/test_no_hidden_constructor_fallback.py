@@ -589,7 +589,7 @@ class Generator:
     findings = _check(service.read_text(), service)
     assert len(findings) == 1
     assert "`project`, `model`" in findings[0].message
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert "call site or composition root" in findings[0].message
     assert "falsey" in findings[0].message
 
@@ -756,7 +756,7 @@ def test_syntax_errors_stay_quiet() -> None:
     assert _check("class Broken(") == []
 
 
-def test_cli_prints_suppressible_warning_and_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_prints_blocking_error_and_supports_suppression(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     service = _settings_project(
         tmp_path,
         """from app.config import settings
@@ -765,8 +765,8 @@ class Generator:
         self.model = model or settings.MODEL
 """,
     )
-    assert main(["check", "--rule", "no-hidden-constructor-fallback", str(service)]) == 0
-    assert "SARJ095 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", "no-hidden-constructor-fallback", str(service)]) == 1
+    assert "SARJ095 warning:" not in capsys.readouterr().out
 
     service.write_text(
         """from app.config import settings

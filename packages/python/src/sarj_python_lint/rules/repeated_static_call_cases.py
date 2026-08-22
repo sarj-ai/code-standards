@@ -112,7 +112,7 @@ class RepeatedStaticCallCases(Rule):
                 line=run[0].lineno,
                 col=run[0].col_offset + 1,
                 code=self.code,
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
                 message=(
                     f"these {len(run)} static call assertions run as one coarse test; move the inputs and "
                     "expectations into named pytest parameters."

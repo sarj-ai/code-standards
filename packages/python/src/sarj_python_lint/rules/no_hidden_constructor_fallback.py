@@ -209,7 +209,7 @@ class NoHiddenConstructorFallback(Rule):
                         "make the argument required and resolve the fallback at the call site or composition root."
                         f"{falsey_warning}"
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))

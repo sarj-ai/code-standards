@@ -155,7 +155,7 @@ class RequirePydanticForExternalJson(Rule):
                     "External JSON field is read without Pydantic validation — validate the payload with "
                     "`Model.model_validate_json(...)` or `TypeAdapter(Model).validate_json(...)` first."
                 ),
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for sink, _origin in first_by_origin.values()
         ]

@@ -16,12 +16,15 @@ from sarj_standards import (
     _meta,  # sarj-noqa: SARJ048 — source-tree fallback is under test
 )
 from sarj_standards._meta import (
+    BASEDPYRIGHT_PYTHON315_WATCH,
+    BASEDPYRIGHT_STRICT,
     CONFIGS_DIR,
     ESLINT_APPLICATION,
     ESLINT_STRICT,
     MARKDOWNLINT_STRICT,
     PYRIGHT_STRICT,
     RUFF_APPLICATION,
+    RUFF_PYTHON315_WATCH,
     RUFF_STRICT,
     TAPLO_STRICT,
     YAMLLINT_STRICT,
@@ -36,6 +39,7 @@ _PUBLIC_CONFIGS = (
     RUFF_STRICT,
     RUFF_APPLICATION,
     PYRIGHT_STRICT,
+    BASEDPYRIGHT_STRICT,
     ESLINT_STRICT,
     ESLINT_APPLICATION,
     CONFIGS_DIR / "rule-ledger.json",
@@ -90,14 +94,25 @@ def test_configs_dir_exists() -> None:
 
 @pytest.mark.parametrize(
     "path",
-    [RUFF_STRICT, PYRIGHT_STRICT, ESLINT_STRICT, MARKDOWNLINT_STRICT, TAPLO_STRICT, YAMLLINT_STRICT],
+    [
+        RUFF_STRICT,
+        PYRIGHT_STRICT,
+        BASEDPYRIGHT_STRICT,
+        ESLINT_STRICT,
+        MARKDOWNLINT_STRICT,
+        TAPLO_STRICT,
+        YAMLLINT_STRICT,
+    ],
 )
-def test_all_six_configs_bundled(path: Path) -> None:
+def test_all_blocking_configs_bundled(path: Path) -> None:
     assert path.is_file(), f"missing bundled config: {path}"
     assert path.stat().st_size > 0
 
 
-@pytest.mark.parametrize("path", [RUFF_APPLICATION, ESLINT_APPLICATION])
+@pytest.mark.parametrize(
+    "path",
+    [RUFF_APPLICATION, ESLINT_APPLICATION, RUFF_PYTHON315_WATCH, BASEDPYRIGHT_PYTHON315_WATCH],
+)
 def test_application_configs_bundled(path: Path) -> None:
     assert path.is_file(), f"missing bundled application config: {path}"
     assert path.stat().st_size > 0
@@ -351,7 +366,27 @@ def test_pyright_config_is_valid_jsonc() -> None:
     raw = PYRIGHT_STRICT.read_text()
     assert isinstance(json.loads(re.sub(r"//.*", "", raw)), dict)  # parses as JSON(C)
     assert re.search(r'"typeCheckingMode"\s*:\s*"strict"', raw)
-    assert re.search(r'"reportExplicitAny"\s*:\s*"error"', raw)
+    assert '"reportExplicitAny"' not in raw
+    based = BASEDPYRIGHT_STRICT.read_text()
+    assert re.search(r'"reportExplicitAny"\s*:\s*"error"', based)
+    assert re.search(r'"enableBasedFeatures"\s*:\s*false', based)
+    assert '"allowedUntypedLibraries"' not in based
+
+
+@pytest.mark.parametrize("config", [BASEDPYRIGHT_STRICT, BASEDPYRIGHT_PYTHON315_WATCH])
+def test_basedpyright_profiles_load_their_complete_inheritance_chain(config: Path) -> None:
+    proc = subprocess.run(
+        [sys.executable, "-m", "basedpyright", "--project", str(config), str(_meta.__file__)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "could not be read" not in proc.stdout.casefold()
+    assert "could not be read" not in proc.stderr.casefold()
+    assert "unrecognized setting" not in proc.stdout.casefold()
+    assert "unrecognized setting" not in proc.stderr.casefold()
 
 
 def test_python_visibility_contract_is_explicitly_strict() -> None:
@@ -361,14 +396,11 @@ def test_python_visibility_contract_is_explicitly_strict() -> None:
     assert {"SLF001", "N801", "N802", "N806", "N999", "F401", "F822", "RUF022", "RUF068"}.isdisjoint(ignored)
     assert "PLC2701" in ignored
 
-    raw = PYRIGHT_STRICT.read_text()
-    for setting in (
-        "reportPrivateUsage",
-        "reportPrivateImportUsage",
-        "reportPrivateLocalImportUsage",
-        "reportUnsupportedDunderAll",
-    ):
-        assert re.search(rf'"{setting}"\s*:\s*"error"', raw)
+    upstream = PYRIGHT_STRICT.read_text()
+    for setting in ("reportPrivateUsage", "reportPrivateImportUsage", "reportUnsupportedDunderAll"):
+        assert re.search(rf'"{setting}"\s*:\s*"error"', upstream)
+    assert '"reportPrivateLocalImportUsage"' not in upstream
+    assert re.search(r'"reportPrivateLocalImportUsage"\s*:\s*"error"', BASEDPYRIGHT_STRICT.read_text())
 
 
 def test_eslint_config_is_esm() -> None:

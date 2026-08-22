@@ -199,7 +199,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const warnings = Object.entries(plainConfig.rules ?? {})
       .filter(([, setting]) => severityOf(setting) === 1)
       .map(([rule]) => rule);
-    expect(warnings).toEqual(advisoryRules.map((rule) => `@sarj/${rule}`));
+    expect(advisoryRules).toEqual([]);
+    expect(warnings).toEqual([]);
 
     // Component identifiers are PascalCase, while component filenames remain
     // kebab-case under the shared filename policy.
@@ -256,7 +257,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       )
       .filter(([, setting]) => severityOf(setting) !== "error")
       .map(([rule]) => rule));
-    expect([...nonErrors].sort()).toEqual(advisoryRules.map((rule) => `@sarj/${rule}`).sort());
+    expect(advisoryRules).toEqual([]);
+    expect([...nonErrors].sort()).toEqual([]);
   });
 
   /**

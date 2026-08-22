@@ -118,6 +118,28 @@ def test_canonical_analysis_routes_the_repository_only_once(
     assert len(routed) == 1
 
 
+def test_explicit_typescript_ci_scope_still_includes_react_doctor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "component.tsx"
+    source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
+    included: list[bool] = []
+
+    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+        included.append(kwargs["include_react_doctor"] is True)
+        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+
+    monkeypatch.setattr(api, "analyze_paths", native)
+    monkeypatch.setattr(api, "analyze_external", external)
+
+    _ = api.Standards(tmp_path).analyze(["component.tsx"], external=True)
+
+    assert included == [True]
+
+
 def test_analysis_rejects_a_bare_rule_selector_string(tmp_path: Path) -> None:
     report = api.Standards(tmp_path).analyze(rules="python:no-rule")
 

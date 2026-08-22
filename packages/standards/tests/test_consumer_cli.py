@@ -322,7 +322,7 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     def no_changed_files(_root: Path, _base: str) -> list[str]:
         return []
 
-    monkeypatch.setattr(cli, "_changed_file_paths", no_changed_files)
+    monkeypatch.setattr(cli, "_changed_file_names", no_changed_files)
     seen: list[tuple[str, ...] | None] = []
     original = Standards.analyze
 
@@ -337,6 +337,13 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     assert status == 0
     assert seen == [()]
     assert json.loads(capsys.readouterr().out)["diagnostics"] == []
+
+
+def test_react_doctor_trigger_keeps_metadata_and_deleted_typescript_out_of_the_analyzer_filter() -> None:
+    trigger = cli._react_doctor_triggered_by  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert trigger(("package.json",))
+    assert trigger(("src/deleted.tsx",))
+    assert not trigger(("README.md",))
 
 
 def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
@@ -393,7 +400,7 @@ def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
     def changed_metadata(_root: Path, _base: str) -> list[str]:
         return ["pyproject.toml", "packages/standards/uv.lock"]
 
-    monkeypatch.setattr(cli, "_changed_file_paths", changed_metadata)
+    monkeypatch.setattr(cli, "_changed_file_names", changed_metadata)
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
 

@@ -110,7 +110,7 @@ class PreferNonNullableCollection(Rule):
                         "make the list required, or accept an immutable empty-default input such as "
                         "`Sequence[T] = ()` and materialize a list internally."
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
                 for argument in _equivalent_empty_parameters(function)
                 if owner is None or not _forwards_inherited_constructor_parameter(owner, function, argument.arg)

@@ -51,7 +51,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 def test_flags_external_json_fixed_field_access(source: str) -> None:
     diagnostics = _check(source)
     assert len(diagnostics) == 1
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
 
 
 def test_flags_original_react_doctor_helper_chain_once() -> None:

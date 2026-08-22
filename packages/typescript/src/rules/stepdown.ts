@@ -17,10 +17,13 @@ export const stepdownDocumentation = {
   rationale: "Caller-first ordering lets a reader follow the main flow before descending into implementation details.",
   remediation: "Move the private helper below its sole caller.",
   category: "maintainability",
+  autofix: "safe",
   limitations: [
     "Generated and test files, cycles, dynamic references, overload targets, and helpers with multiple callers are excluded.",
-    "Class methods are reported only when both helper and caller are private so accessibility ordering remains authoritative.",
+    "Class helpers must be private; their sole caller may be public, protected, or private so the fix also satisfies accessibility ordering.",
     "Runtime class-field, static-block, computed-member, and decorator barriers are never crossed.",
+    "Autofix is limited to comment-free class-member boundaries; module functions and ambiguous comment ownership remain report-only.",
+    "Overlapping helper chains remain report-only so ESLint never leaves a partially reordered class after exhausting its fix-pass limit.",
   ],
   examples: [
     { id: "caller-before-helper", title: "Place the caller first", outcome: "no-match", files: [{ path: "src/run.ts", source: "function run() { return load(); }\nfunction load() { return 1; }" }], focusPath: "src/run.ts", expectedCount: 0, public: true },
@@ -55,6 +58,7 @@ function reportMisordered(
   calls: ReadonlyMap<string, ReadonlySet<string>>,
   pinned: ReadonlySet<string>,
   canMove: (helper: Definition, caller: Definition) => boolean = () => true,
+  makeFix?: (helper: Definition, caller: Definition) => ((fixer: TSESLint.RuleFixer) => readonly TSESLint.RuleFix[]) | undefined,
 ): void {
   const byName = new Map(scopeDefinitions.map((definition) => [definition.name, definition]));
   const cycles = cycleComponents(calls);
@@ -77,10 +81,12 @@ function reportMisordered(
     ) continue;
     const caller = byName.get(callerName);
     if (caller === undefined || helper.node.range[0] >= caller.node.range[0] || !canMove(helper, caller)) continue;
+    const fix = makeFix?.(helper, caller);
     context.report({
       node: helper.node,
       messageId: "helperAboveOnlyCaller",
       data: { helper: helper.name, caller: callerName },
+      ...(fix === undefined ? {} : { fix }),
     });
   }
 }
@@ -483,35 +489,47 @@ function classScope(
   }
   for (const name of privateNames) if (computedReferenceNames.has(name)) pinned.add(name);
 
-  const accessibility = new Map(
-    scopeDefinitions.map((definition) => {
-      const method = definition.node;
-      const accessibility = method.key.type === AST_NODE_TYPES.PrivateIdentifier
-        ? "private"
-        : method.accessibility ?? "public";
-      return [definition.name, accessibility] as const;
-    }),
-  );
-  const methodByName = new Map(scopeDefinitions.map((definition) => [definition.name, definition.node]));
-  for (const [caller, callees] of calls) {
-    const callerMethod = methodByName.get(caller);
-    if (
-      accessibility.get(caller) === "private" &&
-      callerMethod?.type === AST_NODE_TYPES.MethodDefinition &&
-      callerMethod.decorators.length === 0
-    ) continue;
-    for (const callee of callees) pinned.add(callee);
-  }
   const memberIndexes = new Map(node.body.body.map((member, index) => [member, index]));
   const runtimeBarrierPrefix = [0];
   for (const member of node.body.body) {
     runtimeBarrierPrefix.push((runtimeBarrierPrefix.at(-1) ?? 0) + (isClassRuntimeBarrier(member) ? 1 : 0));
   }
-  reportMisordered(context, definitions, scopeDefinitions, calls, pinned, (helper, caller) => {
+  const canMove = (helper: Definition, caller: Definition): boolean => {
     const helperIndex = memberIndexes.get(helper.node as TSESTree.ClassElement);
     const callerIndex = memberIndexes.get(caller.node as TSESTree.ClassElement);
     if (helperIndex === undefined || callerIndex === undefined) return false;
     return runtimeBarrierPrefix[callerIndex + 1] === runtimeBarrierPrefix[helperIndex + 1];
+  };
+  const incoming = new Map<string, Set<string>>();
+  for (const [caller, callees] of calls) {
+    for (const callee of callees) {
+      if (callee === caller) continue;
+      const callers = incoming.get(callee) ?? new Set<string>();
+      callers.add(caller);
+      incoming.set(callee, callers);
+    }
+  }
+  reportMisordered(context, definitions, scopeDefinitions, calls, pinned, canMove, (helper, caller) => {
+    if (!canMove(helper, caller)) return undefined;
+    const helperCallsAnother = [...(calls.get(helper.name) ?? [])].some((callee) => callee !== helper.name);
+    const callerIsAnotherHelper = [...(incoming.get(caller.name) ?? [])].some((name) => name !== helper.name);
+    if (helperCallsAnother || callerIsAnotherHelper) return undefined;
+    const helperMember = helper.node as TSESTree.ClassElement;
+    const callerMember = caller.node as TSESTree.ClassElement;
+    const helperIndex = memberIndexes.get(helperMember);
+    if (helperIndex === undefined) return undefined;
+    const next = node.body.body[helperIndex + 1];
+    const suffixEnd = next?.range[0] ?? node.body.range[1] - 1;
+    const suffix = context.sourceCode.text.slice(helperMember.range[1], suffixEnd);
+    if (!/^\s*$/u.test(suffix)) return undefined;
+    const previous = node.body.body[helperIndex - 1];
+    const prefixStart = previous?.range[1] ?? node.body.range[0] + 1;
+    if (!/^\s*$/u.test(context.sourceCode.text.slice(prefixStart, helperMember.range[0]))) return undefined;
+    const helperText = context.sourceCode.getText(helperMember);
+    return (fixer) => [
+      fixer.removeRange([helperMember.range[0], suffixEnd]),
+      fixer.insertTextAfter(callerMember, `${suffix}${helperText}`),
+    ];
   });
 }
 
@@ -536,6 +554,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: { description: "Place a private helper below its sole direct same-scope caller." },
     schema: [],
+    fixable: "code",
     messages: {
       helperAboveOnlyCaller:
         "Private helper `{{helper}}` is defined above its only caller `{{caller}}`; move it below the caller.",

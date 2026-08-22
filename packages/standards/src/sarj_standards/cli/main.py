@@ -50,6 +50,19 @@ _INVALID_DOCTOR_IDS = frozenset(
         "doctor.package-json.invalid",
     }
 )
+_REACT_DOCTOR_METADATA = frozenset(
+    {
+        "doctor.config.json",
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "tsconfig.json",
+        "yarn.lock",
+    }
+)
+_REACT_DOCTOR_TYPESCRIPT_SUFFIXES = frozenset({".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"})
 
 
 class _EvaluationScope(StrEnum):
@@ -125,6 +138,8 @@ class _Args(argparse.Namespace):
     selector: RuleSelector | None = None
     evaluation_scope: _EvaluationScope = _EvaluationScope.CORPUS
     baseline: Path | None = None
+    baseline_rules: list[str]
+    react_doctor_triggered: bool = False
     package: list[str]
     exclude_subtree: list[str]
     allow_increase: bool = False
@@ -141,6 +156,7 @@ class _Args(argparse.Namespace):
         self.repo_only = []
         self.roots = []
         self.release_exclude = []
+        self.baseline_rules = []
         self.release_exclude_file = []
         self.release_targets = []
         self.wheels = []
@@ -770,7 +786,7 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
     return 1 if findings else 0
 
 
-def cmd_check(args: _Args) -> int:
+def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged and PR scopes retain Doctor triggers.
     from sarj_standards.libs.linting import external, runner  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -779,9 +795,11 @@ def cmd_check(args: _Args) -> int:
         return catalog_status
     repository_wide = not args.files
     pull_request_scoped = False
+    react_doctor_triggered = False
     if args.staged:
         try:
             staged_names = _staged_file_names(root)
+            react_doctor_triggered = _react_doctor_triggered_by(staged_names)
             staged = _safe_staged_paths(root, staged_names)
         except (OSError, subprocess.SubprocessError) as exc:
             if args.output_format != "text":
@@ -819,7 +837,11 @@ def cmd_check(args: _Args) -> int:
         pull_request_scoped = True
     elif (root / ".git").exists() and (base := external.change_scope_base()):
         try:
-            args.files = [path for path in _changed_file_paths(root, base) if runner.accepts_hook_path(Path(path))]
+            changed_names = _changed_file_names(root, base)
+            react_doctor_triggered = _react_doctor_triggered_by(changed_names)
+            args.files = [
+                path for path in _safe_staged_paths(root, changed_names) if runner.accepts_hook_path(Path(path))
+            ]
             pull_request_scoped = True
         except (OSError, subprocess.SubprocessError) as exc:
             if args.output_format != "text":
@@ -838,7 +860,7 @@ def cmd_check(args: _Args) -> int:
         if health_status:
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path))]
-        if not args.files:
+        if not args.files and not react_doctor_triggered:
             return 0
     if args.output_format != "text":
         if _validate_analysis_output(args, root):
@@ -862,18 +884,33 @@ def cmd_check(args: _Args) -> int:
                 external=True,
                 trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
                 mode=AnalysisMode.POLICY,
+                react_doctor_triggered=react_doctor_triggered,
             )
             return _emit_analysis_report(args, root, report)
+        args.react_doctor_triggered = react_doctor_triggered
         return cmd_analyze(args)
     if pull_request_scoped:
         adoption_report = _machine_adoption_gate(root)
         if adoption_report is not None:
             return _emit_analysis_report(args, root, adoption_report)
         if not args.files:
+            if react_doctor_triggered:
+                return _run_canonical_check(
+                    root,
+                    (),
+                    trusted=args.trust_repository_code,
+                    react_doctor_triggered=True,
+                )
             return _run_canonical_check(root, (), trusted=args.trust_repository_code)
     if not args.files:
         return cmd_verify(args)
-    return _run_canonical_check(root, list(args.files), trusted=args.trust_repository_code, staged=args.staged)
+    check_options: dict[str, bool] = {
+        "trusted": args.trust_repository_code,
+        "staged": args.staged,
+    }
+    if react_doctor_triggered:
+        check_options["react_doctor_triggered"] = True
+    return _run_canonical_check(root, list(args.files), **check_options)
 
 
 def cmd_validate_slack_automations(args: _Args) -> int:
@@ -945,6 +982,7 @@ def _run_canonical_check(
     raw: bool = False,
     trusted: bool = False,
     staged: bool = False,
+    react_doctor_triggered: bool = False,
 ) -> int:
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
@@ -955,6 +993,7 @@ def _run_canonical_check(
         trust=TrustMode.TRUSTED if trusted else TrustMode.SAFE,
         mode=AnalysisMode.RAW if raw else AnalysisMode.POLICY,
         staged=staged,
+        react_doctor_triggered=react_doctor_triggered,
     )
     rendered = to_text(report)
     if rendered:
@@ -977,6 +1016,7 @@ def cmd_analyze(args: _Args) -> int:
         trust=args.trust,
         mode=AnalysisMode(args.analysis_mode),
         staged=args.staged,
+        react_doctor_triggered=args.react_doctor_triggered,
     )
     return _emit_analysis_report(args, root, report)
 
@@ -1362,7 +1402,7 @@ def _staged_file_names(root: Path) -> list[str]:
         msg = "git is required for --staged"
         raise OSError(msg)
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
-        [git, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"],
+        [git, "diff", "--cached", "--name-only", "--diff-filter=ACDMR", "-z"],
         cwd=root,
         check=True,
         capture_output=True,
@@ -1373,19 +1413,29 @@ def _staged_file_names(root: Path) -> list[str]:
 
 
 def _changed_file_paths(root: Path, base: str) -> list[str]:
+    return _safe_staged_paths(root, _changed_file_names(root, base))
+
+
+def _changed_file_names(root: Path, base: str) -> list[str]:
     git = shutil.which("git")
     if git is None:
         msg = "git is required for pull-request change scoping"
         raise OSError(msg)
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
-        [git, "diff", "--name-only", "--diff-filter=ACMR", "-z", f"{base}...HEAD", "--"],
+        [git, "diff", "--name-only", "--diff-filter=ACDMR", "-z", f"{base}...HEAD", "--"],
         cwd=root,
         check=True,
         capture_output=True,
         env=_git_environment(),
     )
-    names = [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
-    return _safe_staged_paths(root, names)
+    return [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
+
+
+def _react_doctor_triggered_by(paths: Iterable[str]) -> bool:
+    return any(
+        Path(value).name in _REACT_DOCTOR_METADATA or Path(value).suffix.lower() in _REACT_DOCTOR_TYPESCRIPT_SUFFIXES
+        for value in paths
+    )
 
 
 def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
@@ -1650,7 +1700,18 @@ def cmd_baseline(args: _Args) -> int:
             print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
         return 2
     eligible = tuple(item for item in report.diagnostics if baseline.is_baselineable(item))
-    rendered = baseline.render(eligible)
+    provenance = {
+        "bundle_version": __version__,
+        "consumer_base_sha": baseline.repository_base_sha(root),
+        "catalog_digest": baseline.bundled_catalog_digest(),
+    }
+    if args.baseline_cmd == "update" and args.baseline_rules:
+        if not output.is_file():
+            print(f"error: scoped diagnostic baseline update requires an existing baseline: {output}", file=sys.stderr)
+            return 2
+        rendered = baseline.merge_scoped(output, eligible, selectors=args.baseline_rules, **provenance)
+    else:
+        rendered = baseline.render(eligible, **provenance)
     try:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(rendered, encoding="utf-8")
@@ -1916,6 +1977,14 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
             action="store_true",
             help="run repository-local analyzers that execute project code",
         )
+        if name == "update":
+            command.add_argument(
+                "--rule",
+                action="append",
+                dest="baseline_rules",
+                default=[],
+                help="replace debt only for this newly promoted rule (repeatable; source:RULE is also accepted)",
+            )
         command.add_argument("files", nargs="*", help="paths to analyze (default: the whole repository)")
 
     ratchet = sub.add_parser("ratchet", help="keep the Python suppression budget from growing")

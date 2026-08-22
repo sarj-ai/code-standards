@@ -101,6 +101,52 @@ def test_every_eslint_import_has_a_pinned_peer() -> None:
     assert imported - pinned == set(), "eslint.strict.mjs imports a package with no pin in eslint.peers.json"
 
 
+def test_python_configs_pin_the_314_language_floor() -> None:
+    for config_name in ("ruff.strict.toml", "ruff.application.toml"):
+        parsed = tomllib.loads((CONFIGS_DIR / config_name).read_text(encoding="utf-8"))
+        assert parsed["target-version"] == "py314"
+    pyright = (CONFIGS_DIR / "pyright.strict.json").read_text(encoding="utf-8")
+    assert '"pythonVersion": "3.14"' in pyright
+
+
+def test_pyright_and_basedpyright_policies_are_explicitly_split() -> None:
+    pyright = (CONFIGS_DIR / "pyright.strict.json").read_text(encoding="utf-8")
+    basedpyright = (CONFIGS_DIR / "basedpyright.strict.json").read_text(encoding="utf-8")
+    based_only = {
+        "reportAny",
+        "reportEmptyAbstractUsage",
+        "reportExplicitAny",
+        "reportIgnoreCommentWithoutRule",
+        "reportImplicitAbstractClass",
+        "reportImplicitRelativeImport",
+        "reportIncompatibleUnannotatedOverride",
+        "reportInvalidAbstractMethod",
+        "reportInvalidCast",
+        "reportPrivateLocalImportUsage",
+        "reportSelfClsDefault",
+        "reportUnannotatedClassAttribute",
+        "reportUnsafeMultipleInheritance",
+        "strictGenericNarrowing",
+    }
+
+    assert '"extends": "./pyright.strict.json"' in basedpyright
+    assert '"enableBasedFeatures": false' in basedpyright
+    for setting in based_only:
+        assert f'"{setting}"' not in pyright
+        assert f'"{setting}"' in basedpyright
+    assert '"enableExperimentalFeatures": false' in pyright
+
+
+def test_python315_watch_profiles_are_advisory_and_isolated() -> None:
+    ruff_watch = tomllib.loads((CONFIGS_DIR / "ruff.python315-watch.toml").read_text(encoding="utf-8"))
+    based_watch = (CONFIGS_DIR / "basedpyright.python315-watch.json").read_text(encoding="utf-8")
+
+    assert ruff_watch == {"extend": "ruff.strict.toml", "target-version": "py315"}
+    assert '"extends": "./basedpyright.strict.json"' in based_watch
+    assert '"pythonVersion": "3.15"' in based_watch
+    assert '"enableExperimentalFeatures": true' in based_watch
+
+
 @pytest.mark.parametrize("config_name", ["eslint.strict.mjs", "eslint.application.mjs"])
 def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str) -> None:
     text = (CONFIGS_DIR / config_name).read_text(encoding="utf-8")
@@ -132,6 +178,7 @@ def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
     assert config["deadCode"] is False
     assert config["noScore"] is True
     assert config["share"] is False
+    assert config["warnings"] is False
     assert config["adoptExistingLintConfig"] is False
     assert manifest.table_field(config, "supplyChain") == {"enabled": False}
     assert manifest.table_field(config, "buckets") == {"compiler-cleanup": "off"}
@@ -454,6 +501,18 @@ def test_doctor_fails_when_a_synced_config_is_edited(tmp_path: Path) -> None:
     assert "drifted" in proc.stdout
 
 
+def test_doctor_fails_when_the_basedpyright_companion_is_edited(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    with (tmp_path / ".basedpyright-strict.json").open("a") as handle:
+        _ = handle.write("\n// local edit\n")
+
+    proc = _cli("--root", str(tmp_path), "doctor")
+    assert proc.returncode == 1
+    assert ".basedpyright-strict.json" in proc.stdout
+    assert "drifted" in proc.stdout
+
+
 def test_setup_accepts_several_configs(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert (
@@ -462,6 +521,7 @@ def test_setup_accepts_several_configs(tmp_path: Path) -> None:
     )
     assert (tmp_path / ".ruff-strict.toml").is_file()
     assert (tmp_path / ".pyright-strict.json").is_file()
+    assert (tmp_path / ".basedpyright-strict.json").is_file()
     assert not (tmp_path / "eslint.strict.mjs").exists()
 
 
@@ -472,9 +532,10 @@ def test_init_writes_the_whole_python_wiring(tmp_path: Path) -> None:
 
     assert (tmp_path / ".ruff-strict.toml").is_file()
     assert (tmp_path / ".pyright-strict.json").is_file()
+    assert (tmp_path / ".basedpyright-strict.json").is_file()
     assert (tmp_path / manifest.MANIFEST_NAME).is_file()
     assert (tmp_path / ".pre-commit-config.yaml").is_file()
-    assert '"extends": ".pyright-strict.json"' in (tmp_path / "pyrightconfig.json").read_text()
+    assert '"extends": ".basedpyright-strict.json"' in (tmp_path / "pyrightconfig.json").read_text()
 
     pyproject = tomllib.loads((tmp_path / "pyproject.toml").read_text())
     assert pyproject["tool"]["ruff"]["extend"] == ".ruff-strict.toml"
@@ -488,7 +549,7 @@ def test_init_wires_an_empty_pyright_config(tmp_path: Path) -> None:
 
     assert proc.returncode == 0, proc.stderr
     assert json.loads((tmp_path / "pyrightconfig.json").read_text()) == {
-        "extends": ".pyright-strict.json",
+        "extends": ".basedpyright-strict.json",
         "pythonVersion": "3.14",
     }
 
@@ -537,25 +598,57 @@ def test_init_refuses_to_create_a_competing_config_beside_pyright_jsonc(tmp_path
     assert not (tmp_path / "pyrightconfig.json").exists()
 
 
-def test_init_separates_the_tool_runtime_from_an_older_consumer_target(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "requires_python",
+    [">=3.10", ">=3.15", "==3.15.*", ">=3.16", ">=4", "not-a-spec"],
+)
+def test_init_rejects_a_consumer_outside_the_python314_policy_floor(tmp_path: Path, requires_python: str) -> None:
     _python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
-        pyproject.read_text(encoding="utf-8").replace('requires-python = ">=3.14"', 'requires-python = ">=3.10"'),
+        pyproject.read_text(encoding="utf-8").replace(
+            'requires-python = ">=3.14"', f'requires-python = "{requires_python}"'
+        ),
         encoding="utf-8",
     )
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
-    assert proc.returncode == 0, proc.stderr
-    parsed: object = json.loads(  # pyright: ignore[reportAny] -- JSON is narrowed at the boundary below.
-        (tmp_path / "pyrightconfig.json").read_text(encoding="utf-8")
+    assert proc.returncode == 2
+    assert "Python 3.14 Standards profile" in proc.stderr
+    assert not (tmp_path / ".ruff-strict.toml").exists()
+    assert not (tmp_path / "pyrightconfig.json").exists()
+
+
+def test_init_rejects_a_python_project_without_requires_python(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace('requires-python = ">=3.14"\n', ""),
+        encoding="utf-8",
     )
-    pyright = manifest.as_table(parsed)
-    assert pyright["pythonVersion"] == "3.10"
-    assert "target-version" not in (tmp_path / ".ruff-strict.toml").read_text(encoding="utf-8")
-    hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert BOOTSTRAP_COMMAND in hook
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "requires-python must be a valid specifier that includes Python 3.14" in proc.stderr
+
+
+def test_init_migrates_the_legacy_pyright_parent_idempotently(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / "pyrightconfig.json"
+    config.write_text('{"extends": ".pyright-strict.json", "include": ["src"]}\n', encoding="utf-8")
+
+    first = _cli("--root", str(tmp_path), "setup", "--no-install")
+    second = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert json.loads(config.read_text(encoding="utf-8")) == {
+        "extends": ".basedpyright-strict.json",
+        "include": ["src"],
+        "pythonVersion": "3.14",
+    }
 
 
 def test_init_application_profile_selects_application_artifacts(tmp_path: Path) -> None:
@@ -644,20 +737,12 @@ def test_application_ruff_config_rejects_preferred_stack_import(tmp_path: Path) 
 
 
 @pytest.mark.parametrize("profile", ["standard", "application"])
-@pytest.mark.parametrize(("python_floor", "expected_count"), [("3.10", 0), ("3.11", 1)])
-def test_adopted_ruff_uses_the_consumer_target_for_str_enum_modernization(
+def test_adopted_ruff_uses_the_python314_target_for_str_enum_modernization(
     tmp_path: Path,
     profile: str,
-    python_floor: str,
-    expected_count: int,
 ) -> None:
     pytest.importorskip("ruff", reason="ruff not installed in this env")
     _ = _python_repo(tmp_path)
-    pyproject = tmp_path / "pyproject.toml"
-    pyproject.write_text(
-        pyproject.read_text(encoding="utf-8").replace(">=3.14", f">={python_floor}"),
-        encoding="utf-8",
-    )
     assert _cli("--root", str(tmp_path), "setup", "--profile", profile, "--no-install").returncode == 0
     package = tmp_path / "src" / "app"
     package.mkdir()
@@ -674,8 +759,8 @@ def test_adopted_ruff_uses_the_consumer_target_for_str_enum_modernization(
         cwd=tmp_path,
         check=False,
     )
-    assert proc.stdout.count('"code": "UP042"') == expected_count
-    assert proc.returncode == (1 if expected_count else 0)
+    assert proc.stdout.count('"code": "UP042"') == 1
+    assert proc.returncode == 1
 
 
 def test_init_keeps_standards_out_of_the_consumer_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -870,7 +955,7 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     assert ".github/workflows/standards.yml" in proc.stdout
     assert "fetch-depth: 0" in workflow
     assert "  push:\n    branches: [main]\n" in workflow
-    assert "SARJ_REACT_DOCTOR_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}" in workflow
+    assert "SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}" in workflow
 
 
 def test_setup_repairs_an_outdated_managed_yarn_workflow(tmp_path: Path) -> None:
@@ -2458,7 +2543,7 @@ def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path
     )
     assert pyright == {
         "typeCheckingMode": "standard",
-        "extends": ".pyright-strict.json",
+        "extends": ".basedpyright-strict.json",
         "pythonVersion": "3.14",
     }
     eslint = (tmp_path / "eslint.config.mjs").read_text()
@@ -2787,6 +2872,12 @@ def test_init_does_not_accept_comment_only_ruff_wiring(tmp_path: Path) -> None:
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
         '[project]\nname = "app"\nversion = "0.1.0"\n# extend = ".ruff-strict.toml"\n',
+        encoding="utf-8",
+    )
+    pyproject.write_text(
+        pyproject.read_text(encoding="utf-8").replace(
+            'version = "0.1.0"\n', 'version = "0.1.0"\nrequires-python = ">=3.14"\n'
+        ),
         encoding="utf-8",
     )
 

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_warning_remains_visible_and_nonblocking_when_error_is_baselined(
+def test_promoted_error_is_recorded_with_other_errors_when_baseline_is_updated(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     target = tmp_path / "example.py"
@@ -22,23 +22,19 @@ def test_warning_remains_visible_and_nonblocking_when_error_is_baselined(
 
     assert main([*rules, str(target)]) == 1
     control = capsys.readouterr().out
-    assert f"{target}:1:1: SARJ096 warning:" in control
+    assert f"{target}:1:1: SARJ096 " in control
     assert f"{target}:3:1: SARJ016 " in control
 
     assert main([*rules, "--update-baseline", str(baseline), str(target)]) == 0
-    assert json.loads(baseline.read_text()) == {str(target): {"SARJ016": 1}}
+    assert json.loads(baseline.read_text()) == {str(target): {"SARJ016": 1, "SARJ096": 1}}
     baseline_output = capsys.readouterr().out
-    assert "1 blocking diagnostics over 1 files; 1 warnings excluded" in baseline_output
+    assert "2 blocking diagnostics over 1 files; 0 warnings excluded" in baseline_output
 
     assert main([*rules, "--baseline", str(baseline), str(target)]) == 0
-    checked = capsys.readouterr().out.splitlines()
-    assert len(checked) == 1
-    assert checked[0].startswith(f"{target}:1:1: SARJ096 warning:")
+    assert not capsys.readouterr().out
 
 
-def test_warning_only_baseline_reports_zero_blocking_diagnostics(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_promoted_error_only_baseline_records_the_finding(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "example.py"
     target.write_text("VALUES = [1]\n")
     baseline = tmp_path / "baseline.json"
@@ -57,8 +53,8 @@ def test_warning_only_baseline_reports_zero_blocking_diagnostics(
         == 0
     )
 
-    assert json.loads(baseline.read_text()) == {}
-    assert "0 blocking diagnostics over 0 files; 1 warnings excluded" in capsys.readouterr().out
+    assert json.loads(baseline.read_text()) == {str(target): {"SARJ096": 1}}
+    assert "1 blocking diagnostics over 1 files; 0 warnings excluded" in capsys.readouterr().out
 
 
 def test_baseline_written_from_absolute_repo_path_is_portable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

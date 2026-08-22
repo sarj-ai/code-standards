@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
+from functools import partial
 import json
 import os
 from pathlib import Path
@@ -66,6 +67,8 @@ _MAX_ESLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
+_REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
+_REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _REACT_RUNTIME_PACKAGES = frozenset(
     {
@@ -78,6 +81,18 @@ _REACT_RUNTIME_PACKAGES = frozenset(
         "react",
         "react-dom",
         "react-native",
+    }
+)
+_REACT_DOCTOR_METADATA_NAMES = frozenset(
+    {
+        "doctor.config.json",
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "package-lock.json",
+        "package.json",
+        "pnpm-lock.yaml",
+        "tsconfig.json",
+        "yarn.lock",
     }
 )
 _JAVASCRIPT_SCAN_SKIP_DIRS = frozenset(
@@ -137,6 +152,9 @@ class _ReactDoctorProject(_ReactDoctorProtocolModel):
     directory: str = Field(min_length=1)
     complete: bool
     diagnostics: tuple[_ReactDoctorDiagnostic, ...] = ()
+    skipped_checks: tuple[object, ...] | None = Field(default=None, alias="skippedChecks")
+    analyzed_file_count: int | None = Field(default=None, alias="analyzedFileCount", ge=0)
+    scanned_file_count: int | None = Field(default=None, alias="scannedFileCount", ge=0)
 
 
 class _ReactDoctorReport(_ReactDoctorProtocolModel):
@@ -144,6 +162,8 @@ class _ReactDoctorReport(_ReactDoctorProtocolModel):
     version: str = Field(min_length=1)
     ok: bool
     projects: tuple[_ReactDoctorProject, ...]
+    react_detected: bool | None = Field(default=None, alias="reactDetected")
+    baseline_degraded: bool | None = Field(default=None, alias="baselineDegraded")
     skipped_projects: tuple[object, ...] = Field(default=(), alias="skippedProjects")
     error: _ReactDoctorFailure | None
 
@@ -210,12 +230,13 @@ def analyze_external(
     grouped: GroupedPaths | None = None,
     include_react_doctor: bool = False,
     react_doctor_staged: bool = False,
+    force_react_doctor: bool = False,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     execute_eslint = _run_eslint_process if runner is None else runner
     try:
         normalized_trust = TrustMode(trust)
-        root, _contained, routed = _prepare_inputs(files, root, policy=policy, grouped=grouped)
+        root, contained, routed = _prepare_inputs(files, root, policy=policy, grouped=grouped)
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
@@ -317,7 +338,9 @@ def analyze_external(
     react_selection = _selected_react_doctor_projects(
         root,
         enabled=include_react_doctor,
-        has_typescript=bool(routed.typescript),
+        has_typescript=force_react_doctor
+        or bool(routed.typescript)
+        or any(Path(item).name in _REACT_DOCTOR_METADATA_NAMES for item in contained),
         capabilities=capabilities,
     )
     if react_selection is not None:
@@ -329,8 +352,9 @@ def analyze_external(
                 root=root,
                 runner=execute,
                 use_local_binary=runner is None,
-                file_count=len(routed.typescript),
+                file_count=max(len(routed.typescript), 1),
                 staged=react_doctor_staged,
+                allow_empty_projects=react_doctor_staged and not routed.typescript,
             )
         )
     if policy is None:
@@ -463,6 +487,7 @@ def _invoke_react_doctor(
     use_local_binary: bool,
     file_count: int,
     staged: bool,
+    allow_empty_projects: bool = False,
 ) -> ToolReport:
     name = "react-doctor"
     if use_local_binary and (issue := _missing_local_binary_issue(name, project, root)) is not None:
@@ -476,11 +501,12 @@ def _invoke_react_doctor(
         )
     install_root = packagemanager.workspace_root(project, root)
     client = packagemanager.detect(install_root)
-    # React Doctor is introduced as a no-baseline ratchet: hooks inspect the
-    # index, while whole-repository Standards runs block only diagnostics that
-    # are new relative to the detected merge base. A standalone React Doctor
-    # full scan remains available for deliberate debt cleanup.
+    # React Doctor is a no-baseline ratchet: hooks inspect the index and CI uses
+    # its native merge-base scope. Never post-filter its result: project-level
+    # and cross-file diagnostics remain relevant when their primary location
+    # was not itself changed.
     scope_args = _react_doctor_scope_args(staged=staged)
+    duration = _react_doctor_max_duration(file_count)
     argv = packagemanager.exec_argv(
         client,
         name,
@@ -495,47 +521,33 @@ def _invoke_react_doctor(
         "--no-score",
         "--no-cache",
         "--max-duration",
-        str(int(_REACT_DOCTOR_MAX_DURATION.total_seconds())),
+        str(int(duration.total_seconds())),
         "--json",
         "--json-compact",
         "--no-color",
     )
-    report = _invoke(
+    return _invoke(
         name,
         _local_node_binary_argv(name, argv, project, root) if use_local_binary else argv,
         cwd=project,
         root=root,
         runner=runner,
-        parser=parse_react_doctor,
+        parser=partial(
+            parse_react_doctor,
+            expected_projects=frozenset(item.resolve() for item in projects),
+            allow_empty_projects=allow_empty_projects,
+        ),
         invocation_id=project.relative_to(root).as_posix() or None,
         file_count=file_count,
     )
-    return _filter_react_doctor_to_changed_paths(report, root=root, runner=runner, staged=staged)
 
 
-def _filter_react_doctor_to_changed_paths(
-    report: ToolReport,
-    *,
-    root: Path,
-    runner: ProcessRunner,
-    staged: bool,
-) -> ToolReport:
-    if staged:
-        return report
-    base = change_scope_base()
-    if not base:
-        return report
-    changed = runner(
-        ("git", "diff", "--name-only", "--diff-filter=ACMR", "-z", f"{base}...HEAD", "--"),
-        cwd=root,
-    )
-    if changed.returncode != 0:
-        return report
-    changed_paths = frozenset(path for path in changed.stdout.split("\0") if path)
-    return replace(
-        report,
-        diagnostics=tuple(item for item in report.diagnostics if item.location.path in changed_paths),
-    )
+def _react_doctor_max_duration(file_count: int) -> timedelta:
+    if file_count <= _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES:
+        return timedelta(seconds=12)
+    if file_count <= _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES:
+        return timedelta(seconds=20)
+    return _REACT_DOCTOR_MAX_DURATION
 
 
 def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
@@ -549,8 +561,12 @@ def _react_doctor_scope_args(*, staged: bool) -> tuple[str, ...]:
 
 def change_scope_base() -> str:
     explicit = os.environ.get(  # ruff: ignore[banned-api] -- explicit CI workflow boundary, not application settings.
-        "SARJ_REACT_DOCTOR_BASE", ""
+        "SARJ_STANDARDS_BASE", ""
     ).strip()
+    if not explicit:
+        explicit = os.environ.get(  # ruff: ignore[banned-api] -- compatibility with pre-v2 managed workflows.
+            "SARJ_REACT_DOCTOR_BASE", ""
+        ).strip()
     if explicit:
         return explicit
     event_path = os.environ.get(  # ruff: ignore[banned-api] -- GitHub owns this path in Actions.
@@ -1165,7 +1181,13 @@ def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization kee
     return tuple(diagnostics)
 
 
-def parse_react_doctor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+def parse_react_doctor(
+    payload: str,
+    *,
+    root: Path,
+    expected_projects: frozenset[Path] | None = None,
+    allow_empty_projects: bool = False,
+) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
     expected_version = manifest.eslint_peers()["react-doctor"]
     if report.version != expected_version:
@@ -1180,12 +1202,42 @@ def parse_react_doctor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     if report.skipped_projects:
         msg = f"React Doctor skipped {len(report.skipped_projects)} project(s) before analysis"
         raise ValueError(msg)
+    if report.react_detected is False:
+        msg = "React Doctor did not detect React in an expected project"
+        raise ValueError(msg)
+    if report.baseline_degraded:
+        msg = "React Doctor changed-scope baseline degraded"
+        raise ValueError(msg)
+    if not report.projects:
+        if allow_empty_projects:
+            return ()
+        msg = "React Doctor returned no analyzed projects"
+        raise ValueError(msg)
+    if expected_projects is not None:
+        if report.react_detected is not True or report.baseline_degraded is not False:
+            msg = "React Doctor omitted required v3 detection or baseline-completeness metadata"
+            raise ValueError(msg)
+        reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
+        if reported_projects != expected_projects:
+            msg = "React Doctor did not return exactly the requested project set"
+            raise ValueError(msg)
 
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
     for project in report.projects:
         if not project.complete:
             msg = f"React Doctor project did not complete: {project.directory!r}"
+            raise ValueError(msg)
+        if project.skipped_checks:
+            msg = f"React Doctor skipped checks for project: {project.directory!r}"
+            raise ValueError(msg)
+        if expected_projects is not None and (
+            project.skipped_checks is None or project.analyzed_file_count is None or project.scanned_file_count is None
+        ):
+            msg = f"React Doctor omitted completeness metadata for project: {project.directory!r}"
+            raise ValueError(msg)
+        if project.analyzed_file_count == 0 or project.scanned_file_count == 0:
+            msg = f"React Doctor analyzed no files for project: {project.directory!r}"
             raise ValueError(msg)
         directory = _contained_report_directory(project, root)
         for item in project.diagnostics:

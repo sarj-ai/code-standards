@@ -17,6 +17,7 @@ import noHandRolledSpinner from "./rules/no-hand-rolled-spinner.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-bounds.js";
+import interfaceContractMembersPrivate from "./rules/interface-contract-members-private.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
 import noBareReturnFromTestCatch from "./rules/no-bare-return-from-test-catch.js";
 import noLongComment from "./rules/no-long-comment.js";
@@ -52,6 +53,7 @@ import noZodNativeEnum from "./rules/no-zod-native-enum.js";
 import testLoopsOverLiteralCases from "./rules/test-loops-over-literal-cases.js";
 import testPhaseLabelComment from "./rules/test-phase-label-comment.js";
 import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret-compare.js";
+import preferEcmascriptPrivateMembers from "./rules/prefer-ecmascript-private-members.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferInputGroupSearch from "./rules/prefer-input-group-search.js";
 import preferImmutableModuleConstant from "./rules/prefer-immutable-module-constant.js";
@@ -99,6 +101,7 @@ const rules = {
   "no-insecure-random-id": noInsecureRandomId,
   "no-json-stringify-error": noJsonStringifyError,
   "no-impossible-zod-literal-bounds": noImpossibleZodLiteralBounds,
+  "interface-contract-members-private": interfaceContractMembersPrivate,
   "no-log-only-catch": noLogOnlyCatch,
   "no-bare-return-from-test-catch": noBareReturnFromTestCatch,
   "no-long-comment": noLongComment,
@@ -136,6 +139,7 @@ const rules = {
   "test-loops-over-literal-cases": testLoopsOverLiteralCases,
   "test-phase-label-comment": testPhaseLabelComment,
   "prefer-constant-time-secret-compare": preferConstantTimeSecretCompare,
+  "prefer-ecmascript-private-members": preferEcmascriptPrivateMembers,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-input-group-search": preferInputGroupSearch,
   "prefer-immutable-module-constant": preferImmutableModuleConstant,
@@ -164,7 +168,7 @@ const rules = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.12.1",
+  version: "15.13.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -174,24 +178,12 @@ const applicationOnlyRules = [
   "prefer-shadcn-primitives",
 ] as const;
 
-/** Calibrated rules that intentionally remain warnings until consumer-corpus precision is proven. */
-const advisoryRules = [
-  "no-bare-return-from-test-catch",
-  "no-dangerously-allow-svg",
-  "no-duplicate-lifecycle-refresh-listeners",
-  "no-production-browser-source-maps",
-  "no-router-refresh-polling",
-  "no-server-env-in-client-component",
-  "iac-source-coupled-test",
-  "repeated-static-call-cases",
-  "require-use-form-default-values",
-  "require-use-server-in-actions-file",
-  "source-coupled-test",
-  "test-phase-label-comment",
-] as const;
+/** No active rule remains advisory; retained as a public compatibility export. */
+const advisoryRules = [] as const;
 
 const recommendedRules = {
-  "@sarj/iac-source-coupled-test": "warn",
+  "@sarj/interface-contract-members-private": "error",
+  "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
   "@sarj/enforce-file-structure": "error",
   "@sarj/no-client-side-data-fetching": "error",
@@ -205,21 +197,21 @@ const recommendedRules = {
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
-  "@sarj/no-bare-return-from-test-catch": "warn",
-  "@sarj/no-dangerously-allow-svg": "warn",
-  "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
+  "@sarj/no-bare-return-from-test-catch": "error",
+  "@sarj/no-dangerously-allow-svg": "error",
+  "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
-  "@sarj/no-production-browser-source-maps": "warn",
+  "@sarj/no-production-browser-source-maps": "error",
   "@sarj/no-repeated-string-literal": "error",
-  "@sarj/no-router-refresh-polling": "warn",
+  "@sarj/no-router-refresh-polling": "error",
   "@sarj/no-restated-comment": "error",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",
-  "@sarj/no-server-env-in-client-component": "warn",
+  "@sarj/no-server-env-in-client-component": "error",
   "@sarj/no-select-star": "error",
   "@sarj/no-sentinel-return-on-catch": "error",
   "@sarj/no-silent-promise-catch": "error",
@@ -236,6 +228,7 @@ const recommendedRules = {
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
+  "@sarj/prefer-ecmascript-private-members": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
   "@sarj/prefer-immutable-module-constant": "error",
@@ -247,24 +240,25 @@ const recommendedRules = {
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
   "@sarj/prefer-whole-object-assertion": "error",
-  "@sarj/repeated-static-call-cases": "warn",
+  "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-static-next-matcher": "error",
-  "@sarj/require-use-form-default-values": "warn",
-  "@sarj/require-use-server-in-actions-file": "warn",
+  "@sarj/require-use-form-default-values": "error",
+  "@sarj/require-use-server-in-actions-file": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
-  "@sarj/source-coupled-test": "warn",
-  "@sarj/test-phase-label-comment": "warn",
+  "@sarj/source-coupled-test": "error",
+  "@sarj/test-phase-label-comment": "error",
   "@sarj/zod-naming-convention": "error",
 } as const;
 
 const strictRules = {
-  "@sarj/iac-source-coupled-test": "warn",
+  "@sarj/interface-contract-members-private": "error",
+  "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
   "@sarj/enforce-file-structure": "error",
   "@sarj/no-client-side-data-fetching": "error",
@@ -279,23 +273,23 @@ const strictRules = {
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
-  "@sarj/no-bare-return-from-test-catch": "warn",
-  "@sarj/no-dangerously-allow-svg": "warn",
-  "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
+  "@sarj/no-bare-return-from-test-catch": "error",
+  "@sarj/no-dangerously-allow-svg": "error",
+  "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",
   "@sarj/no-generic-single-export-module": "error",
   "@sarj/no-offset-pagination": "error",
   "@sarj/no-positional-tuple-return": "error",
-  "@sarj/no-production-browser-source-maps": "warn",
+  "@sarj/no-production-browser-source-maps": "error",
   "@sarj/no-raw-env": "error",
   "@sarj/no-raw-fetch-outside-clients": "error",
   "@sarj/no-repeated-string-literal": "error",
-  "@sarj/no-router-refresh-polling": "warn",
+  "@sarj/no-router-refresh-polling": "error",
   "@sarj/no-restated-comment": "error",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",
-  "@sarj/no-server-env-in-client-component": "warn",
+  "@sarj/no-server-env-in-client-component": "error",
   "@sarj/no-select-star": "error",
   "@sarj/no-sentinel-return-on-catch": "error",
   "@sarj/no-silent-promise-catch": "error",
@@ -313,6 +307,7 @@ const strictRules = {
   "@sarj/no-zod-native-enum": "error",
   "@sarj/test-loops-over-literal-cases": "error",
   "@sarj/prefer-constant-time-secret-compare": "error",
+  "@sarj/prefer-ecmascript-private-members": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
   "@sarj/prefer-immutable-module-constant": "error",
@@ -324,19 +319,19 @@ const strictRules = {
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
   "@sarj/prefer-whole-object-assertion": "error",
-  "@sarj/repeated-static-call-cases": "warn",
+  "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-static-next-matcher": "error",
-  "@sarj/require-use-form-default-values": "warn",
-  "@sarj/require-use-server-in-actions-file": "warn",
+  "@sarj/require-use-form-default-values": "error",
+  "@sarj/require-use-server-in-actions-file": "error",
   "@sarj/require-zod-form-validation": "error",
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
-  "@sarj/source-coupled-test": "warn",
-  "@sarj/test-phase-label-comment": "warn",
+  "@sarj/source-coupled-test": "error",
+  "@sarj/test-phase-label-comment": "error",
   "@sarj/zod-naming-convention": "error",
 } as const;
 

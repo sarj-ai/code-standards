@@ -130,7 +130,7 @@ class GetDelegatesToGetMany(Rule):
                         f"`{bulk.name}([key])` so singleton and bulk reads share one contract, or document why "
                         "their semantics differ."
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return diagnostics

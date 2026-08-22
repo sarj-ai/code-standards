@@ -42,6 +42,8 @@ _MARKDOWN_LOCATIONS: Final = (
 _MANAGED_ROOT_CONFIGS: Final = (
     (".ruff-strict.toml", "ruff.strict.toml"),
     (".pyright-strict.json", "pyright.strict.json"),
+    ("pyright.strict.json", "pyright.strict.json"),
+    (".basedpyright-strict.json", "basedpyright.strict.json"),
 )
 
 

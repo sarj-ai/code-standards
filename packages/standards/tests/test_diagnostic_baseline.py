@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -9,7 +10,7 @@ from sarj_standards import api
 from sarj_standards.cli.main import main as cli_main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.adoption.manifest import load as load_manifest
-from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Severity, ToolReport, baseline
+from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Position, Severity, ToolReport, baseline
 from sarj_standards.libs.linting.analysis import report_from_tools
 
 
@@ -28,6 +29,15 @@ def _manifest(path: str | None = None) -> Manifest:
     )
 
 
+def _policy_baseline(diagnostics: tuple[Diagnostic, ...]) -> str:
+    return baseline.render(
+        diagnostics,
+        bundle_version=api.__version__,
+        consumer_base_sha="0" * 40,
+        catalog_digest=baseline.bundled_catalog_digest(),
+    )
+
+
 def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) -> None:
     selected = tmp_path / "selected.py"
     selected.write_text("import logging\n", encoding="utf-8")
@@ -35,7 +45,7 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     other.write_text("import logging\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(selected)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
-    baseline_path.write_text(baseline.render(raw.diagnostics), encoding="utf-8")
+    baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
 
     policy = api.Standards(tmp_path).analyze([str(selected), str(other)])
@@ -50,7 +60,7 @@ def test_terraform_test_ban_cannot_be_diagnostic_baselined(tmp_path: Path) -> No
     source.write_text("{}\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
-    baseline_path.write_text(baseline.render(raw.diagnostics), encoding="utf-8")
+    baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
 
     policy = api.Standards(tmp_path).analyze([str(source)])
@@ -72,7 +82,7 @@ def test_diagnostic_baseline_exposes_fingerprint_count_growth(tmp_path: Path) ->
     source.write_text("import logging\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
-    baseline_path.write_text(baseline.render(raw.diagnostics), encoding="utf-8")
+    baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
     source.write_text("import logging\nimport logging\n", encoding="utf-8")
 
@@ -107,6 +117,81 @@ def test_diagnostic_baseline_rejects_duplicate_fingerprints(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="repeats fingerprint"):
         baseline.load(path)
+
+
+def test_v2_baseline_records_and_validates_provenance(tmp_path: Path) -> None:
+    rendered = baseline.render(
+        (),
+        bundle_version="9.0.0",
+        consumer_base_sha="a" * 40,
+        catalog_digest="b" * 64,
+    )
+    path = tmp_path / "baseline.json"
+    path.write_text(rendered, encoding="utf-8")
+
+    assert baseline.load(path) == {}
+    assert json.loads(rendered)["provenance"] == {
+        "bundleVersion": "9.0.0",
+        "consumerBaseSha": "a" * 40,
+        "catalogDigest": "b" * 64,
+    }
+
+
+def test_policy_mode_rejects_legacy_or_stale_baseline_provenance(tmp_path: Path) -> None:
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text(baseline.render(()), encoding="utf-8")
+    with pytest.raises(ValueError, match="schemaVersion 2"):
+        baseline.load(legacy, require_v2=True)
+
+    stale = tmp_path / "stale.json"
+    stale.write_text(
+        baseline.render((), bundle_version="0.0.0", consumer_base_sha="0" * 40, catalog_digest="f" * 64),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="bundle version"):
+        baseline.load(stale, require_v2=True, expected_bundle_version=api.__version__)
+
+
+def test_scoped_merge_preserves_unrelated_debt(tmp_path: Path) -> None:
+    old = Diagnostic("OLD", "old", Severity.ERROR, "ruff", Location("old.py"), rule_id="OLD", fingerprint="a" * 64)
+    promoted = Diagnostic("NEW", "new", Severity.ERROR, "ruff", Location("new.py"), rule_id="NEW", fingerprint="b" * 64)
+    path = tmp_path / "baseline.json"
+    path.write_text(baseline.render((old, promoted)), encoding="utf-8")
+    replacement = Diagnostic(
+        "NEW", "replacement", Severity.ERROR, "ruff", Location("next.py"), rule_id="NEW", fingerprint="c" * 64
+    )
+
+    merged = baseline.merge_scoped(
+        path,
+        (replacement,),
+        selectors=("ruff:NEW",),
+        bundle_version="9.0.0",
+        consumer_base_sha="d" * 40,
+        catalog_digest="e" * 64,
+    )
+
+    assert merged.count('"fingerprint":') == 2
+    assert f'"fingerprint": "{"a" * 64}"' in merged
+    assert f'"fingerprint": "{"c" * 64}"' in merged
+
+
+def test_staged_changed_lines_cannot_consume_baseline_allowance(tmp_path: Path) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=tmp_path, check=True)
+    source = tmp_path / "app.py"
+    source.write_text("old\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True)
+    source.write_text("old\nnew\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
+
+    scope = baseline.changed_line_scope(tmp_path, staged=True)
+    old = Diagnostic("X", "old", Severity.ERROR, "ruff", Location("app.py", position=Position(0, 0, 0)))
+    new = Diagnostic("X", "new", Severity.ERROR, "ruff", Location("app.py", position=Position(1, 0, 4)))
+
+    assert not baseline.touches_changed_lines(old, scope)
+    assert baseline.touches_changed_lines(new, scope)
 
 
 def test_react_doctor_findings_are_never_recorded_in_a_baseline() -> None:

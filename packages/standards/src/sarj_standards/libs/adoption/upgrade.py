@@ -14,10 +14,11 @@ from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 
 from . import doctor, hooks, lifecycle, manifest, packagemanager, retired_suppressions, scaffold, transaction, uvtool
+from .configs import PYTHON_COMPANION_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
 
 _BUNDLE_LINE = re.compile(r'(?m)^bundle\s*=\s*"[^"]*"\s*$')
@@ -205,6 +206,20 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
             for config_target in targets:
                 changes.append(Change(config_target, f"sync {name} config"))
                 config_writes.append((source, config_target))
+        companions: Mapping[str, tuple[str, str]] = {}
+        if name == "pyright":
+            companions = PYTHON_COMPANION_CONFIGS
+        elif name == "eslint":
+            companions = TYPESCRIPT_COMPANION_CONFIGS
+        for companion_name, (companion_source, companion_target) in companions.items():
+            companion_source_path = CONFIGS_DIR / companion_source
+            companion_target_path = destination / companion_target
+            if (
+                not companion_target_path.is_file()
+                or companion_target_path.read_bytes() != companion_source_path.read_bytes()
+            ):
+                changes.append(Change(companion_target_path, f"sync {companion_name} companion config"))
+                config_writes.append((companion_source_path, companion_target_path))
 
     reserved_paths = {
         path,

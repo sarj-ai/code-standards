@@ -107,7 +107,7 @@ class RequirePydanticOrdinalLowerBound(Rule):
                         line=field.lineno,
                         col=field.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=f"`{field.target.id}` documents minimum {default} but does not enforce it; add `ge={default}` or an equivalent constrained integer type",
                     )
                 )

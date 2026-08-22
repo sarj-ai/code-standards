@@ -6,6 +6,7 @@ CONFIG_SRC := packages/standards/src/sarj_standards/configs
 STANDARDS := uv run --project packages/standards --frozen code-standards
 ROLLOUT := uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout
 VERSION ?=
+CHANNEL ?= stable
 REGISTRY ?= .sarj-standards-rollout.toml
 
 .PHONY: help setup build verify doctor docs-artifacts-check docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout
@@ -18,9 +19,9 @@ help:
 
 rollout:
 	@test -n "$(VERSION)" || { echo "usage: make rollout VERSION=<published-version>" >&2; exit 2; }
-	$(ROLLOUT) --registry "$(REGISTRY)" plan --version "$(VERSION)"
-	$(ROLLOUT) --registry "$(REGISTRY)" apply --version "$(VERSION)"
-	$(ROLLOUT) --registry "$(REGISTRY)" status --version "$(VERSION)"
+	$(ROLLOUT) --registry "$(REGISTRY)" plan --version "$(VERSION)" --channel "$(CHANNEL)"
+	$(ROLLOUT) --registry "$(REGISTRY)" apply --version "$(VERSION)" --channel "$(CHANNEL)"
+	$(ROLLOUT) --registry "$(REGISTRY)" status --version "$(VERSION)" --channel "$(CHANNEL)"
 
 setup:
 	$(STANDARDS) --root . maintain setup

@@ -191,7 +191,7 @@ class NoUnnecessaryDocstring(ProjectRule):
                     col=expression.col_offset + 1,
                     code=self.code,
                     message=self.description,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))

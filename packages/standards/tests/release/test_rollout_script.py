@@ -95,6 +95,49 @@ class TestRegistry:
         with pytest.raises(rollout.RolloutError, match="at least one"):
             rollout.load_registry(path)
 
+    def test_rollout_channels_are_cumulative(self) -> None:
+        consumers = (
+            rollout.Consumer("canary", "r/c", "main", ("true",), channel="canary"),
+            rollout.Consumer("early", "r/e", "main", ("true",), channel="early"),
+            rollout.Consumer("stable", "r/s", "main", ("true",), channel="stable"),
+        )
+
+        assert [item.name for item in rollout.select_channel(consumers, "canary")] == ["canary"]
+        assert [item.name for item in rollout.select_channel(consumers, "early")] == ["canary", "early"]
+        assert [item.name for item in rollout.select_channel(consumers, "stable")] == ["canary", "early", "stable"]
+
+    def test_registry_carries_explicit_promoted_baseline_rules(self, tmp_path: Path) -> None:
+        path = tmp_path / "registry.toml"
+        path.write_text(
+            'schema=1\n[[consumer]]\nname="one"\nrepository="r"\nbranch="main"\nverify=["true"]\n'
+            'baseline_rules=["eslint:@sarj/new-rule"]\n',
+            encoding="utf-8",
+        )
+
+        assert rollout.load_registry(path)[0].baseline_rules == ("eslint:@sarj/new-rule",)
+
+
+def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.MonkeyPatch) -> None:
+    canary = rollout.Consumer("canary", "r/c", "main", ("true",), channel="canary")
+    early = rollout.Consumer("early", "r/e", "main", ("true",), channel="early")
+
+    def fake_verify_release(_version: str, _runner: rollout.CommandRunner) -> str:
+        return "a" * 64
+
+    def fake_status(
+        _version: str,
+        _consumers: Sequence[rollout.Consumer],
+        _runner: rollout.CommandRunner,
+    ) -> tuple[rollout.Outcome, ...]:
+        return (rollout.Outcome(canary, "pr-open"),)
+
+    monkeypatch.setattr(rollout, "verify_release", fake_verify_release)
+    monkeypatch.setattr(rollout, "status", fake_status)
+
+    outcomes = rollout.apply("9.0.0", (canary, early), FakeRunner())
+
+    assert [item.state for item in outcomes] == ["pr-open", "blocked"]
+
 
 class TestSafety:
     def test_version_rejects_shell_metacharacters(self) -> None:
@@ -131,6 +174,28 @@ class TestSafety:
 
         with pytest.raises(rollout.RolloutError):
             rollout.reject_unsafe_diff((MANIFEST, source))
+
+    def test_source_outside_conventional_directories_is_protected(self) -> None:
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, "scripts/release.ts"))
+
+    def test_only_manifest_declared_baseline_is_allowed(self) -> None:
+        rollout.reject_unsafe_diff(
+            (MANIFEST, "quality/diagnostic-baseline.json"),
+            allowed_baseline_paths=frozenset({"quality/diagnostic-baseline.json"}),
+        )
+
+    def test_unlisted_nonsource_file_is_rejected(self) -> None:
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, "scripts/release.sh"))
+
+    def test_consumer_verification_cannot_mutate_controller_baseline(self, tmp_path: Path) -> None:
+        path = tmp_path / "diagnostic-baseline.json"
+        path.write_bytes(b"expected\n")
+        path.write_bytes(b"expanded\n")
+
+        with pytest.raises(rollout.RolloutError, match="controller-owned"):
+            rollout.assert_baseline_unchanged(path, b"expected\n")
 
     def test_status_parser_includes_untracked_files(self) -> None:
         runner = FakeRunner([(0, " M .sarj-standards.toml\0?? generated.toml\0")])
@@ -762,7 +827,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         prepared = rollout.consumer_verification_environment(original, base_sha)
 
-        assert prepared == {"PATH": "/tools", "SARJ_REACT_DOCTOR_BASE": base_sha}
+        assert prepared == {"PATH": "/tools", "SARJ_STANDARDS_BASE": base_sha}
         assert original["SARJ_REACT_DOCTOR_BASE"] == "stale"
 
     def test_provisions_consumer_declared_uv_on_path_for_nested_verification(self, tmp_path: Path) -> None:

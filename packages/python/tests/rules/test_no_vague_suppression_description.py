@@ -51,8 +51,8 @@ def test_public_examples_execute() -> None:
     assert [len(_check(example.focus_file.source)) for example in examples] == [1, 0]
 
 
-def test_reports_as_warning() -> None:
-    assert _check("value = thing  # noqa: F401 -- needed\n")[0].severity.value == "warning"
+def test_reports_as_error() -> None:
+    assert _check("value = thing  # noqa: F401 -- needed\n")[0].severity.value == "error"
 
 
 def test_rule_cannot_suppress_its_own_vague_description(tmp_path: Path) -> None:

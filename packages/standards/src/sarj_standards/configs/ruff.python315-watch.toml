@@ -1,0 +1,5 @@
+# Advisory compatibility profile for Python 3.15 release candidates. This is
+# intentionally not part of the blocking consumer bundle until Python 3.15 is
+# final and the supported dependency matrix ships compatible wheels.
+extend = "ruff.strict.toml"
+target-version = "py315"

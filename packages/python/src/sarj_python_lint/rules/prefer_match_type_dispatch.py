@@ -290,9 +290,7 @@ def _isinstance_ladder(
 
     subject: str | None = None
     for branch in branches:
-        # Guarded ladders are part of the newly calibrated two-arm advisory.
-        # Preserve SARJ080's established 3+ ladder boundary to avoid promoting
-        # an uncalibrated population directly to blocking diagnostics.
+        # Guarded ladders preserve the narrow evidence used by two-arm dispatch.
         branch_subject = (
             _matchable_isinstance_dispatch(branch.test, runtime_tuple_aliases, frozenset())
             if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES
@@ -354,8 +352,8 @@ def _leading_isinstance(test: ast.expr) -> ast.Call | None:
     return None
 
 
-def _type_dispatch_severity(branch_count: int) -> Severity:
-    return Severity.WARNING if branch_count < _ERROR_TYPE_DISPATCH_BRANCHES else Severity.ERROR
+def _type_dispatch_severity() -> Severity:
+    return Severity.ERROR
 
 
 def _sequential_isinstance_dispatches(
@@ -411,7 +409,7 @@ def _sequential_isinstance_dispatches(
                             line=first.lineno,
                             col=first.col_offset + 1,
                             code=code,
-                            severity=_type_dispatch_severity(branch_count),
+                            severity=_type_dispatch_severity(),
                             message=(
                                 f"{branch_count}-branch terminating isinstance dispatch on '{subject}' — use "
                                 "match/case class patterns so the exclusive type dispatch is explicit."
@@ -777,7 +775,7 @@ class _TypeDispatchVisitor(ast.NodeVisitor):
                         line=node.lineno,
                         col=node.col_offset + 1,
                         code=self.code,
-                        severity=_type_dispatch_severity(ladder.branch_count),
+                        severity=_type_dispatch_severity(),
                         message=(
                             f"{ladder.branch_count}-branch isinstance dispatch on '{ladder.subject}' — use match/case "
                             "class patterns (combining tuple members with `|`) so the type dispatch is explicit."
@@ -890,8 +888,8 @@ class PreferMatchTypeDispatch(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Safe two-branch `isinstance` dispatch is advisory; dispatch with three or more branches and the rule's established parser shapes remain blocking.",
-            "Generated files, runtime tuple aliases, general two-arm stdlib AST visitors, subject-rebinding guards, idiomatic None/Unset prologues, and code that shadows `isinstance` are excluded; exact AST attribute projections remain advisory, and test files omit the control-flow-raise check.",
+            "Safe two-branch `isinstance` dispatch uses narrower evidence than dispatch with three or more branches and the rule's established parser shapes.",
+            "Generated files, runtime tuple aliases, general two-arm stdlib AST visitors, subject-rebinding guards, idiomatic None/Unset prologues, and code that shadows `isinstance` are excluded; exact AST attribute projections use the narrow two-arm evidence, and test files omit the control-flow-raise check.",
         ),
         examples=(
             RuleExample(

@@ -97,7 +97,7 @@ class RequireValidatedRowFactory(Rule):
                         line=cursor_call.lineno,
                         col=cursor_call.col_offset + 1,
                         code=self.code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=(
                             "fetched Psycopg cursor has no `class_row(Model)` factory; validate the result at the DB "
                             "boundary (use a one-field model for scalar projections)"

@@ -282,7 +282,9 @@ const UNICORN_MODERNISATION_RULES = {
   "unicorn/prefer-import-meta-properties": "error",
   "unicorn/prefer-iterable-in-constructor": "error",
   "unicorn/prefer-iterator-concat": "error",
+  "unicorn/prefer-iterator-helpers": "error",
   "unicorn/prefer-iterator-to-array": "error",
+  "unicorn/prefer-iterator-to-array-at-end": "error",
   "unicorn/prefer-map-from-entries": "error",
   "unicorn/prefer-math-abs": "error",
   "unicorn/prefer-math-constants": "error",
@@ -747,6 +749,8 @@ export function createConfig(options = {}) {
       // schema changes. Requiring an identical shape keeps the diagnostic tied
       // to structural evidence instead of name correlation.
       "@sarj/prefer-zod-infer": "error",
+      "@sarj/interface-contract-members-private": "error",
+      "@sarj/prefer-ecmascript-private-members": "error",
 
       // Maintained upstream rules own these concerns instead of local copies.
       // `.nullable().optional()` is exactly `.nullish()`, so prefer-nullish
@@ -943,12 +947,12 @@ export function createConfig(options = {}) {
       "@sarj/no-raw-env": "error",
       "@sarj/no-sentinel-return-on-catch": "error",
       "@sarj/no-log-only-catch": "error",
-      "@sarj/no-bare-return-from-test-catch": "warn",
-      "@sarj/no-dangerously-allow-svg": "warn",
-      "@sarj/no-duplicate-lifecycle-refresh-listeners": "warn",
-      "@sarj/no-production-browser-source-maps": "warn",
-      "@sarj/no-router-refresh-polling": "warn",
-      "@sarj/no-server-env-in-client-component": "warn",
+      "@sarj/no-bare-return-from-test-catch": "error",
+      "@sarj/no-dangerously-allow-svg": "error",
+      "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
+      "@sarj/no-production-browser-source-maps": "error",
+      "@sarj/no-router-refresh-polling": "error",
+      "@sarj/no-server-env-in-client-component": "error",
       "@sarj/no-long-comment": "error",
       "@sarj/no-vague-suppression-description": "error",
       "@sarj/no-generic-single-export-module": "error",
@@ -984,11 +988,11 @@ export function createConfig(options = {}) {
       "@sarj/prefer-non-nullable-collection": "error",
       "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
-      "@sarj/iac-source-coupled-test": "warn",
-      "@sarj/repeated-static-call-cases": "warn",
-      "@sarj/require-use-form-default-values": "warn",
-      "@sarj/require-use-server-in-actions-file": "warn",
-      "@sarj/source-coupled-test": "warn",
+      "@sarj/iac-source-coupled-test": "error",
+      "@sarj/repeated-static-call-cases": "error",
+      "@sarj/require-use-form-default-values": "error",
+      "@sarj/require-use-server-in-actions-file": "error",
+      "@sarj/source-coupled-test": "error",
       "@sarj/no-positional-tuple-return": "error",
       "@sarj/no-restated-comment": "error",
       "@sarj/no-restated-jsdoc": "error",
@@ -1004,7 +1008,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-whole-object-assertion": "error",
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
-      "@sarj/test-phase-label-comment": "warn",
+      "@sarj/test-phase-label-comment": "error",
       // Both architectural rules stay enabled in the shared baseline. The
       // fetch rule ships conservative client/service defaults; consumers can
       // replace its `allow` list. The storage rule is intentionally inert until

@@ -39,7 +39,8 @@ def _main(arguments: list[str]) -> int:
 
 def _outdated_python_repo(root: Path) -> Path:
     (root / "pyproject.toml").write_text(
-        '[project]\nname = "app"\nversion = "0.1.0"\n\n[tool.ruff]\nextend = ".ruff-strict.toml"\n',
+        '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n\n'
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n',
         encoding="utf-8",
     )
     (root / "pyrightconfig.json").write_text('{"extends": ".pyright-strict.json"}\n', encoding="utf-8")
@@ -672,7 +673,7 @@ def test_upgrade_repairs_preexisting_replacement_ruff_policy(tmp_path: Path) -> 
     _outdated_python_repo(tmp_path)
     pyproject = tmp_path / "pyproject.toml"
     pyproject.write_text(
-        '[project]\nname = "app"\nversion = "0.1.0"\n\n'
+        '[project]\nname = "app"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n\n'
         '[tool.ruff]\nextend = ".ruff-strict.toml"\n\n'
         '[tool.ruff.lint]\nselect = ["ALL"]\nignore = ["D"]\n',
         encoding="utf-8",
@@ -726,7 +727,7 @@ def test_upgrade_no_install_keeps_valid_config_with_pending_dependency_drift(tmp
 
 def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (tmp_path / "pyproject.toml").write_text(
-        '[project]\nname = "fixture"\nversion = "0.0.0"\n',
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
         encoding="utf-8",
     )
     (tmp_path / manifest.MANIFEST_NAME).write_text(

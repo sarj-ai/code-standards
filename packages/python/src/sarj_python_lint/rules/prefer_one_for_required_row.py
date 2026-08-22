@@ -107,7 +107,7 @@ class PreferOneForRequiredRow(Rule):
                                 f"required-row helper (for example `{binding.name} = one({binding.expression})`) so "
                                 "optimized Python cannot remove the contract."
                             ),
-                            severity=Severity.WARNING,
+                            severity=Severity.ERROR,
                         )
                     )
         return diagnostics

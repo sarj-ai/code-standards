@@ -286,7 +286,7 @@ class Rule(ABC):
         return () if spec is None else spec.public_examples
 
 
-class ProjectRule(Rule):
+class ProjectRule(Rule, ABC):
     _project_indexes: ProjectIndexSet | None = None
 
     def prepare(self, indexes: ProjectIndexSet) -> None:

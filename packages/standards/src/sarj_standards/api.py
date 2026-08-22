@@ -240,6 +240,7 @@ class Standards:
         mode: AnalysisMode | str = AnalysisMode.POLICY,
         rules: Sequence[str | RuleSelector] | None = None,
         staged: bool = False,
+        react_doctor_triggered: bool = False,
     ) -> AnalysisReport:
         try:
             normalized_trust = TrustMode(trust)
@@ -264,12 +265,18 @@ class Standards:
         try:
             baseline_counts: dict[str, int]
             baseline_counts = (
-                diagnostic_baseline.load(self.root / adopted.diagnostic_baseline)
+                diagnostic_baseline.load(
+                    self.root / adopted.diagnostic_baseline,
+                    require_v2=True,
+                    expected_bundle_version=__version__,
+                    expected_catalog_digest=diagnostic_baseline.bundled_catalog_digest(),
+                )
                 if normalized_mode is AnalysisMode.POLICY
                 and adopted is not None
                 and adopted.diagnostic_baseline is not None
                 else {}
             )
+            changed_scope = diagnostic_baseline.changed_line_scope(self.root, staged=staged)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "baseline-failure", str(exc))
         try:
@@ -335,7 +342,9 @@ class Standards:
                 )
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
                 native = _with_warning_severity(native, _warning_rule_keys())
-            return _with_coverage(_without_baselined_diagnostics(native, baseline_counts), coverage)
+            return _with_coverage(
+                _without_baselined_diagnostics(native, baseline_counts, changed_scope=changed_scope), coverage
+            )
         if selected_groups.typescript and adopted is not None and "eslint" not in adopted.configs:
             coverage.append(
                 CoverageNotice(
@@ -355,7 +364,8 @@ class Standards:
                     policy=selection_policy,
                     capabilities=(frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.configs)),
                     grouped=selected_groups,
-                    include_react_doctor=(paths is None or staged) and rule_selection is None,
+                    include_react_doctor=rule_selection is None,
+                    force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
                 )
                 if adopted is not None
@@ -364,7 +374,8 @@ class Standards:
                     root=self.root,
                     trust=normalized_trust,
                     grouped=selected_groups,
-                    include_react_doctor=(paths is None or staged) and rule_selection is None,
+                    include_react_doctor=rule_selection is None,
+                    force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
                 )
             )
@@ -386,7 +397,9 @@ class Standards:
         combined = report_from_tools(self.root, (*native.tools, *external_reports))
         if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
             combined = _with_warning_severity(combined, _warning_rule_keys())
-        return _with_coverage(_without_baselined_diagnostics(combined, baseline_counts), coverage)
+        return _with_coverage(
+            _without_baselined_diagnostics(combined, baseline_counts, changed_scope=changed_scope), coverage
+        )
 
     def run(
         self,
@@ -578,13 +591,20 @@ def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
     return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
 
 
-def _without_baselined_diagnostics(report: AnalysisReport, counts: dict[str, int]) -> AnalysisReport:
+def _without_baselined_diagnostics(
+    report: AnalysisReport,
+    counts: dict[str, int],
+    *,
+    changed_scope: diagnostic_baseline.ChangedLineScope | None = None,
+) -> AnalysisReport:
     if not counts:
         return report
     remaining = counts.copy()
 
     def active(diagnostic: Diagnostic) -> bool:
         if not diagnostic_baseline.is_baselineable(diagnostic) or diagnostic.code == "SARJ206":
+            return True
+        if diagnostic_baseline.touches_changed_lines(diagnostic, changed_scope):
             return True
         fingerprint = diagnostic.fingerprint
         budget = 0 if fingerprint is None else remaining.get(fingerprint, 0)

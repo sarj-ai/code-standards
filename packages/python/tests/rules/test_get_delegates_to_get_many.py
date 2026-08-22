@@ -41,7 +41,7 @@ def test_flags_compatible_async_get_and_get_many() -> None:
 
     assert len(diagnostics) == 1
     assert diagnostics[0].line == 2
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
     assert "get_many([key])" in diagnostics[0].message
 
 

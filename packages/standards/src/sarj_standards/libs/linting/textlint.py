@@ -13,12 +13,9 @@ from typing import (
     ClassVar,
     Final,
     NamedTuple,
-    cast,  # ruff: ignore[banned-api] -- typed boundary for PyYAML nodes.
 )
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-import yaml
-from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.rules.contracts import (
@@ -68,11 +65,6 @@ class _AttachedComment(NamedTuple):
     line: int
     owner_indent: int
     weak: bool
-
-
-class _YamlPair(NamedTuple):
-    key: Node
-    value: Node
 
 
 class _ClaudePermissions(BaseModel):
@@ -206,8 +198,6 @@ _MARKDOWN_HIDDEN_DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _MARKDOWN_ATX_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
-_FULL_GIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
-_FULL_IMAGE_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$", re.IGNORECASE)
 _MARKDOWN_SUPPRESSION_RE = re.compile(
     r"^\s*<!--\s*sarj-noqa:\s*(?P<codes>SARJ\d+(?:\s*,\s*SARJ\d+)*)\s*-->\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -404,7 +394,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Directive, rationale, documented-example, and YAML block-scalar comments are intentionally excluded.",
             ),
         ),
-        # New rules spend one release as visible, non-blocking findings.
         "ephemeral-execution-artifact": RuleMeta(
             code="SARJ302",
             summary="ephemeral execution brief, audit report, or change diary",
@@ -437,41 +426,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "Short artifacts with neutral names and no execution-log headings are intentionally not inferred from prose alone.",
-            ),
-            blocking=False,
-        ),
-        "unpinned-github-action": RuleMeta(
-            code="SARJ303",
-            summary="remote GitHub Action or container action without an immutable digest",
-            rationale="Mutable action tags can resolve to different code without a reviewed repository change.",
-            remediation="Pin repository actions to a full commit SHA and container actions to a sha256 digest.",
-            category=RuleCategory.SECURITY,
-            languages=frozenset({Language.CONFIG}),
-            file_patterns=(".github/workflows/**/*.yaml", ".github/workflows/**/*.yml"),
-            examples=(
-                _public_example(
-                    example_id="mutable-action-tag",
-                    title="A version tag is mutable",
-                    outcome=ExpectedOutcome.MATCH,
-                    path=".github/workflows/ci.yml",
-                    source="jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n",
-                    expected_count=1,
-                ),
-                _public_example(
-                    example_id="immutable-action-commit",
-                    title="A full action commit SHA is immutable",
-                    outcome=ExpectedOutcome.NO_MATCH,
-                    path=".github/workflows/ci.yml",
-                    source="jobs:\n  test:\n    steps:\n"
-                    "      - uses: actions/checkout@0123456789abcdef0123456789abcdef01234567\n",
-                    expected_count=0,
-                ),
-            ),
-            limitations=(
-                "Only remote uses entries in .github/workflows YAML files are checked; local actions are excluded.",
-            ),
-            references=(
-                "https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions",
             ),
         ),
         "iac-source-coupled-test": RuleMeta(
@@ -539,7 +493,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             limitations=(
                 "Only standalone, closed HTML comments containing an ATX heading outside Markdown code are checked; template instructions and protected rationale are preserved.",
             ),
-            blocking=False,
         ),
         "exact-config-comment-restatement": RuleMeta(
             code="SARJ306",
@@ -576,7 +529,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             limitations=(
                 "Only an immediately adjacent standalone comment using exact `key is value` or `key equals value` wording over a simple scalar entry is checked.",
             ),
-            blocking=False,
         ),
         "no-unsafe-command-argument-interpolation": RuleMeta(
             code="SARJ307",
@@ -614,7 +566,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Only fenced executable examples in .claude/commands Markdown are checked.",
                 "A standalone quoted shell argument is accepted on the assumption that the called wrapper validates or parameterizes it.",
             ),
-            blocking=False,
         ),
         "no-wildcard-secret-read-permission": RuleMeta(
             code="SARJ308",
@@ -651,7 +602,6 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             limitations=(
                 "Only literal wildcard allow entries for recognized cloud secret-value commands in Claude settings JSON are checked.",
             ),
-            blocking=False,
         ),
     }
 )
@@ -684,7 +634,6 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
         if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
             continue
         path_findings = [
-            *_workflow_action_findings(path, relative, source),
             *_artifact_findings(path, relative, source, durable_patterns),
             *_shell_iac_source_findings(path, relative, source),
             *_markdown_hidden_comment_findings(path, source),
@@ -991,95 +940,6 @@ def _shell_read_target(tokens: Sequence[str]) -> str | None:
 def _shell_uses_variable(tokens: Sequence[str], name: str) -> bool:
     patterns = {f"${name}", f"${{{name}}}"}
     return any(token in patterns or any(pattern in token for pattern in patterns) for token in tokens)
-
-
-def _workflow_action_findings(path: Path, relative: str, source: str) -> list[Finding]:
-    if not relative.startswith(".github/workflows/") or path.suffix.lower() not in {".yaml", ".yml"}:
-        return []
-    try:
-        document = cast(
-            "Node | None",
-            yaml.compose(  # pyright: ignore[reportUnknownMemberType] -- PyYAML's compose signature leaves stream unknown.
-                source, Loader=yaml.SafeLoader
-            ),
-        )
-    except yaml.YAMLError:
-        return []
-    lines = source.splitlines()
-    findings: list[Finding] = []
-    for action in _workflow_action_nodes(document):
-        index = action.start_mark.line
-        if _suppresses_previous_line(lines, index, "SARJ303"):
-            continue
-        value = cast("str", action.value)
-        if value.startswith("./"):
-            continue
-        if value.startswith("docker://"):
-            digest = value.removeprefix("docker://").partition("@")[2]
-            pinned = bool(_FULL_IMAGE_DIGEST_RE.fullmatch(digest))
-        else:
-            reference = value.rpartition("@")[2]
-            pinned = bool(_FULL_GIT_SHA_RE.fullmatch(reference))
-        if not pinned:
-            findings.append(
-                Finding(
-                    path,
-                    index + 1,
-                    "SARJ303",
-                    "Remote action uses a mutable ref — pin it to a full commit SHA or container sha256 digest.",
-                )
-            )
-    return findings
-
-
-def _workflow_action_nodes(document: Node | None) -> tuple[ScalarNode, ...]:
-    if not isinstance(document, MappingNode):
-        return ()
-    jobs = _yaml_mapping_value(document, "jobs")
-    if not isinstance(jobs, MappingNode):
-        return ()
-    actions: list[ScalarNode] = []
-    for _, job in _yaml_pairs(jobs):
-        if not isinstance(job, MappingNode):
-            continue
-        reusable = _yaml_mapping_value(job, "uses")
-        if isinstance(reusable, ScalarNode):
-            actions.append(reusable)
-        steps = _yaml_mapping_value(job, "steps")
-        if not isinstance(steps, SequenceNode):
-            continue
-        for step in cast("list[Node]", steps.value):
-            if not isinstance(step, MappingNode):
-                continue
-            action = _yaml_mapping_value(step, "uses")
-            if isinstance(action, ScalarNode):
-                actions.append(action)
-    return tuple(actions)
-
-
-def _yaml_mapping_value(mapping: MappingNode, key: str) -> Node | None:
-    return next(
-        (
-            value
-            for candidate, value in _yaml_pairs(mapping)
-            if isinstance(candidate, ScalarNode) and cast("str", candidate.value) == key
-        ),
-        None,
-    )
-
-
-def _yaml_pairs(mapping: MappingNode) -> list[_YamlPair]:
-    return cast("list[_YamlPair]", mapping.value)
-
-
-def _suppresses_previous_line(lines: list[str], index: int, code: str) -> bool:
-    if index == 0:
-        return False
-    parsed = _standalone_comment(Path("workflow.yml"), lines[index - 1])
-    if parsed is None:
-        return False
-    match = _SARJ_SUPPRESSION_RE.fullmatch(parsed[1])
-    return match is not None and code in {item.strip().upper() for item in match.group("codes").split(",")}
 
 
 def _artifact_findings(
@@ -1424,6 +1284,16 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
                 )
             )
     return findings
+
+
+def _suppresses_previous_line(lines: list[str], index: int, code: str) -> bool:
+    if index == 0:
+        return False
+    parsed = _standalone_comment(Path("workflow.yml"), lines[index - 1])
+    if parsed is None:
+        return False
+    match = _SARJ_SUPPRESSION_RE.fullmatch(parsed[1])
+    return match is not None and code in {item.strip().upper() for item in match.group("codes").split(",")}
 
 
 def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:

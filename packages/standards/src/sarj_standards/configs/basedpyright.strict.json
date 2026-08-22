@@ -1,0 +1,22 @@
+{
+  // Additive active BasedPyright policy. Upstream-Pyright consumers can extend
+  // pyright.strict.json directly without receiving unrecognized settings.
+  "extends": "./pyright.strict.json",
+  "enableBasedFeatures": false,
+  "strictGenericNarrowing": true,
+
+  "reportInvalidCast": "error",
+  "reportUnsafeMultipleInheritance": "error",
+  "reportImplicitRelativeImport": "error",
+  "reportExplicitAny": "error",
+  "reportIgnoreCommentWithoutRule": "error",
+  "reportPrivateLocalImportUsage": "error",
+  "reportAny": "error",
+  "reportUnannotatedClassAttribute": "error",
+
+  "reportImplicitAbstractClass": "error",
+  "reportEmptyAbstractUsage": "error",
+  "reportIncompatibleUnannotatedOverride": "error",
+  "reportInvalidAbstractMethod": "error",
+  "reportSelfClsDefault": "error"
+}
