@@ -1773,7 +1773,7 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
     for selector in selectors:
         if selector.startswith("eslint:@sarj/"):
             normalized.append("eslint:" + selector.removeprefix("eslint:@sarj/"))
-        elif selector.startswith("eslint:@"):
+        elif selector.startswith("eslint:"):
             continue
         else:
             normalized.append(selector)
@@ -1784,7 +1784,7 @@ def _upstream_eslint_rules_for_baseline(selectors: Sequence[str]) -> frozenset[s
     return frozenset(
         selector
         for selector in selectors
-        if selector.startswith("eslint:@") and not selector.startswith("eslint:@sarj/")
+        if selector.startswith("eslint:") and not selector.startswith("eslint:@sarj/")
     )
 
 

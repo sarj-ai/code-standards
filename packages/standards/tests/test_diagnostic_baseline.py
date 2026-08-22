@@ -356,12 +356,12 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
-        _ = self, kwargs
-        captured.append(paths)
-        return report_from_tools(tmp_path, ())
+    def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        _ = kwargs
+        captured.append(files)
+        return ()
 
-    monkeypatch.setattr(api.Standards, "analyze", analyze)
+    monkeypatch.setattr(external, "analyze_external", analyze_eslint)
 
     assert (
         cli_main(
@@ -381,9 +381,14 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
     assert captured == [[str(tmp_path / "src"), str(tmp_path / "test")]]
 
 
+@pytest.mark.parametrize(
+    "selector",
+    ["eslint:@typescript-eslint/naming-convention", "eslint:unicorn/prefer-iterator-helpers"],
+)
 def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    selector: str,
 ) -> None:
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(
@@ -422,7 +427,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
                 "--output",
                 str(baseline_path),
                 "--rule",
-                "eslint:@typescript-eslint/naming-convention",
+                selector,
             ]
         )
         == 0
