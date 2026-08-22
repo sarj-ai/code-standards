@@ -241,6 +241,7 @@ class Standards:
         rules: Sequence[str | RuleSelector] | None = None,
         staged: bool = False,
         react_doctor_triggered: bool = False,
+        include_react_doctor: bool = True,
     ) -> AnalysisReport:
         try:
             normalized_trust = TrustMode(trust)
@@ -364,7 +365,7 @@ class Standards:
                     policy=selection_policy,
                     capabilities=(frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.configs)),
                     grouped=selected_groups,
-                    include_react_doctor=rule_selection is None,
+                    include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
                 )
@@ -374,7 +375,7 @@ class Standards:
                     root=self.root,
                     trust=normalized_trust,
                     grouped=selected_groups,
-                    include_react_doctor=rule_selection is None,
+                    include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
                 )

@@ -10,7 +10,16 @@ from sarj_standards import api
 from sarj_standards.cli.main import main as cli_main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.adoption.manifest import load as load_manifest
-from sarj_standards.libs.diagnostics import Completion, Diagnostic, Location, Position, Severity, ToolReport, baseline
+from sarj_standards.libs.diagnostics import (
+    AnalysisReport,
+    Completion,
+    Diagnostic,
+    Location,
+    Position,
+    Severity,
+    ToolReport,
+    baseline,
+)
 from sarj_standards.libs.linting.analysis import report_from_tools
 
 
@@ -275,6 +284,47 @@ def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) 
 
     assert cli_main(["--root", str(tmp_path), "baseline", "init"]) == 2
     assert cli_main(["--root", str(tmp_path), "baseline", "update"]) == 0
+
+
+def test_scoped_baseline_update_analyzes_only_selected_rules(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    captured: list[tuple[object, object]] = []
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, paths
+        captured.append((kwargs.get("rules"), kwargs.get("include_react_doctor")))
+        return report_from_tools(tmp_path, ())
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "eslint:@typescript-eslint/naming-convention",
+            ]
+        )
+        == 0
+    )
+    assert captured == [(["eslint:@typescript-eslint/naming-convention"], False)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
