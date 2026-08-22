@@ -43,10 +43,20 @@ jobs:
           version: '0.12.5'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
-        with:
-          terraform_version: '1.15.8'
-          terraform_wrapper: false
+      - name: Install pinned Terraform CLI
+        env:
+          TERRAFORM_SHA256: d25ce7b6902013ad905db3d2eab0be4cd905887fe88b81a6171b8d5503c31f3d
+          TERRAFORM_VERSION: '1.15.8'
+        run: |
+          archive="$RUNNER_TEMP/terraform.zip"
+          install_dir="$RUNNER_TEMP/terraform-bin"
+          curl --fail --silent --show-error --location \
+            --output "$archive" \
+            "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+          echo "$TERRAFORM_SHA256  $archive" | sha256sum --check --strict
+          mkdir --parents "$install_dir"
+          unzip -q "$archive" -d "$install_dir"
+          echo "$install_dir" >> "$GITHUB_PATH"
       - name: Install locked documentation toolchains
         working-directory: .
         run: |
