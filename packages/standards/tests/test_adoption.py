@@ -174,7 +174,7 @@ def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
     parsed: object = json.loads((CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     config = manifest.as_table(parsed)
 
-    assert config["blocking"] == "warning"
+    assert config["blocking"] == "error"
     assert config["deadCode"] is False
     assert config["noScore"] is True
     assert config["share"] is False

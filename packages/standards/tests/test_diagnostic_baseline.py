@@ -525,6 +525,71 @@ def test_scoped_baseline_update_captures_react_doctor_and_preserves_unrelated_de
     assert baseline.load(baseline_path) == {"b" * 64: 1, "c" * 64: 1}
 
 
+def test_scoped_react_doctor_wildcard_replaces_every_react_doctor_rule(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    old_react = Diagnostic(
+        "react-doctor/old",
+        "old React debt",
+        Severity.ERROR,
+        "react-doctor",
+        Location("old.tsx"),
+        rule_id="react-doctor/old",
+        fingerprint="a" * 64,
+    )
+    unrelated = Diagnostic(
+        "F401",
+        "unrelated Python debt",
+        Severity.ERROR,
+        "ruff",
+        Location("old.py"),
+        rule_id="F401",
+        fingerprint="c" * 64,
+    )
+    baseline_path.write_text(
+        baseline.render(
+            (old_react, unrelated),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    replacement = replace(
+        old_react,
+        code="react-doctor/new",
+        rule_id="react-doctor/new",
+        message="current React debt",
+        fingerprint="b" * 64,
+    )
+
+    def analyze_react_doctor(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        assert files == [str(tmp_path)]
+        assert kwargs.get("react_doctor_full_scan") is True
+        return (ToolReport("react-doctor", Completion.COMPLETE, (replacement,)),)
+
+    monkeypatch.setattr(external, "analyze_external", analyze_react_doctor)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "react-doctor:*",
+            ]
+        )
+        == 0
+    )
+    assert baseline.load(baseline_path) == {"b" * 64: 1, "c" * 64: 1}
+
+
 def test_scoped_baseline_update_uses_manifest_verification_paths(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -1884,6 +1884,8 @@ def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
         source, separator, rule_id = selector.partition(":")
         resolved.append(selector)
         native_source = _BASELINE_RULE_ENGINE_SOURCES.get(source)
+        if selector == "react-doctor:*":
+            continue
         if separator and source == "eslint" and _is_react_doctor_rule_id(rule_id):
             plugin, _, plugin_rule_id = rule_id.partition("/")
             resolved.extend((f"react-doctor:{rule_id}", f"{plugin}:{plugin_rule_id}"))
@@ -1923,7 +1925,9 @@ def _baseline_catalog_selectors() -> frozenset[str]:
 
 
 def _diagnostic_matches(item: Diagnostic, selectors: frozenset[str]) -> bool:
-    return item.rule_id is not None and f"{item.source}:{item.rule_id}" in selectors
+    return item.rule_id is not None and (
+        f"{item.source}:*" in selectors or f"{item.source}:{item.rule_id}" in selectors
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
