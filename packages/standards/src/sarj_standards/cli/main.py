@@ -1688,11 +1688,13 @@ def cmd_baseline(args: _Args) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    scoped_rules = args.baseline_rules if args.baseline_cmd == "update" and args.baseline_rules else None
     report = Standards(root).analyze(
         selected,
         external=True,
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=AnalysisMode.RAW,
+        rules=scoped_rules,
     )
     blocked = [issue for issue in report.issues if issue.kind != "baseline-failure"]
     if blocked:

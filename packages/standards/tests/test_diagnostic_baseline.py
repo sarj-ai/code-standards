@@ -277,6 +277,51 @@ def test_baseline_init_refuses_to_overwrite_and_update_replaces(tmp_path: Path) 
     assert cli_main(["--root", str(tmp_path), "baseline", "update"]) == 0
 
 
+def test_scoped_baseline_update_analyzes_only_selected_rules(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def analyze(
+        self: api.Standards,
+        paths: object = None,
+        **kwargs: object,
+    ) -> api.AnalysisReport:
+        _ = self, paths
+        captured.update(kwargs)
+        return report_from_tools(tmp_path, ())
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "python:no-print",
+            ]
+        )
+        == 0
+    )
+    assert captured["rules"] == ["python:no-print"]
+
+
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
     (tmp_path / "main.tf").write_text('resource "x" "y" {}\n', encoding="utf-8")
 
