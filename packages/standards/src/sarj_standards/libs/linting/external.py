@@ -578,6 +578,7 @@ def _invoke_react_doctor(
             expected_projects=expected_projects,
             allow_empty_projects=allow_empty_projects,
             runner=runner,
+            scope_root=project,
             projects=projects,
         )
     return _invoke(
@@ -645,6 +646,7 @@ def _parse_react_doctor_changed_scope(
     expected_projects: frozenset[Path],
     allow_empty_projects: bool,
     runner: ProcessRunner,
+    scope_root: Path,
     projects: Sequence[Path],
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
@@ -653,6 +655,7 @@ def _parse_react_doctor_changed_scope(
         projects=projects,
         root=root,
         runner=runner,
+        scope_root=scope_root,
     )
     return _parse_react_doctor_report(
         report,
@@ -670,6 +673,7 @@ def _react_doctor_degraded_scope_has_no_source(
     projects: Sequence[Path],
     root: Path,
     runner: ProcessRunner,
+    scope_root: Path,
 ) -> bool:
     if not report.baseline_degraded or report.projects or report.diagnostics or report.diff is None:
         return False
@@ -678,6 +682,7 @@ def _react_doctor_degraded_scope_has_no_source(
         root=root,
         runner=runner,
         staged=False,
+        scope_root=scope_root,
         reported_base=report.diff.base_branch,
         reported_changed_file_count=report.diff.changed_file_count,
     )
@@ -726,6 +731,7 @@ def _react_doctor_scope_has_no_source(
     root: Path,
     runner: ProcessRunner,
     staged: bool,
+    scope_root: Path | None = None,
     reported_base: str | None = None,
     reported_changed_file_count: int | None = None,
 ) -> bool:
@@ -757,10 +763,12 @@ def _react_doctor_scope_has_no_source(
     if changed.returncode != 0:
         return False
     resolved_root = root.resolve()
+    resolved_scope = resolved_root if scope_root is None else scope_root.resolve()
+    if not resolved_scope.is_relative_to(resolved_root):
+        return False
     resolved_projects = tuple(project.resolve() for project in projects)
     changed_paths = tuple(item for item in changed.stdout.split("\0") if item)
-    if reported_changed_file_count is not None and len(changed_paths) != reported_changed_file_count:
-        return False
+    scoped_changed_file_count = 0
     for relative in changed_paths:
         relative_path = Path(relative)
         if relative_path.is_absolute() or ".." in relative_path.parts:
@@ -768,11 +776,13 @@ def _react_doctor_scope_has_no_source(
         # Keep containment lexical: resolving a changed symlink could move its
         # apparent path outside the React project and incorrectly waive it.
         candidate = resolved_root / relative_path
+        if candidate.is_relative_to(resolved_scope):
+            scoped_changed_file_count += 1
         if candidate.suffix.casefold() not in _REACT_DOCTOR_SOURCE_SUFFIXES:
             continue
         if any(candidate.is_relative_to(project) for project in resolved_projects):
             return False
-    return True
+    return reported_changed_file_count is None or scoped_changed_file_count == reported_changed_file_count
 
 
 def change_scope_base() -> str:
