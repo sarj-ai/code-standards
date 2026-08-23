@@ -375,28 +375,82 @@ class TestSafety:
 MANIFEST = ".sarj-standards.toml"
 
 
+def managed_open_pr_payload(version: str, base_sha: str, head_sha: str, *, url: str = "https://pr/1") -> str:
+    return json.dumps(
+        [
+            {
+                "state": "OPEN",
+                "mergedAt": None,
+                "url": url,
+                "headRefName": "standards-rollout/current",
+                "baseRefName": "main",
+                "headRefOid": head_sha,
+                "baseRefOid": base_sha,
+                "body": rollout.pr_marker(consumer(), version) + "\n" + rollout.desired_marker(version),
+            }
+        ]
+    )
+
+
 class TestStatus:
     def test_open_pr_is_idempotently_reported(self) -> None:
-        marker = rollout.pr_marker(consumer(), "5.8.1")
-        payload = json.dumps(
-            [
-                {
-                    "state": "OPEN",
-                    "mergedAt": None,
-                    "url": "https://pr/1",
-                    "headRefName": "standards-rollout/current",
-                    "baseRefName": "main",
-                    "body": marker + "\n" + rollout.desired_marker("5.8.1"),
-                }
-            ]
-        )
-        runner = FakeRunner([(0, payload)])
+        base_sha = "a" * 40
+        head_sha = "b" * 40
+        payload = managed_open_pr_payload("5.8.1", base_sha, head_sha)
+        commit = json.dumps({"parents": [{"sha": base_sha}]})
+        runner = FakeRunner([(0, payload), (0, commit)])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
 
         assert result.state == "pr-open"
         assert result.url == "https://pr/1"
         assert "--head" in runner.commands[0]
+
+    def test_open_pr_with_stale_commit_parent_is_refreshed(self) -> None:
+        old_base = "9e5cc29955cb89c2dcafca1f0180be1f04b58a7b"
+        current_base = "84ad9cac3432c8fba4451138dbf9d69387ff16af"
+        head_sha = "a55e7f1ba137a7b068fcec112ed675189fa13a06"
+        payload = managed_open_pr_payload(
+            "7.1.14",
+            current_base,
+            head_sha,
+            url="https://github.com/example/consumer/pull/506",
+        )
+        commit = json.dumps({"parents": [{"sha": old_base}]})
+        runner = FakeRunner([(0, payload), (0, commit)])
+
+        result = rollout.status_one(consumer(), "7.1.14", runner)
+
+        assert result.state == "missing"
+        assert old_base in result.detail
+        assert current_base in result.detail
+        assert "reconcile will refresh" in result.detail
+
+    def test_open_pr_with_merge_commit_is_blocked(self) -> None:
+        base_sha = "a" * 40
+        head_sha = "b" * 40
+        payload = managed_open_pr_payload("5.8.1", base_sha, head_sha)
+        runner = FakeRunner(
+            [
+                (0, payload),
+                (0, json.dumps({"parents": [{"sha": base_sha}, {"sha": "c" * 40}]})),
+            ]
+        )
+
+        result = rollout.status_one(consumer(), "5.8.1", runner)
+
+        assert result.state == "blocked"
+        assert "exactly one commit with one parent" in result.detail
+
+    def test_open_pr_with_malformed_commit_response_is_blocked(self) -> None:
+        base_sha = "a" * 40
+        head_sha = "b" * 40
+        runner = FakeRunner([(0, managed_open_pr_payload("5.8.1", base_sha, head_sha)), (0, "not-json")])
+
+        result = rollout.status_one(consumer(), "5.8.1", runner)
+
+        assert result.state == "blocked"
+        assert result.detail == "managed rollout commit provenance is malformed"
 
     def test_merged_pr_is_reported(self) -> None:
         marker = rollout.pr_marker(consumer(), "5.8.1")
