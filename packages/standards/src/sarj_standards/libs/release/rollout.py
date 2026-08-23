@@ -465,7 +465,7 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
             "--head",
             rollout_branch(version),
             "--json",
-            "state,mergedAt,url,headRefName,baseRefName,body",
+            "state,mergedAt,url,headRefName,baseRefName,headRefOid,baseRefOid,body",
             "--limit",
             "2",
         )
@@ -478,6 +478,44 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
         raise RolloutError(msg)
     first = payload[0]
     return first if is_object(first) else None
+
+
+def open_pull_commit_provenance(
+    consumer: Consumer,
+    pull: Mapping[str, object],
+    runner: CommandRunner,
+) -> Outcome | None:
+    url = str(pull.get("url", ""))
+    head_sha = pull.get("headRefOid")
+    base_sha = pull.get("baseRefOid")
+    if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
+        return Outcome(consumer, "blocked", url, "managed rollout PR has no valid head commit SHA")
+    if not isinstance(base_sha, str) or re.fullmatch(r"[0-9a-f]{40}", base_sha) is None:
+        return Outcome(consumer, "blocked", url, "managed rollout PR has no valid current consumer base SHA")
+    commit = runner.run(
+        ("gh", "api", f"repos/{consumer.repository}/commits/{head_sha}"),
+        check=False,
+    )
+    if commit.returncode != 0:
+        return Outcome(consumer, "blocked", url, "managed rollout commit provenance could not be read")
+    try:
+        payload = json_result(commit)
+    except RolloutError:
+        return Outcome(consumer, "blocked", url, "managed rollout commit provenance is malformed")
+    parents_value = payload.get("parents") if is_object(payload) else None
+    parents = parents_value if is_array(parents_value) else []
+    parent_shas = tuple(sha for item in parents if is_object(item) and isinstance((sha := item.get("sha")), str))
+    if len(parents) != 1 or len(parent_shas) != 1 or re.fullmatch(r"[0-9a-f]{40}", parent_shas[0]) is None:
+        return Outcome(consumer, "blocked", url, "managed rollout head must be exactly one commit with one parent")
+    if parent_shas[0] != base_sha:
+        return Outcome(
+            consumer,
+            "missing",
+            url,
+            f"managed rollout commit parent {parent_shas[0]} no longer matches current consumer base {base_sha}; "
+            "reconcile will refresh this managed PR",
+        )
+    return None
 
 
 def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome:
@@ -509,6 +547,11 @@ def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outco
                 str(pull.get("url", "")),
                 "consumer verification failed; reconcile will retry this managed PR",
             )
+        if (
+            pull.get("mergedAt") is None
+            and (provenance := open_pull_commit_provenance(consumer, pull, runner)) is not None
+        ):
+            return provenance
         state = "merged" if pull.get("mergedAt") else "pr-open"
         return Outcome(consumer, state, str(pull.get("url", "")))
     adopted = manifest_version(base_manifest(consumer, runner) or "")
