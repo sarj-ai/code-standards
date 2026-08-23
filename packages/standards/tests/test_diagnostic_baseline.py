@@ -188,6 +188,28 @@ def test_scoped_merge_preserves_unrelated_debt(tmp_path: Path) -> None:
     assert f'"fingerprint": "{"c" * 64}"' in merged
 
 
+def test_scoped_merge_preserves_existing_tab_indentation(tmp_path: Path) -> None:
+    old = Diagnostic("OLD", "old", Severity.ERROR, "ruff", Location("old.py"), rule_id="OLD", fingerprint="a" * 64)
+    replacement = Diagnostic(
+        "OLD", "replacement", Severity.ERROR, "ruff", Location("next.py"), rule_id="OLD", fingerprint="b" * 64
+    )
+    path = tmp_path / "baseline.json"
+    path.write_text(baseline.render((old,)).replace("  ", "\t"), encoding="utf-8")
+
+    merged = baseline.merge_scoped(
+        path,
+        (replacement,),
+        selectors=("ruff:OLD",),
+        bundle_version="9.0.0",
+        consumer_base_sha="d" * 40,
+        catalog_digest="e" * 64,
+    )
+
+    assert '\n\t"schemaVersion"' in merged
+    assert '\n  "schemaVersion"' not in merged
+    assert json.loads(merged)["diagnostics"][0]["fingerprint"] == "b" * 64
+
+
 def test_staged_changed_lines_cannot_consume_baseline_allowance(tmp_path: Path) -> None:
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=tmp_path, check=True)

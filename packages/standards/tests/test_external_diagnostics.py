@@ -433,7 +433,10 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("changed", "expected_completion"),
     [
-        ("doctor.config.json\0package.json\0diagnostic-baseline.json\0", Completion.COMPLETE),
+        (
+            "doctor.config.json\0diagnostic-baseline.json\0apps/web/package.json\0apps/web/package-lock.json\0",
+            Completion.COMPLETE,
+        ),
         ("apps/web/src/component.tsx\0", Completion.FAILED),
     ],
 )
@@ -450,14 +453,17 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
     seen: list[tuple[str, ...]] = []
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert cwd == tmp_path
         seen.append(tuple(argv))
         if argv[:2] == ("git", "rev-parse"):
+            assert cwd == tmp_path
             return ProcessOutput(0, f"{base}\n", "")
         if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            assert cwd == tmp_path
             return ProcessOutput(0, "", "")
         if argv[:2] == ("git", "diff"):
+            assert cwd == tmp_path
             return ProcessOutput(0, changed, "")
+        assert cwd == project
         return ProcessOutput(
             0,
             json.dumps(
@@ -469,7 +475,9 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
                     "baselineDegraded": True,
                     "diff": {
                         "baseBranch": base,
-                        "changedFileCount": len(tuple(item for item in changed.split("\0") if item)),
+                        "changedFileCount": len(
+                            tuple(item for item in changed.split("\0") if item.startswith("apps/web/"))
+                        ),
                     },
                     "projects": [],
                     "diagnostics": [],
@@ -480,7 +488,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
         )
 
     report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        tmp_path,
+        project,
         projects=(project,),
         root=tmp_path,
         runner=runner,
@@ -507,16 +515,30 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
     "case",
     [
         pytest.param(
-            ("a" * 40, ".sarj-standards.toml\0diagnostic-baseline.json\0", 2, 0, 0, Completion.COMPLETE),
-            id="exact-automations-config-only-scope",
+            (
+                "a" * 40,
+                ".sarj-standards.toml\0diagnostic-baseline.json\0apps/landing-page/package.json\0apps/landing-page/package-lock.json\0",
+                2,
+                0,
+                0,
+                Completion.COMPLETE,
+            ),
+            id="repo-and-react-root-config-only-scope",
         ),
         pytest.param(
             ("a" * 40, "apps/landing-page/src/page.tsx\0", 1, 0, 0, Completion.FAILED),
             id="react-source-remains-blocking",
         ),
         pytest.param(
-            ("a" * 40, ".sarj-standards.toml\0diagnostic-baseline.json\0", 3, 0, 0, Completion.FAILED),
-            id="changed-file-count-mismatch",
+            (
+                "a" * 40,
+                ".sarj-standards.toml\0diagnostic-baseline.json\0apps/landing-page/package.json\0",
+                2,
+                0,
+                0,
+                Completion.FAILED,
+            ),
+            id="react-root-changed-file-count-mismatch",
         ),
         pytest.param(
             ("../unsafe", ".sarj-standards.toml\0", 1, 0, 0, Completion.FAILED),
@@ -553,7 +575,7 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
         if argv[:2] == ("git", "diff"):
             assert cwd == tmp_path
             return ProcessOutput(0, changed, "")
-        assert cwd == tmp_path
+        assert cwd == project
         return ProcessOutput(
             0,
             json.dumps(
@@ -573,7 +595,7 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
         )
 
     report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        tmp_path,
+        project,
         projects=(project,),
         root=tmp_path,
         runner=runner,

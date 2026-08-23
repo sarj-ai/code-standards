@@ -237,7 +237,16 @@ def merge_scoped(
         "diagnostics": combined,
     }
     _validate_provenance(payload["provenance"])
-    return json.dumps(payload, indent=2) + "\n"
+    return json.dumps(payload, indent=_existing_json_indent(path)) + "\n"
+
+
+def _existing_json_indent(path: Path) -> int | str:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.lstrip(" \t")
+        if stripped and stripped != line:
+            indentation = line[: len(line) - len(stripped)]
+            return "\t" if indentation.startswith("\t") else len(indentation)
+    return 2
 
 
 def _diagnostic_entries(diagnostics: Iterable[Diagnostic]) -> list[dict[str, object]]:
