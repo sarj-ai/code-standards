@@ -375,7 +375,13 @@ class TestSafety:
 MANIFEST = ".sarj-standards.toml"
 
 
-def managed_open_pr_payload(version: str, base_sha: str, head_sha: str, *, url: str = "https://pr/1") -> str:
+def managed_open_pr_payload(
+    version: str,
+    cached_base_sha: str,
+    head_sha: str,
+    *,
+    url: str = "https://pr/1",
+) -> str:
     return json.dumps(
         [
             {
@@ -385,11 +391,15 @@ def managed_open_pr_payload(version: str, base_sha: str, head_sha: str, *, url: 
                 "headRefName": "standards-rollout/current",
                 "baseRefName": "main",
                 "headRefOid": head_sha,
-                "baseRefOid": base_sha,
+                "baseRefOid": cached_base_sha,
                 "body": rollout.pr_marker(consumer(), version) + "\n" + rollout.desired_marker(version),
             }
         ]
     )
+
+
+def live_base_ref_payload(base_sha: str) -> str:
+    return json.dumps({"ref": "refs/heads/main", "object": {"type": "commit", "sha": base_sha}})
 
 
 class TestStatus:
@@ -398,26 +408,28 @@ class TestStatus:
         head_sha = "b" * 40
         payload = managed_open_pr_payload("5.8.1", base_sha, head_sha)
         commit = json.dumps({"parents": [{"sha": base_sha}]})
-        runner = FakeRunner([(0, payload), (0, commit)])
+        runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(base_sha))])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
 
         assert result.state == "pr-open"
         assert result.url == "https://pr/1"
         assert "--head" in runner.commands[0]
+        assert runner.commands[-1] == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain")
 
     def test_open_pr_with_stale_commit_parent_is_refreshed(self) -> None:
         old_base = "9e5cc29955cb89c2dcafca1f0180be1f04b58a7b"
         current_base = "84ad9cac3432c8fba4451138dbf9d69387ff16af"
         head_sha = "a55e7f1ba137a7b068fcec112ed675189fa13a06"
+        cached_base = "8" * 40
         payload = managed_open_pr_payload(
             "7.1.14",
-            current_base,
+            cached_base,
             head_sha,
             url="https://github.com/example/consumer/pull/506",
         )
         commit = json.dumps({"parents": [{"sha": old_base}]})
-        runner = FakeRunner([(0, payload), (0, commit)])
+        runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(current_base))])
 
         result = rollout.status_one(consumer(), "7.1.14", runner)
 
@@ -425,6 +437,76 @@ class TestStatus:
         assert old_base in result.detail
         assert current_base in result.detail
         assert "reconcile will refresh" in result.detail
+
+    def test_open_pr_ignores_stale_cached_base_when_parent_matches_live_base(self) -> None:
+        cached_base = "8" * 40
+        current_base = "a" * 40
+        head_sha = "b" * 40
+        payload = managed_open_pr_payload("5.8.1", cached_base, head_sha)
+        commit = json.dumps({"parents": [{"sha": current_base}]})
+        runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(current_base))])
+
+        result = rollout.status_one(consumer(), "5.8.1", runner)
+
+        assert result.state == "pr-open"
+
+    def test_open_pr_does_not_accept_parent_matching_only_cached_base(self) -> None:
+        cached_base = "8" * 40
+        current_base = "a" * 40
+        head_sha = "b" * 40
+        payload = managed_open_pr_payload("5.8.1", cached_base, head_sha)
+        commit = json.dumps({"parents": [{"sha": cached_base}]})
+        runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(current_base))])
+
+        result = rollout.status_one(consumer(), "5.8.1", runner)
+
+        assert result.state == "missing"
+        assert cached_base in result.detail
+        assert current_base in result.detail
+
+    @pytest.mark.parametrize(
+        ("returncode", "response", "expected_detail"),
+        [
+            (1, "not found", "managed rollout current consumer base ref could not be read"),
+            (0, "not-json", "managed rollout current consumer base ref is malformed"),
+        ],
+        ids=("unreadable-live-base-ref", "malformed-live-base-ref"),
+    )
+    def test_open_pr_with_unusable_live_base_ref_is_blocked(
+        self,
+        returncode: int,
+        response: str,
+        expected_detail: str,
+    ) -> None:
+        payload = managed_open_pr_payload("5.8.1", "a" * 40, "b" * 40)
+        commit = json.dumps({"parents": [{"sha": "a" * 40}]})
+        runner = FakeRunner([(0, payload), (0, commit), (returncode, response)])
+
+        result = rollout.status_one(consumer(), "5.8.1", runner)
+
+        assert result.state == "blocked"
+        assert result.detail == expected_detail
+
+    def test_open_pr_with_invalid_live_base_sha_is_blocked(self) -> None:
+        payload = managed_open_pr_payload("5.8.1", "a" * 40, "b" * 40)
+        commit = json.dumps({"parents": [{"sha": "a" * 40}]})
+        runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload("short"))])
+
+        result = rollout.status_one(consumer(), "5.8.1", runner)
+
+        assert result.state == "blocked"
+        assert result.detail == "managed rollout current consumer base ref has no valid commit SHA"
+
+    def test_open_pr_with_non_commit_live_base_target_is_blocked(self) -> None:
+        payload = managed_open_pr_payload("5.8.1", "a" * 40, "b" * 40)
+        target = json.dumps({"ref": "refs/heads/main", "object": {"type": "tag", "sha": "a" * 40}})
+        commit = json.dumps({"parents": [{"sha": "a" * 40}]})
+        runner = FakeRunner([(0, payload), (0, commit), (0, target)])
+
+        result = rollout.status_one(consumer(), "5.8.1", runner)
+
+        assert result.state == "blocked"
+        assert result.detail == "managed rollout current consumer base ref has no valid commit SHA"
 
     def test_open_pr_with_merge_commit_is_blocked(self) -> None:
         base_sha = "a" * 40
@@ -445,7 +527,12 @@ class TestStatus:
     def test_open_pr_with_malformed_commit_response_is_blocked(self) -> None:
         base_sha = "a" * 40
         head_sha = "b" * 40
-        runner = FakeRunner([(0, managed_open_pr_payload("5.8.1", base_sha, head_sha)), (0, "not-json")])
+        runner = FakeRunner(
+            [
+                (0, managed_open_pr_payload("5.8.1", base_sha, head_sha)),
+                (0, "not-json"),
+            ]
+        )
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
 
@@ -669,12 +756,23 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         assert "--no-install" not in update_commands[0]
 
     @pytest.mark.parametrize(
-        ("returncodes", "dirty_runs", "expected_state", "expected_verification_runs"),
+        (
+            "returncodes",
+            "dirty_runs",
+            "target_moves",
+            "head_refreshes",
+            "auto_merge",
+            "expected_state",
+            "expected_verification_runs",
+        ),
         [
-            ((1, 0), frozenset({1}), "pr-open", 2),
-            ((1,), frozenset[int](), "blocked", 1),
-            ((0, 0), frozenset({1}), "pr-open", 2),
-            ((0, 0), frozenset({1, 2}), "blocked", 2),
+            ((1, 0), frozenset({1}), False, True, False, "pr-open", 2),
+            ((1,), frozenset[int](), False, True, False, "blocked", 1),
+            ((0, 0), frozenset({1}), False, True, False, "pr-open", 2),
+            ((0, 0), frozenset({1, 2}), False, True, False, "blocked", 2),
+            ((0,), frozenset[int](), True, True, True, "missing", 1),
+            ((0,), frozenset[int](), False, False, True, "missing", 1),
+            ((0,), frozenset[int](), False, True, True, "pr-open", 1),
         ],
     )
     def test_verification_autofix_amends_a_clean_candidate_once(
@@ -684,9 +782,19 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         *,
         returncodes: tuple[int, ...],
         dirty_runs: frozenset[int],
+        target_moves: bool,
+        head_refreshes: bool,
+        auto_merge: bool,
         expected_state: str,
         expected_verification_runs: int,
     ) -> None:
+        selected_consumer = rollout.Consumer(
+            "Consumer",
+            "example/consumer",
+            "main",
+            ("make", "check"),
+            auto_merge=auto_merge,
+        )
         repo = tmp_path / "repo"
         repo.mkdir()
         manifest = repo / MANIFEST
@@ -728,14 +836,30 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 self.commands.append(rendered)
                 if rendered[:3] == ("gh", "repo", "clone") or rendered[:2] == ("git", "push"):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
+                if rendered == ("git", "fetch", "origin", "main"):
+                    return subprocess.CompletedProcess(rendered, 0, "", "")
+                if rendered == ("git", "rev-parse", "FETCH_HEAD"):
+                    return subprocess.CompletedProcess(rendered, 0, base_sha + "\n", "")
                 if rendered[:3] == ("gh", "pr", "create"):
                     return subprocess.CompletedProcess(rendered, 0, "https://example.test/pr/1\n", "")
+                if rendered[:3] == ("gh", "pr", "merge"):
+                    return subprocess.CompletedProcess(rendered, 0, "", "")
+                if rendered[:2] == ("gh", "api") and rendered[2].startswith("repos/example/consumer/commits/"):
+                    return subprocess.CompletedProcess(
+                        rendered,
+                        0,
+                        json.dumps({"parents": [{"sha": base_sha}]}),
+                        "",
+                    )
+                if rendered == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain"):
+                    live_sha = "c" * 40 if target_moves else base_sha
+                    return subprocess.CompletedProcess(rendered, 0, live_base_ref_payload(live_sha), "")
                 if "update" in rendered:
                     manifest.write_text('schema = 3\nbundle = "5.8.1"\n', encoding="utf-8")
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[-1:] == ("doctor",):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
-                if rendered == consumer().verify:
+                if rendered == selected_consumer.verify:
                     self.verification_runs += 1
                     dirty = subprocess.run(
                         ("git", "status", "--porcelain"),
@@ -765,7 +889,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             _version: str,
             _runner: rollout.CommandRunner,
         ) -> rollout.Outcome:
-            return rollout.Outcome(consumer(), "missing")
+            return rollout.Outcome(selected_consumer, "missing")
 
         def fresh_branch(
             _repo: Path,
@@ -797,12 +921,35 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         ) -> subprocess.CompletedProcess[str] | None:
             return None
 
-        def no_pull_request(
+        pull_request_calls = 0
+
+        def managed_pull_request(
             _consumer: rollout.Consumer,
             _version: str,
             _runner: rollout.CommandRunner,
         ) -> dict[str, object] | None:
-            return None
+            nonlocal pull_request_calls
+            pull_request_calls += 1
+            if pull_request_calls == 1:
+                return None
+            head_sha = subprocess.run(
+                ("git", "rev-parse", "HEAD"),
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            if not head_refreshes:
+                head_sha = "d" * 40
+            return {
+                "state": "OPEN",
+                "mergedAt": None,
+                "url": "https://example.test/pr/1",
+                "headRefName": "standards-rollout/current",
+                "baseRefName": "main",
+                "headRefOid": head_sha,
+                "body": rollout.pr_marker(selected_consumer, "5.8.1"),
+            }
 
         monkeypatch.setattr(rollout, "status_one", missing_status)
         monkeypatch.setattr(rollout, "prepare_branch", fresh_branch)
@@ -810,9 +957,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         monkeypatch.setattr(rollout, "provision_consumer_tools", provisioned_tools)
         monkeypatch.setattr(adoption_doctor, "plan_version_pin_updates", no_version_pin_updates)
         monkeypatch.setattr(rollout, "run_consumer_bootstrap", no_bootstrap)
-        monkeypatch.setattr(rollout, "pull_request", no_pull_request)
+        monkeypatch.setattr(rollout, "pull_request", managed_pull_request)
 
-        result = rollout.apply_one(consumer(), "5.8.1", runner)
+        result = rollout.apply_one(selected_consumer, "5.8.1", runner)
 
         assert result.state == expected_state
         assert runner.verification_runs == expected_verification_runs
@@ -835,6 +982,53 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         pull_request_body = pull_request_command[pull_request_command.index("--body") + 1]
         if dirty_runs == frozenset({1, 2}):
             assert "did not converge" in pull_request_body
+        if target_moves:
+            assert base_sha in result.detail
+            assert "c" * 40 in result.detail
+            assert runner.commands[-1] == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain")
+            assert not any(command[:3] == ("gh", "pr", "merge") for command in runner.commands)
+        if not head_refreshes:
+            assert "has not refreshed to the pushed commit" in result.detail
+            assert not any(command[:3] == ("gh", "pr", "merge") for command in runner.commands)
+        if auto_merge and expected_state == "pr-open":
+            merge_command = next(command for command in runner.commands if command[:3] == ("gh", "pr", "merge"))
+            validated_sha = subprocess.run(
+                ("git", "rev-parse", "HEAD"),
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            assert merge_command[merge_command.index("--match-head-commit") + 1] == validated_sha
+
+    def test_pre_push_base_recheck_accepts_the_captured_base(self, tmp_path: Path) -> None:
+        base_sha = "a" * 40
+        runner = FakeRunner([(0, ""), (0, base_sha)])
+
+        rollout.assert_consumer_base_unchanged(tmp_path, consumer(), base_sha, runner)
+
+        assert runner.commands == [
+            ("git", "fetch", "origin", "main"),
+            ("git", "rev-parse", "FETCH_HEAD"),
+        ]
+
+    def test_pre_push_base_recheck_rejects_target_movement(self, tmp_path: Path) -> None:
+        old_base = "a" * 40
+        live_base = "b" * 40
+        runner = FakeRunner([(0, ""), (0, live_base)])
+
+        with pytest.raises(rollout.RolloutError, match="consumer base moved") as caught:
+            rollout.assert_consumer_base_unchanged(tmp_path, consumer(), old_base, runner)
+
+        assert old_base in str(caught.value)
+        assert live_base in str(caught.value)
+        assert "reconcile will retry" in str(caught.value)
+
+    def test_pre_push_base_recheck_rejects_a_malformed_ref(self, tmp_path: Path) -> None:
+        runner = FakeRunner([(0, ""), (0, "short")])
+
+        with pytest.raises(rollout.RolloutError, match="did not resolve to a full commit SHA"):
+            rollout.assert_consumer_base_unchanged(tmp_path, consumer(), "a" * 40, runner)
 
     def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
         old_sha = "a" * 40

@@ -16,6 +16,7 @@ import time
 import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
+from urllib.parse import quote
 
 import yaml
 
@@ -465,7 +466,7 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
             "--head",
             rollout_branch(version),
             "--json",
-            "state,mergedAt,url,headRefName,baseRefName,headRefOid,baseRefOid,body",
+            "state,mergedAt,url,headRefName,baseRefName,headRefOid,body",
             "--limit",
             "2",
         )
@@ -480,6 +481,29 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
     return first if is_object(first) else None
 
 
+def live_consumer_base_sha(consumer: Consumer, runner: CommandRunner) -> str:
+    ref = quote(f"heads/{consumer.branch}", safe="")
+    result = runner.run(
+        ("gh", "api", f"repos/{consumer.repository}/git/ref/{ref}"),
+        check=False,
+    )
+    if result.returncode != 0:
+        msg = "managed rollout current consumer base ref could not be read"
+        raise RolloutError(msg)
+    try:
+        payload = json_result(result)
+    except RolloutError as exc:
+        msg = "managed rollout current consumer base ref is malformed"
+        raise RolloutError(msg) from exc
+    target = payload.get("object") if is_object(payload) else None
+    target_type = target.get("type") if is_object(target) else None
+    sha = target.get("sha") if is_object(target) else None
+    if target_type != "commit" or not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+        msg = "managed rollout current consumer base ref has no valid commit SHA"
+        raise RolloutError(msg)
+    return sha
+
+
 def open_pull_commit_provenance(
     consumer: Consumer,
     pull: Mapping[str, object],
@@ -487,11 +511,8 @@ def open_pull_commit_provenance(
 ) -> Outcome | None:
     url = str(pull.get("url", ""))
     head_sha = pull.get("headRefOid")
-    base_sha = pull.get("baseRefOid")
     if not isinstance(head_sha, str) or re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
         return Outcome(consumer, "blocked", url, "managed rollout PR has no valid head commit SHA")
-    if not isinstance(base_sha, str) or re.fullmatch(r"[0-9a-f]{40}", base_sha) is None:
-        return Outcome(consumer, "blocked", url, "managed rollout PR has no valid current consumer base SHA")
     commit = runner.run(
         ("gh", "api", f"repos/{consumer.repository}/commits/{head_sha}"),
         check=False,
@@ -507,6 +528,10 @@ def open_pull_commit_provenance(
     parent_shas = tuple(sha for item in parents if is_object(item) and isinstance((sha := item.get("sha")), str))
     if len(parents) != 1 or len(parent_shas) != 1 or re.fullmatch(r"[0-9a-f]{40}", parent_shas[0]) is None:
         return Outcome(consumer, "blocked", url, "managed rollout head must be exactly one commit with one parent")
+    try:
+        base_sha = live_consumer_base_sha(consumer, runner)
+    except RolloutError as exc:
+        return Outcome(consumer, "blocked", url, str(exc))
     if parent_shas[0] != base_sha:
         return Outcome(
             consumer,
@@ -700,6 +725,25 @@ def remote_branch_sha(repo: Path, branch: str, runner: CommandRunner) -> str | N
 
 def force_with_lease(branch: str, previous_sha: str | None) -> str:
     return f"--force-with-lease=refs/heads/{branch}:{previous_sha or ''}"
+
+
+def assert_consumer_base_unchanged(
+    repo: Path,
+    consumer: Consumer,
+    expected_sha: str,
+    runner: CommandRunner,
+) -> None:
+    runner.run(("git", "fetch", "origin", consumer.branch), cwd=repo)
+    live_sha = stdout(runner.run(("git", "rev-parse", "FETCH_HEAD"), cwd=repo))
+    if re.fullmatch(r"[0-9a-f]{40}", live_sha) is None:
+        msg = f"{consumer.name}: refreshed consumer base did not resolve to a full commit SHA"
+        raise RolloutError(msg)
+    if live_sha != expected_sha:
+        msg = (
+            f"{consumer.name}: consumer base moved from {expected_sha} to {live_sha} during verification; "
+            "reconcile will retry from the refreshed base"
+        )
+        raise RolloutError(msg)
 
 
 def unauthenticated_environment() -> dict[str, str]:
@@ -1271,6 +1315,11 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             runner,
             comparison=f"origin/{consumer.branch}...HEAD",
         )
+        assert_consumer_base_unchanged(repo, consumer, base_sha, runner)
+        pushed_head_sha = stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
+        if re.fullmatch(r"[0-9a-f]{40}", pushed_head_sha) is None:
+            msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
+            raise RolloutError(msg)
         lease = force_with_lease(branch, previous_sha)
         runner.run(("git", "push", lease, "-u", "origin", branch), cwd=repo)
     pull = pull_request(consumer, version, runner)
@@ -1316,8 +1365,53 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 body,
             )
         )
+    refreshed_pull = pull_request(consumer, version, runner)
+    if refreshed_pull is None:
+        return Outcome(
+            consumer,
+            "blocked",
+            url,
+            "managed rollout PR could not be read after create or edit",
+        )
+    refreshed_url = str(refreshed_pull.get("url", url))
+    refreshed_identity_is_valid = (
+        refreshed_pull.get("headRefName") == rollout_branch(version)
+        and refreshed_pull.get("baseRefName") == consumer.branch
+        and pr_marker(consumer, version) in str(refreshed_pull.get("body", ""))
+    )
+    if not refreshed_identity_is_valid:
+        return Outcome(
+            consumer,
+            "blocked",
+            refreshed_url,
+            "rollout PR ownership marker, head, or base does not match after update",
+        )
+    if refreshed_pull.get("headRefOid") != pushed_head_sha:
+        return Outcome(
+            consumer,
+            "missing",
+            refreshed_url,
+            "managed rollout PR head has not refreshed to the pushed commit; reconcile will retry",
+        )
+    if (provenance := open_pull_commit_provenance(consumer, refreshed_pull, runner)) is not None:
+        return provenance
+    url = refreshed_url
     if consumer.auto_merge and not verification_failure:
-        runner.run(("gh", "pr", "merge", "--repo", consumer.repository, "--auto", "--squash", url), check=False)
+        runner.run(
+            (
+                "gh",
+                "pr",
+                "merge",
+                "--repo",
+                consumer.repository,
+                "--auto",
+                "--squash",
+                "--match-head-commit",
+                pushed_head_sha,
+                url,
+            ),
+            check=False,
+        )
     if verification_failure:
         return Outcome(consumer, "blocked", url, "consumer verification failed; PR opened for remediation")
     return Outcome(consumer, "pr-open", url)
