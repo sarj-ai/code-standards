@@ -9,7 +9,7 @@ export default function cloudflareArtifacts(): AstroIntegration {
     name: 'sarj-cloudflare-static-artifacts',
     hooks: {
       'astro:build:done': async ({ dir }) => {
-        const redirects = new Set<string>();
+        const redirects = new Set<string>(['/about / 301', '/about/ / 301']);
         for (const rule of catalog.rules) {
           for (const alias of rule.aliases) {
             const target = ruleHref(rule);
@@ -74,7 +74,7 @@ async function writeContentSecurityPolicyHeader(dir: URL): Promise<void> {
 
   await Promise.all(
     documents.map(async ([path, document]) => {
-      const updated = document.replace(contentSecurityPolicyPattern(), `$1${policy}$3`);
+      const updated = document.replace(contentSecurityPolicyPattern(), '');
       await writeFile(new URL(path, dir), updated, 'utf8');
     }),
   );
