@@ -33,6 +33,10 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         "from .test_api import make_client",
         "import tests.integration.test_api as api_tests",
         "from tests.api_test import make_client",
+        "from tests import test_api",
+        "from . import test_api",
+        "from app.tests import api_test",
+        "def fixture():\n    from tests.test_api import make_client",
     ],
 )
 def test_reports_imports_from_test_modules(source: str) -> None:
@@ -51,8 +55,6 @@ def test_reports_imports_from_test_modules(source: str) -> None:
         "from app.testing import test_client",
         "from tests.helpers import test_client",
         "from pytest import test_api",
-        "from tests import test_api",
-        "from . import test_api",
     ],
 )
 def test_allows_dedicated_support_modules(source: str) -> None:
@@ -61,3 +63,21 @@ def test_allows_dedicated_support_modules(source: str) -> None:
 
 def test_ignores_imports_outside_conftest() -> None:
     assert _check("from tests.test_api import make_client", "tests/test_other.py") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'pytest_plugins = "tests.test_api"',
+        'pytest_plugins = ("tests.fixtures", "tests.integration.api_test")',
+        'pytest_plugins: tuple[str, ...] = [".test_database"]',
+    ],
+)
+def test_reports_test_modules_registered_as_pytest_plugins(source: str) -> None:
+    [finding] = _check(source)
+    assert finding.code == "SARJ426"
+    assert "pytest plugin" in finding.message
+
+
+def test_allows_dedicated_support_modules_registered_as_pytest_plugins() -> None:
+    assert _check('pytest_plugins = ("tests.fixtures.database", "tests.support.api")') == []

@@ -572,7 +572,7 @@ export function createConfig(options = {}) {
         {
           selector: "variable",
           modifiers: ["const", "global"],
-          format: ["UPPER_CASE"],
+          format: ["UPPER_CASE", "PascalCase"],
           leadingUnderscore: "allow",
         },
         {
@@ -887,7 +887,7 @@ export function createConfig(options = {}) {
       // plugin's own `configs.strict` does not. Each rule's measurements live in
       // the paired tests, which its `meta.docs.url` points at.
       //
-      "@sarj/zod-naming-convention": "error",
+      "@sarj/require-pascal-case-zod-schema-name": "warn",
       "@sarj/require-assert-never": "error",
       "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",
@@ -1072,7 +1072,7 @@ export function createConfig(options = {}) {
         {
           selector: "variable",
           modifiers: ["const", "global"],
-          format: ["UPPER_CASE"],
+          format: ["UPPER_CASE", "PascalCase"],
           leadingUnderscore: "allow",
         },
         {

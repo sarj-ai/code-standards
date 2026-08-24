@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_GEN_RANDOM_UUID_RE = re.compile(r"\bgen_random_uuid\s*\(", re.IGNORECASE)
+_RANDOM_UUID_RE = re.compile(r"\b(?:gen_random_uuid|uuid_generate_v4)\s*\(", re.IGNORECASE)
 
 # Require SQL structure so prose that merely names the function stays valid.
 _SQL_SHAPE_RE = re.compile(
@@ -32,32 +32,35 @@ _SQL_SHAPE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_BUILDS_UUIDV7_RE = re.compile(
-    r"\buuid_?(?:generate_)?v7\b|\buuid7\b|"
-    r"\b(?:uuid_send|gen_random_bytes|set_byte|get_byte|int8send)\s*\(|"
-    r"\b(?:substring|encode|overlay)\s*\(\s*(?:uuid_send\s*\()?\s*gen_random_uuid",
+_UUIDV7_FUNCTION_RE = re.compile(
+    r"\bCREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:[A-Za-z_][A-Za-z0-9_]*\.)?"
+    r"(?:uuid_?(?:generate_)?v7|uuid7)\s*\(",
     re.IGNORECASE,
 )
 
+_UUIDV7_BUILDERS = frozenset({"encode", "get_byte", "int8send", "overlay", "set_byte", "substring", "uuid_send"})
+
 _MESSAGE = (
-    "`gen_random_uuid()` generates a random UUIDv4 — use `uuidv7()` (Postgres 18) "
+    "Random UUIDv4 generation in SQL — use `uuidv7()` (Postgres 18) "
     "so keys are time-ordered and inserts append to the index's right edge "
     "instead of scattering across every leaf page."
 )
 
 
 @final
-class NoGenRandomUuidInSql(Rule):
-    id: str = "no-gen-random-uuid-in-sql"
+class NoRandomUuidInSql(Rule):
+    id: str = "no-random-uuid-in-sql"
     code: str = "SARJ053"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Embedded SQL calls gen_random_uuid() instead of uuidv7().",
+        summary="Embedded SQL generates a random UUIDv4 instead of a time-ordered UUIDv7.",
         rationale="Random UUIDv4 primary keys scatter inserts across B-tree pages; UUIDv7 keys preserve time ordering.",
         remediation="Use uuidv7() where the supported PostgreSQL version provides it.",
         category=RuleCategory.PERFORMANCE,
+        aliases=("no-gen-random-uuid-in-sql",),
         limitations=(
             "Detection covers SQL-shaped Python string literals after masking SQL comments and quoted values.",
-            "Known UUIDv7 compatibility implementations that internally call gen_random_uuid() are excluded.",
+            "PostgreSQL gen_random_uuid() and uuid-ossp uuid_generate_v4() are covered.",
+            "Known UUIDv7 compatibility functions and calls nested inside UUIDv7 bit-building helpers are excluded per occurrence.",
         ),
         examples=(
             RuleExample(
@@ -116,6 +119,34 @@ class NoGenRandomUuidInSql(Rule):
 
 def _is_offending_sql(value: str) -> bool:
     masked = strip_sql_noise(value)
-    if not (_GEN_RANDOM_UUID_RE.search(masked) and _SQL_SHAPE_RE.search(masked)):
+    matches = tuple(_RANDOM_UUID_RE.finditer(masked))
+    if not matches or not _SQL_SHAPE_RE.search(masked):
         return False
-    return not _BUILDS_UUIDV7_RE.search(masked)
+    if _UUIDV7_FUNCTION_RE.search(masked):
+        return False
+    return any(not _inside_uuidv7_builder(masked, match.start()) for match in matches)
+
+
+def _inside_uuidv7_builder(sql: str, position: int) -> bool:
+    calls: list[str | None] = []
+    index = 0
+    while index < position:
+        if sql[index].isalpha() or sql[index] == "_":
+            end = index + 1
+            while end < position and (sql[end].isalnum() or sql[end] == "_"):
+                end += 1
+            after = end
+            while after < position and sql[after].isspace():
+                after += 1
+            if after < position and sql[after] == "(":
+                calls.append(sql[index:end].lower())
+                index = after + 1
+                continue
+            index = end
+            continue
+        if sql[index] == "(":
+            calls.append(None)
+        elif sql[index] == ")" and calls:
+            calls.pop()
+        index += 1
+    return any(call in _UUIDV7_BUILDERS for call in calls)

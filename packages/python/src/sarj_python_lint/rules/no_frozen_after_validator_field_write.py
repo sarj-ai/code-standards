@@ -48,7 +48,7 @@ class NoFrozenAfterValidatorFieldWrite(Rule):
         limitations=(
             (
                 "The rule checks direct public fields on direct Pydantic `BaseModel` subclasses configured with "
-                "literal `ConfigDict(frozen=True)`."
+                "literal `ConfigDict(frozen=True)`, a literal model_config dictionary, or `frozen=True` as a class argument."
             ),
             (
                 "It detects direct assignment, annotated assignment, augmented assignment, and tuple or list "
@@ -154,13 +154,46 @@ def _is_frozen_direct_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
                     configs.append(statement.value)
             case _:
                 pass
-    if len(configs) != 1 or not isinstance(configs[0], ast.Call):
+    if len(configs) > 1:
         return False
-    call = configs[0]
-    return imports.resolves(call.func, sources=_PYDANTIC_CONFIG_SOURCES, symbol="ConfigDict") and any(
-        keyword.arg == "frozen" and isinstance(keyword.value, ast.Constant) and keyword.value.value is True
-        for keyword in call.keywords
-    )
+    values = {
+        value
+        for keyword in node.keywords
+        if keyword.arg == "frozen"
+        if (value := _literal_bool(keyword.value)) is not None
+    }
+    if configs and (value := _model_config_frozen(configs[0], imports)) is not None:
+        values.add(value)
+    # Conflicting or repeated configuration channels are deliberately left to
+    # Pydantic; the effective precedence is not safe to infer syntactically.
+    return values == {True}
+
+
+def _model_config_frozen(node: ast.expr, imports: ImportIndex) -> bool | None:
+    if isinstance(node, ast.Call) and imports.resolves(
+        node.func, sources=_PYDANTIC_CONFIG_SOURCES, symbol="ConfigDict"
+    ):
+        values = [
+            value
+            for keyword in node.keywords
+            if keyword.arg == "frozen"
+            if (value := _literal_bool(keyword.value)) is not None
+        ]
+        return values[0] if len(values) == 1 else None
+    if isinstance(node, ast.Dict) and all(key is not None for key in node.keys):
+        values = [
+            value
+            for key, raw_value in zip(node.keys, node.values, strict=True)
+            if isinstance(key, ast.Constant)
+            and key.value == "frozen"
+            and (value := _literal_bool(raw_value)) is not None
+        ]
+        return values[0] if len(values) == 1 else None
+    return None
+
+
+def _literal_bool(node: ast.expr) -> bool | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, bool) else None
 
 
 def _direct_public_fields(node: ast.ClassDef, imports: ImportIndex) -> frozenset[str]:

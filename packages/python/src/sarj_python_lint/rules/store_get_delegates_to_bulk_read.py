@@ -25,8 +25,8 @@ if TYPE_CHECKING:
 
 
 _BULK_NAMES = frozenset({"get_by_ids", "get_many"})
-_BRANCH_NODES = (ast.If, ast.IfExp, ast.Match, ast.Try, ast.TryStar)
 _PAIR_SIZE = 2
+_DISTINCT_SINGLETON_MARKERS = frozenset({"cache", "cached", "lock", "locked", "mutex", "semaphore"})
 
 
 class _MethodPair(NamedTuple):
@@ -39,27 +39,33 @@ class _BulkResultTypes(NamedTuple):
     value: ast.expr
 
 
+class _KeyContract(NamedTuple):
+    shared: tuple[tuple[str, ast.expr], ...]
+    key: ast.expr
+
+
 @final
-class GetDelegatesToGetMany(Rule):
-    id = "get-delegates-to-get-many"
+class StoreGetDelegatesToBulkRead(Rule):
+    id = "store-get-delegates-to-bulk-read"
     code = "SARJ421"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Require compatible singleton store reads to delegate to their bulk implementation.",
+        summary="Compatible store `get` methods must delegate to the class's bulk read.",
         rationale=(
             "Independent singleton and bulk queries can drift in filtering, row conversion, authorization, "
             "and missing-row behavior while maintaining two database access paths."
         ),
         remediation=(
-            "Implement `get` through the compatible `get_many([key])` or `get_by_ids([key])` method and "
-            "project its documented zero-or-one result."
+            "Implement `get` through the compatible bulk method with a one-key collection and project its "
+            "documented zero-or-one result."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only concrete methods declared together in a production store module are inspected.",
-            "The methods must have one typed key, a list result for get_many or dict result for get_by_ids, and the same sync shape.",
-            "Branching singleton implementations are excluded because caching, locking, validation, or authorization may differ intentionally.",
+            "The methods must have matching typed context parameters, compatible key/result types, and the same sync shape.",
+            "Singleton implementations with explicit cache or lock identifiers are excluded because their access path differs intentionally.",
         ),
+        aliases=("get-delegates-to-get-many",),
         examples=(
             RuleExample(
                 example_id="duplicate-singleton-query",
@@ -117,7 +123,11 @@ class GetDelegatesToGetMany(Rule):
             if pair is None:
                 continue
             singleton, bulk = pair
-            if _has_branch(singleton) or _calls_method(singleton, bulk.name) or _calls_method(bulk, "get"):
+            if (
+                _has_distinct_singleton_access(singleton)
+                or _calls_method(singleton, bulk.name)
+                or _calls_method(bulk, "get")
+            ):
                 continue
             diagnostics.append(
                 Diagnostic(
@@ -126,9 +136,9 @@ class GetDelegatesToGetMany(Rule):
                     col=singleton.col_offset + 1,
                     code=self.code,
                     message=(
-                        f"This store defines compatible `get` and `{bulk.name}` methods; implement `get` through "
-                        f"`{bulk.name}([key])` so singleton and bulk reads share one contract, or document why "
-                        "their semantics differ."
+                        f"This store defines compatible `get` and `{bulk.name}` methods; call `{bulk.name}` with "
+                        "a one-key collection so singleton and bulk reads share one contract, or add an exact "
+                        "SARJ421 suppression explaining why their semantics differ."
                     ),
                     severity=Severity.ERROR,
                 )
@@ -147,11 +157,15 @@ def _compatible_pair(
     singleton, bulk = singletons[0], bulks[0]
     if isinstance(singleton, ast.AsyncFunctionDef) is not isinstance(bulk, ast.AsyncFunctionDef):
         return None
-    singleton_key = _single_key_annotation(singleton)
-    bulk_key = _bulk_key_annotation(bulk)
+    singleton_contract = _singleton_key_contract(singleton)
+    bulk_contract = _bulk_key_contract(bulk)
     singleton_value = _nullable_value(singleton.returns)
-    bulk_types = _bulk_result_types(bulk.returns, bulk.name)
-    if singleton_key is None or bulk_key is None or singleton_value is None or bulk_types is None:
+    bulk_types = _bulk_result_types(bulk.returns)
+    if singleton_contract is None or bulk_contract is None or singleton_value is None or bulk_types is None:
+        return None
+    singleton_key = singleton_contract.key
+    bulk_key = bulk_contract.key
+    if not _same_shared_contract(singleton_contract.shared, bulk_contract.shared):
         return None
     result_key, result_value = bulk_types
     if ast.dump(singleton_key, include_attributes=False) != ast.dump(bulk_key, include_attributes=False):
@@ -185,19 +199,34 @@ def _is_concrete(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     )
 
 
-def _single_key_annotation(method: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.expr | None:
+def _positional_contract(method: ast.FunctionDef | ast.AsyncFunctionDef) -> _KeyContract | None:
     if method.args.posonlyargs or method.args.vararg or method.args.kwarg or method.args.kwonlyargs:
         return None
-    if len(method.args.args) != _PAIR_SIZE or method.args.defaults:
+    if len(method.args.args) < _PAIR_SIZE or method.args.defaults:
         return None
-    self_arg, key_arg = method.args.args
+    self_arg, *parameters = method.args.args
     if self_arg.arg not in {"self", "cls"}:
         return None
-    return key_arg.annotation
+    *shared, key_arg = parameters
+    if key_arg.annotation is None:
+        return None
+    shared_contract: list[tuple[str, ast.expr]] = []
+    for parameter in shared:
+        if parameter.annotation is None:
+            return None
+        shared_contract.append((parameter.arg, parameter.annotation))
+    return _KeyContract(tuple(shared_contract), key_arg.annotation)
 
 
-def _bulk_key_annotation(method: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.expr | None:
-    annotation = _single_key_annotation(method)
+def _singleton_key_contract(method: ast.FunctionDef | ast.AsyncFunctionDef) -> _KeyContract | None:
+    return _positional_contract(method)
+
+
+def _bulk_key_contract(method: ast.FunctionDef | ast.AsyncFunctionDef) -> _KeyContract | None:
+    contract = _positional_contract(method)
+    if contract is None:
+        return None
+    annotation = contract.key
     if isinstance(annotation, ast.Subscript) and _qualified_name(annotation.value) in {
         "List",
         "Sequence",
@@ -205,8 +234,16 @@ def _bulk_key_annotation(method: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.
         "typing.List",
         "typing.Sequence",
     }:
-        return annotation.slice
+        return _KeyContract(contract.shared, annotation.slice)
     return None
+
+
+def _same_shared_contract(singleton: tuple[tuple[str, ast.expr], ...], bulk: tuple[tuple[str, ast.expr], ...]) -> bool:
+    return len(singleton) == len(bulk) and all(
+        singleton_name == bulk_name
+        and ast.dump(singleton_type, include_attributes=False) == ast.dump(bulk_type, include_attributes=False)
+        for (singleton_name, singleton_type), (bulk_name, bulk_type) in zip(singleton, bulk, strict=True)
+    )
 
 
 def _nullable_value(annotation: ast.expr | None) -> ast.expr | None:
@@ -220,15 +257,14 @@ def _nullable_value(annotation: ast.expr | None) -> ast.expr | None:
     return None
 
 
-def _bulk_result_types(annotation: ast.expr | None, name: str) -> _BulkResultTypes | None:
+def _bulk_result_types(annotation: ast.expr | None) -> _BulkResultTypes | None:
     if not isinstance(annotation, ast.Subscript):
         return None
     base = _qualified_name(annotation.value)
-    if name == "get_many" and base in {"List", "list", "typing.List"}:
+    if base in {"List", "list", "typing.List"}:
         return _BulkResultTypes(None, annotation.slice)
     if (
-        name == "get_by_ids"
-        and base in {"Dict", "dict", "typing.Dict"}
+        base in {"Dict", "Mapping", "dict", "typing.Dict", "typing.Mapping"}
         and isinstance(annotation.slice, ast.Tuple)
         and len(annotation.slice.elts) == _PAIR_SIZE
     ):
@@ -236,8 +272,21 @@ def _bulk_result_types(annotation: ast.expr | None, name: str) -> _BulkResultTyp
     return None
 
 
-def _has_branch(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return any(isinstance(node, _BRANCH_NODES) for node in _method_nodes(method))
+def _has_distinct_singleton_access(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(
+        part in _DISTINCT_SINGLETON_MARKERS
+        for node in _method_nodes(method)
+        for name in _identifier_parts(node)
+        for part in name.lower().split("_")
+    )
+
+
+def _identifier_parts(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        return (node.attr,)
+    return ()
 
 
 def _calls_method(

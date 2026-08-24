@@ -6,18 +6,18 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rule_base import is_suppressed
-from sarj_python_lint.rules.no_gen_random_uuid_in_sql import NoGenRandomUuidInSql
+from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 
 
 if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
-_PUBLIC_EXAMPLES = NoGenRandomUuidInSql.public_examples()
+_PUBLIC_EXAMPLES = NoRandomUuidInSql.public_examples()
 
 
 def _check(source: str, path: Path = Path("svc/app/store.py")) -> list[Diagnostic]:
-    return NoGenRandomUuidInSql().check(path, source)
+    return NoRandomUuidInSql().check(path, source)
 
 
 @pytest.mark.parametrize(
@@ -28,7 +28,7 @@ def _check(source: str, path: Path = Path("svc/app/store.py")) -> list[Diagnosti
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
 
-    findings = NoGenRandomUuidInSql().check(Path(focus.path), focus.source)
+    findings = NoRandomUuidInSql().check(Path(focus.path), focus.source)
 
     assert len(findings) == example.expected_count
 
@@ -63,6 +63,10 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         pytest.param(
             'SQL = "CREATE TABLE t (id UUID DEFAULT gen_random_uuid ())"\n',
             id="space-before-paren",
+        ),
+        pytest.param(
+            'SQL = "CREATE TABLE t (id UUID DEFAULT uuid_generate_v4())"\n',
+            id="uuid-ossp-v4",
         ),
         pytest.param(
             'SQL = """\nCREATE TABLE t (\n  id UUID DEFAULT gen_random_uuid()\n)\n"""\n',
@@ -123,6 +127,16 @@ def test_allows(source: str):
 
 def test_flags_once_per_literal_not_once_per_occurrence():
     src = 'SQL = "CREATE TABLE t (a UUID DEFAULT gen_random_uuid(), b UUID DEFAULT gen_random_uuid())"\n'
+    assert len(_check(src)) == 1
+
+
+def test_uuidv7_elsewhere_does_not_excuse_a_random_uuid_call():
+    src = 'SQL = "SELECT uuidv7(); SELECT gen_random_uuid()"\n'
+    assert len(_check(src)) == 1
+
+
+def test_builder_exemption_is_per_random_uuid_occurrence():
+    src = 'SQL = "SELECT set_byte(uuid_send(gen_random_uuid()), 6, 112); SELECT gen_random_uuid()"\n'
     assert len(_check(src)) == 1
 
 

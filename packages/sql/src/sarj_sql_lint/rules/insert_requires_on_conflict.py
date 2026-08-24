@@ -15,7 +15,6 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     dollar_quoted_lines,
     is_dump_file,
-    is_postgres_migration,
     mask_sql,
     split_statements,
 )
@@ -87,38 +86,48 @@ def _select_filters_existing_target(statement: str) -> bool:
 
 @final
 class InsertRequiresOnConflict(Rule):
-    id = "insert-requires-on-conflict"
+    id = "insert-requires-replay-policy"
     code = "SARJ105"
     documentation = RuleDocumentation(
-        summary="INSERT without ON CONFLICT — migration data writes must be idempotent upserts.",
-        rationale="A retried seed migration can duplicate rows or fail on a uniqueness constraint when an insert has no replay behavior.",
-        remediation="Add ON CONFLICT with an explicit DO NOTHING or DO UPDATE action.",
+        summary="Every INSERT must declare replay-safe upsert behavior or explicitly document intentional insert-only semantics.",
+        rationale=(
+            "Retries happen in migrations, jobs, commands, and application requests. An INSERT with no declared "
+            "conflict behavior can duplicate state or turn a safe retry into a uniqueness failure."
+        ),
+        remediation=(
+            "Prefer ON CONFLICT with an explicit DO NOTHING or DO UPDATE action. If duplicate failure is the "
+            "intended contract, add an exact SARJ105 suppression on the INSERT line explaining why."
+        ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
-        limitations=("Only PostgreSQL migration paths and explicitly marked PostgreSQL migrations are checked.",),
+        aliases=("insert-requires-on-conflict",),
+        limitations=(
+            "Developer-authored SQL files are checked regardless of path; database dumps are excluded.",
+            "Known PostgreSQL, MySQL, and SQLite upsert forms and a target-specific NOT EXISTS replay guard are recognized.",
+        ),
         examples=(
             RuleExample(
-                example_id="non-idempotent-seed-insert",
-                title="Seed insert without conflict handling",
+                example_id="insert-without-replay-policy",
+                title="Insert without declared replay behavior",
                 outcome=ExampleOutcome.MATCH,
                 files=(
-                    ExampleFile.sql("supabase/migrations/001_seed.sql", "INSERT INTO plan (name) VALUES ('free');\n"),
+                    ExampleFile.sql("queries/create_plan.sql", "INSERT INTO plan (name) VALUES ('free');\n"),
                 ),
-                focus_path=PurePosixPath("supabase/migrations/001_seed.sql"),
+                focus_path=PurePosixPath("queries/create_plan.sql"),
                 expected_count=1,
                 public=True,
             ),
             RuleExample(
-                example_id="idempotent-seed-insert",
-                title="Seed insert with conflict handling",
+                example_id="insert-with-replay-policy",
+                title="Upsert declares its conflict behavior",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(
-                        "supabase/migrations/001_seed.sql",
+                        "queries/create_plan.sql",
                         "INSERT INTO plan (name) VALUES ('free') ON CONFLICT (name) DO NOTHING;\n",
                     ),
                 ),
-                focus_path=PurePosixPath("supabase/migrations/001_seed.sql"),
+                focus_path=PurePosixPath("queries/create_plan.sql"),
                 expected_count=0,
                 public=True,
             ),
@@ -128,7 +137,7 @@ class InsertRequiresOnConflict(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path) or not is_postgres_migration(path, source):
+        if is_dump_file(source, path):
             return []
 
         masked = mask_sql(source)
@@ -158,8 +167,8 @@ class InsertRequiresOnConflict(Rule):
                     col=col,
                     code=self.code,
                     message=(
-                        "Data writes in migrations must be idempotent upserts — "
-                        "add `ON CONFLICT ... DO UPDATE` (or `DO NOTHING`)."
+                        "INSERT has no replay policy; add explicit upsert conflict behavior, or an exact SARJ105 "
+                        "suppression explaining why insert-only failure semantics are intentional."
                     ),
                 )
             )

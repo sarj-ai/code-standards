@@ -19,7 +19,7 @@ export const MODULE_CONSTANT_NAMING_OPTIONS = [
   {
     selector: "variable",
     modifiers: ["const", "global"],
-    format: ["UPPER_CASE"],
+    format: ["UPPER_CASE", "PascalCase"],
     leadingUnderscore: "allow",
   },
 ];

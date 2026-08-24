@@ -3,7 +3,7 @@ import textwrap
 
 import pytest
 
-from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
+from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
 from sarj_python_lint.rules.repeated_static_call_cases import RepeatedStaticCallCases
 
 
@@ -130,7 +130,7 @@ def test_skips_generated_non_test_and_malformed_files() -> None:
     assert _check("def test_broken(") == []
 
 
-def test_duplicate_test_body_takes_precedence() -> None:
+def test_repeated_test_body_rule_takes_precedence() -> None:
     source = textwrap.dedent(
         """
         def test_parse_primary():
@@ -146,7 +146,7 @@ def test_duplicate_test_body_takes_precedence() -> None:
     )
 
     diagnostics = [
-        *DuplicateTestBody().check(TEST_PATH, source),
+        *NoRepeatedTestBody().check(TEST_PATH, source),
         *RepeatedStaticCallCases().check(TEST_PATH, source),
     ]
 

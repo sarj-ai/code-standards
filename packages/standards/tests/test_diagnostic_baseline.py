@@ -29,13 +29,18 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _manifest(path: str | None = None) -> Manifest:
+def _manifest(
+    path: str | None = None,
+    *,
+    verify_paths: tuple[str, ...] = (".",),
+) -> Manifest:
     return Manifest(
         version=api.__version__,
         configs=(),
         python_dest=".",
         typescript_dest=".",
         hook_manager="none",
+        verify_paths=verify_paths,
         diagnostic_baseline=path,
     )
 
@@ -66,16 +71,16 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     assert [item.code for item in raw_again.diagnostics] == ["SARJ052"]
 
 
-def test_terraform_test_ban_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
+def test_mocked_terraform_test_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
     source = tmp_path / "routing.tftest.json"
-    source.write_text("{}\n", encoding="utf-8")
+    source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
 
     new_source = tmp_path / "new-routing.tftest.json"
-    new_source.write_text("{}\n", encoding="utf-8")
+    new_source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
     policy = api.Standards(tmp_path).analyze([str(source), str(new_source)])
 
     assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.json"]
@@ -626,15 +631,7 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
         ),
         encoding="utf-8",
     )
-    adopted = Manifest(
-        version=api.__version__,
-        configs=(),
-        python_dest=".",
-        typescript_dest=".",
-        hook_manager="none",
-        verify_paths=("src", "test"),
-        diagnostic_baseline=baseline_path.name,
-    )
+    adopted = _manifest(baseline_path.name, verify_paths=("src", "test"))
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
@@ -669,7 +666,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
 ) -> None:
     source = tmp_path / "iac" / "bootstrap.tftest.hcl"
     source.parent.mkdir()
-    source.write_text('run "bootstrap" {}\n', encoding="utf-8")
+    source.write_text('mock_provider "aws" {}\n', encoding="utf-8")
     (tmp_path / "src").mkdir()
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     subprocess.run(("git", "add", "iac/bootstrap.tftest.hcl"), cwd=tmp_path, check=True)
@@ -683,23 +680,15 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
         ),
         encoding="utf-8",
     )
-    adopted = Manifest(
-        version=api.__version__,
-        configs=(),
-        python_dest=".",
-        typescript_dest=".",
-        hook_manager="none",
-        verify_paths=("src",),
-        diagnostic_baseline=baseline_path.name,
-    )
+    adopted = _manifest(baseline_path.name, verify_paths=("src",))
     (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     finding = Diagnostic(
         "SARJ206",
-        "Terraform native test file",
-        Severity.ERROR,
+        "Terraform mock provider oracle",
+        Severity.WARNING,
         "sarj-iac-lint",
         Location("iac/bootstrap.tftest.hcl"),
-        rule_id="no-terraform-test-file",
+        rule_id="no-mocked-terraform-test-oracle",
         fingerprint="d" * 64,
     )
     captured: list[object] = []
@@ -722,7 +711,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
                 "--output",
                 str(baseline_path),
                 "--rule",
-                "sarj-iac-lint:no-terraform-test-file",
+                    "sarj-iac-lint:no-mocked-terraform-test-oracle",
             ]
         )
         == 0

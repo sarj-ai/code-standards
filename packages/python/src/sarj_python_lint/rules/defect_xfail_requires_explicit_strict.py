@@ -38,7 +38,7 @@ _GITHUB_ISSUE_RE = re.compile(r"https?://github\.com/[^/\s]+/[^/\s]+/issues/\d+\
 _NONDETERMINISM_RE = re.compile(r"intermittent|flak|sometimes|non-?deterministic|varies", re.IGNORECASE)
 
 # Sibling markers that declare a nondeterministic dependency.
-_NONDETERMINISTIC_MARKERS = frozenset({"real_llm", "flaky", "network", "integration"})
+_NONDETERMINISTIC_MARKERS = frozenset({"real_llm", "flaky", "network"})
 
 # Hypothesis' entry point.
 _PROPERTY_DECORATORS = frozenset({"given"})
@@ -53,19 +53,23 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _PYTESTMARK = "pytestmark"
 
 
-class DefectXfailRequiresStrict(Rule):
-    id: str = "defect-xfail-requires-strict"
+class DefectXfailRequiresExplicitStrict(Rule):
+    id: str = "defect-xfail-requires-explicit-strict"
     code: str = "SARJ046"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Bug-pinning `xfail` without `strict=True` — an XPASS reports as a pass and the pin rots.",
-        rationale="A non-strict defect pin stays green after the defect is fixed, leaving stale coverage and markers behind.",
+        summary="Defect-pinning `xfail` must explicitly set `strict=True` so an XPASS cannot silently pass.",
+        rationale=(
+            "A defect pin that relies on pytest's configurable strictness default can stay green after the defect is "
+            "fixed, leaving stale coverage and markers behind. Local strictness keeps the invariant attached to the pin."
+        ),
         remediation="Set `strict=True` so an unexpected pass fails and prompts removal of the obsolete marker.",
         category=RuleCategory.TESTING,
-        aliases=("xfail-requires-strict",),
+        aliases=("defect-xfail-requires-strict", "xfail-requires-strict"),
         limitations=(
             "Only markers resolved through an unambiguous pytest or pytest.mark import are analyzed.",
             "Only xfail reasons that explicitly identify a defect are analyzed.",
-            "Nondeterministic, property-based, integration, network, and environment-gated tests are excluded.",
+            "Nondeterministic, property-based, network, environment-gated, run=False, and statically disabled pins are excluded.",
+            "Repository-level strict_xfail / xfail_strict configuration is intentionally not consulted: defect pins remain locally explicit.",
         ),
         examples=(
             RuleExample(
@@ -134,6 +138,7 @@ def _rotting_bug_pins(tree: ast.Module, imports: ImportIndex) -> list[ast.Call]:
             hits.extend(_rotting_markers(node.decorator_list, imports))
     for node in nodes(tree, *_FUNC_NODES):
         hits.extend(_rotting_markers(node.decorator_list, imports))
+        hits.extend(_rotting_param_markers(node.decorator_list, imports))
     return hits
 
 
@@ -141,6 +146,18 @@ def _rotting_markers(markers: list[ast.expr], imports: ImportIndex) -> list[ast.
     if _has_nondeterministic_marker(markers, imports):
         return []
     return [marker for marker in markers if isinstance(marker, ast.Call) and _is_rotting_xfail(marker, imports)]
+
+
+def _rotting_param_markers(decorators: list[ast.expr], imports: ImportIndex) -> list[ast.Call]:
+    if _has_nondeterministic_marker(decorators, imports):
+        return []
+    return [
+        nested
+        for decorator in decorators
+        if _pytest_marker_name(decorator, imports) == _PARAMETRIZE_ATTR
+        for nested in walk(decorator)
+        if isinstance(nested, ast.Call) and nested is not decorator and _is_rotting_xfail(nested, imports)
+    ]
 
 
 def _module_pytest_markers(tree: ast.Module, imports: ImportIndex) -> list[ast.expr]:
@@ -191,7 +208,7 @@ def _pytest_marker_name(dec: ast.expr, imports: ImportIndex) -> str | None:
 def _is_rotting_xfail(dec: ast.expr, imports: ImportIndex) -> bool:
     if not isinstance(dec, ast.Call) or _pytest_marker_name(dec, imports) != _XFAIL:
         return False
-    if _is_strict(dec) or _is_environment_gated(dec):
+    if _is_strict(dec) or _cannot_xpass(dec) or _is_environment_gated(dec):
         return False
     reason = _reason_text(dec)
     if reason is None or _NONDETERMINISM_RE.search(reason):
@@ -233,6 +250,15 @@ def _is_strict(dec: ast.Call) -> bool:
         if kw.arg == "strict":
             return not (isinstance(kw.value, ast.Constant) and kw.value.value is False)
     return False
+
+
+def _cannot_xpass(dec: ast.Call) -> bool:
+    for kw in dec.keywords:
+        if kw.arg == "run" and isinstance(kw.value, ast.Constant) and kw.value.value is False:
+            return True
+        if kw.arg == "condition" and isinstance(kw.value, ast.Constant) and kw.value.value is False:
+            return True
+    return bool(dec.args and isinstance(dec.args[0], ast.Constant) and dec.args[0].value is False)
 
 
 def _reason_text(dec: ast.Call) -> str | None:

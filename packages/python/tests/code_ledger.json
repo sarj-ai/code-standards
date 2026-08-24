@@ -22,7 +22,10 @@
   "SARJ017": "no-fstring-in-log",
   "SARJ018": "store-insert-requires-on-conflict",
   "SARJ019": "no-query-with-many-joins",
-  "SARJ020": "no-aggregation-in-store-query",
+  "SARJ020": [
+    "no-aggregation-in-store-query",
+    "no-analytical-aggregation-in-postgres-store"
+  ],
   "SARJ021": "no-select-star",
   "SARJ022": [
     "single-public-export",
@@ -55,11 +58,18 @@
     "opaque-parametrize-case-needs-id"
   ],
   "SARJ043": null,
-  "SARJ044": "fixture-returns-bare-tuple",
-  "SARJ045": "kwarg-heavy-construction-in-test",
+  "SARJ044": [
+    "fixture-returns-bare-tuple",
+    "pytest-fixture-returns-bare-tuple"
+  ],
+  "SARJ045": [
+    "kwarg-heavy-construction-in-test",
+    "repeated-kwarg-heavy-call-in-test"
+  ],
   "SARJ046": [
     "xfail-requires-strict",
-    "defect-xfail-requires-strict"
+    "defect-xfail-requires-strict",
+    "defect-xfail-requires-explicit-strict"
   ],
   "SARJ047": null,
   "SARJ048": "no-first-party-private-import",
@@ -67,8 +77,8 @@
   "SARJ050": "redundant-docstring",
   "SARJ051": "trailing-value-narration",
   "SARJ052": "no-stdlib-logging",
-  "SARJ053": "no-gen-random-uuid-in-sql",
-  "SARJ054": "no-file-level-escape-hatch-noqa",
+  "SARJ053": "no-random-uuid-in-sql",
+  "SARJ054": "no-file-level-escape-hatch-suppression",
   "SARJ055": null,
   "SARJ056": "no-optional-tenant-predicate",
   "SARJ057": "no-tautological-expect",
@@ -80,7 +90,10 @@
   "SARJ063": null,
   "SARJ064": "trivially-true-assertion",
   "SARJ065": null,
-  "SARJ066": "duplicate-test-body",
+  "SARJ066": [
+    "duplicate-test-body",
+    "no-repeated-test-body"
+  ],
   "SARJ067": "unused-mock-setup",
   "SARJ068": "prefer-fstring-over-concat",
   "SARJ069": "prefer-match-pattern-destructuring",
@@ -98,7 +111,10 @@
   "SARJ081": "prefer-walrus-regex-match",
   "SARJ082": "prefer-non-nullable-collection",
   "SARJ083": "no-implicit-attribute-access",
-  "SARJ084": "duplicated-override-docstring",
+  "SARJ084": [
+    "duplicated-override-docstring",
+    "no-copied-inherited-docstring"
+  ],
   "SARJ085": "redundant-class-docstring",
   "SARJ086": "docstring-args-restate-signature",
   "SARJ087": "docstring-returns-restate-signature",
@@ -108,7 +124,10 @@
   "SARJ091": "no-long-comment",
   "SARJ092": "no-typed-doc-sections",
   "SARJ093": "prefer-nominal-id-types",
-  "SARJ094": "fastapi-openapi-contract",
+  "SARJ094": [
+    "fastapi-openapi-contract",
+    "fastapi-explicit-openapi-contract"
+  ],
   "SARJ095": "no-hidden-constructor-fallback",
   "SARJ096": "prefer-immutable-module-constant",
   "SARJ097": "prefer-self-documenting-constant",
@@ -119,7 +138,10 @@
   "SARJ402": "source-coupled-test",
   "SARJ404": "no-unique-violation-message-match",
   "SARJ405": "no-apirouter-root-trailing-slash",
-  "SARJ407": "created-at-order-requires-tiebreaker",
+  "SARJ407": [
+    "created-at-order-requires-tiebreaker",
+    "timestamp-order-requires-tiebreaker"
+  ],
   "SARJ408": "negative-only-http-status-assertion",
   "SARJ409": "production-derived-test-cases",
   "SARJ410": "uncontrolled-randomness-in-test",
@@ -133,11 +155,16 @@
   "SARJ418": "require-pydantic-ordinal-lower-bound",
   "SARJ419": "no-vague-suppression-description",
   "SARJ420": "no-unnecessary-docstring",
-  "SARJ421": "get-delegates-to-get-many",
+  "SARJ421": [
+    "get-delegates-to-get-many",
+    "store-get-delegates-to-bulk-read"
+  ],
   "SARJ422": "prefer-one-for-required-row",
   "SARJ423": "no-redundant-literal-description",
   "SARJ424": "require-nodecode-for-splitting-settings-field",
   "SARJ425": "no-nested-pydantic-field-validator",
   "SARJ426": "no-conftest-test-module-import",
-  "SARJ427": "no-fastapi-on-event"
+  "SARJ427": "no-fastapi-on-event",
+  "SARJ428": "fakes-in-shared-location",
+  "SARJ429": "no-raw-connection-in-tests"
 }

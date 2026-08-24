@@ -1,54 +1,13 @@
 from __future__ import annotations
 
-import io
-import json
 from pathlib import Path
-import tarfile
 from typing import NamedTuple
 
 import pytest
 
-from sarj_standards.libs.release import ProcessResult, pack_typescript, run_typescript_release
+from sarj_standards.libs.release import pack_typescript, run_typescript_release
 
-
-class FakeRunner:
-    package_root: Path
-    npm_12_manifest: bool
-
-    def __init__(self, package_root: Path, *, npm_12_manifest: bool = False) -> None:
-        self.package_root = package_root
-        self.npm_12_manifest = npm_12_manifest
-        self.calls: list[tuple[str, ...]] = []
-
-    def __call__(
-        self,
-        argv: tuple[str, ...],
-        *,
-        cwd: Path,
-        capture_output: bool = False,
-    ) -> ProcessResult:
-        del capture_output
-        assert cwd == self.package_root
-        self.calls.append(argv)
-        if argv[:2] != ("npm", "pack"):
-            return ProcessResult(0)
-        destination = Path(argv[-1])
-        archive = destination / "example-1.0.0.tgz"
-        contents = b"export {};"
-        with tarfile.open(archive, "w:gz") as package:
-            license_info = tarfile.TarInfo("package/LICENSE")
-            license_info.size = 3
-            package.addfile(license_info, io.BytesIO(b"MIT"))
-            manifest = b'{"name":"example","version":"1.0.0"}'
-            manifest_info = tarfile.TarInfo("package/package.json")
-            manifest_info.size = len(manifest)
-            package.addfile(manifest_info, io.BytesIO(manifest))
-            info = tarfile.TarInfo("package/dist/index.js")
-            info.size = len(contents)
-            package.addfile(info, io.BytesIO(contents))
-        artifact = {"filename": archive.name, "files": [{"path": "dist/index.js"}]}
-        report = {"example": artifact} if self.npm_12_manifest else [artifact]
-        return ProcessResult(0, f"build output\n{json.dumps(report)}\n")
+from .fakes import FakeTypescriptReleaseRunner as FakeRunner
 
 
 class _PackageFixture(NamedTuple):

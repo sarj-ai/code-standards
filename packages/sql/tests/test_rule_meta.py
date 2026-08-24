@@ -39,6 +39,8 @@ def test_historical_aliases_are_documentation_only() -> None:
 
     assert aliases["no-limit-offset"] == "no-offset-pagination"
     assert aliases["add-constraint-not-valid"] == "add-constraint-requires-not-valid"
+    assert aliases["insert-requires-on-conflict"] == "insert-requires-replay-policy"
+    assert aliases["no-create-trigger"] == "no-database-triggers"
     assert set(aliases).isdisjoint(REGISTRY)
 
 

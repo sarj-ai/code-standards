@@ -187,7 +187,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   );
 
   it.each(CONFIG_FACTORIES)(
-    "%s requires module constants to use UPPER_CASE without renaming function APIs",
+    "%s accepts type-like PascalCase module constants while rejecting camelCase values",
     async (_name, createConfig) => {
       const eslint = new ESLint({
         cwd: NESTED_MONOREPO_DIR,
@@ -203,7 +203,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       );
 
       expect(namingMessages?.map((message) => message.message)).toEqual([
-        "Variable name `moduleMetadata` must match one of the following formats: UPPER_CASE",
+        "Variable name `moduleMetadata` must match one of the following formats: UPPER_CASE, PascalCase",
       ]);
     },
   );

@@ -92,7 +92,7 @@ class NoHiddenConstructorFallback(Rule):
         remediation="Require the constructor argument and resolve any default at the composition root or call site.",
         category=RuleCategory.ARCHITECTURE,
         limitations=(
-            "Detection requires a proven local settings provider, a keyword-only optional parameter, and a first-party composition call.",
+            "Detection requires a proven local settings provider, an optional parameter defaulting to None, and a first-party composition call.",
             "Tests, generated files, migrations, descriptors, library environment fallbacks, and unconstructed classes are excluded.",
         ),
         examples=(
@@ -223,9 +223,15 @@ def _hidden_parameters(
     init: ast.FunctionDef | ast.AsyncFunctionDef,
     resolver: _RuntimeConfigResolver,
 ) -> list[_HiddenParameter]:
+    positional = (*init.args.posonlyargs, *init.args.args)
+    defaulted_positional = positional[-len(init.args.defaults) :] if init.args.defaults else ()
+    positional_defaults = zip(defaulted_positional, init.args.defaults, strict=True)
     candidates = {
         parameter.arg: parameter
-        for parameter, default in zip(init.args.kwonlyargs, init.args.kw_defaults, strict=True)
+        for parameter, default in (
+            *positional_defaults,
+            *zip(init.args.kwonlyargs, init.args.kw_defaults, strict=True),
+        )
         if isinstance(default, ast.Constant) and default.value is None
     }
     if not candidates:
@@ -237,9 +243,12 @@ def _hidden_parameters(
     # executes. Seed the resolver with that complete scope so a branch-local
     # `settings = ...` cannot be mistaken for the imported settings object.
     shadowed = set(_scope_bindings(init))
+    receiver = positional[0].arg if positional else None
     for statement in init.body:
         available = candidates.keys() - rebound
-        for name, uses_boolean_or in _statement_fallbacks(statement, available, resolver, shadowed).items():
+        for name, uses_boolean_or in _statement_fallbacks(
+            statement, available, resolver, shadowed, receiver
+        ).items():
             hidden[name] = hidden.get(name, False) or uses_boolean_or
         rebound.update(_directly_bound_names(statement) & candidates.keys())
         shadowed.update(_directly_bound_names(statement))
@@ -251,6 +260,7 @@ def _statement_fallbacks(
     candidates: set[str],
     resolver: _RuntimeConfigResolver,
     shadowed: set[str],
+    receiver: str | None,
 ) -> dict[str, bool]:
     if isinstance(statement, ast.Assign):
         return _expression_fallbacks(statement.value, candidates, resolver, shadowed)
@@ -263,9 +273,13 @@ def _statement_fallbacks(
         return {}
     body = statement.body[0]
     if isinstance(body, ast.Assign):
-        value = body.value if len(body.targets) == 1 and _is_name(body.targets[0], parameter) else None
+        value = (
+            body.value
+            if len(body.targets) == 1 and _is_fallback_target(body.targets[0], parameter, receiver)
+            else None
+        )
     elif isinstance(body, ast.AnnAssign):
-        value = body.value if _is_name(body.target, parameter) else None
+        value = body.value if _is_fallback_target(body.target, parameter, receiver) else None
     else:
         value = None
     return {parameter: False} if value is not None and resolver.is_runtime_config(value, shadowed) else {}
@@ -357,6 +371,15 @@ def _target_names(target: ast.expr) -> set[str]:
 
 def _is_name(expression: ast.expr, name: str) -> bool:
     return isinstance(expression, ast.Name) and expression.id == name
+
+
+def _is_fallback_target(expression: ast.expr, parameter: str, receiver: str | None) -> bool:
+    return _is_name(expression, parameter) or (
+        receiver is not None
+        and isinstance(expression, ast.Attribute)
+        and expression.attr == parameter
+        and _is_name(expression.value, receiver)
+    )
 
 
 @final

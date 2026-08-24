@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rule_base import is_suppressed
-from sarj_python_lint.rules.no_file_level_escape_hatch_noqa import (
-    ESCAPE_HATCH_CODES,
-    NoFileLevelEscapeHatchNoqa,
+from sarj_python_lint.rules.no_file_level_escape_hatch_suppression import (
+    ESCAPE_HATCH_SELECTORS,
+    NoFileLevelEscapeHatchSuppression,
 )
 
 
@@ -16,11 +16,11 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
-_PUBLIC_EXAMPLES = NoFileLevelEscapeHatchNoqa.public_examples()
+_PUBLIC_EXAMPLES = NoFileLevelEscapeHatchSuppression.public_examples()
 
 
 def _check(source: str) -> list[Diagnostic]:
-    return NoFileLevelEscapeHatchNoqa().check(Path("svc/tests/test_thing.py"), source)
+    return NoFileLevelEscapeHatchSuppression().check(Path("svc/tests/test_thing.py"), source)
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def _check(source: str) -> list[Diagnostic]:
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
 
-    findings = NoFileLevelEscapeHatchNoqa().check(Path(focus.path), focus.source)
+    findings = NoFileLevelEscapeHatchSuppression().check(Path(focus.path), focus.source)
 
     assert len(findings) == example.expected_count
 
@@ -58,6 +58,23 @@ def test_flags_file_level_escape_hatch_exemption(source: str):
     assert "TID251" in diags[0].message
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("# ruff: file-ignore[TID251]\nimport os\n", id="code"),
+        pytest.param("# ruff: file-ignore[banned-api]\nimport os\n", id="preferred-rule-name"),
+        pytest.param("# RUFF: FILE-IGNORE[ BANNED-API ]\nimport os\n", id="case-and-spacing"),
+        pytest.param("# ruff: file-ignore[E501, banned-api]\nimport os\n", id="second-in-list"),
+        pytest.param("# ruff: file-ignore[banned-api, E501]\nimport os\n", id="first-in-list"),
+        pytest.param("# ruff: file-ignore[TID251, banned-api]\nimport os\n", id="aliases-deduplicate"),
+    ],
+)
+def test_flags_modern_file_ignore_escape_hatch(source: str):
+    diags = _check(source)
+    assert len(diags) == 1
+    assert diags[0].code == "SARJ054"
+
+
 def test_message_points_at_the_inline_form():
     diags = _check("# ruff: noqa: TID251\nimport os\n")
     assert "# noqa: TID251 — " in diags[0].message
@@ -78,6 +95,11 @@ def test_message_points_at_the_inline_form():
         pytest.param("# ruff: isort: skip_file\nimport os\n", id="other-ruff-directive"),
         pytest.param("# TID251 is banned at file level\nimport os\n", id="prose-naming-the-code"),
         pytest.param("# ruff: noqa: TID2510\nimport os\n", id="longer-code-with-the-same-prefix"),
+        pytest.param("# ruff: file-ignore[E501]\nimport os\n", id="modern-mechanical-rule"),
+        pytest.param("# ruff: file-ignore: TID251\nimport os\n", id="invalid-colon-file-ignore"),
+        pytest.param("# ruff: file-ignore[TID]\nimport os\n", id="invalid-code-prefix"),
+        pytest.param("# ruff: file-ignore[banned-api-extra]\nimport os\n", id="longer-name-with-the-same-prefix"),
+        pytest.param("# ruff: disable[banned-api]\nimport os\n# ruff: enable[banned-api]\n", id="balanced-range"),
     ],
 )
 def test_allows(source: str):
@@ -112,10 +134,10 @@ def test_sarj_noqa_for_another_rule_does_not_suppress_the_hatch():
 
 def test_escape_hatch_set_is_exactly_the_banned_api_code():
     # The set is derived from ruff.strict.toml's banned-api messages, which are the only ones instructing an inline reasoned suppression.
-    assert frozenset({"TID251"}) == ESCAPE_HATCH_CODES
+    assert frozenset({"TID251", "BANNED-API"}) == ESCAPE_HATCH_SELECTORS
 
 
 def test_owns_scoped_ruff_hatch_while_ruff_owns_the_bare_blanket():
     src = "# ruff: noqa\n# ruff: noqa: TID251\nimport os\n"
     path = Path("svc/app/thing.py")
-    assert [d.line for d in NoFileLevelEscapeHatchNoqa().check(path, src)] == [2]
+    assert [d.line for d in NoFileLevelEscapeHatchSuppression().check(path, src)] == [2]

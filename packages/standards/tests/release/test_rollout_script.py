@@ -14,36 +14,11 @@ from sarj_standards.libs.adoption import doctor as adoption_doctor
 from sarj_standards.libs.adoption import manifest as adoption_manifest
 from sarj_standards.libs.release import rollout
 
+from .fakes import FakeRolloutRunner as FakeRunner
+
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-
-
-@final
-class FakeRunner:
-    def __init__(self, responses: list[tuple[int, str]] | None = None) -> None:
-        self.responses: list[tuple[int, str]] = list(responses or [])
-        self.commands: list[tuple[str, ...]] = []
-        self.environments: list[Mapping[str, str] | None] = []
-        self.working_directories: list[Path | None] = []
-
-    def run(
-        self,
-        command: Sequence[str],
-        *,
-        cwd: Path | None = None,
-        check: bool = True,
-        env: Mapping[str, str] | None = None,
-    ) -> subprocess.CompletedProcess[str]:
-        rendered = tuple(command)
-        self.commands.append(rendered)
-        self.environments.append(env)
-        self.working_directories.append(cwd)
-        returncode, stdout = self.responses.pop(0) if self.responses else (0, "")
-        result = subprocess.CompletedProcess(rendered, returncode, stdout, "")
-        if check and returncode:
-            raise subprocess.CalledProcessError(returncode, rendered, output=stdout)
-        return result
 
 
 def consumer() -> rollout.Consumer:

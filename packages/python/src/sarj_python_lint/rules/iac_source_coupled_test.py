@@ -33,7 +33,8 @@ class IacSourceCoupledTest(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Test asserts on raw IaC source text instead of a parsed plan, provider state, or runtime behavior.",
         rationale=(
-            "Substring and regex checks can pass on comments, formatting, or unreachable Terraform configuration while clients fail silently."
+            "Substring and regex checks can pass on comments, formatting, or unreachable Terraform configuration "
+            "without proving the plan or deployed behavior."
         ),
         remediation="Parse rendered plan JSON, query the provider, or exercise the deployed runtime contract.",
         category=RuleCategory.TESTING,
@@ -45,7 +46,7 @@ class IacSourceCoupledTest(Rule):
         examples=(
             RuleExample(
                 example_id="rendered-plan-contract",
-                title="Assert on rendered Terraform plan behavior",
+                title="Assert on structured Terraform plan behavior",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(

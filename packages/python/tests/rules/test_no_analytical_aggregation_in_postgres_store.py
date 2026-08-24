@@ -3,16 +3,16 @@ from pathlib import Path
 import pytest
 
 from sarj_python_lint.rule_base import Diagnostic, RuleExample, is_suppressed
-from sarj_python_lint.rules.no_aggregation_in_store_query import (
-    NoAggregationInStoreQuery,
+from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
+    NoAnalyticalAggregationInPostgresStore,
 )
 
 
 def _check(source: str, filename: str = "call_store.py") -> list[Diagnostic]:
-    return NoAggregationInStoreQuery().check(Path(filename), source)
+    return NoAnalyticalAggregationInPostgresStore().check(Path(filename), source)
 
 
-_PUBLIC_EXAMPLES = NoAggregationInStoreQuery.public_examples()
+_PUBLIC_EXAMPLES = NoAnalyticalAggregationInPostgresStore.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
@@ -200,6 +200,10 @@ def test_flags_count_with_a_window_signal() -> None:
     assert len(_check('q = "SELECT COUNT(*) OVER () FROM account"\n')) == 1
 
 
+def test_flags_count_with_an_aggregate_filter() -> None:
+    assert len(_check('q = "SELECT COUNT(*) FILTER (WHERE active) FROM account"\n')) == 1
+
+
 # Positive: standard Postgres aggregate surfaces.
 
 
@@ -214,6 +218,16 @@ def test_flags_count_with_a_window_signal() -> None:
         pytest.param('q = "SELECT STRING_AGG(name, %s) FROM call"\n', id="string-agg"),
         pytest.param('q = "SELECT JSON_AGG(payload) FROM call"\n', id="json-agg"),
         pytest.param('q = "SELECT JSONB_AGG(payload) FROM call"\n', id="jsonb-agg"),
+        pytest.param('q = "SELECT BOOL_AND(active) FROM account"\n', id="bool-and"),
+        pytest.param('q = "SELECT EVERY(active) FROM account"\n', id="every"),
+        pytest.param('q = "SELECT STDDEV_POP(latency) FROM call"\n', id="stddev"),
+        pytest.param('q = "SELECT VAR_SAMP(latency) FROM call"\n', id="variance"),
+        pytest.param('q = "SELECT CORR(x, y) FROM call"\n', id="correlation"),
+        pytest.param('q = "SELECT COVAR_POP(x, y) FROM call"\n', id="covariance"),
+        pytest.param('q = "SELECT REGR_SLOPE(y, x) FROM call"\n', id="regression"),
+        pytest.param('q = "SELECT PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY latency) FROM call"\n', id="percentile"),
+        pytest.param('q = "SELECT RANGE_AGG(active_range) FROM booking"\n', id="range-agg"),
+        pytest.param('q = "SELECT XMLAGG(payload) FROM event"\n', id="xmlagg"),
     ],
 )
 def test_standard_aggregates_are_flagged(source: str) -> None:
@@ -222,6 +236,11 @@ def test_standard_aggregates_are_flagged(source: str) -> None:
 
 def test_having_without_an_aggregate_is_not_flagged() -> None:
     assert _check('q = "SELECT org FROM call HAVING x > 1"\n') == []
+
+
+def test_allows_distinct_on_row_selection() -> None:
+    source = 'q = "SELECT DISTINCT ON (org_id) id FROM call ORDER BY org_id, created_at DESC"\n'
+    assert _check(source) == []
 
 
 # Negative: false-positive guards — substrings, column names, and Python
@@ -523,25 +542,10 @@ def test_diagnostic_metadata() -> None:
     assert "sarj-noqa: SARJ020" in d.message
 
 
-# Adversarial: Postgres-flavored SQL that overlaps with BigQuery vocabulary but
-# is NOT a BQ signal (DATE_TRUNC excluded by docstring; DISTINCT ON is a
-# Postgres-only extension) must STILL fire.
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param(
-            "q = \"SELECT DATE_TRUNC('day', ts), SUM(amount) FROM call GROUP BY 1\"\n",
-            id="date-trunc-excluded-from-bq-signals",
-        ),
-        pytest.param(
-            'q = "SELECT DISTINCT ON (org_id) * FROM call ORDER BY org_id, ts"\n',
-            id="distinct-on-is-postgres-only",
-        ),
-    ],
-)
-def test_postgres_overlapping_vocab_still_fires(source: str) -> None:
+# Adversarial: DATE_TRUNC overlaps with BigQuery vocabulary but is not enough
+# to prove a BigQuery query, so the PostgreSQL aggregation must still fire.
+def test_postgres_overlapping_vocab_still_fires() -> None:
+    source = "q = \"SELECT DATE_TRUNC('day', ts), SUM(amount) FROM call GROUP BY 1\"\n"
     assert len(_check(source)) == 1
 
 

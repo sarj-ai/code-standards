@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules.defect_xfail_requires_strict import DefectXfailRequiresStrict
+from sarj_python_lint.rules.defect_xfail_requires_explicit_strict import DefectXfailRequiresExplicitStrict
 
 
 if TYPE_CHECKING:
@@ -14,10 +14,10 @@ TEST_PATH = "python/app/tests/test_known_auth_bugs_xfail.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
-    return DefectXfailRequiresStrict().check(Path(path), source)
+    return DefectXfailRequiresExplicitStrict().check(Path(path), source)
 
 
-_PUBLIC_EXAMPLES = DefectXfailRequiresStrict.public_examples()
+_PUBLIC_EXAMPLES = DefectXfailRequiresExplicitStrict.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
@@ -192,13 +192,45 @@ def test_thing():
     assert _check(src) == []
 
 
-@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network", "integration"])
+@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network"])
 def test_nondeterministic_sibling_marker_is_exempt(marker: str):
     src = f"""
 import pytest
 
 @pytest.mark.{marker}
 @pytest.mark.xfail(reason="BUG: the model sometimes answers in English")
+def test_thing():
+    assert correct()
+"""
+    assert _check(src) == []
+
+
+def test_integration_marker_does_not_hide_a_deterministic_defect_pin() -> None:
+    src = """
+import pytest
+
+@pytest.mark.integration
+@pytest.mark.xfail(reason="BUG: wrong response envelope")
+def test_thing():
+    assert correct()
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        '@pytest.mark.xfail(False, reason="BUG: dormant defect pin")',
+        '@pytest.mark.xfail(condition=False, reason="BUG: dormant defect pin")',
+        '@pytest.mark.xfail(reason="BUG: interpreter crash", run=False)',
+    ],
+    ids=["false-positional-condition", "false-keyword-condition", "does-not-run"],
+)
+def test_marker_that_cannot_xpass_does_not_require_strict(marker: str) -> None:
+    src = f"""
+import pytest
+
+{marker}
 def test_thing():
     assert correct()
 """
@@ -299,7 +331,7 @@ class TestEnvelope:
     assert diagnostics[0].line == 4
 
 
-@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network", "integration"])
+@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network"])
 def test_class_level_nondeterministic_sibling_exempts_bug_pin(marker: str) -> None:
     src = f"""
 import pytest
@@ -334,7 +366,7 @@ def test_get():
     assert len(_check(src)) == 1
 
 
-@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network", "integration"])
+@pytest.mark.parametrize("marker", ["real_llm", "flaky", "network"])
 def test_module_pytestmark_nondeterministic_sibling_exempts_bug_pin(marker: str) -> None:
     src = f"""import pytest
 
@@ -417,13 +449,28 @@ def test_thing():
     assert _check(src) == []
 
 
-def test_xfail_used_as_pytest_param_marker_is_exempt():
+def test_xfail_used_as_pytest_param_marker_requires_strict():
     src = """
 import pytest
 
 @pytest.mark.parametrize(
     "value",
     [pytest.param("bad", marks=pytest.mark.xfail(reason="BUG: wrong envelope"))],
+)
+def test_thing(value):
+    assert correct(value)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_nondeterministic_test_exempts_nested_pytest_param_xfail() -> None:
+    src = """
+import pytest
+
+@pytest.mark.real_llm
+@pytest.mark.parametrize(
+    "value",
+    [pytest.param("bad", marks=pytest.mark.xfail(reason="BUG: model sometimes chooses wrong"))],
 )
 def test_thing(value):
     assert correct(value)

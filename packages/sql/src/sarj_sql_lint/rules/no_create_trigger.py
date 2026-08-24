@@ -27,15 +27,19 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_CREATE_TRIGGER = re.compile(r"\bCREATE\s+(?:(?:OR\s+REPLACE|CONSTRAINT)\s+)?TRIGGER\b", re.IGNORECASE | re.DOTALL)
+_INTRODUCE_TRIGGER = re.compile(
+    r"\b(?:CREATE\s+(?:(?:OR\s+REPLACE|CONSTRAINT)\s+)?TRIGGER|"
+    r"ALTER\s+TABLE\s+[^;]+?\s+ENABLE\s+(?:(?:ALWAYS|REPLICA)\s+)?TRIGGER)\b",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 @final
 class NoCreateTrigger(Rule):
-    id = "no-create-trigger"
+    id = "no-database-triggers"
     code = "SARJ114"
     documentation = RuleDocumentation(
-        summary="This project keeps database behavior explicit instead of introducing PostgreSQL triggers.",
+        summary="Keep behavioral logic in application code, not database triggers.",
         rationale=(
             "Under a single-writer application architecture, triggers hide writes and state transitions from "
             "engineers reading application code and make the behavior difficult to exercise through ordinary "
@@ -43,16 +47,17 @@ class NoCreateTrigger(Rule):
         ),
         remediation=(
             "Use a declarative database constraint where possible or explicit transactional application behavior; "
-            "suppress this policy when an approved database-owned invariant requires a trigger."
+            "use an exact SARJ114 suppression when an approved database-owned invariant requires a trigger."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "PostgreSQL CREATE TRIGGER and CREATE CONSTRAINT TRIGGER statements are reported.",
+            "PostgreSQL CREATE TRIGGER, CREATE CONSTRAINT TRIGGER, and ALTER TABLE ENABLE TRIGGER statements are reported.",
             "This is an organization-specific single-writer architecture policy, not a claim that triggers are invalid.",
             "Dump files and non-PostgreSQL dialects are excluded.",
             "Generated migrations report against their owning model when one can be identified.",
         ),
+        aliases=("no-create-trigger",),
         examples=(
             RuleExample(
                 example_id="postgres-trigger",
@@ -95,7 +100,7 @@ class NoCreateTrigger(Rule):
         diagnostics: list[Diagnostic] = []
         for statement in split_statements(mask_sql(source)):
             text = "\n".join(fragment for _, fragment in statement)
-            match = _CREATE_TRIGGER.search(text)
+            match = _INTRODUCE_TRIGGER.search(text)
             if match is None:
                 continue
             line, col = locate(statement, match.start())
@@ -107,7 +112,8 @@ class NoCreateTrigger(Rule):
                     code=self.code,
                     message=(
                         "Project architecture keeps database behavior explicit; use a declarative constraint or "
-                        "transactional application behavior, or suppress for an approved database-owned invariant."
+                        "transactional application behavior, or add an exact SARJ114 suppression for an approved "
+                        "database-owned invariant."
                     ),
                 )
             )

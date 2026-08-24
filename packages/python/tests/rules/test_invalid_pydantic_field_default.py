@@ -41,6 +41,104 @@ def test_checks_bytes_length_bounds() -> None:
     assert "min_length" in findings[0].message
 
 
+def test_checks_direct_default_against_local_annotated_alias() -> None:
+    source = """
+        from typing import Annotated
+        from pydantic import BaseModel, Field
+
+        NonEmptyStr = Annotated[str, Field(min_length=1)]
+
+        class Model(BaseModel):
+            name: NonEmptyStr = ""
+    """
+
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert "min_length" in findings[0].message
+
+
+def test_merges_annotated_and_assignment_field_bounds() -> None:
+    source = """
+        from typing import Annotated
+        from pydantic import BaseModel, Field
+
+        Ratio = Annotated[float, Field(ge=0.0)]
+
+        class Model(BaseModel):
+            ratio: Ratio = Field(default=1.5, le=1.0)
+    """
+
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert "le=1.0" in findings[0].message
+
+
+def test_checks_default_embedded_in_annotated_field() -> None:
+    source = """
+        from typing import Annotated
+        from pydantic import BaseModel, Field
+
+        class Model(BaseModel):
+            attempts: Annotated[int, Field(default=0, gt=0)]
+    """
+
+    assert len(_check(source)) == 1
+
+
+def test_checks_direct_none_default_without_field_call() -> None:
+    source = """
+        from pydantic import BaseModel
+
+        class Model(BaseModel):
+            name: str = None
+    """
+
+    assert len(_check(source)) == 1
+
+
+def test_follows_unique_imported_annotated_alias(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "types.py").write_text(
+        "from typing import Annotated\nfrom pydantic import Field\nNonEmptyStr = Annotated[str, Field(min_length=1)]\n",
+        encoding="utf-8",
+    )
+    source = """
+        from pydantic import BaseModel
+        from app.types import NonEmptyStr
+
+        class Model(BaseModel):
+            name: NonEmptyStr = ""
+    """
+
+    findings = _check(source, str(package / "models.py"))
+
+    assert len(findings) == 1
+    assert "min_length" in findings[0].message
+
+
+def test_imported_annotated_alias_with_valid_default_is_clean(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "types.py").write_text(
+        "from typing import Annotated\nfrom pydantic import Field\nNonEmptyStr = Annotated[str, Field(min_length=1)]\n",
+        encoding="utf-8",
+    )
+    source = """
+        from pydantic import BaseModel
+        from app.types import NonEmptyStr
+
+        class Model(BaseModel):
+            name: NonEmptyStr = "ready"
+    """
+
+    assert _check(source, str(package / "models.py")) == []
+
+
 @pytest.mark.parametrize(
     ("source", "message"),
     [

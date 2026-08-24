@@ -21,37 +21,48 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# These codes require inline, reasoned suppressions rather than file-wide escape hatches.
-ESCAPE_HATCH_CODES = frozenset({"TID251"})
+# These selectors require inline, reasoned suppressions rather than file-wide
+# escape hatches. Ruff's preview suppression syntax prefers rule names, while
+# its legacy noqa syntax accepts the code.
+ESCAPE_HATCH_SELECTORS = frozenset({"TID251", "BANNED-API"})
 
 # Matched as ruff accepts a file-level scoped suppression: case-insensitive on
 # the directive head, requiring a colon and at least one code (the code-less
 # form is Ruff PGH004's).
-_RUFF_SCOPED_NOQA_RE = re.compile(
-    r"^ruff:\s*noqa\s*:\s*(?P<codes>[A-Za-z][A-Za-z0-9]*(?:\s*,\s*[A-Za-z][A-Za-z0-9]*)*)",
+_RUFF_FILE_SUPPRESSION_RE = re.compile(
+    r"^ruff:\s*(?:"
+    r"noqa\s*:\s*(?P<noqa>[A-Za-z][A-Za-z0-9]*(?:\s*,\s*[A-Za-z][A-Za-z0-9]*)*)"
+    r"|file-ignore\s*\[\s*(?P<file_ignore>[A-Za-z][A-Za-z0-9-]*(?:\s*,\s*[A-Za-z][A-Za-z0-9-]*)*)\s*\]"
+    r")",
     re.IGNORECASE,
 )
 
 
 @final
-class NoFileLevelEscapeHatchNoqa(Rule):
-    id: str = "no-file-level-escape-hatch-noqa"
+class NoFileLevelEscapeHatchSuppression(Rule):
+    id: str = "no-file-level-escape-hatch-suppression"
     code: str = "SARJ054"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="File-level Ruff noqa suppresses an escape-hatch rule across the entire file.",
+        summary="File-level Ruff suppression disables an escape-hatch rule across the entire file.",
         rationale="A file-wide suppression silently authorizes future uses that were never reviewed.",
         remediation="Suppress each intentional use inline with the exact code and a reason.",
         category=RuleCategory.MAINTAINABILITY,
+        aliases=("no-file-level-escape-hatch-noqa",),
         limitations=(
-            "Detection covers file-level Ruff noqa directives naming configured escape-hatch codes.",
-            "Inline noqa comments and file-level suppressions for mechanical rules are excluded.",
+            "Detection covers legacy `ruff: noqa: CODE` and modern `ruff: file-ignore[name]` directives naming configured escape-hatch rules.",
+            "Inline noqa comments, balanced Ruff disable/enable ranges, and file-level suppressions for mechanical rules are excluded.",
         ),
         examples=(
             RuleExample(
                 example_id="file-wide-escape-hatch",
                 title="File suppresses every banned API use",
                 outcome=ExampleOutcome.MATCH,
-                files=(ExampleFile.python("app/service.py", "# ruff: noqa: TID251\nimport os\n"),),
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "# ruff: file-ignore[banned-api]\nimport os\n",
+                    ),
+                ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
                 public=True,
@@ -98,17 +109,22 @@ class NoFileLevelEscapeHatchNoqa(Rule):
 def _hatch_codes(comment: Comment) -> tuple[str, ...]:
     if not comment.standalone:
         return ()
-    match = _RUFF_SCOPED_NOQA_RE.match(comment.body)
+    match = _RUFF_FILE_SUPPRESSION_RE.match(comment.body)
     if match is None:
         return ()
-    codes = [code.strip().upper() for code in match["codes"].split(",")]
-    return tuple(code for code in codes if code in ESCAPE_HATCH_CODES)
+    raw_selectors = match["noqa"] or match["file_ignore"]
+    selectors = [selector.strip().upper() for selector in raw_selectors.split(",")]
+    return tuple(
+        dict.fromkeys(
+            "TID251" for selector in selectors if selector in ESCAPE_HATCH_SELECTORS
+        )
+    )
 
 
 def _message(codes: tuple[str, ...]) -> str:
     listed = ", ".join(codes)
     return (
-        f"file-level `# ruff: noqa: {listed}` pre-authorizes every future use in "
+        f"file-level Ruff suppression for `{listed}` pre-authorizes every future use in "
         f"this file, including code not written yet — {listed} is an escape "
         f"hatch whose whole value is the per-site reason, so suppress it inline: "
         f"`# noqa: {codes[0]} — <why this boundary needs it>`."

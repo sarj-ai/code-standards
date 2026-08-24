@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import ast
+from http import HTTPStatus
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -26,15 +28,29 @@ if TYPE_CHECKING:
 
 _SERVER_ERROR_MIN = 500
 _SERVER_ERROR_MAX = 599
+_SERVER_ERROR_FAMILY = 5
+_STATUS_FAMILY_DIVISOR = 100
+_RANGE_COMPARISON_COUNT = 2
+_STATUS_CONSTANT_RE = re.compile(r"HTTP_(\d{3})(?:_.+)?")
 
 
 def _int(node: ast.expr) -> int | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
         return node.value
+    name = node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else ""
+    if match := _STATUS_CONSTANT_RE.fullmatch(name):
+        return int(match.group(1))
+    if isinstance(node, ast.Attribute) and (member := HTTPStatus.__members__.get(node.attr)) is not None:
+        return member.value
     return None
 
 
-def _negative_only(compare: ast.Compare) -> bool:
+def _negative_only(node: ast.expr) -> bool:
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not) and isinstance(node.operand, ast.Compare):
+        return _positive_server_error(node.operand)
+    if not isinstance(node, ast.Compare):
+        return False
+    compare = node
     if len(compare.ops) != 1 or len(compare.comparators) != 1:
         return False
     left = compare.left
@@ -42,8 +58,12 @@ def _negative_only(compare: ast.Compare) -> bool:
     op = compare.ops[0]
     match op:
         case ast.NotEq():
-            return (_status_code(left) and _int(right) == _SERVER_ERROR_MIN) or (
-                _int(left) == _SERVER_ERROR_MIN and _status_code(right)
+            return (_status_code(left) and _server_error(right)) or (
+                _server_error(left) and _status_code(right)
+            ) or (
+                _status_family(left) and _int(right) == _SERVER_ERROR_FAMILY
+            ) or (
+                _int(left) == _SERVER_ERROR_FAMILY and _status_family(right)
             )
         case ast.Lt() if _status_code(left):
             return _int(right) == _SERVER_ERROR_MIN
@@ -55,8 +75,55 @@ def _negative_only(compare: ast.Compare) -> bool:
             return False
 
 
+def _positive_server_error(compare: ast.Compare) -> bool:
+    if len(compare.ops) == 1 and len(compare.comparators) == 1:
+        left = compare.left
+        right = compare.comparators[0]
+        match compare.ops[0]:
+            case ast.Eq():
+                return (_status_code(left) and _server_error(right)) or (
+                    _server_error(left) and _status_code(right)
+                )
+            case ast.GtE():
+                return _status_code(left) and _int(right) == _SERVER_ERROR_MIN
+            case ast.Gt():
+                return _status_code(left) and _int(right) == _SERVER_ERROR_MIN - 1
+            case ast.LtE():
+                return _int(left) == _SERVER_ERROR_MIN and _status_code(right)
+            case ast.Lt():
+                return _int(left) == _SERVER_ERROR_MIN - 1 and _status_code(right)
+            case ast.In():
+                return _status_code(left) and _all_server_errors(right)
+            case _:
+                return False
+    if len(compare.ops) != _RANGE_COMPARISON_COUNT or len(compare.comparators) != _RANGE_COMPARISON_COUNT:
+        return False
+    lower, status, upper = compare.left, *compare.comparators
+    return (
+        _int(lower) == _SERVER_ERROR_MIN
+        and _status_code(status)
+        and _int(upper) in {_SERVER_ERROR_MAX, _SERVER_ERROR_MAX + 1}
+        and isinstance(compare.ops[0], ast.LtE)
+        and isinstance(compare.ops[1], (ast.Lt, ast.LtE))
+    )
+
+
 def _status_code(node: ast.expr) -> bool:
     return isinstance(node, ast.Attribute) and node.attr == "status_code"
+
+
+def _status_family(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.BinOp)
+        and isinstance(node.op, ast.FloorDiv)
+        and _status_code(node.left)
+        and _int(node.right) == _STATUS_FAMILY_DIVISOR
+    )
+
+
+def _server_error(node: ast.expr) -> bool:
+    value = _int(node)
+    return value is not None and _SERVER_ERROR_MIN <= value <= _SERVER_ERROR_MAX
 
 
 def _all_server_errors(node: ast.expr) -> bool:
@@ -152,12 +219,12 @@ class NegativeOnlyHttpStatusAssertion(Rule):
                     code=self.code,
                     severity=Severity.ERROR,
                     message=(
-                        "this assertion proves only that the response avoided one server-error shape; assert the "
+                    "this assertion proves only that the response avoided a server-error outcome; assert the "
                         "intended exact status and, when relevant, its domain payload or side effect."
                     ),
                 )
                 for node in _test_nodes(test)
-                if isinstance(node, ast.Assert) and isinstance(node.test, ast.Compare) and _negative_only(node.test)
+                if isinstance(node, ast.Assert) and _negative_only(node.test)
             )
         findings.sort(key=lambda finding: (finding.line, finding.col))
         return findings

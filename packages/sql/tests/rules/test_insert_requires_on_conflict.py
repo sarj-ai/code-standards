@@ -32,7 +32,7 @@ def test_flags_bare_insert():
     src = "INSERT INTO plan (name) VALUES ('free');"
     diags = _check(src)
     assert len(diags) == 1
-    assert "ON CONFLICT" in diags[0].message
+    assert "replay policy" in diags[0].message
 
 
 def test_allows_insert_with_on_conflict_same_line():
@@ -212,7 +212,7 @@ def test_guarded_dollar_quoted_seed_block_is_exempt():
 def test_unguarded_dollar_quoted_insert_still_fires():
     diags = _check(_UNGUARDED_SEED)
     assert len(diags) == 1
-    assert "idempotent upserts" in diags[0].message
+    assert "replay policy" in diags[0].message
 
 
 def test_guard_in_one_block_does_not_excuse_another_block():
@@ -248,8 +248,8 @@ def test_bare_insert_outside_any_dollar_body_still_fires():
     ],
     ids=["query", "testdata", "fixture", "mock", "snapshot"],
 )
-def test_non_migration_and_non_production_sql_are_out_of_scope(path: Path) -> None:
-    assert _check("INSERT INTO plan (name) VALUES ('free');", path) == []
+def test_all_developer_authored_sql_requires_an_explicit_replay_policy(path: Path) -> None:
+    assert len(_check("INSERT INTO plan (name) VALUES ('free');", path)) == 1
 
 
 @pytest.mark.parametrize(
@@ -262,8 +262,8 @@ def test_non_migration_and_non_production_sql_are_out_of_scope(path: Path) -> No
         (Path("migrations/001.sql"), "INSERT INTO plan (name) VALUES ('free');"),
     ],
 )
-def test_ambiguous_or_non_postgres_migrations_are_out_of_scope(path: Path, source: str) -> None:
-    assert _check(source, path) == []
+def test_every_supported_sql_dialect_requires_replay_policy(path: Path, source: str) -> None:
+    assert len(_check(source, path)) == 1
 
 
 @pytest.mark.parametrize(

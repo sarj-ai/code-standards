@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules.duplicate_test_body import DuplicateTestBody
+from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
 from tests.illustrative_examples import illustrative_examples
 
 
@@ -15,13 +15,13 @@ TEST_PATH = "python/app/tests/unit/test_permissions.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
-    return DuplicateTestBody().check(Path(path), source)
+    return NoRepeatedTestBody().check(Path(path), source)
 
 
-@illustrative_examples(DuplicateTestBody)
+@illustrative_examples(NoRepeatedTestBody)
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
-    assert len(DuplicateTestBody().check(Path(focus.path), focus.source)) == example.expected_count
+    assert len(NoRepeatedTestBody().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 # The canonical shape: same three statements, different locals, one literal apart.
@@ -130,7 +130,7 @@ def test_three():
 
 def test_flags_byte_for_byte_duplicates():
     src = next(
-        example for example in DuplicateTestBody.public_examples() if example.example_id == "verbatim-copy"
+        example for example in NoRepeatedTestBody.public_examples() if example.example_id == "verbatim-copy"
     ).focus_file.source
     # A verbatim copy cannot be collapsed into a `parametrize` — there is no varying argument to lift — so the advice has to differ from the ordinary case.
     [diag] = _check(src)

@@ -47,7 +47,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "7.1.16"
+version = "7.1.17"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -477,7 +477,7 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.14.3"
+version = "0.14.4"
 source = { editable = "../iac" }
 
 [package.metadata]
@@ -491,7 +491,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.78.0"
+version = "0.78.1"
 source = { editable = "../python" }
 
 [package.metadata]
@@ -505,7 +505,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.16.1"
+version = "0.16.2"
 source = { editable = "../sql" }
 
 [package.metadata]

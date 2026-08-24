@@ -123,7 +123,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
         return severity !== "error";
       })
       .map(([rule]) => rule);
-    expect(ADVISORY_RULES).toEqual([]);
-    expect(nonErrors).toEqual([]);
+    expect(ADVISORY_RULES).toEqual(["@sarj/require-pascal-case-zod-schema-name"]);
+    expect(nonErrors).toEqual([...ADVISORY_RULES]);
   });
 });

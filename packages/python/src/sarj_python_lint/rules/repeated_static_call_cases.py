@@ -19,7 +19,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._paths import is_generated, is_test_path
-from sarj_python_lint.rules.duplicate_test_body import duplicate_test_owner_ids
+from sarj_python_lint.rules.no_repeated_test_body import duplicate_test_owner_ids
 
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ class RepeatedStaticCallCases(Rule):
             "Only runs of at least three consecutive top-level assertions in collected pytest-style tests are checked.",
             "Calls, inputs, and expectations must be statically representable; unittest classes, zero-argument calls, mocks, snapshots, and intervening prose or setup are excluded.",
             "Common mapping accessors are excluded because repeated field assertions usually describe one cohesive object contract, not independent input cases.",
-            "Tests participating in a duplicate-test-body group are left to SARJ066, which has the broader finding.",
+            "Tests participating in a no-repeated-test-body group are left to SARJ066, which has the broader finding.",
             "Case names and parameter boundaries require judgment, so the rule has no autofix.",
         ),
         examples=(

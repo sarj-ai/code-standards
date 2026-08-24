@@ -1,0 +1,1264 @@
+{
+  "schemaVersion": 1,
+  "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
+  "tasks": [
+    {
+      "task": "rule-audit/iac/no-comment-cruft",
+      "family": "iac",
+      "ruleId": "no-comment-cruft",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/iac/no-dead-environment-input",
+      "family": "iac",
+      "ruleId": "no-dead-environment-input",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/iac/no-environment-conditional",
+      "family": "iac",
+      "ruleId": "no-environment-conditional",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/iac/no-restated-comment",
+      "family": "iac",
+      "ruleId": "no-restated-comment",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/iac/no-mocked-terraform-test-oracle",
+      "family": "iac",
+      "ruleId": "no-mocked-terraform-test-oracle",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/iac/require-deletion-protection",
+      "family": "iac",
+      "ruleId": "require-deletion-protection",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/iac/require-prevent-destroy-on-irreplaceable",
+      "family": "iac",
+      "ruleId": "require-prevent-destroy-on-irreplaceable",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/timestamp-order-requires-tiebreaker",
+      "family": "python",
+      "ruleId": "timestamp-order-requires-tiebreaker",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/defect-xfail-requires-explicit-strict",
+      "family": "python",
+      "ruleId": "defect-xfail-requires-explicit-strict",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/docstring-args-restate-signature",
+      "family": "python",
+      "ruleId": "docstring-args-restate-signature",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/docstring-returns-restate-signature",
+      "family": "python",
+      "ruleId": "docstring-returns-restate-signature",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/no-repeated-test-body",
+      "family": "python",
+      "ruleId": "no-repeated-test-body",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/no-copied-inherited-docstring",
+      "family": "python",
+      "ruleId": "no-copied-inherited-docstring",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration produced 45 inherited-docstring copies, all mechanically confirmed against their resolved local base contract. Broadening retained the same corpus set while targeted cases exposed previously unreachable generic and alias inheritance forms.",
+      "outcome": "Kept the precise renamed ID, normalized wrapping and terminal punctuation before comparison, and added safe resolution for parameterized local bases and simple preceding class aliases. Imported and dynamically constructed bases remain excluded rather than guessed."
+    },
+    {
+      "task": "rule-audit/python/fakes-in-shared-location",
+      "family": "python",
+      "ruleId": "fakes-in-shared-location",
+      "state": "complete",
+      "evidence": "Prior multi-repository AST prototype: 9 findings reviewed, 9 policy violations, 0 false positives; repository dogfood then moved two existing local fakes into shared support.",
+      "outcome": "Promoted raw pygrep into path-aware SARJ428 with lexical class matching, generated-source guards, shared-support exemptions, executable examples, and regression tests."
+    },
+    {
+      "task": "rule-audit/python/fastapi-explicit-openapi-contract",
+      "family": "python",
+      "ruleId": "fastapi-explicit-openapi-contract",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/pytest-fixture-returns-bare-tuple",
+      "family": "python",
+      "ruleId": "pytest-fixture-returns-bare-tuple",
+      "state": "complete",
+      "evidence": "Two-repository AST scan: 2 findings reviewed, 2 positional-record fixture APIs, 0 false positives; Ruff's complete pytest rule catalog has no equivalent fixture-result-shape rule.",
+      "outcome": "Renamed the rule to identify pytest explicitly, corrected its guidance to require attribute-based consumption, added multi-file consumer examples, and exempted PEP 646 variadic tuple annotations."
+    },
+    {
+      "task": "rule-audit/python/store-get-delegates-to-bulk-read",
+      "family": "python",
+      "ruleId": "store-get-delegates-to-bulk-read",
+      "state": "complete",
+      "evidence": "Two-repository AST scan initially produced 0 findings; manual pair discovery found one duplicated singleton/bulk SQL path hidden by three over-narrow guards, and the broadened rule reports that one valid finding.",
+      "outcome": "Renamed the rule around its store boundary, supports matching context parameters and mapping-returning get_many methods, reports ordinary missing-row branches, and retains cache/lock divergence guards."
+    },
+    {
+      "task": "rule-audit/python/iac-source-coupled-test",
+      "family": "python",
+      "ruleId": "iac-source-coupled-test",
+      "state": "complete",
+      "evidence": "Two-repository AST scan produced 1 finding; review identified 1 false positive where a Python module __file__ path was tainted as every source suffix. After source-kind refinement the corpora are clean while labeled IaC cases remain detected.",
+      "outcome": "Restricted runtime __file__/inspect.getfile taint to Python-source scans, preserved IaC paths derived from module directories, clarified the behavioral premise, and added regression coverage for direct and indirect runtime source paths."
+    },
+    {
+      "task": "rule-audit/python/invalid-pydantic-field-default",
+      "family": "python",
+      "ruleId": "invalid-pydantic-field-default",
+      "state": "complete",
+      "evidence": "Two-repository AST scan initially produced 0 findings; targeted Annotated-alias discovery exposed one invalid direct default. The broadened scan reports that 1 reviewed true positive and 0 false positives.",
+      "outcome": "Added direct-default and Annotated Field-contract analysis, bounded unique local-module alias resolution, merged annotation/assignment bounds, modern public examples, and documentation of Pydantic's unvalidated-default behavior."
+    },
+    {
+      "task": "rule-audit/python/repeated-kwarg-heavy-call-in-test",
+      "family": "python",
+      "ruleId": "repeated-kwarg-heavy-call-in-test",
+      "state": "complete",
+      "evidence": "Two-repository AST calibration: the prior nine-keyword threshold found 3/3 valid cases; seven-or-more found 12/12 valid cases. Six-or-more added calls where every argument was the asserted contract, establishing the retained boundary.",
+      "outcome": "Renamed the rule around its actual call-level signal, lowered the threshold from nine to seven explicit keywords, removed the local-helper loophole, and added explicit suppression guidance for all-arguments-under-test cases."
+    },
+    {
+      "task": "rule-audit/python/mock-without-spec",
+      "family": "python",
+      "ruleId": "mock-without-spec",
+      "state": "complete",
+      "evidence": "Two-repository AST calibration found 132 mechanically confirmed unrestricted mock constructions across 14 files. Stratified review covered direct constructors, patch helpers, pytest-mock calls, import fallbacks, recorders, and placeholders; the retained findings all create an unrestricted test double.",
+      "outcome": "Kept the precise rule name, clarified the public contract-rot example, and closed a false-negative where patch(new_callable=Mock/MagicMock/AsyncMock) changed mock behavior without constraining the collaborator API. Unknown concrete replacement factories remain exempt."
+    },
+    {
+      "task": "rule-audit/python/negative-only-http-status-assertion",
+      "family": "python",
+      "ruleId": "negative-only-http-status-assertion",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration found 2/2 reviewed true positives: one endpoint-mount smoke test accepting every non-5xx response and one regression test asserting only that a prior crash did not recur. Broadened syntax retained the same corpus set.",
+      "outcome": "Kept the behavior-specific rule name and broadened detection from literal 500 to every literal, stdlib HTTPStatus, and framework HTTP_5xx constant, status-family arithmetic, negated comparisons, and negated 5xx ranges. Exact client-error and success contracts remain exempt."
+    },
+    {
+      "task": "rule-audit/python/no-analytical-aggregation-in-postgres-store",
+      "family": "python",
+      "ruleId": "no-analytical-aggregation-in-postgres-store",
+      "state": "complete",
+      "evidence": "Three-repository SQL-literal calibration found one operational MIN query in a PostgreSQL queue store. Review confirmed the architecture exception should be explicit at the call site because the result requires transactional freshness; no additional findings appeared after broadening.",
+      "outcome": "Renamed the rule around its actual PostgreSQL analytical boundary, preserved the prior ID as an alias, added PostgreSQL statistical/boolean/range/XML aggregate families and FILTER aggregates, and exempted DISTINCT ON because it selects rows rather than computing an analytical aggregate."
+    },
+    {
+      "task": "rule-audit/python/no-comment-cruft",
+      "family": "python",
+      "ruleId": "no-comment-cruft",
+      "state": "complete",
+      "evidence": "Three-repository token/AST calibration produced 59 findings. Category and targeted-context review confirmed untracked work, decorative section boundaries, mechanical narration, and one statement walkthrough; protected rationales, tracked work, directives, docstrings, and generated code remained clean.",
+      "outcome": "Kept the concise umbrella name, made the summary enumerate the actual policy, tightened banner guidance around named code boundaries, and broadened untracked-work detection from TODO/FIXME to HACK/XXX/BUG. These human work markers are no longer misclassified as machine directives and become valid when linked to a ticket or context URL."
+    },
+    {
+      "task": "rule-audit/python/no-conftest-test-module-import",
+      "family": "python",
+      "ruleId": "no-conftest-test-module-import",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration produced zero findings before and after broadening. Targeted adversarial cases established the missed import forms while preserving support-module, pytest API, and non-conftest imports.",
+      "outcome": "Kept the precise rule name, expanded analysis beyond top-level imports, detected `from tests import test_api` and relative equivalents without treating helper symbols as modules, and added literal pytest_plugins coverage. Dynamically assembled plugin paths remain outside the deterministic boundary."
+    },
+    {
+      "task": "rule-audit/python/no-cors-wildcard-with-credentials",
+      "family": "python",
+      "ruleId": "no-cors-wildcard-with-credentials",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/python/no-duplicate-dunder-all-entry",
+      "family": "python",
+      "ruleId": "no-duplicate-dunder-all-entry",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration produced zero findings before and after broadening. Targeted mutation cases demonstrated deterministic duplicates that the prior declaration-only analysis missed, while dynamic values and destructive or opaque mutations remained excluded.",
+      "outcome": "Kept the exact rule name and extended the static contract through literal __all__.append, extend, and insert operations, reporting the later duplicate at its mutation argument and preserving the original declaration line in the diagnostic."
+    },
+    {
+      "task": "rule-audit/python/no-fastapi-on-event",
+      "family": "python",
+      "ruleId": "no-fastapi-on-event",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration produced zero findings before and after broadening. Targeted flow cases proved router, alias, annotation, and rebinding behavior without inferring factory-returned applications or dynamic event names.",
+      "outcome": "Kept the recognizable FastAPI-centered ID, added APIRouter and Starlette Router contracts, propagated simple application and `.router` aliases, recognized annotated bindings, and made provenance flow-sensitive so a later unrelated rebinding removes the diagnostic."
+    },
+    {
+      "task": "rule-audit/python/no-file-level-escape-hatch-suppression",
+      "family": "python",
+      "ruleId": "no-file-level-escape-hatch-suppression",
+      "state": "complete",
+      "evidence": "Three-repository token calibration produced zero findings before and after broadening. Pinned Ruff probes confirmed that exact `ruff: noqa: TID251`, `ruff: file-ignore[TID251]`, and the preferred `ruff: file-ignore[banned-api]` suppress the protected rule, while selector prefixes, `ALL`, and colon-style file-ignore lookalikes are invalid.",
+      "outcome": "Renamed the rule around file-level suppression rather than legacy noqa syntax, added Ruff's modern name-based file-ignore form, and kept inline suppressions, mechanical rules, invalid lookalikes, and balanced disable/enable ranges outside the diagnostic boundary. The public example now teaches Ruff's canonical modern spelling."
+    },
+    {
+      "task": "rule-audit/python/no-first-party-private-import",
+      "family": "python",
+      "ruleId": "no-first-party-private-import",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration found 45 private first-party imports, all in white-box tests directly coupled to production internals; the other two corpora were clean. Review retained all 45 under the explicit consumer-boundary policy. Literal dynamic-import broadening added no corpus findings, and targeted rebinding cases established the conservative provenance boundary.",
+      "outcome": "Kept the accurate first-party-private-import ID, corrected the summary and remediation to include white-box tests, moved the public example to a production package consumer, and added literal `importlib.import_module` detection for private first-party modules. Only stable stdlib import provenance is accepted; aliases that are rebound, dynamic strings, relative dynamic imports, and third-party loaders remain excluded."
+    },
+    {
+      "task": "rule-audit/python/no-frozen-after-validator-field-write",
+      "family": "python",
+      "ruleId": "no-frozen-after-validator-field-write",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration produced zero findings before and after broadening. Current official Pydantic documentation confirms that model configuration may use ConfigDict, a plain dictionary, or BaseModel class arguments; targeted tests cover all three frozen forms plus conflicting and dynamic configuration exclusions.",
+      "outcome": "Kept the technically exact rule name and added the two documented frozen-model declarations the prior implementation missed: literal model_config dictionaries and `frozen=True` class arguments. Conflicting configuration channels, unpacked or computed dictionaries, inherited config, and ambiguous multiple inheritance remain excluded rather than guessing Pydantic's effective merge semantics."
+    },
+    {
+      "task": "rule-audit/python/no-random-uuid-in-sql",
+      "family": "python",
+      "ruleId": "no-random-uuid-in-sql",
+      "state": "complete",
+      "evidence": "Three-repository embedded-SQL calibration produced zero findings after broadening. Targeted adversarial cases exposed the prior literal-wide UUIDv7 exemption: a separate uuidv7 call or builder expression could hide an unrelated gen_random_uuid call in the same string. Per-occurrence nesting retains legitimate compatibility builders while reporting the unrelated random UUID.",
+      "outcome": "Renamed the rule around its actual random-UUID premise, retained the old hook ID as an alias, added uuid-ossp `uuid_generate_v4()`, and replaced global compatibility heuristics with per-call enclosing-function analysis. UUIDv7 remains the explicit required replacement; genuine UUIDv7 compatibility function definitions stay exempt."
+    },
+    {
+      "task": "rule-audit/python/no-generic-single-export-module",
+      "family": "python",
+      "ruleId": "no-generic-single-export-module",
+      "state": "complete",
+      "evidence": "Three-repository AST calibration produced zero findings before and after broadening. Targeted overload cases demonstrated that counting declarations rather than exported names let one-responsibility utility modules escape, while the expanded exact-stem corpus remained clean.",
+      "outcome": "Kept the precise responsibility-oriented name, expanded the junk-drawer set with the exact `utility` and `utilities` stems, and now counts distinct public definition names so overload declarations remain one export. Constants, type aliases, explicit __all__ surfaces, generated sources, tests, framework conventions, and near-miss stems retain their conservative exemptions."
+    },
+    {
+      "task": "rule-audit/python/no-hidden-constructor-fallback",
+      "family": "python",
+      "ruleId": "no-hidden-constructor-fallback",
+      "state": "complete",
+      "evidence": "Three-repository AST and cross-file calibration produced one finding: a consumer JWT service constructor with four optional arguments falling back to application settings. Review confirmed the full finding as a hidden composition dependency. Broadening retained that single corpus result while targeted cases covered missed positional and direct-field branch forms.",
+      "outcome": "Kept the precise rule name and its strong settings-provider plus first-party-construction gates. Expanded optional-parameter detection from keyword-only arguments to positional-only and positional-or-keyword defaults, and recognized `if option is None: self.option = settings.VALUE` without treating assignments to unrelated fields as the option's fallback."
+    },
+    {
+      "task": "rule-audit/python/no-isinstance-union-chain",
+      "family": "python",
+      "ruleId": "no-isinstance-union-chain",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-long-comment",
+      "family": "python",
+      "ruleId": "no-long-comment",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-nested-pydantic-field-validator",
+      "family": "python",
+      "ruleId": "no-nested-pydantic-field-validator",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-offset-pagination",
+      "family": "python",
+      "ruleId": "no-offset-pagination",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-optional-tenant-predicate",
+      "family": "python",
+      "ruleId": "no-optional-tenant-predicate",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-query-with-many-joins",
+      "family": "python",
+      "ruleId": "no-query-with-many-joins",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-raw-connection-in-tests",
+      "family": "python",
+      "ruleId": "no-raw-connection-in-tests",
+      "state": "complete",
+      "evidence": "Prior multi-repository prototype: 46 findings reviewed, all intentional direct pool access under the opinionated application-boundary policy; unrelated connection() receivers were excluded.",
+      "outcome": "Promoted raw pygrep into provenance-aware SARJ429 with lexical function scoping, explicit pool-type proof, executable examples, and cross-scope false-positive regression coverage."
+    },
+    {
+      "task": "rule-audit/python/no-redundant-literal-description",
+      "family": "python",
+      "ruleId": "no-redundant-literal-description",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-repeated-string-literal",
+      "family": "python",
+      "ruleId": "no-repeated-string-literal",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-restated-comment",
+      "family": "python",
+      "ruleId": "no-restated-comment",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-secret-in-log",
+      "family": "python",
+      "ruleId": "no-secret-in-log",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-select-star",
+      "family": "python",
+      "ruleId": "no-select-star",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-sentinel-return-on-except",
+      "family": "python",
+      "ruleId": "no-sentinel-return-on-except",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-stdlib-logging",
+      "family": "python",
+      "ruleId": "no-stdlib-logging",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-string-concat-in-loop",
+      "family": "python",
+      "ruleId": "no-string-concat-in-loop",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-tautological-expect",
+      "family": "python",
+      "ruleId": "no-tautological-expect",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-typed-doc-sections",
+      "family": "python",
+      "ruleId": "no-typed-doc-sections",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-unique-violation-message-match",
+      "family": "python",
+      "ruleId": "no-unique-violation-message-match",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-unnecessary-docstring",
+      "family": "python",
+      "ruleId": "no-unnecessary-docstring",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/no-vague-suppression-description",
+      "family": "python",
+      "ruleId": "no-vague-suppression-description",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/opaque-parametrize-case-needs-id",
+      "family": "python",
+      "ruleId": "opaque-parametrize-case-needs-id",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/over-mocked-test",
+      "family": "python",
+      "ruleId": "over-mocked-test",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-class-row",
+      "family": "python",
+      "ruleId": "prefer-class-row",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-constant-time-secret-compare",
+      "family": "python",
+      "ruleId": "prefer-constant-time-secret-compare",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-fstring-over-concat",
+      "family": "python",
+      "ruleId": "prefer-fstring-over-concat",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-immutable-module-constant",
+      "family": "python",
+      "ruleId": "prefer-immutable-module-constant",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-library-fake",
+      "family": "python",
+      "ruleId": "prefer-library-fake",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-match-assert-never",
+      "family": "python",
+      "ruleId": "prefer-match-assert-never",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-match-type-dispatch",
+      "family": "python",
+      "ruleId": "prefer-match-type-dispatch",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-module-level-constant",
+      "family": "python",
+      "ruleId": "prefer-module-level-constant",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-namedtuple-over-tuple-return",
+      "family": "python",
+      "ruleId": "prefer-namedtuple-over-tuple-return",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-nominal-id-types",
+      "family": "python",
+      "ruleId": "prefer-nominal-id-types",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-non-nullable-collection",
+      "family": "python",
+      "ruleId": "prefer-non-nullable-collection",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-one-for-required-row",
+      "family": "python",
+      "ruleId": "prefer-one-for-required-row",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-or-pattern",
+      "family": "python",
+      "ruleId": "prefer-or-pattern",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-self-documenting-constant",
+      "family": "python",
+      "ruleId": "prefer-self-documenting-constant",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-self-type-annotation",
+      "family": "python",
+      "ruleId": "prefer-self-type-annotation",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-str-enum",
+      "family": "python",
+      "ruleId": "prefer-str-enum",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-struct-over-namedtuple",
+      "family": "python",
+      "ruleId": "prefer-struct-over-namedtuple",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-timedelta-for-durations",
+      "family": "python",
+      "ruleId": "prefer-timedelta-for-durations",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-walrus-comprehension-filter",
+      "family": "python",
+      "ruleId": "prefer-walrus-comprehension-filter",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-walrus-regex-match",
+      "family": "python",
+      "ruleId": "prefer-walrus-regex-match",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/prefer-walrus-stream-loop",
+      "family": "python",
+      "ruleId": "prefer-walrus-stream-loop",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/preserve-declared-nominal-id",
+      "family": "python",
+      "ruleId": "preserve-declared-nominal-id",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/preserve-enum-types",
+      "family": "python",
+      "ruleId": "preserve-enum-types",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/production-derived-test-cases",
+      "family": "python",
+      "ruleId": "production-derived-test-cases",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/pydantic-at-boundaries",
+      "family": "python",
+      "ruleId": "pydantic-at-boundaries",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/redundant-class-docstring",
+      "family": "python",
+      "ruleId": "redundant-class-docstring",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/redundant-docstring",
+      "family": "python",
+      "ruleId": "redundant-docstring",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/redundant-module-docstring",
+      "family": "python",
+      "ruleId": "redundant-module-docstring",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/repeated-static-call-cases",
+      "family": "python",
+      "ruleId": "repeated-static-call-cases",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/require-keyword-only-swap-prone-params",
+      "family": "python",
+      "ruleId": "require-keyword-only-swap-prone-params",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/require-nodecode-for-splitting-settings-field",
+      "family": "python",
+      "ruleId": "require-nodecode-for-splitting-settings-field",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/require-port-for-service",
+      "family": "python",
+      "ruleId": "require-port-for-service",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/require-pydantic-for-external-json",
+      "family": "python",
+      "ruleId": "require-pydantic-for-external-json",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/require-pydantic-ordinal-lower-bound",
+      "family": "python",
+      "ruleId": "require-pydantic-ordinal-lower-bound",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/require-validated-row-factory",
+      "family": "python",
+      "ruleId": "require-validated-row-factory",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/restated-test-docstring",
+      "family": "python",
+      "ruleId": "restated-test-docstring",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/source-coupled-test",
+      "family": "python",
+      "ruleId": "source-coupled-test",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/sql-requires-injected-pool-owner",
+      "family": "python",
+      "ruleId": "sql-requires-injected-pool-owner",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/stepdown",
+      "family": "python",
+      "ruleId": "stepdown",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/store-insert-requires-on-conflict",
+      "family": "python",
+      "ruleId": "store-insert-requires-on-conflict",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/test-phase-label-comment",
+      "family": "python",
+      "ruleId": "test-phase-label-comment",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/trailing-value-narration",
+      "family": "python",
+      "ruleId": "trailing-value-narration",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/trivially-true-assertion",
+      "family": "python",
+      "ruleId": "trivially-true-assertion",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/uncontrolled-randomness-in-test",
+      "family": "python",
+      "ruleId": "uncontrolled-randomness-in-test",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/python/unused-mock-setup",
+      "family": "python",
+      "ruleId": "unused-mock-setup",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/sql/add-constraint-requires-not-valid",
+      "family": "sql",
+      "ruleId": "add-constraint-requires-not-valid",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/sql/enforce-timestamptz",
+      "family": "sql",
+      "ruleId": "enforce-timestamptz",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/idempotent-ddl",
+      "family": "sql",
+      "ruleId": "idempotent-ddl",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/index-concurrently",
+      "family": "sql",
+      "ruleId": "index-concurrently",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/insert-requires-replay-policy",
+      "family": "sql",
+      "ruleId": "insert-requires-replay-policy",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/no-comment-cruft",
+      "family": "sql",
+      "ruleId": "no-comment-cruft",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/sql/no-database-triggers",
+      "family": "sql",
+      "ruleId": "no-database-triggers",
+      "state": "complete",
+      "evidence": "Three application repositories scanned: 3 findings reviewed, 3 trigger-backed application behaviors, 0 false positives; two repositories had no findings.",
+      "outcome": "Renamed and broadened SARJ114 to cover trigger creation and re-enablement while allowing DROP and DISABLE operations; exact suppressions document approved database-owned invariants."
+    },
+    {
+      "task": "rule-audit/sql/no-offset-pagination",
+      "family": "sql",
+      "ruleId": "no-offset-pagination",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/sql/no-pg-enum",
+      "family": "sql",
+      "ruleId": "no-pg-enum",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/prefer-jsonb",
+      "family": "sql",
+      "ruleId": "prefer-jsonb",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/prefer-text-over-varchar",
+      "family": "sql",
+      "ruleId": "prefer-text-over-varchar",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/prefer-uuidv7-default",
+      "family": "sql",
+      "ruleId": "prefer-uuidv7-default",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/require-fk-index",
+      "family": "sql",
+      "ruleId": "require-fk-index",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/sql/require-lock-timeout",
+      "family": "sql",
+      "ruleId": "require-lock-timeout",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/text/commented-out-config",
+      "family": "text",
+      "ruleId": "commented-out-config",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/config-comment-wall",
+      "family": "text",
+      "ruleId": "config-comment-wall",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/ephemeral-execution-artifact",
+      "family": "text",
+      "ruleId": "ephemeral-execution-artifact",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/exact-config-comment-restatement",
+      "family": "text",
+      "ruleId": "exact-config-comment-restatement",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/hidden-markdown-heading",
+      "family": "text",
+      "ruleId": "hidden-markdown-heading",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/iac-source-coupled-test",
+      "family": "text",
+      "ruleId": "iac-source-coupled-test",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/no-unsafe-command-argument-interpolation",
+      "family": "text",
+      "ruleId": "no-unsafe-command-argument-interpolation",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/no-wildcard-secret-read-permission",
+      "family": "text",
+      "ruleId": "no-wildcard-secret-read-permission",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/duplicate-test-body",
+      "family": "typescript",
+      "ruleId": "duplicate-test-body",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/enforce-file-structure",
+      "family": "typescript",
+      "ruleId": "enforce-file-structure",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/eslint/iac-source-coupled-test",
+      "family": "typescript",
+      "ruleId": "iac-source-coupled-test",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/interface-contract-members-private",
+      "family": "typescript",
+      "ruleId": "interface-contract-members-private",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-bare-return-from-test-catch",
+      "family": "typescript",
+      "ruleId": "no-bare-return-from-test-catch",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-client-side-data-fetching",
+      "family": "typescript",
+      "ruleId": "no-client-side-data-fetching",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/eslint/no-comment-cruft",
+      "family": "typescript",
+      "ruleId": "no-comment-cruft",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/eslint/no-cors-wildcard-with-credentials",
+      "family": "typescript",
+      "ruleId": "no-cors-wildcard-with-credentials",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/eslint/no-dangerously-allow-svg",
+      "family": "typescript",
+      "ruleId": "no-dangerously-allow-svg",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-declaration-comment-wall",
+      "family": "typescript",
+      "ruleId": "no-declaration-comment-wall",
+      "state": "complete"
+    },
+    {
+      "task": "rule-audit/eslint/no-duplicate-lifecycle-refresh-listeners",
+      "family": "typescript",
+      "ruleId": "no-duplicate-lifecycle-refresh-listeners",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-dynamic-sql",
+      "family": "typescript",
+      "ruleId": "no-dynamic-sql",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-enum",
+      "family": "typescript",
+      "ruleId": "no-enum",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-fat-try-blocks",
+      "family": "typescript",
+      "ruleId": "no-fat-try-blocks",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-generic-single-export-module",
+      "family": "typescript",
+      "ruleId": "no-generic-single-export-module",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-hand-rolled-sleep",
+      "family": "typescript",
+      "ruleId": "no-hand-rolled-sleep",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-hand-rolled-spinner",
+      "family": "typescript",
+      "ruleId": "no-hand-rolled-spinner",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-impossible-zod-literal-bounds",
+      "family": "typescript",
+      "ruleId": "no-impossible-zod-literal-bounds",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-insecure-random-id",
+      "family": "typescript",
+      "ruleId": "no-insecure-random-id",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-json-stringify-error",
+      "family": "typescript",
+      "ruleId": "no-json-stringify-error",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-log-only-catch",
+      "family": "typescript",
+      "ruleId": "no-log-only-catch",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-long-comment",
+      "family": "typescript",
+      "ruleId": "no-long-comment",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-offset-pagination",
+      "family": "typescript",
+      "ruleId": "no-offset-pagination",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-positional-tuple-return",
+      "family": "typescript",
+      "ruleId": "no-positional-tuple-return",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-production-browser-source-maps",
+      "family": "typescript",
+      "ruleId": "no-production-browser-source-maps",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-raw-env",
+      "family": "typescript",
+      "ruleId": "no-raw-env",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-raw-fetch-outside-clients",
+      "family": "typescript",
+      "ruleId": "no-raw-fetch-outside-clients",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-repeated-string-literal",
+      "family": "typescript",
+      "ruleId": "no-repeated-string-literal",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-restated-comment",
+      "family": "typescript",
+      "ruleId": "no-restated-comment",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-restated-jsdoc",
+      "family": "typescript",
+      "ruleId": "no-restated-jsdoc",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-restricted-library-load",
+      "family": "typescript",
+      "ruleId": "no-restricted-library-load",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-router-refresh-polling",
+      "family": "typescript",
+      "ruleId": "no-router-refresh-polling",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-secret-in-log",
+      "family": "typescript",
+      "ruleId": "no-secret-in-log",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-select-star",
+      "family": "typescript",
+      "ruleId": "no-select-star",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-sentinel-return-on-catch",
+      "family": "typescript",
+      "ruleId": "no-sentinel-return-on-catch",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-server-env-in-client-component",
+      "family": "typescript",
+      "ruleId": "no-server-env-in-client-component",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-silent-promise-catch",
+      "family": "typescript",
+      "ruleId": "no-silent-promise-catch",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-sleep-in-test-body",
+      "family": "typescript",
+      "ruleId": "no-sleep-in-test-body",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-storage-in-stateless-modules",
+      "family": "typescript",
+      "ruleId": "no-storage-in-stateless-modules",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-string-concat-in-loop",
+      "family": "typescript",
+      "ruleId": "no-string-concat-in-loop",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-tautological-expect",
+      "family": "typescript",
+      "ruleId": "no-tautological-expect",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-trailing-value-narration",
+      "family": "typescript",
+      "ruleId": "no-trailing-value-narration",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-type-member-comment-wall",
+      "family": "typescript",
+      "ruleId": "no-type-member-comment-wall",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-typed-doc-sections",
+      "family": "typescript",
+      "ruleId": "no-typed-doc-sections",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-union-in-comment",
+      "family": "typescript",
+      "ruleId": "no-union-in-comment",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-unnecessary-use-client",
+      "family": "typescript",
+      "ruleId": "no-unnecessary-use-client",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-unsafe-mock-casting",
+      "family": "typescript",
+      "ruleId": "no-unsafe-mock-casting",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-vague-suppression-description",
+      "family": "typescript",
+      "ruleId": "no-vague-suppression-description",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/no-zod-native-enum",
+      "family": "typescript",
+      "ruleId": "no-zod-native-enum",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-await-in-async-return",
+      "family": "typescript",
+      "ruleId": "prefer-await-in-async-return",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-constant-time-secret-compare",
+      "family": "typescript",
+      "ruleId": "prefer-constant-time-secret-compare",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-discriminated-union",
+      "family": "typescript",
+      "ruleId": "prefer-discriminated-union",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-ecmascript-private-members",
+      "family": "typescript",
+      "ruleId": "prefer-ecmascript-private-members",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-immutable-module-constant",
+      "family": "typescript",
+      "ruleId": "prefer-immutable-module-constant",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-input-group-search",
+      "family": "typescript",
+      "ruleId": "prefer-input-group-search",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-module-level-constant",
+      "family": "typescript",
+      "ruleId": "prefer-module-level-constant",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-module-level-schema",
+      "family": "typescript",
+      "ruleId": "prefer-module-level-schema",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-native-random-uuid",
+      "family": "typescript",
+      "ruleId": "prefer-native-random-uuid",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-non-nullable-collection",
+      "family": "typescript",
+      "ruleId": "prefer-non-nullable-collection",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-schema-for-api-payload",
+      "family": "typescript",
+      "ruleId": "prefer-schema-for-api-payload",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-semantic-colors",
+      "family": "typescript",
+      "ruleId": "prefer-semantic-colors",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-server-actions",
+      "family": "typescript",
+      "ruleId": "prefer-server-actions",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-shadcn-primitives",
+      "family": "typescript",
+      "ruleId": "prefer-shadcn-primitives",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-whole-object-assertion",
+      "family": "typescript",
+      "ruleId": "prefer-whole-object-assertion",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-zod-infer",
+      "family": "typescript",
+      "ruleId": "prefer-zod-infer",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/repeated-static-call-cases",
+      "family": "typescript",
+      "ruleId": "repeated-static-call-cases",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-assert-never",
+      "family": "typescript",
+      "ruleId": "require-assert-never",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-fetch-timeout",
+      "family": "typescript",
+      "ruleId": "require-fetch-timeout",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-port-for-service",
+      "family": "typescript",
+      "ruleId": "require-port-for-service",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-static-next-matcher",
+      "family": "typescript",
+      "ruleId": "require-static-next-matcher",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-use-form-default-values",
+      "family": "typescript",
+      "ruleId": "require-use-form-default-values",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-use-server-in-actions-file",
+      "family": "typescript",
+      "ruleId": "require-use-server-in-actions-file",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-zod-form-validation",
+      "family": "typescript",
+      "ruleId": "require-zod-form-validation",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/source-coupled-test",
+      "family": "typescript",
+      "ruleId": "source-coupled-test",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/stepdown",
+      "family": "typescript",
+      "ruleId": "stepdown",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/store-insert-requires-on-conflict",
+      "family": "typescript",
+      "ruleId": "store-insert-requires-on-conflict",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/test-loops-over-literal-cases",
+      "family": "typescript",
+      "ruleId": "test-loops-over-literal-cases",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/test-phase-label-comment",
+      "family": "typescript",
+      "ruleId": "test-phase-label-comment",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-pascal-case-zod-schema-name",
+      "family": "typescript",
+      "ruleId": "require-pascal-case-zod-schema-name",
+      "state": "complete",
+      "evidence": "Five-agent design review plus a 33-codebase syntax-aware corpus study parsed 957 unique Zod-bearing files without failures and proved 3,951 handwritten production schema bindings. PascalCase was 95.5%; only one binding used a *_SCHEMA name. The broader canonical suffix policy intentionally exposes 2,278 legacy Z-prefixed and 137 camelCase-suffixed bindings for staged migration rather than silently preserving competing conventions.",
+      "outcome": "Renamed and narrowed the rule to positively proven module-level Zod contracts, made PascalCase plus Schema the sole canonical spelling, added aliased/namespace/default import provenance and same-file derived-schema/alias tracking, excluded value-returning terminals and local/test/generated code, removed unsafe convention options and autofix, widened the generic global-constant lexical gate to permit PascalCase, and staged the semantic rule as a warning."
+    }
+  ]
+}

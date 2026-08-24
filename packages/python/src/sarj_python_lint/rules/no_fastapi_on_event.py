@@ -19,10 +19,18 @@ from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
+    from collections.abc import Set as AbstractSet
     from pathlib import Path
 
 
-_APP_TYPES = frozenset({("fastapi", "FastAPI"), ("starlette.applications", "Starlette")})
+_APP_TYPES = frozenset(
+    {
+        ("fastapi", "APIRouter"),
+        ("fastapi", "FastAPI"),
+        ("starlette.applications", "Starlette"),
+        ("starlette.routing", "Router"),
+    }
+)
 _EVENT_NAMES = frozenset({"startup", "shutdown"})
 
 
@@ -40,7 +48,7 @@ class NoFastapiOnEvent(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only decorators on a directly constructed FastAPI/Starlette application or a parameter annotated with one are checked.",
+            "Decorators on proven FastAPI, APIRouter, Starlette, and Starlette Router values or their `.router` are checked.",
             "Factory-returned applications and dynamically selected event names are intentionally not inferred.",
         ),
         examples=(
@@ -93,9 +101,10 @@ def _scope_diagnostics(
     *,
     extra_app_names: frozenset[str] = frozenset(),
 ) -> list[Diagnostic]:
-    app_names = _assigned_app_names(statements, imports) | extra_app_names
+    app_names = set(extra_app_names)
     findings: list[Diagnostic] = []
     for statement in statements:
+        _update_app_names(statement, app_names, imports)
         if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         findings.extend(
@@ -123,19 +132,34 @@ def _scope_diagnostics(
     return findings
 
 
-def _assigned_app_names(statements: list[ast.stmt], imports: ImportIndex) -> frozenset[str]:
-    names: set[str] = set()
-    for statement in statements:
-        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
-            continue
-        value = statement.value
-        if not isinstance(value, ast.Call) or not any(
-            imports.resolves(value.func, sources=frozenset({source}), symbol=symbol) for source, symbol in _APP_TYPES
-        ):
-            continue
-        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
-        names.update(target.id for target in targets if isinstance(target, ast.Name))
-    return frozenset(names)
+def _update_app_names(statement: ast.stmt, names: set[str], imports: ImportIndex) -> None:
+    if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+        return
+    targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+    target_names = [target.id for target in targets if isinstance(target, ast.Name)]
+    value = statement.value
+    proven = value is not None and _is_app_expression(value, names, imports)
+    if isinstance(statement, ast.AnnAssign) and _is_app_type(statement.annotation, imports):
+        proven = True
+    for name in target_names:
+        if proven:
+            names.add(name)
+        else:
+            names.discard(name)
+
+
+def _is_app_expression(node: ast.expr, names: set[str], imports: ImportIndex) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in names
+    if isinstance(node, ast.Attribute) and node.attr == "router":
+        return isinstance(node.value, ast.Name) and node.value.id in names
+    return isinstance(node, ast.Call) and any(
+        imports.resolves(node.func, sources=frozenset({source}), symbol=symbol) for source, symbol in _APP_TYPES
+    )
+
+
+def _is_app_type(node: ast.expr, imports: ImportIndex) -> bool:
+    return any(imports.resolves(node, sources=frozenset({source}), symbol=symbol) for source, symbol in _APP_TYPES)
 
 
 def _annotated_app_parameters(arguments: ast.arguments, imports: ImportIndex) -> frozenset[str]:
@@ -147,22 +171,28 @@ def _annotated_app_parameters(arguments: ast.arguments, imports: ImportIndex) ->
     return frozenset(
         parameter.arg
         for parameter in parameters
-        if parameter.annotation is not None
-        and any(
-            imports.resolves(parameter.annotation, sources=frozenset({source}), symbol=symbol)
-            for source, symbol in _APP_TYPES
-        )
+        if parameter.annotation is not None and _is_app_type(parameter.annotation, imports)
     )
 
 
-def _is_on_event_decorator(node: ast.expr, app_names: frozenset[str]) -> bool:
+def _is_on_event_decorator(node: ast.expr, app_names: AbstractSet[str]) -> bool:
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "on_event"
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id in app_names
+        and _is_proven_receiver(node.func.value, app_names)
         and len(node.args) == 1
         and isinstance(node.args[0], ast.Constant)
         and node.args[0].value in _EVENT_NAMES
+    )
+
+
+def _is_proven_receiver(node: ast.expr, app_names: AbstractSet[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in app_names
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "router"
+        and isinstance(node.value, ast.Name)
+        and node.value.id in app_names
     )

@@ -137,6 +137,34 @@ def test_generated_tmp_output_is_not_repository_source() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "path_expression",
+    ["module.__file__", "inspect.getfile(module)", "getattr(module, '__file__')"],
+)
+def test_python_runtime_source_path_is_not_misclassified_as_iac(path_expression: str) -> None:
+    assert (
+        check(f"""
+        def test_removed_symbol():
+            source_path = {path_expression}
+            with open(source_path) as handle:
+                source = handle.read()
+            assert "RemovedRouter" not in source
+    """)
+        == []
+    )
+
+
+def test_iac_path_derived_from_module_directory_is_still_checked() -> None:
+    diagnostics = check("""
+        def test_policy():
+            path = Path(module.__file__).parent / "main.tf"
+            source = path.read_text()
+            assert "prevent_destroy" in source
+    """)
+
+    assert len(diagnostics) == 1
+
+
 def test_malformed_input_and_non_test_paths_are_ignored() -> None:
     assert check("def test_policy(:\n", "tests/test_policy.py") == []
     assert check("source = Path('main.tf').read_text(); assert 'x' in source", "tools/policy.py") == []

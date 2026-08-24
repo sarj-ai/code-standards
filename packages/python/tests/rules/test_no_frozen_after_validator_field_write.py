@@ -93,6 +93,35 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
             1,
             id="nested-control-flow-async-validator",
         ),
+        pytest.param(
+            """
+            from pydantic import BaseModel, model_validator
+            class Model(BaseModel):
+                model_config = {"frozen": True, "extra": "forbid"}
+                value: int
+                @model_validator(mode="after")
+                def normalize(self):
+                    self.value = abs(self.value)
+                    return self
+            """,
+            "value",
+            1,
+            id="literal-model-config-dictionary",
+        ),
+        pytest.param(
+            """
+            from pydantic import BaseModel, model_validator
+            class Model(BaseModel, frozen=True):
+                value: int
+                @model_validator(mode="after")
+                def normalize(self):
+                    self.value = abs(self.value)
+                    return self
+            """,
+            "value",
+            1,
+            id="frozen-class-argument",
+        ),
     ],
 )
 def test_reports_declared_field_writes_in_frozen_after_validators(source: str, field: str, count: int) -> None:
@@ -230,9 +259,9 @@ def test_reports_declared_field_writes_in_frozen_after_validators(source: str, f
                 return self
         """,
         """
-        from pydantic import BaseModel, model_validator
-        class Model(BaseModel):
-            model_config = {"frozen": True}
+        from pydantic import BaseModel, ConfigDict, model_validator
+        class Model(BaseModel, frozen=False):
+            model_config = ConfigDict(frozen=True)
             value: int
             @model_validator(mode="after")
             def validate(self):

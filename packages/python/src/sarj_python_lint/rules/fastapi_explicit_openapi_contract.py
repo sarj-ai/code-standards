@@ -44,6 +44,8 @@ _CONTAINERS = frozenset({"list", "List", "set", "Set", "tuple", "Tuple", "Sequen
 _BODY_MARKERS = frozenset({"Body", "Form", "File"})
 _NO_CONTENT_STATUSES = frozenset({204, 304})
 _STATUS_CODE_DIGITS = 3
+_MIN_HTTP_STATUS = 100
+_MAX_HTTP_STATUS = 599
 _DOCUMENTATION_EXAMPLE_DIR_NAMES = frozenset({"docs_src"})
 _CONVERTER_PATTERNS = MappingProxyType(
     {
@@ -62,14 +64,18 @@ class _Finding:
     message: str
 
 
-class FastapiOpenapiContract(Rule):
-    id: str = "fastapi-openapi-contract"
+class FastapiExplicitOpenapiContract(Rule):
+    id: str = "fastapi-explicit-openapi-contract"
     code: str = "SARJ094"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="FastAPI operations must publish accurate request, response, and status contracts.",
-        rationale="Typed routes and explicit response behavior keep generated OpenAPI accurate without duplicating self-documenting names in prose.",
+        summary="FastAPI operations must make request, response, and status contracts explicit in generated OpenAPI.",
+        rationale=(
+            "Locally explicit route metadata keeps generated OpenAPI reviewable and stable across framework defaults "
+            "without duplicating self-documenting names in prose."
+        ),
         remediation="Declare status codes, typed parameters, response schemas, and alternate responses raised directly by the handler.",
         category=RuleCategory.CORRECTNESS,
+        aliases=("fastapi-openapi-contract",),
         limitations=(
             "Hidden routes, WebSocket handlers, tests, generated files, documentation-source examples, and unrelated decorators are excluded.",
             "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
@@ -134,8 +140,9 @@ class FastapiOpenapiContract(Rule):
             findings.extend(_check_raw_request(function, routes, index))
             findings.extend(_check_direct_responses(function, routes, index))
             for route in _operations(routes):
-                findings.extend(_check_metadata(route))
+                findings.extend(_check_metadata(route, index))
                 findings.extend(_check_projection(route))
+                findings.extend(_check_response_statuses(route, index))
         findings.extend(_check_route_conflicts(declared))
         return [
             Diagnostic(
@@ -155,11 +162,15 @@ def _operations(routes: tuple[Route, ...]) -> tuple[Route, ...]:
     return tuple({id(route.decorator): route for route in routes}.values())
 
 
-def _check_metadata(route: Route) -> list[_Finding]:
-    if route.has_unpack:
-        return []
+def _check_metadata(route: Route, index: FastapiIndex) -> list[_Finding]:
     keywords = route.keywords
-    if "status_code" in keywords and not _literal_none(keywords["status_code"]):
+    status_node = keywords.get("status_code")
+    if status_node is not None and not _literal_none(status_node):
+        status = _status_code(status_node, index)
+        if status is not None and not _valid_http_status(status):
+            return [_Finding(status_node, f"[status] {status} is outside the HTTP status range 100..599.")]
+        return []
+    if route.has_unpack:
         return []
     return [_Finding(route.decorator, "[metadata] operation requires explicit status_code.")]
 
@@ -454,6 +465,7 @@ def _check_direct_responses(
     index: FastapiIndex,
 ) -> list[_Finding]:
     statuses: set[int] = set()
+    invalid: dict[int, ast.Call] = {}
     stack: list[ast.AST] = list(function.body)
     while stack:
         current = stack.pop()
@@ -465,16 +477,25 @@ def _check_direct_responses(
         if isinstance(call, ast.Call) and index.is_http_exception(call.func):
             status = _status_code(_keyword(call, "status_code") or (call.args[0] if call.args else None), index)
             if status is not None:
-                statuses.add(status)
+                if _valid_http_status(status):
+                    statuses.add(status)
+                else:
+                    invalid.setdefault(status, call)
         returned = current.value if isinstance(current, ast.Return) else None
         if isinstance(returned, ast.Call) and index.is_response(returned.func):
             status = _status_code(_keyword(returned, "status_code"), index)
             if status is not None:
-                statuses.add(status)
+                if _valid_http_status(status):
+                    statuses.add(status)
+                else:
+                    invalid.setdefault(status, returned)
         stack.extend(children(current))
+    findings = [
+        _Finding(node, f"[status] {status} is outside the HTTP status range 100..599.")
+        for status, node in invalid.items()
+    ]
     if not statuses:
-        return []
-    findings: list[_Finding] = []
+        return findings
     for route in _operations(routes):
         responses = route.keywords.get("responses")
         if responses is not None and not isinstance(responses, ast.Dict):
@@ -490,6 +511,22 @@ def _check_direct_responses(
                 )
             )
     return findings
+
+
+def _check_response_statuses(route: Route, index: FastapiIndex) -> list[_Finding]:
+    responses = route.keywords.get("responses")
+    if not isinstance(responses, ast.Dict):
+        return []
+    findings: list[_Finding] = []
+    for key in responses.keys:
+        status = _status_code(key, index)
+        if key is not None and status is not None and not _valid_http_status(status):
+            findings.append(_Finding(key, f"[status] {status} is outside the HTTP status range 100..599."))
+    return findings
+
+
+def _valid_http_status(status: int) -> bool:
+    return _MIN_HTTP_STATUS <= status <= _MAX_HTTP_STATUS
 
 
 def _status_code(node: ast.expr | None, index: FastapiIndex) -> int | None:

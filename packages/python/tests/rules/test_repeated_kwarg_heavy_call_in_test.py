@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules.kwarg_heavy_construction_in_test import KwargHeavyConstructionInTest
+from sarj_python_lint.rules.repeated_kwarg_heavy_call_in_test import RepeatedKwargHeavyCallInTest
 
 
 if TYPE_CHECKING:
@@ -14,13 +14,14 @@ TEST_PATH = "python/app/tests/store/test_call_store.py"
 
 _NINE_KWARGS = ", ".join(f"f{i}={i}" for i in range(9))
 _EIGHT_KWARGS = ", ".join(f"f{i}={i}" for i in range(8))
+_SIX_KWARGS = ", ".join(f"f{i}={i}" for i in range(6))
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
-    return KwargHeavyConstructionInTest().check(Path(path), source)
+    return RepeatedKwargHeavyCallInTest().check(Path(path), source)
 
 
-_PUBLIC_EXAMPLES = KwargHeavyConstructionInTest.public_examples()
+_PUBLIC_EXAMPLES = RepeatedKwargHeavyCallInTest.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
@@ -54,17 +55,17 @@ def test_flags_nine_keywords():
     assert len(_check(_WIDE_IN_TEST)) == 2
 
 
-def test_eight_keywords_is_under_the_threshold():
+def test_six_keywords_is_at_the_threshold():
     src = f"""
 def test_thing():
-    row = UpsertCall({_EIGHT_KWARGS})
+    row = UpsertCall({_SIX_KWARGS})
     assert row
 """
     assert _check(src) == []
 
 
 def test_message_reports_the_keyword_count():
-    assert "passes 9 keywords" in _check(_WIDE_IN_TEST)[0].message
+    assert "with 9 explicit keywords" in _check(_WIDE_IN_TEST)[0].message
 
 
 def test_flags_construction_nested_in_control_flow():
@@ -166,7 +167,7 @@ def test_thing():
 def test_kwargs_forwarding_is_not_counted_as_a_keyword():
     src = f"""
 def test_thing(overrides):
-    row = UpsertCall({_EIGHT_KWARGS}, **overrides)
+    row = UpsertCall({_SIX_KWARGS}, **overrides)
     assert row
 """
     assert _check(src) == []
@@ -202,7 +203,7 @@ def test_one():
     assert UpsertCall({_NINE_KWARGS})
 
 def test_two():
-    assert UpsertCall({_EIGHT_KWARGS})
+    assert UpsertCall({_SIX_KWARGS})
 
 def test_three():
     assert UpsertCall({_NINE_KWARGS})
@@ -349,7 +350,7 @@ def test_two():
     assert len(_check(src)) == 2
 
 
-def test_call_to_a_same_module_helper_is_exempt():
+def test_repeated_wide_call_to_same_module_helper_still_fires():
     src = f"""
 def verify(**case):
     assert run(**case)
@@ -360,10 +361,10 @@ def test_one():
 def test_two():
     verify({_NINE_KWARGS})
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 2
 
 
-def test_call_to_a_same_module_fixture_factory_is_exempt():
+def test_repeated_wide_call_to_same_module_factory_still_fires():
     src = f"""
 import pytest
 
@@ -382,7 +383,7 @@ def test_one():
 def test_two():
     assert _order({_NINE_KWARGS})
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 2
 
 
 def test_call_to_a_callee_this_module_does_not_define_still_fires():
@@ -467,5 +468,7 @@ def test_two(mock_hook):
     assert _check(src) == []
 
 
-def test_message_says_helper_not_builder():
-    assert "extract a helper with defaults" in _check(_WIDE_IN_TEST)[0].message.lower()
+def test_message_explains_repeated_scenario_setup():
+    message = _check(_WIDE_IN_TEST)[0].message.lower()
+    assert "scenario differences" in message
+    assert "helper with defaults" in message

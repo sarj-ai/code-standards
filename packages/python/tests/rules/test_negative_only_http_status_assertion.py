@@ -19,11 +19,19 @@ def _check(source: str, path: Path = TEST_PATH):
     "assertion",
     [
         "assert response.status_code != 500",
+        "assert response.status_code != 503",
+        "assert response.status_code != HTTPStatus.INTERNAL_SERVER_ERROR",
+        "assert response.status_code != status.HTTP_503_SERVICE_UNAVAILABLE",
+        "assert response.status_code != HTTP_502_BAD_GATEWAY",
         "assert 500 != response.status_code",
         "assert response.status_code < 500",
         "assert response.status_code <= 499",
         "assert response.status_code not in range(500, 600)",
         "assert response.status_code not in {500, 502, 503}",
+        "assert response.status_code // 100 != 5",
+        "assert not response.status_code == 500",
+        "assert not response.status_code >= 500",
+        "assert not 500 <= response.status_code < 600",
     ],
 )
 def test_flags_negative_only_status_contracts(assertion: str) -> None:
@@ -39,9 +47,13 @@ def test_flags_negative_only_status_contracts(assertion: str) -> None:
         "assert response.status_code == 401",
         "assert response.status_code in {200, 201}",
         "assert response.status_code != 404",
+        "assert response.status_code != HTTPStatus.NOT_FOUND",
+        "assert response.status_code != status.HTTP_404_NOT_FOUND",
+        "assert response.status_code // 100 != 4",
         "assert result.status != 500",
         "assert response.status_code < 600",
         "assert response.status_code not in {400, 404}",
+        "assert not 400 <= response.status_code < 500",
     ],
 )
 def test_allows_specific_or_non_http_contracts(assertion: str) -> None:

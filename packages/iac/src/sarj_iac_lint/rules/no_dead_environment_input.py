@@ -116,7 +116,8 @@ class NoDeadEnvironmentInput(Rule):
         ),
         remediation=(
             "Inline the constant as the variable's default and delete the per-environment assignments; delete "
-            "assignments equal to the default; delete assignments for variables the root no longer declares."
+            "assignments equal to the default; delete assignments for variables the root no longer declares. "
+            "For sensitive variables, inject one shared secret value instead of hard-coding a default."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
@@ -191,6 +192,11 @@ class NoDeadEnvironmentInput(Rule):
                 "(often gitignored) tfvars file never reaches, so those values are named and never echoed."
             ),
             (
+                "A variable declared `sensitive = true` never has its value echoed, including boolean and numeric "
+                "values, and constant-value remediation keeps the value in secret injection rather than advising "
+                "a source-controlled default."
+            ),
+            (
                 "A tfvars file or env directory labelled backup, bak, old, copy, tmp, example, sample or "
                 "template is a copy or specimen, not a deployment: it is neither linted nor counted as an "
                 "environment, because comparing a file against its own backup makes every shared line constant."
@@ -225,6 +231,40 @@ class NoDeadEnvironmentInput(Rule):
                     ExampleFile.iac("variables.tf", 'variable "redis_tier" {\n  type = string\n}\n'),
                     ExampleFile.iac("env/dev/terraform.tfvars", 'redis_tier = "BASIC"\n'),
                     ExampleFile.iac("env/prod/terraform.tfvars", 'redis_tier = "STANDARD_HA"\n'),
+                ),
+                focus_path=PurePosixPath("env/dev/terraform.tfvars"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="sensitive-value-repeated-across-environments",
+                title="Sensitive input duplicated instead of injected once",
+                outcome=ExampleOutcome.MATCH,
+                scenario="sensitive-shared-input",
+                files=(
+                    ExampleFile.iac(
+                        "variables.tf",
+                        'variable "api_token" {\n  type      = string\n  sensitive = true\n}\n',
+                    ),
+                    ExampleFile.iac("env/dev/terraform.tfvars", 'api_token = "same-placeholder"\n'),
+                    ExampleFile.iac("env/prod/terraform.tfvars", 'api_token = "same-placeholder"\n'),
+                ),
+                focus_path=PurePosixPath("env/dev/terraform.tfvars"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="sensitive-input-that-varies-by-environment",
+                title="Sensitive input carrying an actual environment decision",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="sensitive-shared-input",
+                files=(
+                    ExampleFile.iac(
+                        "variables.tf",
+                        'variable "api_token" {\n  type      = string\n  sensitive = true\n}\n',
+                    ),
+                    ExampleFile.iac("env/dev/terraform.tfvars", 'api_token = "dev-placeholder"\n'),
+                    ExampleFile.iac("env/prod/terraform.tfvars", 'api_token = "prod-placeholder"\n'),
                 ),
                 focus_path=PurePosixPath("env/dev/terraform.tfvars"),
                 expected_count=0,
@@ -304,6 +344,7 @@ class _Declaration:
     has_default: bool
     default: _Canon | None
     untyped: bool
+    sensitive: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -342,7 +383,7 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, va
     if declaration.untyped:
         return None
     canon = _canonical(value)
-    display = _display(canon, value)
+    display = _display(canon, value, sensitive=declaration.sensitive)
     if (
         canon is not None
         and declaration.default is not None
@@ -359,6 +400,12 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, va
     if not _constant_everywhere(analysis, environment, name, canon):
         return None
     environments = ", ".join(sorted(analysis.files))
+    if declaration.sensitive:
+        return (
+            f"sensitive-constant: `{name}` carries one sensitive value across every environment "
+            f"({environments}) — inject it once through the shared secret source and delete the duplicate "
+            "per-environment assignments; do not hard-code a default."
+        )
     if declaration.has_default:
         return (
             f"constant-everywhere: `{name}` carries one value{display} across every environment "
@@ -398,9 +445,9 @@ def _blind_message(analysis: _RootAnalysis, blind: _BlindEnvironment) -> str:
     )
 
 
-def _display(canon: _Canon | None, value: str) -> str:
+def _display(canon: _Canon | None, value: str, *, sensitive: bool) -> str:
     text = " ".join(value.split())
-    if canon is None or canon.tag not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
+    if sensitive or canon is None or canon.tag not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
         return ""
     return f" ({text})" if len(text) <= _MAX_VALUE_DISPLAY else ""
 
@@ -429,7 +476,7 @@ def _declares_variables(directory: Path) -> bool:
     return next(_variable_blocks(directory), None) is not None
 
 
-def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, bool]]:
+def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, bool, bool]]:
     for tf in sorted(directory.glob("*.tf")):
         text = _read_text(tf)
         if text is None:
@@ -439,7 +486,9 @@ def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, bool]]:
                 default = block.attribute("default")
                 declared = block.attribute("type")
                 untyped = declared is not None and declared.value.strip() == _ANY_TYPE
-                yield block.labels[0], None if default is None else default.value, untyped
+                sensitive_attr = block.attribute("sensitive")
+                sensitive = sensitive_attr is not None and _canonical(sensitive_attr.value) != _BOOL_SCALARS["false"]
+                yield block.labels[0], None if default is None else default.value, untyped, sensitive
 
 
 def _read_text(path: Path) -> str | None:
@@ -453,8 +502,8 @@ def _read_text(path: Path) -> str | None:
 def _analyze_root(root: Path) -> _RootAnalysis:
     files = _environment_files(root)
     declarations = {
-        name: _Declaration(default is not None, None if default is None else _canonical(default), untyped)
-        for name, default, untyped in _variable_blocks(root)
+        name: _Declaration(default is not None, None if default is None else _canonical(default), untyped, sensitive)
+        for name, default, untyped, sensitive in _variable_blocks(root)
     }
     values: dict[str, dict[str, _AssignmentValue]] = {}
     blind = list(_structural_blind(root, files))

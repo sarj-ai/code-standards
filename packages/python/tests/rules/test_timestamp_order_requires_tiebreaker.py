@@ -7,9 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rule_base import Diagnostic, Severity, is_suppressed
-from sarj_python_lint.rules.created_at_order_requires_tiebreaker import (
-    CreatedAtOrderRequiresTiebreaker,
-)
+from sarj_python_lint.rules.timestamp_order_requires_tiebreaker import TimestampOrderRequiresTiebreaker
 
 
 if TYPE_CHECKING:
@@ -17,23 +15,23 @@ if TYPE_CHECKING:
 
 
 def _check(source: str, path: str = "task_store.py") -> list[Diagnostic]:
-    return CreatedAtOrderRequiresTiebreaker().check(Path(path), dedent(source))
+    return TimestampOrderRequiresTiebreaker().check(Path(path), dedent(source))
 
 
 def _kept(source: str, path: str = "task_store.py") -> list[Diagnostic]:
     normalized = dedent(source)
-    diagnostics = CreatedAtOrderRequiresTiebreaker().check(Path(path), normalized)
+    diagnostics = TimestampOrderRequiresTiebreaker().check(Path(path), normalized)
     lines = normalized.splitlines()
     return [diagnostic for diagnostic in diagnostics if not is_suppressed(lines, diagnostic.line, diagnostic.code)]
 
 
-_PUBLIC_EXAMPLES = CreatedAtOrderRequiresTiebreaker.public_examples()
+_PUBLIC_EXAMPLES = TimestampOrderRequiresTiebreaker.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
-    assert len(CreatedAtOrderRequiresTiebreaker().check(Path(focus.path), focus.source)) == example.expected_count
+    assert len(TimestampOrderRequiresTiebreaker().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 @pytest.mark.parametrize(
@@ -45,6 +43,8 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         "SELECT id FROM task ORDER BY task.created_at DESC OFFSET 10",
         "SELECT id FROM task ORDER BY public.task.created_at ASC NULLS FIRST FETCH FIRST 5 ROWS ONLY",
         "SELECT id FROM task ORDER BY priority DESC, created_at DESC",
+        "SELECT id FROM task ORDER BY task.updated_at DESC",
+        "SELECT id FROM task ORDER BY processed_at ASC NULLS LAST",
         "select id from task order    by created_at desc",
     ],
     ids=[
@@ -54,10 +54,12 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         "qualified-before-offset",
         "multiply-qualified-before-fetch",
         "final-after-earlier-key",
+        "qualified-updated-at",
+        "domain-timestamp",
         "case-and-whitespace-insensitive",
     ],
 )
-def test_reports_created_at_as_final_same_depth_order_item(query: str) -> None:
+def test_reports_timestamp_as_final_same_depth_order_item(query: str) -> None:
     findings = _check(f"QUERY = {query!r}\n")
 
     assert len(findings) == 1
@@ -139,7 +141,7 @@ def test_reports_multiple_query_literals_in_source_order() -> None:
         "SELECT id FROM task ORDER BY created_at DESC, id DESC",
         "SELECT id FROM task ORDER BY created_at, random()",
         "SELECT id FROM task ORDER BY priority, created_at DESC, lower(name)",
-        "SELECT id FROM task ORDER BY id, updated_at",
+        "SELECT id FROM task ORDER BY id, updated_epoch",
         "SELECT id FROM task ORDER BY created_at_epoch DESC",
         "SELECT id FROM task ORDER BY date_trunc('second', created_at) DESC",
         "SELECT id FROM task ORDER BY coalesce(created_at, updated_at)",
@@ -149,14 +151,14 @@ def test_reports_multiple_query_literals_in_source_order() -> None:
         "id-tiebreaker",
         "any-later-key-is-accepted",
         "created-at-has-later-expression",
-        "different-final-column",
+        "non-timestamp-final-column",
         "identifier-suffix",
         "created-at-inside-function",
         "created-at-inside-expression",
         "quoted-identifier-out-of-scope",
     ],
 )
-def test_accepts_later_keys_and_non_exact_created_at_expressions(query: str) -> None:
+def test_accepts_later_keys_and_non_exact_timestamp_expressions(query: str) -> None:
     assert _check(f"QUERY = {query!r}\n") == []
 
 

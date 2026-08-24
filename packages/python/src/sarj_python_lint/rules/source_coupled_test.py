@@ -321,7 +321,7 @@ def _source_path_expression(node: ast.AST, path_names: set[str], source_suffixes
         case (
             ast.Attribute(attr="__file__") | ast.Call(func=ast.Attribute(value=ast.Name(id="inspect"), attr="getfile"))
         ):
-            return True
+            return ".py" in source_suffixes
         case ast.JoinedStr(values=values):
             return any(_source_path_expression(value, path_names, source_suffixes) for value in values)
         case ast.BinOp() | ast.Call() | ast.Attribute() | ast.Subscript():
