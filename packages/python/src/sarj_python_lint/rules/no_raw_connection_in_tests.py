@@ -126,9 +126,7 @@ def _proven_pool_names(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDe
             if _tail(node.annotation) in _POOL_TYPES:
                 names.add(node.target.id)
         elif (
-            isinstance(node, ast.Assign)
-            and isinstance(node.value, ast.Call)
-            and _tail(node.value.func) in _POOL_TYPES
+            isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and _tail(node.value.func) in _POOL_TYPES
         ):
             names.update(target.id for target in node.targets if isinstance(target, ast.Name))
     return frozenset(names)

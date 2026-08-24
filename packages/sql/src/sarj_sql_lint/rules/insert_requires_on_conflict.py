@@ -110,9 +110,7 @@ class InsertRequiresOnConflict(Rule):
                 example_id="insert-without-replay-policy",
                 title="Insert without declared replay behavior",
                 outcome=ExampleOutcome.MATCH,
-                files=(
-                    ExampleFile.sql("queries/create_plan.sql", "INSERT INTO plan (name) VALUES ('free');\n"),
-                ),
+                files=(ExampleFile.sql("queries/create_plan.sql", "INSERT INTO plan (name) VALUES ('free');\n"),),
                 focus_path=PurePosixPath("queries/create_plan.sql"),
                 expected_count=1,
                 public=True,

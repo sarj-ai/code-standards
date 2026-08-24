@@ -93,12 +93,7 @@ def test_reports_application_router_and_simple_aliases() -> None:
 
 
 def test_reports_an_annotated_application_binding() -> None:
-    source = (
-        "from fastapi import FastAPI\n"
-        "app: FastAPI\n"
-        '@app.on_event("startup")\n'
-        "def start() -> None:\n    pass\n"
-    )
+    source = 'from fastapi import FastAPI\napp: FastAPI\n@app.on_event("startup")\ndef start() -> None:\n    pass\n'
     assert len(_check(source)) == 1
 
 

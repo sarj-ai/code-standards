@@ -58,12 +58,11 @@ def _negative_only(node: ast.expr) -> bool:
     op = compare.ops[0]
     match op:
         case ast.NotEq():
-            return (_status_code(left) and _server_error(right)) or (
-                _server_error(left) and _status_code(right)
-            ) or (
-                _status_family(left) and _int(right) == _SERVER_ERROR_FAMILY
-            ) or (
-                _int(left) == _SERVER_ERROR_FAMILY and _status_family(right)
+            return (
+                (_status_code(left) and _server_error(right))
+                or (_server_error(left) and _status_code(right))
+                or (_status_family(left) and _int(right) == _SERVER_ERROR_FAMILY)
+                or (_int(left) == _SERVER_ERROR_FAMILY and _status_family(right))
             )
         case ast.Lt() if _status_code(left):
             return _int(right) == _SERVER_ERROR_MIN
@@ -81,9 +80,7 @@ def _positive_server_error(compare: ast.Compare) -> bool:
         right = compare.comparators[0]
         match compare.ops[0]:
             case ast.Eq():
-                return (_status_code(left) and _server_error(right)) or (
-                    _server_error(left) and _status_code(right)
-                )
+                return (_status_code(left) and _server_error(right)) or (_server_error(left) and _status_code(right))
             case ast.GtE():
                 return _status_code(left) and _int(right) == _SERVER_ERROR_MIN
             case ast.Gt():
@@ -219,7 +216,7 @@ class NegativeOnlyHttpStatusAssertion(Rule):
                     code=self.code,
                     severity=Severity.ERROR,
                     message=(
-                    "this assertion proves only that the response avoided a server-error outcome; assert the "
+                        "this assertion proves only that the response avoided a server-error outcome; assert the "
                         "intended exact status and, when relevant, its domain payload or side effect."
                     ),
                 )

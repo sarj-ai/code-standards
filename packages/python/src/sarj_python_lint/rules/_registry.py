@@ -76,6 +76,7 @@ from sarj_python_lint.rules.opaque_parametrize_case_needs_id import OpaqueParame
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
+from sarj_python_lint.rules.prefer_collection_comprehension import PreferCollectionComprehension
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import (
     PreferConstantTimeSecretCompare,
 )
@@ -163,6 +164,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         TimestampOrderRequiresTiebreaker.id: TimestampOrderRequiresTiebreaker,
         NoStringConcatInLoop.id: NoStringConcatInLoop,
         PreferClassRow.id: PreferClassRow,
+        PreferCollectionComprehension.id: PreferCollectionComprehension,
         PreferStrEnum.id: PreferStrEnum,
         NoIsinstanceUnionChain.id: NoIsinstanceUnionChain,
         NoOffsetPagination.id: NoOffsetPagination,

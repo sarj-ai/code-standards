@@ -166,5 +166,6 @@
   "SARJ426": "no-conftest-test-module-import",
   "SARJ427": "no-fastapi-on-event",
   "SARJ428": "fakes-in-shared-location",
-  "SARJ429": "no-raw-connection-in-tests"
+  "SARJ429": "no-raw-connection-in-tests",
+  "SARJ430": "prefer-collection-comprehension"
 }

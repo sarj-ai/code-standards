@@ -132,16 +132,15 @@ def _pytest_plugin_test_targets(tree: ast.Module) -> list[_PluginTarget]:
     for statement in tree.body:
         value: ast.expr | None = None
         match statement:
-            case ast.Assign(targets=[ast.Name(id="pytest_plugins")]) | ast.AnnAssign(
-                target=ast.Name(id="pytest_plugins")
+            case (
+                ast.Assign(targets=[ast.Name(id="pytest_plugins")])
+                | ast.AnnAssign(target=ast.Name(id="pytest_plugins"))
             ):
                 value = statement.value
             case _:
                 continue
         findings.extend(
-            _PluginTarget(statement, target)
-            for target in _literal_strings(value)
-            if _module_has_test_leaf(target)
+            _PluginTarget(statement, target) for target in _literal_strings(value) if _module_has_test_leaf(target)
         )
     return findings
 

@@ -114,11 +114,7 @@ def _hatch_codes(comment: Comment) -> tuple[str, ...]:
         return ()
     raw_selectors = match["noqa"] or match["file_ignore"]
     selectors = [selector.strip().upper() for selector in raw_selectors.split(",")]
-    return tuple(
-        dict.fromkeys(
-            "TID251" for selector in selectors if selector in ESCAPE_HATCH_SELECTORS
-        )
-    )
+    return tuple(dict.fromkeys("TID251" for selector in selectors if selector in ESCAPE_HATCH_SELECTORS))
 
 
 def _message(codes: tuple[str, ...]) -> str:

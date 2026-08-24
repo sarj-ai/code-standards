@@ -70,6 +70,7 @@
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
       "prefer-class-row",
+      "prefer-collection-comprehension",
       "prefer-constant-time-secret-compare",
       "prefer-fstring-over-concat",
       "prefer-immutable-module-constant",
@@ -331,7 +332,8 @@
       "SARJ426",
       "SARJ427",
       "SARJ428",
-      "SARJ429"
+      "SARJ429",
+      "SARJ430"
     ],
     "sql": [
       "SARJ101",

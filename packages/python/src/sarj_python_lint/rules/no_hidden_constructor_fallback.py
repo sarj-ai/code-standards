@@ -246,9 +246,7 @@ def _hidden_parameters(
     receiver = positional[0].arg if positional else None
     for statement in init.body:
         available = candidates.keys() - rebound
-        for name, uses_boolean_or in _statement_fallbacks(
-            statement, available, resolver, shadowed, receiver
-        ).items():
+        for name, uses_boolean_or in _statement_fallbacks(statement, available, resolver, shadowed, receiver).items():
             hidden[name] = hidden.get(name, False) or uses_boolean_or
         rebound.update(_directly_bound_names(statement) & candidates.keys())
         shadowed.update(_directly_bound_names(statement))
@@ -274,9 +272,7 @@ def _statement_fallbacks(
     body = statement.body[0]
     if isinstance(body, ast.Assign):
         value = (
-            body.value
-            if len(body.targets) == 1 and _is_fallback_target(body.targets[0], parameter, receiver)
-            else None
+            body.value if len(body.targets) == 1 and _is_fallback_target(body.targets[0], parameter, receiver) else None
         )
     elif isinstance(body, ast.AnnAssign):
         value = body.value if _is_fallback_target(body.target, parameter, receiver) else None

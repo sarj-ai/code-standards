@@ -210,11 +210,7 @@ def _stable_import_module_bindings(tree: ast.Module) -> _ImportModuleBindings:
 
 
 def _non_import_bindings(tree: ast.Module) -> frozenset[str]:
-    bound = {
-        node.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
-    }
+    bound = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             bound.add(node.name)

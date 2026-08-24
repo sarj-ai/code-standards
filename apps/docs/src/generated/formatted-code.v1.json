@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fd8385cacda835980ca5623a5f187fedf357788cf51b691beb250d7611ed9df3",
-  "cliSha256": "f1c9907f517608edf1343c1df278bf5fc65351326b608109e0deb90ee4fbfbc1",
+  "catalogSha256": "df6e850e6bb7a05dcd12477263174fe577e769354838d6fab263a59aab19fe4d",
+  "cliSha256": "5a1f37e8f639cc89582d3f84b91383e3608da563c7837a4b210324202ab46f7b",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4901,6 +4901,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Cursor validates rows into a model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-collection-comprehension": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/capacity.py",
+              "source": "def organization_caps(rows):\n    caps: dict[str, int] = {}\n    for row in rows:\n        caps[row.organization_id] = row.organization_cap\n    return caps\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/capacity.py",
+          "id": "derived-dict-projection-loop",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Build a projected dictionary directly"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/capacity.py",
+              "source": "def organization_caps(rows):\n    return {row.organization_id: row.organization_cap for row in rows}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/capacity.py",
+          "id": "direct-dict-comprehension",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep the collection projection declarative"
         }
       ],
       "optionsSchemaSource": null

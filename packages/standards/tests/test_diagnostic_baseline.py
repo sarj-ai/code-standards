@@ -711,7 +711,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
                 "--output",
                 str(baseline_path),
                 "--rule",
-                    "sarj-iac-lint:no-mocked-terraform-test-oracle",
+                "sarj-iac-lint:no-mocked-terraform-test-oracle",
             ]
         )
         == 0

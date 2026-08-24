@@ -387,6 +387,14 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/python/prefer-collection-comprehension",
+      "family": "python",
+      "ruleId": "prefer-collection-comprehension",
+      "state": "complete",
+      "evidence": "An independent privacy-redacted verifier scanned 2,502 tracked Python files (21,386,497 bytes) across the current Standards worktree and two already-local consumer corpora, using fresh processes and batches of at most 250 files. The scan produced zero findings and therefore zero observed false positives; 35 labeled focused tests establish positive and negative behavior. Cold/warm rule-only process totals were 1.954/1.863 seconds, 2.709/2.510 seconds, and 2.040/1.977 seconds by corpus. The synthetic performance gate measured SARJ430 at 1.40x ast.parse, below the 15x budget. Ruff 0.16.3 independently confirmed the three intended coverage gaps.",
+      "outcome": "Added warning-stage SARJ430 only for derived dict projections, destructured list projections, and filtered set builders that Ruff PERF401, PERF403, and FURB142 miss. Fresh adjacent initialization, callable scope, liveness, simple projection, comment, control-flow, and 120-column gates keep the preference narrow. No autofix is offered because dict assignment and comprehension key/value evaluation order can differ."
+    },
+    {
       "task": "rule-audit/python/prefer-constant-time-secret-compare",
       "family": "python",
       "ruleId": "prefer-constant-time-secret-compare",
