@@ -8,17 +8,59 @@
   Strict-Transport-Security: max-age=31536000; includeSubDomains
 
 /_astro/*
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options
   Cache-Control: public, max-age=31536000, immutable
 
+/favicon.svg
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options
+  Cache-Control: public, max-age=86400
+
 /api/v1/catalog.json
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options
   Access-Control-Allow-Origin: *
   Cache-Control: public, max-age=0, must-revalidate
   Content-Type: application/json; charset=utf-8
 
 /api/v1/rule-catalog.schema.json
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options
   Access-Control-Allow-Origin: *
   Cache-Control: public, max-age=0, must-revalidate
   Content-Type: application/schema+json; charset=utf-8
 
 /health.json
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options
   Cache-Control: no-store
+
+/robots.txt
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options
+
+/sitemap-*
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options

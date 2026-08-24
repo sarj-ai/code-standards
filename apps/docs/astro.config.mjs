@@ -40,11 +40,11 @@ export default defineConfig({
     starlight({
       title: 'Sarj Standards',
       description: 'Deterministic code standards, diagnostics, and remediation.',
-      favicon: '/sarj-logo-light.png',
+      favicon: '/favicon.svg',
       logo: {
         alt: 'Sarj',
-        dark: './public/sarj-logo-dark.png',
-        light: './public/sarj-logo-light.png',
+        dark: './public/sarj-logo-dark.webp',
+        light: './public/sarj-logo-light.webp',
         replacesTitle: true,
       },
       disable404Route: true,

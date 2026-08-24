@@ -24,6 +24,8 @@ async function verify() {
   assert.equal(health.commit, expectedCommit, `live commit ${String(health.commit)} does not match ${expectedCommit}`);
   assert.equal(createHash('sha256').update(catalogText).digest('hex'), health.catalogSha256);
   assert.doesNotMatch(page, /site-search|pagefind|type="search"/iu);
+  assert.doesNotMatch(page, /<meta http-equiv="content-security-policy"/iu);
+  assert.doesNotMatch(page, /GTM-|zaraz|cloudflareinsights/iu);
   const csp = pageResponse.headers.get('content-security-policy') ?? '';
   assert.match(csp, /default-src 'none'/u);
   assert.match(csp, /frame-ancestors 'none'/u);
@@ -34,6 +36,14 @@ async function verify() {
   assert.equal((await response('pagefind/pagefind.js')).status, 404);
   assert.equal((await response('design-system/')).status, 404);
   assert.equal((await response('api/v1/docs-ui.json')).status, 404);
+
+  const assetPath = /(?:href|src)="(\/_astro\/[^"]+)"/u.exec(page)?.[1];
+  assert.ok(assetPath, 'rendered page must reference a hashed Astro asset');
+  assert.equal((await response(assetPath)).headers.get('content-security-policy'), null);
+
+  const about = await response('about/', { redirect: 'manual' });
+  assert.equal(about.status, 301);
+  assert.equal(new URL(about.headers.get('location'), base).pathname, '/');
 
   const missing = await response(`definitely-not-a-page-${expectedCommit}/`, { redirect: 'manual' });
   assert.equal(missing.status, 404);
