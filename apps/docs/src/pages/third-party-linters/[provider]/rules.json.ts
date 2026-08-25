@@ -34,7 +34,7 @@ export const GET: APIRoute<Props> = ({ props }) => {
     };
   });
   return new Response(
-    JSON.stringify({ entries, provider: props.provider.id }),
+    JSON.stringify({ entries, pageSize: THIRD_PARTY_PAGE_SIZE, provider: props.provider.id }),
     {
       headers: {
         "Cache-Control": "public, max-age=0, must-revalidate",
