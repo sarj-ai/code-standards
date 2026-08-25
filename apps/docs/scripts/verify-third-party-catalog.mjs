@@ -123,6 +123,7 @@ function verifyDist(ruleCounts) {
     const searchIndexSource = readFileSync(resolve(distRoot, 'third-party-linters', provider.id, 'rules.json'), 'utf8');
     const searchIndex = JSON.parse(searchIndexSource);
     assert.ok(gzipSync(searchIndexSource, { level: 9 }).byteLength <= 48_000, `${provider.id} compressed search index must stay at or below 48 KB`);
+    assert.equal(searchIndex.pageSize, pageSize, `${provider.id} search index must expose the rendered page size`);
     assert.equal(searchIndex.provider, provider.id, `${provider.id} search index must identify its provider`);
     assert.equal(searchIndex.entries.length, rules.length, `${provider.id} search index must cover every rule`);
     for (const [index, rule] of rules.entries()) {

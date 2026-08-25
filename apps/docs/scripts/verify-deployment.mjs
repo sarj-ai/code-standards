@@ -40,7 +40,7 @@ async function verify() {
   assert.equal(upstreamResponse.status, 301);
   assert.equal(new URL(upstreamResponse.headers.get('location'), base).pathname, '/third-party-linters/ruff/');
   assert.match(ruffPage, /Third party Rules/u);
-  assert.equal(occurrences(ruffPage, /data-third-party-rule(?=[ >])/gu), 50);
+  assert.equal(occurrences(ruffPage, /data-third-party-rule(?=[ >])/gu), ruffIndex.pageSize);
   assert.ok(occurrences(ruffLastPage, /data-third-party-rule(?=[ >])/gu) > 0);
   assert.ok(Array.isArray(ruffIndex.entries) && ruffIndex.entries.length > 800);
   assert.ok(ruffIndex.entries.every(({ href }) => typeof href === 'string' && href.includes('#rule-')));
