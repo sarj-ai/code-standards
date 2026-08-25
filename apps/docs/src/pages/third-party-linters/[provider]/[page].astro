@@ -38,9 +38,6 @@ interface Props {
 }
 
 const { provider, allProviderRules, rules, page, totalPages } = Astro.props;
-const counts = new Map(
-  thirdPartyCatalog.providers.map((item) => [item.id, thirdPartyRulesForProvider(item.id).length]),
-);
 ---
 
 <ThirdPartyProviderPage
@@ -48,7 +45,6 @@ const counts = new Map(
   providers={thirdPartyCatalog.providers}
   {rules}
   {allProviderRules}
-  {counts}
   {page}
   {totalPages}
 />

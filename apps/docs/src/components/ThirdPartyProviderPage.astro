@@ -12,24 +12,22 @@ interface Props {
   providers: ThirdPartyProvider[];
   rules: ThirdPartyRule[];
   allProviderRules: ThirdPartyRule[];
-  counts: ReadonlyMap<string, number>;
   page: number;
   totalPages: number;
 }
 
-const { provider, providers, rules, allProviderRules, counts, page, totalPages } = Astro.props;
+const { provider, providers, rules, allProviderRules, page, totalPages } = Astro.props;
 const pageSuffix = page === 1 ? '' : ` · Page ${String(page)}`;
 ---
 
 <ReferencePage
-  title={`${provider.label} rules${pageSuffix}`}
-  description={`Browse the ${provider.label} rules enabled by Sarj Standards and open their official explanations.`}
+  title={`${provider.label} · Third party Rules${pageSuffix}`}
+  description={`${provider.label} rules enabled by Sarj Standards.`}
   sidebar={[...referenceSidebar]}
 >
   <article class="third-party-catalog">
+    <ThirdPartyProviderNav {providers} activeProvider={provider.id} />
     <ThirdPartyProviderHeader {provider} rules={allProviderRules} />
-    <ThirdPartyProviderNav {providers} activeProvider={provider.id} {counts} />
-    <ThirdPartyPagination {provider} {page} {totalPages} position="top" />
     <ThirdPartyRuleList
       providerLabel={provider.label}
       providerId={provider.id}
@@ -37,6 +35,6 @@ const pageSuffix = page === 1 ? '' : ` · Page ${String(page)}`;
       {allProviderRules}
       totalRuleCount={allProviderRules.length}
     />
-    <ThirdPartyPagination {provider} {page} {totalPages} position="bottom" />
+    <ThirdPartyPagination {provider} {page} {totalPages} />
   </article>
 </ReferencePage>

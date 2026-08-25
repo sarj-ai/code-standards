@@ -29,11 +29,16 @@ const uniformPolicy = firstProviderRule !== undefined
     (rule) => thirdPartyRulePolicySignature(rule) === thirdPartyRulePolicySignature(firstProviderRule),
   );
 const profileLabel: Record<ThirdPartyProfile, string> = { application: 'Application', standard: 'Strict' };
-const fixLabel: Record<ThirdPartyAutofix, string> = {
-  always: 'Always',
-  available: 'Available',
-  none: 'None',
-  sometimes: 'Conditional',
+const fixLabel = (rule: ThirdPartyRule) => {
+  if (rule.autofix === 'always' || rule.autofix === 'available') return 'Fix';
+  if (rule.autofix === 'sometimes') return 'Conditional';
+  return rule.hasSuggestions ? 'Suggestion' : 'No fix';
+};
+const fixDetail: Record<ThirdPartyAutofix, string> = {
+  always: 'Always autofixable',
+  available: 'Autofix available',
+  none: 'No autofix',
+  sometimes: 'Some reports are autofixable',
 };
 const fullContextIds = new Map<ThirdPartyProfile, Set<string>>(
   THIRD_PARTY_PROFILES.map((profile) => [
@@ -80,14 +85,14 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
   data-search-index-href={thirdPartyProviderSearchIndexHref(provider)}
   data-total-rules={totalRuleCount}
 >
-  <h2 id="enabled-rules-heading" class="third-party-directory__heading">Enabled rules</h2>
+  <h2 id="enabled-rules-heading" class="sr-only">Rules</h2>
   <div class="third-party-toolbar">
-    <p class="directory-status" role="status" aria-live="polite" aria-atomic="true">
+    <p class="directory-status sr-only" role="status" aria-live="polite" aria-atomic="true">
       <strong data-third-party-count>{rules.length}</strong>
       <span data-third-party-noun>{rules.length === 1 ? ` rule on this page · ${String(totalRuleCount)} total` : ` rules on this page · ${String(totalRuleCount)} total`}</span>
     </p>
     <div class="third-party-search" data-third-party-search-container hidden>
-      <label for="third-party-rule-search">Search all {providerLabel} rules</label>
+      <label class="sr-only" for="third-party-rule-search">Search {providerLabel} rules</label>
       <div>
         <input
           id="third-party-rule-search"
@@ -95,7 +100,7 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
           autocomplete="off"
           autocapitalize="none"
           spellcheck="false"
-          placeholder="Rule, summary, or family"
+          placeholder={`Search ${providerLabel}`}
           data-third-party-search
         />
         <button type="button" data-third-party-clear hidden>Clear</button>
@@ -105,59 +110,42 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
 
   <p class="third-party-empty" data-third-party-empty hidden>No enabled {providerLabel} rules match this search.</p>
   <ul class="third-party-search-results" data-third-party-search-results hidden aria-label={`${providerLabel} search results`}></ul>
-  <div class="third-party-rule-list" data-third-party-rule-list>
-    <div class="third-party-rule-list__header" aria-hidden="true">
-      <span>Rule</span>
-      <div class="third-party-rule-list__fact-headings">
-        {!uniformPolicy && <span>Scope</span>}<span>Autofix</span><span>Docs</span>
-      </div>
-    </div>
+  <ul class="third-party-rule-list" data-third-party-rule-list role="list">
     {rules.map((rule) => (
-      <article id={thirdPartyRuleAnchor(rule)} class="third-party-rule-row" data-third-party-rule tabindex="-1">
+      <li id={thirdPartyRuleAnchor(rule)} class="third-party-rule-row" data-third-party-rule tabindex="-1">
         <div class="third-party-rule-row__identity">
-          <h3 class="third-party-rule-row__heading">
-            <a class="third-party-rule-row__permalink" href={thirdPartyRuleHref(provider, rule)} aria-label={`Permanent link to ${rule.displayId}`}>
-              <code>{rule.displayId}</code><span aria-hidden="true">#</span>
-            </a>
-          </h3>
+          <a class="third-party-rule-row__permalink" href={thirdPartyRuleHref(provider, rule)} aria-label={`Permanent link to ${rule.displayId}`}>
+            <code>{rule.displayId}</code>
+          </a>
           <p><InlineCodeText text={rule.summary} /></p>
-          {rule.family && <small>{rule.family}</small>}
         </div>
-        <dl class="third-party-rule-row__facts">
-          {!uniformPolicy && <div class="third-party-rule-row__policy">
-            <dt class="third-party-cell-label">Scope</dt>
-            <dd>{displayPolicies(rule).map((policy) => (
-              <div>
-                <strong>{policy.label}</strong>
-                {policy.groups.length === 0 ? (
-                  <span class="level level--off">Not enabled</span>
-                ) : (
-                  <ul>
-                    {policy.groups.map((group) => (
-                      <li><span class:list={['level', `level--${group.level}`]}>{group.level}</span> {group.labels.join(', ')}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}</dd>
-          </div>}
-          <div class="third-party-rule-row__fix">
-            <dt class="third-party-cell-label">Autofix</dt>
-            <dd>
-              <span>{fixLabel[rule.autofix]}</span>
-              {rule.hasSuggestions && <small>Suggestions available</small>}
-            </dd>
+        {!uniformPolicy && (
+          <div class="third-party-rule-row__policy" role="group" aria-label="Policy scope">
+            {displayPolicies(rule).map((policy) => (
+              <span>
+                <span aria-hidden="true">
+                  <strong>{policy.label}</strong>{' '}
+                  {policy.groups.length === 0
+                    ? 'Off'
+                    : policy.groups.map((group) => `${group.level} · ${String(group.labels.length)}`).join(' / ')}
+                </span>
+                <span class="sr-only">: {policy.groups.length === 0 ? 'off' : policy.groups.map((group) => `${group.level} in ${group.labels.join(', ')}`).join('; ')}</span>
+              </span>
+            ))}
           </div>
-          <div class="third-party-rule-row__official">
-            <dt class="third-party-cell-label">Docs</dt>
-            <dd><a href={rule.docsUrl} aria-label={`${rule.displayId} official ${providerLabel} explanation`}>
-              Open docs <span aria-hidden="true">↗</span>
-            </a></dd>
-          </div>
-        </dl>
-      </article>
+        )}
+        <div class="third-party-rule-row__actions">
+          <span class="third-party-rule-row__fix">
+            <span aria-hidden="true">{fixLabel(rule)}</span>
+            <span class="sr-only">{fixDetail[rule.autofix]}{rule.hasSuggestions ? '; suggestions available' : ''}</span>
+          </span>
+          <a class="third-party-rule-row__official" href={rule.docsUrl} aria-label={`${rule.displayId} official ${providerLabel} explanation`}>
+            <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </li>
     ))}
-  </div>
+  </ul>
 </section>
 
 <script>
@@ -228,11 +216,6 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
         summary.textContent = entry.summary;
         link.href = entry.href;
         link.append(ruleId, summary);
-        if (entry.family !== null) {
-          const family = document.createElement('small');
-          family.textContent = `Family: ${entry.family}`;
-          link.append(family);
-        }
         item.append(link);
         return item;
       }));
@@ -249,6 +232,7 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
       history.replaceState(null, '', next);
       if (clear instanceof HTMLButtonElement) clear.hidden = query.length === 0;
       const searching = query.length > 0;
+      count?.parentElement?.classList.toggle('sr-only', !searching);
       ruleList.hidden = searching;
       results.hidden = !searching;
       catalog?.classList.toggle('third-party-catalog--searching', searching);

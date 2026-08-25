@@ -21,9 +21,6 @@ interface Props {
 }
 
 const { provider, allProviderRules } = Astro.props;
-const counts = new Map(
-  thirdPartyCatalog.providers.map((item) => [item.id, thirdPartyRulesForProvider(item.id).length]),
-);
 const totalPages = Math.ceil(allProviderRules.length / THIRD_PARTY_PAGE_SIZE);
 const rules = allProviderRules.slice(0, THIRD_PARTY_PAGE_SIZE);
 ---
@@ -33,7 +30,6 @@ const rules = allProviderRules.slice(0, THIRD_PARTY_PAGE_SIZE);
   providers={thirdPartyCatalog.providers}
   {rules}
   {allProviderRules}
-  {counts}
   page={1}
   {totalPages}
 />

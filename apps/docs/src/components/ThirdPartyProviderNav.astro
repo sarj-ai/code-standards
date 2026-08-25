@@ -1,32 +1,65 @@
 ---
 import { thirdPartyProviderHref, type ThirdPartyProvider } from '../lib/third-party-catalog';
+import ThirdPartyProviderIcon from './ThirdPartyProviderIcon.astro';
 
 interface Props {
   providers: ThirdPartyProvider[];
-  activeProvider?: string;
-  counts: ReadonlyMap<string, number>;
+  activeProvider: string;
 }
 
-const { providers, activeProvider, counts } = Astro.props;
+const { providers, activeProvider } = Astro.props;
+const providerOrder = [
+  'ruff',
+  'eslint',
+  'typescript-eslint',
+  'react',
+  'react-hooks',
+  'unicorn',
+  'better-tailwindcss',
+  'zod',
+  'perfectionist',
+  'eslint-comments',
+  'simple-import-sort',
+];
+const providerNavLabels: Record<string, string> = {
+  'better-tailwindcss': 'Tailwind',
+  'eslint-comments': 'Comments',
+  'simple-import-sort': 'Import Sort',
+  'typescript-eslint': 'TS ESLint',
+  zod: 'Zod',
+};
+const sortedProviders = [...providers].sort(
+  (left, right) => providerOrder.indexOf(left.id) - providerOrder.indexOf(right.id),
+);
 ---
 
-<nav class="provider-nav" aria-label="Upstream rule providers">
+<nav class="provider-nav" aria-label="Third party Rules">
   <ul>
-    <li class="provider-nav__all">
-      <a href="/third-party-linters/" aria-current={activeProvider === undefined ? 'page' : undefined}>
-        <span>All providers</span>
-      </a>
-    </li>
-    {providers.map((provider) => (
-      <li class:list={{ 'provider-nav__active': provider.id === activeProvider }}>
+    {sortedProviders.map((provider) => (
+      <li>
         <a
           href={thirdPartyProviderHref(provider)}
-          aria-current={provider.id === activeProvider ? 'true' : undefined}
+          aria-current={provider.id === activeProvider ? 'page' : undefined}
+          aria-label={provider.label}
         >
-          <span>{provider.label}</span>
-          <small><span aria-hidden="true">{counts.get(provider.id) ?? 0}</span><span class="sr-only"> {counts.get(provider.id) ?? 0} enabled rules</span></small>
+          <ThirdPartyProviderIcon providerId={provider.id} />
+          <span>{providerNavLabels[provider.id] ?? provider.label}</span>
         </a>
       </li>
     ))}
   </ul>
 </nav>
+
+<script>
+  for (const navigation of document.querySelectorAll('.provider-nav')) {
+    if (!(navigation instanceof HTMLElement) || navigation.dataset.ready === 'true') continue;
+    navigation.dataset.ready = 'true';
+    const active = navigation.querySelector('[aria-current="page"]');
+    const scroller = navigation.querySelector('ul');
+    if (active instanceof HTMLElement && scroller instanceof HTMLElement) {
+      requestAnimationFrame(() => {
+        scroller.scrollLeft = active.offsetLeft - (scroller.clientWidth - active.clientWidth) / 2;
+      });
+    }
+  }
+</script>
