@@ -310,6 +310,30 @@ export function thirdPartyProviderPageHref(
     : `${thirdPartyProviderHref(provider)}${String(page)}/`;
 }
 
-export function thirdPartyRuleAnchor(rule: Pick<ThirdPartyRule, "id">): string {
-  return `rule-${rule.id.replaceAll("/", "--").replaceAll(/[^a-zA-Z0-9_-]/g, "-")}`;
+export function thirdPartyProviderSearchIndexHref(
+  provider: Pick<ThirdPartyProvider, "id">,
+): string {
+  return `${thirdPartyProviderHref(provider)}rules.json`;
+}
+
+export function thirdPartyRuleAnchor(
+  rule: Pick<ThirdPartyRule, "id" | "provider">,
+): string {
+  const encodedId = [...new TextEncoder().encode(`${rule.provider}:${rule.id}`)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `rule-${encodedId}`;
+}
+
+export function thirdPartyRuleHref(
+  provider: Pick<ThirdPartyProvider, "id">,
+  rule: Pick<ThirdPartyRule, "id" | "provider">,
+): string {
+  return `${thirdPartyProviderHref(provider)}#${thirdPartyRuleAnchor(rule)}`;
+}
+
+export function thirdPartyRulePolicySignature(
+  rule: Pick<ThirdPartyRule, "profiles">,
+): string {
+  return JSON.stringify(rule.profiles);
 }

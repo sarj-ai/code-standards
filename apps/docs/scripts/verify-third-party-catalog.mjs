@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import { TextEncoder } from 'node:util';
 import { URL } from 'node:url';
+import { gzipSync } from 'node:zlib';
 
 const appRoot = resolve(import.meta.dirname, '..');
 const artifactPath = resolve(appRoot, 'src/generated/third-party-rules.v1.json');
@@ -40,24 +42,28 @@ function verifySource() {
   );
 
   const ruleKeys = new Set();
+  const ruleAnchors = new Set();
   const ruleCounts = new Map([...providerIds].map((providerId) => [providerId, 0]));
   for (const [index, rule] of catalog.rules.entries()) {
     const label = `rules[${String(index)}]`;
-    exactFields(
-      rule,
-      ['autofix', 'displayId', 'docsUrl', 'family', 'hasSuggestions', 'id', 'key', 'profiles', 'provider', 'summary'],
-      label,
-    );
+    exactFields(rule, ['autofix', 'displayId', 'docsUrl', 'family', 'hasSuggestions', 'id', 'key', 'profiles', 'provider', 'summary'], label);
     for (const field of ['displayId', 'id', 'key', 'provider', 'summary']) nonemptyString(rule[field], `${label}.${field}`);
     assert.ok(providerIds.has(rule.provider), `${label} references unknown provider ${rule.provider}`);
     assert.equal(rule.key, `${rule.provider}:${rule.id}`, `${label}.key must match provider and ID`);
     assert.ok(!ruleKeys.has(rule.key), `duplicate rule ${rule.key}`);
     ruleKeys.add(rule.key);
+    const anchor = anchorForRule(rule);
+    assert.ok(!ruleAnchors.has(anchor), `duplicate rule anchor ${anchor}`);
+    ruleAnchors.add(anchor);
     httpsUrl(rule.docsUrl, `${label}.docsUrl`);
     assert.ok(rule.family === null || (typeof rule.family === 'string' && rule.family.length > 0));
     assert.equal(typeof rule.hasSuggestions, 'boolean', `${label}.hasSuggestions must be boolean`);
     assert.ok(autofixValues.has(rule.autofix), `${label}.autofix is invalid`);
-    assert.deepEqual(rule.profiles.map(({ name }) => name), profiles, `${label} must describe both profiles in canonical order`);
+    assert.deepEqual(
+      rule.profiles.map(({ name }) => name),
+      profiles,
+      `${label} must describe both profiles in canonical order`,
+    );
     for (const [profileIndex, profile] of rule.profiles.entries()) {
       const profileLabel = `${label}.profiles[${String(profileIndex)}]`;
       exactFields(profile, ['contexts', 'name'], profileLabel);
@@ -75,7 +81,11 @@ function verifySource() {
     }
     ruleCounts.set(rule.provider, ruleCounts.get(rule.provider) + 1);
   }
-  assert.deepEqual(catalog.rules.map(({ key }) => key), [...ruleKeys].sort(), 'rules must use canonical key order');
+  assert.deepEqual(
+    catalog.rules.map(({ key }) => key),
+    [...ruleKeys].sort(),
+    'rules must use canonical key order',
+  );
   for (const [providerId, count] of ruleCounts) assert.ok(count > 0, `${providerId} must own at least one rule`);
   return ruleCounts;
 }
@@ -112,6 +122,21 @@ function verifyDist(ruleCounts) {
 
     const rules = catalog.rules.filter((rule) => rule.provider === provider.id);
     const totalPages = Math.ceil(rules.length / pageSize);
+    const searchIndexSource = readFileSync(resolve(distRoot, 'third-party-linters', provider.id, 'rules.json'), 'utf8');
+    const searchIndex = JSON.parse(searchIndexSource);
+    assert.ok(gzipSync(searchIndexSource, { level: 9 }).byteLength <= 35_000, `${provider.id} compressed search index must stay at or below 35 KB`);
+    assert.equal(searchIndex.provider, provider.id, `${provider.id} search index must identify its provider`);
+    assert.equal(searchIndex.entries.length, rules.length, `${provider.id} search index must cover every rule`);
+    for (const [index, rule] of rules.entries()) {
+      const entry = searchIndex.entries[index];
+      const pageNumber = Math.floor(index / pageSize) + 1;
+      exactFields(entry, ['anchor', 'displayId', 'family', 'href', 'summary'], `${provider.id} search entry ${String(index)}`);
+      assert.equal(entry.anchor, anchorForRule(rule));
+      assert.equal(entry.displayId, rule.displayId);
+      assert.equal(entry.family, rule.family);
+      assert.equal(entry.summary, plainSearchSummary(rule.summary));
+      assert.equal(entry.href, `${providerPageHref(provider.id, pageNumber)}#${anchorForRule(rule)}`);
+    }
     const expectedPageDirectories = Array.from({ length: totalPages - 1 }, (_, index) => String(index + 2));
     const actualPageDirectories = readdirSync(resolve(distRoot, 'third-party-linters', provider.id), { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
@@ -121,10 +146,12 @@ function verifyDist(ruleCounts) {
 
     const providerDocHrefs = [];
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
-      const pagePath = pageNumber === 1
-        ? resolve(distRoot, 'third-party-linters', provider.id, 'index.html')
-        : resolve(distRoot, 'third-party-linters', provider.id, String(pageNumber), 'index.html');
+      const pagePath =
+        pageNumber === 1
+          ? resolve(distRoot, 'third-party-linters', provider.id, 'index.html')
+          : resolve(distRoot, 'third-party-linters', provider.id, String(pageNumber), 'index.html');
       const page = readFileSync(pagePath, 'utf8');
+      assert.ok(new TextEncoder().encode(page).byteLength <= 100_000, `${provider.id} page ${String(pageNumber)} must stay at or below 100 KB raw HTML`);
       const hrefs = htmlHrefs(page);
       const hrefSet = new Set(hrefs);
       const pageRules = rules.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
@@ -137,6 +164,12 @@ function verifyDist(ruleCounts) {
       const expectedDocsUrlCounts = new Map();
       for (const rule of pageRules) {
         expectedDocsUrlCounts.set(rule.docsUrl, (expectedDocsUrlCounts.get(rule.docsUrl) ?? 0) + 1);
+        assert.ok(page.includes(escapeHtml(rule.displayId)), `${rule.key} must render its rule ID`);
+        assert.ok(
+          summaryParts(rule.summary).every((part) => page.includes(escapeHtml(part))),
+          `${rule.key} must render its summary`,
+        );
+        assert.ok(hrefSet.has(`/third-party-linters/${provider.id}/#${anchorForRule(rule)}`), `${rule.key} must expose a stable provider-root permalink`);
       }
       for (const [docsUrl, expectedCount] of expectedDocsUrlCounts) {
         assert.equal(
@@ -149,7 +182,7 @@ function verifyDist(ruleCounts) {
       for (const candidate of catalog.providers) {
         assert.ok(hrefSet.has(`/third-party-linters/${candidate.id}/`), `${provider.id} page ${String(pageNumber)} navigation must link to ${candidate.id}`);
       }
-      for (let targetPage = 1; targetPage <= totalPages; targetPage += 1) {
+      for (const targetPage of visiblePaginationPages(pageNumber, totalPages)) {
         assert.ok(
           hrefSet.has(providerPageHref(provider.id, targetPage)),
           `${provider.id} page ${String(pageNumber)} pagination must link to page ${String(targetPage)}`,
@@ -170,6 +203,30 @@ function verifyDist(ruleCounts) {
       );
     }
   }
+}
+
+function anchorForRule(rule) {
+  const encodedId = [...new TextEncoder().encode(`${rule.provider}:${rule.id}`)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `rule-${encodedId}`;
+}
+
+function visiblePaginationPages(page, totalPages) {
+  return [...new Set([1, totalPages, page - 2, page - 1, page, page + 1, page + 2])].filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages);
+}
+
+function escapeHtml(value) {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function plainSearchSummary(value) {
+  return value.replaceAll(/`([^`]+)`/gu, '$1');
+}
+
+function summaryParts(value) {
+  return value
+    .split(/`([^`]+)`/gu)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }
 
 function providerPageHref(providerId, page) {

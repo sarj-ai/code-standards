@@ -1,30 +1,42 @@
 ---
-import type { ThirdPartyProvider } from '../lib/third-party-catalog';
+import {
+  THIRD_PARTY_PROFILES,
+  thirdPartyRulePolicySignature,
+  type ThirdPartyProvider,
+  type ThirdPartyRule,
+} from '../lib/third-party-catalog';
 
 interface Props {
   provider: ThirdPartyProvider;
-  ruleCount: number;
-  page: number;
-  pageSize: number;
+  rules: ThirdPartyRule[];
 }
 
-const { provider, ruleCount, page, pageSize } = Astro.props;
-const firstRule = (page - 1) * pageSize + 1;
-const lastRule = Math.min(page * pageSize, ruleCount);
+const { provider, rules } = Astro.props;
+const [firstRule] = rules;
+const uniformPolicy = firstRule !== undefined
+  && rules.every((rule) => thirdPartyRulePolicySignature(rule) === thirdPartyRulePolicySignature(firstRule));
+const profileLabels = { application: 'Application', standard: 'Strict' } as const;
+const policySummary = uniformPolicy
+  ? firstRule.profiles.map((profile) => {
+      const levels = new Set(profile.contexts.map((context) => context.level));
+      const level = levels.size === 1 ? [...levels][0] : 'mixed levels';
+      return `${profileLabels[profile.name]} · ${String(profile.contexts.length)} contexts · ${level}`;
+    }).join(' / ')
+  : `${String(THIRD_PARTY_PROFILES.length)} profiles · policy varies by rule`;
 ---
 
 <header class="provider-header">
   <div>
-    <h1>{provider.label}</h1>
+    <h1>{provider.label} rules</h1>
     <p class="lede">
-      Enabled across the pinned Strict and Application profiles in representative contexts. Showing {firstRule}–{lastRule} of {ruleCount}
-      {ruleCount === 1 ? ' rule' : ' rules'}.
+      {rules.length} enabled {rules.length === 1 ? 'rule' : 'rules'} from the pinned toolchain. Policy reflects the resolved Strict and Application profiles.
     </p>
   </div>
   <dl>
     <div><dt>Package</dt><dd><code>{provider.package}</code></dd></div>
     <div><dt>Version</dt><dd><code>{provider.version}</code></dd></div>
     <div><dt>Engine</dt><dd>{provider.engine}</dd></div>
+    <div><dt>Policy</dt><dd>{policySummary}</dd></div>
   </dl>
   <a class="provider-official-link" href={provider.homepage}>Official {provider.label} reference <span aria-hidden="true">↗</span></a>
 </header>

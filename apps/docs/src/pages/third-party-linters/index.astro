@@ -1,6 +1,5 @@
 ---
 import ReferencePage from '../../components/ReferencePage.astro';
-import ThirdPartyProviderNav from '../../components/ThirdPartyProviderNav.astro';
 import { thirdPartyCatalog, thirdPartyRulesForProvider } from '../../lib/third-party-catalog';
 import { referenceSidebar } from '../../lib/navigation';
 
@@ -10,20 +9,19 @@ const counts = new Map(
 ---
 
 <ReferencePage
-  title="Third-party linters"
+  title="Upstream rules"
   description="Browse the upstream lint rules enabled by Sarj Standards and open their official explanations."
   sidebar={[...referenceSidebar]}
 >
   <article class="third-party-index">
     <header>
-      <p class="eyebrow">Upstream policy</p>
-      <h1>Third-party linters</h1>
+      <p class="eyebrow">Resolved toolchain</p>
+      <h1>Upstream rules</h1>
       <p class="lede">
-        Browse enabled ESLint and Ruff rules evaluated in representative contexts for the pinned Strict and
-        Application profiles. Rule explanations link to the provider that owns and maintains them.
+        Inspect the Ruff, ESLint, and plugin rules enabled by Strict and Application. Each provider page shows
+        resolved policy, fix support, and upstream documentation from the pinned toolchain.
       </p>
     </header>
-    <ThirdPartyProviderNav providers={thirdPartyCatalog.providers} {counts} />
     <ul class="third-party-provider-directory">
       {thirdPartyCatalog.providers.map((provider) => (
         <li>

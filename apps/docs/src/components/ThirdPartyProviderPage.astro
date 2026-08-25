@@ -14,11 +14,10 @@ interface Props {
   allProviderRules: ThirdPartyRule[];
   counts: ReadonlyMap<string, number>;
   page: number;
-  pageSize: number;
   totalPages: number;
 }
 
-const { provider, providers, rules, allProviderRules, counts, page, pageSize, totalPages } = Astro.props;
+const { provider, providers, rules, allProviderRules, counts, page, totalPages } = Astro.props;
 const pageSuffix = page === 1 ? '' : ` · Page ${String(page)}`;
 ---
 
@@ -28,11 +27,12 @@ const pageSuffix = page === 1 ? '' : ` · Page ${String(page)}`;
   sidebar={[...referenceSidebar]}
 >
   <article class="third-party-catalog">
-    <ThirdPartyProviderHeader {provider} ruleCount={allProviderRules.length} {page} {pageSize} />
+    <ThirdPartyProviderHeader {provider} rules={allProviderRules} />
     <ThirdPartyProviderNav {providers} activeProvider={provider.id} {counts} />
     <ThirdPartyPagination {provider} {page} {totalPages} position="top" />
     <ThirdPartyRuleList
       providerLabel={provider.label}
+      providerId={provider.id}
       {rules}
       {allProviderRules}
       totalRuleCount={allProviderRules.length}

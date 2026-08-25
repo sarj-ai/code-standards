@@ -9,20 +9,44 @@ const base = new URL(process.env.DOCS_BASE_URL ?? 'https://code-standards.sarj.a
 
 async function verify() {
   const nonce = `?commit=${encodeURIComponent(expectedCommit)}`;
-  const [healthResponse, catalogResponse, pageResponse] = await Promise.all([
+  const [healthResponse, catalogResponse, pageResponse, upstreamResponse, ruffResponse, ruffLastResponse, ruffIndexResponse] = await Promise.all([
     response(`health.json${nonce}`),
     response('api/v1/catalog.json'),
     response(''),
+    response(`third-party-linters/${nonce}`),
+    response(`third-party-linters/ruff/${nonce}`),
+    response(`third-party-linters/ruff/19/${nonce}`),
+    response(`third-party-linters/ruff/rules.json${nonce}`),
   ]);
-  for (const [name, candidate] of Object.entries({ healthResponse, catalogResponse, pageResponse })) {
+  for (const [name, candidate] of Object.entries({
+    healthResponse,
+    catalogResponse,
+    pageResponse,
+    ruffIndexResponse,
+    ruffLastResponse,
+    ruffResponse,
+    upstreamResponse,
+  })) {
     assert.ok(candidate.ok, `${name} returned ${String(candidate.status)}`);
   }
 
   const health = await healthResponse.json();
   const catalogText = await catalogResponse.text();
   const page = await pageResponse.text();
+  const upstreamPage = await upstreamResponse.text();
+  const ruffPage = await ruffResponse.text();
+  const ruffLastPage = await ruffLastResponse.text();
+  const ruffIndex = await ruffIndexResponse.json();
   assert.equal(health.commit, expectedCommit, `live commit ${String(health.commit)} does not match ${expectedCommit}`);
   assert.equal(createHash('sha256').update(catalogText).digest('hex'), health.catalogSha256);
+  assert.match(upstreamPage, /Upstream rules/u);
+  assert.match(upstreamPage, /href="\/third-party-linters\/ruff\/"/u);
+  assert.equal(occurrences(ruffPage, /data-third-party-rule(?=[ >])/gu), 50);
+  assert.ok(occurrences(ruffLastPage, /data-third-party-rule(?=[ >])/gu) > 0);
+  assert.ok(Array.isArray(ruffIndex.entries) && ruffIndex.entries.length > 800);
+  assert.ok(ruffIndex.entries.every(({ href }) => typeof href === 'string' && href.includes('#rule-')));
+  assert.match(ruffIndexResponse.headers.get('cache-control') ?? '', /must-revalidate/u);
+  assert.match(ruffIndexResponse.headers.get('content-type') ?? '', /^application\/json\b/u);
   assert.doesNotMatch(page, /site-search|pagefind|type="search"/iu);
   assert.doesNotMatch(page, /<meta http-equiv="content-security-policy"/iu);
   assert.doesNotMatch(page, /GTM-|zaraz|cloudflareinsights/iu);
@@ -45,21 +69,28 @@ async function verify() {
   assert.equal(about.status, 301);
   assert.equal(new URL(about.headers.get('location'), base).pathname, '/');
 
-  const missing = await response(`definitely-not-a-page-${expectedCommit}/`, { redirect: 'manual' });
+  const missing = await response(`definitely-not-a-page-${expectedCommit}/`, {
+    redirect: 'manual',
+  });
   assert.equal(missing.status, 404);
   const catalog = JSON.parse(catalogText);
   const aliasedRule = catalog.rules.find(({ aliases }) => aliases.length > 0);
   assert.ok(aliasedRule, 'catalog must contain an alias redirect fixture');
   const aliasRedirect = await response(`rules/${aliasedRule.engine}/${aliasedRule.aliases[0]}/`, { redirect: 'manual' });
   assert.ok(aliasRedirect.status >= 300 && aliasRedirect.status < 400);
-  assert.equal(
-    new URL(aliasRedirect.headers.get('location'), base).pathname,
-    `/rules/${aliasedRule.engine}/${aliasedRule.id}/`,
-  );
+  assert.equal(new URL(aliasRedirect.headers.get('location'), base).pathname, `/rules/${aliasedRule.engine}/${aliasedRule.id}/`);
+}
+
+function occurrences(source, pattern) {
+  return source.match(pattern)?.length ?? 0;
 }
 
 async function response(path, init) {
-  return globalThis.fetch(new URL(path, base), { cache: 'no-store', ...init });
+  return globalThis.fetch(new URL(path, base), {
+    cache: 'no-store',
+    signal: globalThis.AbortSignal.timeout(10_000),
+    ...init,
+  });
 }
 
 let lastError;
@@ -71,6 +102,7 @@ for (let attempt = 1; attempt <= 10; attempt += 1) {
     break;
   } catch (error) {
     lastError = error;
+    process.stderr.write(`deployment verification attempt ${String(attempt)} failed: ${String(error)}\n`);
     if (attempt < 10) await new Promise((resolve) => globalThis.setTimeout(resolve, 3_000));
   }
 }

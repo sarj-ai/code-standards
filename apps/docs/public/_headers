@@ -43,6 +43,15 @@
   Cache-Control: public, max-age=0, must-revalidate
   Content-Type: application/schema+json; charset=utf-8
 
+/third-party-linters/*/rules.json
+  ! Content-Security-Policy
+  ! Cross-Origin-Opener-Policy
+  ! Permissions-Policy
+  ! Referrer-Policy
+  ! X-Frame-Options
+  Cache-Control: public, max-age=0, must-revalidate
+  Content-Type: application/json; charset=utf-8
+
 /health.json
   ! Content-Security-Policy
   ! Cross-Origin-Opener-Policy

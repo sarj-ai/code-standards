@@ -10,21 +10,21 @@ interface Props {
 const { providers, activeProvider, counts } = Astro.props;
 ---
 
-<nav class="provider-nav" aria-label="Third-party linters">
+<nav class="provider-nav" aria-label="Upstream rule providers">
   <ul>
     <li class="provider-nav__all">
       <a href="/third-party-linters/" aria-current={activeProvider === undefined ? 'page' : undefined}>
-        <span>All linters</span>
+        <span>All providers</span>
       </a>
     </li>
     {providers.map((provider) => (
       <li class:list={{ 'provider-nav__active': provider.id === activeProvider }}>
         <a
           href={thirdPartyProviderHref(provider)}
-          aria-current={provider.id === activeProvider ? 'page' : undefined}
+          aria-current={provider.id === activeProvider ? 'true' : undefined}
         >
           <span>{provider.label}</span>
-          <small>{counts.get(provider.id) ?? 0}</small>
+          <small><span aria-hidden="true">{counts.get(provider.id) ?? 0}</span><span class="sr-only"> {counts.get(provider.id) ?? 0} enabled rules</span></small>
         </a>
       </li>
     ))}

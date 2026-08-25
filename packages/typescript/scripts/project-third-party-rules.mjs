@@ -108,9 +108,10 @@ async function project() {
         if (!(provider in PROVIDERS)) throw new Error(`unknown configured ESLint provider: ${provider}`);
         const rule = provider === "eslint" ? registries.eslint.get(id) : registries[provider]?.[id];
         if (rule === undefined) throw new Error(`missing installed metadata for ${displayId}`);
-        const summary = rule.meta?.docs?.description;
+        const rawSummary = rule.meta?.docs?.description;
         const docsUrl = rule.meta?.docs?.url;
-        if (typeof summary !== "string" || summary.length === 0) throw new Error(`missing summary for ${displayId}`);
+        if (typeof rawSummary !== "string" || rawSummary.length === 0) throw new Error(`missing summary for ${displayId}`);
+        const summary = plainTextSummary(rawSummary);
         if (typeof docsUrl !== "string" || !docsUrl.startsWith("https://")) throw new Error(`missing HTTPS docs URL for ${displayId}`);
         const key = `${provider}:${id}`;
         let record = records.get(key);
@@ -149,6 +150,13 @@ async function project() {
     profiles: [...record.profiles.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([name, contexts]) => ({ name, contexts })),
   }));
   process.stdout.write(`${JSON.stringify({ providers, rules })}\n`);
+}
+
+function plainTextSummary(value) {
+  return value
+    .replaceAll(/\[([^\]]+)\]\([^\s)]+(?:\s+"[^"]*")?\)/gu, "$1")
+    .replaceAll(/\s+/gu, " ")
+    .trim();
 }
 
 await project();
