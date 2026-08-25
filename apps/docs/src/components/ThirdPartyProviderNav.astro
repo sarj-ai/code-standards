@@ -1,5 +1,10 @@
 ---
-import { thirdPartyProviderHref, type ThirdPartyProvider } from '../lib/third-party-catalog';
+import {
+  thirdPartyProviderHref,
+  thirdPartyProviderNavigationLabel,
+  thirdPartyProvidersForNavigation,
+  type ThirdPartyProvider,
+} from '../lib/third-party-catalog';
 import ThirdPartyProviderIcon from './ThirdPartyProviderIcon.astro';
 
 interface Props {
@@ -8,29 +13,7 @@ interface Props {
 }
 
 const { providers, activeProvider } = Astro.props;
-const providerOrder = [
-  'ruff',
-  'eslint',
-  'typescript-eslint',
-  'react',
-  'react-hooks',
-  'unicorn',
-  'better-tailwindcss',
-  'zod',
-  'perfectionist',
-  'eslint-comments',
-  'simple-import-sort',
-];
-const providerNavLabels: Record<string, string> = {
-  'better-tailwindcss': 'Tailwind',
-  'eslint-comments': 'Comments',
-  'simple-import-sort': 'Import Sort',
-  'typescript-eslint': 'TS ESLint',
-  zod: 'Zod',
-};
-const sortedProviders = [...providers].sort(
-  (left, right) => providerOrder.indexOf(left.id) - providerOrder.indexOf(right.id),
-);
+const sortedProviders = thirdPartyProvidersForNavigation(providers);
 ---
 
 <nav class="provider-nav" aria-label="Third party Rules">
@@ -43,7 +26,7 @@ const sortedProviders = [...providers].sort(
           aria-label={provider.label}
         >
           <ThirdPartyProviderIcon providerId={provider.id} />
-          <span>{providerNavLabels[provider.id] ?? provider.label}</span>
+          <span>{thirdPartyProviderNavigationLabel(provider)}</span>
         </a>
       </li>
     ))}

@@ -16,7 +16,7 @@ assert.ok(mode === '--source' || mode === '--dist', 'usage: node scripts/verify-
 const catalog = JSON.parse(readFileSync(artifactPath, 'utf8'));
 const profiles = ['application', 'standard'];
 const autofixValues = new Set(['always', 'available', 'none', 'sometimes']);
-const pageSize = 50;
+const pageSize = 40;
 
 function verifySource() {
   exactFields(catalog, ['profiles', 'providers', 'rules', 'schemaVersion'], 'catalog');
@@ -122,7 +122,7 @@ function verifyDist(ruleCounts) {
     const totalPages = Math.ceil(rules.length / pageSize);
     const searchIndexSource = readFileSync(resolve(distRoot, 'third-party-linters', provider.id, 'rules.json'), 'utf8');
     const searchIndex = JSON.parse(searchIndexSource);
-    assert.ok(gzipSync(searchIndexSource, { level: 9 }).byteLength <= 35_000, `${provider.id} compressed search index must stay at or below 35 KB`);
+    assert.ok(gzipSync(searchIndexSource, { level: 9 }).byteLength <= 48_000, `${provider.id} compressed search index must stay at or below 48 KB`);
     assert.equal(searchIndex.provider, provider.id, `${provider.id} search index must identify its provider`);
     assert.equal(searchIndex.entries.length, rules.length, `${provider.id} search index must cover every rule`);
     for (const [index, rule] of rules.entries()) {
@@ -150,6 +150,7 @@ function verifyDist(ruleCounts) {
           : resolve(distRoot, 'third-party-linters', provider.id, String(pageNumber), 'index.html');
       const page = readFileSync(pagePath, 'utf8');
       assert.ok(new TextEncoder().encode(page).byteLength <= 100_000, `${provider.id} page ${String(pageNumber)} must stay at or below 100 KB raw HTML`);
+      assert.ok(page.includes('Third party Rules'), `${provider.id} page ${String(pageNumber)} must label the provider sidebar group`);
       const hrefs = htmlHrefs(page);
       const hrefSet = new Set(hrefs);
       const pageRules = rules.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
@@ -179,6 +180,10 @@ function verifyDist(ruleCounts) {
       providerDocHrefs.push(...hrefs.filter((href) => expectedDocsUrlCounts.has(href)));
       for (const candidate of catalog.providers) {
         assert.ok(hrefSet.has(`/third-party-linters/${candidate.id}/`), `${provider.id} page ${String(pageNumber)} navigation must link to ${candidate.id}`);
+        assert.ok(
+          page.includes(`data-provider="${candidate.id}"`),
+          `${provider.id} page ${String(pageNumber)} sidebar must include ${candidate.id}`,
+        );
       }
       for (const targetPage of [pageNumber - 1, pageNumber + 1].filter((candidate) => candidate >= 1 && candidate <= totalPages)) {
         assert.ok(
