@@ -196,6 +196,25 @@ def test_requested_ruff_families_remain_globally_enabled() -> None:
     assert {"PLC0415", "BLE001"}.isdisjoint(ignored)
 
 
+@pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
+def test_flow_aware_dunder_all_rule_owns_duplicate_detection(config: Path) -> None:
+    parsed = manifest.as_table(tomllib.loads(config.read_text(encoding="utf-8")))
+    lint = manifest.table_field(parsed, "lint")
+    assert "RUF068" in manifest.list_field(lint, "ignore")
+
+    raw_inventory: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
+        (CONFIGS_DIR / "rule-inventory.v1.json").read_text(encoding="utf-8"),
+    )
+    inventory = manifest.as_table(raw_inventory)
+    rules = [manifest.as_table(value) for value in manifest.list_field(inventory, "rules")]
+    assert any(
+        manifest.text_field(rule, "code") == "SARJ098"
+        and manifest.text_field(rule, "family") == "python"
+        and manifest.text_field(rule, "id") == "no-duplicate-dunder-all-entry"
+        for rule in rules
+    )
+
+
 def test_ruff_rejects_quoted_type_checking_union_annotations(tmp_path: Path) -> None:
     source = tmp_path / "context.py"
     source.write_text(
@@ -393,7 +412,7 @@ def test_python_visibility_contract_is_explicitly_strict() -> None:
     ruff = tomllib.loads(RUFF_STRICT.read_text())
     lint = manifest.table_field(manifest.as_table(ruff), "lint")
     ignored = set(manifest.list_field(lint, "ignore"))
-    assert {"SLF001", "N801", "N802", "N806", "N999", "F401", "F822", "RUF022", "RUF068"}.isdisjoint(ignored)
+    assert {"SLF001", "N801", "N802", "N806", "N999", "F401", "F822", "RUF022"}.isdisjoint(ignored)
     assert "PLC2701" in ignored
 
     upstream = PYRIGHT_STRICT.read_text()

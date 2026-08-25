@@ -1,0 +1,42 @@
+---
+import { referenceSidebar } from '../lib/navigation';
+import type { ThirdPartyProvider, ThirdPartyRule } from '../lib/third-party-catalog';
+import ReferencePage from './ReferencePage.astro';
+import ThirdPartyPagination from './ThirdPartyPagination.astro';
+import ThirdPartyProviderHeader from './ThirdPartyProviderHeader.astro';
+import ThirdPartyProviderNav from './ThirdPartyProviderNav.astro';
+import ThirdPartyRuleList from './ThirdPartyRuleList.astro';
+
+interface Props {
+  provider: ThirdPartyProvider;
+  providers: ThirdPartyProvider[];
+  rules: ThirdPartyRule[];
+  allProviderRules: ThirdPartyRule[];
+  counts: ReadonlyMap<string, number>;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+const { provider, providers, rules, allProviderRules, counts, page, pageSize, totalPages } = Astro.props;
+const pageSuffix = page === 1 ? '' : ` · Page ${String(page)}`;
+---
+
+<ReferencePage
+  title={`${provider.label} rules${pageSuffix}`}
+  description={`Browse the ${provider.label} rules enabled by Sarj Standards and open their official explanations.`}
+  sidebar={[...referenceSidebar]}
+>
+  <article class="third-party-catalog">
+    <ThirdPartyProviderHeader {provider} ruleCount={allProviderRules.length} {page} {pageSize} />
+    <ThirdPartyProviderNav {providers} activeProvider={provider.id} {counts} />
+    <ThirdPartyPagination {provider} {page} {totalPages} position="top" />
+    <ThirdPartyRuleList
+      providerLabel={provider.label}
+      {rules}
+      {allProviderRules}
+      totalRuleCount={allProviderRules.length}
+    />
+    <ThirdPartyPagination {provider} {page} {totalPages} position="bottom" />
+  </article>
+</ReferencePage>

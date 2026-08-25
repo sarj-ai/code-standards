@@ -1,0 +1,37 @@
+---
+import {
+  thirdPartyProviderPageHref,
+  type ThirdPartyProvider,
+} from '../lib/third-party-catalog';
+
+interface Props {
+  provider: ThirdPartyProvider;
+  page: number;
+  totalPages: number;
+  position: 'top' | 'bottom';
+}
+
+const { provider, page, totalPages, position } = Astro.props;
+---
+
+{totalPages > 1 && (
+  <nav class:list={['third-party-pagination', `third-party-pagination--${position}`]} aria-label={`${provider.label} rule pages`}>
+    {page > 1
+      ? <a class="third-party-pagination__step" href={thirdPartyProviderPageHref(provider, page - 1)}>Previous</a>
+      : <span class="third-party-pagination__step" aria-disabled="true">Previous</span>}
+    <ol>
+      {Array.from({ length: totalPages }, (_, index) => index + 1).map((pageNumber) => (
+        <li>
+          <a
+            href={thirdPartyProviderPageHref(provider, pageNumber)}
+            aria-current={pageNumber === page ? 'page' : undefined}
+            aria-label={`Page ${String(pageNumber)} of ${String(totalPages)}`}
+          >{pageNumber}</a>
+        </li>
+      ))}
+    </ol>
+    {page < totalPages
+      ? <a class="third-party-pagination__step" href={thirdPartyProviderPageHref(provider, page + 1)}>Next</a>
+      : <span class="third-party-pagination__step" aria-disabled="true">Next</span>}
+  </nav>
+)}

@@ -1,0 +1,39 @@
+---
+import ReferencePage from '../../components/ReferencePage.astro';
+import ThirdPartyProviderNav from '../../components/ThirdPartyProviderNav.astro';
+import { thirdPartyCatalog, thirdPartyRulesForProvider } from '../../lib/third-party-catalog';
+import { referenceSidebar } from '../../lib/navigation';
+
+const counts = new Map(
+  thirdPartyCatalog.providers.map((provider) => [provider.id, thirdPartyRulesForProvider(provider.id).length]),
+);
+---
+
+<ReferencePage
+  title="Third-party linters"
+  description="Browse the upstream lint rules enabled by Sarj Standards and open their official explanations."
+  sidebar={[...referenceSidebar]}
+>
+  <article class="third-party-index">
+    <header>
+      <p class="eyebrow">Upstream policy</p>
+      <h1>Third-party linters</h1>
+      <p class="lede">
+        Browse enabled ESLint and Ruff rules evaluated in representative contexts for the pinned Strict and
+        Application profiles. Rule explanations link to the provider that owns and maintains them.
+      </p>
+    </header>
+    <ThirdPartyProviderNav providers={thirdPartyCatalog.providers} {counts} />
+    <ul class="third-party-provider-directory">
+      {thirdPartyCatalog.providers.map((provider) => (
+        <li>
+          <a href={`/third-party-linters/${provider.id}/`}>
+            <strong>{provider.label}</strong>
+            <span>{counts.get(provider.id) ?? 0} enabled rules</span>
+            <code>{provider.package} · {provider.version}</code>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </article>
+</ReferencePage>

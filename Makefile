@@ -35,6 +35,7 @@ doctor:
 docs-artifacts-check:
 	@$(STANDARDS) --root . maintain rules check
 	@$(STANDARDS) --root . maintain catalog check
+	@uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check
 	@$(STANDARDS) --root . maintain cli-reference check
 	@$(STANDARDS) --root . maintain docs check
 

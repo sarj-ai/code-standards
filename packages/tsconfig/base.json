@@ -8,6 +8,15 @@
     "moduleDetection": "force",
 
     "strict": true,
+    "alwaysStrict": true,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictBindCallApply": true,
+    "strictBuiltinIteratorReturn": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "useUnknownInCatchVariables": true,
     "noUncheckedIndexedAccess": true,
     "noUncheckedSideEffectImports": true,
     "exactOptionalPropertyTypes": true,
@@ -22,18 +31,21 @@
     "useDefineForClassFields": true,
 
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
+    "isolatedDeclarations": true,
+    "erasableSyntaxOnly": true,
     "resolveJsonModule": true,
     "allowJs": false,
 
-    "skipLibCheck": true,
+    "skipLibCheck": false,
     "forceConsistentCasingInFileNames": true,
 
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "noEmitOnError": true,
+    "noErrorTruncation": true,
     "newLine": "lf",
     "stripInternal": true
   }

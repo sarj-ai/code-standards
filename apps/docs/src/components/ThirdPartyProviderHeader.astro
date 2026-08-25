@@ -1,0 +1,30 @@
+---
+import type { ThirdPartyProvider } from '../lib/third-party-catalog';
+
+interface Props {
+  provider: ThirdPartyProvider;
+  ruleCount: number;
+  page: number;
+  pageSize: number;
+}
+
+const { provider, ruleCount, page, pageSize } = Astro.props;
+const firstRule = (page - 1) * pageSize + 1;
+const lastRule = Math.min(page * pageSize, ruleCount);
+---
+
+<header class="provider-header">
+  <div>
+    <h1>{provider.label}</h1>
+    <p class="lede">
+      Enabled across the pinned Strict and Application profiles in representative contexts. Showing {firstRule}–{lastRule} of {ruleCount}
+      {ruleCount === 1 ? ' rule' : ' rules'}.
+    </p>
+  </div>
+  <dl>
+    <div><dt>Package</dt><dd><code>{provider.package}</code></dd></div>
+    <div><dt>Version</dt><dd><code>{provider.version}</code></dd></div>
+    <div><dt>Engine</dt><dd>{provider.engine}</dd></div>
+  </dl>
+  <a class="provider-official-link" href={provider.homepage}>Official {provider.label} reference <span aria-hidden="true">↗</span></a>
+</header>

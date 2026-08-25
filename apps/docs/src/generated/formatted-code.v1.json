@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "de2501e6e1f2e95f7386c359c76ecf9fcdba553f74aa4a6ea37ec91b0c15ce44",
-  "cliSha256": "a5db222d822bda91b8f27c837fa1d42c3c2832a53921aab76313162b5f56fdf8",
+  "catalogSha256": "2b412b8ac7205bc20ba1c9d5ea1d2bfd7e0ab88c39390e9c5537962f8b46e5da",
+  "cliSha256": "8f0ab3f545fd1799826aa634fa3a05a92bcacb67861705a8507e34394523a4c0",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2082,6 +2082,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Model an always-present collection"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-nullish-filter-predicate": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/users.ts",
+              "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter(Boolean);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/users.ts",
+          "id": "boolean-nullish-filter",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Boolean filtering loses nullish narrowing"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/users.ts",
+              "source": "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter((user) => user !== null && user !== undefined);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/users.ts",
+          "id": "explicit-nullish-predicate",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Nullish filtering narrows the result"
         }
       ],
       "optionsSchemaSource": null
@@ -5491,6 +5526,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Fluent method preserves subclass type"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-set-isdisjoint": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/policy.py",
+              "source": "allowed = {\"read\", \"write\"}\nrequested = set(scopes)\nif not (allowed & requested):\n    deny()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/policy.py",
+          "id": "discarded-intersection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Set intersection is used only for an emptiness test"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/policy.py",
+              "source": "allowed = {\"read\", \"write\"}\nrequested = set(scopes)\nif allowed.isdisjoint(requested):\n    deny()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/policy.py",
+          "id": "named-disjoint-predicate",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Set overlap is expressed without allocating an intersection"
         }
       ],
       "optionsSchemaSource": null

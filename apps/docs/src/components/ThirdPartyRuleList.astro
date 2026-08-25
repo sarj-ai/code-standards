@@ -1,0 +1,178 @@
+---
+import {
+  THIRD_PARTY_PROFILES,
+  thirdPartyRuleAnchor,
+  type ThirdPartyAutofix,
+  type ThirdPartyContext,
+  type ThirdPartyLevel,
+  type ThirdPartyProfile,
+  type ThirdPartyRule,
+} from '../lib/third-party-catalog';
+
+interface Props {
+  providerLabel: string;
+  rules: ThirdPartyRule[];
+  allProviderRules: ThirdPartyRule[];
+  totalRuleCount: number;
+}
+
+const { providerLabel, rules, allProviderRules, totalRuleCount } = Astro.props;
+const profileLabel: Record<ThirdPartyProfile, string> = { application: 'Application', standard: 'Strict' };
+const fixLabel: Record<ThirdPartyAutofix, string> = {
+  always: 'Autofix advertised',
+  available: 'Fix metadata available',
+  none: 'No autofix advertised',
+  sometimes: 'Some reports may be fixable',
+};
+const fullContextIds = new Map<ThirdPartyProfile, Set<string>>(
+  THIRD_PARTY_PROFILES.map((profile) => [
+    profile,
+    new Set(
+      allProviderRules.flatMap((rule) =>
+        rule.profiles.find((item) => item.name === profile)?.contexts.map((context) => context.id) ?? []),
+    ),
+  ]),
+);
+const displayPolicies = (rule: ThirdPartyRule) => {
+  const application = rule.profiles.find((profile) => profile.name === 'application');
+  const standard = rule.profiles.find((profile) => profile.name === 'standard');
+  if (application && standard && sameContexts(application.contexts, standard.contexts)) {
+    return [{ label: 'Both profiles', groups: displayContextGroups(application.name, application.contexts) }];
+  }
+  return rule.profiles.map((profile) => ({
+    label: profileLabel[profile.name],
+    groups: displayContextGroups(profile.name, profile.contexts),
+  }));
+};
+const displayContextGroups = (profile: ThirdPartyProfile, contexts: ThirdPartyContext[]) => {
+  const groups = groupedContexts(contexts);
+  const complete = fullContextIds.get(profile);
+  const [onlyGroup] = groups;
+  return onlyGroup && complete?.size === contexts.length && contexts.every((context) => complete.has(context.id))
+    ? [{ level: onlyGroup.level, labels: ['All representative contexts'] }]
+    : groups;
+};
+const sameContexts = (left: ThirdPartyContext[], right: ThirdPartyContext[]) =>
+  left.length === right.length
+  && left.every((context, index) => context.id === right[index]?.id && context.level === right[index]?.level);
+const groupedContexts = (contexts: ThirdPartyContext[]) => {
+  const levels = new Map<ThirdPartyLevel, string[]>();
+  for (const context of contexts) levels.set(context.level, [...(levels.get(context.level) ?? []), context.label]);
+  return [...levels].map(([level, labels]) => ({ level, labels }));
+};
+---
+
+<section class="third-party-directory" data-third-party-directory>
+  <div class="third-party-toolbar">
+    <p class="directory-status" role="status" aria-live="polite" aria-atomic="true">
+      <strong data-third-party-count>{rules.length}</strong>
+      <span data-third-party-noun>{rules.length === 1 ? ' rule on this page' : ` rules on this page of ${String(totalRuleCount)}`}</span>
+    </p>
+    <div class="third-party-search" data-third-party-search-container hidden>
+      <label for="third-party-rule-search">Search this page’s rule IDs, summaries, and policy details</label>
+      <div>
+        <input id="third-party-rule-search" type="search" autocomplete="off" data-third-party-search />
+        <button type="button" data-third-party-clear hidden>Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="third-party-empty" data-third-party-empty hidden>No enabled rules match this search.</p>
+  <div class="third-party-rule-list" role="list" aria-label={`${providerLabel} enabled rules`}>
+    <div class="third-party-rule-list__header" aria-hidden="true">
+      <span>Rule</span><span>Policy contexts</span><span>Fix support</span><span>Official documentation</span>
+    </div>
+    {rules.map((rule) => (
+      <article id={thirdPartyRuleAnchor(rule)} class="third-party-rule-row" role="listitem" data-third-party-rule>
+        <div class="third-party-rule-row__identity">
+          <div class="third-party-rule-row__heading">
+            <code>{rule.displayId}</code>
+            <a href={`#${thirdPartyRuleAnchor(rule)}`} aria-label={`Permalink to ${rule.displayId}`}>#</a>
+          </div>
+          <p>{rule.summary}</p>
+          {rule.family && <small>{rule.family}</small>}
+        </div>
+        <dl class="third-party-rule-row__facts">
+          <div class="third-party-rule-row__policy">
+            <dt class="third-party-cell-label">Policy contexts</dt>
+            <dd>{displayPolicies(rule).map((policy) => (
+              <div>
+                <strong>{policy.label}</strong>
+                {policy.groups.length === 0 ? (
+                  <span class="level level--off">Not enabled</span>
+                ) : (
+                  <ul>
+                    {policy.groups.map((group) => (
+                      <li><span class:list={['level', `level--${group.level}`]}>{group.level}</span> {group.labels.join(', ')}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}</dd>
+          </div>
+          <div class="third-party-rule-row__fix">
+            <dt class="third-party-cell-label">Fix support</dt>
+            <dd>
+              <span>{fixLabel[rule.autofix]}</span>
+              {rule.hasSuggestions && <small>Suggestions advertised</small>}
+            </dd>
+          </div>
+          <div class="third-party-rule-row__official">
+            <dt class="third-party-cell-label">Official documentation</dt>
+            <dd><a href={rule.docsUrl} aria-label={`${rule.displayId} official ${providerLabel} explanation`}>
+              Official explanation <span aria-hidden="true">↗</span>
+            </a></dd>
+          </div>
+        </dl>
+      </article>
+    ))}
+  </div>
+</section>
+
+<script>
+  for (const directory of document.querySelectorAll('[data-third-party-directory]')) {
+    if (!(directory instanceof HTMLElement) || directory.dataset.ready === 'true') continue;
+    directory.dataset.ready = 'true';
+    const container = directory.querySelector('[data-third-party-search-container]');
+    const search = directory.querySelector('[data-third-party-search]');
+    const clear = directory.querySelector('[data-third-party-clear]');
+    const count = directory.querySelector('[data-third-party-count]');
+    const noun = directory.querySelector('[data-third-party-noun]');
+    const empty = directory.querySelector('[data-third-party-empty]');
+    const rows = [...directory.querySelectorAll('[data-third-party-rule]')].map((row) => ({
+      row,
+      searchText: row.textContent?.toLowerCase() ?? '',
+    }));
+    if (!(search instanceof HTMLInputElement) || !(container instanceof HTMLElement)) continue;
+    container.hidden = false;
+    const params = new URLSearchParams(location.search);
+    search.value = params.get('q') ?? '';
+    const apply = () => {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      for (const item of rows) {
+        if (!(item.row instanceof HTMLElement)) continue;
+        item.row.hidden = query.length > 0 && !item.searchText.includes(query);
+        if (!item.row.hidden) visible += 1;
+      }
+      if (count) count.textContent = String(visible);
+      if (noun) noun.textContent = visible === 1 ? ' rule on this page' : ' rules on this page';
+      if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
+      if (clear instanceof HTMLButtonElement) clear.hidden = query.length === 0;
+      const next = new URL(location.href);
+      query ? next.searchParams.set('q', search.value.trim()) : next.searchParams.delete('q');
+      history.replaceState(null, '', next);
+    };
+    search.addEventListener('input', apply);
+    clear?.addEventListener('click', () => {
+      search.value = '';
+      search.focus();
+      apply();
+    });
+    addEventListener('popstate', () => {
+      search.value = new URLSearchParams(location.search).get('q') ?? '';
+      apply();
+    });
+    apply();
+  }
+</script>

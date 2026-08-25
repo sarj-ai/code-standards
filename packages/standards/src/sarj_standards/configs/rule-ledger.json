@@ -85,6 +85,7 @@
       "prefer-or-pattern",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
+      "prefer-set-isdisjoint",
       "prefer-str-enum",
       "prefer-struct-over-namedtuple",
       "prefer-timedelta-for-durations",
@@ -206,6 +207,7 @@
       "prefer-module-level-schema",
       "prefer-native-random-uuid",
       "prefer-non-nullable-collection",
+      "prefer-nullish-filter-predicate",
       "prefer-schema-for-api-payload",
       "prefer-semantic-colors",
       "prefer-server-actions",
@@ -334,7 +336,8 @@
       "SARJ427",
       "SARJ428",
       "SARJ429",
-      "SARJ430"
+      "SARJ430",
+      "SARJ431"
     ],
     "sql": [
       "SARJ101",

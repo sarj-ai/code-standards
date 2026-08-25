@@ -664,8 +664,8 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
-      "@typescript-eslint/consistent-type-exports": "error",
       "@typescript-eslint/array-type": "error",
+      "prefer-object-has-own": "error",
       // `no-else-return` used to sit here. It is gone because
       // `unicorn/no-useless-else` (enabled below) is a strict superset: it flags
       // `else` after `throw`, `break` and `continue` as well as after `return`.
@@ -938,6 +938,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
+      "@sarj/prefer-nullish-filter-predicate": "error",
       "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/iac-source-coupled-test": "error",

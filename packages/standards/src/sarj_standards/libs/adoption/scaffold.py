@@ -214,7 +214,7 @@ def _shallowest(root: Path, names: Sequence[str]) -> Path | None:
     found: list[Path] = []
     for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
         directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
-        if wanted.intersection(filenames):
+        if not wanted.isdisjoint(filenames):
             found.append(Path(parent))
     if not found:
         return None
@@ -226,7 +226,7 @@ def _all_roots(root: Path, names: Sequence[str]) -> list[Path]:
     found: list[Path] = []
     for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
         directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
-        if wanted.intersection(filenames):
+        if not wanted.isdisjoint(filenames):
             found.append(Path(parent))
     return found
 

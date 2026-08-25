@@ -116,6 +116,10 @@ ignore = [
   "TD003",
   "TD004",
 
+  # RUF068 ignores later mutation/rebinding and generated-file ownership; its
+  # fix can change final __all__ behavior. SARJ098 remains the flow-aware owner.
+  "RUF068",
+
   # Complexity thresholds are heuristics rather than correctness rules. These
   # limits conflict with enforced guard-clause style, penalize branching that is
   # intrinsic to visitors and dispatchers, and count keyword-only parameters.

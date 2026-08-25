@@ -33,6 +33,7 @@ import {
 import strictConfig, {
   createConfig as createStrictConfig,
 } from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
+import { PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION } from "../src/rules/prefer-nullish-filter-predicate.js";
 import { rulesOf } from "./_config.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -283,6 +284,27 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(
       [...ruleIds].some((rule) => rule?.startsWith("@typescript-eslint/")),
     ).toBe(true);
+  });
+
+  it("runs the modern upstream rule against executable source", async () => {
+    const ruleIds = (await lint("modern-upstream-rules.ts")).map((message) => message.ruleId);
+    expect(ruleIds).toContain("prefer-object-has-own");
+  });
+
+  it("keeps the nullish-filter suggestion compatible with the composed profile", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const [result] = await eslint.lintText(
+      PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[0].files[0].source,
+      { filePath: resolve(FIXTURE_DIR, "example.ts") },
+    );
+    const ruleIds = result?.messages.map((message) => message.ruleId) ?? [];
+
+    expect(ruleIds).not.toContain("eqeqeq");
+    expect(ruleIds).not.toContain("@sarj/prefer-nullish-filter-predicate");
   });
 
   it("gives cross-accessibility ordering one diagnostic owner", async () => {
