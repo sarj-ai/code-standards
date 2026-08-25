@@ -1,5 +1,8 @@
 # Contributor instructions
 
+Before rule work, follow the repository-routing contract in `AGENTS.md` and the mandatory
+preflight in `plugins/sarj-audit/skills/lint-rule-generator/SKILL.md`.
+
 Run `make setup` at the start of a fresh checkout. This installs Lefthook before
 dependency setup. Never use `--no-verify`; fix the actionable hook output and retry.
 

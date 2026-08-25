@@ -1,6 +1,6 @@
 ---
 name: lint-rule-generator
-description: Designs, evaluates, and refines deterministic lint rules from concrete anti-patterns. Use when creating a Python, TypeScript, Markdown, SQL, IaC, or config rule; checking whether an upstream rule already covers a problem; calibrating false positives on local corpora; or deciding whether a new rule is safe to introduce as a warning or error.
+description: Routes, designs, evaluates, and refines deterministic rules from concrete anti-patterns. Use when creating repository policy or a Python, TypeScript, Markdown, SQL, IaC, or config rule; checking whether an upstream rule already covers a problem; calibrating false positives on local corpora; or deciding whether a new rule is safe to introduce as a warning or error.
 ---
 
 # Lint rule generator
@@ -11,13 +11,30 @@ catalog, evaluation, and report contracts. Use `sarj_standards.libs.corpus`
 for manifests, snapshots, local pin verification, and redacted reporting. Keep
 all executable logic in the uv package; this skill contains no scripts.
 
+## Route before editing
+
+State `Routing: <repository>, because <required evidence>` before touching rule source.
+
+- Use `sarj-ai/repo-standards` when the finding requires an exact tracked Git tree: file
+  existence, basename or placement, repository topology or migrations, pull-request size,
+  ownership, delivery/GitHub state, or a repository-wide API/document set.
+- Use `sarj-ai/code-standards` when the finding requires source or configuration semantics in
+  Python, TypeScript, SQL, Terraform/HCL, Markdown, YAML, JSON, or shell, or changes lint
+  engines, presets, baselines, adoption, release, or fleet rollout.
+- Paths may select a semantic parser. If the path alone is sufficient to emit the finding,
+  the rule belongs in `repo-standards`. Never add an organization- or repository-specific
+  filename to a language rule merely because the file has that language's suffix.
+
+For example, banning a tracked Terraform verifier filename belongs in `repo-standards`;
+rejecting an environment-derived Terraform access expression belongs in `code-standards`.
+
 Read [language-routing.md](references/language-routing.md) before choosing an
 engine. Read [evaluation-protocol.md](references/evaluation-protocol.md) before
 running or reporting a corpus evaluation.
 
 ## Required workflow
 
-1. Restate the request as one `RuleProblem`: observable bad pattern, concrete
+1. After routing, restate the request as one `RuleProblem`: observable bad pattern, concrete
    harm, evidenced languages, explicit non-goals, exclusions, bad examples,
    good examples, and strongest defensible fix policy. Ask for clarification
    only when two interpretations would produce materially different findings.

@@ -35,7 +35,7 @@ _GENERATED_READMES: Final = (
     Path("plugins/sarj-audit/README.md"),
 )
 _GENERATED_SECURITY_POLICY: Final = Path(".github/SECURITY.md")
-_EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("CLAUDE.md"),)
+_EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("AGENTS.md"), Path("CLAUDE.md"))
 _PACKAGE_DEFINITIONS: Final = (
     ("packages/standards/pyproject.toml", "PyPI", "text"),
     ("packages/standards-compat/pyproject.toml", "PyPI", None),

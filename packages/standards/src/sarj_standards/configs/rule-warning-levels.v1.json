@@ -1,1 +1,1 @@
-{"rules":[],"schemaVersion":1}
+{"rules":["iac:no-environment-derived-access-grant"],"schemaVersion":1}
