@@ -1,7 +1,10 @@
 import type { StarlightUserConfig } from "@astrojs/starlight/types";
 
 import { ENGINES, catalog, engineLabel } from "./catalog";
-import { thirdPartyCatalog } from "./third-party-catalog";
+import {
+  thirdPartyProviderHref,
+  thirdPartyProvidersForNavigation,
+} from "./third-party-catalog";
 
 export type Sidebar = NonNullable<StarlightUserConfig["sidebar"]>;
 
@@ -13,11 +16,16 @@ export const referenceSidebar = Object.freeze([
   ).map((engine) => ({
     label: `${engineLabel(engine)} · ${String(catalog.rules.filter((rule) => rule.engine === engine).length)}`,
     link: `/rules/${engine}/`,
-    attrs: { class: "sidebar-engine-link" },
+    attrs: { "data-sidebar-engine": engine },
   })),
   {
-    label: `Third party Rules · ${String(thirdPartyCatalog.rules.length)}`,
-    link: "/third-party-linters/ruff/",
+    label: "Third party Rules",
+    collapsed: false,
+    items: thirdPartyProvidersForNavigation().map((provider) => ({
+      label: provider.label,
+      link: thirdPartyProviderHref(provider),
+      attrs: { "data-provider": provider.id },
+    })),
   },
   { label: "CLI", link: "/cli/" },
 ] satisfies Sidebar);

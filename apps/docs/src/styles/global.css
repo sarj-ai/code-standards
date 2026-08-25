@@ -2,7 +2,7 @@
   display: none !important;
 }
 
-.sidebar-content a.sidebar-engine-link {
+.sidebar-content a[data-sidebar-engine] {
   padding-inline-start: 1.5rem;
   color: var(--sl-color-gray-2);
 }
@@ -634,6 +634,7 @@ starlight-menu-button button {
 }
 
 .provider-icon {
+  position: relative;
   display: inline-grid;
   width: 1.35rem;
   height: 1.35rem;
@@ -653,6 +654,21 @@ starlight-menu-button button {
   letter-spacing: -0.06em;
 }
 
+.provider-icon__doctor {
+  position: absolute;
+  right: -0.12em;
+  bottom: -0.12em;
+  display: grid;
+  width: 0.72rem;
+  height: 0.72rem;
+  place-items: center;
+  border: 0.1rem solid #111318;
+  border-radius: 50%;
+  background: currentcolor;
+  color: #111318;
+  font: 900 0.65rem/1 system-ui, sans-serif;
+}
+
 .provider-header .provider-icon {
   width: 2.5rem;
   height: 2.5rem;
@@ -663,7 +679,8 @@ starlight-menu-button button {
 }
 
 .provider-icon--react,
-.provider-icon--react-hooks { color: #61dafb; }
+.provider-icon--react-hooks,
+.provider-icon--react-doctor { color: #4edeff; }
 .provider-icon--eslint,
 .provider-icon--eslint-comments { color: #a0a0ff; }
 .provider-icon--typescript-eslint { color: #5da9e9; }

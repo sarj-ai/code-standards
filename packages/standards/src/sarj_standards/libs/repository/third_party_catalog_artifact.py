@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
 _NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.mjs")
+_REACT_DOCTOR_PROJECTION: Final = Path("apps/docs/scripts/project-react-doctor-rules.mjs")
 _RUFF_CONFIGS: Final = MappingProxyType(
     {
         "application": Path("packages/standards/src/sarj_standards/configs/ruff.application.toml"),
@@ -60,7 +61,7 @@ class _Profile(_FrozenModel):
 class _Provider(_FrozenModel):
     id: str
     label: str
-    engine: Literal["eslint", "ruff"]
+    engine: Literal["eslint", "react-doctor", "ruff"]
     package: str
     version: str
     homepage: str
@@ -98,6 +99,16 @@ class _RuffMetadata(BaseModel):
     summary: str
     linter: str
     fix_availability: str
+
+
+class _ReactDoctorProjection(_FrozenModel):
+    rules: tuple[_Rule, ...]
+
+
+class _Peers(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
+
+    peers: dict[str, str]
 
 
 class _CatalogArtifact(_FrozenModel):
@@ -148,10 +159,11 @@ def build(root: Path) -> _CatalogArtifact:
         raise RuntimeError(msg)
     _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
     eslint = _eslint_projection(resolved, node)
+    react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
-    rules = (*eslint.rules, *ruff_projection.rules)
+    rules = (*eslint.rules, *react_doctor.rules, *ruff_projection.rules)
     used_providers = {rule.provider for rule in rules}
-    providers = (*eslint.providers, ruff_projection.provider)
+    providers = (*eslint.providers, _react_doctor_provider(resolved), ruff_projection.provider)
     return _CatalogArtifact(
         schema_version=1,
         profiles=("application", "standard"),
@@ -209,6 +221,25 @@ def _run(argv: tuple[str, ...], *, cwd: Path) -> str:
 def _eslint_projection(root: Path, node: str) -> _EslintProjection:
     output = _run((node, str(root / _NODE_PROJECTION)), cwd=root)
     return _EslintProjection.model_validate_json(output)
+
+
+def _react_doctor_projection(root: Path, node: str) -> _ReactDoctorProjection:
+    output = _run((node, str(root / _REACT_DOCTOR_PROJECTION)), cwd=root)
+    return _ReactDoctorProjection.model_validate_json(output)
+
+
+def _react_doctor_provider(root: Path) -> _Provider:
+    peers = _Peers.model_validate_json(
+        (root / "packages/standards/src/sarj_standards/configs/eslint.peers.json").read_text(encoding="utf-8")
+    ).peers
+    return _Provider(
+        id="react-doctor",
+        label="React Doctor",
+        engine="react-doctor",
+        package="react-doctor",
+        version=peers["react-doctor"],
+        homepage="https://react.doctor/",
+    )
 
 
 def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:

@@ -56,10 +56,31 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     rules = [_object(value) for value in _array(payload["rules"])]
     provider_ids = {value["id"] for value in providers}
     assert provider_ids == {value["provider"] for value in rules}
-    assert {value["engine"] for value in providers} == {"eslint", "ruff"}
+    assert {value["engine"] for value in providers} == {"eslint", "react-doctor", "ruff"}
     assert "@sarj" not in provider_ids
-    assert {"eslint", "ruff", "typescript-eslint", "unicorn"} <= provider_ids
+    assert {"eslint", "react-doctor", "ruff", "typescript-eslint", "unicorn"} <= provider_ids
     assert len({value["key"] for value in rules}) == len(rules)
+
+    react_doctor = next(value for value in providers if value["id"] == "react-doctor")
+    assert react_doctor == {
+        "engine": "react-doctor",
+        "homepage": "https://react.doctor/",
+        "id": "react-doctor",
+        "label": "React Doctor",
+        "package": "react-doctor",
+        "version": "0.9.12",
+    }
+    react_doctor_rules = [value for value in rules if value["provider"] == "react-doctor"]
+    assert react_doctor_rules
+    array_index_rule = next(
+        value for value in react_doctor_rules if value["displayId"] == "react-doctor/no-array-index-as-key"
+    )
+    assert all(
+        _object(context)["level"] == "error"
+        for profile in _array(array_index_rule["profiles"])
+        for context in _array(_object(profile)["contexts"])
+    )
+    assert not any(value["displayId"] == "react-hooks-js/todo" for value in react_doctor_rules)
 
     for rule in rules:
         assert set(rule) == {
