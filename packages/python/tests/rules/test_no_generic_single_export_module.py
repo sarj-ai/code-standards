@@ -206,6 +206,8 @@ class SalesforceOAuthService: ...
         "shared",
         "stuff",
         "util",
+        "utilities",
+        "utility",
         "utils",
     ],
 )
@@ -228,7 +230,7 @@ def test_role_and_category_stems_are_not_junk_drawers(stem: str):
 
 @pytest.mark.parametrize(
     "stem",
-    ["utility", "utilities", "typing", "modeling", "baseline", "corelib", "sharing", "commons", "enumerations"],
+    ["typing", "modeling", "baseline", "corelib", "sharing", "commons", "enumerations"],
 )
 def test_near_miss_non_denylist_stems_not_flagged(stem: str):
     src = """
@@ -244,6 +246,23 @@ def first_thing() -> None: ...
 def second_thing() -> None: ...
 """
     assert _check(src, path="helpers.py") == []
+
+
+def test_overloads_are_one_exported_responsibility():
+    src = """
+from typing import overload
+
+@overload
+def parse(value: str) -> str: ...
+
+@overload
+def parse(value: bytes) -> bytes: ...
+
+def parse(value: str | bytes) -> str | bytes: ...
+"""
+    diags = _check(src, path="utilities.py")
+    assert len(diags) == 1
+    assert "`parse`" in diags[0].message
 
 
 def test_public_class_and_public_function_mix_not_flagged():

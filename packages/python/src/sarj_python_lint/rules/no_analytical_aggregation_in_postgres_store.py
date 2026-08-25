@@ -61,9 +61,10 @@ _POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
 
 # This null-safe comparison is a row predicate, not set deduplication.
 _NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
+_DISTINCT_ON = re.compile(r"\bDISTINCT\s+ON\s*\(", re.IGNORECASE)
 
 _ANALYTIC_COUNT_SIGNAL = re.compile(
-    r"\b(?:GROUP\s+BY|HAVING)\b|\bOVER\s*\(|\bCOUNT\s*\(\s*DISTINCT\b",
+    r"\b(?:GROUP\s+BY|HAVING|FILTER)\b|\bOVER\s*\(|\bCOUNT\s*\(\s*DISTINCT\b",
     re.IGNORECASE,
 )
 
@@ -77,26 +78,39 @@ _AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("STRING_AGG(", re.compile(r"\bSTRING_AGG[ \t]*\(", re.IGNORECASE)),
     ("JSON_AGG(", re.compile(r"\bJSON_AGG[ \t]*\(", re.IGNORECASE)),
     ("JSONB_AGG(", re.compile(r"\bJSONB_AGG[ \t]*\(", re.IGNORECASE)),
+    ("BOOL_AND(", re.compile(r"\bBOOL_AND[ \t]*\(", re.IGNORECASE)),
+    ("BOOL_OR(", re.compile(r"\bBOOL_OR[ \t]*\(", re.IGNORECASE)),
+    ("EVERY(", re.compile(r"\bEVERY[ \t]*\(", re.IGNORECASE)),
+    ("STDDEV(", re.compile(r"\bSTDDEV(?:_POP|_SAMP)?[ \t]*\(", re.IGNORECASE)),
+    ("VARIANCE(", re.compile(r"\b(?:VARIANCE|VAR_POP|VAR_SAMP)[ \t]*\(", re.IGNORECASE)),
+    ("CORR(", re.compile(r"\bCORR[ \t]*\(", re.IGNORECASE)),
+    ("COVAR(", re.compile(r"\bCOVAR_(?:POP|SAMP)[ \t]*\(", re.IGNORECASE)),
+    ("REGR_*(", re.compile(r"\bREGR_[A-Z_]+[ \t]*\(", re.IGNORECASE)),
+    ("PERCENTILE_*(", re.compile(r"\bPERCENTILE_(?:CONT|DISC)[ \t]*\(", re.IGNORECASE)),
+    ("RANGE_AGG(", re.compile(r"\bRANGE_AGG[ \t]*\(", re.IGNORECASE)),
+    ("XMLAGG(", re.compile(r"\bXMLAGG[ \t]*\(", re.IGNORECASE)),
     ("GROUP BY", re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)),
     ("DISTINCT", re.compile(r"\bDISTINCT\b", re.IGNORECASE)),
 )
 
 
 def _blank_null_safe_comparisons(sql: str) -> str:
-    return _NULL_SAFE_COMPARISON.sub(lambda m: " " * len(m.group(0)), sql)
+    sql = _NULL_SAFE_COMPARISON.sub(lambda match: " " * len(match.group(0)), sql)
+    return _DISTINCT_ON.sub(lambda match: " " * len(match.group(0)), sql)
 
 
 # Require both a query verb and aggregation syntax to avoid flagging unrelated prose.
 _VERB_GATE = re.compile(r"select|update|delete", re.IGNORECASE)
 _AGG_GATE = re.compile(
-    r"count|sum|avg|min|max|array_agg|string_agg|json_agg|jsonb_agg|group|distinct",
+    r"count|sum|avg|min|max|array_agg|string_agg|jsonb?_agg|bool_|every|stddev|variance|var_"
+    r"|corr|covar_|regr_|percentile_|range_agg|xmlagg|group|distinct|filter",
     re.IGNORECASE,
 )
 
 
 @final
-class NoAggregationInStoreQuery(Rule):
-    id: str = "no-aggregation-in-store-query"
+class NoAnalyticalAggregationInPostgresStore(Rule):
+    id: str = "no-analytical-aggregation-in-postgres-store"
     code: str = "SARJ020"
     documentation = RuleDocumentation(
         summary="Postgres store queries should not perform analytical aggregation.",
@@ -104,9 +118,11 @@ class NoAggregationInStoreQuery(Rule):
         remediation="Run aggregation in ClickHouse or BigQuery and keep Postgres store queries focused on point or bounded reads.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
+        aliases=("no-aggregation-in-store-query",),
         limitations=(
             "Only SQL string literals in recognized store modules are analyzed.",
             "Files and queries identified as ClickHouse or BigQuery are excluded.",
+            "Scalar COUNT and PostgreSQL DISTINCT ON row selection are excluded unless another analytical signal is present.",
         ),
         examples=(
             RuleExample(

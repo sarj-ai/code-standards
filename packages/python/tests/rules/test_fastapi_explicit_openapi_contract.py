@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules.fastapi_openapi_contract import FastapiOpenapiContract
+from sarj_python_lint.rules.fastapi_explicit_openapi_contract import FastapiExplicitOpenapiContract
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 
 
@@ -13,11 +13,11 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
-_PUBLIC_EXAMPLES = FastapiOpenapiContract.public_examples()
+_PUBLIC_EXAMPLES = FastapiExplicitOpenapiContract.public_examples()
 
 
 def _check(source: str, path: str = "api.py") -> list[Diagnostic]:
-    return FastapiOpenapiContract().check(Path(path), source)
+    return FastapiExplicitOpenapiContract().check(Path(path), source)
 
 
 @pytest.mark.parametrize(
@@ -28,7 +28,7 @@ def _check(source: str, path: str = "api.py") -> list[Diagnostic]:
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
 
-    findings = FastapiOpenapiContract().check(Path(focus.path), focus.source)
+    findings = FastapiExplicitOpenapiContract().check(Path(focus.path), focus.source)
 
     assert len(findings) == example.expected_count
 
@@ -1120,7 +1120,7 @@ async def health() -> dict[str, Any]:
 """
     )
     assert PydanticAtBoundaries().check(Path("api.py"), source) == []
-    assert FastapiOpenapiContract().check(Path("api.py"), source)
+    assert FastapiExplicitOpenapiContract().check(Path("api.py"), source)
 
 
 def test_sarj008_keeps_hidden_and_unannotated_route_ownership():
@@ -1133,8 +1133,39 @@ router = APIRouter(include_in_schema=False)
 async def health() -> dict[str, Any]:
     return {"status": "ok"}
 """
-    assert FastapiOpenapiContract().check(Path("api.py"), hidden) == []
+    assert FastapiExplicitOpenapiContract().check(Path("api.py"), hidden) == []
     assert len(PydanticAtBoundaries().check(Path("api.py"), hidden)) == 1
 
     unannotated = _PRELUDE + "\n@router.get('/health')\nasync def health():\n    return {'status': 'ok'}\n"
     assert len(PydanticAtBoundaries().check(Path("api.py"), unannotated)) == 1
+
+
+@pytest.mark.parametrize(
+    ("route", "body", "invalid"),
+    [
+        ('@router.get("/items", status_code=99)', "return ItemResponse()", "99"),
+        ('@router.get("/items", status_code=50, **route_options)', "return ItemResponse()", "50"),
+        (
+            '@router.get("/items", status_code=200)',
+            'raise HTTPException(status_code=50, detail="model unavailable")',
+            "50",
+        ),
+        (
+            '@router.get("/items", status_code=200)',
+            "return Response(status_code=700)",
+            "700",
+        ),
+        ('@router.get("/items", status_code=200, responses={600: {}})', "return ItemResponse()", "600"),
+    ],
+    ids=("primary", "primary-with-unpack", "raised", "returned", "response-map"),
+)
+def test_rejects_status_codes_outside_http_range(route: str, body: str, invalid: str) -> None:
+    source = _source(f"""
+{route}
+async def read_items() -> ItemResponse:
+    {body}
+""")
+
+    findings = _check(source)
+
+    assert any("[status]" in finding.message and invalid in finding.message for finding in findings)

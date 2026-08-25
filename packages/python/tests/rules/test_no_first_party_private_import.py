@@ -128,6 +128,34 @@ def test_flags_first_party_private_submodule(project: Path, source: str):
     assert len(_check(project, _TEST_FILE, source)) == 1
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import importlib\nimportlib.import_module("core._internals")',
+        'import importlib as imports\nimports.import_module("core._internals")',
+        'from importlib import import_module\nimport_module("core._internals")',
+        'from importlib import import_module as load_module\nload_module("core._internals")',
+    ],
+)
+def test_flags_literal_dynamic_first_party_private_module(project: Path, source: str):
+    assert len(_check(project, _TEST_FILE, source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import importlib\nimportlib.import_module("core.helpers")',
+        'import importlib\nmodule = "core._internals"\nimportlib.import_module(module)',
+        'import importlib\nimportlib.import_module("._internals", package="core")',
+        'import importlib\nimportlib = loader\nimportlib.import_module("core._internals")',
+        'from importlib import import_module\nimport_module = loader\nimport_module("core._internals")',
+        'from plugins import import_module\nimport_module("core._internals")',
+    ],
+)
+def test_allows_unproven_or_public_dynamic_import(project: Path, source: str):
+    assert _check(project, _TEST_FILE, source) == []
+
+
 def test_white_box_test_reaching_into_its_own_package_fires(project: Path):
     # `python/svc/tests/` is not INSIDE the `svc` package, so this crosses a
     # package boundary exactly as an import from `core` would.

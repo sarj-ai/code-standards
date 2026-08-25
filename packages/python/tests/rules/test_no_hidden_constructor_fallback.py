@@ -129,6 +129,47 @@ class Generator:
     assert findings[0].line == 4
 
 
+def test_positional_or_keyword_optional_parameter_warns(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, model: str | None = None) -> None:
+        self.model = model or settings.MODEL
+""",
+    )
+    assert len(_check(service.read_text(), service)) == 1
+
+
+def test_none_branch_assigning_receiver_field_warns(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        if model is None:
+            self.model = settings.MODEL
+""",
+    )
+    assert len(_check(service.read_text(), service)) == 1
+
+
+def test_none_branch_assigning_unrelated_field_stays_quiet(tmp_path: Path) -> None:
+    service = _settings_project(
+        tmp_path,
+        """from app.config import settings
+
+class Generator:
+    def __init__(self, *, model: str | None = None) -> None:
+        if model is None:
+            self.telemetry_label = settings.MODEL
+""",
+    )
+    assert _check(service.read_text(), service) == []
+
+
 def test_reexported_settings_instance_is_resolved(tmp_path: Path) -> None:
     service = _settings_project(
         tmp_path,

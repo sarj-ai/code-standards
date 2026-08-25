@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "761b08d1e84331ccad298f2307ad846ab1409a81a0db2c83bdc889f809e75c30",
-  "cliSha256": "7f74da47d961c4d7b804bc2ce0325ee2244fa509889c1002e44752a5e32205b0",
+  "catalogSha256": "df6e850e6bb7a05dcd12477263174fe577e769354838d6fab263a59aab19fe4d",
+  "cliSha256": "5a1f37e8f639cc89582d3f84b91383e3608da563c7837a4b210324202ab46f7b",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2406,6 +2406,41 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowIn\": {\n      \"description\": \"Glob patterns for wrapper modules exempt from the rule. Matched against the ABSOLUTE file path, so anchor with a `**/` prefix (e.g. `**/http-client.ts`).\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "eslint:require-pascal-case-zod-schema-name": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/user.ts",
+              "source": "import { z } from \"zod\";\nexport const UserSchema = z.object({ id: z.string() });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user.ts",
+          "id": "runtime-type-schema-name",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Name a reusable schema like a runtime type contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/user.ts",
+              "source": "import { z } from \"zod\";\nexport const USER_SCHEMA = z.object({ id: z.string() });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user.ts",
+          "id": "screaming-schema-name",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not name a schema like a scalar constant"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:require-port-for-service": {
       "examples": [
         {
@@ -2761,41 +2796,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "eslint:zod-naming-convention": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/user.ts",
-              "source": "import { z } from \"zod\";\nconst userSchema = z.object({ id: z.string() });\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/user.ts",
-          "id": "recognizable-schema-name",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Mark the value as a schema"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/user.ts",
-              "source": "import { z } from \"zod\";\nconst user = z.object({ id: z.string() });\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/user.ts",
-          "id": "unmarked-schema-name",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not hide the schema behind a value name"
-        }
-      ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"convention\": { \"enum\": [\"prefix\", \"suffix\", \"either\"], \"type\": \"string\" }\n  },\n  \"type\": \"object\"\n}\n"
-    },
     "iac:no-comment-cruft": {
       "examples": [
         {
@@ -2878,12 +2878,73 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Data input carrying a real per-environment difference"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "env/dev/terraform.tfvars",
+              "source": "api_token = \"dev-placeholder\"\n"
+            },
+            {
+              "path": "env/prod/terraform.tfvars",
+              "source": "api_token = \"prod-placeholder\"\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"api_token\" {\n  type      = string\n  sensitive = true\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "env/dev/terraform.tfvars",
+          "id": "sensitive-input-that-varies-by-environment",
+          "outcome": "accept",
+          "scenarioId": "sensitive-shared-input",
+          "title": "Sensitive input carrying an actual environment decision"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "env/dev/terraform.tfvars",
+              "source": "api_token = \"same-placeholder\"\n"
+            },
+            {
+              "path": "env/prod/terraform.tfvars",
+              "source": "api_token = \"same-placeholder\"\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"api_token\" {\n  type      = string\n  sensitive = true\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "env/dev/terraform.tfvars",
+          "id": "sensitive-value-repeated-across-environments",
+          "outcome": "reject",
+          "scenarioId": "sensitive-shared-input",
+          "title": "Sensitive input duplicated instead of injected once"
         }
       ],
       "optionsSchemaSource": null
     },
     "iac:no-environment-conditional": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  queue = var.project == \"analytics\" ? \"events\" : \"default\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "business-project-value",
+          "outcome": "accept",
+          "scenarioId": "ambiguous-identity",
+          "title": "Business project identity has no deployment evidence"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -2943,6 +3004,56 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Resource gated on a named capability input"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  tier = var.gcp_project_id == \"platform-prod\" ? \"HA\" : \"BASIC\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "project-id-with-environment-evidence",
+          "outcome": "reject",
+          "scenarioId": "ambiguous-identity",
+          "title": "Cloud project identity names a deployment environment"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-mocked-terraform-test-oracle": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/routing.tftest.hcl",
+              "source": "mock_provider \"aws\" {}\n\nrun \"routing\" {\n  command = plan\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/routing.tftest.hcl",
+          "id": "mocked-provider-oracle",
+          "outcome": "reject",
+          "scenarioId": "terraform-provider-evidence",
+          "title": "Repository-authored provider values are not infrastructure evidence"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/routing.tftest.hcl",
+              "source": "provider \"aws\" {\n  region = \"us-east-1\"\n}\n\nrun \"routing\" {\n  command = plan\n\n  assert {\n    condition     = aws_s3_bucket.main.bucket == var.bucket_name\n    error_message = \"bucket name drifted\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/routing.tftest.hcl",
+          "id": "real-provider-contract",
+          "outcome": "accept",
+          "scenarioId": "terraform-provider-evidence",
+          "title": "A Terraform test may validate a real plan or apply"
         }
       ],
       "optionsSchemaSource": null
@@ -2968,6 +3079,36 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "generated.tf",
+              "source": "/* Code generated by schema compiler.\n * DO NOT EDIT.\n */\n# Set instance type\ninstance_type = var.instance_type\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "generated.tf",
+          "id": "generated-block-header",
+          "outcome": "accept",
+          "scenarioId": "generated-file",
+          "title": "Generated HCL is owned by its generator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "/* Set instance type */\ninstance_type = var.instance_type\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "maintained-block-comment-restatement",
+          "outcome": "reject",
+          "scenarioId": "generated-file",
+          "title": "Maintained block comment repeats its attribute"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "main.tf",
               "source": "# Keep this type because the provider rejects ARM nodes.\ninstance_type = var.instance_type\n"
             }
@@ -2978,41 +3119,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Comment records a provider constraint"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "iac:no-terraform-test-file": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "main.tf",
-              "source": "resource \"example_service\" \"main\" {}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "main.tf",
-          "id": "terraform-module-source",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Regular Terraform configuration remains eligible for semantic rules"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/routing.tftest.hcl",
-              "source": "run \"routing\" {}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/routing.tftest.hcl",
-          "id": "terraform-test-file",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not commit Terraform test files"
         }
       ],
       "optionsSchemaSource": null
@@ -3087,42 +3193,7 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:created-at-order-requires-tiebreaker": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/task_store.py",
-              "source": "QUERY = \"SELECT id, created_at FROM task ORDER BY created_at DESC, id DESC LIMIT 50\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/task_store.py",
-          "id": "created-at-is-followed-by-id",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A stable key breaks equal-timestamp ties"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/task_store.py",
-              "source": "QUERY = \"SELECT id, created_at FROM task ORDER BY created_at DESC LIMIT 50\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/task_store.py",
-          "id": "created-at-is-the-only-order-key",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A store query orders only by a timestamp"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:defect-xfail-requires-strict": {
+    "python:defect-xfail-requires-explicit-strict": {
       "examples": [
         {
           "expectedCount": 1,
@@ -3227,107 +3298,42 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:duplicate-test-body": {
+    "python:fakes-in-shared-location": {
       "examples": [
         {
           "expectedCount": 1,
           "files": [
             {
-              "path": "tests/test_permissions.py",
-              "source": "def test_admin_can_delete():\n    user = make_user(\"admin\")\n    allowed = can_delete(user)\n    assert allowed\n\n\ndef test_editor_can_delete():\n    user = make_user(\"editor\")\n    allowed = can_delete(user)\n    assert allowed\n"
+              "path": "tests/test_checkout.py",
+              "source": "class FakePaymentGateway:\n    async def charge(self, amount: int) -> None:\n        pass\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_permissions.py",
-          "id": "copy-pasted-tests",
+          "focusPath": "tests/test_checkout.py",
+          "id": "local-fake-service",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Two tests differ only in input literals"
+          "title": "A test module privately defines a named fake"
         },
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "tests/test_api.py",
-              "source": "def test_delete_environment():\n    response = client.delete(\"/api/environments/3/\")\n    result = response.json()\n    assert result[\"ok\"]\n\n\ndef test_delete_schedule():\n    response = client.delete(\"/api/schedules/3/\")\n    result = response.json()\n    assert result[\"ok\"]\n"
+              "path": "tests/fakes/payment.py",
+              "source": "class FakePaymentGateway:\n    async def charge(self, amount: int) -> None:\n        pass\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_api.py",
-          "id": "distinct-behaviors",
-          "outcome": "accept",
-          "scenarioId": "distinct-behavior",
-          "title": "Sibling tests preserve distinct API contracts"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_permissions.py",
-              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"role\", [\"admin\", \"editor\"], ids=[\"admin\", \"editor\"])\ndef test_can_delete(role):\n    user = make_user(role)\n    allowed = can_delete(user)\n    assert allowed\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_permissions.py",
-          "id": "parameterized-cases",
+          "focusPath": "tests/fakes/payment.py",
+          "id": "shared-fake-service",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Inputs share one parameterized test"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_jobs.py",
-              "source": "def test_starts_job():\n    job = build_job()\n    job.run()\n    assert job.done\n\n\ndef test_stops_job():\n    job = build_job()\n    job.run()\n    assert job.done\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_jobs.py",
-          "id": "verbatim-copy",
-          "outcome": "reject",
-          "scenarioId": "distinct-behavior",
-          "title": "A copied test never received its intended edit"
+          "title": "A shared support module owns the fake"
         }
       ],
       "optionsSchemaSource": null
     },
-    "python:duplicated-override-docstring": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "class Store:\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n\n\nclass MemoryStore(Store):\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "copied-override-docstring",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Override repeats its base method documentation"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "class Store:\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n\n\nclass MemoryStore(Store):\n    def get(self, key: str) -> str:\n        return key\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "override-specific-docstring",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Override relies on the base contract"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:fastapi-openapi-contract": {
+    "python:fastapi-explicit-openapi-contract": {
       "examples": [
         {
           "expectedCount": 0,
@@ -3362,76 +3368,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:fixture-returns-bare-tuple": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/conftest.py",
-              "source": "import pytest\n\n\n@pytest.fixture\ndef stores():\n    return Stores(org=org_store, user=user_store)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/conftest.py",
-          "id": "fixture-returns-named-value",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Fixture fields are named"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/conftest.py",
-              "source": "import pytest\n\n\n@pytest.fixture\ndef stores():\n    return org_store, user_store\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/conftest.py",
-          "id": "fixture-returns-tuple",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Fixture fields are positional"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:get-delegates-to-get-many": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/user_store.py",
-              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        return await self.query_one(user_id)\n\n    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n        return await self.query_many(user_ids)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/user_store.py",
-          "id": "duplicate-singleton-query",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not maintain a second singleton query path"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/user_store.py",
-              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        rows = await self.get_many([user_id])\n        return rows[0] if rows else None\n\n    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n        return await self.query_many(user_ids)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/user_store.py",
-          "id": "singleton-delegates",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Delegate the singleton read to the bulk implementation"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "python:iac-source-coupled-test": {
       "examples": [
         {
@@ -3447,7 +3383,7 @@
           "id": "rendered-plan-contract",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Assert on rendered Terraform plan behavior"
+          "title": "Assert on structured Terraform plan behavior"
         },
         {
           "expectedCount": 1,
@@ -3474,7 +3410,7 @@
           "files": [
             {
               "path": "app/models.py",
-              "source": "from pydantic import BaseModel, Field\n\n\nclass RetryPolicy(BaseModel):\n    attempts: int = Field(default=1, gt=0)\n"
+              "source": "from typing import Annotated\nfrom pydantic import BaseModel, Field\n\nPositiveInt = Annotated[int, Field(gt=0)]\n\n\nclass RetryPolicy(BaseModel):\n    attempts: PositiveInt = 1\n"
             }
           ],
           "fixedFiles": [],
@@ -3489,7 +3425,7 @@
           "files": [
             {
               "path": "app/models.py",
-              "source": "from pydantic import BaseModel, Field\n\n\nclass RetryPolicy(BaseModel):\n    attempts: int = Field(default=0, gt=0)\n"
+              "source": "from typing import Annotated\nfrom pydantic import BaseModel, Field\n\nPositiveInt = Annotated[int, Field(gt=0)]\n\n\nclass RetryPolicy(BaseModel):\n    attempts: PositiveInt = 0\n"
             }
           ],
           "fixedFiles": [],
@@ -3502,41 +3438,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:kwarg-heavy-construction-in-test": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_call.py",
-              "source": "def build_style(**overrides):\n    defaults = dict(\n        color=\"red\",\n        bgcolor=\"black\",\n        bold=True,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    return Style(**(defaults | overrides))\n\n\ndef test_style():\n    style = build_style()\n    assert str(style)\n\n\ndef test_style_again():\n    other = build_style(color=\"blue\", bgcolor=\"white\", bold=False)\n    assert str(other)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_call.py",
-          "id": "construction-through-builder",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Tests override builder defaults"
-        },
-        {
-          "expectedCount": 2,
-          "files": [
-            {
-              "path": "tests/test_call.py",
-              "source": "def test_style():\n    style = Style(\n        color=\"red\",\n        bgcolor=\"black\",\n        bold=True,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    assert str(style)\n\n\ndef test_style_again():\n    other = Style(\n        color=\"blue\",\n        bgcolor=\"white\",\n        bold=False,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    assert str(other)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_call.py",
-          "id": "repeated-wide-construction",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Tests repeat every constructor argument"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "python:mock-without-spec": {
       "examples": [
         {
@@ -3544,7 +3445,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "from unittest.mock import Mock\n\n\ndef test_service():\n    client = Mock(spec=Client)\n    assert client\n"
+              "source": "from unittest.mock import Mock\n\n\ndef test_service():\n    client = Mock(spec=Client)\n    client.send()\n"
             }
           ],
           "fixedFiles": [],
@@ -3559,7 +3460,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "from unittest.mock import Mock\n\n\ndef test_service():\n    client = Mock()\n    assert client\n"
+              "source": "from unittest.mock import Mock\n\n\ndef test_service():\n    client = Mock()\n    client.send()  # A typo or removed method still passes.\n"
             }
           ],
           "fixedFiles": [],
@@ -3607,7 +3508,7 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:no-aggregation-in-store-query": {
+    "python:no-analytical-aggregation-in-postgres-store": {
       "examples": [
         {
           "expectedCount": 0,
@@ -3708,6 +3609,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Conftest imports a specific test module"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-copied-inherited-docstring": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "class Store:\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n\n\nclass MemoryStore(Store):\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "copied-override-docstring",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Override repeats its base method documentation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "class Store:\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n\n\nclass MemoryStore(Store):\n    def get(self, key: str) -> str:\n        return key\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "override-specific-docstring",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Override relies on the base contract"
         }
       ],
       "optionsSchemaSource": null
@@ -3817,14 +3753,14 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:no-file-level-escape-hatch-noqa": {
+    "python:no-file-level-escape-hatch-suppression": {
       "examples": [
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "app/service.py",
-              "source": "# ruff: noqa: TID251\nimport os\n"
+              "source": "# ruff: file-ignore[banned-api]\nimport os\n"
             }
           ],
           "fixedFiles": [],
@@ -3882,12 +3818,12 @@
               "source": "\n"
             },
             {
-              "path": "python/service/tests/test_api.py",
+              "path": "python/service/service/consumer.py",
               "source": "from core.helpers import _decode\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "python/service/tests/test_api.py",
+          "focusPath": "python/service/service/consumer.py",
           "id": "cross-package-private-import",
           "outcome": "reject",
           "scenarioId": "primary",
@@ -3921,12 +3857,12 @@
               "source": "\n"
             },
             {
-              "path": "python/service/tests/test_api.py",
+              "path": "python/service/service/consumer.py",
               "source": "from core.helpers import decode\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "python/service/tests/test_api.py",
+          "focusPath": "python/service/service/consumer.py",
           "id": "cross-package-public-import",
           "outcome": "accept",
           "scenarioId": "primary",
@@ -3966,41 +3902,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Before-validator normalizes the input value"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-gen-random-uuid-in-sql": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "SQL = \"CREATE TABLE call (id UUID PRIMARY KEY DEFAULT gen_random_uuid())\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "random-uuid-default",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Table defaults to a random UUID"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "SQL = \"CREATE TABLE call (id UUID PRIMARY KEY DEFAULT uuidv7())\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "uuidv7-default",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Table defaults to UUIDv7"
         }
       ],
       "optionsSchemaSource": null
@@ -4309,6 +4210,76 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-random-uuid-in-sql": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "SQL = \"CREATE TABLE call (id UUID PRIMARY KEY DEFAULT gen_random_uuid())\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "random-uuid-default",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Table defaults to a random UUID"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "SQL = \"CREATE TABLE call (id UUID PRIMARY KEY DEFAULT uuidv7())\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "uuidv7-default",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Table defaults to UUIDv7"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-raw-connection-in-tests": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_orders.py",
+              "source": "async def load_rows(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        return await conn.execute(\"SELECT 1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_orders.py",
+          "id": "test-acquires-pool-connection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A test helper reaches directly through its pool"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_orders.py",
+              "source": "async def load_rows(store: OrderStore):\n    return await store.list_orders()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_orders.py",
+          "id": "test-uses-store-boundary",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A test reads through the owning store API"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-redundant-literal-description": {
       "examples": [
         {
@@ -4375,6 +4346,71 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Functions reuse one SQL constant"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-repeated-test-body": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_permissions.py",
+              "source": "def test_admin_can_delete():\n    user = make_user(\"admin\")\n    allowed = can_delete(user)\n    assert allowed\n\n\ndef test_editor_can_delete():\n    user = make_user(\"editor\")\n    allowed = can_delete(user)\n    assert allowed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_permissions.py",
+          "id": "copy-pasted-tests",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Copy-pasted tests hide the changing case dimension"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_api.py",
+              "source": "def test_delete_environment():\n    response = client.delete(\"/api/environments/3/\")\n    result = response.json()\n    assert result[\"ok\"]\n\n\ndef test_delete_schedule():\n    response = client.delete(\"/api/schedules/3/\")\n    result = response.json()\n    assert result[\"ok\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_api.py",
+          "id": "distinct-behaviors",
+          "outcome": "accept",
+          "scenarioId": "distinct-behavior",
+          "title": "Sibling tests preserve distinct API contracts"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_permissions.py",
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"role\", [\"admin\", \"editor\"], ids=[\"admin\", \"editor\"])\ndef test_can_delete(role):\n    user = make_user(role)\n    allowed = can_delete(user)\n    assert allowed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_permissions.py",
+          "id": "parameterized-cases",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One named case table exposes the changing inputs"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_jobs.py",
+              "source": "def test_starts_job():\n    job = build_job()\n    job.run()\n    assert job.done\n\n\ndef test_stops_job():\n    job = build_job()\n    job.run()\n    assert job.done\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_jobs.py",
+          "id": "verbatim-copy",
+          "outcome": "reject",
+          "scenarioId": "distinct-behavior",
+          "title": "A copied test never received its intended edit"
         }
       ],
       "optionsSchemaSource": null
@@ -4865,6 +4901,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Cursor validates rows into a model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-collection-comprehension": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/capacity.py",
+              "source": "def organization_caps(rows):\n    caps: dict[str, int] = {}\n    for row in rows:\n        caps[row.organization_id] = row.organization_cap\n    return caps\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/capacity.py",
+          "id": "derived-dict-projection-loop",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Build a projected dictionary directly"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/capacity.py",
+              "source": "def organization_caps(rows):\n    return {row.organization_id: row.organization_cap for row in rows}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/capacity.py",
+          "id": "direct-dict-comprehension",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep the collection projection declarative"
         }
       ],
       "optionsSchemaSource": null
@@ -5739,6 +5810,49 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:pytest-fixture-returns-bare-tuple": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "from typing import NamedTuple\n\nimport pytest\n\n\nclass Stores(NamedTuple):\n    org: object\n    user: object\n\n\n@pytest.fixture\ndef stores():\n    return Stores(org=org_store, user=user_store)\n"
+            },
+            {
+              "path": "tests/test_users.py",
+              "source": "def test_user_lookup(stores):\n    assert stores.user.get(\"u1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "fixture-returns-named-value",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Fixture consumers use named fields"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\n\n\n@pytest.fixture\ndef stores():\n    return org_store, user_store\n"
+            },
+            {
+              "path": "tests/test_users.py",
+              "source": "def test_user_lookup(stores):\n    org_store, user_store = stores\n    assert user_store.get(\"u1\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "fixture-returns-tuple",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Fixture consumers must remember field positions"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:redundant-class-docstring": {
       "examples": [
         {
@@ -5840,6 +5954,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Docstring repeats the module path"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:repeated-kwarg-heavy-call-in-test": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_call.py",
+              "source": "def build_style(**overrides):\n    defaults = dict(\n        color=\"red\",\n        bgcolor=\"black\",\n        bold=True,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    return Style(**(defaults | overrides))\n\n\ndef test_style():\n    style = build_style()\n    assert str(style)\n\n\ndef test_style_again():\n    other = build_style(color=\"blue\", bgcolor=\"white\", bold=False)\n    assert str(other)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_call.py",
+          "id": "construction-through-builder",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Tests override builder defaults"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "tests/test_call.py",
+              "source": "def test_style():\n    style = Style(\n        color=\"red\",\n        bgcolor=\"black\",\n        bold=True,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    assert str(style)\n\n\ndef test_style_again():\n    other = Style(\n        color=\"blue\",\n        bgcolor=\"white\",\n        bold=False,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    assert str(other)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_call.py",
+          "id": "repeated-wide-construction",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Tests repeat every constructor argument"
         }
       ],
       "optionsSchemaSource": null
@@ -6229,6 +6378,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:store-get-delegates-to-bulk-read": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        return await self.query_one(user_id)\n\n    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n        return await self.query_many(user_ids)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "duplicate-singleton-query",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not maintain a second singleton query path"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        rows = await self.get_many([user_id])\n        return rows[0] if rows else None\n\n    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n        return await self.query_many(user_ids)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "singleton-delegates",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Delegate the singleton read to the bulk implementation"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:store-insert-requires-on-conflict": {
       "examples": [
         {
@@ -6295,6 +6479,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Comment explains a consequence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:timestamp-order-requires-tiebreaker": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "QUERY = \"SELECT id, created_at FROM task ORDER BY created_at DESC, id DESC LIMIT 50\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "created-at-is-followed-by-id",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A stable key breaks equal-timestamp ties"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "QUERY = \"SELECT id, created_at FROM task ORDER BY created_at DESC LIMIT 50\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "created-at-is-the-only-order-key",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A store query orders only by a timestamp"
         }
       ],
       "optionsSchemaSource": null
@@ -6579,37 +6798,37 @@
       ],
       "optionsSchemaSource": null
     },
-    "sql:insert-requires-on-conflict": {
+    "sql:insert-requires-replay-policy": {
       "examples": [
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "supabase/migrations/001_seed.sql",
+              "path": "queries/create_plan.sql",
               "source": "INSERT INTO\n  plan (name)\nVALUES\n  ('free')\nON CONFLICT (name) DO NOTHING;\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_seed.sql",
-          "id": "idempotent-seed-insert",
+          "focusPath": "queries/create_plan.sql",
+          "id": "insert-with-replay-policy",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Seed insert with conflict handling"
+          "title": "Upsert declares its conflict behavior"
         },
         {
           "expectedCount": 1,
           "files": [
             {
-              "path": "supabase/migrations/001_seed.sql",
+              "path": "queries/create_plan.sql",
               "source": "INSERT INTO\n  plan (name)\nVALUES\n  ('free');\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_seed.sql",
-          "id": "non-idempotent-seed-insert",
+          "focusPath": "queries/create_plan.sql",
+          "id": "insert-without-replay-policy",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Seed insert without conflict handling"
+          "title": "Insert without declared replay behavior"
         }
       ],
       "optionsSchemaSource": null
@@ -6649,7 +6868,7 @@
       ],
       "optionsSchemaSource": null
     },
-    "sql:no-create-trigger": {
+    "sql:no-database-triggers": {
       "examples": [
         {
           "expectedCount": 0,

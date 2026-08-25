@@ -28,6 +28,9 @@ class _LiteralElement(NamedTuple):
     column: int
 
 
+_INSERT_ARGUMENT_COUNT = 2
+
+
 @final
 class NoDuplicateDunderAllEntry(Rule):
     id = "no-duplicate-dunder-all-entry"
@@ -42,7 +45,7 @@ class NoDuplicateDunderAllEntry(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only one fully static list or tuple assigned to module-level `__all__` is analyzed.",
+            "One fully static module-level list or tuple plus literal append, extend, and insert growth is analyzed.",
             "Generated, dynamically reassigned, and non-Python declarations are excluded.",
         ),
         examples=(
@@ -95,6 +98,10 @@ class NoDuplicateDunderAllEntry(Rule):
         elements = _literal_elements(declaration)
         if elements is None:
             return []
+        growth = _literal_growth_elements(tree, declaration)
+        if growth is None:
+            return []
+        elements.extend(growth)
 
         first_lines: dict[str, int] = {}
         findings: list[Diagnostic] = []
@@ -131,14 +138,14 @@ def _has_other_dunder_all_rebindings(tree: ast.Module, declaration: ast.stmt) ->
     for statement in tree.body:
         if statement is declaration:
             continue
-        if _is_cardinality_preserving_dunder_all_mutation(statement):
+        if _is_supported_dunder_all_growth(statement):
             continue
         if _mentions_dunder_all(statement):
             return True
     return False
 
 
-def _is_cardinality_preserving_dunder_all_mutation(statement: ast.stmt) -> bool:
+def _is_supported_dunder_all_growth(statement: ast.stmt) -> bool:
     match statement:
         case ast.Expr(
             value=ast.Call(func=ast.Attribute(value=ast.Name(id="__all__"), attr="append" | "extend" | "insert"))
@@ -185,3 +192,51 @@ def _literal_elements(statement: ast.stmt) -> list[_LiteralElement] | None:
             return None
         elements.append(_LiteralElement(element.value, element.lineno, element.col_offset + 1))
     return elements
+
+
+def _literal_growth_elements(tree: ast.Module, declaration: ast.stmt) -> list[_LiteralElement] | None:
+    elements: list[_LiteralElement] = []
+    for statement in tree.body:
+        if statement is declaration or not _is_supported_dunder_all_growth(statement):
+            continue
+        if not isinstance(statement, ast.Expr):
+            return None
+        call = statement.value
+        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
+            return None
+        if (element := _single_literal_growth(call)) is not None:
+            elements.append(element)
+            continue
+        match call.func.attr, call.args, call.keywords:
+            case "extend", [ast.List() | ast.Tuple() as values], []:
+                extended = _sequence_literal_elements(values)
+                if extended is None:
+                    return None
+                elements.extend(extended)
+            case _:
+                return None
+    return elements
+
+
+def _single_literal_growth(call: ast.Call) -> _LiteralElement | None:
+    if call.keywords or not isinstance(call.func, ast.Attribute):
+        return None
+    if call.func.attr == "append" and len(call.args) == 1:
+        candidate = call.args[0]
+    elif call.func.attr == "insert" and len(call.args) == _INSERT_ARGUMENT_COUNT:
+        candidate = call.args[1]
+    else:
+        return None
+    if not isinstance(candidate, ast.Constant) or not isinstance(candidate.value, str):
+        return None
+    return _LiteralElement(candidate.value, candidate.lineno, candidate.col_offset + 1)
+
+
+def _sequence_literal_elements(node: ast.List | ast.Tuple) -> list[_LiteralElement] | None:
+    if not all(isinstance(element, ast.Constant) and isinstance(element.value, str) for element in node.elts):
+        return None
+    return [
+        _LiteralElement(element.value, element.lineno, element.col_offset + 1)
+        for element in node.elts
+        if isinstance(element, ast.Constant) and isinstance(element.value, str)
+    ]

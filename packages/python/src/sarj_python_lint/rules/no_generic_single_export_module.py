@@ -32,6 +32,8 @@ _JUNK_DRAWER_STEMS = frozenset(
         "shared",
         "stuff",
         "util",
+        "utilities",
+        "utility",
         "utils",
     }
 )
@@ -49,7 +51,7 @@ class NoGenericSingleExportModule(Rule):
         autofix=AutofixPolicy.NONE,
         aliases=("single-public-export",),
         limitations=(
-            "Only known junk-drawer stems with exactly one top-level public class or function are reported.",
+            "Only known junk-drawer stems with exactly one distinct top-level public class or function name are reported.",
             "An absent `__all__`, or one static entry matching that definition, must prove the public surface.",
             "Generated and test paths are excluded; semantic role and framework filenames are outside the stem set.",
         ),
@@ -90,15 +92,15 @@ class NoGenericSingleExportModule(Rule):
         if tree is None:
             return []
 
-        public_defs = [
-            node
+        public_defs = {
+            node.name: node
             for node in tree.body
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("_")
-        ]
+        }
         if len(public_defs) != 1:
             return []
 
-        primary = public_defs[0]
+        primary = next(iter(public_defs.values()))
         if _has_additional_public_export(tree, primary.name):
             return []
 

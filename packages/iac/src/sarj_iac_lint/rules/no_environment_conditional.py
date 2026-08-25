@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import document, tokens
@@ -50,6 +51,14 @@ _NEUTRAL_QUALIFIERS = frozenset(
         "host",
     }
 )
+
+# Weak identity names need corroboration from the compared literal. These are
+# exact segments rather than substrings: `product` and `developmental` are not
+# deployment labels, while `platform-prod` and `preview_us` are.
+_ENVIRONMENT_LITERAL_SEGMENTS = frozenset(
+    {"dev", "development", "preview", "prod", "production", "qa", "sandbox", "stage", "staging", "test", "testing"}
+)
+_LITERAL_SEGMENT_RE = re.compile(r"[^a-z0-9]+")
 
 # Whole subtrees that assert which inputs are legal. Comparing the environment to a
 # literal is the assertion there, and there is no named input that could replace it.
@@ -101,9 +110,10 @@ class NoEnvironmentConditional(Rule):
             "that environment's tfvars instead."
         ),
         remediation=(
-            "Declare a typed variable carrying the selected value, set per environment in tfvars "
-            "(`tier = var.redis_tier`); use one `enable_<thing>` bool consumed by count/for_each only when the "
-            "branch gates existence, never computed from the environment name."
+            "Declare a typed variable carrying the selected value, pass it through child-module calls, and set "
+            "it at the root from per-environment tfvars (`tier = var.redis_tier`); use one `enable_<thing>` bool "
+            "consumed by count/for_each only when the branch gates existence, never computed from the "
+            "environment name."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -122,6 +132,11 @@ class NoEnvironmentConditional(Rule):
             (
                 "A function result such as upper(var.environment) is not treated as the environment identity, "
                 "so a comparison against it is exempt."
+            ),
+            (
+                "Ambiguous identity names (`project`, `account`, `tenant`, `branch`, and `slug`) require an "
+                "environment-labelled comparison literal such as `platform-prod`; comparisons to ordinary "
+                "business values and map indexing by those names are intentionally ignored."
             ),
             "Only .tf and .hcl are read: the suffix filter keeps .tfvars out of scope.",
             (
@@ -202,6 +217,36 @@ class NoEnvironmentConditional(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="project-id-with-environment-evidence",
+                title="Cloud project identity names a deployment environment",
+                outcome=ExampleOutcome.MATCH,
+                scenario="ambiguous-identity",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'locals {\n  tier = var.gcp_project_id == "platform-prod" ? "HA" : "BASIC"\n}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="business-project-value",
+                title="Business project identity has no deployment evidence",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="ambiguous-identity",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'locals {\n  queue = var.project == "analytics" ? "events" : "default"\n}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -257,9 +302,9 @@ def _comparison(toks: tuple[str, ...], index: int) -> _Use | None:
     if left is None or right is None:
         return None
     shape = f"{left} {toks[index]} {right}"
-    if _is_environment_identity(left) and _is_literal_string(right):
+    if _is_environment_identity(left, literal=right) and _is_literal_string(right):
         return _Use(left, shape)
-    if _is_environment_identity(right) and _is_literal_string(left):
+    if _is_environment_identity(right, literal=left) and _is_literal_string(left):
         return _Use(right, shape)
     return None
 
@@ -391,15 +436,15 @@ def _is_literal_list(arg: list[str]) -> bool:
     return bool(items) and all(_is_literal_string(tok) for tok in items)
 
 
-def _is_environment_identity(tok: str) -> bool:
+def _is_environment_identity(tok: str, *, literal: str | None = None) -> bool:
     if tok == _WORKSPACE:
         return True
     if not tok.startswith(_IDENTITY_PREFIXES):
         return False
-    return _is_environment_name(tok.rsplit(".", 1)[-1])
+    return _is_environment_name(tok.rsplit(".", 1)[-1], literal=literal)
 
 
-def _is_environment_name(name: str) -> bool:
+def _is_environment_name(name: str, *, literal: str | None) -> bool:
     segments = [segment for segment in name.split("_") if segment]
     if not segments:
         return False
@@ -407,7 +452,15 @@ def _is_environment_name(name: str) -> bool:
         return True
     if not QUALIFIED_SEGMENTS & set(segments):
         return False
-    return all(segment in QUALIFIED_SEGMENTS or segment in _NEUTRAL_QUALIFIERS for segment in segments)
+    qualified = all(segment in QUALIFIED_SEGMENTS or segment in _NEUTRAL_QUALIFIERS for segment in segments)
+    return qualified and literal is not None and _literal_names_environment(literal)
+
+
+def _literal_names_environment(literal: str) -> bool:
+    if not _is_literal_string(literal):
+        return False
+    segments = frozenset(_LITERAL_SEGMENT_RE.split(literal[1:-1].lower()))
+    return bool(segments & _ENVIRONMENT_LITERAL_SEGMENTS)
 
 
 def _is_literal_string(tok: str) -> bool:
@@ -427,5 +480,6 @@ def _message(owner: Block, attr: Attribute, use: _Use) -> str:
         f"`{attr.name}` in {where} branches on the environment name ({use.shape}) — "
         "adding an environment means editing this expression, and the decision is code rather than "
         "configuration. Replace it with a typed variable set per environment in tfvars — the value "
-        "itself, or one `enable_<thing>` bool when the branch gates whether the resource exists."
+        "itself, passed through child-module calls from the root, or one `enable_<thing>` bool when the branch "
+        "gates whether the resource exists."
     )

@@ -266,6 +266,42 @@ locals {
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    ("identity", "literal"),
+    [
+        ("var.project", "analytics"),
+        ("var.account", "enterprise"),
+        ("var.tenant", "customer-a"),
+        ("var.branch", "main"),
+        ("var.slug", "billing"),
+    ],
+)
+def test_ambiguous_identity_names_need_environment_evidence(identity: str, literal: str):
+    src = f"""\nlocals {{\n  selected = {identity} == "{literal}" ? "a" : "b"\n}}\n"""
+
+    assert _check(src) == []
+
+
+def test_an_ambiguous_project_name_with_environment_evidence_is_flagged():
+    src = """
+locals {
+  selected = var.gcp_project_id == "platform-prod" ? "a" : "b"
+}
+"""
+
+    assert len(_check(src)) == 1
+
+
+def test_an_ambiguous_identity_used_as_a_map_key_is_not_enough_evidence():
+    src = """
+locals {
+  selected = local.projects[var.project]
+}
+"""
+
+    assert _check(src) == []
+
+
 def test_flags_the_same_variable_against_a_real_literal():
     src = """
 locals {
@@ -502,6 +538,7 @@ module "iam" {
     assert len(diags) == 2
     assert [d.line for d in diags] == [4, 5]
     assert "typed variable set per environment in tfvars" in diags[0].message
+    assert "passed through child-module calls from the root" in diags[0].message
     assert "`enable_<thing>` bool" in diags[0].message
 
 

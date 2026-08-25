@@ -38,7 +38,7 @@ _UNSPECCED_FACTORIES = frozenset({"Mock", "MagicMock", "AsyncMock", "NonCallable
 _PATCHERS = frozenset({"patch"})
 
 # Any one of these gives the double a real contract to honour.
-_SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "new_callable", "wraps"})
+_SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "wraps"})
 
 
 # Positional arity reveals when each mock constructor already received its spec or replacement.
@@ -112,6 +112,7 @@ class MockWithoutSpec(Rule):
         limitations=(
             "Only test files and statically resolved `unittest.mock` or pytest-mock constructors are analyzed.",
             "Mocks used only for their built-in assertion API, import-loader `sys.modules` stubs, and untouched constructor placeholders are excluded.",
+            "Unknown `new_callable=` factories are treated as concrete replacements; known Mock subclasses still require a spec.",
         ),
         examples=(
             RuleExample(
@@ -121,7 +122,7 @@ class MockWithoutSpec(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        "from unittest.mock import Mock\n\ndef test_service():\n    client = Mock()\n    assert client\n",
+                        "from unittest.mock import Mock\n\ndef test_service():\n    client = Mock()\n    client.send()  # A typo or removed method still passes.\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
@@ -135,7 +136,7 @@ class MockWithoutSpec(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        "from unittest.mock import Mock\n\ndef test_service():\n    client = Mock(spec=Client)\n    assert client\n",
+                        "from unittest.mock import Mock\n\ndef test_service():\n    client = Mock(spec=Client)\n    client.send()\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
@@ -525,7 +526,7 @@ def _unspecced_calls(
         if symbol is None:
             continue
         label = _render_callee(node.func, symbol)
-        if _has_spec_argument(node) or _has_positional_replacement(node, label):
+        if _has_spec_argument(node, names) or _has_positional_replacement(node, label):
             continue
         if (
             node in facts.import_fallbacks
@@ -539,7 +540,7 @@ def _unspecced_calls(
     return hits
 
 
-def _has_spec_argument(node: ast.Call) -> bool:
+def _has_spec_argument(node: ast.Call, names: _MockNames) -> bool:
     # `**kwargs` forwarding could smuggle a spec in; treat it as specced rather
     # than guess, since the call site no longer states its own contract.
     for keyword in node.keywords:
@@ -552,6 +553,13 @@ def _has_spec_argument(node: ast.Call) -> bool:
             if not (isinstance(keyword.value, ast.Constant) and keyword.value.value in {None, False}):
                 return True
             continue
+        if keyword.arg == "new_callable":
+            # Choosing another unrestricted Mock subclass changes callability or
+            # awaitability, not the collaborator contract. Unknown factories may
+            # create a concrete non-mock replacement, so decline to guess.
+            if names.resolve(keyword.value) in _UNSPECCED_FACTORIES:
+                continue
+            return True
         if keyword.arg in _SPEC_KEYWORDS and not (
             isinstance(keyword.value, ast.Constant) and keyword.value.value is None
         ):

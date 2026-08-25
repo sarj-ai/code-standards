@@ -42,9 +42,22 @@ def test_reports_postgres_trigger_creation(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
+        "ALTER TABLE calls ENABLE TRIGGER audit_call;",
+        "ALTER TABLE calls ENABLE ALWAYS TRIGGER audit_call;",
+        "ALTER TABLE calls ENABLE REPLICA TRIGGER audit_call;",
+    ],
+)
+def test_reports_trigger_reenablement(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "-- CREATE TRIGGER is intentionally forbidden",
         "INSERT INTO docs(body) VALUES ('CREATE TRIGGER example');",
         "DROP TRIGGER IF EXISTS update_timestamp ON calls;",
+        "ALTER TABLE calls DISABLE TRIGGER audit_call;",
         "CREATE TABLE trigger_audit (id uuid PRIMARY KEY);",
     ],
 )

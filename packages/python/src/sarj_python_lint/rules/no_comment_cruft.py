@@ -51,8 +51,6 @@ _DIRECTIVE_PREFIXES = (
     "flake8:",
     "nosec",
     "nosemgrep",
-    "hack",
-    "xxx:",
     "-*-",
     "language=",
 )
@@ -62,6 +60,8 @@ _LICENSE_RE = re.compile(
     r"all rights reserved",
     re.IGNORECASE,
 )
+
+_UNTRACKED_WORK_RE = re.compile(r"^(?:todo|fixme|hack|xxx|bug)\b", re.IGNORECASE)
 
 # License text is legally required and therefore never comment cruft.
 _LICENSE_HEADER_MAX_LINE = 8
@@ -448,7 +448,7 @@ class NoCommentCruft(Rule):
     id: str = "no-comment-cruft"
     code: str = "SARJ016"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Comment repeats code, preserves dead code, or adds a decorative section marker.",
+        summary="Commented-out code, mechanical narration, decorative banner, or untracked work marker.",
         rationale="Mechanical narration and dead code obscure the constraints and rationale that comments should preserve.",
         remediation=(
             "Delete the cruft. If author-controlled code is unclear without narration, clarify names, types, or "
@@ -574,9 +574,9 @@ class NoCommentCruft(Rule):
             and not narration_protected
         ):
             return "Placeholder implementation comment — implement the behavior or use an explicit unsupported path."
-        if re.match(r"^(?:todo|fixme)\b", body, re.IGNORECASE):
+        if _UNTRACKED_WORK_RE.match(body):
             if not narration_protected:
-                return "Untracked TODO/FIXME marker — add an issue ticket or context link."
+                return "Untracked TODO/FIXME/HACK/XXX/BUG marker — add an issue ticket or context link."
             return None
         if _is_banner(body):
             if nested and _MARKDOWN_HEADING_RE.search(body):
@@ -585,7 +585,7 @@ class NoCommentCruft(Rule):
                 return None
             if in_license_header:
                 return None
-            return "Section-banner / region comment — structure code with functions, not ASCII rules."
+            return "Section-banner / region comment — use named code boundaries, not ASCII rules."
         if _looks_like_code(body):
             if prev_body is not None and _is_prose_line(prev_body):
                 return None

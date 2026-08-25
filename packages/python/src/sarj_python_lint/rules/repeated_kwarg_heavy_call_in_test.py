@@ -15,7 +15,6 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -23,7 +22,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_MAX_KEYWORDS = 8
+_MAX_KEYWORDS = 6
 
 # A builder only pays for itself once the same callee is built more than once.
 _MIN_CONSTRUCTIONS = 2
@@ -40,18 +39,25 @@ _DATA_METHODS = frozenset({"update"})
 _MOCK_ASSERTION_PREFIX = "assert_"
 
 
-class KwargHeavyConstructionInTest(Rule):
-    id: str = "kwarg-heavy-construction-in-test"
+class RepeatedKwargHeavyCallInTest(Rule):
+    id: str = "repeated-kwarg-heavy-call-in-test"
     code: str = "SARJ045"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Object built with many keywords inline in a test — extract a helper with defaults.",
-        rationale="Repeated construction boilerplate hides the field each test changes and makes schema changes noisy.",
-        remediation="Extract a test builder with sensible defaults and override only values relevant to each case.",
+        summary="Tests repeat calls with seven or more explicit keyword arguments.",
+        rationale=(
+            "Large repeated argument lists duplicate incidental setup, bury scenario differences, and make signature "
+            "changes noisy across the suite."
+        ),
+        remediation=(
+            "Extract a scenario helper with sensible defaults and override only values relevant to each case; "
+            "suppress the finding when every argument is intentionally part of the assertion."
+        ),
         category=RuleCategory.TESTING,
         limitations=(
-            "Only repeated calls with more than eight named arguments directly inside test functions are reported.",
-            "Mapping construction, mock assertions, fixtures, and local helper calls are allowed.",
+            "Only repeated calls to the same stable callee with seven or more named arguments directly inside test functions are reported.",
+            "Mapping construction, mock assertions, fixtures, nested closures, and dynamic callees are allowed.",
         ),
+        aliases=("kwarg-heavy-construction-in-test",),
         examples=(
             RuleExample(
                 example_id="repeated-wide-construction",
@@ -125,12 +131,12 @@ class KwargHeavyConstructionInTest(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=(
-                    f"this call passes {count} keywords inline, so the one field under test is buried "
-                    "and every other test repeats the same boilerplate. Extract a helper with "
-                    "defaults and override only what this test is about."
+                    f"this test repeats a call with {count} explicit keywords, burying scenario differences "
+                    "in duplicated setup. Extract a helper with defaults and override only what this case changes; "
+                    "suppress SARJ045 when every argument is intentionally under test."
                 ),
             )
-            for node, count in visitor.reportable_hits(tree)
+            for node, count in visitor.reportable_hits()
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -165,17 +171,14 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
                 self.hits.append((node, len(named)))
         self.generic_visit(node)
 
-    def reportable_hits(self, tree: ast.Module) -> list[tuple[ast.Call, int]]:
+    def reportable_hits(self) -> list[tuple[ast.Call, int]]:
         counts = Counter(name for node, _ in self.hits if (name := _callee_name(node.func)) is not None)
-        local_defs = _locally_defined_names(tree)
         return [
             (node, count)
             for node, count in self.hits
             # A callee with no stable name (a subscript, a call result) cannot be
             # counted, so it can never clear the repetition bar.
-            if (name := _callee_name(node.func)) is not None
-            and counts[name] >= _MIN_CONSTRUCTIONS
-            and not _calls_a_local_helper(node.func, local_defs)
+            if (name := _callee_name(node.func)) is not None and counts[name] >= _MIN_CONSTRUCTIONS
         ]
 
     def _in_test_function(self) -> bool:
@@ -192,14 +195,6 @@ def _is_data_callable(func: ast.expr) -> bool:
 def _is_mock_assertion(func: ast.expr) -> bool:
     name = _callee_name(func)
     return name is not None and name.rsplit(".", maxsplit=1)[-1].startswith(_MOCK_ASSERTION_PREFIX)
-
-
-def _locally_defined_names(tree: ast.Module) -> frozenset[str]:
-    return frozenset(node.name for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef))
-
-
-def _calls_a_local_helper(func: ast.expr, local_defs: frozenset[str]) -> bool:
-    return isinstance(func, ast.Name) and func.id in local_defs
 
 
 def _callee_name(func: ast.expr) -> str | None:

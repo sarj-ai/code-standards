@@ -33,35 +33,36 @@ _CLAUSE_BOUNDARY = re.compile(
     r"GROUP\s+BY|HAVING|ORDER\s+BY)\b",
     re.IGNORECASE,
 )
-_CREATED_AT_ITEM = re.compile(
-    r"(?:(?:[A-Za-z_][A-Za-z0-9_$]*\s*\.\s*)*)created_at"
+_TIMESTAMP_ITEM = re.compile(
+    r"(?:(?:[A-Za-z_][A-Za-z0-9_$]*\s*\.\s*)*)(?P<column>[A-Za-z_][A-Za-z0-9_$]*_at)"
     r"(?:\s+(?:ASC|DESC))?(?:\s+NULLS\s+(?:FIRST|LAST))?\s*\Z",
     re.IGNORECASE,
 )
 
 
 @final
-class CreatedAtOrderRequiresTiebreaker(Rule):
-    id = "created-at-order-requires-tiebreaker"
+class TimestampOrderRequiresTiebreaker(Rule):
+    id = "timestamp-order-requires-tiebreaker"
     code = "SARJ407"
     documentation = RuleDocumentation(
-        summary="Store queries ordered by `created_at` should include a later tie-break key.",
+        summary="Store query ending its order with a `*_at` timestamp must add a stable tie-break key.",
         rationale=(
-            "Timestamps are not unique, so rows with the same `created_at` value have no stable relative order. "
+            "Timestamps are not unique, so rows with the same timestamp value have no stable relative order. "
             "That can make pagination and repeated reads skip, repeat, or reorder rows."
         ),
-        remediation="Add a stable key after `created_at`, such as `ORDER BY created_at DESC, id DESC`.",
+        remediation="Add a stable key after the timestamp, such as `ORDER BY created_at DESC, id DESC`.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
+        aliases=("created-at-order-requires-tiebreaker",),
         limitations=(
             "Only fully reconstructable SQL string literals in recognized production store modules are analyzed.",
             (
-                "The rule reports an exact, optionally qualified `created_at` column only when it is the final "
-                "same-depth `ORDER BY` item; any later same-depth ordering item is accepted."
+                "The rule reports an exact, optionally qualified unquoted `*_at` column only when it is the final "
+                "same-depth `ORDER BY` item; any later same-depth ordering item is accepted as an explicit tie-break."
             ),
             (
                 "Dynamic string construction, formatted strings, quoted identifiers, expressions containing "
-                "`created_at`, and non-SELECT fragments are excluded."
+                "a timestamp column, and non-SELECT fragments are excluded."
             ),
             "The intended stable key cannot be inferred safely, so the rule does not offer an autofix.",
         ),
@@ -119,7 +120,7 @@ class CreatedAtOrderRequiresTiebreaker(Rule):
             if text is None:
                 continue
             sql = strip_sql_noise(text)
-            if _QUERY_SHAPE.search(sql) is None or not _created_at_ends_order_clause(sql):
+            if _QUERY_SHAPE.search(sql) is None or (timestamp := _timestamp_ending_order_clause(sql)) is None:
                 continue
             diagnostics.append(
                 Diagnostic(
@@ -129,7 +130,7 @@ class CreatedAtOrderRequiresTiebreaker(Rule):
                     code=self.code,
                     severity=Severity.ERROR,
                     message=(
-                        "Store query leaves `created_at` as its final ordering item; add a stable tie-break key "
+                        f"Store query leaves `{timestamp}` as its final ordering item; add a stable tie-break key "
                         "after it, such as `id` (for example, `ORDER BY created_at DESC, id DESC`)."
                     ),
                 )
@@ -149,7 +150,7 @@ def _is_fully_static_string(node: ast.expr) -> bool:
     )
 
 
-def _created_at_ends_order_clause(sql: str) -> bool:
+def _timestamp_ending_order_clause(sql: str) -> str | None:
     depths = _depths(sql)
     for order in _ORDER_BY.finditer(sql):
         clause_depth = depths[order.start()]
@@ -171,9 +172,9 @@ def _created_at_ends_order_clause(sql: str) -> bool:
                     clause_end = index
                     break
             index += 1
-        if _CREATED_AT_ITEM.fullmatch(sql[item_start:clause_end].strip()) is not None:
-            return True
-    return False
+        if (timestamp := _TIMESTAMP_ITEM.fullmatch(sql[item_start:clause_end].strip())) is not None:
+            return timestamp.group("column")
+    return None
 
 
 def _depths(sql: str) -> list[int]:

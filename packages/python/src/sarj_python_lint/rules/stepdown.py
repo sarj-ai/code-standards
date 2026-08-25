@@ -118,10 +118,7 @@ class Stepdown(Rule):
 
 
 def _last_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
-    last: dict[str, DefT] = {}
-    for d in defs:
-        last[d.name] = d
-    return last
+    return {definition.name: definition for definition in defs}
 
 
 def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:

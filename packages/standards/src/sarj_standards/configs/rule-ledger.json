@@ -24,30 +24,25 @@
   ],
   "rules": {
     "python": [
-      "created-at-order-requires-tiebreaker",
-      "defect-xfail-requires-strict",
+      "defect-xfail-requires-explicit-strict",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
-      "duplicate-test-body",
-      "duplicated-override-docstring",
-      "fastapi-openapi-contract",
-      "fixture-returns-bare-tuple",
-      "get-delegates-to-get-many",
+      "fakes-in-shared-location",
+      "fastapi-explicit-openapi-contract",
       "iac-source-coupled-test",
       "invalid-pydantic-field-default",
-      "kwarg-heavy-construction-in-test",
       "mock-without-spec",
       "negative-only-http-status-assertion",
-      "no-aggregation-in-store-query",
+      "no-analytical-aggregation-in-postgres-store",
       "no-comment-cruft",
       "no-conftest-test-module-import",
+      "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
       "no-duplicate-dunder-all-entry",
       "no-fastapi-on-event",
-      "no-file-level-escape-hatch-noqa",
+      "no-file-level-escape-hatch-suppression",
       "no-first-party-private-import",
       "no-frozen-after-validator-field-write",
-      "no-gen-random-uuid-in-sql",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
       "no-isinstance-union-chain",
@@ -56,8 +51,11 @@
       "no-offset-pagination",
       "no-optional-tenant-predicate",
       "no-query-with-many-joins",
+      "no-random-uuid-in-sql",
+      "no-raw-connection-in-tests",
       "no-redundant-literal-description",
       "no-repeated-string-literal",
+      "no-repeated-test-body",
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
@@ -72,6 +70,7 @@
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
       "prefer-class-row",
+      "prefer-collection-comprehension",
       "prefer-constant-time-secret-compare",
       "prefer-fstring-over-concat",
       "prefer-immutable-module-constant",
@@ -96,9 +95,11 @@
       "preserve-enum-types",
       "production-derived-test-cases",
       "pydantic-at-boundaries",
+      "pytest-fixture-returns-bare-tuple",
       "redundant-class-docstring",
       "redundant-docstring",
       "redundant-module-docstring",
+      "repeated-kwarg-heavy-call-in-test",
       "repeated-static-call-cases",
       "require-keyword-only-swap-prone-params",
       "require-nodecode-for-splitting-settings-field",
@@ -110,8 +111,10 @@
       "source-coupled-test",
       "sql-requires-injected-pool-owner",
       "stepdown",
+      "store-get-delegates-to-bulk-read",
       "store-insert-requires-on-conflict",
       "test-phase-label-comment",
+      "timestamp-order-requires-tiebreaker",
       "trailing-value-narration",
       "trivially-true-assertion",
       "uncontrolled-randomness-in-test",
@@ -122,9 +125,9 @@
       "enforce-timestamptz",
       "idempotent-ddl",
       "index-concurrently",
-      "insert-requires-on-conflict",
+      "insert-requires-replay-policy",
       "no-comment-cruft",
-      "no-create-trigger",
+      "no-database-triggers",
       "no-offset-pagination",
       "no-pg-enum",
       "prefer-jsonb",
@@ -137,8 +140,8 @@
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-environment-conditional",
+      "no-mocked-terraform-test-oracle",
       "no-restated-comment",
-      "no-terraform-test-file",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
     ],
@@ -211,6 +214,7 @@
       "repeated-static-call-cases",
       "require-assert-never",
       "require-fetch-timeout",
+      "require-pascal-case-zod-schema-name",
       "require-port-for-service",
       "require-static-next-matcher",
       "require-use-form-default-values",
@@ -220,8 +224,7 @@
       "stepdown",
       "store-insert-requires-on-conflict",
       "test-loops-over-literal-cases",
-      "test-phase-label-comment",
-      "zod-naming-convention"
+      "test-phase-label-comment"
     ],
     "text": [
       "commented-out-config",
@@ -327,7 +330,10 @@
       "SARJ424",
       "SARJ425",
       "SARJ426",
-      "SARJ427"
+      "SARJ427",
+      "SARJ428",
+      "SARJ429",
+      "SARJ430"
     ],
     "sql": [
       "SARJ101",
@@ -514,6 +520,13 @@
       "note": "the old name no longer resolves: @sarj/eslint-plugin 9.0.0 deleted the deprecated aliases 7.0.0 shipped, so a config, an eslint-disable comment or a suppression entry naming it now makes ESLint exit 2 on the whole repo. Rewrite every reference to @sarj/no-trailing-value-narration."
     },
     {
+      "id": "@sarj/zod-naming-convention",
+      "kind": "eslint",
+      "status": "renamed",
+      "replacement": "@sarj/require-pascal-case-zod-schema-name",
+      "note": "Replace @sarj/zod-naming-convention with @sarj/require-pascal-case-zod-schema-name before upgrading."
+    },
+    {
       "id": "SARJ001",
       "kind": "code",
       "status": "removed",
@@ -675,11 +688,60 @@
       "note": "Removed in sarj-python-lint 0.61.0. Delete the hook and suppressions; syntax cannot prove whether a conditional assertion is vacuous or a valid universal invariant."
     },
     {
+      "id": "created-at-order-requires-tiebreaker",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "timestamp-order-requires-tiebreaker",
+      "note": "Replace sarj-created-at-order-requires-tiebreaker with sarj-timestamp-order-requires-tiebreaker before upgrading."
+    },
+    {
+      "id": "defect-xfail-requires-strict",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "defect-xfail-requires-explicit-strict",
+      "note": "Replace sarj-defect-xfail-requires-strict with sarj-defect-xfail-requires-explicit-strict before upgrading."
+    },
+    {
+      "id": "duplicate-test-body",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-repeated-test-body",
+      "note": "Replace sarj-duplicate-test-body with sarj-no-repeated-test-body before upgrading."
+    },
+    {
+      "id": "duplicated-override-docstring",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-copied-inherited-docstring",
+      "note": "Replace sarj-duplicated-override-docstring with sarj-no-copied-inherited-docstring before upgrading."
+    },
+    {
       "id": "ephemeral-ai-artifact",
       "kind": "text",
       "status": "renamed",
       "replacement": "ephemeral-execution-artifact",
       "note": "Replace sarj-ephemeral-ai-artifact with sarj-ephemeral-execution-artifact before upgrading."
+    },
+    {
+      "id": "fastapi-openapi-contract",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "fastapi-explicit-openapi-contract",
+      "note": "Replace sarj-fastapi-openapi-contract with sarj-fastapi-explicit-openapi-contract before upgrading."
+    },
+    {
+      "id": "fixture-returns-bare-tuple",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "pytest-fixture-returns-bare-tuple",
+      "note": "Replace sarj-fixture-returns-bare-tuple with sarj-pytest-fixture-returns-bare-tuple before upgrading."
+    },
+    {
+      "id": "get-delegates-to-get-many",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "store-get-delegates-to-bulk-read",
+      "note": "Replace sarj-get-delegates-to-get-many with sarj-store-get-delegates-to-bulk-read before upgrading."
     },
     {
       "id": "inefficient-string-concat-in-loop",
@@ -689,11 +751,25 @@
       "note": "Replace sarj-inefficient-string-concat-in-loop with sarj-no-string-concat-in-loop before upgrading."
     },
     {
+      "id": "insert-requires-on-conflict",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "insert-requires-replay-policy",
+      "note": "Replace sarj-insert-requires-on-conflict with sarj-insert-requires-replay-policy before upgrading."
+    },
+    {
       "id": "interaction-only-test",
       "kind": "python",
       "status": "removed",
       "replacement": null,
       "note": "Removed in sarj-python-lint 0.61.0. Delete the hook and suppressions; interaction assertions can be the public contract and syntax cannot distinguish those tests reliably."
+    },
+    {
+      "id": "kwarg-heavy-construction-in-test",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "repeated-kwarg-heavy-call-in-test",
+      "note": "Replace sarj-kwarg-heavy-construction-in-test with sarj-repeated-kwarg-heavy-call-in-test before upgrading."
     },
     {
       "id": "kwonly-same-type-params",
@@ -703,6 +779,13 @@
       "note": "Replace sarj-kwonly-same-type-params with sarj-require-keyword-only-swap-prone-params before upgrading."
     },
     {
+      "id": "no-aggregation-in-store-query",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-analytical-aggregation-in-postgres-store",
+      "note": "Replace sarj-no-aggregation-in-store-query with sarj-no-analytical-aggregation-in-postgres-store before upgrading."
+    },
+    {
       "id": "no-apirouter-root-trailing-slash",
       "kind": "python",
       "status": "removed",
@@ -710,11 +793,25 @@
       "note": "Delete no-apirouter-root-trailing-slash configuration. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
     },
     {
+      "id": "no-create-trigger",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "no-database-triggers",
+      "note": "Replace sarj-no-create-trigger with sarj-no-database-triggers before upgrading."
+    },
+    {
       "id": "no-fat-try-blocks",
       "kind": "python",
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; syntax cannot distinguish an accidental broad handler from a deliberate whole-operation fallback or terminal fault boundary."
+    },
+    {
+      "id": "no-file-level-escape-hatch-noqa",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-file-level-escape-hatch-suppression",
+      "note": "Rename the hook id and any rule filters; the rule now covers Ruff's modern `file-ignore` syntax in addition to legacy file-level `noqa`."
     },
     {
       "id": "no-file-level-suppression",
@@ -729,6 +826,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; Ruff G004 owns f-string logging detection."
+    },
+    {
+      "id": "no-gen-random-uuid-in-sql",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-random-uuid-in-sql",
+      "note": "Replace sarj-no-gen-random-uuid-in-sql with sarj-no-random-uuid-in-sql before upgrading."
     },
     {
       "id": "no-implicit-attribute-access",
@@ -771,6 +875,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; fixed real-clock sleeps can deliberately exercise TTL and monotonic-clock behavior."
+    },
+    {
+      "id": "no-terraform-test-file",
+      "kind": "iac",
+      "status": "renamed",
+      "replacement": "no-mocked-terraform-test-oracle",
+      "note": "Replace sarj-no-terraform-test-file with sarj-no-mocked-terraform-test-oracle before upgrading."
     },
     {
       "id": "no-unreachable-after-terminal",
@@ -846,8 +957,8 @@
       "id": "xfail-requires-strict",
       "kind": "python",
       "status": "renamed",
-      "replacement": "defect-xfail-requires-strict",
-      "note": "Replace sarj-xfail-requires-strict with sarj-defect-xfail-requires-strict before upgrading."
+      "replacement": "defect-xfail-requires-explicit-strict",
+      "note": "Replace sarj-xfail-requires-strict with sarj-defect-xfail-requires-explicit-strict before upgrading."
     },
     {
       "id": "zero-assertion-test",

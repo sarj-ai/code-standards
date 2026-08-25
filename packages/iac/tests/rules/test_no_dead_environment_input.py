@@ -489,6 +489,36 @@ def test_a_boolean_value_is_still_shown(tmp_path: Path) -> None:
     assert "(true)" in findings[0].message
 
 
+def test_a_sensitive_constant_uses_secret_safe_remediation_and_never_echoes_value(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "api_enabled" {\n  type      = bool\n  sensitive = true\n}\n',
+        {"dev": "api_enabled = true\n", "prod": "api_enabled = true\n"},
+    )
+
+    findings = _check_env(root, "dev")
+
+    assert len(findings) == 1
+    assert findings[0].message.startswith("sensitive-constant: `api_enabled`")
+    assert "shared secret source" in findings[0].message
+    assert "do not hard-code a default" in findings[0].message
+    assert "(true)" not in findings[0].message
+
+
+def test_sensitive_false_keeps_normal_nonsecret_remediation(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "api_enabled" {\n  type      = bool\n  sensitive = false\n}\n',
+        {"dev": "api_enabled = true\n", "prod": "api_enabled = true\n"},
+    )
+
+    findings = _check_env(root, "dev")
+
+    assert len(findings) == 1
+    assert findings[0].message.startswith("required-but-constant: `api_enabled`")
+    assert "(true)" in findings[0].message
+
+
 def test_a_list_value_is_named_but_never_echoed(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,

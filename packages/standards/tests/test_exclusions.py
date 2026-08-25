@@ -30,10 +30,10 @@ def _adopt(root: Path, *, verify_paths: tuple[str, ...] = (".",), auxiliary_poli
     return path
 
 
-def test_terraform_test_ban_cannot_be_excluded_by_path_rule_or_override(tmp_path: Path) -> None:
+def test_mocked_terraform_test_can_be_excluded_by_path_rule_or_override(tmp_path: Path) -> None:
     source = tmp_path / "vendor" / "routing.tftest.hcl"
     source.parent.mkdir()
-    source.write_text('# sarj-noqa: SARJ206\nrun "routing" {}\n', encoding="utf-8")
+    source.write_text('mock_provider "aws" {}\n', encoding="utf-8")
     adopted = manifest.Manifest(
         version=api.__version__,
         configs=(),
@@ -41,26 +41,28 @@ def test_terraform_test_ban_cannot_be_excluded_by_path_rule_or_override(tmp_path
         typescript_dest=".",
         hook_manager="none",
         excluded_paths=("vendor/**",),
-        excluded_rules=("iac:no-terraform-test-file",),
+        excluded_rules=("iac:no-mocked-terraform-test-oracle",),
         exclusion_overrides=(
             manifest.ExclusionOverride(
                 ("vendor/**",),
-                ("iac:no-terraform-test-file",),
-                "Prove categorical bans ignore scoped exclusions.",
+                ("iac:no-mocked-terraform-test-oracle",),
+                "Document a reviewed provider-fixture exception.",
             ),
         ),
     )
     manifest.manifest_path(tmp_path).write_text(adopted.render(), encoding="utf-8")
 
+    raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
     report = api.Standards(tmp_path).analyze([str(source)])
 
-    assert [item.code for item in report.diagnostics] == ["SARJ206"]
+    assert [item.code for item in raw.diagnostics] == ["SARJ206"]
+    assert report.diagnostics == ()
 
 
 def test_tracked_terraform_test_is_checked_outside_verify_paths(tmp_path: Path) -> None:
     source = tmp_path / "outside" / "ROUTING.TFTEST.JSON"
     source.parent.mkdir()
-    source.write_text("{}\n", encoding="utf-8")
+    source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
     selected = tmp_path / "src"
     selected.mkdir()
     adopted = manifest.Manifest(

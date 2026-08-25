@@ -265,6 +265,47 @@ def test_thing():
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    "factory",
+    ["mock.Mock", "mock.MagicMock", "mock.AsyncMock", "mock.NonCallableMock"],
+)
+def test_patch_new_callable_mock_subclass_still_requires_a_contract(factory: str) -> None:
+    src = f"""
+from unittest import mock
+
+def test_thing():
+    with mock.patch("app.send", new_callable={factory}) as send:
+        send.domain_method()
+"""
+
+    assert len(_check(src)) == 1
+
+
+def test_directly_imported_new_callable_async_mock_still_requires_a_contract() -> None:
+    src = """
+from unittest.mock import AsyncMock, patch
+
+def test_thing():
+    with patch("app.send", new_callable=AsyncMock) as send:
+        send.domain_method()
+"""
+
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("factory", ["StringIO", "ConcreteFake", "make_replacement"])
+def test_unknown_new_callable_may_create_a_concrete_replacement(factory: str) -> None:
+    src = f"""
+from unittest.mock import patch
+
+def test_thing():
+    with patch("app.send", new_callable={factory}) as replacement:
+        assert replacement
+"""
+
+    assert _check(src) == []
+
+
 # FP guard: `spec` / `new` are POSITIONAL parameters of these signatures, and  # that is how they are nearly always spelled.
 
 

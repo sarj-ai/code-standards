@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+import re
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -15,7 +16,6 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_generated
 
 
@@ -24,6 +24,17 @@ if TYPE_CHECKING:
 
 
 type _Func = ast.FunctionDef | ast.AsyncFunctionDef
+
+
+class _InheritedMethod(NamedTuple):
+    owner: ast.ClassDef
+    method: _Func
+
+
+class _ClassAlias(NamedTuple):
+    name: str
+    target: ast.ClassDef
+
 
 _FUNC_TYPES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -41,11 +52,11 @@ def _is_overload(node: _Func) -> bool:
     return False
 
 
-class DuplicatedOverrideDocstring(Rule):
-    id: str = "duplicated-override-docstring"
+class NoCopiedInheritedDocstring(Rule):
+    id: str = "no-copied-inherited-docstring"
     code: str = "SARJ084"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Remove an override docstring copied verbatim from its local base method.",
+        summary="Override must not copy a docstring already inherited from a local base method.",
         rationale="Inherited documentation is already discoverable, while a duplicate adds a second copy that can drift.",
         remediation=(
             "Delete the copied docstring. If author-controlled override code is unclear, clarify names or extract a "
@@ -53,8 +64,13 @@ class DuplicatedOverrideDocstring(Rule):
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
+        aliases=("duplicated-override-docstring",),
         limitations=(
-            "Only methods whose base class is defined under an undotted name in the same file are compared.",
+            (
+                "Only methods inherited through a local base name, parameterized local base, or simple local class "
+                "alias declared earlier in the same lexical body are compared; imported and dynamic bases are excluded."
+            ),
+            "Transitive local ancestors are followed in declared base order without guessing across lexical scopes.",
             "Overloads, generated files, undocumented bases, and methods whose docstring is their entire body are excluded.",
         ),
         examples=(
@@ -110,43 +126,31 @@ class DuplicatedOverrideDocstring(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        classes = nodes(tree, ast.ClassDef)
-        # A name defined twice in one module is ambiguous, and the second
-        # definition is what a subclass below it would actually inherit from.
-        by_name = {node.name: node for node in classes}
+        graph: dict[ast.ClassDef, tuple[ast.ClassDef, ...]] = {}
+        _collect_local_bases(tree, graph)
         diags: list[Diagnostic] = []
-        for node in classes:
-            for base in self._resolvable_bases(node, by_name):
-                self._compare(node, base, path, diags)
+        for node in graph:
+            self._compare(node, _inherited_methods(node, graph), path, diags)
         return sorted(diags, key=lambda d: d.line)
-
-    @staticmethod
-    def _resolvable_bases(node: ast.ClassDef, by_name: dict[str, ast.ClassDef]) -> list[ast.ClassDef]:
-        found: list[ast.ClassDef] = []
-        for base in node.bases:
-            if not isinstance(base, ast.Name):
-                continue
-            parent = by_name.get(base.id)
-            if parent is not None and parent is not node:
-                found.append(parent)
-        return found
 
     def _compare(
         self,
         node: ast.ClassDef,
-        parent: ast.ClassDef,
+        inherited: dict[str, _InheritedMethod],
         path: Path,
         diags: list[Diagnostic],
     ) -> None:
-        inherited = _methods(parent)
         for name, child in _methods(node).items():
-            base_method = inherited.get(name)
-            if base_method is None or _is_overload(child) or _is_overload(base_method):
+            resolved = inherited.get(name)
+            if resolved is None:
+                continue
+            parent, base_method = resolved
+            if _is_overload(child) or _is_overload(base_method):
                 continue
             if len(child.body) == 1:
                 continue  # the docstring IS the body; deleting it leaves a syntax error
-            docstring = ast.get_docstring(child, clean=True)
-            if not docstring or docstring != ast.get_docstring(base_method, clean=True):
+            docstring = _normalized_docstring(child)
+            if not docstring or docstring != _normalized_docstring(base_method):
                 continue
             expr = child.body[0]
             diags.append(
@@ -161,3 +165,73 @@ class DuplicatedOverrideDocstring(Rule):
                     ),
                 )
             )
+
+
+def _collect_local_bases(
+    owner: ast.Module | ast.ClassDef,
+    graph: dict[ast.ClassDef, tuple[ast.ClassDef, ...]],
+) -> None:
+    visible: dict[str, ast.ClassDef] = {}
+    for statement in owner.body:
+        alias = _local_class_alias(statement, visible)
+        if alias is not None:
+            visible[alias[0]] = alias[1]
+            continue
+        if not isinstance(statement, ast.ClassDef):
+            continue
+        graph[statement] = tuple(
+            parent
+            for base in statement.bases
+            if (name := _base_name(base)) is not None and (parent := visible.get(name)) is not None
+        )
+        _collect_local_bases(statement, graph)
+        visible[statement.name] = statement
+
+
+def _normalized_docstring(method: _Func) -> str:
+    docstring = ast.get_docstring(method, clean=True) or ""
+    return re.sub(r"\s+", " ", docstring).strip().removesuffix(".")
+
+
+def _base_name(base: ast.expr) -> str | None:
+    while isinstance(base, ast.Subscript):
+        base = base.value
+    return base.id if isinstance(base, ast.Name) else None
+
+
+def _local_class_alias(
+    statement: ast.stmt,
+    visible: dict[str, ast.ClassDef],
+) -> _ClassAlias | None:
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        target = statement.targets[0]
+    elif isinstance(statement, ast.AnnAssign):
+        target = statement.target
+    else:
+        return None
+    if not isinstance(target, ast.Name) or not isinstance(statement.value, ast.Name):
+        return None
+    parent = visible.get(statement.value.id)
+    return _ClassAlias(target.id, parent) if parent is not None else None
+
+
+def _inherited_methods(
+    node: ast.ClassDef,
+    graph: dict[ast.ClassDef, tuple[ast.ClassDef, ...]],
+) -> dict[str, _InheritedMethod]:
+    inherited: dict[str, _InheritedMethod] = {}
+    for base in graph[node]:
+        for name, resolved in _class_methods(base, graph).items():
+            inherited.setdefault(name, resolved)
+    return inherited
+
+
+def _class_methods(
+    node: ast.ClassDef,
+    graph: dict[ast.ClassDef, tuple[ast.ClassDef, ...]],
+) -> dict[str, _InheritedMethod]:
+    resolved = {name: _InheritedMethod(node, method) for name, method in _methods(node).items()}
+    for base in graph[node]:
+        for name, inherited in _class_methods(base, graph).items():
+            resolved.setdefault(name, inherited)
+    return resolved

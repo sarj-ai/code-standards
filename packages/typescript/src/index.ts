@@ -80,7 +80,7 @@ import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conf
 import stepdown from "./rules/stepdown.js";
 import sourceCoupledTest from "./rules/source-coupled-test.js";
 import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
-import zodNamingConvention from "./rules/zod-naming-convention.js";
+import requirePascalCaseZodSchemaName from "./rules/require-pascal-case-zod-schema-name.js";
 import { RENAMED_RULES } from "./rules/_renames.js";
 import { RETIRED_RULES } from "./rules/_retired.js";
 
@@ -163,12 +163,12 @@ const RULES = {
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "stepdown": stepdown,
   "source-coupled-test": sourceCoupledTest,
-  "zod-naming-convention": zodNamingConvention,
+  "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,
 } as const;
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.13.2",
+  version: "15.13.3",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -179,7 +179,7 @@ const APPLICATION_ONLY_RULES = [
 ] as const;
 
 /** No active rule remains advisory; retained as a public compatibility export. */
-const ADVISORY_RULES = [] as const;
+const ADVISORY_RULES = ["@sarj/require-pascal-case-zod-schema-name"] as const;
 
 const RECOMMENDED_RULES = {
   "@sarj/interface-contract-members-private": "error",
@@ -253,7 +253,7 @@ const RECOMMENDED_RULES = {
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
   "@sarj/test-phase-label-comment": "error",
-  "@sarj/zod-naming-convention": "error",
+  "@sarj/require-pascal-case-zod-schema-name": "warn",
 } as const;
 
 const STRICT_RULES = {
@@ -332,7 +332,7 @@ const STRICT_RULES = {
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
   "@sarj/test-phase-label-comment": "error",
-  "@sarj/zod-naming-convention": "error",
+  "@sarj/require-pascal-case-zod-schema-name": "warn",
 } as const;
 
 type FlatPreset = {

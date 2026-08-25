@@ -96,15 +96,16 @@ class _LiteralDifference(NamedTuple):
     replacement: object
 
 
-class DuplicateTestBody(Rule):
-    id: str = "duplicate-test-body"
+class NoRepeatedTestBody(Rule):
+    id: str = "no-repeated-test-body"
     code: str = "SARJ066"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Similar test bodies should be represented as one named parameterized case table.",
+        summary="Repeated sibling test bodies must become one named parameterized case table.",
         rationale="Copy-pasted tests drift independently and obscure the input dimension that changes behavior.",
         remediation="Collapse the copies into `pytest.mark.parametrize` cases with descriptive `ids`.",
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
+        aliases=("duplicate-test-body",),
         limitations=(
             "Only substantial sibling test bodies in one non-generated module are compared.",
             "A run of at least five two-statement embedded-source checker cases is compared because the source documents are natural parameter values.",
@@ -114,7 +115,7 @@ class DuplicateTestBody(Rule):
         examples=(
             RuleExample(
                 example_id="copy-pasted-tests",
-                title="Two tests differ only in input literals",
+                title="Copy-pasted tests hide the changing case dimension",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
@@ -128,7 +129,7 @@ class DuplicateTestBody(Rule):
             ),
             RuleExample(
                 example_id="parameterized-cases",
-                title="Inputs share one parameterized test",
+                title="One named case table exposes the changing inputs",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(

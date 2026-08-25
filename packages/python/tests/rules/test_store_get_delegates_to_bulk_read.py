@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rule_base import Severity, is_suppressed
-from sarj_python_lint.rules.get_delegates_to_get_many import GetDelegatesToGetMany
+from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
 
 
 if TYPE_CHECKING:
@@ -15,13 +15,13 @@ PATH = Path("app/user_store.py")
 
 
 def _check(source: str, path: Path = PATH) -> list[Diagnostic]:
-    return GetDelegatesToGetMany().check(path, source)
+    return StoreGetDelegatesToBulkRead().check(path, source)
 
 
 @pytest.mark.parametrize(
     "example",
-    GetDelegatesToGetMany.public_examples(),
-    ids=tuple(example.example_id for example in GetDelegatesToGetMany.public_examples()),
+    StoreGetDelegatesToBulkRead.public_examples(),
+    ids=tuple(example.example_id for example in StoreGetDelegatesToBulkRead.public_examples()),
 )
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
@@ -42,7 +42,7 @@ def test_flags_compatible_async_get_and_get_many() -> None:
     assert len(diagnostics) == 1
     assert diagnostics[0].line == 2
     assert diagnostics[0].severity is Severity.ERROR
-    assert "get_many([key])" in diagnostics[0].message
+    assert "`get_many` with a one-key collection" in diagnostics[0].message
 
 
 def test_flags_compatible_get_by_ids_mapping() -> None:
@@ -57,7 +57,7 @@ def test_flags_compatible_get_by_ids_mapping() -> None:
     diagnostics = _check(source)
 
     assert len(diagnostics) == 1
-    assert "get_by_ids([key])" in diagnostics[0].message
+    assert "`get_by_ids` with a one-key collection" in diagnostics[0].message
 
 
 @pytest.mark.parametrize(
@@ -107,7 +107,7 @@ def test_allows_any_direct_call_to_the_bulk_sibling(delegation: str) -> None:
     assert _check(source) == []
 
 
-def test_ignores_branching_singleton_contracts() -> None:
+def test_ignores_singleton_contract_with_cache_specific_access() -> None:
     source = """class UserStore:
     async def get(self, user_id: UserId) -> User | None:
         if user_id in self.cache:
@@ -128,6 +128,34 @@ def test_ignores_conditional_expression_singleton_contract() -> None:
 
     async def get_many(self, user_ids: list[UserId]) -> list[User]:
         return await self.query_many(user_ids)
+"""
+
+    assert _check(source) == []
+
+
+def test_flags_missing_row_branch_when_contracts_are_otherwise_compatible() -> None:
+    source = """class UserStore:
+    async def get(self, tenant: TenantId, user_id: UserId) -> User | None:
+        row = await self.query_one(tenant, user_id)
+        if row is None:
+            return None
+        return row
+
+    async def get_many(self, tenant: TenantId, user_ids: list[UserId]) -> dict[UserId, User]:
+        rows = await self.query_many(tenant, user_ids)
+        return {row.id: row for row in rows}
+"""
+
+    assert len(_check(source)) == 1
+
+
+def test_ignores_mismatched_shared_context_parameters() -> None:
+    source = """class UserStore:
+    async def get(self, tenant: TenantId, user_id: UserId) -> User | None:
+        return await self.query_one(tenant, user_id)
+
+    async def get_many(self, account: TenantId, user_ids: list[UserId]) -> dict[UserId, User]:
+        return await self.query_many(account, user_ids)
 """
 
     assert _check(source) == []

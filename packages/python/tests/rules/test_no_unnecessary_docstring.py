@@ -59,6 +59,19 @@ async def stop() -> None:
     }
 
 
+def test_flags_test_module_incident_narration_with_ticket_and_cross_file_reference() -> None:
+    source = (
+        '"""Fair-share behavior after INC-2048; core picker semantics are pinned by '
+        'test_dispatch_order.py."""\n\n'
+        "def test_small_account_is_served() -> None:\n"
+        "    assert dispatch_order() == ['small', 'large']\n"
+    )
+
+    findings = _check(source, "tests/test_dispatch_fair_share.py")
+
+    assert [(finding.line, finding.code, finding.severity) for finding in findings] == [(1, "SARJ420", Severity.ERROR)]
+
+
 @pytest.mark.parametrize(
     "source",
     [

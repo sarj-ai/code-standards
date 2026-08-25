@@ -30,11 +30,22 @@ _LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
 _RULES_DIR = "packages/python/src/sarj_python_lint/rules"
 
 _RENAMED_RULES = {
-    "defect-xfail-requires-strict": ("SARJ046", "xfail-requires-strict"),
-    "no-generic-single-export-module": ("SARJ022", "single-public-export"),
-    "no-string-concat-in-loop": ("SARJ002", "inefficient-string-concat-in-loop"),
-    "opaque-parametrize-case-needs-id": ("SARJ042", "parametrize-case-needs-id"),
-    "require-keyword-only-swap-prone-params": ("SARJ034", "kwonly-same-type-params"),
+    "defect-xfail-requires-explicit-strict": (
+        "SARJ046",
+        ("xfail-requires-strict", "defect-xfail-requires-strict"),
+    ),
+    "fastapi-explicit-openapi-contract": ("SARJ094", ("fastapi-openapi-contract",)),
+    "no-generic-single-export-module": ("SARJ022", ("single-public-export",)),
+    "no-analytical-aggregation-in-postgres-store": ("SARJ020", ("no-aggregation-in-store-query",)),
+    "no-copied-inherited-docstring": ("SARJ084", ("duplicated-override-docstring",)),
+    "no-repeated-test-body": ("SARJ066", ("duplicate-test-body",)),
+    "no-string-concat-in-loop": ("SARJ002", ("inefficient-string-concat-in-loop",)),
+    "opaque-parametrize-case-needs-id": ("SARJ042", ("parametrize-case-needs-id",)),
+    "pytest-fixture-returns-bare-tuple": ("SARJ044", ("fixture-returns-bare-tuple",)),
+    "repeated-kwarg-heavy-call-in-test": ("SARJ045", ("kwarg-heavy-construction-in-test",)),
+    "store-get-delegates-to-bulk-read": ("SARJ421", ("get-delegates-to-get-many",)),
+    "require-keyword-only-swap-prone-params": ("SARJ034", ("kwonly-same-type-params",)),
+    "timestamp-order-requires-tiebreaker": ("SARJ407", ("created-at-order-requires-tiebreaker",)),
 }
 
 
@@ -148,14 +159,14 @@ def test_registry_keys_match_class_ids() -> None:
 
 def test_renamed_rules_keep_codes_but_do_not_resolve_old_ids() -> None:
     ledger = _ledger()
-    for new_id, (code, old_id) in _RENAMED_RULES.items():
+    for new_id, (code, old_ids) in _RENAMED_RULES.items():
         assert new_id in REGISTRY
-        assert old_id not in REGISTRY
+        assert set(old_ids).isdisjoint(REGISTRY)
         assert REGISTRY[new_id].code == code
         documentation = REGISTRY[new_id].documentation
         assert documentation is not None
-        assert old_id in documentation.aliases
-        assert ledger[code] == (old_id, new_id)
+        assert set(old_ids).issubset(documentation.aliases)
+        assert ledger[code] == (*old_ids, new_id)
 
 
 def test_every_rule_has_valid_source_owned_documentation() -> None:

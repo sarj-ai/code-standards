@@ -213,8 +213,6 @@ DIRECTIVES = [
     "flake8: noqa",
     "nosec",
     "nosemgrep",
-    "hack: workaround for upstream bug",
-    "xxx: dangerous assumption here",
     "-*- coding: utf-8 -*-",
 ]
 
@@ -224,14 +222,16 @@ def test_ignores_directive_comments(body: str):
     assert _standalone(body) == []
 
 
-def test_flags_untracked_todo_and_fixme():
-    assert len(_standalone("todo: revisit this soon")) == 1
-    assert len(_standalone("fixme: broken under load")) == 1
+@pytest.mark.parametrize("marker", ["TODO", "FIXME", "HACK", "XXX", "BUG"])
+def test_flags_untracked_work_markers(marker: str) -> None:
+    [diagnostic] = _standalone(f"{marker}: revisit this soon")
+    assert "Untracked" in diagnostic.message
 
 
-def test_ignores_tracked_todo_and_fixme():
-    assert _standalone("todo: revisit this soon (JIRA-1234)") == []
-    assert _standalone("fixme: broken under load http://github.com/issue/12") == []
+@pytest.mark.parametrize("marker", ["TODO", "FIXME", "HACK", "XXX", "BUG"])
+def test_ignores_tracked_work_markers(marker: str) -> None:
+    assert _standalone(f"{marker}: revisit this soon (JIRA-1234)") == []
+    assert _standalone(f"{marker}: broken under load https://github.com/example/issues/12") == []
 
 
 @pytest.mark.parametrize("body", ["try:", "except ValueError:", "else:", "elif cond:", "finally:"])

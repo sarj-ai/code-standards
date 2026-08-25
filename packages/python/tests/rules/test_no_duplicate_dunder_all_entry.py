@@ -55,6 +55,20 @@ def test_later_extension_does_not_erase_literal_duplicate() -> None:
 @pytest.mark.parametrize(
     "mutation",
     [
+        '__all__.append("A")',
+        '__all__.extend(["B", "A"])',
+        '__all__.insert(0, "A")',
+    ],
+)
+def test_reports_a_duplicate_added_by_a_static_growth_mutation(mutation: str) -> None:
+    [finding] = _check(f'__all__ = ["A"]\n{mutation}\n')
+    assert finding.line == 2
+    assert "line 1" in finding.message
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
         '__all__.remove("A")',
         "__all__.clear()",
         "__all__.pop()",
@@ -147,7 +161,7 @@ def test_pr304_unique_imports_mirrored_in_dunder_all_are_clean() -> None:
         '__all__ = ["A", 1, "A"]',
         '__all__ = ["A"]\n__all__ = ["A"]',
         '__all__ = ["A"]\n__all__ += ["A"]',
-        '__all__ = ["A"]\n__all__.append("A")',
+        '__all__ = ["A"]\n__all__.append(export_name)',
         'if enabled:\n    __all__ = ["A", "A"]',
         'def exports():\n    __all__ = ["A", "A"]',
         'class Facade:\n    __all__ = ["A", "A"]',

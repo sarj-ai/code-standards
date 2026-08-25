@@ -39,27 +39,39 @@ class _TupleResult(NamedTuple):
     field_count: int
 
 
-class FixtureReturnsBareTuple(Rule):
-    id: str = "fixture-returns-bare-tuple"
+class PytestFixtureReturnsBareTuple(Rule):
+    id: str = "pytest-fixture-returns-bare-tuple"
     code: str = "SARJ044"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Fixture returns a bare multi-field tuple — return a NamedTuple so consumers destructure by name.",
-        rationale="Positional fixture results make call sites opaque and allow reordered fields to bind incorrectly.",
-        remediation="Return a `NamedTuple`, frozen dataclass, or another value whose fields have stable names.",
+        summary="Pytest fixture returns multiple values as a bare positional tuple.",
+        rationale=(
+            "Tuple-shaped fixture APIs encode each value's role in its position, so call sites are opaque and "
+            "a reordered result can silently bind the wrong test dependency."
+        ),
+        remediation=(
+            "Return a `NamedTuple`, frozen dataclass, or another result object and access its named fields; "
+            "split independent values into separate fixtures when they do not form one record."
+        ),
         category=RuleCategory.TESTING,
         limitations=(
             "Only pytest and pytest-asyncio fixtures in test paths are analyzed.",
-            "Factory closures and single-field tuples are allowed.",
+            "Factory closures, single-field tuples, starred tuple literals, and variadic tuple annotations are allowed.",
+            "Sequence-like multi-value tuples are intentionally reported; use an exact SARJ044 suppression when position is the API.",
         ),
+        aliases=("fixture-returns-bare-tuple",),
         examples=(
             RuleExample(
                 example_id="fixture-returns-tuple",
-                title="Fixture fields are positional",
+                title="Fixture consumers must remember field positions",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/conftest.py",
                         "import pytest\n\n@pytest.fixture\ndef stores():\n    return org_store, user_store\n",
+                    ),
+                    ExampleFile.python(
+                        "tests/test_users.py",
+                        "def test_user_lookup(stores):\n    org_store, user_store = stores\n    assert user_store.get('u1')\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/conftest.py"),
@@ -68,12 +80,16 @@ class FixtureReturnsBareTuple(Rule):
             ),
             RuleExample(
                 example_id="fixture-returns-named-value",
-                title="Fixture fields are named",
+                title="Fixture consumers use named fields",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/conftest.py",
-                        "import pytest\n\n@pytest.fixture\ndef stores():\n    return Stores(org=org_store, user=user_store)\n",
+                        "from typing import NamedTuple\n\nimport pytest\n\nclass Stores(NamedTuple):\n    org: object\n    user: object\n\n@pytest.fixture\ndef stores():\n    return Stores(org=org_store, user=user_store)\n",
+                    ),
+                    ExampleFile.python(
+                        "tests/test_users.py",
+                        "def test_user_lookup(stores):\n    assert stores.user.get('u1')\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/conftest.py"),
@@ -99,9 +115,9 @@ class FixtureReturnsBareTuple(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=(
-                    f"this fixture hands back a bare {count}-field tuple, so every consumer unpacks it "
-                    "positionally and a reorder fails silently. Return a `NamedTuple` (or a frozen "
-                    "dataclass) so the fields are named."
+                    f"this pytest fixture exposes a bare {count}-field tuple, so each value's role is "
+                    "encoded only by position. Return a named result object and have consumers access fields "
+                    "by name; split independent values into separate fixtures."
                 ),
             )
             for node, count in _bare_tuple_results(tree)
@@ -245,9 +261,17 @@ def _fixed_tuple_return_arity(
     if name not in {"tuple", "Tuple"} or not isinstance(annotation.slice, ast.Tuple):
         return 0
     elements = annotation.slice.elts
-    if any(isinstance(element, ast.Constant) and element.value is Ellipsis for element in elements):
+    if any(_is_variadic_tuple_member(element) for element in elements):
         return 0
     return len(elements)
+
+
+def _is_variadic_tuple_member(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Starred)
+        or (isinstance(node, ast.Constant) and node.value is Ellipsis)
+        or (isinstance(node, ast.Subscript) and _dotted_tail(node.value) == "Unpack")
+    )
 
 
 def _optional_member(annotation: ast.expr) -> ast.expr | None:

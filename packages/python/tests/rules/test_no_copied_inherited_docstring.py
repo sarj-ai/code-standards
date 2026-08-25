@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules.duplicated_override_docstring import DuplicatedOverrideDocstring
+from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInheritedDocstring
 
 
 if TYPE_CHECKING:
@@ -11,16 +11,16 @@ if TYPE_CHECKING:
 
 
 def _check(source: str, path: Path = Path("<t>.py")) -> list[Diagnostic]:
-    return DuplicatedOverrideDocstring().check(path, source)
+    return NoCopiedInheritedDocstring().check(path, source)
 
 
-_PUBLIC_EXAMPLES = DuplicatedOverrideDocstring.public_examples()
+_PUBLIC_EXAMPLES = NoCopiedInheritedDocstring.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
-    assert len(DuplicatedOverrideDocstring().check(Path(focus.path), focus.source)) == example.expected_count
+    assert len(NoCopiedInheritedDocstring().check(Path(focus.path), focus.source)) == example.expected_count
 
 
 def _pair(base_doc: str, override_doc: str, *, base: str = "Store", child: str = "MemoryStore") -> str:
@@ -104,6 +104,14 @@ def test_indentation_differences_do_not_hide_a_copy():
     assert len(_check(src)) == 1
 
 
+def test_wrapping_and_terminal_period_do_not_hide_a_copy() -> None:
+    source = _pair(
+        "Fetch the value while preserving transactional consistency.",
+        "Fetch the value while preserving\n        transactional consistency",
+    )
+    assert len(_check(source)) == 1
+
+
 def test_a_reworded_override_is_kept():
     assert _check(_pair("Get a value by key.", "Get a value by key, hitting the replica first.")) == []
 
@@ -148,6 +156,85 @@ def test_a_dotted_base_never_resolves_to_a_local_class():
         "        return None\n"
     )
     assert _check(src) == []
+
+
+def test_a_later_same_named_class_is_not_the_base_already_inherited() -> None:
+    src = (
+        "from elsewhere import Store\n\n"
+        "class MemoryStore(Store):\n"
+        "    def get(self, key: str) -> str:\n"
+        '        """Get a value by key."""\n'
+        "        return key\n\n"
+        "class Store:\n"
+        "    def get(self, key: str) -> str:\n"
+        '        """Get a value by key."""\n'
+        "        return key\n"
+    )
+    assert _check(src) == []
+
+
+def test_nearest_preceding_same_named_base_controls_resolution() -> None:
+    src = (
+        "class Store:\n"
+        "    def get(self, key: str) -> str:\n"
+        '        """Old contract."""\n'
+        "        return key\n\n"
+        "class Store:\n"
+        "    def get(self, key: str) -> str:\n"
+        '        """Current contract."""\n'
+        "        return key\n\n"
+        "class MemoryStore(Store):\n"
+        "    def get(self, key: str) -> str:\n"
+        '        """Old contract."""\n'
+        "        return key\n"
+    )
+    assert _check(src) == []
+
+
+def test_follows_a_transitive_local_base_contract() -> None:
+    src = (
+        "class Store:\n"
+        "    def get(self, key: str) -> str:\n"
+        '        """Get a value by key."""\n'
+        "        return key\n\n"
+        "class CachedStore(Store):\n"
+        "    pass\n\n"
+        "class MemoryStore(CachedStore):\n"
+        "    def get(self, key: str) -> str:\n"
+        '        """Get a value by key."""\n'
+        "        return key\n"
+    )
+    [finding] = _check(src)
+    assert "Store.get" in finding.message
+
+
+def test_resolves_a_parameterized_local_generic_base() -> None:
+    source = (
+        "class Store:\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n\n"
+        "class MemoryStore(Store[str]):\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n"
+    )
+    assert len(_check(source)) == 1
+
+
+def test_resolves_a_simple_local_class_alias() -> None:
+    source = (
+        "class Store:\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n\n"
+        "StoreContract = Store\n\n"
+        "class MemoryStore(StoreContract):\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n"
+    )
+    assert len(_check(source)) == 1
 
 
 def test_a_sibling_class_is_not_a_parent():

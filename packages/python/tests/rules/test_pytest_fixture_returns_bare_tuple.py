@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules.fixture_returns_bare_tuple import FixtureReturnsBareTuple
+from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import PytestFixtureReturnsBareTuple
 
 
 if TYPE_CHECKING:
@@ -14,10 +14,10 @@ TEST_PATH = "python/app/tests/fixtures/stores.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
-    return FixtureReturnsBareTuple().check(Path(path), source)
+    return PytestFixtureReturnsBareTuple().check(Path(path), source)
 
 
-_PUBLIC_EXAMPLES = FixtureReturnsBareTuple.public_examples()
+_PUBLIC_EXAMPLES = PytestFixtureReturnsBareTuple.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
@@ -329,6 +329,21 @@ def names() -> tuple[str, ...]:
     return first, second
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("annotation", ["tuple[*Ts]", "tuple[Unpack[Ts]]", "typing.Tuple[typing.Unpack[Ts]]"])
+def test_variadic_tuple_annotation_does_not_invent_a_fixed_record(annotation: str) -> None:
+    src = f"""\
+import pytest
+import typing
+from typing import Unpack
+
+@pytest.fixture
+def values() -> {annotation}:
+    return existing_values
+"""
+
+    assert _check(src) == []
 
 
 def test_typing_tuple_annotation_still_requires_named_fields():

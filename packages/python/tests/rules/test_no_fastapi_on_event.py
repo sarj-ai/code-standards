@@ -69,6 +69,46 @@ def test_reports_annotated_application_parameter() -> None:
 
 
 @pytest.mark.parametrize(
+    "constructor",
+    [
+        "from fastapi import APIRouter\nrouter = APIRouter()",
+        "from starlette.routing import Router\nrouter = Router()",
+    ],
+)
+def test_reports_framework_router_lifecycle_events(constructor: str) -> None:
+    source = f'{constructor}\n@router.on_event("startup")\ndef start() -> None:\n    pass\n'
+    assert len(_check(source)) == 1
+
+
+def test_reports_application_router_and_simple_aliases() -> None:
+    source = (
+        "from fastapi import FastAPI\n"
+        "app = FastAPI()\n"
+        "router = app.router\n"
+        "lifecycle_router = router\n"
+        '@lifecycle_router.on_event("shutdown")\n'
+        "def stop() -> None:\n    pass\n"
+    )
+    assert len(_check(source)) == 1
+
+
+def test_reports_an_annotated_application_binding() -> None:
+    source = 'from fastapi import FastAPI\napp: FastAPI\n@app.on_event("startup")\ndef start() -> None:\n    pass\n'
+    assert len(_check(source)) == 1
+
+
+def test_later_rebinding_removes_application_provenance() -> None:
+    source = (
+        "from fastapi import FastAPI\n"
+        "app = FastAPI()\n"
+        "app = event_bus\n"
+        '@app.on_event("startup")\n'
+        "def start() -> None:\n    pass\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
     "source",
     [
         "from fastapi import FastAPI\napp = FastAPI(lifespan=lifespan)\n",
