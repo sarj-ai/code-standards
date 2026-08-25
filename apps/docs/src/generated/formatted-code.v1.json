@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "761b08d1e84331ccad298f2307ad846ab1409a81a0db2c83bdc889f809e75c30",
-  "cliSha256": "7f74da47d961c4d7b804bc2ce0325ee2244fa509889c1002e44752a5e32205b0",
+  "catalogSha256": "2143c1f0d0575a5de79e945b4905560472a97190f5ad211ae9fbfaf405c21e4e",
+  "cliSha256": "f1c9907f517608edf1343c1df278bf5fc65351326b608109e0deb90ee4fbfbc1",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2984,6 +2984,36 @@
     },
     "iac:no-terraform-test-file": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "iac/scripts/verify-environment-boundary.mjs",
+              "source": "export function verifyPlan(plan) {\n  return plan.resource_changes;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iac/scripts/verify-environment-boundary.mjs",
+          "id": "environment-boundary-runtime-check",
+          "outcome": "accept",
+          "scenarioId": "source-verifier",
+          "title": "Runtime boundary checks remain eligible"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "iac/scripts/verify-environment-boundary.test.mjs",
+              "source": "assert.match(source, /allowed_change_addresses/);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iac/scripts/verify-environment-boundary.test.mjs",
+          "id": "environment-boundary-source-test",
+          "outcome": "reject",
+          "scenarioId": "source-verifier",
+          "title": "Do not commit the environment-boundary source test"
+        },
         {
           "expectedCount": 0,
           "files": [

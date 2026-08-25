@@ -71,6 +71,18 @@ locals {
     assert "contains([...], var.environment)" in diags[0].message
 
 
+def test_flags_an_environment_selected_group_set():
+    src = """
+locals {
+  product_qa_nonprod_groups = contains(["dev", "preview", "sandbox"], var.environment) ? toset([
+    "team-product@example.com",
+    "team-qa@example.com",
+  ]) : toset([])
+}
+"""
+    assert len(_check(src)) == 1
+
+
 def test_flags_a_parenthesized_identity_operand():
     src = """
 locals {

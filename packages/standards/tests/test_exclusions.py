@@ -57,8 +57,12 @@ def test_terraform_test_ban_cannot_be_excluded_by_path_rule_or_override(tmp_path
     assert [item.code for item in report.diagnostics] == ["SARJ206"]
 
 
-def test_tracked_terraform_test_is_checked_outside_verify_paths(tmp_path: Path) -> None:
-    source = tmp_path / "outside" / "ROUTING.TFTEST.JSON"
+@pytest.mark.parametrize(
+    "name",
+    ["ROUTING.TFTEST.JSON", "VERIFY-ENVIRONMENT-BOUNDARY.TEST.MJS", "VERIFY-DEV-APPLY-PLAN.JQ"],
+)
+def test_tracked_prohibited_iac_file_is_checked_outside_verify_paths(tmp_path: Path, name: str) -> None:
+    source = tmp_path / "outside" / name
     source.parent.mkdir()
     source.write_text("{}\n", encoding="utf-8")
     selected = tmp_path / "src"
@@ -73,9 +77,30 @@ def test_tracked_terraform_test_is_checked_outside_verify_paths(tmp_path: Path) 
     )
     manifest.manifest_path(tmp_path).write_text(adopted.render(), encoding="utf-8")
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "add", "outside/ROUTING.TFTEST.JSON"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", str(source.relative_to(tmp_path))), cwd=tmp_path, check=True)
 
     report = api.Standards(tmp_path).analyze()
+
+    assert [item.code for item in report.diagnostics] == ["SARJ206"]
+
+
+@pytest.mark.parametrize("name", ["verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"])
+def test_named_iac_verifier_ban_cannot_be_excluded_by_path_or_rule(tmp_path: Path, name: str) -> None:
+    source = tmp_path / "vendor" / name
+    source.parent.mkdir()
+    source.write_text("{}\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        version=api.__version__,
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        excluded_paths=("vendor/**",),
+        excluded_rules=("iac:no-terraform-test-file",),
+    )
+    manifest.manifest_path(tmp_path).write_text(adopted.render(), encoding="utf-8")
+
+    report = api.Standards(tmp_path).analyze([str(source)])
 
     assert [item.code for item in report.diagnostics] == ["SARJ206"]
 

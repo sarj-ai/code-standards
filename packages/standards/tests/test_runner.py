@@ -49,6 +49,44 @@ def test_terraform_test_files_route_to_iac(name: str, tmp_path: Path) -> None:
     assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
 
 
+@pytest.mark.parametrize("name", ["verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"])
+def test_named_iac_verifiers_route_only_to_iac(name: str, tmp_path: Path) -> None:
+    source = tmp_path / name
+    source.write_text("{}\n", encoding="utf-8")
+
+    grouped = runner.group_paths([str(tmp_path)])
+    assert grouped.iac == [str(source)]
+    assert grouped.typescript == []
+
+
+@pytest.mark.parametrize(
+    ("name", "header"),
+    [
+        ("verify-environment-boundary.test.mjs", "// @generated; do not edit\n"),
+        ("verify-dev-apply-plan.jq", "# @generated; do not edit\n"),
+    ],
+)
+def test_named_iac_verifiers_cannot_use_generated_headers_to_bypass_routing(
+    name: str, header: str, tmp_path: Path
+) -> None:
+    source = tmp_path / name
+    source.write_text(header, encoding="utf-8")
+
+    assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
+    assert runner.accepts_hook_path(source)
+
+
+def test_other_mjs_and_jq_files_keep_their_normal_routing(tmp_path: Path) -> None:
+    javascript = tmp_path / "verify-alert-policies.mjs"
+    javascript.write_text("export {};\n", encoding="utf-8")
+    query = tmp_path / "inspect-plan.jq"
+    query.write_text(".resource_changes\n", encoding="utf-8")
+
+    grouped = runner.group_paths([str(tmp_path)])
+    assert grouped.typescript == [str(javascript)]
+    assert grouped.iac == []
+
+
 def test_directory_walk_prunes_ignored_directories(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

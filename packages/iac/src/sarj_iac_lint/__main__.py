@@ -33,8 +33,13 @@ SKIP_DIR_NAMES = frozenset(
 # rule: no rule parses JSON, and the ones that care report that they are blind
 # rather than passing a tree they never read.
 _SCANNED_SUFFIXES = frozenset({".tf", ".hcl", ".tfvars", ".yaml", ".yml", ".json"})
+_BANNED_IAC_VERIFIER_NAMES = frozenset({"verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"})
 
 _MAX_FILE_BYTES = 500_000
+
+
+def _is_banned_iac_verifier(path: Path) -> bool:
+    return path.name.casefold() in _BANNED_IAC_VERIFIER_NAMES
 
 
 def _expand_paths(paths: list[Path]) -> list[Path]:
@@ -45,23 +50,31 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
             raise ValueError(msg)
         if p.is_file():
             try:
-                if p.stat().st_size <= _MAX_FILE_BYTES:
+                if _is_banned_iac_verifier(p) or p.stat().st_size <= _MAX_FILE_BYTES:
                     out.append(p)
             except OSError:
                 pass
             continue
         for child in p.rglob("*"):
-            if not child.is_file() or child.suffix not in _SCANNED_SUFFIXES:
+            if not child.is_file() or (child.suffix not in _SCANNED_SUFFIXES and not _is_banned_iac_verifier(child)):
                 continue
             if any(part in SKIP_DIR_NAMES for part in child.parts):
                 continue
             try:
-                if child.stat().st_size > _MAX_FILE_BYTES:
+                if not _is_banned_iac_verifier(child) and child.stat().st_size > _MAX_FILE_BYTES:
                     continue
             except OSError:
                 continue
             out.append(child)
-    return out
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in out:
+        key = os.path.abspath(path)  # ruff: ignore[os-path-abspath] -- lexical deduplication must not resolve symlinks.
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
 
 
 def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
@@ -73,10 +86,13 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     rules = [REGISTRY[rid]() for rid in rule_ids]
     diags: list[Diagnostic] = []
     for p in _expand_paths(paths):
-        try:
-            source = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+        if _is_banned_iac_verifier(p):
+            source = ""
+        else:
+            try:
+                source = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
         source_lines = source.splitlines()
         for rule in rules:
             for d in rule.check(p, source):
@@ -100,6 +116,8 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 def baseline_counts(diags: list[Diagnostic], *, root: Path | None = None) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {}
     for d in diags:
+        if not d.baselineable:
+            continue
         key = _baseline_path(d.path, root=root)
         per_code = counts.setdefault(key, {})
         per_code[d.code] = per_code.get(d.code, 0) + 1

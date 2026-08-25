@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "7.1.16"
+version = "7.1.17"
 description = "One deterministic quality gate for Sarj Python, TypeScript, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -24,7 +24,7 @@ dependencies = [
   "pydantic==2.13.4",
   "PyYAML==6.0.3",
   "ruff==0.16.3",
-  "sarj-iac-lint==0.14.3",
+  "sarj-iac-lint==0.14.4",
   "sarj-python-lint==0.78.0",
   "sarj-sql-lint==0.16.1",
 ]

@@ -38,6 +38,41 @@ def test_explicit_missing_input_is_an_operator_error(tmp_path: Path, capsys: pyt
     assert f"input does not exist: {missing}" in capsys.readouterr().err
 
 
+def test_directory_scan_includes_bespoke_iac_verifier_suffixes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    scripts = tmp_path / "iac" / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "verify-environment-boundary.test.mjs").write_text("export {};\n", encoding="utf-8")
+    (scripts / "verify-dev-apply-plan.jq").write_text(".resource_changes\n", encoding="utf-8")
+
+    assert main(["check", "--rule", "no-terraform-test-file", str(tmp_path)]) == 1
+    reported = capsys.readouterr().out
+    assert "verify-environment-boundary.test.mjs" in reported
+    assert "verify-dev-apply-plan.jq" in reported
+
+
+def test_large_prohibited_verifier_is_checked_without_reading_its_contents(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "verify-dev-apply-plan.jq"
+    source.write_bytes(b"x" * 500_001)
+
+    assert main(["check", "--rule", "no-terraform-test-file", str(tmp_path)]) == 1
+    assert "verify-dev-apply-plan.jq" in capsys.readouterr().out
+
+
+def test_overlapping_explicit_and_directory_inputs_report_a_prohibited_file_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "verify-dev-apply-plan.jq"
+    source.write_text(".resource_changes\n", encoding="utf-8")
+
+    assert main(["check", "--rule", "no-terraform-test-file", str(source), str(tmp_path)]) == 1
+    reported = capsys.readouterr().out.strip().splitlines()
+    assert len(reported) == 1
+
+
 def test_update_baseline_records_the_counts_and_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     src = tmp_path / "main.tf"
     src.write_text(_TWO_BRANCHES, encoding="utf-8")
