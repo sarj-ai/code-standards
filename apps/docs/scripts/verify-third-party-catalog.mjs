@@ -107,6 +107,9 @@ function nonemptyString(value, label) {
 function verifyDist(ruleCounts) {
   const index = readFileSync(resolve(distRoot, 'third-party-linters/index.html'), 'utf8');
   assert.match(index, /http-equiv="refresh" content="0;url=\/third-party-linters\/ruff\/"/u, 'index must redirect to Ruff');
+  const redirects = readFileSync(resolve(distRoot, '_redirects'), 'utf8');
+  assert.match(redirects, /^\/third-party-linters \/third-party-linters\/ruff\/ 301$/mu);
+  assert.match(redirects, /^\/third-party-linters\/ \/third-party-linters\/ruff\/ 301$/mu);
   const expectedDirectories = catalog.providers.map(({ id }) => id).sort();
   const actualDirectories = readdirSync(resolve(distRoot, 'third-party-linters'), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())

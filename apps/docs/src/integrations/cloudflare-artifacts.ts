@@ -9,7 +9,12 @@ export default function cloudflareArtifacts(): AstroIntegration {
     name: 'sarj-cloudflare-static-artifacts',
     hooks: {
       'astro:build:done': async ({ dir }) => {
-        const redirects = new Set<string>(['/about / 301', '/about/ / 301']);
+        const redirects = new Set<string>([
+          '/about / 301',
+          '/about/ / 301',
+          '/third-party-linters /third-party-linters/ruff/ 301',
+          '/third-party-linters/ /third-party-linters/ruff/ 301',
+        ]);
         for (const rule of catalog.rules) {
           for (const alias of rule.aliases) {
             const target = ruleHref(rule);
@@ -17,7 +22,7 @@ export default function cloudflareArtifacts(): AstroIntegration {
             redirects.add(`/rules/${rule.engine}/${alias}/ ${target} 301`);
           }
         }
-        const body = ['# Generated from rule catalog aliases. Do not edit.', ...[...redirects].sort(), ''].join('\n');
+        const body = ['# Generated canonical redirects. Do not edit.', ...[...redirects].sort(), ''].join('\n');
         await writeFile(new URL('_redirects', dir), body, 'utf8');
         await verifyIndexableSitemap(dir);
         await writeContentSecurityPolicyHeader(dir);
