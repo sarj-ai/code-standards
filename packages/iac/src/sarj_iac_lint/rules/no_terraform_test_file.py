@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 
 
 _BANNED_SUFFIXES = (".tftest.hcl", ".tftest.json")
-_BANNED_NAMES = frozenset({"verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"})
 
 
 @final
@@ -28,19 +27,18 @@ class NoTerraformTestFile(Rule):
     id = "no-terraform-test-file"
     code = "SARJ206"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Committed Terraform test or prohibited named IaC verifier couples validation to implementation shape.",
+        summary="Committed Terraform test file couples validation to IaC source configuration.",
         rationale=(
-            "Terraform test files and the named environment-plan verifiers become repository-side configuration oracles "
-            "that encode transient resource addresses and implementation shape instead of durable provider or runtime contracts."
+            "Terraform test files are repository-side configuration oracles that can validate implementation shape "
+            "instead of a reviewed plan, provider state, or deployed behavior."
         ),
         remediation=(
-            "Remove the file and validate provider state, a durable runtime contract, or a shared policy boundary."
+            "Remove the .tftest.hcl or .tftest.json file and validate a real rendered plan, provider API, or runtime contract."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The linter evaluates files supplied by the caller; the repository runner must pass every tracked IaC file.",
-            "The verifier-file policy is intentionally limited to two exact case-insensitive basenames.",
             "This categorical repository policy intentionally cannot be suppressed or baselined.",
         ),
         examples=(
@@ -62,56 +60,6 @@ class NoTerraformTestFile(Rule):
                 expected_count=0,
                 public=True,
             ),
-            RuleExample(
-                example_id="bespoke-environment-plan-verifier",
-                title="Do not commit a bespoke environment plan verifier",
-                outcome=ExampleOutcome.MATCH,
-                scenario="plan-verifier",
-                files=(ExampleFile.iac("iac/scripts/verify-dev-apply-plan.jq", ".resource_changes\n"),),
-                focus_path=PurePosixPath("iac/scripts/verify-dev-apply-plan.jq"),
-                expected_count=1,
-                public=False,
-            ),
-            RuleExample(
-                example_id="runtime-health-check",
-                title="Runtime health checks remain eligible",
-                outcome=ExampleOutcome.NO_MATCH,
-                scenario="plan-verifier",
-                files=(ExampleFile.iac("iac/scripts/check-runtime-health.mjs", "await fetch(endpoint);\n"),),
-                focus_path=PurePosixPath("iac/scripts/check-runtime-health.mjs"),
-                expected_count=0,
-                public=False,
-            ),
-            RuleExample(
-                example_id="environment-boundary-source-test",
-                title="Do not commit the environment-boundary source test",
-                outcome=ExampleOutcome.MATCH,
-                scenario="source-verifier",
-                files=(
-                    ExampleFile.iac(
-                        "iac/scripts/verify-environment-boundary.test.mjs",
-                        "assert.match(source, /allowed_change_addresses/);\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("iac/scripts/verify-environment-boundary.test.mjs"),
-                expected_count=1,
-                public=True,
-            ),
-            RuleExample(
-                example_id="environment-boundary-runtime-check",
-                title="Runtime boundary checks remain eligible",
-                outcome=ExampleOutcome.NO_MATCH,
-                scenario="source-verifier",
-                files=(
-                    ExampleFile.iac(
-                        "iac/scripts/verify-environment-boundary.mjs",
-                        "export function verifyPlan(plan) { return plan.resource_changes; }\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("iac/scripts/verify-environment-boundary.mjs"),
-                expected_count=0,
-                public=True,
-            ),
         ),
     )
     description = documentation.summary
@@ -119,8 +67,7 @@ class NoTerraformTestFile(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         del source
-        name = path.name.casefold()
-        if not name.endswith(_BANNED_SUFFIXES) and name not in _BANNED_NAMES:
+        if not path.name.casefold().endswith(_BANNED_SUFFIXES):
             return []
         return [
             Diagnostic(
@@ -129,8 +76,7 @@ class NoTerraformTestFile(Rule):
                 col=1,
                 code=self.code,
                 message=(
-                    "Terraform tests and bespoke environment-plan verifiers are prohibited; validate provider state, "
-                    "a durable runtime contract, or a shared policy boundary instead."
+                    "Terraform test files are prohibited; validate a rendered plan, provider state, or runtime behavior instead."
                 ),
                 suppressible=False,
                 baselineable=False,

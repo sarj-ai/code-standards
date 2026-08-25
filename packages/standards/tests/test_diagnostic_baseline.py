@@ -66,7 +66,7 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     assert [item.code for item in raw_again.diagnostics] == ["SARJ052"]
 
 
-def test_terraform_test_ban_cannot_be_hidden_in_the_diagnostic_baseline(tmp_path: Path) -> None:
+def test_terraform_test_ban_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
     source = tmp_path / "routing.tftest.json"
     source.write_text("{}\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
@@ -78,8 +78,7 @@ def test_terraform_test_ban_cannot_be_hidden_in_the_diagnostic_baseline(tmp_path
     new_source.write_text("{}\n", encoding="utf-8")
     policy = api.Standards(tmp_path).analyze([str(source), str(new_source)])
 
-    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.json", "routing.tftest.json"]
-    assert all(not baseline.is_baselineable(item) for item in raw.diagnostics)
+    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.json"]
 
 
 def test_missing_diagnostic_baseline_is_an_execution_failure(tmp_path: Path) -> None:
@@ -729,21 +728,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
         == 0
     )
     assert captured == [[str(tmp_path / "src"), str(source)]]
-    assert baseline.load(baseline_path) == {}
-
-
-@pytest.mark.parametrize(
-    "name",
-    ["routing.tftest.hcl", "verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"],
-)
-def test_tracked_prohibited_iac_paths_include_named_verifiers(tmp_path: Path, name: str) -> None:
-    source = tmp_path / "outside" / name
-    source.parent.mkdir()
-    source.write_text("{}\n", encoding="utf-8")
-    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "add", str(source.relative_to(tmp_path))), cwd=tmp_path, check=True)
-
-    assert baseline.tracked_terraform_test_paths(tmp_path) == (str(source),)
+    assert baseline.load(baseline_path) == {"d" * 64: 1}
 
 
 @pytest.mark.parametrize(

@@ -250,6 +250,10 @@ def _environment_use(value: str) -> _Use | None:
     return None
 
 
+def uses_environment_conditional(value: str) -> bool:
+    return _environment_use(value) is not None
+
+
 def _comparison(toks: tuple[str, ...], index: int) -> _Use | None:
     if index == 0 or index + 1 >= len(toks):
         return None

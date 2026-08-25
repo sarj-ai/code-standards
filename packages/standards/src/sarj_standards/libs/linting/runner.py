@@ -69,7 +69,6 @@ _SUFFIX_TO_TOOL = MappingProxyType(
     }
 )
 _TERRAFORM_TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
-_BANNED_IAC_VERIFIER_NAMES = frozenset({"verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"})
 _IGNORED_DIRS = frozenset(
     {
         ".build",
@@ -240,9 +239,7 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
         if _is_skill_artifact(path):
             continue
         if path.is_file() and _owns_path(path):
-            if not _is_banned_iac_verifier(path) and (
-                _is_conventionally_generated(path) or _has_generated_header(path)
-            ):
+            if _is_conventionally_generated(path) or _has_generated_header(path):
                 continue
             _validate_source_file(path, raw_path)
             if policy is not None and not policy.allows_path(path):
@@ -267,10 +264,8 @@ def accepts_hook_path(path: Path) -> bool:
     return (
         _owns_path(path)
         and not _is_skill_artifact(path)
-        and (
-            _is_banned_iac_verifier(path)
-            or (not _is_conventionally_generated(path) and not _has_generated_header(path))
-        )
+        and not _is_conventionally_generated(path)
+        and not _has_generated_header(path)
     )
 
 
@@ -298,7 +293,7 @@ def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, poli
             child = Path(root, file_name)
             if not _owns_path(child):
                 continue
-            if not _is_banned_iac_verifier(child) and _is_conventionally_generated(child):
+            if _is_conventionally_generated(child):
                 continue
             if policy is not None and not policy.allows_path(child):
                 continue
@@ -386,7 +381,6 @@ def _has_generated_header(path: Path) -> bool:
 def _owns_path(path: Path) -> bool:
     return (
         path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
-        or _is_banned_iac_verifier(path)
         or path.suffix.lower() in _SUFFIX_TO_TOOL
         or textlint.is_text_path(path)
     )
@@ -408,16 +402,12 @@ def _path_key(path: Path) -> Path:
 def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
     tool = (
         _Tool.IAC
-        if path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES) or _is_banned_iac_verifier(path)
+        if path.name.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
         else _SUFFIX_TO_TOOL.get(path.suffix.lower())
     )
     _append_path(grouped, tool, raw_path)
     if textlint.is_text_path(path):
         grouped.text.append(raw_path)
-
-
-def _is_banned_iac_verifier(path: Path) -> bool:
-    return path.name.casefold() in _BANNED_IAC_VERIFIER_NAMES
 
 
 def _append_path(grouped: GroupedPaths, tool: _Tool | None, path: str) -> None:

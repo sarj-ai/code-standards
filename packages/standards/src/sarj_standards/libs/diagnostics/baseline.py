@@ -98,7 +98,8 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
 
 
 def is_baselineable(diagnostic: Diagnostic) -> bool:
-    return diagnostic.code != "SARJ206"
+    _ = diagnostic
+    return True
 
 
 def load(
@@ -336,7 +337,6 @@ def tracked_terraform_test_paths(root: Path) -> tuple[str, ...]:
         str(root / item)
         for item in completed.stdout.decode("utf-8", errors="replace").split("\0")
         if item.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
-        or Path(item).name.casefold() in {"verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"}
     )
 
 

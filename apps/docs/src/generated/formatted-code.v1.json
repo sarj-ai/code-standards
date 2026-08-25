@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2143c1f0d0575a5de79e945b4905560472a97190f5ad211ae9fbfaf405c21e4e",
+  "catalogSha256": "fa2180b6dee32c4878340225e4bbb12655015d76d6ecad2369591a2390a99683",
   "cliSha256": "f1c9907f517608edf1343c1df278bf5fc65351326b608109e0deb90ee4fbfbc1",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -2947,6 +2947,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "iac:no-environment-derived-access-grant": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "iam.tf",
+              "source": "locals {\n  product_qa_groups = contains([\"dev\", \"preview\"], var.environment) ? toset([\"team-product@example.com\"]) : toset([])\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iam.tf",
+          "id": "environment-derived-groups",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Access groups selected from the environment name"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "iam.tf",
+              "source": "locals {\n  product_qa_groups = var.product_qa_access_enabled ? toset([\"team-product@example.com\"]) : toset([])\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iam.tf",
+          "id": "explicit-capability-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Access groups gated by an explicit tfvars input"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:no-restated-comment": {
       "examples": [
         {
@@ -2984,36 +3019,6 @@
     },
     "iac:no-terraform-test-file": {
       "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "iac/scripts/verify-environment-boundary.mjs",
-              "source": "export function verifyPlan(plan) {\n  return plan.resource_changes;\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "iac/scripts/verify-environment-boundary.mjs",
-          "id": "environment-boundary-runtime-check",
-          "outcome": "accept",
-          "scenarioId": "source-verifier",
-          "title": "Runtime boundary checks remain eligible"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "iac/scripts/verify-environment-boundary.test.mjs",
-              "source": "assert.match(source, /allowed_change_addresses/);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "iac/scripts/verify-environment-boundary.test.mjs",
-          "id": "environment-boundary-source-test",
-          "outcome": "reject",
-          "scenarioId": "source-verifier",
-          "title": "Do not commit the environment-boundary source test"
-        },
         {
           "expectedCount": 0,
           "files": [

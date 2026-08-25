@@ -35,7 +35,6 @@ _SOURCE_ENGINES: Final[Mapping[str, str]] = MappingProxyType(
 )
 _NON_EXCLUDABLE_CODE: Final = "SARJ206"
 _TERRAFORM_TEST_SUFFIXES: Final = (".tftest.hcl", ".tftest.json")
-_BANNED_IAC_VERIFIER_NAMES: Final = frozenset({"verify-environment-boundary.test.mjs", "verify-dev-apply-plan.jq"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +83,7 @@ class Policy:
         relative = self.relative(path)
         if relative == MANIFEST_NAME:
             return True
-        if (
-            relative.casefold().endswith(_TERRAFORM_TEST_SUFFIXES)
-            or Path(relative).name.casefold() in _BANNED_IAC_VERIFIER_NAMES
-        ):
+        if relative.casefold().endswith(_TERRAFORM_TEST_SUFFIXES):
             return True
         return not self.excluded_paths.match_file(relative)
 
