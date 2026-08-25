@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "df6e850e6bb7a05dcd12477263174fe577e769354838d6fab263a59aab19fe4d",
-  "cliSha256": "5a1f37e8f639cc89582d3f84b91383e3608da563c7837a4b210324202ab46f7b",
+  "catalogSha256": "de2501e6e1f2e95f7386c359c76ecf9fcdba553f74aa4a6ea37ec91b0c15ce44",
+  "cliSha256": "a5db222d822bda91b8f27c837fa1d42c3c2832a53921aab76313162b5f56fdf8",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3019,6 +3019,41 @@
           "outcome": "reject",
           "scenarioId": "ambiguous-identity",
           "title": "Cloud project identity names a deployment environment"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-environment-derived-access-grant": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "iam.tf",
+              "source": "locals {\n  product_qa_groups = contains([\"dev\", \"preview\"], var.environment) ? toset([\"team-product@example.com\"]) : toset([])\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iam.tf",
+          "id": "environment-derived-groups",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Access groups selected from the environment name"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "iam.tf",
+              "source": "locals {\n  product_qa_groups = var.product_qa_access_enabled ? toset([\"team-product@example.com\"]) : toset([])\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iam.tf",
+          "id": "explicit-capability-input",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Access groups gated by an explicit tfvars input"
         }
       ],
       "optionsSchemaSource": null

@@ -140,6 +140,7 @@
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-environment-conditional",
+      "no-environment-derived-access-grant",
       "no-mocked-terraform-test-oracle",
       "no-restated-comment",
       "require-deletion-protection",
@@ -358,7 +359,8 @@
       "SARJ204",
       "SARJ205",
       "SARJ206",
-      "SARJ207"
+      "SARJ207",
+      "SARJ208"
     ],
     "text": [
       "SARJ300",

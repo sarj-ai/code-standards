@@ -128,6 +128,7 @@ def _repository(root: Path) -> None:
     skill.write_text("# Audit protocol\n", encoding="utf-8")
     (root / "README.md").write_text("# stale\n", encoding="utf-8")
     for relative in (
+        "AGENTS.md",
         "CLAUDE.md",
         "packages/standards/README.md",
         "packages/python/README.md",

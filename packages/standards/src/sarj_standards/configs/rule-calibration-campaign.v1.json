@@ -21,6 +21,12 @@
       "state": "complete"
     },
     {
+      "task": "rule-audit/iac/no-environment-derived-access-grant",
+      "family": "iac",
+      "ruleId": "no-environment-derived-access-grant",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/iac/no-restated-comment",
       "family": "iac",
       "ruleId": "no-restated-comment",

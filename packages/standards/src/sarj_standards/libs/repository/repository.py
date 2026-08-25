@@ -31,6 +31,7 @@ _MARKDOWN_LOCATIONS: Final = (
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
     "README.md",
+    "AGENTS.md",
     "CLAUDE.md",
     "packages/*/README.md",
     "plugins/*/commands/*.md",
