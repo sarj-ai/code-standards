@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2b412b8ac7205bc20ba1c9d5ea1d2bfd7e0ab88c39390e9c5537962f8b46e5da",
-  "cliSha256": "c49130f9361269871667c1db517c5e959b2a5a2d0dcf4915cb3657e22b32ab31",
+  "catalogSha256": "86980f3afa462ad39fb5f6fcd0852d1d732a3be61e1e42733d84cd563365d2f8",
+  "cliSha256": "965e7f0a33f088eada32cc8f8164dbae476b4601d514b1bdc1c46421dba929e3",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3054,41 +3054,6 @@
           "outcome": "reject",
           "scenarioId": "ambiguous-identity",
           "title": "Cloud project identity names a deployment environment"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "iac:no-environment-derived-access-grant": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "iam.tf",
-              "source": "locals {\n  product_qa_groups = contains([\"dev\", \"preview\"], var.environment) ? toset([\"team-product@example.com\"]) : toset([])\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "iam.tf",
-          "id": "environment-derived-groups",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Access groups selected from the environment name"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "iam.tf",
-              "source": "locals {\n  product_qa_groups = var.product_qa_access_enabled ? toset([\"team-product@example.com\"]) : toset([])\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "iam.tf",
-          "id": "explicit-capability-input",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Access groups gated by an explicit tfvars input"
         }
       ],
       "optionsSchemaSource": null
@@ -7319,6 +7284,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Clear entries need no narration"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "text:declarative-deployment-boundary": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/workflows/deploy.yml",
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: terraform apply saved.tfplan\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/deploy.yml",
+          "id": "saved-plan-apply",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "CI applies the reviewed Terraform plan"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/workflows/deploy.yml",
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/deploy.yml",
+          "id": "workflow-control-plane-mutation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keep cloud mutation in Terraform"
         }
       ],
       "optionsSchemaSource": null

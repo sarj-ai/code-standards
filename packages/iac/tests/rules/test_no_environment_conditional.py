@@ -71,6 +71,19 @@ locals {
     assert "contains([...], var.environment)" in diags[0].message
 
 
+def test_flags_environment_selected_access_groups():
+    src = """locals {
+  product_qa_nonprod_groups = contains(["dev", "preview", "sandbox"], var.environment) ? toset([
+    "team-product@sarj.ai",
+    "team-qa@sarj.ai",
+  ]) : toset([])
+}
+"""
+    diagnostics = _check(src)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ204"
+
+
 def test_flags_a_parenthesized_identity_operand():
     src = """
 locals {

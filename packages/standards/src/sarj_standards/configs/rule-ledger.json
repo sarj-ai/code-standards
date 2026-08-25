@@ -141,7 +141,6 @@
       "no-comment-cruft",
       "no-dead-environment-input",
       "no-environment-conditional",
-      "no-environment-derived-access-grant",
       "no-mocked-terraform-test-oracle",
       "no-restated-comment",
       "require-deletion-protection",
@@ -232,6 +231,7 @@
     "text": [
       "commented-out-config",
       "config-comment-wall",
+      "declarative-deployment-boundary",
       "ephemeral-execution-artifact",
       "exact-config-comment-restatement",
       "hidden-markdown-heading",
@@ -362,8 +362,7 @@
       "SARJ204",
       "SARJ205",
       "SARJ206",
-      "SARJ207",
-      "SARJ208"
+      "SARJ207"
     ],
     "text": [
       "SARJ300",
@@ -373,7 +372,8 @@
       "SARJ305",
       "SARJ306",
       "SARJ307",
-      "SARJ308"
+      "SARJ308",
+      "SARJ309"
     ]
   },
   "retired": [
@@ -665,6 +665,13 @@
       "note": "Delete SARJ090 suppressions and baseline keys. Sentence count does not distinguish durable rationale from noise."
     },
     {
+      "id": "SARJ208",
+      "kind": "code",
+      "status": "renamed",
+      "replacement": "SARJ204",
+      "note": "Replace SARJ208 suppressions and baselines with SARJ204; the general environment-conditional rule owns the same branch."
+    },
+    {
       "id": "SARJ303",
       "kind": "code",
       "status": "removed",
@@ -803,6 +810,13 @@
       "status": "renamed",
       "replacement": "no-database-triggers",
       "note": "Replace sarj-no-create-trigger with sarj-no-database-triggers before upgrading."
+    },
+    {
+      "id": "no-environment-derived-access-grant",
+      "kind": "iac",
+      "status": "renamed",
+      "replacement": "no-environment-conditional",
+      "note": "Replace iac:no-environment-derived-access-grant with iac:no-environment-conditional before upgrading."
     },
     {
       "id": "no-fat-try-blocks",

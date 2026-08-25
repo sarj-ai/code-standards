@@ -1,0 +1,16 @@
+{
+  "dev": {
+    "enabled": true,
+    "safety_boundary": {
+      "allowed_change_addresses": [
+        "module.services.google_cloud_run_v2_service.application"
+      ]
+    }
+  },
+  "prod": {
+    "enabled": true,
+    "safety_boundary": {
+      "allowed_change_addresses": []
+    }
+  }
+}

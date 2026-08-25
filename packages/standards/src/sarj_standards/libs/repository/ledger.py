@@ -42,7 +42,9 @@ class Retired:
             return re.compile(rf"(?<![\w/-]){re.escape(self.id)}(?![\w-])")
         if self.kind == CODE:
             return re.compile(rf"\b{re.escape(self.id)}\b")
-        return re.compile(rf"(?<![\w-])(?:sarj-{re.escape(self.id)}|--rule[ =]{re.escape(self.id)})(?![\w-])")
+        return re.compile(
+            rf"(?<![\w-])(?:sarj-{re.escape(self.id)}|--rule[ =](?:{re.escape(self.kind)}:)?{re.escape(self.id)}|{re.escape(self.kind)}:{re.escape(self.id)})(?![\w-])"
+        )
 
     @property
     def advice(self) -> str:

@@ -125,6 +125,56 @@ def test_every_retired_entry_carries_advice(shipped: ledger.Ledger) -> None:
     )
 
 
+def test_sarj208_retirement_points_to_live_general_rule(shipped: ledger.Ledger) -> None:
+    retired = {entry.id: entry for entry in shipped.retired}
+
+    assert retired["SARJ208"].status is ledger.Status.RENAMED
+    assert retired["SARJ208"].replacement == "SARJ204"
+    assert retired["no-environment-derived-access-grant"].status is ledger.Status.RENAMED
+    assert retired["no-environment-derived-access-grant"].replacement == "no-environment-conditional"
+
+
+def test_doctor_finds_retired_iac_suppression_and_manifest_selector(tmp_path: Path) -> None:
+    (tmp_path / "main.tf").write_text(
+        "groups = local.groups # sarj-noqa: SARJ208 -- legacy exception\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".sarj-standards.toml").write_text(
+        '[rules]\nexclude = ["iac:no-environment-derived-access-grant"]\n',
+        encoding="utf-8",
+    )
+
+    findings = sorted(check_retired_rules(tmp_path), key=lambda item: item.where)
+
+    assert [item.id for item in findings] == ["doctor.rule.retired", "doctor.rule.retired"]
+    assert "no-environment-derived-access-grant" in findings[0].where
+    assert "SARJ208" in findings[1].where
+
+
+def test_doctor_ignores_historical_rule_names_in_workflow_comments(tmp_path: Path) -> None:
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    for name in ("python-ci.yml", "typescript-ci.yml"):
+        (workflows / name).write_text(
+            "steps:\n  # hand-kept list (which is how SARJ061 and rule names went stale)\n  - run: make lint\n",
+            encoding="utf-8",
+        )
+
+    assert not list(check_retired_rules(tmp_path))
+
+
+def test_doctor_ignores_retired_selector_fixtures_in_baseline_test_module(tmp_path: Path) -> None:
+    fixture = tmp_path / "packages" / "standards" / "tests" / "test_diagnostic_baseline.py"
+    fixture.parent.mkdir(parents=True)
+    fixture.write_text(
+        'CASES = [("sarj-sql-lint:no-create-trigger", "sql:no-create-trigger"), '
+        '("sarj-sql-lint", "no-create-trigger", "sql:no-create-trigger")]\n',
+        encoding="utf-8",
+    )
+
+    assert not list(check_retired_rules(tmp_path))
+
+
 def test_doctor_names_a_removed_eslint_rule_in_a_config(tmp_path: Path) -> None:
     _ = (tmp_path / "eslint.config.mjs").write_text(
         'export default [{ rules: { "@sarj/prefer-setup-file-mocks": "error" } }];\n',

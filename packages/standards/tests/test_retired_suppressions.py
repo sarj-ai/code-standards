@@ -49,6 +49,20 @@ def test_plans_unambiguous_retired_suppression_migrations(tmp_path: Path, source
     assert rewrites == (retired_suppressions.Rewrite(target, expected),)
 
 
+@pytest.mark.parametrize("comment", ["#", "//"])
+def test_migrates_retired_iac_suppression_to_general_rule(tmp_path: Path, comment: str) -> None:
+    target = tmp_path / "main.tf"
+    source = f"groups = local.groups  {comment} sarj-noqa: SARJ208 -- reviewed access exception\n"
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == (
+        retired_suppressions.Rewrite(
+            target,
+            f"groups = local.groups  {comment} sarj-noqa: SARJ204 -- reviewed access exception\n",
+        ),
+    )
+
+
 @pytest.mark.parametrize(
     "source",
     [

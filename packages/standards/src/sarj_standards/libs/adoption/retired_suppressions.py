@@ -16,12 +16,15 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
 
-_SOURCE_SUFFIXES: Final = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".py", ".pyi", ".ts", ".tsx"})
+_CODE_SOURCE_SUFFIXES: Final = frozenset({".hcl", ".py", ".pyi", ".tf", ".tfvars"})
+_SOURCE_SUFFIXES: Final = frozenset(
+    {".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx", *_CODE_SOURCE_SUFFIXES}
+)
 _ESLINT_DIRECTIVE: Final = re.compile(
     r"(?P<intro>(?://|/\*)\s*eslint-(?:disable(?:-next-line|-line)?|enable)\s+)"
     r"(?P<body>.*?)(?P<close>\s*\*/)?$"
 )
-_PYTHON_DIRECTIVE: Final = re.compile(r"(?P<intro>#\s*sarj-noqa:\s*)(?P<body>.*?)$")
+_CODE_DIRECTIVE: Final = re.compile(r"(?P<intro>(?:#|//)\s*sarj-noqa:\s*)(?P<body>.*?)$")
 _REASON: Final = re.compile(r"(?P<rules>.*?)(?P<reason>\s+(?:--|[–—])\s+.*)?$")
 _ESLINT_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9_-]*"
 _ESLINT_ID: Final = re.compile(rf"^(?:{_ESLINT_SEGMENT}|@?{_ESLINT_SEGMENT}(?:/{_ESLINT_SEGMENT})+)$")
@@ -107,7 +110,7 @@ def reference_counts(path: Path, text: str) -> dict[str, int]:
     # counted a second time.
     uncomments = _mask_spans(text, spans)
     for line in uncomments.splitlines():
-        if not _looks_like_ambiguous_reference(line, path):
+        if not _looks_like_ambiguous_reference(line):
             continue
         _add_pattern_hits(counts, retired, line)
     return counts
@@ -203,7 +206,7 @@ def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[s
         directive = _classify_directive(path, comment)
         if directive.state is not _DirectiveState.VALID:
             continue
-        retired = codes if path.suffix.lower() in {".py", ".pyi"} else eslint
+        retired = codes if path.suffix.lower() in _CODE_SOURCE_SUFFIXES else eslint
         if not any(token in retired for token in directive.tokens):
             continue
         replacement = _rewrite_valid_directive(directive, retired)
@@ -235,10 +238,10 @@ def _is_jsx_comment_wrapper(path: Path, text: str, span: _CommentSpan, comment: 
 
 
 def _classify_directive(path: Path, comment: str) -> _Directive:
-    python = path.suffix.lower() in {".py", ".pyi"}
-    pattern = _PYTHON_DIRECTIVE if python else _ESLINT_DIRECTIVE
-    marker = "sarj-noqa" if python else "eslint-"
-    valid = _SARJ_CODE.fullmatch if python else _ESLINT_ID.fullmatch
+    code = path.suffix.lower() in _CODE_SOURCE_SUFFIXES
+    pattern = _CODE_DIRECTIVE if code else _ESLINT_DIRECTIVE
+    marker = "sarj-noqa" if code else "eslint-"
+    valid = _SARJ_CODE.fullmatch if code else _ESLINT_ID.fullmatch
     match = pattern.fullmatch(comment)
     if match is None:
         state = _DirectiveState.AMBIGUOUS if marker in comment.lower() else _DirectiveState.NONE
@@ -260,7 +263,28 @@ def _comma_delimited_tokens(body: str, valid: Callable[[str], object | None]) ->
 
 
 def _comment_spans(path: Path, text: str) -> tuple[_CommentSpan, ...]:
-    return _python_comment_spans(text) if path.suffix.lower() in {".py", ".pyi"} else _javascript_comment_spans(text)
+    suffix = path.suffix.lower()
+    if suffix in {".py", ".pyi"}:
+        return _python_comment_spans(text)
+    if suffix in {".hcl", ".tf", ".tfvars"}:
+        return _hcl_comment_spans(text)
+    return _javascript_comment_spans(text)
+
+
+def _hcl_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
+    spans = list(_javascript_comment_spans(text))
+    masked = _mask_spans(text, tuple(spans))
+    offset = 0
+    for line in masked.splitlines(keepends=True):
+        quote: str | None = None
+        for index, character in enumerate(line):
+            if character in {'"', "'"} and (index == 0 or line[index - 1] != "\\"):
+                quote = None if quote == character else character if quote is None else quote
+            elif character == "#" and quote is None:
+                spans.append(_CommentSpan(offset + index, offset + len(line.rstrip("\r\n"))))
+                break
+        offset += len(line)
+    return tuple(sorted(spans, key=lambda item: item.start))
 
 
 def _python_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
@@ -340,12 +364,10 @@ def _escaped(text: str, index: int) -> bool:
     return backslashes % 2 == 1
 
 
-def _looks_like_ambiguous_reference(line: str, path: Path) -> bool:
+def _looks_like_ambiguous_reference(line: str) -> bool:
     normalized = line.lower()
     if "sarj" not in normalized:
         return False
-    if "baseline" in path.name.lower():
-        return True
     return (
         "eslint-disable" in normalized
         or "eslint-enable" in normalized

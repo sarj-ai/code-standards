@@ -21,12 +21,6 @@
       "state": "complete"
     },
     {
-      "task": "rule-audit/iac/no-environment-derived-access-grant",
-      "family": "iac",
-      "ruleId": "no-environment-derived-access-grant",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/iac/no-restated-comment",
       "family": "iac",
       "ruleId": "no-restated-comment",
@@ -769,6 +763,14 @@
       "family": "text",
       "ruleId": "config-comment-wall",
       "state": "pending"
+    },
+    {
+      "task": "rule-audit/text/declarative-deployment-boundary",
+      "family": "text",
+      "ruleId": "declarative-deployment-boundary",
+      "state": "complete",
+      "evidence": "Pinned tracked-corpus calibration scanned 469 accepted files and produced 14 file-level findings. All 14 were reviewed literal control-plane mutations or the operational plan-address allowlist; a Wrangler --dry-run near miss was excluded and the later real promotion remained reported.",
+      "outcome": "Promoted the rule to error with one finding per file, command-aware shell parsing, structured workflow run scalars and deployment Actions, and operational JSON coverage. Markdown, comments, diagnostics, saved-plan apply, and wrapper-indirected or dynamic commands remain excluded; full-tree scans still inspect operational wrapper files directly."
     },
     {
       "task": "rule-audit/text/ephemeral-execution-artifact",
