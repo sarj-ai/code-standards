@@ -176,7 +176,7 @@ class {class_name}(Rule):
     id = "{slug}"
     code = "{code}"
     documentation = RuleDocumentation(
-        summary={summary!r},
+        {summary=},
         rationale="TODO: explain the concrete failure mode.",
         remediation="TODO: give the smallest safe remediation.",
         category=RuleCategory.{category.upper()},

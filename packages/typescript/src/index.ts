@@ -62,6 +62,7 @@ import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
+import preferNullishFilterPredicate from "./rules/prefer-nullish-filter-predicate.js";
 import preferAwaitInAsyncReturn from "./rules/prefer-await-in-async-return.js";
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
@@ -148,6 +149,7 @@ const RULES = {
   "prefer-module-level-schema": preferModuleLevelSchema,
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-non-nullable-collection": preferNonNullableCollection,
+  "prefer-nullish-filter-predicate": preferNullishFilterPredicate,
   "prefer-await-in-async-return": preferAwaitInAsyncReturn,
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
   "prefer-semantic-colors": preferSemanticColors,
@@ -168,7 +170,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.13.3",
+  version: "15.14.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -235,6 +237,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-non-nullable-collection": "error",
+  "@sarj/prefer-nullish-filter-predicate": "error",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
@@ -314,6 +317,7 @@ const STRICT_RULES = {
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-non-nullable-collection": "error",
+  "@sarj/prefer-nullish-filter-predicate": "error",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],

@@ -1,0 +1,315 @@
+---
+import {
+  THIRD_PARTY_PROFILES,
+  thirdPartyProviderSearchIndexHref,
+  thirdPartyRuleAnchor,
+  thirdPartyRuleHref,
+  thirdPartyRulePolicySignature,
+  type ThirdPartyAutofix,
+  type ThirdPartyContext,
+  type ThirdPartyLevel,
+  type ThirdPartyProfile,
+  type ThirdPartyRule,
+} from '../lib/third-party-catalog';
+import InlineCodeText from './InlineCodeText.astro';
+
+interface Props {
+  providerLabel: string;
+  providerId: string;
+  rules: ThirdPartyRule[];
+  allProviderRules: ThirdPartyRule[];
+  totalRuleCount: number;
+}
+
+const { providerLabel, providerId, rules, allProviderRules, totalRuleCount } = Astro.props;
+const provider = { id: providerId };
+const [firstProviderRule] = allProviderRules;
+const uniformPolicy = firstProviderRule !== undefined
+  && allProviderRules.every(
+    (rule) => thirdPartyRulePolicySignature(rule) === thirdPartyRulePolicySignature(firstProviderRule),
+  );
+const profileLabel: Record<ThirdPartyProfile, string> = { application: 'Application', standard: 'Strict' };
+const fixLabel: Record<ThirdPartyAutofix, string> = {
+  always: 'Always',
+  available: 'Available',
+  none: 'None',
+  sometimes: 'Conditional',
+};
+const fullContextIds = new Map<ThirdPartyProfile, Set<string>>(
+  THIRD_PARTY_PROFILES.map((profile) => [
+    profile,
+    new Set(
+      allProviderRules.flatMap((rule) =>
+        rule.profiles.find((item) => item.name === profile)?.contexts.map((context) => context.id) ?? []),
+    ),
+  ]),
+);
+const displayPolicies = (rule: ThirdPartyRule) => {
+  const application = rule.profiles.find((profile) => profile.name === 'application');
+  const standard = rule.profiles.find((profile) => profile.name === 'standard');
+  if (application && standard && sameContexts(application.contexts, standard.contexts)) {
+    return [{ label: 'Both profiles', groups: displayContextGroups(application.name, application.contexts) }];
+  }
+  return rule.profiles.map((profile) => ({
+    label: profileLabel[profile.name],
+    groups: displayContextGroups(profile.name, profile.contexts),
+  }));
+};
+const displayContextGroups = (profile: ThirdPartyProfile, contexts: ThirdPartyContext[]) => {
+  const groups = groupedContexts(contexts);
+  const complete = fullContextIds.get(profile);
+  const [onlyGroup] = groups;
+  return onlyGroup && complete?.size === contexts.length && contexts.every((context) => complete.has(context.id))
+    ? [{ level: onlyGroup.level, labels: [`All ${providerLabel} contexts`] }]
+    : groups;
+};
+const sameContexts = (left: ThirdPartyContext[], right: ThirdPartyContext[]) =>
+  left.length === right.length
+  && left.every((context, index) => context.id === right[index]?.id && context.level === right[index]?.level);
+const groupedContexts = (contexts: ThirdPartyContext[]) => {
+  const levels = new Map<ThirdPartyLevel, string[]>();
+  for (const context of contexts) levels.set(context.level, [...(levels.get(context.level) ?? []), context.label]);
+  return [...levels].map(([level, labels]) => ({ level, labels }));
+};
+---
+
+<section
+  class:list={['third-party-directory', { 'third-party-directory--uniform-policy': uniformPolicy }]}
+  data-third-party-directory
+  aria-labelledby="enabled-rules-heading"
+  data-search-index-href={thirdPartyProviderSearchIndexHref(provider)}
+  data-total-rules={totalRuleCount}
+>
+  <h2 id="enabled-rules-heading" class="third-party-directory__heading">Enabled rules</h2>
+  <div class="third-party-toolbar">
+    <p class="directory-status" role="status" aria-live="polite" aria-atomic="true">
+      <strong data-third-party-count>{rules.length}</strong>
+      <span data-third-party-noun>{rules.length === 1 ? ` rule on this page · ${String(totalRuleCount)} total` : ` rules on this page · ${String(totalRuleCount)} total`}</span>
+    </p>
+    <div class="third-party-search" data-third-party-search-container hidden>
+      <label for="third-party-rule-search">Search all {providerLabel} rules</label>
+      <div>
+        <input
+          id="third-party-rule-search"
+          type="search"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          placeholder="Rule, summary, or family"
+          data-third-party-search
+        />
+        <button type="button" data-third-party-clear hidden>Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="third-party-empty" data-third-party-empty hidden>No enabled {providerLabel} rules match this search.</p>
+  <ul class="third-party-search-results" data-third-party-search-results hidden aria-label={`${providerLabel} search results`}></ul>
+  <div class="third-party-rule-list" data-third-party-rule-list>
+    <div class="third-party-rule-list__header" aria-hidden="true">
+      <span>Rule</span>
+      <div class="third-party-rule-list__fact-headings">
+        {!uniformPolicy && <span>Scope</span>}<span>Autofix</span><span>Docs</span>
+      </div>
+    </div>
+    {rules.map((rule) => (
+      <article id={thirdPartyRuleAnchor(rule)} class="third-party-rule-row" data-third-party-rule tabindex="-1">
+        <div class="third-party-rule-row__identity">
+          <h3 class="third-party-rule-row__heading">
+            <a class="third-party-rule-row__permalink" href={thirdPartyRuleHref(provider, rule)} aria-label={`Permanent link to ${rule.displayId}`}>
+              <code>{rule.displayId}</code><span aria-hidden="true">#</span>
+            </a>
+          </h3>
+          <p><InlineCodeText text={rule.summary} /></p>
+          {rule.family && <small>{rule.family}</small>}
+        </div>
+        <dl class="third-party-rule-row__facts">
+          {!uniformPolicy && <div class="third-party-rule-row__policy">
+            <dt class="third-party-cell-label">Scope</dt>
+            <dd>{displayPolicies(rule).map((policy) => (
+              <div>
+                <strong>{policy.label}</strong>
+                {policy.groups.length === 0 ? (
+                  <span class="level level--off">Not enabled</span>
+                ) : (
+                  <ul>
+                    {policy.groups.map((group) => (
+                      <li><span class:list={['level', `level--${group.level}`]}>{group.level}</span> {group.labels.join(', ')}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}</dd>
+          </div>}
+          <div class="third-party-rule-row__fix">
+            <dt class="third-party-cell-label">Autofix</dt>
+            <dd>
+              <span>{fixLabel[rule.autofix]}</span>
+              {rule.hasSuggestions && <small>Suggestions available</small>}
+            </dd>
+          </div>
+          <div class="third-party-rule-row__official">
+            <dt class="third-party-cell-label">Docs</dt>
+            <dd><a href={rule.docsUrl} aria-label={`${rule.displayId} official ${providerLabel} explanation`}>
+              Open docs <span aria-hidden="true">↗</span>
+            </a></dd>
+          </div>
+        </dl>
+      </article>
+    ))}
+  </div>
+</section>
+
+<script>
+  interface SearchEntry {
+    anchor: string;
+    displayId: string;
+    family: string | null;
+    href: string;
+    searchText: string;
+    summary: string;
+  }
+
+  type SearchPayloadEntry = Omit<SearchEntry, 'searchText'>;
+
+  for (const directory of document.querySelectorAll('[data-third-party-directory]')) {
+    if (!(directory instanceof HTMLElement) || directory.dataset.ready === 'true') continue;
+    directory.dataset.ready = 'true';
+    const container = directory.querySelector('[data-third-party-search-container]');
+    const search = directory.querySelector('[data-third-party-search]');
+    const clear = directory.querySelector('[data-third-party-clear]');
+    const count = directory.querySelector('[data-third-party-count]');
+    const noun = directory.querySelector('[data-third-party-noun]');
+    const empty = directory.querySelector('[data-third-party-empty]');
+    const results = directory.querySelector('[data-third-party-search-results]');
+    const ruleList = directory.querySelector('[data-third-party-rule-list]');
+    const catalog = directory.closest('.third-party-catalog');
+    const indexHref = directory.dataset.searchIndexHref;
+    if (
+      !(search instanceof HTMLInputElement)
+      || !(container instanceof HTMLElement)
+      || !(results instanceof HTMLUListElement)
+      || !(ruleList instanceof HTMLElement)
+      || indexHref === undefined
+    ) continue;
+    container.hidden = false;
+    let indexPromise: Promise<SearchEntry[]> | undefined;
+    const loadIndex = () => {
+      indexPromise ??= fetch(indexHref).then(async (response) => {
+        if (!response.ok) throw new Error(`Search index returned ${String(response.status)}.`);
+        const payload: unknown = await response.json();
+        if (
+          typeof payload !== 'object'
+          || payload === null
+          || !('entries' in payload)
+          || !Array.isArray(payload.entries)
+        ) throw new TypeError('Search index has an invalid shape.');
+        return (payload.entries as SearchPayloadEntry[]).map((entry) => ({
+          ...entry,
+          searchText: [entry.displayId, entry.summary, entry.family]
+            .filter((value): value is string => value !== null)
+            .join(' ')
+            .toLocaleLowerCase('en-US'),
+        }));
+      }).catch((error: unknown) => {
+        indexPromise = undefined;
+        throw error;
+      });
+      return indexPromise;
+    };
+    const renderResults = (matches: SearchEntry[]) => {
+      const visibleMatches = matches.slice(0, 50);
+      results.replaceChildren(...visibleMatches.map((entry) => {
+        const item = document.createElement('li');
+        const link = document.createElement('a');
+        const ruleId = document.createElement('code');
+        const summary = document.createElement('span');
+        ruleId.textContent = entry.displayId;
+        summary.textContent = entry.summary;
+        link.href = entry.href;
+        link.append(ruleId, summary);
+        if (entry.family !== null) {
+          const family = document.createElement('small');
+          family.textContent = `Family: ${entry.family}`;
+          link.append(family);
+        }
+        item.append(link);
+        return item;
+      }));
+      return visibleMatches.length;
+    };
+    const params = new URLSearchParams(location.search);
+    search.value = params.get('q') ?? '';
+    let request = 0;
+    const apply = async (announce = true) => {
+      const currentRequest = ++request;
+      const query = search.value.trim().toLocaleLowerCase('en-US');
+      const next = new URL(location.href);
+      query ? next.searchParams.set('q', search.value.trim()) : next.searchParams.delete('q');
+      history.replaceState(null, '', next);
+      if (clear instanceof HTMLButtonElement) clear.hidden = query.length === 0;
+      const searching = query.length > 0;
+      ruleList.hidden = searching;
+      results.hidden = !searching;
+      catalog?.classList.toggle('third-party-catalog--searching', searching);
+      if (!searching) {
+        results.replaceChildren();
+        if (empty instanceof HTMLElement) empty.hidden = true;
+        const pageCount = ruleList.querySelectorAll('[data-third-party-rule]').length;
+        if (count) count.textContent = String(pageCount);
+        if (noun) noun.textContent = `${pageCount === 1 ? ' rule' : ' rules'} on this page · ${directory.dataset.totalRules ?? '0'} total`;
+        return;
+      }
+      try {
+        const entries = await loadIndex();
+        if (currentRequest !== request) return;
+        const matches = entries.filter((entry) => entry.searchText.includes(query));
+        const rendered = renderResults(matches);
+        if (empty instanceof HTMLElement) empty.hidden = matches.length !== 0;
+        if (count) count.textContent = String(matches.length);
+        if (noun) noun.textContent = matches.length === 1
+          ? ' matching rule'
+          : rendered < matches.length
+            ? ` matching rules · showing first ${String(rendered)}`
+            : ' matching rules';
+        if (!announce) count?.parentElement?.setAttribute('aria-live', 'off');
+        queueMicrotask(() => count?.parentElement?.setAttribute('aria-live', 'polite'));
+      } catch {
+        if (currentRequest !== request) return;
+        results.replaceChildren();
+        results.hidden = true;
+        ruleList.hidden = false;
+        catalog?.classList.remove('third-party-catalog--searching');
+        if (empty instanceof HTMLElement) {
+          empty.hidden = false;
+          empty.textContent = 'Search is unavailable. Browse the rule pages below.';
+        }
+        const pageCount = ruleList.querySelectorAll('[data-third-party-rule]').length;
+        if (count) count.textContent = String(pageCount);
+        if (noun) noun.textContent = `${pageCount === 1 ? ' rule' : ' rules'} on this page · ${directory.dataset.totalRules ?? '0'} total`;
+      }
+    };
+    search.addEventListener('focus', () => void loadIndex(), { once: true });
+    search.addEventListener('input', () => void apply());
+    clear?.addEventListener('click', () => {
+      search.value = '';
+      search.focus();
+      void apply();
+    });
+    addEventListener('popstate', () => {
+      search.value = new URLSearchParams(location.search).get('q') ?? '';
+      void apply(false);
+    });
+    void apply(false);
+
+    const target = decodeURIComponent(location.hash.slice(1));
+    if (target.startsWith('rule-') && document.getElementById(target) === null) {
+      void loadIndex().then((entries) => {
+        const match = entries.find((entry) => entry.anchor === target);
+        if (match !== undefined && new URL(match.href, location.href).pathname !== location.pathname) {
+          location.replace(match.href);
+        }
+      }).catch(() => undefined);
+    }
+  }
+</script>

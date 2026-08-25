@@ -7,8 +7,9 @@
   "scripts": {
     "code-examples:check": "node scripts/format-code-examples.mjs --check",
     "code-examples:sync": "node scripts/format-code-examples.mjs --write",
-    "prebuild": "npm run code-examples:check",
-    "precheck": "npm run code-examples:check",
+    "prebuild": "npm run code-examples:check && npm run third-party-catalog:check",
+    "postbuild": "node scripts/verify-third-party-catalog.mjs --dist",
+    "precheck": "npm run code-examples:check && npm run third-party-catalog:check",
     "predev": "npm run code-examples:check",
     "build": "astro build",
     "check": "astro check",
@@ -16,6 +17,7 @@
     "dev": "astro dev",
     "preview": "astro preview",
     "deploy": "wrangler deploy",
+    "third-party-catalog:check": "node scripts/verify-third-party-catalog.mjs --source",
     "verify:deployment": "node scripts/verify-deployment.mjs"
   },
   "dependencies": {

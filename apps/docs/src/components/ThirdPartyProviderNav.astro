@@ -1,0 +1,32 @@
+---
+import { thirdPartyProviderHref, type ThirdPartyProvider } from '../lib/third-party-catalog';
+
+interface Props {
+  providers: ThirdPartyProvider[];
+  activeProvider?: string;
+  counts: ReadonlyMap<string, number>;
+}
+
+const { providers, activeProvider, counts } = Astro.props;
+---
+
+<nav class="provider-nav" aria-label="Upstream rule providers">
+  <ul>
+    <li class="provider-nav__all">
+      <a href="/third-party-linters/" aria-current={activeProvider === undefined ? 'page' : undefined}>
+        <span>All providers</span>
+      </a>
+    </li>
+    {providers.map((provider) => (
+      <li class:list={{ 'provider-nav__active': provider.id === activeProvider }}>
+        <a
+          href={thirdPartyProviderHref(provider)}
+          aria-current={provider.id === activeProvider ? 'true' : undefined}
+        >
+          <span>{provider.label}</span>
+          <small><span aria-hidden="true">{counts.get(provider.id) ?? 0}</span><span class="sr-only"> {counts.get(provider.id) ?? 0} enabled rules</span></small>
+        </a>
+      </li>
+    ))}
+  </ul>
+</nav>

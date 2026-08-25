@@ -1,0 +1,39 @@
+---
+import ThirdPartyProviderPage from '../../components/ThirdPartyProviderPage.astro';
+import {
+  THIRD_PARTY_PAGE_SIZE,
+  thirdPartyCatalog,
+  thirdPartyRulesForProvider,
+  type ThirdPartyProvider,
+  type ThirdPartyRule,
+} from '../../lib/third-party-catalog';
+
+export function getStaticPaths() {
+  return thirdPartyCatalog.providers.map((provider) => ({
+    params: { provider: provider.id },
+    props: { provider, allProviderRules: thirdPartyRulesForProvider(provider.id) },
+  }));
+}
+
+interface Props {
+  provider: ThirdPartyProvider;
+  allProviderRules: ThirdPartyRule[];
+}
+
+const { provider, allProviderRules } = Astro.props;
+const counts = new Map(
+  thirdPartyCatalog.providers.map((item) => [item.id, thirdPartyRulesForProvider(item.id).length]),
+);
+const totalPages = Math.ceil(allProviderRules.length / THIRD_PARTY_PAGE_SIZE);
+const rules = allProviderRules.slice(0, THIRD_PARTY_PAGE_SIZE);
+---
+
+<ThirdPartyProviderPage
+  {provider}
+  providers={thirdPartyCatalog.providers}
+  {rules}
+  {allProviderRules}
+  {counts}
+  page={1}
+  {totalPages}
+/>

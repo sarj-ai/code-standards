@@ -485,6 +485,14 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/python/prefer-set-isdisjoint",
+      "family": "python",
+      "ruleId": "prefer-set-isdisjoint",
+      "state": "complete",
+      "evidence": "Multi-agent ownership and semantics review found no Ruff equivalent. Repository and consumer corpus calibration inspected every finding and retained only exact built-in set/frozenset predicates with dominating proof and rebinding invalidation; no known false positives remained.",
+      "outcome": "Shipped at error without autofix. The rule excludes unproven operands and stored intersections because short-circuiting can expose equality/hash side effects."
+    },
+    {
       "task": "rule-audit/python/prefer-str-enum",
       "family": "python",
       "ruleId": "prefer-str-enum",
@@ -1151,6 +1159,14 @@
       "family": "typescript",
       "ruleId": "prefer-non-nullable-collection",
       "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-nullish-filter-predicate",
+      "family": "typescript",
+      "ruleId": "prefer-nullish-filter-predicate",
+      "state": "complete",
+      "evidence": "Type-aware corpus calibration and negative fixtures proved the rule only reports built-in Array/ReadonlyArray filter(Boolean) calls whose non-nullish union members are all truthy. Composed strict-profile tests found and corrected an eqeqeq-conflicting initial suggestion.",
+      "outcome": "Shipped at error with an explicit editor suggestion using value !== null && value !== undefined. Broad primitives, falsy literals, custom filters, shadowed Boolean, any, unknown, generics, and untyped runs remain excluded."
     },
     {
       "task": "rule-audit/eslint/prefer-schema-for-api-payload",

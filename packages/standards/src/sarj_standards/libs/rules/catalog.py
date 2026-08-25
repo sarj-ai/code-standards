@@ -84,7 +84,7 @@ class RuleCatalogDocument:
             msg = "catalog rule keys must be unique"
             raise ValueError(msg)
         aliases = tuple(f"{rule.spec.engine.value}:{alias}" for rule in self.rules for alias in rule.spec.aliases)
-        if len(aliases) != len(set(aliases)) or set(aliases) & set(keys):
+        if len(aliases) != len(set(aliases)) or not set(aliases).isdisjoint(keys):
             msg = "catalog aliases must be unique and must not shadow live rule keys"
             raise ValueError(msg)
 

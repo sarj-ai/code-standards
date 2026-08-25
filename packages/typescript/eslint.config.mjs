@@ -38,4 +38,11 @@ export default defineConfig(
       "@typescript-eslint/naming-convention": ["error", ...MODULE_CONSTANT_NAMING_OPTIONS],
     },
   },
+  {
+    name: "sarj/dynamic-projection-scripts",
+    files: ["scripts/**/*.mjs"],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: { globals: { process: "readonly" } },
+    rules: { "@typescript-eslint/naming-convention": "off" },
+  },
 );

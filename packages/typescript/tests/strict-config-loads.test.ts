@@ -156,6 +156,21 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     },
   );
 
+  it.each(CONFIG_FACTORIES)(
+    "%s delegates type-only exports to verbatimModuleSyntax while retaining the core has-own rule",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        overrideConfigFile: true,
+        overrideConfig: createConfig(),
+        cwd: process.cwd(),
+      });
+      const configured = (await eslint.calculateConfigForFile("src/index.ts")) as Linter.Config;
+
+      expect(configured.rules?.["@typescript-eslint/consistent-type-exports"]).toBeUndefined();
+      expect(configured.rules?.["prefer-object-has-own"]).toEqual([2]);
+    },
+  );
+
   /**
    * The overrides have to still WIN after merging. Asserting only that the
    * config loads would let a `files:` glob rot into matching nothing.

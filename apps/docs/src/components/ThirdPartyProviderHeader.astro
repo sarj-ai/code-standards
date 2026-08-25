@@ -1,0 +1,42 @@
+---
+import {
+  THIRD_PARTY_PROFILES,
+  thirdPartyRulePolicySignature,
+  type ThirdPartyProvider,
+  type ThirdPartyRule,
+} from '../lib/third-party-catalog';
+
+interface Props {
+  provider: ThirdPartyProvider;
+  rules: ThirdPartyRule[];
+}
+
+const { provider, rules } = Astro.props;
+const [firstRule] = rules;
+const uniformPolicy = firstRule !== undefined
+  && rules.every((rule) => thirdPartyRulePolicySignature(rule) === thirdPartyRulePolicySignature(firstRule));
+const profileLabels = { application: 'Application', standard: 'Strict' } as const;
+const policySummary = uniformPolicy
+  ? firstRule.profiles.map((profile) => {
+      const levels = new Set(profile.contexts.map((context) => context.level));
+      const level = levels.size === 1 ? [...levels][0] : 'mixed levels';
+      return `${profileLabels[profile.name]} · ${String(profile.contexts.length)} contexts · ${level}`;
+    }).join(' / ')
+  : `${String(THIRD_PARTY_PROFILES.length)} profiles · policy varies by rule`;
+---
+
+<header class="provider-header">
+  <div>
+    <h1>{provider.label} rules</h1>
+    <p class="lede">
+      {rules.length} enabled {rules.length === 1 ? 'rule' : 'rules'} from the pinned toolchain. Policy reflects the resolved Strict and Application profiles.
+    </p>
+  </div>
+  <dl>
+    <div><dt>Package</dt><dd><code>{provider.package}</code></dd></div>
+    <div><dt>Version</dt><dd><code>{provider.version}</code></dd></div>
+    <div><dt>Engine</dt><dd>{provider.engine}</dd></div>
+    <div><dt>Policy</dt><dd>{policySummary}</dd></div>
+  </dl>
+  <a class="provider-official-link" href={provider.homepage}>Official {provider.label} reference <span aria-hidden="true">↗</span></a>
+</header>
