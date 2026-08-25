@@ -106,6 +106,7 @@ function nonemptyString(value, label) {
 
 function verifyDist(ruleCounts) {
   const index = readFileSync(resolve(distRoot, 'third-party-linters/index.html'), 'utf8');
+  assert.match(index, /http-equiv="refresh" content="0;url=\/third-party-linters\/ruff\/"/u, 'index must redirect to Ruff');
   const expectedDirectories = catalog.providers.map(({ id }) => id).sort();
   const actualDirectories = readdirSync(resolve(distRoot, 'third-party-linters'), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -113,13 +114,7 @@ function verifyDist(ruleCounts) {
     .sort();
   assert.deepEqual(actualDirectories, expectedDirectories, 'built provider routes must exactly match the catalog');
 
-  const indexHrefs = new Set(htmlHrefs(index));
   for (const provider of catalog.providers) {
-    const route = `/third-party-linters/${provider.id}/`;
-    const count = ruleCounts.get(provider.id);
-    assert.ok(indexHrefs.has(route), `index must link to ${route}`);
-    assert.ok(index.includes(`${String(count)} enabled rules`), `index must expose ${provider.id}'s rule count`);
-
     const rules = catalog.rules.filter((rule) => rule.provider === provider.id);
     const totalPages = Math.ceil(rules.length / pageSize);
     const searchIndexSource = readFileSync(resolve(distRoot, 'third-party-linters', provider.id, 'rules.json'), 'utf8');
@@ -182,7 +177,7 @@ function verifyDist(ruleCounts) {
       for (const candidate of catalog.providers) {
         assert.ok(hrefSet.has(`/third-party-linters/${candidate.id}/`), `${provider.id} page ${String(pageNumber)} navigation must link to ${candidate.id}`);
       }
-      for (const targetPage of visiblePaginationPages(pageNumber, totalPages)) {
+      for (const targetPage of [pageNumber - 1, pageNumber + 1].filter((candidate) => candidate >= 1 && candidate <= totalPages)) {
         assert.ok(
           hrefSet.has(providerPageHref(provider.id, targetPage)),
           `${provider.id} page ${String(pageNumber)} pagination must link to page ${String(targetPage)}`,
@@ -193,7 +188,7 @@ function verifyDist(ruleCounts) {
   }
 
   const sitemap = readFileSync(resolve(distRoot, 'sitemap-0.xml'), 'utf8');
-  assert.ok(sitemap.includes('<loc>https://code-standards.sarj.ai/third-party-linters/</loc>'));
+  assert.ok(!sitemap.includes('<loc>https://code-standards.sarj.ai/third-party-linters/</loc>'));
   for (const provider of catalog.providers) {
     const totalPages = Math.ceil(ruleCounts.get(provider.id) / pageSize);
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
@@ -208,10 +203,6 @@ function verifyDist(ruleCounts) {
 function anchorForRule(rule) {
   const encodedId = [...new TextEncoder().encode(`${rule.provider}:${rule.id}`)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
   return `rule-${encodedId}`;
-}
-
-function visiblePaginationPages(page, totalPages) {
-  return [...new Set([1, totalPages, page - 2, page - 1, page, page + 1, page + 2])].filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages);
 }
 
 function escapeHtml(value) {

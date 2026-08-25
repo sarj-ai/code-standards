@@ -8,45 +8,19 @@ interface Props {
   provider: ThirdPartyProvider;
   page: number;
   totalPages: number;
-  position: 'top' | 'bottom';
 }
 
-const { provider, page, totalPages, position } = Astro.props;
-const visiblePages = [...new Set([1, totalPages, page - 2, page - 1, page, page + 1, page + 2])]
-  .filter((pageNumber) => pageNumber >= 1 && pageNumber <= totalPages)
-  .sort((left, right) => left - right);
-const pageItems = visiblePages.flatMap((pageNumber, index) => {
-  const previous = visiblePages[index - 1];
-  return previous !== undefined && pageNumber - previous > 1
-    ? [{ kind: 'ellipsis' as const }, { kind: 'page' as const, page: pageNumber }]
-    : [{ kind: 'page' as const, page: pageNumber }];
-});
+const { provider, page, totalPages } = Astro.props;
 ---
 
 {totalPages > 1 && (
-  <nav class:list={['third-party-pagination', `third-party-pagination--${position}`]} aria-label={`${provider.label} rule pages, ${position}`}>
+  <nav class="third-party-pagination" aria-label={`${provider.label} rule pages`}>
     {page > 1
-      ? <a class="third-party-pagination__step" rel="prev" href={thirdPartyProviderPageHref(provider, page - 1)}>Previous</a>
-      : <span class="third-party-pagination__step" aria-disabled="true">Previous</span>}
-    {position === 'top' ? (
-      <span class="third-party-pagination__position">Page {page} of {totalPages}</span>
-    ) : (
-      <ol>
-        {pageItems.map((item) => item.kind === 'ellipsis' ? (
-          <li><span class="third-party-pagination__ellipsis" aria-hidden="true">…</span></li>
-        ) : (
-          <li>
-            <a
-              href={thirdPartyProviderPageHref(provider, item.page)}
-              aria-current={item.page === page ? 'page' : undefined}
-              aria-label={`Page ${String(item.page)} of ${String(totalPages)}`}
-            >{item.page}</a>
-          </li>
-        ))}
-      </ol>
-    )}
+      ? <a class="third-party-pagination__step" rel="prev" href={thirdPartyProviderPageHref(provider, page - 1)} aria-label="Previous page">←</a>
+      : <span class="third-party-pagination__step" aria-disabled="true"><span aria-hidden="true">←</span><span class="sr-only">No previous page</span></span>}
+    <span class="third-party-pagination__position"><span aria-hidden="true">{page} / {totalPages}</span><span class="sr-only">Page {page} of {totalPages}</span></span>
     {page < totalPages
-      ? <a class="third-party-pagination__step" rel="next" href={thirdPartyProviderPageHref(provider, page + 1)}>Next</a>
-      : <span class="third-party-pagination__step" aria-disabled="true">Next</span>}
+      ? <a class="third-party-pagination__step" rel="next" href={thirdPartyProviderPageHref(provider, page + 1)} aria-label="Next page">→</a>
+      : <span class="third-party-pagination__step" aria-disabled="true"><span aria-hidden="true">→</span><span class="sr-only">No next page</span></span>}
   </nav>
 )}

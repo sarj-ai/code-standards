@@ -36,11 +36,13 @@ export default defineConfig({
     },
   },
   integrations: [
-    sitemap({ filter: (page) => new URL(page).pathname !== '/about/' }),
+    sitemap({
+      filter: (page) => !['/about/', '/third-party-linters/'].includes(new URL(page).pathname),
+    }),
     starlight({
       title: 'Sarj Standards',
       description: 'Deterministic code standards, diagnostics, and remediation.',
-      favicon: '/favicon.svg',
+      favicon: '/favicon.ico',
       logo: {
         alt: 'Sarj',
         dark: './public/sarj-logo-dark.webp',

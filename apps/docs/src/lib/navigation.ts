@@ -16,8 +16,8 @@ export const referenceSidebar = Object.freeze([
     attrs: { class: "sidebar-engine-link" },
   })),
   {
-    label: `Upstream rules · ${String(thirdPartyCatalog.rules.length)}`,
-    link: "/third-party-linters/",
+    label: `Third party Rules · ${String(thirdPartyCatalog.rules.length)}`,
+    link: "/third-party-linters/ruff/",
   },
   { label: "CLI", link: "/cli/" },
 ] satisfies Sidebar);

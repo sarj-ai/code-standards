@@ -13,7 +13,7 @@ async function verify() {
     response(`health.json${nonce}`),
     response('api/v1/catalog.json'),
     response(''),
-    response(`third-party-linters/${nonce}`),
+    response(`third-party-linters/${nonce}`, { redirect: 'manual' }),
     response(`third-party-linters/ruff/${nonce}`),
     response(`third-party-linters/ruff/19/${nonce}`),
     response(`third-party-linters/ruff/rules.json${nonce}`),
@@ -25,7 +25,6 @@ async function verify() {
     ruffIndexResponse,
     ruffLastResponse,
     ruffResponse,
-    upstreamResponse,
   })) {
     assert.ok(candidate.ok, `${name} returned ${String(candidate.status)}`);
   }
@@ -33,14 +32,14 @@ async function verify() {
   const health = await healthResponse.json();
   const catalogText = await catalogResponse.text();
   const page = await pageResponse.text();
-  const upstreamPage = await upstreamResponse.text();
   const ruffPage = await ruffResponse.text();
   const ruffLastPage = await ruffLastResponse.text();
   const ruffIndex = await ruffIndexResponse.json();
   assert.equal(health.commit, expectedCommit, `live commit ${String(health.commit)} does not match ${expectedCommit}`);
   assert.equal(createHash('sha256').update(catalogText).digest('hex'), health.catalogSha256);
-  assert.match(upstreamPage, /Upstream rules/u);
-  assert.match(upstreamPage, /href="\/third-party-linters\/ruff\/"/u);
+  assert.equal(upstreamResponse.status, 301);
+  assert.equal(new URL(upstreamResponse.headers.get('location'), base).pathname, '/third-party-linters/ruff/');
+  assert.match(ruffPage, /Third party Rules/u);
   assert.equal(occurrences(ruffPage, /data-third-party-rule(?=[ >])/gu), 50);
   assert.ok(occurrences(ruffLastPage, /data-third-party-rule(?=[ >])/gu) > 0);
   assert.ok(Array.isArray(ruffIndex.entries) && ruffIndex.entries.length > 800);
