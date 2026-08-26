@@ -1081,6 +1081,38 @@ def test_live_rule_inventory_does_not_depend_on_consumer_repository_layout(tmp_p
     assert {item["id"] for item in typescript} == set(ledger.load().rules[ledger.ESLINT])
 
 
+def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tmp_path: Path) -> None:
+    renames = tmp_path / "packages" / "typescript" / "src" / "rules" / "_renames.ts"
+    renames.parent.mkdir(parents=True)
+    renames.write_text("export const renames = {};\n", encoding="utf-8")
+    previous = {
+        "retired": [
+            {
+                "id": "historical-alias",
+                "kind": "iac",
+                "status": "renamed",
+                "replacement": "current-rule",
+                "note": "Use the current rule.",
+            },
+            {
+                "id": "live-alias",
+                "kind": "iac",
+                "status": "renamed",
+                "replacement": "live-rule",
+                "note": "Use the live rule.",
+            },
+        ]
+    }
+
+    retired = rule_maintenance._retired(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        previous,
+        tmp_path,
+        {("iac", "live-alias"): "live-rule"},
+    )
+
+    assert {str(entry["id"]) for entry in retired} == {"historical-alias", "live-alias"}
+
+
 @pytest.mark.parametrize("registry_name", ["RULES", "rules"])
 def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(tmp_path: Path, registry_name: str) -> None:
     index = tmp_path / "packages/typescript/src/index.ts"

@@ -52,6 +52,7 @@ class RuleDescriptorV1(TypedDict):
 
 
 type ChangeKind = Literal["added", "removed", "implementation-changed", "policy-changed"]
+type RuleLevel = Literal["error", "warning"]
 
 
 class RuleChangeV1(TypedDict):
@@ -128,6 +129,14 @@ def compare(
         "changeSetDigest": digest,
         "changes": changes,
     }
+
+
+def added_rules_at_other_levels(comparison: RuleChangeSetV1, *, required: RuleLevel) -> list[str]:
+    return [
+        change["key"]
+        for change in comparison["changes"]
+        if change["kind"] == "added" and change["after"] is not None and change["after"]["defaultLevel"] != required
+    ]
 
 
 def _change(

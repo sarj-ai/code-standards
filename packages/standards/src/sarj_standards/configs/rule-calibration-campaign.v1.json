@@ -809,6 +809,14 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/text/workflow-embedded-program",
+      "family": "text",
+      "ruleId": "workflow-embedded-program",
+      "state": "complete",
+      "evidence": "Re-running `code-standards --root ROOT maintain rules evaluate --rule text:workflow-embedded-program --scope corpus .github/workflows` on the three pinned local workflow trees produced 98 diagnostics: 15 in the public Standards tree and 83 in two private trees. Every location was inspected with zero known false positives; small inline probes and shell guards remain intentionally warning-only. Three sequential warm runs had a 0.30 second median on the public tree and 0.41 second median on the largest private tree. The labeled suite adds numeric, dashed, dynamic-looking, tab-stripped, escaped, and multiple heredocs; YAML aliases; shell-keyword executable paths; here-strings; and combined or attached interpreter flags.",
+      "outcome": "Staged SARJ310 at warning with direct-workflow path scoping, YAML scalar parsing, quote/comment state, a queued shell-word heredoc scanner, YAML-alias deduplication, literal control-keyword matching, combined interpreter inline-source flags, one diagnostic per run scalar, and SARJ309 precedence that respects rule selection. Multiline jq, data heredocs, external interpreter scripts, nested workflow-like YAML, reusable Actions, direct repository commands, and ordinary multiline orchestration remain clean. Workflow topology, ownership, redundancy, long linear command lists, wrapper-indirected behavior, and unrecognized interpreter languages remain explicit review boundaries rather than inferred findings."
+    },
+    {
       "task": "rule-audit/eslint/duplicate-test-body",
       "family": "typescript",
       "ruleId": "duplicate-test-body",

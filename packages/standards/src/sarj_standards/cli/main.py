@@ -2441,6 +2441,21 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             except (OSError, TypeError, ValueError, ProcessFailureError) as exc:
                 print(f"error: cannot compare rule revisions: {exc}", file=sys.stderr)
                 return 2
+            raw_required_level: object = args.required_added_level  # pyright: ignore[reportAny] -- argparse Namespace is untyped.
+            required_added_level: rule_changes.RuleLevel | None = "warning" if raw_required_level == "warning" else None
+            if required_added_level is not None:
+                invalid = rule_changes.added_rules_at_other_levels(
+                    comparison,
+                    required=required_added_level,
+                )
+                if invalid:
+                    print(
+                        f"error: new judgment rules must enter the fleet at {required_added_level} level",
+                        file=sys.stderr,
+                    )
+                    for selector in invalid:
+                        print(f"Run: code-standards --root . maintain rules stage-warning {selector}", file=sys.stderr)
+                    return 1
             print(
                 json.dumps(comparison, indent=2)
                 if args.output_format == "json"
@@ -2677,6 +2692,12 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     rule_changes.add_argument("--before", required=True)
     rule_changes.add_argument("--after", required=True)
     rule_changes.add_argument("--format", dest="output_format", choices=("json", "text"), default="text")
+    rule_changes.add_argument(
+        "--require-added-level",
+        dest="required_added_level",
+        choices=("warning",),
+        help="fail when an added rule does not start at this level",
+    )
     rule_evaluate = rule_commands.add_parser(
         "evaluate",
         help="calibrate selected custom rules; findings exit 1 and invalid input or execution exits 2",

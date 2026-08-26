@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "903dc04e59ff4f41eb63fe848b96a6d8568c9d84352459b448088d50800cdff2",
-  "cliSha256": "ab3ce9e4f627ee05ff43d4c64a67cf43f546629cd892bdaa6cb4596f340d7bad",
+  "catalogSha256": "8c9314e31abee5cbe7d0e72eeeddaa2ffbc13f168d27ace494d21db6964b269e",
+  "cliSha256": "0736d8da8f0492a5a73d3e2b087d16839885a045105a506aa282f1328d77a59e",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7592,6 +7592,41 @@
         }
       ],
       "optionsSchemaSource": null
+    },
+    "text:workflow-embedded-program": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "source": "jobs:\n  test:\n    steps:\n      - run: |\n          for package in api worker; do\n            make test-package PACKAGE=\"$package\"\n          done\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/ci.yml",
+          "id": "workflow-inline-program",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keep procedural validation out of workflow YAML"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/workflows/ci.yml",
+              "source": "jobs:\n  test:\n    steps:\n      - run: make test\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/ci.yml",
+          "id": "workflow-repository-entrypoint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Call a tested repository-owned entrypoint"
+        }
+      ],
+      "optionsSchemaSource": null
     }
   },
   "static": {
@@ -7654,7 +7689,7 @@
       "maintain/rules/stage-warning": "code-standards maintain rules stage-warning [-h] selector [--check]\n",
       "maintain/rules/prepare": "code-standards maintain rules prepare [-h] selector [--check]\n",
       "maintain/rules/verify": "code-standards maintain rules verify [-h] selector\n",
-      "maintain/rules/changes": "code-standards maintain rules changes [-h] --before BEFORE --after AFTER [--format OUTPUT_FORMAT]\n",
+      "maintain/rules/changes": "code-standards maintain rules changes [-h] --before BEFORE --after AFTER [--format OUTPUT_FORMAT] [--require-added-level REQUIRED_ADDED_LEVEL]\n",
       "maintain/rules/evaluate": "code-standards maintain rules evaluate [-h] --rule SELECTED_RULES ... [--scope EVALUATION_SCOPE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [files ...]\n",
       "maintain/catalog": "code-standards maintain catalog [-h] {check,sync}\n",
       "maintain/catalog/check": "code-standards maintain catalog check [-h]\n",

@@ -45,19 +45,10 @@ jobs:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
         run: uv run --project packages/standards --frozen code-standards --root . maintain release causality --before "$BEFORE" --after "$AFTER"
-      - name: New custom rules start at error
+      - name: New judgment rules start as warnings
         env:
           BEFORE: ${{ github.event.pull_request.base.sha || github.event.before }}
           AFTER: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          changes="$(uv run --project packages/standards --frozen code-standards --root . \
-            maintain rules changes --before "$BEFORE" --after "$AFTER" --format json)"
-          invalid="$(jq -r '.changes[] | select(.kind == "added" and .after.defaultLevel != "error") | .key' <<< "$changes")"
-          if [[ -n "$invalid" ]]; then
-            echo "::error::new judgment rules must enter the fleet at error level"
-            while IFS= read -r selector; do
-              echo "Promote the rule before release: $selector"
-            done <<< "$invalid"
-            exit 1
-          fi
+        run: >-
+          uv run --project packages/standards --frozen code-standards --root . maintain rules changes
+          --before "$BEFORE" --after "$AFTER" --require-added-level warning

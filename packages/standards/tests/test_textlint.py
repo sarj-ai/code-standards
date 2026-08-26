@@ -321,6 +321,296 @@ SECRET_PERMISSION_CASES = (
     ),
 )
 
+WORKFLOW_EMBEDDED_PROGRAM_CASES = (
+    EvaluationCase(
+        "shell-if-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          fi\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-loop-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          for item in api worker; do\n            make test-package PACKAGE=$item\n          done\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-case-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          case $MODE in\n            fast) make test-fast ;;\n          esac\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-function-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          retry() {\n            make probe\n          }\n          retry\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "python-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: python3 -c 'import json; print(json.dumps({}))'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "absolute-python-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: /usr/bin/python3 -c 'print(1)'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "node-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: node -e 'process.stdout.write(`ok`)'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: bash -c 'if make probe; then make test; fi'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "php-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: php -r 'echo json_encode([]);'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "interpreter-heredoc-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          python3 - <<'PY'\n          print('ok')\n          PY\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "combined-bash-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: bash -lc 'make test'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "combined-python-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: python3 -Bc 'print(1)'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "attached-node-inline-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: node -pe'process.version'\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "workflow-if-expression",
+        Language.CONFIG,
+        "jobs:\n  test:\n    if: github.ref == 'refs/heads/main'\n    steps:\n      - run: make test\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "manual-wrapper-workflow",
+        Language.CONFIG,
+        "on: workflow_dispatch\njobs:\n  capture:\n    steps:\n      - run: ./scripts/capture.sh\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/capture.yml"),
+    ),
+    EvaluationCase(
+        "interpreter-script-argument",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: python3 scripts/check.py -c strict\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "interpreter-script-stdin",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: python3 scripts/check.py <<'DATA'\n          input\n          DATA\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "bash-errexit-script",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: bash -e scripts/check.sh\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "node-check-script",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: node -c scripts/check.js\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "data-heredoc-control-word",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat > report.txt <<'DATA'\n          if this is data\n          DATA\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "numeric-data-heredoc",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat <<123\n          if this is data\n          123\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "dashed-data-heredoc",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat <<'END-DATA'\n          for this is data\n          END-DATA\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "dynamic-looking-data-heredoc",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat <<'$END'\n          while this is data\n          $END\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "multiple-data-heredocs-before-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat <<ONE <<'TWO'\n          if this is data\n          ONE\n          for this is also data\n          TWO\n          while make probe; do make test; done\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "tab-stripped-data-heredoc",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat <<-'DATA'\n\tif this is data\n\tDATA\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "escaped-data-heredoc",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat <<END\\-DATA\n          case this is data\n          END-DATA\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "quoted-heredoc-operator-before-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          echo '<<DATA'\n          if make probe; then make test; fi\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "here-string-before-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          cat <<< 'if this is data'\n          while make probe; do make test; done\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "ordinary-multiline-orchestration",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          make lint\n          make test\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "simple-shell-guard",
+        Language.CONFIG,
+        'jobs:\n  test:\n    steps:\n      - run: test -n "$TOKEN" || exit 1\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "quoted-control-flow-word",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: echo 'if this were procedural'\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "control-word-executable-path",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: ./if --check\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "nested-control-word-executable-path",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: tools/for --check\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "commented-control-flow-word",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          # if this were procedural\n          make test\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "multiline-jq-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          jq '\n            .items |\n            select(.active)\n          ' report.json\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "external-action",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v7\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "reusable-workflow-job",
+        Language.CONFIG,
+        "jobs:\n  test:\n    uses: ./.github/workflows/reusable.yml\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "malformed-workflow",
+        Language.CONFIG,
+        "jobs: [unterminated\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "non-workflow-yaml",
+        Language.CONFIG,
+        "steps:\n  - run: |\n      if make probe; then make test; fi\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("config/pipeline.yml"),
+    ),
+    EvaluationCase(
+        "nested-non-workflow-yaml",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: if make probe; then make test; fi\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/archive/ci.yml"),
+    ),
+    EvaluationCase(
+        "action-command-input",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - uses: vendor/action@v1\n        with:\n          command: if make probe\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+)
+
 
 def _codes(path: Path, *, root: Path | None = None) -> list[str]:
     return [finding.code for finding in textlint.check_paths([str(path)], root=root)]
@@ -478,6 +768,90 @@ def test_declarative_deployment_boundary_reports_once_per_file(tmp_path: Path) -
     assert _codes(path, root=tmp_path).count("SARJ309") == 1
 
 
+def test_workflow_embedded_program_reports_once_per_run_scalar_at_run_line(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / ".github" / "workflows" / "ci.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "jobs:\n  test:\n    steps:\n      - name: procedural\n        run: |\n"
+        "          if make probe; then\n            for item in api worker; do\n"
+        "              make test-package PACKAGE=$item\n            done\n          fi\n",
+        encoding="utf-8",
+    )
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ310"]
+
+    assert [(finding.line, finding.code) for finding in findings] == [(5, "SARJ310")]
+
+
+def test_workflow_embedded_program_deduplicates_yaml_aliases(tmp_path: Path) -> None:
+    path = tmp_path / ".github" / "workflows" / "ci.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "jobs:\n  test:\n    steps:\n"
+        "      - &procedural\n"
+        "        run: if make probe; then make test; fi\n"
+        "      - *procedural\n",
+        encoding="utf-8",
+    )
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ310"]
+
+    assert [(finding.line, finding.code) for finding in findings] == [(5, "SARJ310")]
+
+
+def test_deployment_boundary_takes_precedence_over_embedded_program(tmp_path: Path) -> None:
+    path = tmp_path / ".github" / "workflows" / "deploy.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "jobs:\n  deploy:\n    steps:\n      - run: |\n"
+        '          if test -n "$IMAGE"; then\n'
+        '            gcloud run deploy api --image "$IMAGE" --memory 1Gi\n'
+        "          fi\n",
+        encoding="utf-8",
+    )
+
+    assert _codes(path, root=tmp_path) == ["SARJ309"]
+
+    selected = textlint.check_paths(
+        [str(path)],
+        root=tmp_path,
+        rule_ids=frozenset({"workflow-embedded-program"}),
+    )
+    assert [finding.code for finding in selected] == ["SARJ310"]
+
+
+def test_heredoc_data_does_not_create_deployment_precedence(tmp_path: Path) -> None:
+    path = tmp_path / ".github" / "workflows" / "report.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "jobs:\n  report:\n    steps:\n      - run: |\n"
+        "          if make report; then echo ready; fi\n"
+        "          cat > report.txt <<'DATA'\n"
+        "          gcloud run deploy api --memory 1Gi\n"
+        "          DATA\n",
+        encoding="utf-8",
+    )
+
+    assert _codes(path, root=tmp_path) == ["SARJ310"]
+
+
+def test_workflow_embedded_program_is_warning_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / ".github" / "workflows" / "ci.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "jobs:\n  test:\n    steps:\n      - run: |\n          while make probe; do make test; done\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert textlint.run([str(path)]) == 0
+    assert "SARJ310 warning:" in capsys.readouterr().out
+
+
 def test_declarative_deployment_boundary_reads_real_plan_allowlist_fixture(tmp_path: Path) -> None:
     fixture = Path(__file__).parent / "fixtures" / "textlint" / "envs.json"
     path = tmp_path / "iac" / "example" / "envs.json"
@@ -566,6 +940,21 @@ def test_secret_permission_labeled_evaluation_cases(case: EvaluationCase, tmp_pa
     path.write_text(case.source, encoding="utf-8")
 
     findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ308"]
+
+    assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
+
+
+@pytest.mark.parametrize(
+    "case",
+    WORKFLOW_EMBEDDED_PROGRAM_CASES,
+    ids=tuple(case.case_id for case in WORKFLOW_EMBEDDED_PROGRAM_CASES),
+)
+def test_workflow_embedded_program_labeled_cases(case: EvaluationCase, tmp_path: Path) -> None:
+    path = tmp_path / case.path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(case.source, encoding="utf-8")
+
+    findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ310"]
 
     assert bool(findings) is (case.expected is ExpectedOutcome.MATCH)
 
@@ -664,6 +1053,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "iac-source-coupled-test",
         "no-unsafe-command-argument-interpolation",
         "no-wildcard-secret-read-permission",
+        "workflow-embedded-program",
     }
 
     for rule_id, meta in textlint.REGISTRY.items():
