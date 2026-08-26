@@ -19,9 +19,10 @@ interface Props {
   rules: ThirdPartyRule[];
   allProviderRules: ThirdPartyRule[];
   totalRuleCount: number;
+  page: number;
 }
 
-const { providerLabel, providerId, rules, allProviderRules, totalRuleCount } = Astro.props;
+const { providerLabel, providerId, rules, allProviderRules, totalRuleCount, page } = Astro.props;
 const provider = { id: providerId };
 const [firstProviderRule] = allProviderRules;
 const uniformPolicy = firstProviderRule !== undefined
@@ -114,7 +115,7 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
     {rules.map((rule) => (
       <li id={thirdPartyRuleAnchor(rule)} class="third-party-rule-row" data-third-party-rule tabindex="-1">
         <div class="third-party-rule-row__identity">
-          <a class="third-party-rule-row__permalink" href={thirdPartyRuleHref(provider, rule)} aria-label={`Permanent link to ${rule.displayId}`}>
+          <a class="third-party-rule-row__permalink" href={thirdPartyRuleHref(provider, rule, page)} aria-label={`Permanent link to ${rule.displayId}`}>
             <code>{rule.displayId}</code>
           </a>
           <p><InlineCodeText text={rule.summary} /></p>

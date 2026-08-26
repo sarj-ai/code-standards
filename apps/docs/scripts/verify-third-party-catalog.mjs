@@ -117,8 +117,29 @@ function verifyDist(ruleCounts) {
     .sort();
   assert.deepEqual(actualDirectories, expectedDirectories, 'built provider routes must exactly match the catalog');
 
+  const expectedProviderOrder = providersForNavigation().map(({ id }) => id);
+  const rulesIndex = readFileSync(resolve(distRoot, 'rules/index.html'), 'utf8');
+  assert.ok(
+    !detailsAttributesForSummary(rulesIndex, 'Third party Rules').includes('open'),
+    'Third party Rules must be closed by default outside its active routes',
+  );
+  const engineIds = ['python', 'eslint', 'iac', 'sql', 'text'];
+  assert.deepEqual(
+    [...rulesIndex.matchAll(/data-sidebar-engine="([^"]+)"/gu)].map((match) => match[1]),
+    engineIds,
+    'the sidebar must expose one icon hook for every rendered rule engine',
+  );
+  const stylesheet = readFileSync(resolve(appRoot, 'src/styles/global.css'), 'utf8');
+  assert.ok(stylesheet.includes('a[data-sidebar-engine]::before'), 'sidebar engine marks need a shared decorative box');
+  for (const engineId of engineIds) {
+    assert.ok(
+      stylesheet.includes(`data-sidebar-engine='${engineId}'] {\n  --sidebar-engine-mark: url(`),
+      `${engineId} must define a sidebar engine mark`,
+    );
+  }
+
   for (const provider of catalog.providers) {
-    const rules = catalog.rules.filter((rule) => rule.provider === provider.id);
+    const rules = rulesForProvider(provider.id);
     const totalPages = Math.ceil(rules.length / pageSize);
     const searchIndexSource = readFileSync(resolve(distRoot, 'third-party-linters', provider.id, 'rules.json'), 'utf8');
     const searchIndex = JSON.parse(searchIndexSource);
@@ -152,9 +173,25 @@ function verifyDist(ruleCounts) {
       const page = readFileSync(pagePath, 'utf8');
       assert.ok(new TextEncoder().encode(page).byteLength <= 100_000, `${provider.id} page ${String(pageNumber)} must stay at or below 100 KB raw HTML`);
       assert.ok(page.includes('Third party Rules'), `${provider.id} page ${String(pageNumber)} must label the provider sidebar group`);
+      assert.ok(
+        pageNumber === 1
+          ? detailsAttributesForSummary(page, 'Third party Rules').includes('open')
+          : page.includes('CSS.escape(providerId)'),
+        `${provider.id} page ${String(pageNumber)} must support revealing its active sidebar branch`,
+      );
       const hrefs = htmlHrefs(page);
       const hrefSet = new Set(hrefs);
+      assert.deepEqual(
+        [...page.matchAll(/<a\b[^>]*\bdata-provider="([^"]+)"/gu)].map((match) => match[1]),
+        expectedProviderOrder,
+        `${provider.id} page ${String(pageNumber)} sidebar providers must be alphabetized by displayed label`,
+      );
       const pageRules = rules.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+      assert.deepEqual(
+        [...page.matchAll(/<li id="([^"]+)" class="third-party-rule-row" data-third-party-rule(?=[ >])/gu)].map((match) => match[1]),
+        pageRules.map((rule) => anchorForRule(rule)),
+        `${provider.id} page ${String(pageNumber)} must render its alphabetized rule slice in order`,
+      );
       assert.equal(
         occurrences(page, /data-third-party-rule(?=[ >])/gu),
         pageRules.length,
@@ -166,10 +203,13 @@ function verifyDist(ruleCounts) {
         expectedDocsUrlCounts.set(rule.docsUrl, (expectedDocsUrlCounts.get(rule.docsUrl) ?? 0) + 1);
         assert.ok(page.includes(escapeHtml(rule.displayId)), `${rule.key} must render its rule ID`);
         assert.ok(
+          hrefSet.has(`${providerPageHref(provider.id, pageNumber)}#${anchorForRule(rule)}`),
+          `${rule.key} must link permanently to its rendered page`,
+        );
+        assert.ok(
           summaryParts(rule.summary).every((part) => page.includes(escapeHtml(part))),
           `${rule.key} must render its summary`,
         );
-        assert.ok(hrefSet.has(`/third-party-linters/${provider.id}/#${anchorForRule(rule)}`), `${rule.key} must expose a stable provider-root permalink`);
       }
       for (const [docsUrl, expectedCount] of expectedDocsUrlCounts) {
         assert.equal(
@@ -209,6 +249,22 @@ function verifyDist(ruleCounts) {
   }
 }
 
+function detailsAttributesForSummary(source, label) {
+  let labelIndex = source.indexOf(label);
+  while (labelIndex >= 0) {
+    const summaryStart = source.lastIndexOf('<summary', labelIndex);
+    const summaryEnd = source.indexOf('</summary>', summaryStart);
+    if (summaryStart >= 0 && summaryEnd >= labelIndex) {
+      const detailsStart = source.lastIndexOf('<details', summaryStart);
+      const previousDetailsEnd = source.lastIndexOf('</details>', summaryStart);
+      assert.ok(detailsStart > previousDetailsEnd, `${label} summary must belong to a details element`);
+      return source.slice(detailsStart + '<details'.length, source.indexOf('>', detailsStart));
+    }
+    labelIndex = source.indexOf(label, labelIndex + label.length);
+  }
+  assert.fail(`could not find the ${label} disclosure`);
+}
+
 function anchorForRule(rule) {
   const encodedId = [...new TextEncoder().encode(`${rule.provider}:${rule.id}`)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
   return `rule-${encodedId}`;
@@ -220,6 +276,20 @@ function escapeHtml(value) {
 
 function plainSearchSummary(value) {
   return value.replaceAll(/`([^`]+)`/gu, '$1');
+}
+
+function providersForNavigation() {
+  return [...catalog.providers].sort((left, right) => compareVisible(left.label, right.label, left.id.localeCompare(right.id, 'en')));
+}
+
+function rulesForProvider(providerId) {
+  return catalog.rules
+    .filter((rule) => rule.provider === providerId)
+    .sort((left, right) => compareVisible(left.displayId, right.displayId, left.key.localeCompare(right.key, 'en')));
+}
+
+function compareVisible(left, right, tieBreaker) {
+  return left.localeCompare(right, 'en', { sensitivity: 'base' }) || tieBreaker;
 }
 
 function summaryParts(value) {

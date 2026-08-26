@@ -3,8 +3,45 @@
 }
 
 .sidebar-content a[data-sidebar-engine] {
-  padding-inline-start: 1.5rem;
+  gap: 0.55rem;
+  padding-inline-start: 0.5rem;
   color: var(--sl-color-gray-2);
+}
+
+.sidebar-content a[data-sidebar-engine]::before {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: 0 0 1.4rem;
+  background: center / contain no-repeat var(--sidebar-engine-mark);
+  content: '';
+}
+
+.sidebar-content a[data-sidebar-engine='python'] {
+  --sidebar-engine-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='.5' y='.5' width='27' height='27' rx='5' fill='%233776ab' stroke='%233776ab'/%3E%3Cpath fill='%23ffd343' d='M1 22h26v5H1z'/%3E%3Ctext x='14' y='17.5' fill='white' font-family='ui-monospace,monospace' font-size='10' font-weight='800' text-anchor='middle'%3EPy%3C/text%3E%3C/svg%3E");
+}
+
+.sidebar-content a[data-sidebar-engine='eslint'] {
+  --sidebar-engine-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='.5' y='.5' width='27' height='27' rx='5' fill='%233178c6' stroke='%233178c6'/%3E%3Ctext x='14' y='18' fill='white' font-family='ui-monospace,monospace' font-size='10' font-weight='800' text-anchor='middle'%3ETS%3C/text%3E%3C/svg%3E");
+}
+
+.sidebar-content a[data-sidebar-engine='iac'] {
+  --sidebar-engine-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='.5' y='.5' width='27' height='27' rx='5' fill='%23111318' stroke='%236d7788'/%3E%3Ctext x='14' y='17.5' fill='%23e7eaf0' font-family='ui-monospace,monospace' font-size='8' font-weight='800' text-anchor='middle'%3EIaC%3C/text%3E%3C/svg%3E");
+}
+
+.sidebar-content a[data-sidebar-engine='sql'] {
+  --sidebar-engine-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='.5' y='.5' width='27' height='27' rx='5' fill='%23336791' stroke='%23336791'/%3E%3Cg fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.7'%3E%3Cellipse cx='14' cy='8' rx='7' ry='3'/%3E%3Cpath d='M7 8v6c0 1.7 3.1 3 7 3s7-1.3 7-3V8M7 14v5c0 1.7 3.1 3 7 3s7-1.3 7-3v-5'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.sidebar-content a[data-sidebar-engine='text'] {
+  --sidebar-engine-mark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect x='.5' y='.5' width='27' height='27' rx='5' fill='%23111318' stroke='%236d7788'/%3E%3Cg fill='none' stroke='%23e7eaf0' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.7'%3E%3Cpath d='M8 4.5h8l4 4v15H8zM16 4.5v4h4M11 13h6M11 17h6'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+@media (forced-colors: active) {
+  .sidebar-content a[data-sidebar-engine]::before {
+    border: 1px solid CanvasText;
+    border-radius: 0.28rem;
+    background-image: none;
+  }
 }
 
 starlight-menu-button {

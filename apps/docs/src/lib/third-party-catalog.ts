@@ -2,26 +2,6 @@ import rawThirdPartyCatalog from "../generated/third-party-rules.v1.json";
 
 export const THIRD_PARTY_PROFILES = ["application", "standard"] as const;
 export const THIRD_PARTY_PAGE_SIZE = 40;
-const THIRD_PARTY_PROVIDER_ORDER = [
-  "ruff",
-  "eslint",
-  "typescript-eslint",
-  "react",
-  "react-hooks",
-  "react-doctor",
-  "unicorn",
-  "better-tailwindcss",
-  "zod",
-  "perfectionist",
-  "eslint-comments",
-  "simple-import-sort",
-] as const;
-const THIRD_PARTY_PROVIDER_NAV_LABELS: Readonly<Record<string, string>> = {
-  "better-tailwindcss": "Tailwind",
-  "eslint-comments": "Comments",
-  "simple-import-sort": "Import Sort",
-  "typescript-eslint": "TS ESLint",
-};
 export type ThirdPartyProfile = (typeof THIRD_PARTY_PROFILES)[number];
 export type ThirdPartyLevel = "error" | "warning";
 export type ThirdPartyAutofix = "always" | "available" | "none" | "sometimes";
@@ -312,27 +292,30 @@ export const thirdPartyCatalog = parseCatalog(rawThirdPartyCatalog);
 export function thirdPartyRulesForProvider(
   providerId: string,
 ): ThirdPartyRule[] {
-  return thirdPartyCatalog.rules.filter((rule) => rule.provider === providerId);
+  return thirdPartyCatalog.rules
+    .filter((rule) => rule.provider === providerId)
+    .sort(
+      (left, right) =>
+        left.displayId.localeCompare(right.displayId, "en", {
+          sensitivity: "base",
+        }) || left.key.localeCompare(right.key, "en"),
+    );
 }
 
 export function thirdPartyProvidersForNavigation(
   providers: readonly ThirdPartyProvider[] = thirdPartyCatalog.providers,
 ): ThirdPartyProvider[] {
-  const order = new Map<string, number>(
-    THIRD_PARTY_PROVIDER_ORDER.map((providerId, index) => [providerId, index]),
-  );
   return [...providers].sort(
     (left, right) =>
-      (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
-        (order.get(right.id) ?? Number.MAX_SAFE_INTEGER) ||
-      left.label.localeCompare(right.label),
+      left.label.localeCompare(right.label, "en", { sensitivity: "base" }) ||
+      left.id.localeCompare(right.id, "en"),
   );
 }
 
 export function thirdPartyProviderNavigationLabel(
   provider: ThirdPartyProvider,
 ): string {
-  return THIRD_PARTY_PROVIDER_NAV_LABELS[provider.id] ?? provider.label;
+  return provider.label;
 }
 
 export function thirdPartyProviderHref(
@@ -368,8 +351,9 @@ export function thirdPartyRuleAnchor(
 export function thirdPartyRuleHref(
   provider: Pick<ThirdPartyProvider, "id">,
   rule: Pick<ThirdPartyRule, "id" | "provider">,
+  page = 1,
 ): string {
-  return `${thirdPartyProviderHref(provider)}#${thirdPartyRuleAnchor(rule)}`;
+  return `${thirdPartyProviderPageHref(provider, page)}#${thirdPartyRuleAnchor(rule)}`;
 }
 
 export function thirdPartyRulePolicySignature(
