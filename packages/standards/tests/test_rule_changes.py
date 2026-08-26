@@ -108,6 +108,19 @@ def test_changes_reports_sorted_additions_and_resolved_shas(repository: Path) ->
     assert [item["releaseTarget"] for item in result["changes"]] == ["python", "python"]
 
 
+def test_added_level_gate_reports_only_rules_outside_required_stage(repository: Path) -> None:
+    before = _write_revision(repository, [_rule("existing")], "base")
+    after = _write_revision(
+        repository,
+        [_rule("existing"), _rule("error-first", level="error"), _rule("warning-first")],
+        "candidate",
+    )
+
+    result = rule_changes.compare(repository, before=before, after=after)
+
+    assert rule_changes.added_rules_at_other_levels(result, required="warning") == ["python:error-first"]
+
+
 def test_changes_routes_removals_without_consumer_side_descriptor_branching(repository: Path) -> None:
     before = _write_revision(repository, [_rule("removed")], "base")
     after = _write_revision(repository, [], "candidate")
@@ -242,6 +255,35 @@ def test_cli_emits_versioned_json(repository: Path, capsys: pytest.CaptureFixtur
     payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
     assert payload["schemaVersion"] == 1
     assert payload["changes"]
+
+
+def test_cli_added_level_gate_prints_warning_stage_command(
+    repository: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    before = _write_revision(repository, [], "base")
+    after = _write_revision(repository, [_rule("error-first", level="error")], "candidate")
+
+    status = main(
+        [
+            "--root",
+            str(repository),
+            "maintain",
+            "rules",
+            "changes",
+            "--before",
+            before,
+            "--after",
+            after,
+            "--require-added-level",
+            "warning",
+        ]
+    )
+
+    assert status == 1
+    stderr = capsys.readouterr().err
+    assert "new judgment rules must enter the fleet at warning level" in stderr
+    assert "maintain rules stage-warning python:error-first" in stderr
 
 
 def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFixture[str]) -> None:

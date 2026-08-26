@@ -194,8 +194,15 @@ def _retired(
     source_renames: Mapping[tuple[str, str], str],
 ) -> list[dict[str, object]]:
     entries = [repository_table(item) for item in _object_list(previous.get("retired"))]
-    derived_kinds = {"eslint", *(kind for kind, _old_id in source_renames)}
-    kept = [entry for entry in entries if not (entry.get("kind") in derived_kinds and entry.get("status") == "renamed")]
+    derived_renames = set(source_renames)
+    kept = [
+        entry
+        for entry in entries
+        if not (
+            entry.get("status") == "renamed"
+            and (entry.get("kind") == "eslint" or (str(entry.get("kind")), str(entry.get("id"))) in derived_renames)
+        )
+    ]
     existing = {str(entry.get("id")): entry for entry in entries}
     for (kind, old), new in sorted(source_renames.items()):
         prior = existing.get(old)

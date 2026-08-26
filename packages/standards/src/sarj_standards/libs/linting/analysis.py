@@ -376,7 +376,7 @@ def _run_text(files: Sequence[str], root: Path, *, rule_ids: frozenset[str] | No
         raise ValueError(msg)
     raw = tuple(
         finding
-        for finding in textlint.check_paths(files, root=root)
+        for finding in textlint.check_paths(files, root=root, rule_ids=rule_ids)
         if any(meta.code == finding.code and rule_id in selected for rule_id, meta in textlint.REGISTRY.items())
     )
     by_code = {meta.code: (rule_id, meta.description, meta.blocking) for rule_id, meta in textlint.REGISTRY.items()}

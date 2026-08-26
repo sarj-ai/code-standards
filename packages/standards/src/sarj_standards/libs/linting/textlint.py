@@ -681,6 +681,55 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Read-only diagnostics such as terraform show, gcloud describe/list, and kubectl get are allowed.",
             ),
         ),
+        "workflow-embedded-program": RuleMeta(
+            code="SARJ310",
+            summary="GitHub workflow run: embeds procedural logic",
+            rationale=(
+                "Procedural programs embedded in run scalars are difficult to exercise locally and move business or "
+                "validation behavior into GitHub-specific YAML instead of a tested repository-owned entrypoint. "
+                "Repeating this pattern across component-specific workflows makes the Actions surface noisy. Workflows "
+                "should select events, permissions, and stable commands—not implement programs."
+            ),
+            remediation=(
+                "Move the control flow or inline interpreter source into a tested repository-owned script, Make target, "
+                "or package command. Invoke that entrypoint from an existing shared workflow when it already owns the "
+                "component; add a distinct workflow only for a genuinely distinct trigger or delivery boundary."
+            ),
+            category=RuleCategory.ARCHITECTURE,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=(".github/workflows/*.{yaml,yml}",),
+            examples=(
+                _public_example(
+                    example_id="workflow-inline-program",
+                    title="Keep procedural validation out of workflow YAML",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".github/workflows/ci.yml",
+                    source=(
+                        "jobs:\n  test:\n    steps:\n      - run: |\n"
+                        "          for package in api worker; do\n"
+                        '            make test-package PACKAGE="$package"\n'
+                        "          done\n"
+                    ),
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="workflow-repository-entrypoint",
+                    title="Call a tested repository-owned entrypoint",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".github/workflows/ci.yml",
+                    source="jobs:\n  test:\n    steps:\n      - run: make test\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Only direct files in .github/workflows are checked; shell control-flow openers, shell function declarations, inline interpreter flags, and interpreter heredocs in run scalars are reported.",
+                "Quoted source, including multiline jq filters, is treated as an argument rather than reinterpreted as shell syntax.",
+                "Long linear command lists and wrapper-indirected behavior are intentionally unreported because complexity or ownership cannot be inferred reliably from those forms alone.",
+                "Workflow topology, ownership, and redundancy require repository review and are not inferred by this semantic rule.",
+                "A run scalar containing a recognized SARJ309 infrastructure mutation is left to the more specific deployment-boundary diagnostic.",
+            ),
+            blocking=False,
+        ),
         "hidden-markdown-heading": RuleMeta(
             code="SARJ305",
             summary="HTML comment hides a Markdown heading",
@@ -841,9 +890,16 @@ def is_text_path(path: Path) -> bool:
     )
 
 
-def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Finding]:
+def check_paths(
+    paths: Sequence[str],
+    *,
+    root: Path | None = None,
+    rule_ids: frozenset[str] | None = None,
+) -> list[Finding]:
     base = (root or Path.cwd()).resolve()
     durable_patterns, excluded_patterns = _text_policy(base)
+    enabled_codes = None if rule_ids is None else frozenset(REGISTRY[rule_id].code for rule_id in rule_ids)
+    deployment_boundary_enabled = rule_ids is None or "declarative-deployment-boundary" in rule_ids
     findings: list[Finding] = []
     for raw in paths:
         path = Path(raw)
@@ -854,18 +910,34 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
         relative = _relative(path.resolve(), base)
         if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
             continue
-        path_findings = [
-            *_artifact_findings(path, relative, source, durable_patterns),
-            *_declarative_deployment_findings(path, relative, source),
-            *_shell_iac_source_findings(path, relative, source),
-            *_markdown_hidden_comment_findings(path, source),
-            *_markdown_command_argument_findings(path, relative, source),
-            *_claude_settings_secret_permission_findings(path, relative, source),
-            *_comment_findings(path, source),
-        ]
+        path_findings: list[Finding] = []
+        if enabled_codes is None or "SARJ301" in enabled_codes:
+            path_findings.extend(_artifact_findings(path, relative, source, durable_patterns))
+        if enabled_codes is None or "SARJ309" in enabled_codes:
+            path_findings.extend(_declarative_deployment_findings(path, relative, source))
+        if enabled_codes is None or "SARJ310" in enabled_codes:
+            path_findings.extend(
+                _workflow_embedded_program_findings(
+                    path,
+                    relative,
+                    source,
+                    suppress_deployment_mutations=deployment_boundary_enabled,
+                )
+            )
+        if enabled_codes is None or "SARJ303" in enabled_codes:
+            path_findings.extend(_shell_iac_source_findings(path, relative, source))
+        if enabled_codes is None or "SARJ305" in enabled_codes:
+            path_findings.extend(_markdown_hidden_comment_findings(path, source))
+        if enabled_codes is None or "SARJ302" in enabled_codes:
+            path_findings.extend(_markdown_command_argument_findings(path, relative, source))
+        if enabled_codes is None or "SARJ308" in enabled_codes:
+            path_findings.extend(_claude_settings_secret_permission_findings(path, relative, source))
+        if enabled_codes is None or enabled_codes.intersection({"SARJ304", "SARJ306", "SARJ307"}):
+            path_findings.extend(_comment_findings(path, source))
         findings.extend(
             finding
             for finding in path_findings
+            if enabled_codes is None or finding.code in enabled_codes
             if not (path.suffix.lower() in {".md", ".mdx"} and _markdown_suppresses_finding(source, finding))
         )
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
@@ -914,7 +986,170 @@ def _declarative_deployment_findings(path: Path, relative: str, source: str) -> 
 
 def _workflow_path(path: Path, relative: str) -> bool:
     pure = PurePosixPath(relative)
-    return pure.parts[:2] == (".github", "workflows") and path.suffix.casefold() in {".yaml", ".yml"}
+    return (
+        len(pure.parts) == _WORKFLOW_PATH_PARTS
+        and pure.parts[:2] == (".github", "workflows")
+        and path.suffix.casefold() in {".yaml", ".yml"}
+    )
+
+
+_WORKFLOW_PATH_PARTS: Final = 3
+_WORKFLOW_CONTROL_FLOW_OPENERS: Final = frozenset({"case", "for", "if", "select", "until", "while"})
+_INLINE_INTERPRETERS: Final = frozenset(
+    {"bash", "dash", "node", "perl", "php", "python", "python2", "python3", "ruby", "sh", "zsh"}
+)
+_INLINE_INTERPRETER_FLAGS: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "bash": frozenset({"-c"}),
+        "dash": frozenset({"-c"}),
+        "node": frozenset({"--eval", "--print", "-e", "-p"}),
+        "perl": frozenset({"-E", "-e"}),
+        "php": frozenset({"-r"}),
+        "python": frozenset({"-c"}),
+        "python2": frozenset({"-c"}),
+        "python3": frozenset({"-c"}),
+        "ruby": frozenset({"-e"}),
+        "sh": frozenset({"-c"}),
+        "zsh": frozenset({"-c"}),
+    }
+)
+_MIN_SHELL_FUNCTION_TOKENS: Final = 3
+_HEREDOC_OPERATOR: Final = re.compile(r"<<-?")
+_HEREDOC_DELIMITER: Final = re.compile(r"<<(?P<tabs>-)?\s*(?P<quote>['\"]?)(?P<name>[A-Za-z_][A-Za-z0-9_]*)\2")
+
+
+def _workflow_embedded_program_findings(
+    path: Path,
+    relative: str,
+    source: str,
+    *,
+    suppress_deployment_mutations: bool,
+) -> list[Finding]:
+    if not _workflow_path(path, relative):
+        return []
+    findings: list[Finding] = []
+    for step in _workflow_steps(source):
+        logical_lines = _offset_shell_lines(_shell_without_heredoc_bodies(step.command), step.line)
+        if suppress_deployment_mutations and any(
+            _shell_line_mutates_control_plane(item.command) for item in logical_lines
+        ):
+            continue
+        if _workflow_run_embeds_program(step.command):
+            findings.append(
+                Finding(
+                    path,
+                    step.line,
+                    "SARJ310",
+                    "Workflow run: embeds procedural logic — move it into a locally tested repository entrypoint and keep GitHub Actions to orchestration.",
+                )
+            )
+    return findings
+
+
+def _workflow_run_embeds_program(source: str) -> bool:
+    shell_source = _shell_without_quoted_content(_shell_without_heredoc_bodies(source))
+    for logical_line in _shell_logical_lines(shell_source):
+        tokens = _shell_tokens(logical_line.command)
+        if not tokens:
+            continue
+        segments = _shell_segments(tokens)
+        for segment in segments:
+            if segment.tokens and _shell_command(segment.tokens[0]) in _WORKFLOW_CONTROL_FLOW_OPENERS:
+                return True
+            argv = _command_argv(segment.tokens)
+            if not argv:
+                continue
+            executable = _shell_command(argv[0])
+            if _shell_function_declaration(segment.tokens):
+                return True
+            if executable in _INLINE_INTERPRETERS and _interpreter_embeds_source(executable, argv):
+                return True
+    return False
+
+
+def _shell_without_quoted_content(source: str) -> str:
+    masked: list[str] = []
+    quote: str | None = None
+    escaped = False
+    comment = False
+    for index, character in enumerate(source):
+        if character == "\n":
+            masked.append(character)
+            comment = False
+            escaped = False
+            continue
+        if comment:
+            masked.append(" ")
+            continue
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif quote == '"' and character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+            masked.append(" ")
+            continue
+        if character in {"'", '"'}:
+            quote = character
+            masked.append(" ")
+            continue
+        if character == "#" and (index == 0 or source[index - 1].isspace() or source[index - 1] in ";|&("):
+            comment = True
+            masked.append(" ")
+            continue
+        masked.append(character)
+    return "".join(masked)
+
+
+def _interpreter_embeds_source(executable: str, argv: Sequence[str]) -> bool:
+    flags = _INLINE_INTERPRETER_FLAGS[executable]
+    for argument in argv[1:]:
+        if argument in flags or any(argument.startswith(f"{flag}=") for flag in flags if flag.startswith("--")):
+            return True
+        if argument in {"<<", "<<-"}:
+            return True
+        if argument == "--":
+            continue
+        if argument == "-" or argument.startswith("-"):
+            continue
+        return False
+    return False
+
+
+def _shell_without_heredoc_bodies(source: str) -> str:
+    rendered: list[str] = []
+    delimiter: str | None = None
+    strip_tabs = False
+    for line in source.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        ending = line[len(content) :]
+        if delimiter is not None:
+            candidate = content.lstrip("\t") if strip_tabs else content
+            rendered.append(" " * len(content) + ending)
+            if candidate == delimiter:
+                delimiter = None
+                strip_tabs = False
+            continue
+        rendered.append(line)
+        unquoted = _shell_without_quoted_content(content)
+        for operator in _HEREDOC_OPERATOR.finditer(unquoted):
+            if (match := _HEREDOC_DELIMITER.match(content, operator.start())) is not None:
+                delimiter = match.group("name")
+                strip_tabs = match.group("tabs") is not None
+                break
+    return "".join(rendered)
+
+
+def _shell_function_declaration(tokens: Sequence[str]) -> bool:
+    if len(tokens) >= _MIN_SHELL_FUNCTION_TOKENS and tokens[1:3] == ["()", "{"]:
+        return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", tokens[0]) is not None
+    return (
+        len(tokens) >= _MIN_SHELL_FUNCTION_TOKENS
+        and tokens[0] == "function"
+        and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", tokens[1]) is not None
+        and (tokens[2] == "{" or tokens[2:4] == ["()", "{"])
+    )
 
 
 def _deployment_shell_lines(source: str, *, workflow: bool) -> list[_ShellLogicalLine]:
@@ -994,7 +1229,7 @@ def _workflow_steps(source: str) -> list[_ShellLogicalLine]:
         run = _mapping_value(step, "run")
         if not isinstance(run, ScalarNode):
             continue
-        commands.append(_ShellLogicalLine(run.start_mark.line + 1, _scalar_value(run)))
+        commands.append(_ShellLogicalLine(run.start_mark.line + 1, _shell_without_heredoc_bodies(_scalar_value(run))))
     return commands
 
 

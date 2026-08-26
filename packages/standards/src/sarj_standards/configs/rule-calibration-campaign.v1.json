@@ -809,6 +809,14 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/text/workflow-embedded-program",
+      "family": "text",
+      "ruleId": "workflow-embedded-program",
+      "state": "complete",
+      "evidence": "Three-repository workflow calibration reviewed all 98 diagnostics: 91 clear embedded programs, zero known false positives, and seven intentionally warning-only boundary findings consisting of tiny inline interpreter probes or small shell control-flow guards. Seven warm selected-rule runs had a 0.28 second median on the public Standards corpus and 0.38 second median on the largest private corpus.",
+      "outcome": "Staged SARJ310 at warning with direct-workflow path scoping, YAML scalar parsing, quote/comment and heredoc state, interpreter-specific inline-source flags, one diagnostic per run scalar, and SARJ309 precedence that respects rule selection. Multiline jq, data heredocs, external interpreter scripts, nested workflow-like YAML, reusable Actions, direct repository commands, and ordinary multiline orchestration remain clean. Workflow topology and ownership remain explicit review boundaries rather than path heuristics."
+    },
+    {
       "task": "rule-audit/eslint/duplicate-test-body",
       "family": "typescript",
       "ruleId": "duplicate-test-body",

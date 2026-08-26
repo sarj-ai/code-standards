@@ -237,7 +237,8 @@
       "hidden-markdown-heading",
       "iac-source-coupled-test",
       "no-unsafe-command-argument-interpolation",
-      "no-wildcard-secret-read-permission"
+      "no-wildcard-secret-read-permission",
+      "workflow-embedded-program"
     ]
   },
   "codes": {
@@ -373,7 +374,8 @@
       "SARJ306",
       "SARJ307",
       "SARJ308",
-      "SARJ309"
+      "SARJ309",
+      "SARJ310"
     ]
   },
   "retired": [
