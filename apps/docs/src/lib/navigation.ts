@@ -20,7 +20,7 @@ export const referenceSidebar = Object.freeze([
   })),
   {
     label: "Third party Rules",
-    collapsed: false,
+    collapsed: true,
     items: thirdPartyProvidersForNavigation().map((provider) => ({
       label: provider.label,
       link: thirdPartyProviderHref(provider),

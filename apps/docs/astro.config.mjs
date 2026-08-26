@@ -64,6 +64,7 @@ export default defineConfig({
       credits: false,
       components: {
         PageTitle: '@sarj/docs-ui/PageAnchor.astro',
+        Sidebar: './src/components/Sidebar.astro',
       },
     }),
     cloudflareArtifacts(),

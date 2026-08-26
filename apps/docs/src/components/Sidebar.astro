@@ -1,0 +1,21 @@
+---
+import DefaultSidebar from "@astrojs/starlight/components/Sidebar.astro";
+---
+
+<DefaultSidebar />
+
+<script is:inline>
+  (() => {
+    const providerId = location.pathname.match(/^\/third-party-linters\/([^/]+)\//)?.[1];
+    const activeProvider = providerId
+      ? document.querySelector(
+          `sl-sidebar-state-persist a[data-provider="${CSS.escape(providerId)}"]`,
+        )
+      : null;
+    const providerGroup = activeProvider?.closest("details");
+    if (activeProvider && providerGroup) {
+      activeProvider.setAttribute("aria-current", "page");
+      providerGroup.open = true;
+    }
+  })();
+</script>

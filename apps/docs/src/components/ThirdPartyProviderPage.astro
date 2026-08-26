@@ -34,6 +34,7 @@ const pageSuffix = page === 1 ? '' : ` · Page ${String(page)}`;
       {rules}
       {allProviderRules}
       totalRuleCount={allProviderRules.length}
+      {page}
     />
     <ThirdPartyPagination {provider} {page} {totalPages} />
   </article>
