@@ -50,6 +50,11 @@ class _WorkflowAction(NamedTuple):
     command: str
 
 
+class _HeredocSpec(NamedTuple):
+    delimiter: str
+    strip_tabs: bool
+
+
 class _TextPolicy(NamedTuple):
     durable: tuple[str, ...]
     excluded: tuple[str, ...]
@@ -1013,9 +1018,23 @@ _INLINE_INTERPRETER_FLAGS: Final[Mapping[str, frozenset[str]]] = MappingProxyTyp
         "zsh": frozenset({"-c"}),
     }
 )
+_INLINE_INTERPRETER_SHORT_SOURCE_OPTIONS: Final[Mapping[str, frozenset[str]]] = MappingProxyType(
+    {
+        "bash": frozenset({"c"}),
+        "dash": frozenset({"c"}),
+        "node": frozenset({"e", "p"}),
+        "perl": frozenset({"E", "e"}),
+        "php": frozenset({"r"}),
+        "python": frozenset({"c"}),
+        "python2": frozenset({"c"}),
+        "python3": frozenset({"c"}),
+        "ruby": frozenset({"e"}),
+        "sh": frozenset({"c"}),
+        "zsh": frozenset({"c"}),
+    }
+)
 _MIN_SHELL_FUNCTION_TOKENS: Final = 3
-_HEREDOC_OPERATOR: Final = re.compile(r"<<-?")
-_HEREDOC_DELIMITER: Final = re.compile(r"<<(?P<tabs>-)?\s*(?P<quote>['\"]?)(?P<name>[A-Za-z_][A-Za-z0-9_]*)\2")
+_HEREDOC_WORD_BREAKS: Final = frozenset(";|&()<>")
 
 
 def _workflow_embedded_program_findings(
@@ -1054,7 +1073,7 @@ def _workflow_run_embeds_program(source: str) -> bool:
             continue
         segments = _shell_segments(tokens)
         for segment in segments:
-            if segment.tokens and _shell_command(segment.tokens[0]) in _WORKFLOW_CONTROL_FLOW_OPENERS:
+            if segment.tokens and segment.tokens[0] in _WORKFLOW_CONTROL_FLOW_OPENERS:
                 return True
             argv = _command_argv(segment.tokens)
             if not argv:
@@ -1104,6 +1123,7 @@ def _shell_without_quoted_content(source: str) -> str:
 
 def _interpreter_embeds_source(executable: str, argv: Sequence[str]) -> bool:
     flags = _INLINE_INTERPRETER_FLAGS[executable]
+    short_source_options = _INLINE_INTERPRETER_SHORT_SOURCE_OPTIONS[executable]
     for argument in argv[1:]:
         if argument in flags or any(argument.startswith(f"{flag}=") for flag in flags if flag.startswith("--")):
             return True
@@ -1111,7 +1131,11 @@ def _interpreter_embeds_source(executable: str, argv: Sequence[str]) -> bool:
             return True
         if argument == "--":
             continue
-        if argument == "-" or argument.startswith("-"):
+        if argument.startswith("-") and not argument.startswith("--") and argument != "-":
+            if short_source_options.intersection(argument[1:]):
+                return True
+            continue
+        if argument == "-" or argument.startswith("--"):
             continue
         return False
     return False
@@ -1119,26 +1143,92 @@ def _interpreter_embeds_source(executable: str, argv: Sequence[str]) -> bool:
 
 def _shell_without_heredoc_bodies(source: str) -> str:
     rendered: list[str] = []
-    delimiter: str | None = None
-    strip_tabs = False
+    pending: list[_HeredocSpec] = []
     for line in source.splitlines(keepends=True):
         content = line.rstrip("\r\n")
         ending = line[len(content) :]
-        if delimiter is not None:
-            candidate = content.lstrip("\t") if strip_tabs else content
+        if pending:
+            current = pending[0]
+            candidate = content.lstrip("\t") if current.strip_tabs else content
             rendered.append(" " * len(content) + ending)
-            if candidate == delimiter:
-                delimiter = None
-                strip_tabs = False
+            if candidate == current.delimiter:
+                pending.pop(0)
             continue
         rendered.append(line)
-        unquoted = _shell_without_quoted_content(content)
-        for operator in _HEREDOC_OPERATOR.finditer(unquoted):
-            if (match := _HEREDOC_DELIMITER.match(content, operator.start())) is not None:
-                delimiter = match.group("name")
-                strip_tabs = match.group("tabs") is not None
-                break
+        pending.extend(_shell_heredoc_specs(content))
     return "".join(rendered)
+
+
+def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
+    specs: list[_HeredocSpec] = []
+    index = 0
+    quote: str | None = None
+    while index < len(line):
+        character = line[index]
+        if quote is not None:
+            if character == quote:
+                quote = None
+            elif character == "\\" and quote == '"' and index + 1 < len(line):
+                index += 1
+            index += 1
+            continue
+        if character in {"'", '"'}:
+            quote = character
+            index += 1
+            continue
+        if character == "\\" and index + 1 < len(line):
+            index += 2
+            continue
+        if character == "#" and (index == 0 or line[index - 1].isspace() or line[index - 1] in ";|&("):
+            break
+        if not line.startswith("<<", index) or line.startswith("<<<", index) or (index > 0 and line[index - 1] == "<"):
+            index += 1
+            continue
+
+        cursor = index + 2
+        strip_tabs = cursor < len(line) and line[cursor] == "-"
+        if strip_tabs:
+            cursor += 1
+        while cursor < len(line) and line[cursor] in {" ", "\t"}:
+            cursor += 1
+
+        delimiter: list[str] = []
+        word_started = False
+        word_quote: str | None = None
+        while cursor < len(line):
+            character = line[cursor]
+            if word_quote is not None:
+                word_started = True
+                if character == word_quote:
+                    word_quote = None
+                elif character == "\\" and word_quote == '"' and cursor + 1 < len(line):
+                    cursor += 1
+                    delimiter.append(line[cursor])
+                else:
+                    delimiter.append(character)
+                cursor += 1
+                continue
+            if character in {"'", '"'}:
+                word_started = True
+                word_quote = character
+                cursor += 1
+                continue
+            if character == "\\" and cursor + 1 < len(line):
+                word_started = True
+                cursor += 1
+                delimiter.append(line[cursor])
+                cursor += 1
+                continue
+            if character.isspace() or character in _HEREDOC_WORD_BREAKS:
+                break
+            word_started = True
+            delimiter.append(character)
+            cursor += 1
+
+        if word_started and word_quote is None:
+            specs.append(_HeredocSpec("".join(delimiter), strip_tabs))
+        index = max(cursor, index + 2)
+    return specs
 
 
 def _shell_function_declaration(tokens: Sequence[str]) -> bool:
@@ -1159,7 +1249,7 @@ def _deployment_shell_lines(source: str, *, workflow: bool) -> list[_ShellLogica
 def _workflow_run_lines(source: str) -> list[_ShellLogicalLine]:
     commands: list[_ShellLogicalLine] = []
     for step in _workflow_steps(source):
-        commands.extend(_offset_shell_lines(step.command, step.line))
+        commands.extend(_offset_shell_lines(_shell_without_heredoc_bodies(step.command), step.line))
     return commands
 
 
@@ -1220,7 +1310,15 @@ def _workflow_step_nodes(source: str) -> list[MappingNode]:
             continue
         children = sequence.value  # pyright: ignore[reportAny]
         steps.extend(step for step in children if isinstance(step, MappingNode))
-    return steps
+    unique: list[MappingNode] = []
+    seen: set[int] = set()
+    for step in steps:
+        identity = id(step)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(step)
+    return unique
 
 
 def _workflow_steps(source: str) -> list[_ShellLogicalLine]:
@@ -1229,7 +1327,7 @@ def _workflow_steps(source: str) -> list[_ShellLogicalLine]:
         run = _mapping_value(step, "run")
         if not isinstance(run, ScalarNode):
             continue
-        commands.append(_ShellLogicalLine(run.start_mark.line + 1, _shell_without_heredoc_bodies(_scalar_value(run))))
+        commands.append(_ShellLogicalLine(run.start_mark.line + 1, _scalar_value(run)))
     return commands
 
 

@@ -2442,9 +2442,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
                 print(f"error: cannot compare rule revisions: {exc}", file=sys.stderr)
                 return 2
             raw_required_level: object = args.required_added_level  # pyright: ignore[reportAny] -- argparse Namespace is untyped.
-            required_added_level: rule_changes.RuleLevel | None = (
-                "error" if raw_required_level == "error" else "warning" if raw_required_level == "warning" else None
-            )
+            required_added_level: rule_changes.RuleLevel | None = "warning" if raw_required_level == "warning" else None
             if required_added_level is not None:
                 invalid = rule_changes.added_rules_at_other_levels(
                     comparison,
@@ -2697,7 +2695,7 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
     rule_changes.add_argument(
         "--require-added-level",
         dest="required_added_level",
-        choices=("error", "warning"),
+        choices=("warning",),
         help="fail when an added rule does not start at this level",
     )
     rule_evaluate = rule_commands.add_parser(

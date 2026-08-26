@@ -286,6 +286,33 @@ def test_cli_added_level_gate_prints_warning_stage_command(
     assert "maintain rules stage-warning python:error-first" in stderr
 
 
+def test_cli_added_level_gate_rejects_unsupported_error_stage(
+    repository: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    before = _write_revision(repository, [], "base")
+    after = _write_revision(repository, [_rule("warning-first")], "candidate")
+
+    with pytest.raises(SystemExit, match="2"):
+        main(
+            [
+                "--root",
+                str(repository),
+                "maintain",
+                "rules",
+                "changes",
+                "--before",
+                before,
+                "--after",
+                after,
+                "--require-added-level",
+                "error",
+            ]
+        )
+
+    assert "invalid choice: 'error'" in capsys.readouterr().err
+
+
 def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFixture[str]) -> None:
     current = _write_revision(repository, [], "base")
 
