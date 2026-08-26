@@ -41,7 +41,18 @@ const sortedProviders = thirdPartyProvidersForNavigation(providers);
     const scroller = navigation.querySelector('ul');
     if (active instanceof HTMLElement && scroller instanceof HTMLElement) {
       requestAnimationFrame(() => {
-        scroller.scrollLeft = active.offsetLeft - (scroller.clientWidth - active.clientWidth) / 2;
+        const activeRect = active.getBoundingClientRect();
+        const scrollerRect = scroller.getBoundingClientRect();
+        if (activeRect.left >= scrollerRect.left && activeRect.right <= scrollerRect.right) return;
+        const centeredLeft = scroller.scrollLeft
+          + activeRect.left
+          + activeRect.width / 2
+          - scrollerRect.left
+          - scrollerRect.width / 2;
+        scroller.scrollLeft = Math.max(
+          0,
+          Math.min(centeredLeft, scroller.scrollWidth - scroller.clientWidth),
+        );
       });
     }
   }
