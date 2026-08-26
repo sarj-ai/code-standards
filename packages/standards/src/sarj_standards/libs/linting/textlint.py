@@ -181,6 +181,16 @@ _GCLOUD_MUTATIONS: Final = frozenset(
         ("workflows", "deploy"),
     }
 )
+_GCLOUD_RUN_RELEASE_COMMANDS: Final = (
+    ("run", "deploy"),
+    ("run", "jobs", "update"),
+    ("run", "services", "update"),
+)
+_GCLOUD_RUN_ARTIFACT_OPTIONS: Final = frozenset({"--image", "--source"})
+_GCLOUD_RUN_RELEASE_VALUE_OPTIONS: Final = _GCLOUD_GLOBAL_VALUE_OPTIONS | frozenset(
+    {"--image", "--platform", "--region", "--source", "--tag"}
+)
+_GCLOUD_RUN_RELEASE_BOOLEAN_OPTIONS: Final = frozenset({"--async", "--no-traffic", "--quiet", "--wait"})
 _KUBECTL_GLOBAL_VALUE_OPTIONS: Final = frozenset(
     {
         "--as",
@@ -222,7 +232,7 @@ _KUBECTL_MUTATION_PREFIXES: Final = frozenset(
 )
 _TERRAFORM_STATE_MUTATIONS: Final = frozenset({"mv", "push", "replace-provider", "rm"})
 _TERRAFORM_DIRECT_MUTATIONS: Final = frozenset({"import", "taint", "untaint"})
-_WRANGLER_MUTATIONS: Final = frozenset({("d1", "create"), ("deploy",), ("versions", "deploy")})
+_WRANGLER_MUTATIONS: Final = frozenset({("d1", "create")})
 _PACKAGE_EXEC_VALUE_OPTIONS: Final = frozenset(
     {"--cache", "--prefix", "--userconfig", "--workspace", "--workspace-root", "-C", "-w"}
 )
@@ -440,6 +450,7 @@ def _public_example(
     path: str,
     source: str,
     expected_count: int,
+    scenario: str = "primary",
 ) -> RuleExample:
     focus_path = PurePosixPath(path)
     return RuleExample(
@@ -450,6 +461,7 @@ def _public_example(
         focus_path=focus_path,
         expected_count=expected_count,
         public=True,
+        scenario=scenario,
     )
 
 
@@ -591,10 +603,11 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "declarative-deployment-boundary": RuleMeta(
             code="SARJ309",
-            summary="recognized operational commands mutate infrastructure outside Terraform",
+            summary="recognized control-plane commands mutate infrastructure outside Terraform",
             rationale=(
                 "Imperative control-plane commands and plan-address allowlists split deployment ownership between "
-                "Terraform and repository-specific orchestration, so drift and safety depend on execution order."
+                "Terraform and repository-specific orchestration, so drift and safety depend on execution order. "
+                "Publishing an application artifact is a release operation and remains outside this rule."
             ),
             remediation=(
                 "Model the resource, identity, and lifecycle in Terraform; let CI select inputs and apply the saved "
@@ -609,11 +622,29 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             examples=(
                 _public_example(
                     example_id="workflow-control-plane-mutation",
-                    title="Keep cloud mutation in Terraform",
+                    title="Keep Cloud Run infrastructure in Terraform",
                     outcome=ExpectedOutcome.MATCH,
                     path=".github/workflows/deploy.yml",
-                    source="jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE\n",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --memory 1Gi\n",
                     expected_count=1,
+                ),
+                _public_example(
+                    example_id="cloud-run-infrastructure-update",
+                    title="A Cloud Run configuration update owns infrastructure",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".github/workflows/deploy.yml",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --memory 1Gi\n",
+                    expected_count=1,
+                    scenario="cloud-run-release",
+                ),
+                _public_example(
+                    example_id="cloud-run-application-publish",
+                    title="CI publishes a Cloud Run application artifact",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".github/workflows/deploy.yml",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --region us\n",
+                    expected_count=0,
+                    scenario="cloud-run-release",
                 ),
                 _public_example(
                     example_id="saved-plan-apply",
@@ -623,10 +654,30 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     source="jobs:\n  deploy:\n    steps:\n      - run: terraform apply saved.tfplan\n",
                     expected_count=0,
                 ),
+                _public_example(
+                    example_id="worker-resource-create",
+                    title="Keep Worker resource creation in Terraform",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".github/workflows/deploy.yml",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: pnpm exec wrangler d1 create app\n",
+                    expected_count=1,
+                    scenario="worker-publish",
+                ),
+                _public_example(
+                    example_id="worker-application-publish",
+                    title="CI publishes a Worker application artifact",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".github/workflows/deploy.yml",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: pnpm exec wrangler deploy --tag $GITHUB_SHA\n",
+                    expected_count=0,
+                    scenario="worker-publish",
+                ),
             ),
             limitations=(
                 "The bounded scanner reports explicitly recognized commands and deployment Actions; dynamic command construction and unlisted provider surfaces are intentionally unreported.",
                 "Wrapper-indirected commands are intentionally unreported; full-tree CI scans wrapper files directly only when they live in an operational root.",
+                "Wrangler deploy and versions deploy publish application artifacts and are intentionally not treated as infrastructure mutation; Wrangler resource-creation commands remain reportable.",
+                "Cloud Run image/source-only deploys and updates publish application artifacts; configuration, identity, scaling, networking, secret, and other infrastructure flags remain reportable.",
                 "Read-only diagnostics such as terraform show, gcloud describe/list, and kubectl get are allowed.",
             ),
         ),
@@ -949,10 +1000,7 @@ def _workflow_steps(source: str) -> list[_ShellLogicalLine]:
 
 def _workflow_action_mutates(action: _WorkflowAction) -> bool:
     identifier = action.uses.partition("@")[0].casefold()
-    if identifier in {
-        "google-github-actions/deploy-cloud-functions",
-        "google-github-actions/deploy-cloudrun",
-    }:
+    if identifier == "google-github-actions/deploy-cloud-functions":
         return True
     return identifier == "cloudflare/wrangler-action" and _shell_line_mutates_control_plane(
         f"wrangler {action.command}"
@@ -1173,10 +1221,61 @@ def _drop_cli_options(arguments: Sequence[str], value_options: frozenset[str]) -
 
 
 def _gcloud_mutates(arguments: Sequence[str]) -> bool:
-    command = _drop_cli_options(arguments, _GCLOUD_GLOBAL_VALUE_OPTIONS)
+    command = _drop_leading_cli_options(_collapse_github_expressions(arguments), _GCLOUD_GLOBAL_VALUE_OPTIONS)
     if command and command[0] in _GCLOUD_RELEASE_TRACKS:
         command = command[1:]
+    if any(tuple(command[: len(prefix)]) == prefix for prefix in _GCLOUD_RUN_RELEASE_COMMANDS):
+        return not _gcloud_run_is_application_publish(command)
     return _matches_prefix(command, _GCLOUD_MUTATIONS)
+
+
+def _gcloud_run_is_application_publish(command: Sequence[str]) -> bool:
+    prefix = next(
+        (candidate for candidate in _GCLOUD_RUN_RELEASE_COMMANDS if tuple(command[: len(candidate)]) == candidate),
+        None,
+    )
+    if prefix is None:
+        return False
+    arguments = command[len(prefix) :]
+    artifact_selected = False
+    resource_seen = False
+    consume_value = False
+    for argument in arguments:
+        if consume_value:
+            consume_value = False
+            continue
+        option, separator, _value = argument.partition("=")
+        if option in _GCLOUD_RUN_ARTIFACT_OPTIONS:
+            artifact_selected = True
+        if option in _GCLOUD_RUN_RELEASE_VALUE_OPTIONS:
+            consume_value = not separator
+            continue
+        if option in _GCLOUD_RUN_RELEASE_BOOLEAN_OPTIONS:
+            continue
+        if argument.startswith("-"):
+            return False
+        if resource_seen:
+            return False
+        resource_seen = True
+    return artifact_selected and resource_seen and not consume_value
+
+
+def _collapse_github_expressions(arguments: Sequence[str]) -> list[str]:
+    collapsed: list[str] = []
+    expression: list[str] = []
+    for argument in arguments:
+        if expression:
+            expression.append(argument)
+            if "}}" in argument:
+                collapsed.append("".join(expression))
+                expression = []
+            continue
+        if "${{" in argument and "}}" not in argument:
+            expression = [argument]
+            continue
+        collapsed.append(argument)
+    collapsed.extend(expression)
+    return collapsed
 
 
 def _kubectl_mutates(arguments: Sequence[str]) -> bool:

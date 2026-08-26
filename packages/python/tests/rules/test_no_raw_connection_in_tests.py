@@ -39,6 +39,34 @@ def test_ignores_unproven_connections_and_production_code() -> None:
     assert _check("def run(pool: ConnectionPool):\n    pool.connection()\n", "app/store.py") == []
 
 
+@pytest.mark.parametrize("path", ["tests/conftest.py", "tests/test_utils/database.py", "tests/testing/database.py"])
+def test_allows_raw_connection_inside_shared_test_support(path: str) -> None:
+    assert _check("def database_fixture(pool: ConnectionPool):\n    return pool.connection()\n", path) == []
+
+
+def test_allows_fixture_internal_connection_for_setup_and_cleanup() -> None:
+    source = """
+@pytest.fixture
+async def seeded_database(pool: AsyncConnectionPool):
+    async with pool.connection() as conn:
+        await conn.execute("INSERT INTO orders DEFAULT VALUES")
+    yield "seeded"
+    async with pool.connection() as conn:
+        await conn.execute("DELETE FROM orders")
+"""
+    assert _check(source) == []
+
+
+def test_reports_fixture_that_exposes_raw_connection() -> None:
+    source = """
+@pytest.fixture()
+async def raw_connection(pool: AsyncConnectionPool):
+    async with pool.connection() as conn:
+        yield conn
+"""
+    assert len(_check(source)) == 1
+
+
 def test_pool_provenance_does_not_leak_between_functions() -> None:
     source = """
 def database_fixture(pool: ConnectionPool):
