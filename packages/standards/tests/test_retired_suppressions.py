@@ -80,6 +80,104 @@ def test_leaves_ambiguous_or_non_suppression_references_untouched(tmp_path: Path
     assert retired_suppressions.plan((target,)) == ()
 
 
+@pytest.mark.parametrize(
+    ("retired", "replacement"),
+    [
+        ("@sarj/zod-naming-convention", "@sarj/require-pascal-case-zod-schema-name"),
+        ("@sarj/require-interface-for-injected-service", "@sarj/require-port-for-service"),
+    ],
+)
+def test_migrates_exact_eslint_config_keys_from_the_retirement_ledger(
+    tmp_path: Path, retired: str, replacement: str
+) -> None:
+    target = tmp_path / "eslint.config.js"
+    source = (
+        f"// {retired} remains prose\n"
+        f"export const note = '{retired}';\n"
+        f"export default [{{ rules: {{ '{retired}': 'error', "
+        f"'{retired}-extra': 'off' }} }}];\n"
+    )
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == (
+        retired_suppressions.Rewrite(
+            target,
+            source.replace(f"'{retired}': 'error'", f"'{replacement}': 'error'"),
+        ),
+    )
+
+
+def test_migrates_exact_key_in_exported_eslint_config_call(tmp_path: Path) -> None:
+    target = tmp_path / "eslint.config.mts"
+    source = "export default defineConfig({ rules: {\n  '@sarj/zod-naming-convention': 'error',\n} });\n"
+    target.write_text(source, encoding="utf-8")
+
+    expected = source.replace(
+        "'@sarj/zod-naming-convention':",
+        "'@sarj/require-pascal-case-zod-schema-name':",
+    )
+    assert retired_suppressions.plan((target,)) == (
+        retired_suppressions.Rewrite(
+            target,
+            expected,
+        ),
+    )
+    target.write_text(expected, encoding="utf-8")
+    assert retired_suppressions.plan((target,)) == ()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        ("export default [{ settings: { rules: {\n  '@sarj/zod-naming-convention': 'error',\n} } }];\n"),
+        ("const options = { rules: { '@sarj/zod-naming-convention': 'error' } };\nexport default [];\n"),
+        ("export default [{ custom: [{ rules: {\n  '@sarj/zod-naming-convention': 'error',\n} }] }];\n"),
+        ("const words = ['export', 'default', { rules: {\n  '@sarj/zod-naming-convention': 'error',\n} }];\n"),
+    ],
+)
+def test_does_not_rewrite_rule_like_keys_outside_eslint_rules_maps(tmp_path: Path, source: str) -> None:
+    target = tmp_path / "eslint.config.mjs"
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == ()
+
+
+def test_does_not_create_a_duplicate_eslint_config_key_during_migration(tmp_path: Path) -> None:
+    target = tmp_path / "eslint.config.mjs"
+    source = (
+        "export default [{ rules: {\n"
+        "  '@sarj/zod-naming-convention': 'off',\n"
+        "  '@sarj/require-pascal-case-zod-schema-name': 'error',\n"
+        "} }];\n"
+    )
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == ()
+
+
+def test_does_not_rewrite_ambiguous_duplicate_retired_config_keys(tmp_path: Path) -> None:
+    target = tmp_path / "eslint.config.mjs"
+    source = (
+        "export default [{ rules: { '@sarj/zod-naming-convention': 'off' } },\n"
+        "  { rules: { '@sarj/zod-naming-convention': 'error' } }];\n"
+    )
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == ()
+
+
+def test_does_not_rewrite_property_like_text_in_comments_or_strings(tmp_path: Path) -> None:
+    target = tmp_path / "eslint.config.mjs"
+    source = (
+        "// { '@sarj/zod-naming-convention': 'error' }\n"
+        "const example = \"{ '@sarj/zod-naming-convention': 'error' }\";\n"
+        "export default [];\n"
+    )
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == ()
+
+
 def test_honors_doctor_exclusions_and_fixture_sentinel(tmp_path: Path) -> None:
     (tmp_path / ".sarj-standards.toml").write_text(
         'schema = 3\nbundle = "5.6.2"\nprofile = "standard"\nrule_profile = "all"\n'

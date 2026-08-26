@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import tokenize
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards.libs.repository import ledger
@@ -30,6 +31,9 @@ _ESLINT_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9_-]*"
 _ESLINT_ID: Final = re.compile(rf"^(?:{_ESLINT_SEGMENT}|@?{_ESLINT_SEGMENT}(?:/{_ESLINT_SEGMENT})+)$")
 _SARJ_CODE: Final = re.compile(r"^SARJ\d+$")
 _ESLINT_SUPPRESSIONS: Final = "eslint-suppressions.json"
+_ESLINT_CONFIG_NAMES: Final = re.compile(r"^eslint\.config\.(?:[cm]?[jt]s)$")
+_PROPERTY_KEY_OFFSET: Final = 2
+_JAVASCRIPT_CLOSING: Final = MappingProxyType({"(": ")", "[": "]", "{": "}"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +60,21 @@ class _Directive:
     tokens: tuple[str, ...] = ()
     match: re.Match[str] | None = None
     reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class _JavaScriptToken:
+    kind: str
+    value: str
+    start: int
+    end: int
+
+
+@dataclass(frozen=True, slots=True)
+class _JavaScriptFrame:
+    closing: str
+    eligible: bool
+    role: str = "container"
 
 
 def supports(path: Path) -> bool:
@@ -224,7 +243,149 @@ def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[s
             rewritten = f"{rewritten[:line_start]}{trimmed}{rewritten[end:]}"
         else:
             rewritten = f"{rewritten[:start]}{replacement}{rewritten[span.end :]}"
+    return _rewrite_eslint_config_keys(path, rewritten, eslint)
+
+
+def _rewrite_eslint_config_keys(path: Path, text: str, retired: dict[str, str | None]) -> str:
+    if _ESLINT_CONFIG_NAMES.fullmatch(path.name) is None:
+        return text
+    rewritten = text
+    for retired_id, replacement in retired.items():
+        if replacement is None or replacement == retired_id:
+            continue
+        matches = _eslint_rule_property_keys(rewritten, retired_id)
+        replacement_matches = _eslint_rule_property_keys(rewritten, replacement)
+        if matches is None or replacement_matches is None:
+            return text
+        if len(matches) != 1 or replacement_matches:
+            continue
+        start, end = matches[0]
+        quote = rewritten[start]
+        rewritten = f"{rewritten[:start]}{quote}{replacement}{quote}{rewritten[end:]}"
     return rewritten
+
+
+def _eslint_rule_property_keys(text: str, expected: str) -> tuple[tuple[int, int], ...] | None:
+    tokens = _export_default_expression_tokens(text)
+    if tokens is None:
+        return None
+    frames: list[_JavaScriptFrame] = []
+    matches: list[tuple[int, int]] = []
+    for index, token in enumerate(tokens):
+        if token.value in {"(", "["}:
+            previous = tokens[index - 1].value if index else "default"
+            eligible = (frames[-1].eligible if frames else True) and previous != ":"
+            frames.append(_JavaScriptFrame(")" if token.value == "(" else "]", eligible))
+            continue
+        if token.value == "{":
+            previous = tokens[index - 1].value if index else "default"
+            property_name = (
+                tokens[index - _PROPERTY_KEY_OFFSET].value
+                if index >= _PROPERTY_KEY_OFFSET and previous == ":"
+                else None
+            )
+            parent_object = next((frame for frame in reversed(frames) if frame.closing == "}"), None)
+            if property_name == "rules" and parent_object is not None and parent_object.role == "config":
+                role = "rules"
+            elif (frames[-1].eligible if frames else True) and previous in {
+                "default",
+                "(",
+                "[",
+                ",",
+            }:
+                role = "config"
+            else:
+                role = "nested"
+            frames.append(_JavaScriptFrame(closing="}", eligible=False, role=role))
+            continue
+        if token.value in {")", "]", "}"}:
+            if not frames or frames[-1].closing != token.value:
+                return None
+            frames.pop()
+            continue
+        if _is_expected_rule_key(tokens, index, frames, expected):
+            matches.append((token.start, token.end))
+    return tuple(matches) if not frames else None
+
+
+def _is_expected_rule_key(
+    tokens: tuple[_JavaScriptToken, ...],
+    index: int,
+    frames: list[_JavaScriptFrame],
+    expected: str,
+) -> bool:
+    token = tokens[index]
+    if token.kind != "string" or token.value != expected:
+        return False
+    if not frames or frames[-1].role != "rules":
+        return False
+    return index + 1 < len(tokens) and tokens[index + 1].value == ":"
+
+
+def _export_default_expression_tokens(text: str) -> tuple[_JavaScriptToken, ...] | None:
+    tokens = _javascript_tokens(text)
+    anchors = tuple(
+        index
+        for index in range(len(tokens) - 1)
+        if tokens[index].kind == "identifier"
+        and tokens[index].value == "export"
+        and tokens[index + 1].kind == "identifier"
+        and tokens[index + 1].value == "default"
+    )
+    if len(anchors) != 1:
+        return None
+    selected: list[_JavaScriptToken] = []
+    depth = 0
+    pending: list[str] = []
+    for token in tokens[anchors[0] + 2 :]:
+        if token.value == ";" and depth == 0:
+            break
+        selected.append(token)
+        if token.value in _JAVASCRIPT_CLOSING:
+            pending.append(_JAVASCRIPT_CLOSING[token.value])
+            depth += 1
+        elif token.value in {")", "]", "}"}:
+            if not pending or pending.pop() != token.value:
+                return None
+            depth -= 1
+    return tuple(selected) if not pending else None
+
+
+def _javascript_tokens(text: str) -> tuple[_JavaScriptToken, ...]:
+    masked = _mask_spans(text, _javascript_comment_spans(text))
+    tokens: list[_JavaScriptToken] = []
+    index = 0
+    while index < len(masked):
+        character = masked[index]
+        if character.isspace():
+            index += 1
+            continue
+        if character in {'"', "'", "`"}:
+            end = index + 1
+            while end < len(masked) and not (masked[end] == character and not _escaped(masked, end)):
+                end += 1
+            if end >= len(masked):
+                return ()
+            tokens.append(
+                _JavaScriptToken(
+                    "template" if character == "`" else "string",
+                    masked[index + 1 : end],
+                    index,
+                    end + 1,
+                )
+            )
+            index = end + 1
+            continue
+        if character.isalpha() or character in {"_", "$"}:
+            end = index + 1
+            while end < len(masked) and (masked[end].isalnum() or masked[end] in {"_", "$"}):
+                end += 1
+            tokens.append(_JavaScriptToken("identifier", masked[index:end], index, end))
+            index = end
+            continue
+        tokens.append(_JavaScriptToken("punctuation", character, index, index + 1))
+        index += 1
+    return tuple(tokens)
 
 
 def _is_jsx_comment_wrapper(path: Path, text: str, span: _CommentSpan, comment: str) -> bool:

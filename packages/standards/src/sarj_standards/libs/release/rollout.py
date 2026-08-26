@@ -26,6 +26,7 @@ from sarj_standards.libs.adoption import manifest as adoption_manifest
 from sarj_standards.libs.adoption import packagemanager as adoption_packagemanager
 from sarj_standards.libs.adoption import scaffold as adoption_scaffold
 from sarj_standards.libs.adoption import uvtool as adoption_uvtool
+from sarj_standards.libs.repository import rule_catalog_artifact
 
 
 if TYPE_CHECKING:
@@ -1124,7 +1125,8 @@ def rollout_baseline_rules(
     before: ReactDoctorPolicy,
     after: ReactDoctorPolicy,
 ) -> tuple[str, ...]:
-    selectors = list(consumer.baseline_rules)
+    catalog = rule_catalog_artifact.selector_index()
+    selectors = [catalog.resolve(selector) for selector in consumer.baseline_rules]
     if before != after and (after.config is not None or after.package_pin is not None):
         selectors.append("react-doctor:*")
     return tuple(dict.fromkeys(selectors))

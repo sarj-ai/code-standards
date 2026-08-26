@@ -999,6 +999,43 @@ def test_upgrade_transactionally_migrates_retired_source_suppressions(tmp_path: 
     assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.rule.retired"]
 
 
+def test_upgrade_transactionally_migrates_the_known_renamed_eslint_config_key(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    config = tmp_path / "apps" / "web" / "eslint.config.js"
+    config.parent.mkdir(parents=True)
+    config.write_text(
+        "export default [{ rules: { '@sarj/zod-naming-convention': 'error' } }];\n",
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert plan.suppression_writes == [
+        (
+            config,
+            "export default [{ rules: { '@sarj/require-pascal-case-zod-schema-name': 'error' } }];\n",
+        )
+    ]
+    assert upgrade.unsafe_retired_findings(plan) == []
+    assert upgrade.apply(plan, install=False) == 0
+    assert "@sarj/require-pascal-case-zod-schema-name" in config.read_text(encoding="utf-8")
+
+
+def test_upgrade_rejects_a_stale_config_migration_without_clobbering_it(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    config = tmp_path / "eslint.config.mjs"
+    config.write_text(
+        "export default [{ rules: { '@sarj/zod-naming-convention': 'error' } }];\n",
+        encoding="utf-8",
+    )
+    plan = upgrade.build_plan(tmp_path)
+    concurrent = "export default [{ rules: {} }]; // user edit\n"
+    config.write_text(concurrent, encoding="utf-8")
+
+    assert upgrade.apply(plan, install=False) == 2
+    assert config.read_text(encoding="utf-8") == concurrent
+
+
 def test_upgrade_does_not_overwrite_a_concurrent_edit_after_writing_a_pin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

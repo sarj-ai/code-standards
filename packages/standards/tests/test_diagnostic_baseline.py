@@ -390,6 +390,38 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
     assert captured == [([expected], False)]
 
 
+def test_scoped_baseline_update_keeps_retired_iac_alias_invalid(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "main.tf").write_text("terraform {}\n", encoding="utf-8")
+
+    status = cli_main(
+        [
+            "--root",
+            str(tmp_path),
+            "baseline",
+            "update",
+            "--output",
+            str(baseline_path),
+            "--rule",
+            "iac:no-terraform-test-file",
+        ]
+    )
+
+    assert status == 2
+    assert "unknown or invalid rule selector: iac:no-terraform-test-file" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize(
     ("source", "rule_id", "selector"),
     [
@@ -460,6 +492,123 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
     updated = baseline.load(baseline_path)
     assert "a" * 64 not in updated
     assert updated == {"b" * 64: 1}
+
+
+def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    old = Diagnostic(
+        "OLD",
+        "old",
+        Severity.ERROR,
+        "sarj-iac-lint",
+        Location("old.tf"),
+        rule_id="no-terraform-test-file",
+        fingerprint="a" * 64,
+    )
+    baseline_path.write_text(
+        baseline.render(
+            (old,),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    replacement = Diagnostic(
+        "NEW",
+        "replacement",
+        Severity.ERROR,
+        "sarj-iac-lint",
+        Location("new.tf"),
+        rule_id="no-mocked-terraform-test-oracle",
+        fingerprint="b" * 64,
+    )
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, paths, kwargs
+        return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, (replacement,)),))
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "iac:no-mocked-terraform-test-oracle",
+            ]
+        )
+        == 0
+    )
+    assert baseline.load(baseline_path) == {"b" * 64: 1}
+
+
+def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    old = Diagnostic(
+        "OLD",
+        "old",
+        Severity.ERROR,
+        "eslint",
+        Location("old.ts"),
+        rule_id="@sarj/zod-naming-convention",
+        fingerprint="a" * 64,
+    )
+    baseline_path.write_text(
+        baseline.render(
+            (old,),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    replacement = Diagnostic(
+        "NEW",
+        "replacement",
+        Severity.ERROR,
+        "eslint",
+        Location("new.ts"),
+        rule_id="@sarj/require-pascal-case-zod-schema-name",
+        fingerprint="b" * 64,
+    )
+
+    def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
+        _ = self, paths, kwargs
+        return report_from_tools(
+            tmp_path,
+            (ToolReport("eslint", Completion.COMPLETE, (replacement,)),),
+        )
+
+    monkeypatch.setattr(api.Standards, "analyze", analyze)
+
+    assert (
+        cli_main(
+            [
+                "--root",
+                str(tmp_path),
+                "baseline",
+                "update",
+                "--output",
+                str(baseline_path),
+                "--rule",
+                "eslint:require-pascal-case-zod-schema-name",
+            ]
+        )
+        == 0
+    )
+    assert baseline.load(baseline_path) == {"b" * 64: 1}
 
 
 @pytest.mark.parametrize(

@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
     from sarj_standards.libs.adoption import service
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic
+    from sarj_standards.libs.repository import rule_catalog_artifact
     from sarj_standards.libs.rules import RuleSelector
 
 
@@ -1880,48 +1881,38 @@ def _is_react_doctor_rule_id(rule_id: str) -> bool:
 
 def _baseline_merge_selectors(selectors: Sequence[str]) -> tuple[str, ...]:
     resolved: list[str] = []
-    for selector in selectors:
-        source, separator, rule_id = selector.partition(":")
-        resolved.append(selector)
-        native_source = _BASELINE_RULE_ENGINE_SOURCES.get(source)
-        if selector == "react-doctor:*":
-            continue
-        if separator and source == "eslint" and _is_react_doctor_rule_id(rule_id):
-            plugin, _, plugin_rule_id = rule_id.partition("/")
-            resolved.extend((f"react-doctor:{rule_id}", f"{plugin}:{plugin_rule_id}"))
-        elif separator and source == "react-hooks-js":
-            resolved.append(f"react-doctor:react-hooks-js/{rule_id}")
-        elif separator and source == "react-doctor" and not _is_react_doctor_rule_id(rule_id):
-            resolved.append(f"react-doctor:react-doctor/{rule_id}")
-        elif separator and native_source is not None:
-            resolved.append(f"{native_source}:{rule_id}")
-        elif separator and source == "eslint" and selector in _baseline_catalog_selectors():
-            resolved.append(f"eslint:@sarj/{rule_id}")
+    catalog = _baseline_catalog()
+    for requested in selectors:
+        for selector in catalog.equivalents(requested):
+            source, separator, rule_id = selector.partition(":")
+            resolved.append(selector)
+            native_source = _BASELINE_RULE_ENGINE_SOURCES.get(source)
+            if selector == "react-doctor:*":
+                continue
+            if separator and source == "eslint" and _is_react_doctor_rule_id(rule_id):
+                plugin, _, plugin_rule_id = rule_id.partition("/")
+                resolved.extend((f"react-doctor:{rule_id}", f"{plugin}:{plugin_rule_id}"))
+            elif separator and source == "react-hooks-js":
+                resolved.append(f"react-doctor:react-hooks-js/{rule_id}")
+            elif separator and source == "react-doctor" and not _is_react_doctor_rule_id(rule_id):
+                resolved.append(f"react-doctor:react-doctor/{rule_id}")
+            elif separator and native_source is not None:
+                resolved.append(f"{native_source}:{rule_id}")
+            elif separator and source == "eslint" and selector in catalog.canonical:
+                resolved.append(f"eslint:@sarj/{rule_id}")
     return tuple(dict.fromkeys(resolved))
 
 
 @lru_cache(maxsize=1)
 def _baseline_catalog_selectors() -> frozenset[str]:
+    return _baseline_catalog().canonical
+
+
+@lru_cache(maxsize=1)
+def _baseline_catalog() -> rule_catalog_artifact.SelectorIndex:
     from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
 
-    payload = rule_catalog_artifact.load()
-    rules = payload.get("rules")
-    if not isinstance(rules, list):
-        msg = "invalid bundled rule catalog"
-        raise TypeError(msg)
-    values: list[object] = rules  # pyright: ignore[reportUnknownVariableType]
-    selectors: set[str] = set()
-    for value in values:
-        if not isinstance(value, dict):
-            msg = "invalid bundled rule catalog selector"
-            raise TypeError(msg)
-        entry: dict[str, object] = value  # pyright: ignore[reportUnknownVariableType]
-        key = entry.get("key")
-        if not isinstance(key, str):
-            msg = "invalid bundled rule catalog selector"
-            raise TypeError(msg)
-        selectors.add(key)
-    return frozenset(selectors)
+    return rule_catalog_artifact.selector_index()
 
 
 def _diagnostic_matches(item: Diagnostic, selectors: frozenset[str]) -> bool:
