@@ -116,14 +116,29 @@ class TestRegistry:
         ("configured", "expected"),
         [
             pytest.param(
-                "iac:no-terraform-test-file",
+                "sarj-iac-lint:no-terraform-test-file",
                 "iac:no-mocked-terraform-test-oracle",
-                id="retired-iac-selector",
+                id="retired-native-iac-selector",
             ),
             pytest.param(
+                "sarj-iac-lint:no-terraform-test-files",
                 "iac:no-terraform-test-files",
-                "iac:no-terraform-test-files",
-                id="near-miss-remains-strict",
+                id="native-iac-near-miss-remains-strict",
+            ),
+            pytest.param(
+                "sarj-python-lint:no-unnecessary-docstring",
+                "python:no-unnecessary-docstring",
+                id="native-python-selector",
+            ),
+            pytest.param(
+                "sarj-sql-lint:no-create-trigger",
+                "sql:no-database-triggers",
+                id="native-sql-selector",
+            ),
+            pytest.param(
+                "sarj-text-lint:hidden-markdown-heading",
+                "text:hidden-markdown-heading",
+                id="native-text-selector",
             ),
         ],
     )
