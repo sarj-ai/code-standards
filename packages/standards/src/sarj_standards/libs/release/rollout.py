@@ -50,6 +50,14 @@ SOURCE_SUFFIXES = frozenset(
     {".py", ".pyi", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".sql"}
 )
 ROLLOUT_CHANNELS = ("canary", "early", "stable")
+BASELINE_ENGINE_BY_SOURCE = MappingProxyType(
+    {
+        "sarj-iac-lint": "iac",
+        "sarj-python-lint": "python",
+        "sarj-sql-lint": "sql",
+        "sarj-text-lint": "text",
+    }
+)
 MANAGED_WORKFLOW_PATHS = frozenset({".github/workflows/standards.yml", ".github/workflows/ci.yml"})
 MANAGED_ROLLOUT_NAMES = frozenset(
     {
@@ -1126,7 +1134,11 @@ def rollout_baseline_rules(
     after: ReactDoctorPolicy,
 ) -> tuple[str, ...]:
     catalog = rule_catalog_artifact.selector_index()
-    selectors = [catalog.resolve(selector) for selector in consumer.baseline_rules]
+    selectors: list[str] = []
+    for selector in consumer.baseline_rules:
+        source, separator, rule_id = selector.partition(":")
+        normalized = f"{BASELINE_ENGINE_BY_SOURCE.get(source, source)}:{rule_id}" if separator else selector
+        selectors.append(catalog.resolve(normalized))
     if before != after and (after.config is not None or after.package_pin is not None):
         selectors.append("react-doctor:*")
     return tuple(dict.fromkeys(selectors))
