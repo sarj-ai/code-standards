@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "86980f3afa462ad39fb5f6fcd0852d1d732a3be61e1e42733d84cd563365d2f8",
-  "cliSha256": "b1351362be21b562d917a48ec573f01b6f339f53985d22505ed7dc6d3b672630",
+  "catalogSha256": "903dc04e59ff4f41eb63fe848b96a6d8568c9d84352459b448088d50800cdff2",
+  "cliSha256": "ab3ce9e4f627ee05ff43d4c64a67cf43f546629cd892bdaa6cb4596f340d7bad",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7295,6 +7295,36 @@
           "files": [
             {
               "path": ".github/workflows/deploy.yml",
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --region us\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/deploy.yml",
+          "id": "cloud-run-application-publish",
+          "outcome": "accept",
+          "scenarioId": "cloud-run-release",
+          "title": "CI publishes a Cloud Run application artifact"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/workflows/deploy.yml",
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --memory 1Gi\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/deploy.yml",
+          "id": "cloud-run-infrastructure-update",
+          "outcome": "reject",
+          "scenarioId": "cloud-run-release",
+          "title": "A Cloud Run configuration update owns infrastructure"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/workflows/deploy.yml",
               "source": "jobs:\n  deploy:\n    steps:\n      - run: terraform apply saved.tfplan\n"
             }
           ],
@@ -7306,11 +7336,41 @@
           "title": "CI applies the reviewed Terraform plan"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/workflows/deploy.yml",
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: pnpm exec wrangler deploy --tag $GITHUB_SHA\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/deploy.yml",
+          "id": "worker-application-publish",
+          "outcome": "accept",
+          "scenarioId": "worker-publish",
+          "title": "CI publishes a Worker application artifact"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
               "path": ".github/workflows/deploy.yml",
-              "source": "jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE\n"
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: pnpm exec wrangler d1 create app\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/deploy.yml",
+          "id": "worker-resource-create",
+          "outcome": "reject",
+          "scenarioId": "worker-publish",
+          "title": "Keep Worker resource creation in Terraform"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/workflows/deploy.yml",
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --memory 1Gi\n"
             }
           ],
           "fixedFiles": [],
@@ -7318,7 +7378,7 @@
           "id": "workflow-control-plane-mutation",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Keep cloud mutation in Terraform"
+          "title": "Keep Cloud Run infrastructure in Terraform"
         }
       ],
       "optionsSchemaSource": null

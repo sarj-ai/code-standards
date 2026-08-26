@@ -87,8 +87,8 @@
       "family": "python",
       "ruleId": "fakes-in-shared-location",
       "state": "complete",
-      "evidence": "Prior multi-repository AST prototype: 9 findings reviewed, 9 policy violations, 0 false positives; repository dogfood then moved two existing local fakes into shared support.",
-      "outcome": "Promoted raw pygrep into path-aware SARJ428 with lexical class matching, generated-source guards, shared-support exemptions, executable examples, and regression tests."
+      "evidence": "Fleet calibration scanned 6,636 tracked Python files across 36 local projects and classified all 60 findings. Forty-eight doubles were reused by multiple tests; 12 were scenario-local or fixture-driven and require repository judgment rather than a blocking default.",
+      "outcome": "Kept path-aware SARJ428 at warning level with lexical class matching, generated-source guards, shared-support exemptions, executable examples, and an exact suppression for deliberately scenario-local doubles. Promotion requires a clean adoption window."
     },
     {
       "task": "rule-audit/python/fastapi-explicit-openapi-contract",
@@ -287,8 +287,8 @@
       "family": "python",
       "ruleId": "no-raw-connection-in-tests",
       "state": "complete",
-      "evidence": "Prior multi-repository prototype: 46 findings reviewed, all intentional direct pool access under the opinionated application-boundary policy; unrelated connection() receivers were excluded.",
-      "outcome": "Promoted raw pygrep into provenance-aware SARJ429 with lexical function scoping, explicit pool-type proof, executable examples, and cross-scope false-positive regression coverage."
+      "evidence": "Final fleet calibration scanned 6,635 tracked Python files across 36 local projects with zero analyzer issues. All 94 remaining findings were inspected true direct psycopg pool access outside a support boundary; earlier shared-support and setup/cleanup fixture false positives drove explicit exemptions. Focused behavior coverage passed 12 of 12 cases.",
+      "outcome": "Kept provenance-aware SARJ429 at warning level with lexical function scoping, explicit pool-type proof, shared test-support and conftest exemptions, and fixture-internal setup/cleanup handling. Fixtures that expose a raw connection and ordinary tests/helpers remain reportable; promotion requires a clean adoption window."
     },
     {
       "task": "rule-audit/python/no-redundant-literal-description",
@@ -391,7 +391,7 @@
       "family": "python",
       "ruleId": "prefer-collection-comprehension",
       "state": "complete",
-      "evidence": "An independent privacy-redacted verifier scanned 2,502 tracked Python files (21,386,497 bytes) across the current Standards worktree and two already-local consumer corpora, using fresh processes and batches of at most 250 files. The scan produced zero findings and therefore zero observed false positives; 35 labeled focused tests establish positive and negative behavior. Cold/warm rule-only process totals were 1.954/1.863 seconds, 2.709/2.510 seconds, and 2.040/1.977 seconds by corpus. The synthetic performance gate measured SARJ430 at 1.40x ast.parse, below the 15x budget. Ruff 0.16.3 independently confirmed the three intended coverage gaps.",
+      "evidence": "Fleet calibration scanned 6,636 tracked Python files across 36 local projects. Both findings were inspected fresh adjacent dict builders whose comprehensions preserve observable behavior: two true positives and zero false positives. Focused behavior and performance gates remain clean.",
       "outcome": "Added warning-stage SARJ430 only for derived dict projections, destructured list projections, and filtered set builders that Ruff PERF401, PERF403, and FURB142 miss. Fresh adjacent initialization, callable scope, liveness, simple projection, comment, control-flow, and 120-column gates keep the preference narrow. No autofix is offered because dict assignment and comprehension key/value evaluation order can differ."
     },
     {
@@ -483,8 +483,8 @@
       "family": "python",
       "ruleId": "prefer-set-isdisjoint",
       "state": "complete",
-      "evidence": "Multi-agent ownership and semantics review found no Ruff equivalent. Repository and consumer corpus calibration inspected every finding and retained only exact built-in set/frozenset predicates with dominating proof and rebinding invalidation; no known false positives remained.",
-      "outcome": "Shipped at error without autofix. The rule excludes unproven operands and stored intersections because short-circuiting can expose equality/hash side effects."
+      "evidence": "Fleet calibration scanned 6,636 tracked Python files across 36 local projects and inspected all seven findings. Every match was a boolean-only intersection between locally proven built-in sets: seven true positives and zero false positives.",
+      "outcome": "Staged at warning without autofix. The rule excludes unproven operands and stored intersections because short-circuiting can expose equality/hash side effects; promotion requires a clean adoption window."
     },
     {
       "task": "rule-audit/python/prefer-str-enum",
@@ -769,8 +769,8 @@
       "family": "text",
       "ruleId": "declarative-deployment-boundary",
       "state": "complete",
-      "evidence": "Pinned tracked-corpus calibration scanned 469 accepted files and produced 14 file-level findings. All 14 were reviewed literal control-plane mutations or the operational plan-address allowlist; a Wrangler --dry-run near miss was excluded and the later real promotion remained reported.",
-      "outcome": "Promoted the rule to error with one finding per file, command-aware shell parsing, structured workflow run scalars and deployment Actions, and operational JSON coverage. Markdown, comments, diagnostics, saved-plan apply, and wrapper-indirected or dynamic commands remain excluded; full-tree scans still inspect operational wrapper files directly."
+      "evidence": "Fleet calibration scanned 1,325 tracked operational files across 118 local checkouts representing 103 projects. After separating application publication from infrastructure ownership, all 28 remaining diagnostics were reviewed true control-plane mutations and zero were false positives; 24 Wrangler and 35 Cloud Run application publishes were independently verified as accepted near misses.",
+      "outcome": "Staged the corrected rule at warning level with one finding per file, command-aware shell parsing, structured workflow run scalars and deployment Actions, operational JSON coverage, and explicit application-publish handling for Wrangler and artifact-only Cloud Run releases. Resource lifecycle, IAM, configuration, secrets, Kubernetes mutation, and plan-address allowlists remain reported; promotion requires a later clean adoption window."
     },
     {
       "task": "rule-audit/text/ephemeral-execution-artifact",
@@ -1167,8 +1167,8 @@
       "family": "typescript",
       "ruleId": "prefer-nullish-filter-predicate",
       "state": "complete",
-      "evidence": "Type-aware corpus calibration and negative fixtures proved the rule only reports built-in Array/ReadonlyArray filter(Boolean) calls whose non-nullish union members are all truthy. Composed strict-profile tests found and corrected an eqeqeq-conflicting initial suggestion.",
-      "outcome": "Shipped at error with an explicit editor suggestion using value !== null && value !== undefined. Broad primitives, falsy literals, custom filters, shadowed Boolean, any, unknown, generics, and untyped runs remain excluded."
+      "evidence": "Type-aware fleet calibration scanned 12,913 tracked JavaScript and TypeScript files across 58 local projects, then exhaustively evaluated all 368 filter(Boolean) candidate files. All 13 findings preserved runtime filtering and improved narrowing: 13 true positives and zero false positives.",
+      "outcome": "Staged at warning with an explicit editor suggestion using value !== null && value !== undefined. Broad primitives, falsy literals, custom filters, shadowed Boolean, any, unknown, generics, and untyped runs remain excluded; promotion requires a clean adoption window."
     },
     {
       "task": "rule-audit/eslint/prefer-schema-for-api-payload",

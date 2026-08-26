@@ -329,13 +329,10 @@ def _codes(path: Path, *, root: Path | None = None) -> list[str]:
 @pytest.mark.parametrize(
     ("relative", "source"),
     [
-        (".github/workflows/deploy.yml", "steps:\n  - run: gcloud run deploy api --image $IMAGE\n"),
+        (".github/workflows/deploy.yml", "steps:\n  - run: gcloud run deploy api --image $IMAGE --memory=1Gi\n"),
         (
             ".github/workflows/jobs.yml",
-            (
-                "steps:\n  - run: |\n      if ! env -u TOKEN REGION=us gcloud --project platform beta run jobs update migrate "
-                "\\\n        --image image; then exit 1; fi\n"
-            ),
+            "steps:\n  - run: gcloud run jobs update migrate --image image --set-secrets=TOKEN=token:latest\n",
         ),
         ("cloudbuild/database.yml", "gcloud sql instances patch main --activation-policy=ALWAYS\n"),
         ("deploy/scheduler.sh", "gcloud scheduler jobs create http cleanup --uri=https://example.test\n"),
@@ -346,21 +343,19 @@ def _codes(path: Path, *, root: Path | None = None) -> list[str]:
         ),
         ("k8s/cluster.sh", "if ! kubectl -n agent annotate deployment/api owner=terraform; then exit 1; fi\n"),
         ("scripts/secrets.sh", "gcloud secrets versions add api-key --data-file=-\n"),
-        ("tools/frontend.sh", "yarn exec wrangler versions deploy abc@100 --yes\n"),
         ("tools/state.sh", "tofu state rm module.legacy\n"),
         ("deploy/function.sh", "gcloud functions deploy api\n"),
         ("deploy/services.sh", "gcloud services enable run.googleapis.com\n"),
         ("deploy/build-trigger.sh", "gcloud builds triggers create github --name=deploy\n"),
         ("cloudbuild/release.cloudbuild.yaml", "gcloud deploy releases create release-1 --region=us\n"),
         ("deploy/workflow.sh", "gcloud workflows deploy sync --source=workflow.yaml\n"),
-        ("deploy/job.sh", "gcloud run jobs update migrate --image=image\n"),
+        ("deploy/job.sh", "gcloud run jobs update migrate --image=image --service-account=runtime@example.test\n"),
         ("deploy/schedule.sh", "gcloud scheduler jobs update http cleanup --uri=https://example.test\n"),
         ("tools/database.sh", "wrangler --env dev d1 create app\n"),
         ("iac/import.sh", "opentofu import google_project.main project\n"),
         ("iac/taint.sh", "terraform taint google_project.main\n"),
         ("iac/untaint.sh", "tofu untaint google_project.main\n"),
         ("deploy/command.sh", "command -- gcloud run deploy api\n"),
-        ("tools/npx.sh", "npx --yes wrangler deploy\n"),
     ],
 )
 def test_declarative_deployment_boundary_flags_parallel_mutation(tmp_path: Path, relative: str, source: str) -> None:
@@ -381,6 +376,18 @@ def test_declarative_deployment_boundary_flags_parallel_mutation(tmp_path: Path,
         "steps:\n  - run: kubectl get deployment api\n",
         "steps:\n  - run: kubectl -n agent rollout status deployment/api\n",
         "steps:\n  - run: yarn exec wrangler deploy --env dev --dry-run\n",
+        "steps:\n  - run: pnpm exec wrangler deploy --tag $GITHUB_SHA\n",
+        "steps:\n  - run: yarn exec wrangler versions deploy abc@100 --yes\n",
+        "steps:\n  - run: npx --yes wrangler deploy\n",
+        "steps:\n  - run: gcloud run deploy api --image $IMAGE --region us --platform managed --quiet\n",
+        "steps:\n  - run: gcloud run deploy api --source . --region us --no-traffic --tag candidate\n",
+        "steps:\n  - run: gcloud run services update api --image=$IMAGE --region=us --no-traffic\n",
+        "steps:\n  - run: gcloud --project platform beta run jobs update migrate --image image --region us --wait\n",
+        "steps:\n  - run: gcloud run services update api --image=$IMAGE --region=us --project=platform\n",
+        (
+            "steps:\n  - run: gcloud run jobs update ${{ matrix.job }} --image ${{ needs.build.outputs.image }} "
+            "--project=${{ vars.PROJECT }} --region=${{ vars.REGION }}\n"
+        ),
         "steps:\n  - run: gcloud workflows run sync\n",
         "steps:\n  - run: gcloud run jobs execute migrate --wait\n",
         "steps:\n  - run: gcloud scheduler jobs run cleanup\n",
@@ -420,9 +427,7 @@ def test_declarative_deployment_boundary_parses_yaml_run_scalar_semantics(tmp_pa
 @pytest.mark.parametrize(
     "source",
     [
-        "steps:\n  - uses: google-github-actions/deploy-cloudrun@v3\n",
         "steps:\n  - uses: google-github-actions/deploy-cloud-functions@v4\n",
-        "steps:\n  - uses: cloudflare/wrangler-action@v3\n    with:\n      command: versions deploy abc@100\n",
     ],
 )
 def test_declarative_deployment_boundary_flags_direct_deployment_actions(tmp_path: Path, source: str) -> None:
@@ -431,6 +436,25 @@ def test_declarative_deployment_boundary_flags_direct_deployment_actions(tmp_pat
     path.write_text(source, encoding="utf-8")
 
     assert _codes(path, root=tmp_path) == ["SARJ309"]
+
+
+def test_declarative_deployment_boundary_allows_cloud_run_application_publish_action(tmp_path: Path) -> None:
+    path = tmp_path / ".github" / "workflows" / "deploy.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text("steps:\n  - uses: google-github-actions/deploy-cloudrun@v3\n", encoding="utf-8")
+
+    assert "SARJ309" not in _codes(path, root=tmp_path)
+
+
+def test_declarative_deployment_boundary_allows_worker_application_publish_action(tmp_path: Path) -> None:
+    path = tmp_path / ".github" / "workflows" / "deploy.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "steps:\n  - uses: cloudflare/wrangler-action@v3\n    with:\n      command: versions deploy abc@100\n",
+        encoding="utf-8",
+    )
+
+    assert "SARJ309" not in _codes(path, root=tmp_path)
 
 
 def test_declarative_deployment_boundary_ignores_application_commands(tmp_path: Path) -> None:
@@ -480,7 +504,7 @@ def test_declarative_deployment_boundary_does_not_resolve_wrappers(tmp_path: Pat
     workflow.write_text("steps:\n  - run: ./scripts/deploy.sh\n", encoding="utf-8")
     wrapper = tmp_path / "scripts" / "deploy.sh"
     wrapper.parent.mkdir()
-    wrapper.write_text("gcloud run deploy api --image image\n", encoding="utf-8")
+    wrapper.write_text("gcloud run deploy api --image image --memory 1Gi\n", encoding="utf-8")
 
     assert "SARJ309" not in _codes(workflow, root=tmp_path)
     assert _codes(wrapper, root=tmp_path) == ["SARJ309"]

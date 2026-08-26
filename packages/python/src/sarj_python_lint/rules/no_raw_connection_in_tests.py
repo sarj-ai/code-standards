@@ -15,7 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
@@ -42,8 +42,9 @@ class NoRawConnectionInTests(Rule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only test paths are inspected.",
+            "Only test paths outside conftest.py and conventional shared test-support modules are inspected.",
             "A receiver is reported only when a parameter, annotated local, or constructor call proves it is a psycopg ConnectionPool or AsyncConnectionPool.",
+            "Pytest fixtures may use a connection internally for setup and cleanup, but fixtures that return or yield the connection remain reportable.",
         ),
         examples=(
             RuleExample(
@@ -80,7 +81,12 @@ class NoRawConnectionInTests(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+        if (
+            not is_test_path(path)
+            or path.name == "conftest.py"
+            or is_test_support_path(path)
+            or is_generated(path, source)
+        ):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -109,6 +115,7 @@ class NoRawConnectionInTests(Rule):
                 and node.func.attr == "connection"
                 and isinstance(node.func.value, ast.Name)
                 and node.func.value.id in pool_names
+                and not _is_internal_fixture_connection(scope, node)
             )
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
@@ -152,3 +159,40 @@ def _tail(node: ast.expr | None) -> str:
             return _tail(value)
         case _:
             return ""
+
+
+def _is_internal_fixture_connection(
+    scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, connection_call: ast.Call
+) -> bool:
+    if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _is_pytest_fixture(scope):
+        return False
+    context_item = next(
+        (
+            item
+            for node in _scope_nodes(scope)
+            if isinstance(node, (ast.With, ast.AsyncWith))
+            for item in node.items
+            if item.context_expr is connection_call
+        ),
+        None,
+    )
+    if context_item is None:
+        return False
+    if context_item.optional_vars is None:
+        return True
+    if not isinstance(context_item.optional_vars, ast.Name):
+        return False
+    bound_name = context_item.optional_vars.id
+    return not any(
+        isinstance(node, (ast.Return, ast.Yield, ast.YieldFrom))
+        and node.value is not None
+        and any(isinstance(value, ast.Name) and value.id == bound_name for value in ast.walk(node.value))
+        for node in _scope_nodes(scope)
+    )
+
+
+def _is_pytest_fixture(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(
+        _tail(decorator.func if isinstance(decorator, ast.Call) else decorator) == "fixture"
+        for decorator in scope.decorator_list
+    )
