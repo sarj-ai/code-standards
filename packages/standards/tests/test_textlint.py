@@ -327,6 +327,166 @@ def _codes(path: Path, *, root: Path | None = None) -> list[str]:
 
 
 @pytest.mark.parametrize(
+    ("relative", "source"),
+    [
+        (".github/workflows/deploy.yml", "steps:\n  - run: gcloud run deploy api --image $IMAGE\n"),
+        (
+            ".github/workflows/jobs.yml",
+            (
+                "steps:\n  - run: |\n      if ! env -u TOKEN REGION=us gcloud --project platform beta run jobs update migrate "
+                "\\\n        --image image; then exit 1; fi\n"
+            ),
+        ),
+        ("cloudbuild/database.yml", "gcloud sql instances patch main --activation-policy=ALWAYS\n"),
+        ("deploy/scheduler.sh", "gcloud scheduler jobs create http cleanup --uri=https://example.test\n"),
+        ("iac/state.sh", "terraform -chdir=stack state replace-provider old/provider new/provider\n"),
+        (
+            "iac/example/envs.json",
+            '{"dev":{"safety_boundary":{"allowed_change_addresses":["module.service"]}}}\n',
+        ),
+        ("k8s/cluster.sh", "if ! kubectl -n agent annotate deployment/api owner=terraform; then exit 1; fi\n"),
+        ("scripts/secrets.sh", "gcloud secrets versions add api-key --data-file=-\n"),
+        ("tools/frontend.sh", "yarn exec wrangler versions deploy abc@100 --yes\n"),
+        ("tools/state.sh", "tofu state rm module.legacy\n"),
+        ("deploy/function.sh", "gcloud functions deploy api\n"),
+        ("deploy/services.sh", "gcloud services enable run.googleapis.com\n"),
+        ("deploy/build-trigger.sh", "gcloud builds triggers create github --name=deploy\n"),
+        ("cloudbuild/release.cloudbuild.yaml", "gcloud deploy releases create release-1 --region=us\n"),
+        ("deploy/workflow.sh", "gcloud workflows deploy sync --source=workflow.yaml\n"),
+        ("deploy/job.sh", "gcloud run jobs update migrate --image=image\n"),
+        ("deploy/schedule.sh", "gcloud scheduler jobs update http cleanup --uri=https://example.test\n"),
+        ("tools/database.sh", "wrangler --env dev d1 create app\n"),
+        ("iac/import.sh", "opentofu import google_project.main project\n"),
+        ("iac/taint.sh", "terraform taint google_project.main\n"),
+        ("iac/untaint.sh", "tofu untaint google_project.main\n"),
+        ("deploy/command.sh", "command -- gcloud run deploy api\n"),
+        ("tools/npx.sh", "npx --yes wrangler deploy\n"),
+    ],
+)
+def test_declarative_deployment_boundary_flags_parallel_mutation(tmp_path: Path, relative: str, source: str) -> None:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+    assert _codes(path, root=tmp_path) == ["SARJ309"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "steps:\n  - run: terraform apply saved.tfplan\n",
+        "steps:\n  - run: terraform show -json saved.tfplan\n",
+        "steps:\n  - run: terraform state list\n",
+        "steps:\n  - run: gcloud run services describe api\n",
+        "steps:\n  - run: gcloud storage cp gs://artifacts/input.json input.json\n",
+        "steps:\n  - run: kubectl get deployment api\n",
+        "steps:\n  - run: kubectl -n agent rollout status deployment/api\n",
+        "steps:\n  - run: yarn exec wrangler deploy --env dev --dry-run\n",
+        "steps:\n  - run: gcloud workflows run sync\n",
+        "steps:\n  - run: gcloud run jobs execute migrate --wait\n",
+        "steps:\n  - run: gcloud scheduler jobs run cleanup\n",
+        "steps:\n  - run: gcloud builds triggers run deploy\n",
+        "steps:\n  - run: gcloud builds cancel build-id\n",
+        "steps:\n  - run: gcloud compute instances stop worker\n",
+        "steps:\n  - run: gcloud sql instances restart database\n",
+        "steps:\n  - run: gcloud tasks queues pause jobs\n",
+        "steps:\n  - run: kubectl rollout restart deployment/api\n",
+        "steps:\n  - run: kubectl drain node-1\n",
+        'steps:\n  - name: "Example: run: gcloud run deploy api"\n',
+        "steps:\n  - run: echo 'gcloud run deploy api'\n",
+    ],
+)
+def test_declarative_deployment_boundary_allows_plan_apply_and_diagnostics(tmp_path: Path, source: str) -> None:
+    path = tmp_path / ".github" / "workflows" / "deploy.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+    assert "SARJ309" not in _codes(path, root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'steps:\n  - run: "gcloud run deploy api"\n',
+        "steps:\n  - run: >\n      gcloud run\n      deploy api\n",
+    ],
+)
+def test_declarative_deployment_boundary_parses_yaml_run_scalar_semantics(tmp_path: Path, source: str) -> None:
+    path = tmp_path / ".github" / "workflows" / "deploy.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+
+    assert _codes(path, root=tmp_path) == ["SARJ309"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "steps:\n  - uses: google-github-actions/deploy-cloudrun@v3\n",
+        "steps:\n  - uses: google-github-actions/deploy-cloud-functions@v4\n",
+        "steps:\n  - uses: cloudflare/wrangler-action@v3\n    with:\n      command: versions deploy abc@100\n",
+    ],
+)
+def test_declarative_deployment_boundary_flags_direct_deployment_actions(tmp_path: Path, source: str) -> None:
+    path = tmp_path / ".github" / "workflows" / "deploy.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+
+    assert _codes(path, root=tmp_path) == ["SARJ309"]
+
+
+def test_declarative_deployment_boundary_ignores_application_commands(tmp_path: Path) -> None:
+    path = tmp_path / "packages" / "cloud-client" / "commands.sh"
+    path.parent.mkdir(parents=True)
+    path.write_text("gcloud run deploy api --image $IMAGE\n", encoding="utf-8")
+    assert "SARJ309" not in _codes(path, root=tmp_path)
+
+
+def test_declarative_deployment_boundary_ignores_operational_markdown(tmp_path: Path) -> None:
+    path = tmp_path / "iac" / "README.md"
+    path.parent.mkdir()
+    path.write_text("```sh\nkubectl apply -f deployment.yaml\n```\n", encoding="utf-8")
+    assert "SARJ309" not in _codes(path, root=tmp_path)
+
+
+def test_declarative_deployment_boundary_reports_once_per_file(tmp_path: Path) -> None:
+    path = tmp_path / "scripts" / "deploy.sh"
+    path.parent.mkdir()
+    path.write_text("gcloud run deploy api\nkubectl apply -f deployment.yaml\n", encoding="utf-8")
+    assert _codes(path, root=tmp_path).count("SARJ309") == 1
+
+
+def test_declarative_deployment_boundary_reads_real_plan_allowlist_fixture(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "textlint" / "envs.json"
+    path = tmp_path / "iac" / "example" / "envs.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(fixture.read_bytes())
+
+    assert _codes(path, root=tmp_path) == ["SARJ309"]
+
+
+def test_plan_allowlist_matches_structured_camel_case_key_without_matching_prose(tmp_path: Path) -> None:
+    prose = tmp_path / "iac" / "prose.json"
+    prose.parent.mkdir()
+    prose.write_text('{"note":"allowed_change_addresses explains the retired design"}\n', encoding="utf-8")
+    config = tmp_path / "iac" / "envs.json"
+    config.write_text('{"dev":{"allowedChangeAddresses":[]}}\n', encoding="utf-8")
+
+    assert "SARJ309" not in _codes(prose, root=tmp_path)
+    assert _codes(config, root=tmp_path) == ["SARJ309"]
+
+
+def test_declarative_deployment_boundary_does_not_resolve_wrappers(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github" / "workflows" / "deploy.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("steps:\n  - run: ./scripts/deploy.sh\n", encoding="utf-8")
+    wrapper = tmp_path / "scripts" / "deploy.sh"
+    wrapper.parent.mkdir()
+    wrapper.write_text("gcloud run deploy api --image image\n", encoding="utf-8")
+
+    assert "SARJ309" not in _codes(workflow, root=tmp_path)
+    assert _codes(wrapper, root=tmp_path) == ["SARJ309"]
+
+
+@pytest.mark.parametrize(
     "case",
     SHELL_IAC_EVALUATION_CASES,
     ids=tuple(case.case_id for case in SHELL_IAC_EVALUATION_CASES),
@@ -473,6 +633,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
     assert set(textlint.REGISTRY) == {
         "commented-out-config",
         "config-comment-wall",
+        "declarative-deployment-boundary",
         "ephemeral-execution-artifact",
         "exact-config-comment-restatement",
         "hidden-markdown-heading",

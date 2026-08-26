@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from sarj_iac_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_iac_lint.rules.no_dead_environment_input import NoDeadEnvironmentInput
 from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditional
-from sarj_iac_lint.rules.no_environment_derived_access_grant import NoEnvironmentDerivedAccessGrant
 from sarj_iac_lint.rules.no_mocked_terraform_test_oracle import NoMockedTerraformTestOracle
 from sarj_iac_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_iac_lint.rules.require_deletion_protection import RequireDeletionProtection
@@ -25,7 +24,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequirePreventDestroyOnIrreplaceable.id: RequirePreventDestroyOnIrreplaceable,
         NoCommentCruft.id: NoCommentCruft,
         NoEnvironmentConditional.id: NoEnvironmentConditional,
-        NoEnvironmentDerivedAccessGrant.id: NoEnvironmentDerivedAccessGrant,
         NoDeadEnvironmentInput.id: NoDeadEnvironmentInput,
         NoMockedTerraformTestOracle.id: NoMockedTerraformTestOracle,
         NoRestatedComment.id: NoRestatedComment,

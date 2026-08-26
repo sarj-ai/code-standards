@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatch
+import json
 from pathlib import Path, PurePosixPath
 import re
 import shlex
@@ -16,6 +17,8 @@ from typing import (
 )
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.rules.contracts import (
@@ -39,6 +42,12 @@ if TYPE_CHECKING:
 class _ShellOperands(NamedTuple):
     operands: list[str]
     explicit_pattern: bool
+
+
+class _WorkflowAction(NamedTuple):
+    line: int
+    uses: str
+    command: str
 
 
 class _TextPolicy(NamedTuple):
@@ -99,6 +108,125 @@ _TEXT_SUFFIXES: Final = frozenset(
     }
 )
 _TEXT_NAMES: Final = frozenset({"dockerfile", "gnumakefile", "justfile", "makefile"})
+_OPERATIONAL_ROOTS: Final = frozenset(
+    {"cloudbuild", "deploy", "deployments", "iac", "infra", "k8s", "scripts", "terraform", "tools"}
+)
+_SHELL_CONTROL_PREFIXES: Final = frozenset(
+    {"!", "command", "do", "elif", "else", "exec", "if", "then", "time", "until", "while"}
+)
+_GCLOUD_RELEASE_TRACKS: Final = frozenset({"alpha", "beta", "preview"})
+_ENV_VALUE_OPTIONS: Final = frozenset({"--chdir", "--split-string", "--unset", "-C", "-S", "-u"})
+_GCLOUD_GLOBAL_VALUE_OPTIONS: Final = frozenset(
+    {
+        "--account",
+        "--billing-project",
+        "--configuration",
+        "--flags-file",
+        "--format",
+        "--impersonate-service-account",
+        "--project",
+        "--trace-token",
+        "--verbosity",
+    }
+)
+_GCLOUD_MUTATIONS: Final = frozenset(
+    {
+        ("builds", "triggers", "create"),
+        ("builds", "triggers", "delete"),
+        ("builds", "triggers", "update"),
+        ("compute", "instances", "create"),
+        ("compute", "instances", "delete"),
+        ("deploy", "releases", "create"),
+        ("functions", "delete"),
+        ("functions", "deploy"),
+        ("iam", "service-accounts", "add-iam-policy-binding"),
+        ("iam", "service-accounts", "remove-iam-policy-binding"),
+        ("projects", "add-iam-policy-binding"),
+        ("projects", "remove-iam-policy-binding"),
+        ("pubsub", "subscriptions", "create"),
+        ("pubsub", "subscriptions", "delete"),
+        ("pubsub", "subscriptions", "update"),
+        ("pubsub", "topics", "create"),
+        ("pubsub", "topics", "delete"),
+        ("pubsub", "topics", "update"),
+        ("run", "deploy"),
+        ("run", "jobs", "delete"),
+        ("run", "jobs", "deploy"),
+        ("run", "jobs", "replace"),
+        ("run", "jobs", "update"),
+        ("run", "services", "add-iam-policy-binding"),
+        ("run", "services", "delete"),
+        ("run", "services", "remove-iam-policy-binding"),
+        ("run", "services", "replace"),
+        ("run", "services", "update"),
+        ("scheduler", "jobs", "create"),
+        ("scheduler", "jobs", "delete"),
+        ("scheduler", "jobs", "update"),
+        ("secrets", "create"),
+        ("secrets", "delete"),
+        ("secrets", "versions", "add"),
+        ("secrets", "versions", "destroy"),
+        ("secrets", "versions", "disable"),
+        ("secrets", "versions", "enable"),
+        ("services", "disable"),
+        ("services", "enable"),
+        ("sql", "instances", "clone"),
+        ("sql", "instances", "create"),
+        ("sql", "instances", "delete"),
+        ("sql", "instances", "patch"),
+        ("tasks", "queues", "create"),
+        ("tasks", "queues", "delete"),
+        ("tasks", "queues", "update"),
+        ("workflows", "delete"),
+        ("workflows", "deploy"),
+    }
+)
+_KUBECTL_GLOBAL_VALUE_OPTIONS: Final = frozenset(
+    {
+        "--as",
+        "--as-group",
+        "--cache-dir",
+        "--cluster",
+        "--context",
+        "--kubeconfig",
+        "--namespace",
+        "--request-timeout",
+        "--server",
+        "--token",
+        "--user",
+        "-n",
+    }
+)
+_KUBECTL_MUTATIONS: Final = frozenset(
+    {
+        "annotate",
+        "apply",
+        "create",
+        "delete",
+        "edit",
+        "expose",
+        "label",
+        "patch",
+        "replace",
+        "scale",
+        "set",
+        "taint",
+    }
+)
+_KUBECTL_MUTATION_PREFIXES: Final = frozenset(
+    {
+        ("auth", "reconcile"),
+        ("certificate", "approve"),
+        ("certificate", "deny"),
+    }
+)
+_TERRAFORM_STATE_MUTATIONS: Final = frozenset({"mv", "push", "replace-provider", "rm"})
+_TERRAFORM_DIRECT_MUTATIONS: Final = frozenset({"import", "taint", "untaint"})
+_WRANGLER_MUTATIONS: Final = frozenset({("d1", "create"), ("deploy",), ("versions", "deploy")})
+_PACKAGE_EXEC_VALUE_OPTIONS: Final = frozenset(
+    {"--cache", "--prefix", "--userconfig", "--workspace", "--workspace-root", "-C", "-w"}
+)
+_CONFIG_KEY_RE: Final = re.compile(r"[\"']?(?P<key>[A-Za-z_][\w.-]*)[\"']?\s*[:=]")
 _MIN_EPHEMERAL_HEADINGS: Final = 2
 _MIN_NUMBERED_FINDINGS: Final = 2
 _LARGE_ARTIFACT_MIN_LINES: Final = 200
@@ -461,6 +589,47 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Only test-named shell files or shell files below a tests directory are checked.",
             ),
         ),
+        "declarative-deployment-boundary": RuleMeta(
+            code="SARJ309",
+            summary="recognized operational commands mutate infrastructure outside Terraform",
+            rationale=(
+                "Imperative control-plane commands and plan-address allowlists split deployment ownership between "
+                "Terraform and repository-specific orchestration, so drift and safety depend on execution order."
+            ),
+            remediation=(
+                "Model the resource, identity, and lifecycle in Terraform; let CI select inputs and apply the saved "
+                "plan without maintaining a second mutation path."
+            ),
+            category=RuleCategory.ARCHITECTURE,
+            languages=frozenset({Language.CONFIG}),
+            file_patterns=(
+                ".github/workflows/*.{yaml,yml}",
+                "{cloudbuild,deploy,deployments,iac,infra,k8s,scripts,terraform,tools}/**",
+            ),
+            examples=(
+                _public_example(
+                    example_id="workflow-control-plane-mutation",
+                    title="Keep cloud mutation in Terraform",
+                    outcome=ExpectedOutcome.MATCH,
+                    path=".github/workflows/deploy.yml",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE\n",
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="saved-plan-apply",
+                    title="CI applies the reviewed Terraform plan",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path=".github/workflows/deploy.yml",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: terraform apply saved.tfplan\n",
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "The bounded scanner reports explicitly recognized commands and deployment Actions; dynamic command construction and unlisted provider surfaces are intentionally unreported.",
+                "Wrapper-indirected commands are intentionally unreported; full-tree CI scans wrapper files directly only when they live in an operational root.",
+                "Read-only diagnostics such as terraform show, gcloud describe/list, and kubectl get are allowed.",
+            ),
+        ),
         "hidden-markdown-heading": RuleMeta(
             code="SARJ305",
             summary="HTML comment hides a Markdown heading",
@@ -617,6 +786,7 @@ def is_text_path(path: Path) -> bool:
         or name == ".env"
         or name.startswith(("dockerfile.", ".env."))
         or (path.suffix.casefold() == ".json" and ".claude" in path.parts and name.startswith("settings"))
+        or (path.suffix.casefold() == ".json" and any(part.casefold() in _OPERATIONAL_ROOTS for part in path.parts))
     )
 
 
@@ -635,6 +805,7 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
             continue
         path_findings = [
             *_artifact_findings(path, relative, source, durable_patterns),
+            *_declarative_deployment_findings(path, relative, source),
             *_shell_iac_source_findings(path, relative, source),
             *_markdown_hidden_comment_findings(path, source),
             *_markdown_command_argument_findings(path, relative, source),
@@ -647,6 +818,393 @@ def check_paths(paths: Sequence[str], *, root: Path | None = None) -> list[Findi
             if not (path.suffix.lower() in {".md", ".mdx"} and _markdown_suppresses_finding(source, finding))
         )
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
+
+
+def _declarative_deployment_findings(path: Path, relative: str, source: str) -> list[Finding]:
+    pure = PurePosixPath(relative)
+    in_workflow = _workflow_path(path, relative)
+    in_operational_tree = bool(pure.parts) and pure.parts[0].casefold() in _OPERATIONAL_ROOTS
+    if (not in_workflow and not in_operational_tree) or path.suffix.casefold() in {".md", ".mdx"}:
+        return []
+    for command in _deployment_shell_lines(source, workflow=in_workflow):
+        if _shell_line_mutates_control_plane(command.command):
+            return [
+                Finding(
+                    path,
+                    command.line,
+                    "SARJ309",
+                    "Infrastructure mutation is outside Terraform — model it in Terraform and keep CI to plan/apply orchestration.",
+                )
+            ]
+    if in_workflow:
+        action = next((item for item in _workflow_actions(source) if _workflow_action_mutates(item)), None)
+        if action is not None:
+            return [
+                Finding(
+                    path,
+                    action.line,
+                    "SARJ309",
+                    "Deployment Action mutates infrastructure outside Terraform — model it in Terraform and keep CI to plan/apply orchestration.",
+                )
+            ]
+    if path.suffix.casefold() in {".json", ".jsonc", ".toml", ".yaml", ".yml"}:
+        number = _plan_address_allowlist_line(path, source)
+        if number is not None:
+            return [
+                Finding(
+                    path,
+                    number,
+                    "SARJ309",
+                    "Plan-address allowlist duplicates Terraform intent — remove the guard and make the plan authoritative.",
+                )
+            ]
+    return []
+
+
+def _workflow_path(path: Path, relative: str) -> bool:
+    pure = PurePosixPath(relative)
+    return pure.parts[:2] == (".github", "workflows") and path.suffix.casefold() in {".yaml", ".yml"}
+
+
+def _deployment_shell_lines(source: str, *, workflow: bool) -> list[_ShellLogicalLine]:
+    return _workflow_run_lines(source) if workflow else _shell_logical_lines(source)
+
+
+def _workflow_run_lines(source: str) -> list[_ShellLogicalLine]:
+    commands: list[_ShellLogicalLine] = []
+    for step in _workflow_steps(source):
+        commands.extend(_offset_shell_lines(step.command, step.line))
+    return commands
+
+
+def _workflow_actions(source: str) -> list[_WorkflowAction]:
+    actions: list[_WorkflowAction] = []
+    for step in _workflow_step_nodes(source):
+        uses = _mapping_value(step, "uses")
+        if not isinstance(uses, ScalarNode):
+            continue
+        command = _scalar_value(_mapping_value(_mapping_value(step, "with"), "command"))
+        actions.append(_WorkflowAction(uses.start_mark.line + 1, _scalar_value(uses), command))
+    return actions
+
+
+def _workflow_document(source: str) -> MappingNode | None:
+    try:
+        document: object = yaml.compose(source)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    except yaml.YAMLError:
+        return None
+    return document if isinstance(document, MappingNode) else None
+
+
+def _mapping_value(node: Node | None, key: str) -> Node | None:
+    if not isinstance(node, MappingNode):
+        return None
+    pairs: list[tuple[Node, Node]] = node.value  # pyright: ignore[reportAny]
+    return next(
+        (value for candidate, value in pairs if isinstance(candidate, ScalarNode) and _scalar_value(candidate) == key),
+        None,
+    )
+
+
+def _scalar_value(node: Node | None) -> str:
+    if not isinstance(node, ScalarNode):
+        return ""
+    value: object = node.value  # pyright: ignore[reportAny]
+    return value if isinstance(value, str) else ""
+
+
+def _workflow_step_nodes(source: str) -> list[MappingNode]:
+    document = _workflow_document(source)
+    if document is None:
+        return []
+    steps: list[MappingNode] = []
+    top_level_steps = _mapping_value(document, "steps")
+    if isinstance(top_level_steps, SequenceNode):
+        children: list[Node] = top_level_steps.value  # pyright: ignore[reportAny]
+        steps.extend(step for step in children if isinstance(step, MappingNode))
+    jobs = _mapping_value(document, "jobs")
+    if not isinstance(jobs, MappingNode):
+        return steps
+    job_items: list[tuple[Node, Node]] = jobs.value  # pyright: ignore[reportAny]
+    for _job_name, job in job_items:
+        if not isinstance(job, MappingNode):
+            continue
+        sequence = _mapping_value(job, "steps")
+        if not isinstance(sequence, SequenceNode):
+            continue
+        children = sequence.value  # pyright: ignore[reportAny]
+        steps.extend(step for step in children if isinstance(step, MappingNode))
+    return steps
+
+
+def _workflow_steps(source: str) -> list[_ShellLogicalLine]:
+    commands: list[_ShellLogicalLine] = []
+    for step in _workflow_step_nodes(source):
+        run = _mapping_value(step, "run")
+        if not isinstance(run, ScalarNode):
+            continue
+        commands.append(_ShellLogicalLine(run.start_mark.line + 1, _scalar_value(run)))
+    return commands
+
+
+def _workflow_action_mutates(action: _WorkflowAction) -> bool:
+    identifier = action.uses.partition("@")[0].casefold()
+    if identifier in {
+        "google-github-actions/deploy-cloud-functions",
+        "google-github-actions/deploy-cloudrun",
+    }:
+        return True
+    return identifier == "cloudflare/wrangler-action" and _shell_line_mutates_control_plane(
+        f"wrangler {action.command}"
+    )
+
+
+def _plan_address_allowlist_line(path: Path, source: str) -> int | None:
+    suffix = path.suffix.casefold()
+    if suffix in {".yaml", ".yml"}:
+        return _yaml_plan_address_allowlist_line(_workflow_document(source))
+    document = _structured_config_document(suffix, source)
+    if document is None or not _contains_plan_address_allowlist_key(document):
+        return None
+    return _config_key_line(source)
+
+
+def _structured_config_document(suffix: str, source: str) -> object | None:
+    try:
+        if suffix in {".json", ".jsonc"}:
+            payload = _strip_jsonc_comments(source) if suffix == ".jsonc" else source
+            if suffix == ".jsonc":
+                payload = re.sub(r",(?=\s*[}\]])", "", payload)
+            return json.loads(payload)  # pyright: ignore[reportAny]
+        if suffix == ".toml":
+            return tomllib.loads(source)
+    except json.JSONDecodeError, tomllib.TOMLDecodeError:
+        return None
+    return None
+
+
+def _strip_jsonc_comments(source: str) -> str:
+    result = list(source)
+    index = 0
+    quote = False
+    while index < len(source):
+        if source[index] == '"' and (index == 0 or source[index - 1] != "\\"):
+            quote = not quote
+            index += 1
+            continue
+        if quote or source[index : index + 2] not in {"//", "/*"}:
+            index += 1
+            continue
+        closing = source.find("\n", index + 2) if source[index : index + 2] == "//" else source.find("*/", index + 2)
+        end = len(source) if closing < 0 else closing + (0 if source[index : index + 2] == "//" else 2)
+        for offset in range(index, end):
+            if result[offset] not in {"\n", "\r"}:
+                result[offset] = " "
+        index = end
+    return "".join(result)
+
+
+def _yaml_plan_address_allowlist_line(node: Node | None) -> int | None:
+    match node:
+        case MappingNode():
+            mapping_items: list[tuple[Node, Node]] = node.value  # pyright: ignore[reportAny]
+            for key, value in mapping_items:
+                if isinstance(key, ScalarNode) and _is_plan_address_allowlist_key(_scalar_value(key)):
+                    return key.start_mark.line + 1
+                if (nested := _yaml_plan_address_allowlist_line(value)) is not None:
+                    return nested
+        case SequenceNode():
+            sequence_items: list[Node] = node.value  # pyright: ignore[reportAny]
+            for value in sequence_items:
+                if (nested := _yaml_plan_address_allowlist_line(value)) is not None:
+                    return nested
+        case _:
+            pass
+    return None
+
+
+def _contains_plan_address_allowlist_key(value: object) -> bool:
+    match value:
+        case dict():
+            mapping: dict[object, object] = value  # pyright: ignore[reportUnknownVariableType]
+            return any(
+                (isinstance(key, str) and _is_plan_address_allowlist_key(key))
+                or _contains_plan_address_allowlist_key(item)
+                for key, item in mapping.items()
+            )
+        case list():
+            sequence: list[object] = value  # pyright: ignore[reportUnknownVariableType]
+            return any(_contains_plan_address_allowlist_key(item) for item in sequence)
+        case _:
+            return False
+
+
+def _is_plan_address_allowlist_key(value: str) -> bool:
+    return _config_words(value) == ("allowed", "change", "addresses")
+
+
+def _config_key_line(source: str) -> int:
+    return next(
+        (
+            number
+            for number, line in enumerate(source.splitlines(), start=1)
+            if any(_is_plan_address_allowlist_key(match.group("key")) for match in _CONFIG_KEY_RE.finditer(line))
+        ),
+        1,
+    )
+
+
+def _offset_shell_lines(source: str, first_line: int) -> list[_ShellLogicalLine]:
+    return [_ShellLogicalLine(first_line + item.line - 1, item.command) for item in _shell_logical_lines(source)]
+
+
+def _shell_line_mutates_control_plane(command: str) -> bool:
+    return any(_command_mutates_control_plane(segment.tokens) for segment in _shell_segments(_shell_tokens(command)))
+
+
+def _command_mutates_control_plane(tokens: Sequence[str]) -> bool:
+    argv = _command_argv(tokens)
+    if not argv:
+        return False
+    executable = _shell_command(argv[0])
+    arguments = [item.casefold() for item in argv[1:]]
+    if executable in {"npm", "npx", "pnpm", "yarn"}:
+        nested = _drop_leading_cli_options(argv[1:], _PACKAGE_EXEC_VALUE_OPTIONS)
+        if nested[:1] == ["exec"]:
+            nested = nested[1:]
+        if nested and (executable == "npx" or _shell_command(nested[0]) == "wrangler"):
+            return _command_mutates_control_plane(nested)
+    if executable == "gcloud":
+        return _gcloud_mutates(arguments)
+    if executable == "kubectl":
+        return _kubectl_mutates(arguments)
+    if executable in {"terraform", "tofu", "opentofu"}:
+        return _terraform_mutates(arguments)
+    if executable == "wrangler":
+        return _wrangler_mutates(arguments)
+    return False
+
+
+def _command_argv(tokens: Sequence[str]) -> list[str]:
+    argv = list(tokens)
+    while argv and argv[0] in {"(", "[", "[["}:
+        argv.pop(0)
+    while argv and argv[0].casefold() in _SHELL_CONTROL_PREFIXES:
+        prefix = argv.pop(0).casefold()
+        if prefix == "command":
+            if argv[:1] and argv[0] in {"-v", "-V"}:
+                return []
+            argv = _drop_leading_cli_options(argv, frozenset())
+        elif prefix == "time":
+            argv = _drop_leading_cli_options(argv, frozenset({"--format", "-f", "-o"}))
+    while argv and _shell_assignment_token(argv[0]):
+        argv.pop(0)
+    if argv and _shell_command(argv[0].lstrip("@+-")) == "env":
+        argv = _drop_env_prefix(argv[1:])
+        while argv and _shell_assignment_token(argv[0]):
+            argv.pop(0)
+    if argv and _shell_command(argv[0].lstrip("@+-")) == "sudo":
+        argv = _drop_leading_cli_options(
+            argv[1:], frozenset({"--chdir", "--group", "--host", "--prompt", "--user", "-C", "-g", "-h", "-p", "-u"})
+        )
+    if argv:
+        argv[0] = argv[0].lstrip("@+-")
+    return argv
+
+
+def _shell_assignment_token(token: str) -> bool:
+    return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token) is not None
+
+
+def _drop_env_prefix(arguments: Sequence[str]) -> list[str]:
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == "--":
+            return list(arguments[index + 1 :])
+        option, separator, _value = argument.partition("=")
+        if option in _ENV_VALUE_OPTIONS:
+            index += 1 if separator else 2
+            continue
+        if argument.startswith("-") or _shell_assignment_token(argument):
+            index += 1
+            continue
+        return list(arguments[index:])
+    return []
+
+
+def _drop_leading_cli_options(arguments: Sequence[str], value_options: frozenset[str]) -> list[str]:
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if argument == "--":
+            return list(arguments[index + 1 :])
+        if not argument.startswith("-") or argument == "-":
+            return list(arguments[index:])
+        option, separator, _value = argument.partition("=")
+        index += 1
+        if option in value_options and not separator:
+            index += 1
+    return []
+
+
+def _drop_cli_options(arguments: Sequence[str], value_options: frozenset[str]) -> list[str]:
+    remaining: list[str] = []
+    consume = False
+    passthrough = False
+    for argument in arguments:
+        if passthrough:
+            remaining.append(argument)
+            continue
+        if consume:
+            consume = False
+            continue
+        option, separator, _value = argument.partition("=")
+        if argument == "--":
+            passthrough = True
+            continue
+        if option in value_options:
+            consume = not separator
+            continue
+        if argument.startswith("-"):
+            continue
+        remaining.append(argument)
+    return remaining
+
+
+def _gcloud_mutates(arguments: Sequence[str]) -> bool:
+    command = _drop_cli_options(arguments, _GCLOUD_GLOBAL_VALUE_OPTIONS)
+    if command and command[0] in _GCLOUD_RELEASE_TRACKS:
+        command = command[1:]
+    return _matches_prefix(command, _GCLOUD_MUTATIONS)
+
+
+def _kubectl_mutates(arguments: Sequence[str]) -> bool:
+    command = _drop_cli_options(arguments, _KUBECTL_GLOBAL_VALUE_OPTIONS)
+    if not command:
+        return False
+    if command[0] in _KUBECTL_MUTATIONS:
+        return True
+    return _matches_prefix(command, _KUBECTL_MUTATION_PREFIXES)
+
+
+def _terraform_mutates(arguments: Sequence[str]) -> bool:
+    command = _drop_cli_options(arguments, frozenset({"-chdir"}))
+    if command[:1] and command[0] in _TERRAFORM_DIRECT_MUTATIONS:
+        return True
+    action = command[1] if command[:1] == ["state"] and command[1:] else None
+    return action in _TERRAFORM_STATE_MUTATIONS
+
+
+def _wrangler_mutates(arguments: Sequence[str]) -> bool:
+    if "--dry-run" in arguments:
+        return False
+    command = _drop_cli_options(arguments, frozenset({"--config", "--cwd", "--env"}))
+    return _matches_prefix(command, _WRANGLER_MUTATIONS)
+
+
+def _matches_prefix(arguments: Sequence[str], patterns: frozenset[tuple[str, ...]]) -> bool:
+    return any(tuple(arguments[: len(pattern)]) == pattern for pattern in patterns)
 
 
 def run(paths: Sequence[str]) -> int:
@@ -709,8 +1267,9 @@ def _shell_iac_source_findings(path: Path, relative: str, source: str) -> list[F
     findings: list[Finding] = []
     tainted: set[str] = set()
     path_names: set[str] = set()
-    for number, line in _shell_logical_lines(source):
-        tokens = _shell_tokens(line)
+    for logical_line in _shell_logical_lines(source):
+        number = logical_line.line
+        tokens = _shell_tokens(logical_line.command)
         if not tokens:
             continue
         assignment = _shell_assignment(tokens)

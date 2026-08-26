@@ -150,6 +150,7 @@ _CONFIG_TARGETS: Final = MappingProxyType(
 _REFERENCE_SUFFIXES: Final = (
     ".cjs",
     ".cts",
+    ".hcl",
     ".js",
     ".json",
     ".jsx",
@@ -160,11 +161,14 @@ _REFERENCE_SUFFIXES: Final = (
     ".toml",
     ".ts",
     ".tsx",
+    ".tf",
+    ".tfvars",
     ".yaml",
     ".yml",
 )
 _RULE_MAPPING_REFERENCE = re.compile(r"^\s*(?:-\s*)?(?:id|entry)\s*:\s*.*sarj", re.IGNORECASE)
 _ESLINT_RULE_REFERENCE = re.compile(r"[\"']@sarj/[^\"']+[\"']\s*:")
+_STANDARD_BASELINE_NAMES: Final = frozenset({".sarj-python-baseline.json", "suppression-baseline.json"})
 _IGNORE_RETIRED_RULE_REFERENCES = "sarj-doctor-ignore-retired-rules"
 
 _SKIP_DIRS: Final = frozenset(
@@ -471,10 +475,11 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
     retired = ledger.load().retired
     if not retired:
         return
+    configured_references = _configured_rule_reference_files(root)
     for path in _candidate_files(files if files is not None else _walk(root), _REFERENCE_SUFFIXES):
         if path.name in {"rule-ledger.json", "code_ledger.json"}:
             continue
-        counts = retired_rule_counts(path, _read(path))
+        counts = retired_rule_counts(path, _read(path), configured=path.resolve() in configured_references)
         for entry in retired:
             hits = counts.get(entry.id, 0)
             if hits:
@@ -492,20 +497,29 @@ def retired_rule_references(path: Path, text: str) -> frozenset[str]:
     return frozenset(retired_rule_counts(path, text))
 
 
-def retired_rule_counts(path: Path, text: str) -> dict[str, int]:
+def retired_rule_counts(path: Path, text: str, *, configured: bool = False) -> dict[str, int]:
     if retired_suppressions.supports(path):
         return retired_suppressions.reference_counts(path, text)
-    references = _reference_text(path, text)
-    if "sarj" not in references.lower():
-        return {}
+    references = _reference_text(text, configured=configured)
     return {entry.id: hits for entry in ledger.load().retired if (hits := len(entry.pattern.findall(references)))}
 
 
-def _reference_text(path: Path, text: str) -> str:
+def _configured_rule_reference_files(root: Path) -> frozenset[Path]:
+    paths = {(root / name).resolve() for name in _STANDARD_BASELINE_NAMES}
+    paths.add(manifest.manifest_path(root).resolve())
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        adopted = None
+    if adopted is not None and adopted.diagnostic_baseline is not None:
+        paths.add((root / adopted.diagnostic_baseline).resolve())
+    return frozenset(paths)
+
+
+def _reference_text(text: str, *, configured: bool = False) -> str:
     if _IGNORE_RETIRED_RULE_REFERENCES in text:
         return ""
-    lowered = path.name.lower()
-    if "baseline" in lowered:
+    if configured:
         return text
     if "sarj" not in text.lower():
         return ""
@@ -514,13 +528,9 @@ def _reference_text(path: Path, text: str) -> str:
         normalized = line.lower()
         if "sarj" not in normalized:
             continue
-        if (
-            "sarj-noqa" in normalized
-            or "eslint-disable" in normalized
-            or "--rule" in normalized
-            or _RULE_MAPPING_REFERENCE.search(line)
-            or _ESLINT_RULE_REFERENCE.search(line)
-        ):
+        directive = any(marker in normalized for marker in ("sarj-noqa", "eslint-disable", "--rule"))
+        mapped = bool(_RULE_MAPPING_REFERENCE.search(line) or _ESLINT_RULE_REFERENCE.search(line))
+        if directive or mapped:
             lines.append(line)
     return "\n".join(lines)
 
