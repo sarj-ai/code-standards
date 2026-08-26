@@ -112,6 +112,38 @@ class TestRegistry:
 
         assert rollout.rollout_baseline_rules(consumer(), policy, policy) == ()
 
+    @pytest.mark.parametrize(
+        ("configured", "expected"),
+        [
+            pytest.param(
+                "iac:no-terraform-test-file",
+                "iac:no-mocked-terraform-test-oracle",
+                id="retired-iac-selector",
+            ),
+            pytest.param(
+                "iac:no-terraform-test-files",
+                "iac:no-terraform-test-files",
+                id="near-miss-remains-strict",
+            ),
+        ],
+    )
+    def test_rollout_canonicalizes_catalogued_historical_baseline_selectors(
+        self, configured: str, expected: str
+    ) -> None:
+        selected = rollout.rollout_baseline_rules(
+            rollout.Consumer(
+                "one",
+                "example/one",
+                "main",
+                ("true",),
+                baseline_rules=(configured,),
+            ),
+            rollout.ReactDoctorPolicy(None, None),
+            rollout.ReactDoctorPolicy(None, None),
+        )
+
+        assert selected == (expected,)
+
     def test_react_doctor_policy_snapshot_reads_managed_config_and_direct_pin(
         self,
         monkeypatch: pytest.MonkeyPatch,

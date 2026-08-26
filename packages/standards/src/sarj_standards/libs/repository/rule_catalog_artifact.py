@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 import json
 from pathlib import Path, PurePosixPath
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed local build commands generate the committed catalog.
+from types import MappingProxyType
 from typing import Final, Protocol, TypeGuard
 
 from sarj_standards.libs.repository import rule_inventory_artifact
@@ -68,6 +70,20 @@ class CatalogSyncResult:
     message: str
 
 
+@dataclass(frozen=True, slots=True)
+class SelectorIndex:
+    canonical: frozenset[str]
+    canonical_by_selector: Mapping[str, str]
+    aliases_by_canonical: Mapping[str, tuple[str, ...]]
+
+    def resolve(self, selector: str) -> str:
+        return self.canonical_by_selector.get(selector, selector)
+
+    def equivalents(self, selector: str) -> tuple[str, ...]:
+        canonical = self.resolve(selector)
+        return (canonical, *self.aliases_by_canonical.get(canonical, ()))
+
+
 def load(path: Path = RULE_CATALOG) -> dict[str, object]:
     try:
         payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
@@ -78,6 +94,65 @@ def load(path: Path = RULE_CATALOG) -> dict[str, object]:
         msg = "shipped rule catalog must contain schemaVersion 1 and a rules array"
         raise ValueError(msg)
     return payload
+
+
+def selector_index(path: Path = RULE_CATALOG) -> SelectorIndex:
+    payload = load(path)
+    rules = payload.get("rules")
+    if not _is_array(rules):
+        msg = "shipped rule catalog must contain a rules array"
+        raise ValueError(msg)
+    canonical_by_selector: dict[str, str] = {}
+    aliases_by_canonical: dict[str, tuple[str, ...]] = {}
+    for value in rules:
+        if not _is_object(value):
+            msg = "shipped rule catalog rule must be an object"
+            raise ValueError(msg)
+        key = value.get("key")
+        engine = value.get("engine")
+        aliases = value.get("aliases")
+        if not isinstance(key, str) or not isinstance(engine, str) or not _is_array(aliases):
+            msg = "shipped rule catalog rule has invalid selector metadata"
+            raise ValueError(msg)
+        if key.count(":") != 1 or not key.startswith(f"{engine}:") or not key.removeprefix(f"{engine}:"):
+            msg = "shipped rule catalog rule has invalid selector metadata"
+            raise ValueError(msg)
+        if any(not isinstance(alias, str) or not alias or ":" in alias for alias in aliases):
+            msg = "shipped rule catalog rule has invalid selector metadata"
+            raise ValueError(msg)
+        raw_aliases = tuple(alias for alias in aliases if isinstance(alias, str))
+        if len(raw_aliases) != len(set(raw_aliases)):
+            msg = f"shipped rule catalog rule {key!r} repeats an alias"
+            raise ValueError(msg)
+        historical = tuple(
+            selector
+            for alias in raw_aliases
+            for selector in (
+                f"{engine}:{alias}",
+                *((f"eslint:@sarj/{alias}",) if engine == "eslint" and not alias.startswith("@") else ()),
+            )
+        )
+        if len(historical) != len(set(historical)):
+            msg = f"shipped rule catalog rule {key!r} has ambiguous aliases"
+            raise ValueError(msg)
+        if key in aliases_by_canonical:
+            msg = f"shipped rule catalog repeats canonical selector {key!r}"
+            raise ValueError(msg)
+        if key in historical:
+            msg = f"shipped rule catalog rule {key!r} aliases its canonical selector"
+            raise ValueError(msg)
+        for selector in (key, *historical):
+            previous = canonical_by_selector.setdefault(selector, key)
+            if previous != key:
+                msg = f"shipped rule catalog selector {selector!r} is ambiguous"
+                raise ValueError(msg)
+        aliases_by_canonical[key] = historical
+    canonical = frozenset(aliases_by_canonical)
+    return SelectorIndex(
+        canonical,
+        MappingProxyType(canonical_by_selector),
+        MappingProxyType(aliases_by_canonical),
+    )
 
 
 class _StringEnum(Protocol):

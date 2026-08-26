@@ -241,7 +241,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     changes.extend(Change(update.path, f"refresh {'/'.join(update.packages)} version pin") for update in pin_updates)
     changes.extend(Change(lockfile, "refresh Python lockfile") for lockfile in lockfiles)
     changes.extend(Change(lockfile, "refresh JavaScript lockfile") for lockfile in javascript_lockfiles)
-    changes.extend(Change(path, "migrate retired source suppression") for path, _contents in suppression_writes)
+    changes.extend(Change(path, "migrate retired rule reference") for path, _contents in suppression_writes)
     planned_paths = tuple(
         dict.fromkeys(
             [path]
