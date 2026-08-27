@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed local Ruff introspection only
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint._version import __version__
@@ -93,7 +95,17 @@ def main(argv: list[str] | None = None) -> int:
         file_exceptions=baseline.file_exceptions,
         excluded_subtrees=excluded_subtrees,
     )
-    measurement = measure(root, packages, excluded_subtrees=excluded_subtrees)
+    try:
+        ruff_aliases = _ruff_selector_aliases()
+        measurement = measure(
+            root,
+            packages,
+            excluded_subtrees=excluded_subtrees,
+            ruff_aliases=ruff_aliases,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        sys.stderr.write(f"sarj-ratchet: cannot measure suppressions: {exc}\n")
+        return 2
 
     if args.update:
         # A first seed has nothing to raise: every ceiling is 0 only because no
@@ -122,6 +134,42 @@ def main(argv: list[str] | None = None) -> int:
         shrunk = ", ".join(f"{key} {ceiling}->{actual}" for key, (ceiling, actual) in sorted(won.items()))
         sys.stdout.write(f"Counts dropped below baseline ({shrunk}) — lock it in: sarj-ratchet --update\n")
     return 0
+
+
+def _ruff_selector_aliases() -> dict[str, str]:
+    completed = subprocess.run(
+        [sys.executable, "-m", "ruff", "rule", "--all", "--output-format", "json"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    raw: object = json.loads(completed.stdout)  # pyright: ignore[reportAny] -- validated below
+    if not _is_object_list(raw):
+        msg = "Ruff rule catalog was not a JSON list"
+        raise TypeError(msg)
+    aliases: dict[str, str] = {}
+    for raw_item in raw:
+        if not _is_string_object_mapping(raw_item):
+            msg = "Ruff rule catalog contains a non-object entry"
+            raise TypeError(msg)
+        code = raw_item.get("code")
+        name = raw_item.get("name")
+        if not isinstance(code, str) or not isinstance(name, str):
+            msg = "Ruff rule catalog entry lacks a string code or name"
+            raise TypeError(msg)
+        canonical = code.upper()
+        aliases[canonical] = canonical
+        aliases[name.lower()] = canonical
+    return aliases
+
+
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _is_string_object_mapping(value: object) -> TypeGuard[dict[str, object]]:
+    # JSON object keys are strings by definition; json.loads supplied `value`.
+    return isinstance(value, dict)
 
 
 def _build_parser() -> argparse.ArgumentParser:

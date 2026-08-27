@@ -12,11 +12,7 @@ import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are fixed argv assembled from detected ecosystems.
 import sys
-from typing import (
-    TYPE_CHECKING,
-    NamedTuple,
-    cast,  # ruff: ignore[banned-api] -- json.loads is typed Any; establish an object boundary before narrowing.
-)
+from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.linting import runner
@@ -481,7 +477,7 @@ def _pyright_has_explicit_scope(path: Path) -> bool:
     if not path.is_file():
         return False
     try:
-        parsed = cast("object", json.loads(path.read_text(encoding="utf-8")))
+        parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- parser boundary
     except OSError, json.JSONDecodeError:
         return False
     return isinstance(parsed, dict) and any(key in parsed for key in ("include", "files"))

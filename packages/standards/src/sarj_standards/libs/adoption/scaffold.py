@@ -8,12 +8,7 @@ import re
 import shlex
 import textwrap
 import tomllib
-from typing import (
-    TYPE_CHECKING,
-    Final,
-    NamedTuple,
-    cast,  # ruff: ignore[banned-api] -- narrow untyped YAML at one boundary.
-)
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
@@ -1264,7 +1259,9 @@ def _remove_owned_precommit_hooks(text: str) -> str:
             insert_canonical=False,
         )
         try:
-            parsed = cast("object", yaml.safe_load(f"repos:\n{replacement}"))
+            parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- parser boundary
+                f"repos:\n{replacement}"
+            )
         except yaml.YAMLError as exc:
             msg = "generated local hook block is not valid YAML"
             raise ValueError(msg) from exc
@@ -1560,7 +1557,9 @@ def standards_check_workflows(root: Path) -> tuple[Path, ...]:
 
 def _workflow_runs_standards_check(path: Path, *, source_checkout: bool) -> bool:
     try:
-        parsed = cast("object", yaml.safe_load(path.read_text(encoding="utf-8")))
+        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- parser boundary
+            path.read_text(encoding="utf-8")
+        )
     except OSError, yaml.YAMLError:
         return False
     return any(
@@ -1651,7 +1650,7 @@ def _workflow_run_commands(value: object) -> tuple[str, ...]:
     match value:
         case dict():
             commands: list[str] = []
-            table = cast("dict[object, object]", value)
+            table = manifest.as_table(value)  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser data
             for key, item in table.items():
                 if key == "run" and isinstance(item, str):
                     commands.append(item)
@@ -1659,10 +1658,14 @@ def _workflow_run_commands(value: object) -> tuple[str, ...]:
                     commands.extend(_workflow_run_commands(item))
             return tuple(commands)
         case list():
-            items = cast("list[object]", value)
+            items = _object_list(value)  # pyright: ignore[reportUnknownArgumentType] -- narrowed parser data
             return tuple(command for item in items for command in _workflow_run_commands(item))
         case _:
             return ()
+
+
+def _object_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []  # pyright: ignore[reportUnknownVariableType] -- narrowed parser data
 
 
 def _ci_javascript_install(client: PackageManager, yarn: YarnVariant) -> str:
