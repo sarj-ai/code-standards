@@ -141,6 +141,7 @@ def _ruff_selector_aliases() -> dict[str, str]:
         [sys.executable, "-m", "ruff", "rule", "--all", "--output-format", "json"],
         check=True,
         capture_output=True,
+        encoding="utf-8",
         text=True,
     )
     raw: object = json.loads(completed.stdout)  # pyright: ignore[reportAny] -- validated below
