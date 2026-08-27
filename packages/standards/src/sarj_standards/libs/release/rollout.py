@@ -75,6 +75,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         ".yamllint.yaml",
         "bun.lock",
         "doctor.config.json",
+        "eslint.config.js",
         "eslint.config.mjs",
         "eslint.strict.mjs",
         "package-lock.json",
