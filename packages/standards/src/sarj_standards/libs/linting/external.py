@@ -273,6 +273,7 @@ def analyze_external(
     react_doctor_staged: bool = False,
     force_react_doctor: bool = False,
     react_doctor_full_scan: bool = False,
+    pass_on_unpruned_eslint_suppressions: bool = False,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     execute_eslint = _run_eslint_process if runner is None else runner
@@ -368,9 +369,19 @@ def analyze_external(
         reports.append(
             _invoke(
                 "eslint",
-                _local_eslint_argv(_eslint_json_argv(command.argv), command.cwd, root)
+                _local_eslint_argv(
+                    _eslint_json_argv(
+                        command.argv,
+                        pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
+                    ),
+                    command.cwd,
+                    root,
+                )
                 if runner is None
-                else _eslint_json_argv(command.argv),
+                else _eslint_json_argv(
+                    command.argv,
+                    pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
+                ),
                 cwd=command.cwd,
                 root=root,
                 runner=execute_eslint,
@@ -1735,14 +1746,21 @@ def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str
     return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
 
 
-def _eslint_json_argv(argv: Sequence[str]) -> tuple[str, ...]:
+def _eslint_json_argv(argv: Sequence[str], *, pass_on_unpruned_suppressions: bool = False) -> tuple[str, ...]:
     values = list(argv)
     try:
         index = values.index("eslint") + 1
     except ValueError as exc:
         msg = "ESLint command does not contain an eslint executable"
         raise ValueError(msg) from exc
-    values[index:index] = ["--format", str(_ESLINT_FORMATTER), "--no-warn-ignored", "--no-cache"]
+    suppression_args = ("--pass-on-unpruned-suppressions",) if pass_on_unpruned_suppressions else ()
+    values[index:index] = [
+        "--format",
+        str(_ESLINT_FORMATTER),
+        "--no-warn-ignored",
+        "--no-cache",
+        *suppression_args,
+    ]
     return tuple(values)
 
 

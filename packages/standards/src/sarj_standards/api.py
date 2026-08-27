@@ -242,6 +242,7 @@ class Standards:
         staged: bool = False,
         react_doctor_triggered: bool = False,
         include_react_doctor: bool = True,
+        pass_on_unpruned_eslint_suppressions: bool = False,
     ) -> AnalysisReport:
         try:
             normalized_trust = TrustMode(trust)
@@ -368,6 +369,7 @@ class Standards:
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
+                    pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 )
                 if adopted is not None
                 else analyze_external(
@@ -379,6 +381,7 @@ class Standards:
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
+                    pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 )
             )
             if run_eslint

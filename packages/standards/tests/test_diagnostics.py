@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards import api
+from sarj_standards.libs.adoption.lifecycle import Command, EslintSelection
 from sarj_standards.libs.adoption.manifest import ExclusionOverride, Manifest, as_table, list_field, table_field
 from sarj_standards.libs.diagnostics import (
     ANALYSIS_SCHEMA,
@@ -418,6 +419,58 @@ def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
     )
 
     assert captured == [frozenset({"eslint"})]
+
+
+@pytest.mark.parametrize(("pass_on_unpruned", "expected"), [(False, False), (True, True)])
+def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    pass_on_unpruned: bool,
+    expected: bool,
+) -> None:
+    source = tmp_path / "app.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+
+    def select_commands(*_args: object, **_kwargs: object) -> EslintSelection:
+        return EslintSelection((Command("eslint", ("npx", "eslint", "--", str(source)), tmp_path),), 0)
+
+    def local_argv(argv: Sequence[str], *_args: object) -> tuple[str, ...]:
+        return tuple(argv)
+
+    def run_eslint(argv: Sequence[str], *, cwd: Path) -> external_module.ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        return external_module.ProcessOutput(0, "[]", "")
+
+    def installed_eslint(_project: Path, _root: Path) -> None:
+        return None
+
+    monkeypatch.setattr(external_module, "select_eslint_commands", select_commands)
+    monkeypatch.setattr(external_module, "_local_eslint_argv", local_argv)
+    monkeypatch.setattr(
+        external_module,
+        "_missing_eslint_issue",
+        installed_eslint,
+    )
+    monkeypatch.setattr(external_module, "_run_eslint_process", run_eslint)
+
+    report = api.Standards(tmp_path).analyze(
+        [str(source)],
+        external=True,
+        trust=TrustMode.TRUSTED,
+        mode=api.AnalysisMode.RAW,
+        rules=["eslint:prefer-ecmascript-private-members"],
+        pass_on_unpruned_eslint_suppressions=pass_on_unpruned,
+    )
+
+    assert report.issues == ()
+    assert len(seen) == 1
+    flag = "--pass-on-unpruned-suppressions"
+    assert (flag in seen[0]) is expected
+    if expected:
+        assert seen[0].index(flag) < seen[0].index("--")
 
 
 def test_fix_rejects_overlapping_edits() -> None:

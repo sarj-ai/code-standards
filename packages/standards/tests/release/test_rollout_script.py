@@ -257,7 +257,14 @@ class TestSafety:
 
     def test_expected_generated_diff_is_allowed(self) -> None:
         rollout.reject_unsafe_diff(
-            (MANIFEST, "uv.lock", "eslint.config.mjs", ".github/workflows/standards.yml", ".github/workflows/ci.yml")
+            (
+                MANIFEST,
+                ".shellcheckrc",
+                "uv.lock",
+                "eslint.config.mjs",
+                ".github/workflows/standards.yml",
+                ".github/workflows/ci.yml",
+            )
         )
 
     def test_managed_paths_cover_generated_nested_type_configs_and_package_manager_policy(
@@ -271,6 +278,7 @@ class TestSafety:
         allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
 
         assert "backend/pyright.strict.json" in allowed
+        assert ".shellcheckrc" in allowed
         assert "typescript/.yarnrc.yml" in allowed
         assert "pnpm-workspace.yaml" in allowed
 
@@ -301,8 +309,9 @@ class TestSafety:
         )
 
     def test_unlisted_nonsource_file_is_rejected(self) -> None:
-        with pytest.raises(rollout.RolloutError, match="protected paths"):
-            rollout.reject_unsafe_diff((MANIFEST, "scripts/release.sh"))
+        for path in ("scripts/release.sh", "scripts/.shellcheckrc", "backend/.shellcheckrc"):
+            with pytest.raises(rollout.RolloutError, match="protected paths"):
+                rollout.reject_unsafe_diff((MANIFEST, path))
 
     def test_consumer_verification_cannot_mutate_controller_baseline(self, tmp_path: Path) -> None:
         path = tmp_path / "diagnostic-baseline.json"

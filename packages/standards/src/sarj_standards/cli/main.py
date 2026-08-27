@@ -1722,6 +1722,7 @@ def cmd_baseline(args: _Args) -> int:
                 mode=AnalysisMode.RAW,
                 rules=scoped_rules,
                 include_react_doctor=False,
+                pass_on_unpruned_eslint_suppressions=args.baseline_cmd == "update" and bool(args.baseline_rules),
             )
         )
     upstream_eslint = _upstream_eslint_rules_for_baseline(args.baseline_rules)
@@ -1741,6 +1742,7 @@ def cmd_baseline(args: _Args) -> int:
                 trust=trust,
                 capabilities=frozenset({"eslint"}),
                 include_react_doctor=False,
+                pass_on_unpruned_eslint_suppressions=True,
             ),
         )
         reports.append(external)
