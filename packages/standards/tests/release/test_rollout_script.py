@@ -271,6 +271,15 @@ class TestSafety:
         self,
         tmp_path: Path,
     ) -> None:
+        nested_configs = (
+            "apps/assistant/eslint.config.js",
+            "apps/dashboard/eslint.config.js",
+            "packages/shared/eslint.config.js",
+        )
+        for relative in nested_configs:
+            config = tmp_path / relative
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text("export default [];\n", encoding="utf-8")
         (tmp_path / MANIFEST).write_text(
             'schema = 3\nbundle = "7.1.0"\n\n[dest]\npython = "backend"\ntypescript = "typescript"\n',
             encoding="utf-8",
@@ -279,8 +288,13 @@ class TestSafety:
 
         assert "backend/pyright.strict.json" in allowed
         assert ".shellcheckrc" in allowed
+        assert set(nested_configs) <= allowed
         assert "typescript/.yarnrc.yml" in allowed
         assert "pnpm-workspace.yaml" in allowed
+        arbitrary_config = "src/eslint.config.js"
+        assert arbitrary_config not in allowed
+        with pytest.raises(rollout.RolloutError, match="protected paths"):
+            rollout.reject_unsafe_diff((MANIFEST, arbitrary_config), allowed_paths=allowed)
 
     def test_prevalidated_pin_bearing_workflow_is_allowed(self) -> None:
         workflow = ".github/workflows/ci-internal-tools.yml"
