@@ -236,6 +236,7 @@
       "exact-config-comment-restatement",
       "hidden-markdown-heading",
       "iac-source-coupled-test",
+      "large-shell-program",
       "no-unsafe-command-argument-interpolation",
       "no-wildcard-secret-read-permission",
       "workflow-embedded-program"
@@ -375,7 +376,8 @@
       "SARJ307",
       "SARJ308",
       "SARJ309",
-      "SARJ310"
+      "SARJ310",
+      "SARJ311"
     ]
   },
   "retired": [

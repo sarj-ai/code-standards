@@ -797,6 +797,12 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/text/large-shell-program",
+      "family": "text",
+      "ruleId": "large-shell-program",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/text/no-unsafe-command-argument-interpolation",
       "family": "text",
       "ruleId": "no-unsafe-command-argument-interpolation",

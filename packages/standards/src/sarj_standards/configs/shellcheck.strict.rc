@@ -1,0 +1,6 @@
+# Canonical interactive defaults. The Standards adapter passes these options
+# explicitly with --norc so repository and user configuration cannot weaken CI.
+external-sources=false
+extended-analysis=true
+severity=info
+source-path=SCRIPTDIR

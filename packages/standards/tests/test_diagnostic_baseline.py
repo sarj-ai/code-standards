@@ -9,7 +9,7 @@ import pytest
 
 from sarj_standards import api
 from sarj_standards.cli.main import main as cli_main
-from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
+from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest, as_table
 from sarj_standards.libs.adoption.manifest import load as load_manifest
 from sarj_standards.libs.diagnostics import (
     AnalysisReport,
@@ -388,6 +388,68 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
         == 0
     )
     assert captured == [([expected], False)]
+
+
+def test_scoped_baseline_update_runs_only_shellcheck_for_native_selector(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version=api.__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    source = tmp_path / "release.sh"
+    source.write_text("echo $name\n", encoding="utf-8")
+    finding = Diagnostic(
+        "SC2086",
+        "quote expansion",
+        Severity.WARNING,
+        "shellcheck",
+        Location("release.sh"),
+        rule_id="SC2086",
+        fingerprint="e" * 64,
+    )
+    calls: list[object] = []
+
+    def analyze_shellcheck(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        calls.append((files, kwargs.get("capabilities"), kwargs.get("include_react_doctor")))
+        return (ToolReport("shellcheck", Completion.COMPLETE, (finding,)),)
+
+    monkeypatch.setattr(external, "analyze_external", analyze_shellcheck)
+
+    status = cli_main(
+        [
+            "--root",
+            str(tmp_path),
+            "baseline",
+            "update",
+            "--output",
+            str(baseline_path),
+            "--rule",
+            "shellcheck:SC2086",
+            str(source),
+        ]
+    )
+
+    assert status == 0
+    assert calls == [([str(source)], frozenset({"shellcheck"}), False)]
+    rendered: object = json.loads(baseline_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    diagnostics = as_table(rendered).get("diagnostics")
+    assert isinstance(diagnostics, list)
+    assert diagnostics == [
+        {
+            "fingerprint": "e" * 64,
+            "source": "shellcheck",
+            "ruleId": "SC2086",
+            "path": "release.sh",
+            "count": 1,
+        }
+    ]
 
 
 def test_scoped_baseline_update_keeps_retired_iac_alias_invalid(

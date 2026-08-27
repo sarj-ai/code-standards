@@ -16,6 +16,7 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
         "markdownlint": ("markdownlint.strict.yaml", ".markdownlint.yaml"),
         "taplo": ("taplo.strict.toml", ".taplo.toml"),
         "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml"),
+        "shellcheck": ("shellcheck.strict.rc", ".shellcheckrc"),
     }
 )
 

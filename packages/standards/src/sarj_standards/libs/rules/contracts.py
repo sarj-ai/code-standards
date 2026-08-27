@@ -28,6 +28,7 @@ class Language(StrEnum):
     SQL = "sql"
     IAC = "iac"
     CONFIG = "config"
+    SHELL = "shell"
 
 
 class RuleOrigin(StrEnum):

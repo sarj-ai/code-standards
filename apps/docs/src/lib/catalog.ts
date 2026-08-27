@@ -15,7 +15,7 @@ export type Category =
   | 'security'
   | 'style'
   | 'testing';
-export type Language = 'config' | 'iac' | 'markdown' | 'python' | 'sql' | 'typescript';
+export type Language = 'config' | 'iac' | 'markdown' | 'python' | 'shell' | 'sql' | 'typescript';
 
 export interface ExampleFile {
   path: string;
@@ -138,7 +138,7 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
   }
   const languages = requireStringArray(value, 'languages', context);
   for (const language of languages) {
-    if (!['config', 'iac', 'markdown', 'python', 'sql', 'typescript'].includes(language)) {
+    if (!['config', 'iac', 'markdown', 'python', 'shell', 'sql', 'typescript'].includes(language)) {
       throw new TypeError(`${context}.languages contains unsupported value ${language}.`);
     }
   }

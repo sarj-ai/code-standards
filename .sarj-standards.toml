@@ -1,5 +1,5 @@
 schema = 3
-bundle = "7.4.0"
+bundle = "7.5.0"
 rule_profile = "all"
 
 profile = "standard"
@@ -8,7 +8,7 @@ profile = "standard"
 # The TypeScript package defines the ESLint preset itself, so its authored
 # config is validated by the package's full lint/runtime suite instead of
 # importing the consumer preset from itself.
-disable = ["eslint", "markdownlint", "taplo", "yamllint"]
+disable = ["eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]
 
 
 [dest]

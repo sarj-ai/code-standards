@@ -306,7 +306,14 @@ def test_manifest_renders_as_valid_toml() -> None:
     parsed = tomllib.loads(rendered)
     assert parsed["schema"] == 3
     assert parsed["bundle"] == "1.2.3"
-    assert parsed["capabilities"]["disable"] == ["pyright", "eslint", "markdownlint", "taplo", "yamllint"]
+    assert parsed["capabilities"]["disable"] == [
+        "pyright",
+        "eslint",
+        "markdownlint",
+        "shellcheck",
+        "taplo",
+        "yamllint",
+    ]
 
 
 def test_missing_manifest_is_not_an_error(tmp_path: Path) -> None:
@@ -469,9 +476,9 @@ def test_schema_three_rejects_removed_fields(tmp_path: Path, field: str) -> None
 @pytest.mark.parametrize(
     ("python", "typescript", "expected"),
     [
-        (True, False, ("ruff", "pyright", "markdownlint", "taplo", "yamllint")),
-        (False, True, ("eslint", "markdownlint", "taplo", "yamllint")),
-        (True, True, ("ruff", "pyright", "eslint", "markdownlint", "taplo", "yamllint")),
+        (True, False, ("ruff", "pyright", "markdownlint", "shellcheck", "taplo", "yamllint")),
+        (False, True, ("eslint", "markdownlint", "shellcheck", "taplo", "yamllint")),
+        (True, True, ("ruff", "pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint")),
     ],
 )
 def test_config_set_follows_the_detected_ecosystems(
