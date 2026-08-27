@@ -986,6 +986,20 @@ def test_shell_iac_source_rule_blocks(
     assert "SARJ304 warning:" not in capsys.readouterr().out
 
 
+def test_shell_iac_source_rule_runs_when_selected_explicitly(tmp_path: Path) -> None:
+    path = tmp_path / "tests" / "policy.test.sh"
+    path.parent.mkdir(parents=True)
+    path.write_text("grep -q resource iac/main.tf\n", encoding="utf-8")
+
+    findings = textlint.check_paths(
+        [str(path)],
+        root=tmp_path,
+        rule_ids=frozenset({"iac-source-coupled-test"}),
+    )
+
+    assert [(finding.line, finding.code) for finding in findings] == [(1, "SARJ304")]
+
+
 @pytest.mark.parametrize(
     "command",
     [

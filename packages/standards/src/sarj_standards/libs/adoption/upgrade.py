@@ -11,7 +11,9 @@ from typing import TYPE_CHECKING, Final
 from packaging.version import Version
 
 from sarj_standards._meta import CONFIGS_DIR
+from sarj_standards.libs.diagnostics import baseline
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.repository import ledger
 
 from . import doctor, hooks, lifecycle, manifest, packagemanager, retired_suppressions, scaffold, transaction, uvtool
 from .configs import PYTHON_COMPANION_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
@@ -85,6 +87,7 @@ class UpgradePlan:
     javascript_install_roots: tuple[Path, ...]
     javascript_lockfiles: tuple[Path, ...]
     suppression_writes: list[tuple[Path, str]]
+    baseline_writes: list[tuple[Path, str]]
     manifest_text: str
     preconditions: dict[Path, bytes | None]
     preexisting_drift: frozenset[tuple[str, str]]
@@ -234,6 +237,24 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         for rewrite in retired_suppressions.plan(doctor.authored_files(root))
         if rewrite.path not in reserved_paths
     ]
+    baseline_writes: list[tuple[Path, str]] = []
+    if adopted.diagnostic_baseline is not None:
+        baseline_target = root / adopted.diagnostic_baseline
+        if baseline_target.exists():
+            selectors = {
+                f"sarj-{entry.kind}-lint:{entry.id}"
+                for entry in ledger.load().retired
+                if entry.kind not in {ledger.ESLINT, ledger.CODE}
+            }
+            removal = baseline.remove_rules(
+                baseline_target,
+                selectors=selectors,
+                bundle_version=manifest.adopted_version(),
+                consumer_base_sha=baseline.repository_base_sha(root),
+                catalog_digest=baseline.bundled_catalog_digest(),
+            )
+            if removal.removed:
+                baseline_writes.append((baseline_target, removal.contents))
 
     for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits):
         if target != path:
@@ -243,6 +264,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     changes.extend(Change(lockfile, "refresh Python lockfile") for lockfile in lockfiles)
     changes.extend(Change(lockfile, "refresh JavaScript lockfile") for lockfile in javascript_lockfiles)
     changes.extend(Change(path, "migrate retired rule reference") for path, _contents in suppression_writes)
+    changes.extend(Change(path, "remove retired diagnostic baseline entries") for path, _contents in baseline_writes)
     planned_paths = tuple(
         dict.fromkeys(
             [path]
@@ -251,6 +273,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
             + list(lockfiles)
             + list(javascript_lockfiles)
             + [target for target, _contents in suppression_writes]
+            + [target for target, _contents in baseline_writes]
             + [target for target, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)]
             + list(scaffold_plan.deletes)
         )
@@ -272,6 +295,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         javascript_install_roots,
         javascript_lockfiles,
         suppression_writes,
+        baseline_writes,
         manifest_text,
         preconditions,
         preexisting_drift,
@@ -310,6 +334,9 @@ def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
     replaced = [target for _source, target in plan.config_writes]
     owned = {target.relative_to(plan.root).as_posix() for target in replaced}
     planned = {path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.suppression_writes}
+    planned_baselines = {
+        path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.baseline_writes
+    }
     projected = {
         path.relative_to(plan.root).as_posix(): (path, contents) for path, contents in plan.scaffold_plan.writes
     }
@@ -323,6 +350,11 @@ def unsafe_retired_findings(plan: UpgradePlan) -> list[doctor.Finding]:
         rewrite = planned.get(relative)
         retired_id = reference.rsplit(" x", maxsplit=1)[0]
         if rewrite is not None and retired_id not in doctor.retired_rule_references(*rewrite):
+            continue
+        baseline_write = planned_baselines.get(relative)
+        if baseline_write is not None and retired_id not in doctor.retired_rule_counts(
+            *baseline_write, configured=True
+        ):
             continue
         scaffold_write = projected.get(relative)
         if scaffold_write is not None and retired_id not in doctor.retired_rule_references(*scaffold_write):
@@ -359,6 +391,7 @@ def apply(
         + list(plan.lockfiles)
         + list(plan.javascript_lockfiles)
         + [path for path, _contents in plan.suppression_writes]
+        + [path for path, _contents in plan.baseline_writes]
         + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
         + list(plan.scaffold_plan.deletes)
     )
@@ -490,6 +523,7 @@ def _write_plan(plan: UpgradePlan, file_transaction: transaction.FileTransaction
             + [target for _source, target in plan.config_writes]
             + [path for path, _contents in plan.pin_writes]
             + [path for path, _contents in plan.suppression_writes]
+            + [path for path, _contents in plan.baseline_writes]
             + [path for path, _contents in (*plan.scaffold_plan.writes, *plan.scaffold_plan.edits)]
             + list(plan.scaffold_plan.deletes)
         ),
@@ -510,6 +544,10 @@ def _write_plan(plan: UpgradePlan, file_transaction: transaction.FileTransaction
         transaction.atomic_write_text(plan.root, target, contents)
         _mark_direct_write(file_transaction, target)
     for target, contents in plan.suppression_writes:
+        transaction.assert_expected(plan.root, target, plan.preconditions[target])
+        transaction.atomic_write_text(plan.root, target, contents)
+        _mark_direct_write(file_transaction, target)
+    for target, contents in plan.baseline_writes:
         transaction.assert_expected(plan.root, target, plan.preconditions[target])
         transaction.atomic_write_text(plan.root, target, contents)
         _mark_direct_write(file_transaction, target)
