@@ -1821,7 +1821,7 @@ def test_a_typescript_only_precommit_hook_does_not_invoke_uv_run(tmp_path: Path)
 
 
 @pytest.mark.parametrize("ecosystem", ["python", "typescript"])
-def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: str) -> None:
+def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem: str) -> None:
     _ = _python_repo(tmp_path) if ecosystem == "python" else _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
@@ -1831,8 +1831,8 @@ def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: s
     parsed: object = yaml.safe_load(rendered.stdout)  # pyright: ignore[reportAny] -- parser result is narrowed below.
     assert isinstance(parsed, dict)
     assert "permissions:\n  contents: read" in rendered.stdout
-    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in rendered.stdout
-    assert "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9" in rendered.stdout
+    assert "actions/checkout@v7" in rendered.stdout
+    assert "astral-sh/setup-uv@v9" in rendered.stdout
     uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
     uv_required = manifest.text_field(uv_config, "required-version")
     assert uv_required is not None
@@ -1842,7 +1842,7 @@ def test_show_ci_renders_a_complete_pinned_workflow(tmp_path: Path, ecosystem: s
     if ecosystem == "python":
         assert "uv sync --locked" not in rendered.stdout
     else:
-        assert "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" in rendered.stdout
+        assert "actions/setup-node@v7" in rendered.stdout
         assert "npm ci --no-audit --no-fund" in rendered.stdout
 
 

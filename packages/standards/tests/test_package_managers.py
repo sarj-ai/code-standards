@@ -262,7 +262,7 @@ def test_ci_bootstraps_bun_without_unneeded_node_or_corepack(tmp_path: Path) -> 
 
     workflow = scaffold.github_ci_workflow(tmp_path)
 
-    assert "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6" in workflow
+    assert "oven-sh/setup-bun@v2" in workflow
     assert "actions/setup-node" not in workflow
     assert "corepack enable" not in workflow
     assert "run: bun install --frozen-lockfile" in workflow

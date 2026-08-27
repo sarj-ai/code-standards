@@ -2253,7 +2253,7 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     config.add_argument("--profile", choices=manifest.PROFILES, default="standard")
     show_commands.add_parser("peers", help="show tested ESLint peer dependencies and install command")
     show_commands.add_parser("rules", help="print the machine-readable custom-rule inventory")
-    ci = show_commands.add_parser("ci", help="print a complete pinned GitHub Actions standards workflow")
+    ci = show_commands.add_parser("ci", help="print a complete versioned GitHub Actions standards workflow")
     ci.add_argument("--output", type=Path, help="write a managed workflow inside the repository")
 
     _add_repo_parsers(sub.add_parser("maintain", help="repository policy, hooks, rule ledgers, and releases"))
