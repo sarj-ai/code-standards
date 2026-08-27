@@ -177,6 +177,56 @@ def test_doctor_rejects_replacement_rule_policy_in_extending_ruff_config(tmp_pat
     assert f"use `extend-{key}`" in findings[0].detail
 
 
+def test_doctor_rejects_replacement_per_file_ignore_table(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n\n[tool.ruff.lint.per-file-ignores]\n"tests/**" = ["S101"]\n',
+        encoding="utf-8",
+    )
+
+    findings = list(check_ruff_policy_authority(tmp_path))
+
+    assert [finding.level for finding in findings] == [Level.DRIFT]
+    assert findings[0].where == "pyproject.toml: [tool.ruff.lint].per-file-ignores"
+    assert "use `extend-per-file-ignores`" in findings[0].detail
+
+
+def test_doctor_rejects_local_banned_api_table_that_replaces_canonical_bans(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n\n'
+        "[tool.ruff.lint.flake8-tidy-imports.banned-api]\n"
+        '"os.getenv".msg = "Use typed settings."\n',
+        encoding="utf-8",
+    )
+
+    findings = list(check_ruff_policy_authority(tmp_path))
+
+    assert [finding.level for finding in findings] == [Level.DRIFT]
+    assert findings[0].where == "pyproject.toml: [tool.ruff.lint.flake8-tidy-imports.banned-api]"
+    assert "silently re-enable canonical bans" in findings[0].detail
+
+
+def test_doctor_rejects_an_empty_local_banned_api_table(tmp_path: Path) -> None:
+    (tmp_path / "ruff.toml").write_text(
+        'extend = ".ruff-strict.toml"\n\n[lint.flake8-tidy-imports.banned-api]\n',
+        encoding="utf-8",
+    )
+
+    findings = list(check_ruff_policy_authority(tmp_path))
+
+    assert [finding.id for finding in findings] == ["doctor.ruff.replaces-policy"]
+
+
+def test_doctor_accepts_additive_per_file_ignores_in_extending_ruff_config(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n\n'
+        "[tool.ruff.lint.extend-per-file-ignores]\n"
+        '"tests/**" = ["S101"]\n',
+        encoding="utf-8",
+    )
+
+    assert not list(check_ruff_policy_authority(tmp_path))
+
+
 def test_doctor_accepts_additive_rule_policy_in_extending_ruff_config(tmp_path: Path) -> None:
     (tmp_path / "ruff.toml").write_text(
         'extend = ".ruff-strict.toml"\n\n[lint]\nextend-select = ["B904"]\nextend-ignore = ["D417"]\n',

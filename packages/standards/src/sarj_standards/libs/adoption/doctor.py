@@ -130,7 +130,7 @@ _PYRIGHT_REPORT_DEPRECATED = re.compile(
 )
 _RUFF_CONFIG_NAMES: Final = frozenset({".ruff.toml", "ruff.toml", "pyproject.toml"})
 _STANDALONE_RUFF_CONFIG_NAMES: Final = (".ruff.toml", "ruff.toml")
-_RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "select"})
+_RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "per-file-ignores", "select"})
 _CONFIG_TARGETS: Final = MappingProxyType(
     {
         "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
@@ -653,6 +653,18 @@ def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None)
                 f"replaces inherited Ruff policy; use `extend-{key}` so the canonical config remains authoritative",
                 "doctor.ruff.replaces-policy",
                 f"replace `{key}` with `extend-{key}`",
+            )
+        tidy_imports = manifest.as_table(lint.get("flake8-tidy-imports"))
+        if "banned-api" in tidy_imports:
+            yield Finding(
+                Level.DRIFT,
+                f"{path.relative_to(root)}: [{table}.flake8-tidy-imports.banned-api]",
+                (
+                    "replaces the inherited banned API map and can silently re-enable canonical bans; "
+                    "move repository-wide bans into Standards and remove this table"
+                ),
+                "doctor.ruff.replaces-policy",
+                "remove the local `banned-api` table after contributing any additional bans to Standards",
             )
 
 

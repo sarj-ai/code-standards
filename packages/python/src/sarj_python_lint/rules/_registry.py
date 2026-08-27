@@ -111,6 +111,7 @@ from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
 from sarj_python_lint.rules.prefer_timedelta_for_durations import (
     PreferTimedeltaForDurations,
 )
+from sarj_python_lint.rules.prefer_walrus_awaited_none_guard import PreferWalrusAwaitedNoneGuard
 from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
     PreferWalrusComprehensionFilter,
 )
@@ -162,6 +163,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferWalrusAwaitedNoneGuard.id: PreferWalrusAwaitedNoneGuard,
         TimestampOrderRequiresTiebreaker.id: TimestampOrderRequiresTiebreaker,
         NoStringConcatInLoop.id: NoStringConcatInLoop,
         PreferClassRow.id: PreferClassRow,

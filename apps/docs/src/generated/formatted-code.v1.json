@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "24cd2a99221759acc19884d2b23ba3e0b128976f1cb72e817cbd5da0f5197cce",
-  "cliSha256": "36e5bc3d6c7daa391d638c46f3be09e0f27f6b0c4d2b0913784dcccd4200b3b4",
+  "catalogSha256": "56d2e505b1862043c0434e431df1b7d7c670490db1f81789b2e43cbbfb268bab",
+  "cliSha256": "4625276eb909c966ad7b406bf071aa75a35f80749831b379427d954addae85eb",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5631,6 +5631,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Duration represented as timedelta"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-walrus-awaited-none-guard": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "async def load(store, item_id):\n    item = await store.get(item_id)\n    if item is None:\n        return\n    return item.name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "awaited-optional-lookup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An awaited lookup is split from its absence guard"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "async def load(store, item_id):\n    if (item := await store.get(item_id)) is None:\n        return\n    return item.name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "guard-bound-lookup",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The awaited lookup is bound in its absence guard"
         }
       ],
       "optionsSchemaSource": null

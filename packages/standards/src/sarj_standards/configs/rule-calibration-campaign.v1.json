@@ -505,6 +505,14 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/python/prefer-walrus-awaited-none-guard",
+      "family": "python",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "state": "complete",
+      "evidence": "Twenty adversarial passes narrowed the rule to physically adjacent one-line awaited calls and one-return None guards. A 7,516-file corpus found 62 exact-boundary candidates after excluding 48 blank-gap cases; the primary application target and all nine current findings were manually accepted.",
+      "outcome": "Required same-indentation physical adjacency, token-aware comment preservation, a 120-column combined condition, later same-scope use before rebinding, and no else or autofix; staged the style rule as a warning."
+    },
+    {
       "task": "rule-audit/python/prefer-walrus-comprehension-filter",
       "family": "python",
       "ruleId": "prefer-walrus-comprehension-filter",

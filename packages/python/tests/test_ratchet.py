@@ -29,11 +29,35 @@ if TYPE_CHECKING:
     [
         pytest.param("x = f()  # noqa: E501", "noqa:E501", id="inline-noqa"),
         pytest.param("x = f()  # noqa:E501", "noqa:E501", id="inline-noqa-tight"),
+        pytest.param("x = f()  # noqa", "noqa:<blanket>", id="inline-blanket-noqa"),
+        pytest.param(
+            "x = f()  # ruff: ignore[banned-api] -- legacy boundary",
+            "noqa:banned-api",
+            id="inline-named-ruff-ignore",
+        ),
+        pytest.param(
+            "x = f()  # ruff: ignore [banned-api,] -- legacy boundary",
+            "noqa:banned-api",
+            id="inline-named-ruff-ignore-whitespace-and-trailing-comma",
+        ),
         pytest.param("x = f()  # sarj-noqa: SARJ016 — why", "sarj-noqa:SARJ016", id="inline-sarj-noqa"),
         pytest.param("x = f()  # pyright: ignore[reportAny]", "pyright:reportAny", id="inline-pyright-ignore"),
         pytest.param("x = f()  # type: ignore[attr-defined]", "type-ignore:attr-defined", id="scoped-type-ignore"),
         pytest.param("x = f()  # type: ignore", "type-ignore", id="bare-type-ignore"),
         pytest.param("# ruff: noqa: E501", "file-noqa:E501", id="file-level-scoped-noqa"),
+        pytest.param(
+            "# ruff: noqa: banned-api",
+            "file-noqa:banned-api",
+            id="file-level-named-noqa",
+        ),
+        pytest.param(
+            "# ruff: file-ignore[banned-api]",
+            "file-noqa:banned-api",
+            id="file-level-modern-named-ignore",
+        ),
+        pytest.param("# flake8: noqa", "file-noqa:<blanket>", id="flake8-file-level-blanket-noqa"),
+        pytest.param("# pyright: ignore", "pyright:<blanket>", id="blanket-pyright-ignore"),
+        pytest.param("# ruff: disable[banned-api]", "ruff-range:banned-api", id="ruff-range-disable"),
         pytest.param("# ruff: noqa", "file-noqa:<blanket>", id="file-level-blanket-noqa"),
         pytest.param("# pyright: reportAny=false", "file-pyright:reportAny", id="file-level-pyright-downgrade"),
     ],
@@ -44,6 +68,22 @@ def test_counts_every_dialect_under_its_own_key(line: str, key: str):
 
 def test_counts_every_code_in_a_list():
     assert count_source("x = f()  # noqa: E501, F401\n") == {"noqa:E501": 1, "noqa:F401": 1}
+
+
+def test_counts_every_named_selector_in_a_ruff_ignore_list():
+    source = "Mock()  # ruff: ignore[banned-api, unused-import] -- reviewed legacy boundary\n"
+    assert count_source(source) == {"noqa:banned-api": 1, "noqa:unused-import": 1}
+
+
+def test_canonicalizes_ruff_rule_names_and_codes_to_the_same_code():
+    aliases = {"TID251": "TID251", "banned-api": "TID251"}
+    source = "one()  # noqa: TID251\ntwo()  # ruff: ignore[banned-api]\n"
+    assert count_source(source, ruff_aliases=aliases) == {"noqa:TID251": 2}
+
+
+def test_unknown_ruff_selector_fails_closed_when_a_catalog_is_supplied():
+    with pytest.raises(ValueError, match="unknown Ruff suppression selector: not-a-rule"):
+        count_source("value = 1  # ruff: ignore[not-a-rule]\n", ruff_aliases={})
 
 
 def test_counts_every_occurrence_on_a_line_not_just_the_first():
@@ -66,6 +106,29 @@ def test_a_pyright_ignore_is_not_a_file_level_downgrade():
 
 def test_clean_source_counts_nothing():
     assert count_source("def f():\n    return 1\n") == {}
+
+
+def test_suppression_spelling_inside_a_string_or_docstring_does_not_count():
+    source = '"""Example: # ruff: ignore[banned-api]."""\nvalue = "# noqa: F401"\n'
+    assert count_source(source) == {}
+
+
+def test_comment_after_a_string_is_still_counted():
+    assert count_source('value = "# noqa: F401"  # ruff: ignore[banned-api]\n') == {"noqa:banned-api": 1}
+
+
+def test_indented_ruff_noqa_is_a_file_directive_but_trailing_text_is_not():
+    source = "    # ruff: noqa: banned-api\nvalue = '# ruff: noqa'  # noqa: F401\n"
+    assert count_source(source) == {"file-noqa:banned-api": 1, "noqa:F401": 1}
+
+
+def test_standalone_ruff_ignore_is_budgeted_separately_from_inline_ignore():
+    source = "# ruff: ignore[banned-api]\nvalue = 1  # ruff: ignore[banned-api]\n"
+    assert count_source(source) == {"standalone-noqa:banned-api": 1, "noqa:banned-api": 1}
+
+
+def test_ruff_enable_does_not_add_suppression_debt():
+    assert count_source("# ruff: enable[banned-api]\n") == {}
 
 
 def _tree(root: Path, files: dict[str, str]) -> None:
@@ -243,6 +306,20 @@ def test_load_baseline_reads_all_three_sections(tmp_path: Path):
     assert baseline.packages == {"svc": 3}
     assert baseline.per_file_ceiling == 4
     assert baseline.file_exceptions == {"svc/a.py": 9}
+
+
+def test_dumped_baseline_declares_its_schema_version(tmp_path: Path):
+    _tree(tmp_path, {"svc/app.py": "x = 1  # noqa: E501\n"})
+    assert main([str(tmp_path), "--update"]) == 0
+    text = (tmp_path / "suppression-baseline.json").read_text(encoding="utf-8")
+    assert '"schema_version": 1' in text
+
+
+def test_load_baseline_rejects_an_unknown_schema_version(tmp_path: Path):
+    path = tmp_path / "b.json"
+    _ = path.write_text('{"schema_version": 999}', encoding="utf-8")
+    with pytest.raises(ValueError, match="unsupported suppression baseline schema_version"):
+        load_baseline(path)
 
 
 @pytest.mark.parametrize(

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from io import StringIO
 import json
 import re
+import tokenize
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple, TypeGuard
 
@@ -37,18 +39,28 @@ class Improvement(NamedTuple):
 
 
 DEFAULT_PER_FILE_CEILING: Final = 10
+BASELINE_SCHEMA_VERSION: Final = 1
 
-_NOQA_RE: Final = re.compile(r"#\s*noqa:\s*([A-Z][A-Z0-9]+(?:\s*,\s*[A-Z][A-Z0-9]+)*)")
+_RUFF_SELECTOR: Final = r"[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*"
+_RUFF_SELECTOR_LIST: Final = rf"({_RUFF_SELECTOR}(?:\s*,\s*{_RUFF_SELECTOR})*)"
+_NOQA_RE: Final = re.compile(rf"#\s*noqa(?::\s*{_RUFF_SELECTOR_LIST})?", re.IGNORECASE)
+_RUFF_IGNORE_RE: Final = re.compile(rf"#\s*ruff:\s*ignore\s*\[{_RUFF_SELECTOR_LIST}(?:\s*,)?\s*\]", re.IGNORECASE)
+_RUFF_FILE_IGNORE_RE: Final = re.compile(
+    rf"^#\s*ruff:\s*file-ignore\s*\[{_RUFF_SELECTOR_LIST}(?:\s*,)?\s*\]", re.IGNORECASE
+)
+_RUFF_DISABLE_RE: Final = re.compile(rf"^#\s*ruff:\s*disable\s*\[{_RUFF_SELECTOR_LIST}(?:\s*,)?\s*\]", re.IGNORECASE)
 _SARJ_NOQA_RE: Final = re.compile(r"#\s*sarj-noqa:\s*(SARJ\d+(?:\s*,\s*SARJ\d+)*)", re.IGNORECASE)
 _PYRIGHT_IGNORE_RE: Final = re.compile(r"#\s*pyright:\s*ignore\[([^\]]+)\]")
 _TYPE_IGNORE_RE: Final = re.compile(r"#\s*type:\s*ignore(?:\[([^\]]+)\])?")
-_FILE_NOQA_RE: Final = re.compile(
-    r"^\s*#\s*ruff:\s*noqa(?::\s*([A-Z][A-Z0-9]+(?:\s*,\s*[A-Z][A-Z0-9]+)*))?", re.IGNORECASE
-)
-_FILE_PYRIGHT_RE: Final = re.compile(r"^\s*#\s*pyright:\s*(?!ignore\b)")
+_FILE_NOQA_RE: Final = re.compile(rf"^#\s*ruff:\s*noqa(?::\s*{_RUFF_SELECTOR_LIST})?", re.IGNORECASE)
+_FLAKE8_FILE_NOQA_RE: Final = re.compile(r"^#\s*flake8:\s*noqa\b", re.IGNORECASE)
+_FILE_PYRIGHT_RE: Final = re.compile(r"^#\s*pyright:(?!\s*ignore\b)\s*")
 _FILE_PYRIGHT_RULE_RE: Final = re.compile(r"([A-Za-z]\w*)\s*=\s*false")
 
 _BLANKET_KEY: Final = "file-noqa:<blanket>"
+_INLINE_BLANKET_KEY: Final = "noqa:<blanket>"
+_FLAKE8_BLANKET_KEY: Final = "file-noqa:<blanket>"
+_BARE_PYRIGHT_IGNORE_KEY: Final = "pyright:<blanket>"
 _BARE_TYPE_IGNORE_KEY: Final = "type-ignore"
 
 
@@ -111,6 +123,7 @@ def measure(
     *,
     excluded_dir_names: frozenset[str] = DEFAULT_EXCLUDED_DIR_NAMES,
     excluded_subtrees: Iterable[str] = (),
+    ruff_aliases: Mapping[str, str] | None = None,
 ) -> Measurement:
     codes: Counter[str] = Counter()
     package_counts: Counter[str] = Counter()
@@ -122,7 +135,7 @@ def measure(
             relative = path.relative_to(root).as_posix()
             if any(_inside_subtree(relative, subtree) for subtree in excluded):
                 continue
-            found = count_source(_read(path))
+            found = count_source(_read(path), ruff_aliases=ruff_aliases)
             if not found:
                 continue
             codes.update(found)
@@ -132,10 +145,15 @@ def measure(
     return Measurement(codes=codes, packages=package_counts, files=files)
 
 
-def count_source(source: str) -> Counter[str]:
+def count_source(source: str, *, ruff_aliases: Mapping[str, str] | None = None) -> Counter[str]:
     counts: Counter[str] = Counter()
-    for line in source.splitlines():
-        _count_line(line, counts)
+    lines = source.splitlines()
+    for token in tokenize.generate_tokens(StringIO(source).readline):
+        if token.type != tokenize.COMMENT:
+            continue
+        line = lines[token.start[0] - 1] if token.start[0] <= len(lines) else ""
+        standalone = not line[: token.start[1]].strip()
+        _count_comment(token.string, counts, standalone=standalone, ruff_aliases=ruff_aliases)
     return counts
 
 
@@ -183,6 +201,10 @@ def load_baseline(path: Path) -> Baseline:
     raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; every read below narrows
         path.read_text(encoding="utf-8")
     )
+    schema = _get(raw, "schema_version")
+    if schema is not None and schema != BASELINE_SCHEMA_VERSION:
+        msg = f"unsupported suppression baseline schema_version: {schema!r}"
+        raise ValueError(msg)
     files = _get(raw, "files")
     ceiling = _get(files, "per_file_ceiling")
     return Baseline(
@@ -204,6 +226,7 @@ def _get(mapping: object, key: str) -> object:
 
 def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
     payload = {
+        "schema_version": BASELINE_SCHEMA_VERSION,
         "_comment": (
             "Suppression ceilings, written by `sarj-ratchet --update`. Counts may "
             "only go DOWN: `codes` is per dialect+code, `packages` is per "
@@ -283,27 +306,77 @@ def _read(path: Path) -> str:
 
 
 def _count_line(line: str, counts: Counter[str]) -> None:
-    if file_noqa := _FILE_NOQA_RE.match(line):
+    for token in tokenize.generate_tokens(StringIO(line).readline):
+        if token.type == tokenize.COMMENT:
+            _count_comment(
+                token.string,
+                counts,
+                standalone=not line[: token.start[1]].strip(),
+                ruff_aliases=None,
+            )
+
+
+def _count_comment(
+    comment: str,
+    counts: Counter[str],
+    *,
+    standalone: bool,
+    ruff_aliases: Mapping[str, str] | None,
+) -> None:
+    if standalone and (file_ignore := _RUFF_FILE_IGNORE_RE.match(comment)):
+        counts.update(
+            f"file-noqa:{_normalized_ruff_selector(code, ruff_aliases)}" for code in file_ignore.group(1).split(",")
+        )
+        return
+    if standalone and (file_noqa := _FILE_NOQA_RE.match(comment)):
         listed = file_noqa.group(1)
         if listed:
-            counts.update(f"file-noqa:{code.strip().upper()}" for code in listed.split(","))
+            counts.update(f"file-noqa:{_normalized_ruff_selector(code, ruff_aliases)}" for code in listed.split(","))
         else:
             counts[_BLANKET_KEY] += 1
         return
-    if _FILE_PYRIGHT_RE.match(line):
-        rules: list[str] = _FILE_PYRIGHT_RULE_RE.findall(line)
+    if standalone and _FLAKE8_FILE_NOQA_RE.match(comment):
+        counts[_FLAKE8_BLANKET_KEY] += 1
+        return
+    if standalone and (disabled := _RUFF_DISABLE_RE.match(comment)):
+        counts.update(
+            f"ruff-range:{_normalized_ruff_selector(code, ruff_aliases)}" for code in disabled.group(1).split(",")
+        )
+        return
+    if standalone and _FILE_PYRIGHT_RE.match(comment):
+        rules: list[str] = _FILE_PYRIGHT_RULE_RE.findall(comment)
         counts.update(f"file-pyright:{rule}" for rule in rules)
         return
-    for pattern, prefix in (
-        (_NOQA_RE, "noqa:"),
-        (_SARJ_NOQA_RE, "sarj-noqa:"),
-        (_PYRIGHT_IGNORE_RE, "pyright:"),
-    ):
-        for match in pattern.finditer(line):
-            counts.update(f"{prefix}{code.strip()}" for code in match.group(1).split(","))
-    for match in _TYPE_IGNORE_RE.finditer(line):
+    for match in _NOQA_RE.finditer(comment):
+        listed = match.group(1)
+        if listed:
+            counts.update(f"noqa:{_normalized_ruff_selector(code, ruff_aliases)}" for code in listed.split(","))
+        else:
+            counts[_INLINE_BLANKET_KEY] += 1
+    for match in _RUFF_IGNORE_RE.finditer(comment):
+        prefix = "standalone-noqa:" if standalone else "noqa:"
+        counts.update(f"{prefix}{_normalized_ruff_selector(code, ruff_aliases)}" for code in match.group(1).split(","))
+    for match in _SARJ_NOQA_RE.finditer(comment):
+        counts.update(f"sarj-noqa:{code.strip().upper()}" for code in match.group(1).split(","))
+    for match in _PYRIGHT_IGNORE_RE.finditer(comment):
+        counts.update(f"pyright:{code.strip()}" for code in match.group(1).split(","))
+    if re.search(r"#\s*pyright:\s*ignore\b(?!\s*\[)", comment):
+        counts[_BARE_PYRIGHT_IGNORE_KEY] += 1
+    for match in _TYPE_IGNORE_RE.finditer(comment):
         listed = match.group(1)
         if listed:
             counts.update(f"type-ignore:{code.strip()}" for code in listed.split(","))
         else:
             counts[_BARE_TYPE_IGNORE_KEY] += 1
+
+
+def _normalized_ruff_selector(selector: str, aliases: Mapping[str, str] | None) -> str:
+    stripped = selector.strip()
+    normalized = stripped.upper() if stripped.isupper() else stripped.lower()
+    if aliases is None:
+        return normalized
+    try:
+        return aliases[normalized]
+    except KeyError as exc:
+        msg = f"unknown Ruff suppression selector: {stripped}"
+        raise ValueError(msg) from exc

@@ -89,6 +89,7 @@
       "prefer-str-enum",
       "prefer-struct-over-namedtuple",
       "prefer-timedelta-for-durations",
+      "prefer-walrus-awaited-none-guard",
       "prefer-walrus-comprehension-filter",
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
@@ -339,7 +340,8 @@
       "SARJ428",
       "SARJ429",
       "SARJ430",
-      "SARJ431"
+      "SARJ431",
+      "SARJ432"
     ],
     "sql": [
       "SARJ101",
@@ -690,6 +692,13 @@
       "note": "Delete SARJ405 suppressions and baseline keys. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
     },
     {
+      "id": "SARJ433",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ433 suppressions and baseline keys; Ruff TID251 (banned-api) owns typing.cast enforcement."
+    },
+    {
       "id": "add-constraint-not-valid",
       "kind": "sql",
       "status": "renamed",
@@ -905,6 +914,13 @@
       "status": "renamed",
       "replacement": "no-mocked-terraform-test-oracle",
       "note": "Replace sarj-no-terraform-test-file with sarj-no-mocked-terraform-test-oracle before upgrading."
+    },
+    {
+      "id": "no-typing-cast",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook and use Ruff TID251 (banned-api) to prohibit typing.cast."
     },
     {
       "id": "no-unreachable-after-terminal",
