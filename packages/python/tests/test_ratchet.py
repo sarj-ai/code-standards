@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 import json
+import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
@@ -84,6 +85,32 @@ def test_canonicalizes_ruff_rule_names_and_codes_to_the_same_code():
 def test_unknown_ruff_selector_fails_closed_when_a_catalog_is_supplied():
     with pytest.raises(ValueError, match="unknown Ruff suppression selector: not-a-rule"):
         count_source("value = 1  # ruff: ignore[not-a-rule]\n", ruff_aliases={})
+
+
+def test_ruff_catalog_is_decoded_as_utf8_on_every_platform(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    observed_encoding = ""
+
+    def run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal observed_encoding
+        encoding = kwargs.get("encoding")
+        observed_encoding = encoding if isinstance(encoding, str) else ""
+        return subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout='[{"code": "TID251", "name": "banned-api", "summary": "use «safer» API"}]',
+            stderr="",
+        )
+
+    monkeypatch.setattr("sarj_python_lint._ratchet_cli.subprocess.run", run)
+    package = tmp_path / "service"
+    package.mkdir()
+    _ = (package / "app.py").write_text("value = 1  # noqa: TID251\n", encoding="utf-8")
+
+    assert main([str(tmp_path), "--update"]) == 0
+    assert observed_encoding == "utf-8"
 
 
 def test_counts_every_occurrence_on_a_line_not_just_the_first():
