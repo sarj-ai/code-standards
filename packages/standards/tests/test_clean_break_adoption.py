@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards._meta import CONFIGS_DIR
-from sarj_standards.libs.adoption import doctor, manifest, scaffold
+from sarj_standards.libs.adoption import doctor, launcher, manifest, scaffold
 from sarj_standards.libs.linting import runner
 
 
@@ -93,6 +93,32 @@ def test_doctor_rejects_a_direct_standards_command_as_noncanonical_ci(tmp_path: 
     workflow.parent.mkdir(parents=True)
     workflow.write_text(
         "jobs:\n  quality:\n    steps:\n      - run: |\n          uv run sarj-standards --root . check\n",
+        encoding="utf-8",
+    )
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    findings = doctor.diagnose(tmp_path)
+
+    gates = [finding for finding in findings if finding.id == "doctor.ci.gate"]
+    assert len(gates) == 1
+    assert gates[0].level is doctor.Level.DRIFT
+
+
+def test_doctor_rejects_staged_check_in_a_clean_ci_checkout(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github" / "workflows" / "standards.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "jobs:\n"
+        "  standards:\n"
+        "    steps:\n"
+        f"      - run: {launcher.repository_command()} check --staged --trust-repository-code -- changed.py\n",
         encoding="utf-8",
     )
     adopted = manifest.Manifest(

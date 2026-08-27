@@ -1585,7 +1585,11 @@ def _run_value_executes_standards_check(command: str, *, source_checkout: bool) 
 
 
 def _tokens_execute_standards_check(tokens: tuple[str, ...], *, source_checkout: bool) -> bool:
-    if not tokens or any(token in {";", "&&", "||", "|", "&"} for token in tokens):
+    if (
+        not tokens
+        or "--staged" in tokens
+        or any(token in {";", "&&", "||", "|", "&"} for token in tokens)
+    ):
         return False
     prefix = launcher.repository_argv()
     if tokens[: len(prefix)] == prefix:
