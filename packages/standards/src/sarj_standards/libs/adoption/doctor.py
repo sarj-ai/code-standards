@@ -137,6 +137,7 @@ _CONFIG_TARGETS: Final = MappingProxyType(
         "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
         "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
         "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
+        "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
         "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
         "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
     }
@@ -200,6 +201,8 @@ _GIT_SAFE_ENV: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
 _GIT_DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)
+_SHELLCHECK_VERSION: Final = "0.11.0"
+_SHELLCHECK_VERSION_RE: Final = re.compile(r"^version:\s*(?P<version>\S+)\s*$", re.MULTILINE)
 
 
 def _git_environment() -> dict[str, str]:
@@ -225,6 +228,7 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
+    findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
     unique = dict.fromkeys(findings)
     return sorted(unique, key=lambda finding: (finding.where, finding.id, finding.detail))
@@ -254,6 +258,7 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
+    findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
     return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))
 
@@ -274,6 +279,67 @@ def _check_repository_launcher(root: Path) -> Iterator[Finding]:
         "repository-local launcher protocol 1 is retired; immutable bootstrap owns repository dispatch",
         "doctor.launcher.retired",
         "run `code-standards setup`",
+    )
+
+
+def _check_shellcheck(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        return
+    if adopted is None or "shellcheck" not in adopted.configs:
+        return
+    from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level]
+
+    eligible = tuple(path for path in files if textlint.shell_dialect(path) not in {None, "zsh"})
+    if not eligible:
+        return
+    executable = shutil.which("shellcheck")
+    if executable is None:
+        yield Finding(
+            Level.DRIFT,
+            "shellcheck",
+            f"ShellCheck is required for {len(eligible)} authored shell file(s) but is not installed",
+            "doctor.shellcheck.missing",
+            "install the pinned shellcheck-py companion or system ShellCheck 0.11.0",
+        )
+        return
+    try:
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            (executable, "--version"),
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=_git_environment(),
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        yield Finding(
+            Level.DRIFT,
+            "shellcheck",
+            f"cannot attest ShellCheck version: {type(exc).__name__}",
+            "doctor.shellcheck.version",
+            "install the pinned shellcheck-py companion or system ShellCheck 0.11.0",
+        )
+        return
+    match = _SHELLCHECK_VERSION_RE.search(completed.stdout)
+    version = None if match is None else match.group("version")
+    if completed.returncode != 0 or version != _SHELLCHECK_VERSION:
+        yield Finding(
+            Level.DRIFT,
+            "shellcheck",
+            f"ShellCheck version is {version or 'unknown'}; expected {_SHELLCHECK_VERSION}",
+            "doctor.shellcheck.version",
+            "install the pinned shellcheck-py companion or system ShellCheck 0.11.0",
+        )
+        return
+    yield Finding(
+        Level.OK,
+        "shellcheck",
+        f"ShellCheck {_SHELLCHECK_VERSION} covers {len(eligible)} authored shell file(s)",
+        "doctor.shellcheck.version",
     )
 
 

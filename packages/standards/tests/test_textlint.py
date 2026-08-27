@@ -1042,6 +1042,48 @@ def test_shell_iac_source_rule_ignores_non_test_and_malformed_shell(tmp_path: Pa
     assert "SARJ304" not in _codes(malformed, root=tmp_path)
 
 
+@pytest.mark.parametrize(("substantive", "expected"), [(199, False), (200, True), (201, True)])
+def test_large_shell_program_uses_a_fixed_substantive_line_boundary(
+    tmp_path: Path, substantive: int, expected: bool
+) -> None:
+    path = tmp_path / "release.sh"
+    path.write_text(
+        "#!/bin/sh\n# rationale\n\n" + "run_step\n" * substantive,
+        encoding="utf-8",
+    )
+
+    findings = [item for item in textlint.check_paths([str(path)], root=tmp_path) if item.code == "SARJ311"]
+
+    assert bool(findings) is expected
+    if findings:
+        assert findings[0].line == 4
+        assert "fully annotated Python" in findings[0].message
+
+
+def test_large_shell_program_excludes_heredoc_bodies_and_supports_extensionless_shebangs(tmp_path: Path) -> None:
+    path = tmp_path / "release"
+    path.write_text(
+        "#!/usr/bin/env -S bash -eu\ncat <<'FIRST' <<- SECOND\n"
+        + "payload\n" * 250
+        + "FIRST\n"
+        + "\tpayload\n" * 250
+        + '\tSECOND\nexec python -m tools.release "$@"\n',
+        encoding="utf-8",
+    )
+
+    assert textlint.shell_dialect(path) == "bash"
+    assert "SARJ311" not in _codes(path, root=tmp_path)
+
+
+def test_large_shell_program_is_warning_only(tmp_path: Path) -> None:
+    path = tmp_path / "release.zsh"
+    path.write_text("#!/bin/zsh\n" + "run_step\n" * 200, encoding="utf-8")
+
+    finding = next(item for item in textlint.check_paths([str(path)], root=tmp_path) if item.code == "SARJ311")
+
+    assert " warning:" in finding.render()
+
+
 def test_registry_exposes_complete_neutral_rule_metadata() -> None:
     assert set(textlint.REGISTRY) == {
         "commented-out-config",
@@ -1051,6 +1093,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "exact-config-comment-restatement",
         "hidden-markdown-heading",
         "iac-source-coupled-test",
+        "large-shell-program",
         "no-unsafe-command-argument-interpolation",
         "no-wildcard-secret-read-permission",
         "workflow-embedded-program",

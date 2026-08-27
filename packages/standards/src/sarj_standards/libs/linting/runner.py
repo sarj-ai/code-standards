@@ -150,6 +150,8 @@ class GroupedPaths:
     python: list[str] = field(default_factory=list)
     sql: list[str] = field(default_factory=list)
     iac: list[str] = field(default_factory=list)
+    shellcheck: list[str] = field(default_factory=list)
+    unsupported_shell: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)
     typescript: list[str] = field(default_factory=list)
 
@@ -406,6 +408,11 @@ def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
         else _SUFFIX_TO_TOOL.get(path.suffix.lower())
     )
     _append_path(grouped, tool, raw_path)
+    shell = textlint.shell_dialect(path)
+    if shell == "zsh":
+        grouped.unsupported_shell.append(raw_path)
+    elif shell is not None:
+        grouped.shellcheck.append(raw_path)
     if textlint.is_text_path(path):
         grouped.text.append(raw_path)
 

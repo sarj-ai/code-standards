@@ -18,6 +18,7 @@ from sarj_standards.libs.linting.external import (
     parse_eslint,
     parse_react_doctor,
     parse_ruff,
+    parse_shellcheck,
 )
 
 
@@ -49,6 +50,158 @@ def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
     assert finding.location.region is not None
     assert finding.location.region.start.byte_offset == 0
     assert finding.location.region.end.byte_offset == 6
+
+
+def test_shellcheck_json_preserves_native_rule_and_warning_rollout(tmp_path: Path) -> None:
+    source = tmp_path / "release.sh"
+    source.write_text("echo $name\n", encoding="utf-8")
+    payload = json.dumps(
+        {
+            "comments": [
+                {
+                    "file": str(source),
+                    "line": 1,
+                    "endLine": 1,
+                    "column": 6,
+                    "endColumn": 11,
+                    "level": "warning",
+                    "code": 2086,
+                    "message": "Double quote to prevent globbing and word splitting.",
+                }
+            ]
+        }
+    )
+
+    finding = parse_shellcheck(payload, root=tmp_path)[0]
+
+    assert finding.code == "SC2086"
+    assert finding.rule_id == "SC2086"
+    assert finding.source == "shellcheck"
+    assert finding.severity is Severity.WARNING
+    assert finding.location.path == "release.sh"
+    assert finding.location.region is not None
+
+
+def test_shellcheck_runs_hermetically_for_supported_shell(tmp_path: Path) -> None:
+    source = tmp_path / "release.sh"
+    source.write_text("echo ok\n", encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        return ProcessOutput(0, '{"comments":[]}', "")
+
+    reports = analyze_external(
+        [str(source)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"shellcheck"}),
+    )
+
+    assert [item.name for item in reports] == ["shellcheck"]
+    assert reports[0].completion is Completion.COMPLETE
+    assert seen == [
+        (
+            "shellcheck",
+            "--norc",
+            "--extended-analysis=true",
+            "--severity=info",
+            "--source-path=SCRIPTDIR",
+            "--format=json1",
+            "--",
+            str(source),
+        )
+    ]
+
+
+def test_shellcheck_reports_zsh_as_uncovered_without_invocation(tmp_path: Path) -> None:
+    source = tmp_path / "release.zsh"
+    source.write_text("print ok\n", encoding="utf-8")
+
+    def forbidden(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        raise AssertionError((argv, cwd))
+
+    reports = analyze_external(
+        [str(source)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=forbidden,
+        capabilities=frozenset({"shellcheck"}),
+    )
+
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == "coverage-missing"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("level", "notice", "unsupported ShellCheck severity"),
+        ("line", True, r"comments\.0\.line"),
+        ("code", 0, r"comments\.0\.code"),
+    ],
+)
+def test_shellcheck_rejects_malformed_protocol_fields(tmp_path: Path, field: str, value: object, message: str) -> None:
+    source = tmp_path / "release.sh"
+    source.write_text("echo ok\n", encoding="utf-8")
+    item: dict[str, object] = {
+        "file": str(source),
+        "line": 1,
+        "endLine": 1,
+        "column": 1,
+        "endColumn": 5,
+        "level": "info",
+        "code": 2086,
+        "message": "example",
+    }
+    item[field] = value
+
+    with pytest.raises((TypeError, ValueError), match=message):
+        parse_shellcheck(json.dumps({"comments": [item]}), root=tmp_path)
+
+
+def test_shellcheck_rejects_reported_paths_outside_repository(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside.sh"
+    outside.write_text("echo ok\n", encoding="utf-8")
+    payload = json.dumps(
+        {
+            "comments": [
+                {
+                    "file": str(outside),
+                    "line": 1,
+                    "endLine": 1,
+                    "column": 1,
+                    "endColumn": 5,
+                    "level": "info",
+                    "code": 2086,
+                    "message": "example",
+                }
+            ]
+        }
+    )
+
+    with pytest.raises(ValueError, match="outside the repository"):
+        parse_shellcheck(payload, root=tmp_path)
+
+
+def test_shellcheck_exact_version_is_attested(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def old_version(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        _ = argv, cwd
+        return ProcessOutput(0, "ShellCheck\nversion: 0.10.0\n", "")
+
+    monkeypatch.setattr(
+        external_module,
+        "run_process",
+        old_version,
+    )
+
+    issue = external_module._shellcheck_version_issue(tmp_path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    assert issue is not None
+    assert issue.kind == "version-mismatch"
+    assert "0.11.0" in issue.message
 
 
 def test_react_doctor_v3_json_becomes_a_blocking_canonical_region(tmp_path: Path) -> None:

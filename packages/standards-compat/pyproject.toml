@@ -1,13 +1,13 @@
 [project]
 name = "sarj-standards"
-version = "7.4.0"
+version = "7.5.0"
 description = "Compatibility bridge to the renamed code-standards distribution."
 readme = "README.md"
 requires-python = ">=3.14"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "sarj-ai" }]
-dependencies = ["code-standards==7.4.0"]
+dependencies = ["code-standards==7.5.0"]
 
 [project.scripts]
 code-standards = "sarj_standards.__main__:main"

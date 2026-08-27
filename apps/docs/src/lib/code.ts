@@ -41,6 +41,7 @@ const FALLBACK_LANGUAGES: Readonly<Partial<Record<Language, string>>> = Object.f
   iac: 'terraform',
   markdown: 'markdown',
   python: 'python',
+  shell: 'shellscript',
   sql: 'sql',
   typescript: 'typescript',
 });

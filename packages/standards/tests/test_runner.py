@@ -49,6 +49,19 @@ def test_terraform_test_files_route_to_iac(name: str, tmp_path: Path) -> None:
     assert runner.group_paths([str(tmp_path)]).iac == [str(source)]
 
 
+def test_shell_files_route_to_shellcheck_and_text(tmp_path: Path) -> None:
+    shell = tmp_path / "release"
+    shell.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
+    zsh = tmp_path / "interactive.zsh"
+    zsh.write_text("#!/bin/zsh\nprint ok\n", encoding="utf-8")
+
+    grouped = runner.group_paths([str(tmp_path)])
+
+    assert grouped.shellcheck == [str(shell)]
+    assert grouped.unsupported_shell == [str(zsh)]
+    assert grouped.text == [str(zsh), str(shell)]
+
+
 def test_directory_walk_prunes_ignored_directories(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

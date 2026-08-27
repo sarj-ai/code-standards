@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
+from enum import StrEnum
 from importlib.metadata import PackageNotFoundError, version
 import json
 from pathlib import Path
@@ -32,6 +33,12 @@ _ESLINT_RULE_KEY: Final = re.compile(
 )
 _SARJ_RULE_ENGINES: Final = frozenset({"python", "sql", "iac", "text"})
 
+
+class _UpstreamRuleEngine(StrEnum):
+    ESLINT = "eslint"
+    SHELLCHECK = "shellcheck"
+
+
 #: Sibling distributions pinned exactly by `code-standards`.
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
@@ -55,7 +62,7 @@ def adopted_version() -> str:
 #: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
 TYPESCRIPT_CONFIGS: Final = ("eslint",)
-SHARED_CONFIGS: Final = ("markdownlint", "taplo", "yamllint")
+SHARED_CONFIGS: Final = ("markdownlint", "shellcheck", "taplo", "yamllint")
 ALL_CONFIGS: Final = (*PYTHON_CONFIGS, *TYPESCRIPT_CONFIGS, *SHARED_CONFIGS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
     "**/README.md",
@@ -419,7 +426,7 @@ def validate_excluded_rule(selector: str) -> str:
     engine, separator, rule = selector.partition(":")
     if (
         not separator
-        or engine not in {"ruff", "basedpyright", "eslint", "python", "sql", "iac", "text"}
+        or engine not in {"ruff", "basedpyright", "eslint", "shellcheck", "python", "sql", "iac", "text"}
         or not rule
         or rule != rule.strip()
     ):
@@ -446,7 +453,14 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
             msg = f"unknown Standards rule exclusion: {selector}"
             raise ValueError(msg)
         return
-    if engine != "eslint":
+    try:
+        upstream = _UpstreamRuleEngine(engine)
+    except ValueError:
+        return
+    if upstream is _UpstreamRuleEngine.SHELLCHECK:
+        if re.fullmatch(r"SC[0-9]{4}", rule) is None:
+            msg = f"unknown Standards rule exclusion: {selector}"
+            raise ValueError(msg)
         return
     if rule.startswith("@sarj/"):
         known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.ESLINT, ()))

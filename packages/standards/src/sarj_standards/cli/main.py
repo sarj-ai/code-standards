@@ -7,6 +7,7 @@ from functools import lru_cache
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository commands report failures from fixed-argument child processes.
@@ -1745,6 +1746,26 @@ def cmd_baseline(args: _Args) -> int:
         reports.append(external)
     if _react_doctor_rules_for_baseline(args.baseline_rules):
         reports.append(_react_doctor_baseline_report(root, selected, trust))
+    if _shellcheck_rules_for_baseline(args.baseline_rules):
+        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+            report_from_tools,
+        )
+        from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
+            analyze_external,
+        )
+
+        reports.append(
+            report_from_tools(
+                root,
+                analyze_external(
+                    selected or [str(root)],
+                    root=root,
+                    trust=trust,
+                    capabilities=frozenset({"shellcheck"}),
+                    include_react_doctor=False,
+                ),
+            )
+        )
     blocked = [issue for report in reports for issue in report.issues if issue.kind != "baseline-failure"]
     if blocked:
         for issue in blocked:
@@ -1837,6 +1858,8 @@ def _analysis_rules_for_baseline(selectors: Sequence[str]) -> list[str] | None:
         source, separator, rule_id = selector.partition(":")
         if _is_react_doctor_selector(source=source, rule_id=rule_id, separator=bool(separator)):
             continue
+        if selector == "shellcheck:*" or re.fullmatch(r"shellcheck:SC[0-9]{4}", selector) is not None:
+            continue
         if separator and source in _BASELINE_RULE_SOURCE_ALIASES:
             normalized.append(f"{_BASELINE_RULE_SOURCE_ALIASES[source]}:{rule_id}")
         elif selector.startswith("eslint:@sarj/"):
@@ -1866,6 +1889,14 @@ def _react_doctor_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]
         for selector in selectors
         if (source := selector.partition(":")[0]) in _REACT_DOCTOR_RULE_SOURCES
         or (source == "eslint" and _is_react_doctor_rule_id(selector.partition(":")[2]))
+    )
+
+
+def _shellcheck_rules_for_baseline(selectors: Sequence[str]) -> frozenset[str]:
+    return frozenset(
+        selector
+        for selector in selectors
+        if selector == "shellcheck:*" or re.fullmatch(r"shellcheck:SC[0-9]{4}", selector) is not None
     )
 
 

@@ -65,6 +65,9 @@ _MAX_STDERR_BYTES = 64 * 1024
 _READ_BYTES = 64 * 1024
 _MAX_ESLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
+_SHELLCHECK_BATCH_SIZE = 250
+_SHELLCHECK_VERSION: Final = "0.11.0"
+_SHELLCHECK_VERSION_RE: Final = re.compile(r"^version:\s*(?P<version>\S+)\s*$", re.MULTILINE)
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
 _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
@@ -216,6 +219,32 @@ class _ExternalSeverity(StrEnum):
     INFORMATION = "information"
 
 
+class _ShellCheckLevel(StrEnum):
+    ERROR = "error"
+    WARNING = "warning"
+    INFO = "info"
+    STYLE = "style"
+
+
+class _ShellCheckDiagnostic(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    file: str = Field(min_length=1)
+    line: int = Field(ge=1)
+    end_line: int = Field(alias="endLine", ge=1)
+    column: int = Field(ge=1)
+    end_column: int = Field(alias="endColumn", ge=1)
+    level: str = Field(min_length=1)
+    code: int = Field(ge=1)
+    message: str = Field(min_length=1)
+
+
+class _ShellCheckReport(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", strict=True)
+
+    comments: tuple[_ShellCheckDiagnostic, ...]
+
+
 @dataclass(frozen=True, slots=True)
 class ProcessOutput:
     returncode: int
@@ -254,6 +283,8 @@ def analyze_external(
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
+    if capabilities is None or "shellcheck" in capabilities:
+        reports.extend(_shellcheck_reports(routed, root=root, runner=execute, attest_version=runner is None))
     if routed.python:
         if capabilities is None or "ruff" in capabilities:
             reports.extend(
@@ -952,6 +983,99 @@ def _invoke_ruff_projects(
     return tuple(reports)
 
 
+def _shellcheck_reports(
+    grouped: GroupedPaths, *, root: Path, runner: ProcessRunner, attest_version: bool
+) -> tuple[ToolReport, ...]:
+    reports: list[ToolReport] = []
+    if grouped.unsupported_shell:
+        issue = ExecutionIssue(
+            "shellcheck",
+            "coverage-missing",
+            f"ShellCheck does not support zsh; {len(grouped.unsupported_shell)} selected zsh path(s) were not analyzed",
+        )
+        reports.append(
+            ToolReport(
+                "shellcheck",
+                Completion.FAILED,
+                issues=(issue,),
+                analyzer_id=AnalyzerId("shellcheck"),
+                invocation_id=InvocationId("shellcheck:zsh"),
+                file_count=len(grouped.unsupported_shell),
+            )
+        )
+    if not grouped.shellcheck:
+        return tuple(reports)
+    version_issue = _shellcheck_version_issue(root) if attest_version else None
+    if version_issue is not None:
+        reports.append(
+            ToolReport(
+                "shellcheck",
+                Completion.FAILED,
+                issues=(version_issue,),
+                analyzer_id=AnalyzerId("shellcheck"),
+                invocation_id=InvocationId("shellcheck:version"),
+                file_count=len(grouped.shellcheck),
+            )
+        )
+        return tuple(reports)
+    for batch_number, start in enumerate(range(0, len(grouped.shellcheck), _SHELLCHECK_BATCH_SIZE), start=1):
+        batch = tuple(sorted(grouped.shellcheck[start : start + _SHELLCHECK_BATCH_SIZE]))
+        reports.append(_invoke_shellcheck(batch, root=root, runner=runner, invocation_id=str(batch_number)))
+    return tuple(reports)
+
+
+def _invoke_shellcheck(files: Sequence[str], *, root: Path, runner: ProcessRunner, invocation_id: str) -> ToolReport:
+    report = _invoke(
+        "shellcheck",
+        (
+            "shellcheck",
+            "--norc",
+            "--extended-analysis=true",
+            "--severity=info",
+            "--source-path=SCRIPTDIR",
+            "--format=json1",
+            "--",
+            *files,
+        ),
+        cwd=root,
+        root=root,
+        runner=runner,
+        parser=parse_shellcheck,
+        invocation_id=invocation_id,
+        file_count=len(files),
+    )
+    return ToolReport(
+        report.name,
+        report.completion,
+        diagnostics=report.diagnostics,
+        issues=report.issues,
+        analyzer_id=report.analyzer_id,
+        invocation_id=report.invocation_id,
+        version=_SHELLCHECK_VERSION,
+        duration_ms=report.duration_ms,
+        file_count=report.file_count,
+        cache_status=report.cache_status,
+    )
+
+
+def _shellcheck_version_issue(root: Path) -> ExecutionIssue | None:
+    try:
+        output = run_process(("shellcheck", "--version"), cwd=root)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return ExecutionIssue("shellcheck", "missing-dependency", _redact_message(str(exc), root))
+    match = _SHELLCHECK_VERSION_RE.search(output.stdout)
+    actual = None if match is None else match.group("version")
+    if output.returncode != 0 or actual != _SHELLCHECK_VERSION:
+        displayed = actual or "unknown"
+        return ExecutionIssue(
+            "shellcheck",
+            "version-mismatch",
+            f"ShellCheck {displayed} is installed; exact version {_SHELLCHECK_VERSION} is required",
+            output.returncode,
+        )
+    return None
+
+
 def _project_analyzer(project: Path, name: str) -> str:
     candidates = (
         project / ".venv" / "bin" / name,
@@ -1357,6 +1481,48 @@ def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
             )
         )
     return tuple(diagnostics)
+
+
+def parse_shellcheck(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+    report = _ShellCheckReport.model_validate_json(payload)
+    documents: dict[Path, SourceDocument | None] = {}
+    diagnostics: list[Diagnostic] = []
+    for item in report.comments:
+        path = _reported_path(item.file, root)
+        rule = f"SC{item.code}"
+        try:
+            level = _ShellCheckLevel(item.level)
+        except ValueError as exc:
+            msg = f"unsupported ShellCheck severity: {item.level!r}"
+            raise ValueError(msg) from exc
+        severity = Severity.ERROR if level is _ShellCheckLevel.ERROR else Severity.WARNING
+        start = _one_based_position({"row": item.line, "column": item.column}, path, documents)
+        end = _one_based_position({"row": item.end_line, "column": item.end_column}, path, documents)
+        if (end.line, end.character) < (start.line, start.character):
+            msg = "ShellCheck diagnostic end precedes its start"
+            raise ValueError(msg)
+        diagnostics.append(
+            Diagnostic(
+                rule,
+                _redact_message(item.message, root),
+                severity,
+                "shellcheck",
+                Location(_relative(path, root), region=Region(start, end)),
+                rule_id=rule,
+            )
+        )
+    return tuple(
+        sorted(
+            diagnostics,
+            key=lambda item: (
+                item.location.path,
+                -1 if item.location.region is None else item.location.region.start.line,
+                -1 if item.location.region is None else item.location.region.start.character,
+                item.code,
+                item.message,
+            ),
+        )
+    )
 
 
 def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization keeps each ESLint field explicit.

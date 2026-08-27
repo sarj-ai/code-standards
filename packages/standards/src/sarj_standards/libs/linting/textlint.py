@@ -375,6 +375,20 @@ _QUOTED_SCALAR_MIN_LENGTH: Final = 2
 _COMMAND_ARGUMENT_RE: Final = re.compile(r"(?<![A-Za-z0-9_])\$ARGUMENTS(?![A-Za-z0-9_])")
 _QUERY_LANGUAGE_NAMES: Final = frozenset({"logql", "postgres", "postgresql", "psql", "sql"})
 _SHELL_LANGUAGE_NAMES: Final = frozenset({"", "bash", "console", "sh", "shell", "zsh"})
+_SHELL_DIALECT_BY_SUFFIX: Final = MappingProxyType(
+    {
+        ".bash": "bash",
+        ".bats": "bash",
+        ".dash": "dash",
+        ".ksh": "ksh",
+        ".sh": "sh",
+        ".zsh": "zsh",
+    }
+)
+_SHELL_SHEBANG_RE: Final = re.compile(
+    rb"^#!\s*(?:/usr/bin/env(?:\s+-S)?\s+|/(?:usr/)?bin/)(?P<shell>bash|busybox|dash|ksh|sh|zsh)(?:\s|$)"
+)
+_LARGE_SHELL_SUBSTANTIVE_LINES: Final = 200
 _QUERY_TOKEN_RE: Final = re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|logQl)\b", re.IGNORECASE)
 _QUOTED_ARGUMENT_RE: Final = re.compile(r'(?<!\S)"\$ARGUMENTS"(?!\S)')
 _MAX_MARKDOWN_FENCE_INDENT: Final = 3
@@ -877,6 +891,44 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "Only literal wildcard allow entries for recognized cloud secret-value commands in Claude settings JSON are checked.",
             ),
         ),
+        "large-shell-program": RuleMeta(
+            code="SARJ311",
+            summary="shell program contains at least 200 substantive lines",
+            rationale=(
+                "Large shell programs lack the static type checking and structured interfaces available to application "
+                "languages, making orchestration and domain logic harder to evolve safely."
+            ),
+            remediation=(
+                "Move substantive logic into a fully annotated Python CLI or module covered by Ruff, Sarj Python, and "
+                "strict BasedPyright; retain only a thin shell adapter when the platform requires one."
+            ),
+            category=RuleCategory.ARCHITECTURE,
+            languages=frozenset({Language.SHELL}),
+            file_patterns=("**/*.sh", "**/*.bash", "**/*.zsh", "extensionless shell scripts"),
+            examples=(
+                _public_example(
+                    example_id="large-shell-program",
+                    title="A large shell program moves typed logic to Python",
+                    outcome=ExpectedOutcome.MATCH,
+                    path="scripts/release.sh",
+                    source="#!/bin/sh\n" + "run_step\n" * _LARGE_SHELL_SUBSTANTIVE_LINES,
+                    expected_count=1,
+                ),
+                _public_example(
+                    example_id="thin-shell-adapter",
+                    title="A thin shell adapter remains at the platform boundary",
+                    outcome=ExpectedOutcome.NO_MATCH,
+                    path="scripts/release.sh",
+                    source='#!/bin/sh\nexec python -m tools.release "$@"\n',
+                    expected_count=0,
+                ),
+            ),
+            limitations=(
+                "Blank lines, comment-only lines, the shebang, and heredoc bodies do not count toward the threshold.",
+                "Embedded shell in YAML, Makefiles, and Dockerfiles is intentionally outside this advisory.",
+            ),
+            blocking=False,
+        ),
     }
 )
 
@@ -892,7 +944,22 @@ def is_text_path(path: Path) -> bool:
         or name.startswith(("dockerfile.", ".env."))
         or (path.suffix.casefold() == ".json" and ".claude" in path.parts and name.startswith("settings"))
         or (path.suffix.casefold() == ".json" and any(part.casefold() in _OPERATIONAL_ROOTS for part in path.parts))
+        or shell_dialect(path) is not None
     )
+
+
+def shell_dialect(path: Path) -> str | None:
+    if dialect := _SHELL_DIALECT_BY_SUFFIX.get(path.suffix.casefold()):
+        return dialect
+    if path.suffix:
+        return None
+    try:
+        with path.open("rb") as stream:
+            first_line = stream.readline(256)
+    except OSError:
+        return None
+    match = _SHELL_SHEBANG_RE.match(first_line)
+    return None if match is None else match.group("shell").decode("ascii")
 
 
 def check_paths(
@@ -931,6 +998,8 @@ def check_paths(
             )
         if enabled_codes is None or "SARJ303" in enabled_codes:
             path_findings.extend(_shell_iac_source_findings(path, relative, source))
+        if enabled_codes is None or "SARJ311" in enabled_codes:
+            path_findings.extend(_large_shell_program_findings(path, source))
         if enabled_codes is None or "SARJ305" in enabled_codes:
             path_findings.extend(_markdown_hidden_comment_findings(path, source))
         if enabled_codes is None or "SARJ302" in enabled_codes:
@@ -946,6 +1015,62 @@ def check_paths(
             if not (path.suffix.lower() in {".md", ".mdx"} and _markdown_suppresses_finding(source, finding))
         )
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
+
+
+class _ShellHeredoc(NamedTuple):
+    delimiter: str
+    strip_tabs: bool
+
+
+def _large_shell_program_findings(path: Path, source: str) -> list[Finding]:
+    if shell_dialect(path) is None:
+        return []
+    count = 0
+    first_substantive = 1
+    pending_heredocs: list[_ShellHeredoc] = []
+    for number, line in enumerate(source.splitlines(), start=1):
+        if pending_heredocs:
+            delimiter, strip_tabs = pending_heredocs[0]
+            candidate = line.lstrip("\t") if strip_tabs else line
+            if candidate == delimiter:
+                pending_heredocs.pop(0)
+            continue
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if count == 0:
+            first_substantive = number
+        count += 1
+        pending_heredocs.extend(_shell_heredoc_delimiters(line))
+        if count >= _LARGE_SHELL_SUBSTANTIVE_LINES:
+            return [
+                Finding(
+                    path,
+                    first_substantive,
+                    "SARJ311",
+                    "Large shell program — move substantive logic to a fully annotated Python CLI/module covered by "
+                    "Ruff, Sarj Python, and strict BasedPyright; keep only a thin shell adapter.",
+                )
+            ]
+    return []
+
+
+def _shell_heredoc_delimiters(line: str) -> list[_ShellHeredoc]:
+    tokens = _shell_tokens(line)
+    delimiters: list[_ShellHeredoc] = []
+    index = 0
+    while index < len(tokens):
+        if tokens[index] != "<<":
+            index += 1
+            continue
+        index += 1
+        strip_tabs = index < len(tokens) and tokens[index] == "-"
+        if strip_tabs:
+            index += 1
+        if index < len(tokens) and tokens[index] not in _SHELL_SEPARATORS:
+            delimiters.append(_ShellHeredoc(tokens[index], strip_tabs))
+        index += 1
+    return delimiters
 
 
 def _declarative_deployment_findings(path: Path, relative: str, source: str) -> list[Finding]:

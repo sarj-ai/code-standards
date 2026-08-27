@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8c9314e31abee5cbe7d0e72eeeddaa2ffbc13f168d27ace494d21db6964b269e",
-  "cliSha256": "0736d8da8f0492a5a73d3e2b087d16839885a045105a506aa282f1328d77a59e",
+  "catalogSha256": "24cd2a99221759acc19884d2b23ba3e0b128976f1cb72e817cbd5da0f5197cce",
+  "cliSha256": "3c35b77f6453b3e1e65d88f9852dd40864770fa9ea99aa49a3b18e328fb9c2a9",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7519,6 +7519,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not grep Terraform source in a shell test"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "text:large-shell-program": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "scripts/release.sh",
+              "source": "#!/bin/sh\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\nrun_step\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "scripts/release.sh",
+          "id": "large-shell-program",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A large shell program moves typed logic to Python"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "scripts/release.sh",
+              "source": "#!/bin/sh\nexec python -m tools.release \"$@\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "scripts/release.sh",
+          "id": "thin-shell-adapter",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A thin shell adapter remains at the platform boundary"
         }
       ],
       "optionsSchemaSource": null
