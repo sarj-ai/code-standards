@@ -88,7 +88,9 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "yarn.lock",
     }
 )
-DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset({MANIFEST, "uv.lock", "eslint.config.mjs", *MANAGED_WORKFLOW_PATHS})
+DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset(
+    {MANIFEST, ".shellcheckrc", "uv.lock", "eslint.config.mjs", *MANAGED_WORKFLOW_PATHS}
+)
 MAX_VERIFICATION_ATTEMPTS = 2
 MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
 COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})

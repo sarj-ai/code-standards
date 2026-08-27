@@ -27,6 +27,19 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
+    command = ("npx", "eslint", "--", "app.ts")
+
+    strict = external_module._eslint_json_argv(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    scoped_baseline = external_module._eslint_json_argv(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        command, pass_on_unpruned_suppressions=True
+    )
+
+    assert "--pass-on-unpruned-suppressions" not in strict
+    assert scoped_baseline.count("--pass-on-unpruned-suppressions") == 1
+    assert scoped_baseline.index("--pass-on-unpruned-suppressions") < scoped_baseline.index("--")
+
+
 def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("import os\n", encoding="utf-8")

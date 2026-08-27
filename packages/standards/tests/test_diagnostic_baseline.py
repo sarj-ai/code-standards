@@ -363,11 +363,17 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
         ),
         encoding="utf-8",
     )
-    captured: list[tuple[object, object]] = []
+    captured: list[tuple[object, object, object]] = []
 
     def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
         _ = self, paths
-        captured.append((kwargs.get("rules"), kwargs.get("include_react_doctor")))
+        captured.append(
+            (
+                kwargs.get("rules"),
+                kwargs.get("include_react_doctor"),
+                kwargs.get("pass_on_unpruned_eslint_suppressions"),
+            )
+        )
         return report_from_tools(tmp_path, ())
 
     monkeypatch.setattr(api.Standards, "analyze", analyze)
@@ -387,7 +393,7 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
         )
         == 0
     )
-    assert captured == [([expected], False)]
+    assert captured == [([expected], False, True)]
 
 
 def test_scoped_baseline_update_runs_only_shellcheck_for_native_selector(
@@ -962,7 +968,14 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     external_calls: list[object] = []
 
     def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
-        external_calls.append((files, kwargs.get("capabilities"), kwargs.get("include_react_doctor")))
+        external_calls.append(
+            (
+                files,
+                kwargs.get("capabilities"),
+                kwargs.get("include_react_doctor"),
+                kwargs.get("pass_on_unpruned_eslint_suppressions"),
+            )
+        )
         return ()
 
     monkeypatch.setattr(external, "analyze_external", analyze_eslint)
@@ -983,7 +996,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
         == 0
     )
     assert captured == []
-    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False)]
+    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False, True)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:
