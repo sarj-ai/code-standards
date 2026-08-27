@@ -963,6 +963,7 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     assert "fetch-depth: 0" in workflow
     assert "  push:\n    branches: [main]\n" in workflow
     assert "SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}" in workflow
+    assert "check --staged" not in workflow
 
 
 def test_setup_repairs_an_outdated_managed_yarn_workflow(tmp_path: Path) -> None:
