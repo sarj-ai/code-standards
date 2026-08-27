@@ -1455,14 +1455,14 @@ def github_ci_workflow(root: Path) -> str:
         "    timeout-minutes: 15",
         "    steps:",
         "      - name: Harden the runner",
-        "        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1",
+        "        uses: step-security/harden-runner@v2",
         "        with:",
         "          egress-policy: audit",
-        "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+        "      - uses: actions/checkout@v7",
         "        with:",
         "          fetch-depth: 0",
         "          persist-credentials: false",
-        "      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0",
+        "      - uses: astral-sh/setup-uv@v9",
         "        with:",
         _setup_uv_version(root, ecosystems.python_root),
         "          enable-cache: true",
@@ -1472,11 +1472,11 @@ def github_ci_workflow(root: Path) -> str:
     ]
     if ecosystems.typescript:
         if ecosystems.client is PackageManager.BUN:
-            lines.append("      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2")
+            lines.append("      - uses: oven-sh/setup-bun@v2")
         else:
             lines.extend(
                 (
-                    "      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7",
+                    "      - uses: actions/setup-node@v7",
                     "        with:",
                     "          node-version: 24",
                 )

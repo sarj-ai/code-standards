@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ import yaml
 
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold, transaction, upgrade
+from sarj_standards.libs.diagnostics import baseline
 
 
 BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards"
@@ -71,6 +73,102 @@ def test_upgrade_preview_is_read_only_and_names_every_change(tmp_path: Path) -> 
     assert "sync ruff config" in upgrade.render(plan.changes)
     assert "adopt standards" in upgrade.render(plan.changes)
     assert {path: path.read_bytes() for path in tmp_path.iterdir() if path.is_file()} == before
+
+
+def test_upgrade_transactionally_removes_retired_diagnostic_baseline_entries(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    adopted = replace(adopted, diagnostic_baseline="diagnostic-baseline.json")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    retained = {
+        "fingerprint": "2" * 64,
+        "source": "sarj-text-lint",
+        "ruleId": "mutable-container-image",
+        "path": ".github/workflows/check.yml",
+        "count": 3,
+    }
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "provenance": {
+                    "bundleVersion": "0.0.1",
+                    "consumerBaseSha": "0" * 40,
+                    "catalogDigest": "1" * 64,
+                },
+                "diagnostics": [
+                    {
+                        "fingerprint": "1" * 64,
+                        "source": "sarj-text-lint",
+                        "ruleId": "unpinned-github-action",
+                        "path": ".github/workflows/check.yml",
+                        "count": 4,
+                    },
+                    retained,
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert [(path, json.loads(contents)["diagnostics"]) for path, contents in plan.baseline_writes] == [
+        (baseline_path, [retained])
+    ]
+    assert not upgrade.unsafe_retired_findings(plan)
+    assert upgrade.apply(plan, install=False) == 0
+    migrated: dict[str, object] = json.loads(  # pyright: ignore[reportAny] -- test JSON fixture is asserted below.
+        baseline_path.read_text(encoding="utf-8")
+    )
+    assert migrated["diagnostics"] == [retained]
+    assert migrated["provenance"] == {
+        "bundleVersion": manifest.adopted_version(),
+        "consumerBaseSha": "0" * 40,
+        "catalogDigest": baseline.bundled_catalog_digest(),
+    }
+
+
+def test_upgrade_rejects_a_concurrently_edited_diagnostic_baseline(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    adopted = replace(adopted, diagnostic_baseline="diagnostic-baseline.json")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    baseline_path = tmp_path / "diagnostic-baseline.json"
+    baseline_path.write_text(
+        baseline.render(
+            (),
+            bundle_version="0.0.1",
+            consumer_base_sha="0" * 40,
+            catalog_digest="1" * 64,
+        ),
+        encoding="utf-8",
+    )
+    # Add a retired entry so the baseline becomes part of the transaction.
+    payload: dict[str, object] = json.loads(  # pyright: ignore[reportAny] -- test JSON fixture is controlled here.
+        baseline_path.read_text(encoding="utf-8")
+    )
+    payload["diagnostics"] = [
+        {
+            "fingerprint": "1" * 64,
+            "source": "sarj-text-lint",
+            "ruleId": "unpinned-github-action",
+            "path": ".github/workflows/check.yml",
+            "count": 1,
+        }
+    ]
+    baseline_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    plan = upgrade.build_plan(tmp_path)
+    late_edit = baseline_path.read_text(encoding="utf-8") + "\n"
+    baseline_path.write_text(late_edit, encoding="utf-8")
+
+    assert upgrade.apply(plan, install=False) == 2
+    assert baseline_path.read_text(encoding="utf-8") == late_edit
 
 
 def test_upgrade_preserves_preexisting_nested_eslint_projects(tmp_path: Path) -> None:

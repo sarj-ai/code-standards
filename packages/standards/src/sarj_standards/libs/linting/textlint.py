@@ -996,7 +996,7 @@ def check_paths(
                     suppress_deployment_mutations=deployment_boundary_enabled,
                 )
             )
-        if enabled_codes is None or "SARJ303" in enabled_codes:
+        if enabled_codes is None or "SARJ304" in enabled_codes:
             path_findings.extend(_shell_iac_source_findings(path, relative, source))
         if enabled_codes is None or "SARJ311" in enabled_codes:
             path_findings.extend(_large_shell_program_findings(path, source))

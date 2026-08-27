@@ -36,6 +36,12 @@ class ChangedLineScope:
     failed: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class RuleRemoval:
+    contents: str
+    removed: int
+
+
 def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
     base = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api]
     if not staged and not base:
@@ -238,6 +244,40 @@ def merge_scoped(
     }
     _validate_provenance(payload["provenance"])
     return json.dumps(payload, indent=_existing_json_indent(path)) + "\n"
+
+
+def remove_rules(
+    path: Path,
+    *,
+    selectors: Iterable[str],
+    bundle_version: str,
+    consumer_base_sha: str,
+    catalog_digest: str,
+) -> RuleRemoval:
+    selected = frozenset(selectors)
+    if not selected:
+        msg = "a baseline rule removal requires at least one selector"
+        raise ValueError(msg)
+    _ = load(path)
+    parsed: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    root = _string_object_dict(parsed, label="diagnostic baseline")
+    current = root.get("diagnostics")
+    if not _is_object_list(current):
+        msg = "diagnostic baseline diagnostics must be a list"
+        raise TypeError(msg)
+    entries = [_string_object_dict(value, label="diagnostic baseline entry") for value in current]
+    preserved = [entry for entry in entries if not _entry_selected(entry, selected)]
+    payload: dict[str, object] = {
+        "schemaVersion": SCHEMA_VERSION,
+        "provenance": {
+            "bundleVersion": bundle_version,
+            "consumerBaseSha": consumer_base_sha,
+            "catalogDigest": catalog_digest,
+        },
+        "diagnostics": preserved,
+    }
+    _validate_provenance(payload["provenance"])
+    return RuleRemoval(json.dumps(payload, indent=_existing_json_indent(path)) + "\n", len(entries) - len(preserved))
 
 
 def _existing_json_indent(path: Path) -> int | str:
