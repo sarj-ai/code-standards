@@ -11,6 +11,29 @@ catalog, evaluation, and report contracts. Use `sarj_standards.libs.corpus`
 for manifests, snapshots, local pin verification, and redacted reporting. Keep
 all executable logic in the uv package; this skill contains no scripts.
 
+## Admit the proposal before routing
+
+Before routing or editing any proposed CI guard, preflight, validator, policy
+workflow, or new or expanded lint rule, record all of the following internally:
+
+1. the concrete failure mode, evidenced by a local incident, a reproducible
+   upstream incident, an authoritative security or correctness advisory, or a
+   minimal reproduction rather than an unsupported hypothetical;
+2. the exact existing owner or control for the invariant;
+3. the demonstrated gap in that owner or control;
+4. the concrete harm if no change is made;
+5. whether the proposal distinguishes invalid state from merely changing
+   today's valid configuration; and
+6. the smallest fix at the owning boundary.
+
+If evidence for the failure mode, demonstrated gap, or no-change harm is absent,
+or the proposal only freezes today's source spelling, configuration value, or
+temporary state, stop with `delete/no PR` and ask for an explicit user override.
+Deleting a redundant check is a valid remediation. Moving the same weak oracle
+into a script, changing it to inspect plan JSON without proving the missing
+invariant, or otherwise hiding it from a detector is not a fix; rerun this
+admission gate whenever the proposal is rewritten.
+
 ## Route before editing
 
 State `Routing: <repository>, because <required evidence>` before touching rule source.
