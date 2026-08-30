@@ -1462,8 +1462,10 @@ def test_react_doctor_disjoint_preflight_fails_closed_when_head_moves(tmp_path: 
 )
 def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_empty_projects(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     case: tuple[str, str, int, int, int, Completion],
 ) -> None:
+    monkeypatch.setattr(external_module, "change_scope_base", lambda: "")
     reported_base, changed, reported_count, resolve_status, ancestor_status, expected_completion = case
     resolved_base = "b" * 40
     project = tmp_path / "apps" / "landing-page"
