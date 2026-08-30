@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5399fc9496af53cc31ccdb249d8e376d3593f7927a3caa11ae2d78e3b0d2d949",
-  "cliSha256": "21112bc902a3cd2d807b3175c27201ec9b889558a9b64fbce1aded0df0f24040",
+  "catalogSha256": "7cb8d39336e77c5a3e4c8913795bf39f8a97c3e3b17905c2dd374fd668393f67",
+  "cliSha256": "9351d08c14c1ff81f6a71e0e1d9d8a2f6736d6500aba46b38c45f8a26b0ee000",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2373,15 +2373,15 @@
           "files": [
             {
               "path": "src/provider.ts",
-              "source": "import { z } from \"zod\";\nconst JobSchema = z.object({ provider: z.enum([\"agy\", \"claude\", \"sol\"]) });\nconst StatusSchema = z.object({\n  provider: z.enum([\"agy\", \"claude\", \"sol\"]).optional(),\n});\n"
+              "source": "import { z } from \"zod\";\nconst JobSchema = z.object({ provider: z.enum([\"agy\", \"claude\", \"sol\"]) });\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "src/provider.ts",
-          "id": "duplicate-provider",
+          "id": "inline-provider",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not repeat one enum domain"
+          "title": "Do not inline enum domains in object fields"
         },
         {
           "expectedCount": 0,
@@ -2615,6 +2615,41 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowIn\": {\n      \"description\": \"Glob patterns for wrapper modules exempt from the rule. Matched against the ABSOLUTE file path, so anchor with a `**/` prefix (e.g. `**/http-client.ts`).\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:require-interface-for-exported-class": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/artifact-store.ts",
+              "source": "export class ArtifactStore {\n  async read(id: string) {\n    return new Uint8Array();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/artifact-store.ts",
+          "id": "concrete-only-store",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not export behavior only through a concrete class"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/artifact-store.ts",
+              "source": "export interface ArtifactStorage {\n  read(id: string): Promise<Uint8Array>;\n}\nexport class ArtifactStore implements ArtifactStorage {\n  async read(id: string) {\n    return new Uint8Array();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/artifact-store.ts",
+          "id": "implemented-store-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Export behavior through a focused contract"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:require-pascal-case-zod-schema-name": {
       "examples": [
