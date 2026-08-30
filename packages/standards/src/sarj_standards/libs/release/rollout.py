@@ -880,7 +880,9 @@ def provision_consumer_tools(
                 raise RolloutError(msg)
         mise_prefix = ("mise", "exec", *workflow_tools, "--")
 
-    adopted = adoption_manifest.load(repo)
+    # Tool provisioning happens before `code-standards update`, so consumers
+    # may still use the immediately preceding manifest schema here.
+    adopted = adoption_manifest.load_for_setup(repo)
     python_root = None if adopted is None else repo / adopted.python_dest
     uv_source = adoption_uvtool.version_file(python_root)
     uv_required = None if uv_source is None else adoption_uvtool.required_version(uv_source)
@@ -1109,7 +1111,11 @@ def prepare_branch(
 
 
 def react_doctor_policy_snapshot(repo: Path) -> ReactDoctorPolicy:
-    adopted = adoption_manifest.load(repo)
+    # Capture the pre-update policy through the same compatibility boundary used
+    # by setup/update. Fleet consumers can legitimately still be on the prior
+    # manifest schema; the rollout is responsible for migrating them before the
+    # strict current-schema loader is used below.
+    adopted = adoption_manifest.load_for_setup(repo)
     if adopted is None:
         return ReactDoctorPolicy(None, None)
     project = repo / adopted.typescript_dest
