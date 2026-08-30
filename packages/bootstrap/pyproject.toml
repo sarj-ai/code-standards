@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards-bootstrap"
-version = "2.0.0"
+version = "2.0.1"
 description = "Manifest-driven launcher for an exact Sarj Standards bundle."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -32,7 +32,7 @@ Issues = "https://github.com/sarj-ai/code-standards/issues"
 dev = [
   "basedpyright>=1.39.10",
   "pytest>=9.1.1",
-  "ruff>=0.16.3",
+  "ruff>=0.16.5",
 ]
 
 [build-system]

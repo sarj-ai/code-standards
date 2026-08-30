@@ -100,14 +100,20 @@ def test_ruff_catalog_is_decoded_as_utf8_on_every_platform(
         return subprocess.CompletedProcess(
             args=[],
             returncode=0,
-            stdout='[{"code": "TID251", "name": "banned-api", "summary": "use «safer» API"}]',
+            stdout=(
+                '[{"code": null, "name": "pytest-fixture-autouse"},'
+                '{"code": "TID251", "name": "banned-api", "summary": "use «safer» API"}]'
+            ),
             stderr="",
         )
 
     monkeypatch.setattr("sarj_python_lint._ratchet_cli.subprocess.run", run)
     package = tmp_path / "service"
     package.mkdir()
-    _ = (package / "app.py").write_text("value = 1  # noqa: TID251\n", encoding="utf-8")
+    _ = (package / "app.py").write_text(
+        "value = 1  # noqa: TID251\nother = 2  # ruff: ignore[pytest-fixture-autouse]\n",
+        encoding="utf-8",
+    )
 
     assert main([str(tmp_path), "--update"]) == 0
     assert observed_encoding == "utf-8"

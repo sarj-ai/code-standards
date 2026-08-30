@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "7.9.0"
+version = "7.9.1"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -18,17 +18,17 @@ classifiers = [
 dependencies = [
   "pathspec==1.1.1",
   "basedpyright==1.39.10",
-  "lefthook==2.1.10",
+  "lefthook==2.1.12",
   "packaging==26.3",
   "pre-commit==4.6.2",
-  "pydantic==2.13.4",
+  "pydantic==2.13.5",
   "PyYAML==6.0.3",
-  "ruff==0.16.3",
+  "ruff==0.16.5",
   "semgrep==1.175.0",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
-  "sarj-iac-lint==0.15.0",
-  "sarj-python-lint==0.80.3",
-  "sarj-sql-lint==0.16.3",
+  "sarj-iac-lint==0.15.1",
+  "sarj-python-lint==0.80.4",
+  "sarj-sql-lint==0.16.4",
 ]
 
 [project.scripts]
@@ -72,3 +72,7 @@ sarj-sql-lint = { path = "../sql", editable = true }
 # Dogfooding: linted/formatted by this repo's own published config (root-synced).
 [tool.ruff]
 extend = "../../.ruff-strict.toml"
+
+[tool.ruff.lint.extend-per-file-ignores]
+# This fixture deliberately isolates every test from hooks in an enclosing checkout.
+"tests/conftest.py" = ["pytest-fixture-autouse"]

@@ -33,6 +33,7 @@ _RUFF_CONTEXTS: Final = (
     ("cli-python", "Python CLI modules", "src/cli/example.py"),
 )
 _ENABLED_RULE_RE: Final = re.compile(r"^\s*[^()]+\s\(([^()]+)\),$")
+_ENABLED_NAMED_RULE_RE: Final = re.compile(r"^\s*([a-z][a-z0-9-]+),$")
 _DETEKT_RULE_SETS: Final = frozenset(
     {
         "comments",
@@ -117,10 +118,10 @@ class _EslintProjection(_FrozenModel):
 class _RuffMetadata(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="ignore", frozen=True, strict=True)
 
-    code: str
+    code: str | None
     name: str
     summary: str
-    linter: str
+    linter: str | None
     fix_availability: str
 
 
@@ -181,7 +182,8 @@ def parse_enabled_ruff_rules(settings: str) -> frozenset[str]:
             continue
         if inside and line == "]":
             return frozenset(codes)
-        if inside and (match := _ENABLED_RULE_RE.match(line)) is not None:
+        match = (_ENABLED_RULE_RE.match(line) or _ENABLED_NAMED_RULE_RE.match(line)) if inside else None
+        if match is not None:
             codes.add(match.group(1))
     msg = "Ruff settings omitted linter.rules.enabled"
     raise ValueError(msg)
@@ -406,8 +408,8 @@ def _enabled_detekt_rules(path: Path) -> tuple[str, ...]:
 
 def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:
     output = _run((ruff, "rule", "--all", "--output-format", "json"), cwd=root)
-    metadata_values = TypeAdapter(tuple[_RuffMetadata, ...]).validate_json(output)
-    metadata = {value.code: value for value in metadata_values}
+    metadata = parse_ruff_metadata(output)
+
     contexts_by_rule = _resolved_ruff_contexts(root, ruff)
 
     rules: list[_Rule] = []
@@ -423,7 +425,7 @@ def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:
         if not item.summary:
             msg = f"Ruff metadata for {code} lacks a summary"
             raise ValueError(msg)
-        if not item.linter:
+        if item.code is not None and not item.linter:
             msg = f"Ruff metadata for {code} lacks a linter family"
             raise ValueError(msg)
         if not item.fix_availability:
@@ -456,6 +458,14 @@ def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:
         homepage="https://docs.astral.sh/ruff/",
     )
     return _RuffProjection(provider, tuple(rules))
+
+
+def parse_ruff_metadata(output: str) -> dict[str, _RuffMetadata]:
+    metadata_values = TypeAdapter(tuple[_RuffMetadata, ...]).validate_json(output)
+    # Ruff may expose preview rules by name before assigning a stable code or
+    # linter family. The name is the stable selector Ruff accepts until a code
+    # exists, so it remains part of the effective public inventory.
+    return {value.code or value.name: value for value in metadata_values}
 
 
 def _resolved_ruff_contexts(root: Path, ruff: str) -> dict[str, dict[str, list[_Context]]]:

@@ -33,17 +33,44 @@ def test_parse_enabled_ruff_rules_reads_the_resolved_settings_block() -> None:
 linter.rules.enabled = [
     unused-import (F401),
     prefer-isinstance-type-compare (FURB189),
+    pytest-fixture-autouse,
 ]
 linter.rules.should_fix = [
 ]
 """
 
-    assert third_party_catalog_artifact.parse_enabled_ruff_rules(settings) == {"F401", "FURB189"}
+    assert third_party_catalog_artifact.parse_enabled_ruff_rules(settings) == {
+        "F401",
+        "FURB189",
+        "pytest-fixture-autouse",
+    }
 
 
 def test_parse_enabled_ruff_rules_rejects_missing_block() -> None:
     with pytest.raises(ValueError, match=r"omitted linter\.rules\.enabled"):
         third_party_catalog_artifact.parse_enabled_ruff_rules("linter.preview = true\n")
+
+
+def test_parse_ruff_metadata_indexes_name_only_preview_metadata() -> None:
+    metadata = [
+        {
+            "code": None,
+            "name": "pytest-fixture-autouse",
+            "summary": "Avoid autouse fixtures",
+            "linter": None,
+            "fix_availability": "None",
+        },
+        {
+            "code": "F401",
+            "name": "unused-import",
+            "summary": "Imported but unused",
+            "linter": "Pyflakes",
+            "fix_availability": "Always",
+        },
+    ]
+    parsed = third_party_catalog_artifact.parse_ruff_metadata(json.dumps(metadata))
+
+    assert set(parsed) == {"F401", "pytest-fixture-autouse"}
 
 
 def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> None:
