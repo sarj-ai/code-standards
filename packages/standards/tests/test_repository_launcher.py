@@ -5,7 +5,7 @@ import pytest
 from sarj_standards.libs.adoption import launcher
 
 
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.1 code-standards"
 
 
 def test_repository_wiring_uses_the_exact_immutable_bootstrap() -> None:
@@ -43,7 +43,7 @@ def test_legacy_bootstrap_python_argv_is_rewritten() -> None:
 
     rewritten = launcher.rewrite_legacy_repository_invocations(source)
 
-    assert '        "sarj-standards-bootstrap==2.0.0",\n' in rewritten.contents
+    assert '        "sarj-standards-bootstrap==2.0.1",\n' in rewritten.contents
     assert '        "code-standards",\n' in rewritten.contents
     assert rewritten.replacements == 1
 

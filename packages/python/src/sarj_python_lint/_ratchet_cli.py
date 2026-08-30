@@ -155,6 +155,13 @@ def _ruff_selector_aliases() -> dict[str, str]:
             raise TypeError(msg)
         code = raw_item.get("code")
         name = raw_item.get("name")
+        if code is None and isinstance(name, str):
+            # Ruff accepts the name as the stable selector until it allocates
+            # a code, so preserve that suppression identity rather than
+            # rejecting a valid Ruff directive.
+            canonical = name.lower()
+            aliases[canonical] = canonical
+            continue
         if not isinstance(code, str) or not isinstance(name, str):
             msg = "Ruff rule catalog entry lacks a string code or name"
             raise TypeError(msg)

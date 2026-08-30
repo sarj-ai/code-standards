@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.0 code-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.1 code-standards"
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -141,7 +141,15 @@ def test_python315_watch_profiles_are_advisory_and_isolated() -> None:
     ruff_watch = tomllib.loads((CONFIGS_DIR / "ruff.python315-watch.toml").read_text(encoding="utf-8"))
     based_watch = (CONFIGS_DIR / "basedpyright.python315-watch.json").read_text(encoding="utf-8")
 
-    assert ruff_watch == {"extend": "ruff.strict.toml", "target-version": "py315"}
+    assert ruff_watch == {
+        "extend": "ruff.strict.toml",
+        "target-version": "py315",
+        "lint": {
+            "extend-per-file-ignores": {
+                "tests/conftest.py": ["pytest-fixture-autouse"],
+            },
+        },
+    }
     assert '"extends": "./basedpyright.strict.json"' in based_watch
     assert '"pythonVersion": "3.15"' in based_watch
     assert '"enableExperimentalFeatures": true' in based_watch

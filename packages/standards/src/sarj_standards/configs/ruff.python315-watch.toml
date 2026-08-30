@@ -3,3 +3,7 @@
 # final and the supported dependency matrix ships compatible wheels.
 extend = "ruff.strict.toml"
 target-version = "py315"
+
+[lint.extend-per-file-ignores]
+# This fixture deliberately isolates every test from hooks in an enclosing checkout.
+"tests/conftest.py" = ["pytest-fixture-autouse"]
