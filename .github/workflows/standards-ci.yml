@@ -99,6 +99,84 @@ jobs:
             exit 1
           fi
 
+  mobile-kotlin-smoke:
+    name: managed Kotlin mobile analyzers
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - name: Provision and execute ktlint, Detekt, and MobSF rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$RUNNER_TEMP/mobile-kotlin-smoke"
+          mkdir -p "$repo/src/main/kotlin/smoke"
+          printf 'plugins { id("com.android.application") }\n' > "$repo/build.gradle.kts"
+          printf 'package smoke\n\ninternal const val MOBILE_SMOKE: Int = 1\n' > "$repo/src/main/kotlin/smoke/MobileSmoke.kt"
+          cli=(uv run --frozen code-standards --root "$repo")
+          "${cli[@]}" setup --no-install
+          "${cli[@]}" check --trust-repository-code --format json --output "$repo/report.json" \
+            "$repo/src/main/kotlin/smoke/MobileSmoke.kt" || true
+          python -c "import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps(p, indent=2)); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$repo/report.json"
+
+  mobile-swift-smoke:
+    name: managed Swift mobile analyzers
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - name: Provision and execute SwiftFormat, SwiftLint, and MobSF rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$RUNNER_TEMP/mobile-swift-smoke"
+          mkdir -p "$repo/Sources/Smoke"
+          printf '// swift-tools-version: 6.2\nimport PackageDescription\nlet package = Package(name: "Smoke", platforms: [.iOS(.v16)])\n' > "$repo/Package.swift"
+          printf 'import Foundation\n' > "$repo/Sources/Smoke/MobileSmoke.swift"
+          cli=(uv run --frozen code-standards --root "$repo")
+          "${cli[@]}" setup --no-install
+          "${cli[@]}" check --trust-repository-code --format json --output "$repo/report.json" \
+            "$repo/Sources/Smoke/MobileSmoke.swift" || true
+          python -c "import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps(p, indent=2)); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$repo/report.json"
+
   test:
     name: standards package
     runs-on: ubuntu-latest
@@ -156,7 +234,7 @@ jobs:
       - name: Install built wheel + test deps into a fresh venv
         run: |
           uv venv --clear --python 3.14 --seed
-          uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff
+          uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 jsonschema==4.25.1 ruff
       - name: Pytest
         run: uv run --no-project pytest -q
       - name: CLI smoke

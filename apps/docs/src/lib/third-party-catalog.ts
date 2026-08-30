@@ -5,6 +5,10 @@ export const THIRD_PARTY_PAGE_SIZE = 40;
 export type ThirdPartyProfile = (typeof THIRD_PARTY_PROFILES)[number];
 export type ThirdPartyLevel = "error" | "warning";
 export type ThirdPartyAutofix = "always" | "available" | "none" | "sometimes";
+export type ThirdPartyProjectionScope =
+  | "complete"
+  | "config-explicit"
+  | "provider-only";
 
 export interface ThirdPartyProvider {
   id: string;
@@ -13,6 +17,7 @@ export interface ThirdPartyProvider {
   package: string;
   version: string;
   homepage: string;
+  projectionScope: ThirdPartyProjectionScope;
 }
 
 export interface ThirdPartyContext {
@@ -115,12 +120,28 @@ function parseProvider(value: unknown, index: number): ThirdPartyProvider {
   const record = requireRecord(value, context);
   requireExactFields(
     record,
-    ["engine", "homepage", "id", "label", "package", "version"],
+    [
+      "engine",
+      "homepage",
+      "id",
+      "label",
+      "package",
+      "projectionScope",
+      "version",
+    ],
     context,
   );
   const id = requireString(record, "id", context);
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(id)) {
     throw new TypeError(`${context}.id must be a URL-safe provider slug.`);
+  }
+  const projectionScope = requireString(record, "projectionScope", context);
+  if (
+    projectionScope !== "complete" &&
+    projectionScope !== "config-explicit" &&
+    projectionScope !== "provider-only"
+  ) {
+    throw new TypeError(`${context}.projectionScope is invalid.`);
   }
   return {
     id,
@@ -129,6 +150,7 @@ function parseProvider(value: unknown, index: number): ThirdPartyProvider {
     package: requireString(record, "package", context),
     version: requireString(record, "version", context),
     homepage: requireHttps(record, "homepage", context),
+    projectionScope,
   };
 }
 
@@ -274,7 +296,8 @@ function parseCatalog(value: unknown): ThirdPartyCatalog {
     }
   }
   for (const [providerId, ruleCount] of providerRuleCounts) {
-    if (ruleCount === 0)
+    const provider = providers.find(({ id }) => id === providerId);
+    if (ruleCount === 0 && provider?.projectionScope !== "provider-only")
       throw new TypeError(
         `third-party provider ${providerId} has no enabled rules.`,
       );

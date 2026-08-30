@@ -8,7 +8,7 @@ import re
 import shlex
 import textwrap
 import tomllib
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
@@ -43,11 +43,20 @@ class Ecosystems:
     typescript_install_root: Path | None = None
     client: PackageManager = PackageManager.NPM
     yarn: YarnVariant = YarnVariant.CLASSIC
+    swift: bool = False
+    kotlin: bool = False
+    swift_root: Path | None = None
+    kotlin_root: Path | None = None
 
     @property
     def any(self) -> bool:
         """Whether anything at all was detected."""
-        return self.python or self.typescript
+        return self.python or self.typescript or self.mobile
+
+    @property
+    def mobile(self) -> bool:
+        """Whether the repository has explicit Apple or Android project configuration."""
+        return self.swift or self.kotlin
 
 
 @dataclass
@@ -79,7 +88,6 @@ _PYRIGHT_POLICY_PARENT: Final = ".basedpyright-strict.json"
 _LEGACY_PYRIGHT_POLICY_PARENT: Final = ".pyright-strict.json"
 _STANDALONE_RUFF_CONFIG_NAMES: Final = (".ruff.toml", "ruff.toml")
 _PRECOMMIT_CONFIG_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
-_ECOSYSTEM_CONFIGS: Final = frozenset((*manifest.PYTHON_CONFIGS, *manifest.TYPESCRIPT_CONFIGS))
 _CUSTOM_HOOK_SCOPE_KEYS: Final = frozenset({"args", "exclude", "exclude_types", "types", "types_or"})
 _RUFF_REDUNDANT_SELECT_ALL: Final = re.compile(r"(?m)^[ \t]*select\s*=\s*\[\s*['\"]ALL['\"]\s*\]\s*(?:#.*)?\r?\n?")
 _PYTHON_MAJOR: Final = 3
@@ -89,6 +97,39 @@ _LEGACY_WORKFLOW_VERIFY: Final = re.compile(
 _SCHEMA_LESS_VERSION_LINE: Final = re.compile(r'(?m)^[ \t]*version\s*=\s*"[^"]*"\s*$')
 _SCHEMA_LESS_CONFIGS_START: Final = re.compile(r"^[ \t]*configs\s*=")
 _FIRST_TOML_TABLE: Final = re.compile(r"(?m)^\s*\[")
+_TOML_TABLE_HEADER: Final = re.compile(r"(?m)^\s*\[\[?(?P<name>[A-Za-z0-9_.-]+)\]\]?\s*(?:#.*)?$")
+_OWNED_MANIFEST_TABLES: Final = frozenset(
+    {"artifacts", "baseline", "capabilities", "ci", "dest", "doctor", "exclude", "hooks", "text", "verify"}
+)
+_OWNED_MANIFEST_ROOT_KEYS: Final = frozenset({"schema", "bundle", "profile", "rule_profile", *_OWNED_MANIFEST_TABLES})
+_GRADLE_PROJECT_FILES: Final = ("build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts")
+_ANDROID_PLUGIN: Final = re.compile(
+    r"(?x)(?:"
+    r"\bid\s*(?:\(\s*)?['\"]com\.android\."
+    r"(?:application|library|test|dynamic-feature|asset-pack|privacy-sandbox-sdk)['\"]\s*\)?|"
+    r"\bid\s*(?:\(\s*)?['\"]com\.android\.kotlin\.multiplatform\.library['\"]\s*\)?|"
+    r"\bid\s*(?:\(\s*)?['\"]org\.jetbrains\.kotlin\.android['\"]\s*\)?|"
+    r"\bkotlin\s*\(\s*['\"]android['\"]\s*\)|"
+    r"\balias\s*\(\s*libs\.plugins\.(?:android(?:\.[\w-]+)+|kotlin\.android)\s*\)"
+    r")"
+)
+_KMP_PLUGIN: Final = re.compile(
+    r"\bid\s*(?:\(\s*)?['\"]org\.jetbrains\.kotlin\.multiplatform['\"]\s*\)?|"
+    r"\bkotlin\s*\(\s*['\"]multiplatform['\"]\s*\)|"
+    r"\balias\s*\(\s*libs\.plugins\.kotlin\.multiplatform\s*\)"
+)
+_KMP_MOBILE_TARGET: Final = re.compile(
+    r"\b(?:androidTarget|androidLibrary|ios|iosArm64|iosX64|iosSimulatorArm64)\s*\(|\bandroid\s*\{"
+)
+_GRADLE_APPLY_FALSE: Final = re.compile(r"\bapply\s+false\b")
+_SWIFT_MOBILE_PLATFORM: Final = re.compile(r"\.(?:iOS|tvOS|watchOS|visionOS)\s*\(")
+_XCODE_MOBILE_PLATFORM: Final = re.compile(
+    r"\b(?:IPHONEOS|TVOS|WATCHOS|XROS)_DEPLOYMENT_TARGET\s*=|"
+    r"\bSDKROOT\s*=\s*(?:iphoneos|appletvos|watchos|xros)\b|"
+    r"\bSUPPORTED_PLATFORMS\s*=\s*['\"][^'\"]*"
+    r"(?:iphoneos|iphonesimulator|appletvos|appletvsimulator|watchos|watchsimulator|xros|xrsimulator)\b"
+)
+_MAX_DETECTION_SOURCE_BYTES: Final = 16 * 1024 * 1024
 
 _RUFF_EXTEND = re.compile(r"^[ \t]*\[tool\.ruff\][ \t]*$", re.MULTILINE)
 _RUFF_LINT_SECTION = re.compile(
@@ -103,7 +144,9 @@ _RUFF_REPLACEMENT_KEY = re.compile(r"(?m)^(?P<indent>[ \t]*)(?P<key>select|ignor
 _SKIP_DIRS: Final = frozenset(
     {
         ".git",
+        ".gradle",
         ".agents",
+        ".build",
         ".cache",
         ".claude",
         ".next",
@@ -119,7 +162,15 @@ _SKIP_DIRS: Final = frozenset(
         "coverage",
         ".tox",
         ".venv",
+        "Carthage",
+        "DerivedData",
+        "DerivedDataAPI",
+        "DerivedDataDist",
+        "Pods",
+        "SourcePackages",
         "dist",
+        "fastlane",
+        "generated",
         "node_modules",
         "out",
         "target",
@@ -133,9 +184,13 @@ def detect(
     *,
     python_dest: str | None = None,
     typescript_dest: str | None = None,
+    swift_dest: str | None = None,
+    kotlin_dest: str | None = None,
 ) -> Ecosystems:
     python_root = _override(root, python_dest) or _python_root(root)
     typescript_root = _override(root, typescript_dest) or _typescript_root(root)
+    swift_root = _validated_mobile_override(root, swift_dest, language="Swift") or _swift_root(root)
+    kotlin_root = _validated_mobile_override(root, kotlin_dest, language="Kotlin") or _kotlin_root(root)
     install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
     client = packagemanager.detect(install_root) if install_root else PackageManager.NPM
     return Ecosystems(
@@ -150,16 +205,24 @@ def detect(
             if install_root is not None and client is PackageManager.YARN
             else YarnVariant.CLASSIC
         ),
+        swift=swift_root is not None,
+        kotlin=kotlin_root is not None,
+        swift_root=swift_root,
+        kotlin_root=kotlin_root,
     )
 
 
 def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
     python = bool({"ruff", "pyright"}.intersection(adopted.configs))
     typescript = "eslint" in adopted.configs
+    swift = bool({"swiftformat", "swiftlint"}.intersection(adopted.configs))
+    kotlin = bool({"ktlint", "detekt"}.intersection(adopted.configs))
     detected = detect(
         root,
         python_dest=adopted.python_dest if python else None,
         typescript_dest=adopted.typescript_dest if typescript else None,
+        swift_dest=adopted.swift_dest if swift else None,
+        kotlin_dest=adopted.kotlin_dest if kotlin else None,
     )
     return Ecosystems(
         python=python,
@@ -169,6 +232,10 @@ def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
         typescript_install_root=detected.typescript_install_root if typescript else None,
         client=detected.client,
         yarn=detected.yarn,
+        swift=swift,
+        kotlin=kotlin,
+        swift_root=detected.swift_root if swift else None,
+        kotlin_root=detected.kotlin_root if kotlin else None,
     )
 
 
@@ -193,6 +260,24 @@ def _override(root: Path, dest: str | None) -> Path | None:
     return resolved
 
 
+def _validated_mobile_override(
+    root: Path,
+    dest: str | None,
+    *,
+    language: Literal["Swift", "Kotlin"],
+) -> Path | None:
+    selected = _override(root, dest)
+    if selected is None:
+        return None
+    detected = _swift_roots(selected) if language == "Swift" else _kotlin_roots(selected)
+    selected_resolved = selected.resolve()
+    exact = tuple(resolved for path in detected if (resolved := path.resolve()) == selected_resolved)
+    if len(exact) != 1:
+        msg = f"{language.lower()} destination {dest!r} must be one exact configured mobile project root"
+        raise ValueError(msg)
+    return selected
+
+
 def _python_root(root: Path) -> Path | None:
     return _shallowest(root, ("pyproject.toml",))
 
@@ -200,6 +285,160 @@ def _python_root(root: Path) -> Path | None:
 def _typescript_root(root: Path) -> Path | None:
     lockfiles = tuple(name for name, _ in LOCKFILES)
     return _shallowest(root, lockfiles) or _shallowest(root, ("package.json",))
+
+
+def _swift_root(root: Path) -> Path | None:
+    projects = _swift_roots(root)
+    if not projects:
+        return None
+    return min(projects, key=lambda path: (len(path.relative_to(root).parts), str(path)))
+
+
+def _swift_roots(root: Path) -> list[Path]:
+    projects = [
+        project
+        for project in _all_roots(root, ("Package.swift",))
+        if not is_link_like(project / "Package.swift") and _swift_package_is_mobile(project / "Package.swift")
+    ]
+    for parent, directories, _filenames in os.walk(root, topdown=True, followlinks=False):
+        directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
+        base = Path(parent)
+        configured = [
+            name
+            for name in directories
+            if name.endswith(".xcodeproj") and not is_link_like(base / name) and _xcode_project_is_mobile(base / name)
+        ]
+        if configured:
+            projects.append(base)
+            directories[:] = [name for name in directories if name not in configured]
+    return projects
+
+
+def _swift_package_is_mobile(path: Path) -> bool:
+    source = _read_detection_source(path)
+    return source is not None and _SWIFT_MOBILE_PLATFORM.search(_strip_quoted_literals(source)) is not None
+
+
+def _xcode_project_is_mobile(path: Path) -> bool:
+    source = _read_detection_source(path / "project.pbxproj")
+    return source is not None and _XCODE_MOBILE_PLATFORM.search(source) is not None
+
+
+def _kotlin_root(root: Path) -> Path | None:
+    configured = _kotlin_roots(root)
+    if not configured:
+        return None
+    return min(configured, key=lambda path: (len(path.relative_to(root).parts), str(path)))
+
+
+def _kotlin_roots(root: Path) -> list[Path]:
+    configured: list[Path] = []
+    for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
+        directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
+        base = Path(parent)
+        project_sources = tuple(base / name for name in _GRADLE_PROJECT_FILES if name in filenames)
+        texts = tuple(_read_detection_source(path) for path in project_sources)
+        combined = "\n".join(
+            line
+            for text in texts
+            if text is not None
+            for line in text.splitlines()
+            if _GRADLE_APPLY_FALSE.search(line) is None
+        )
+        if not combined:
+            continue
+        if _ANDROID_PLUGIN.search(combined) or (_KMP_PLUGIN.search(combined) and _KMP_MOBILE_TARGET.search(combined)):
+            configured.append(_gradle_build_root(base, root))
+    return configured
+
+
+def _gradle_build_root(module: Path, repository: Path) -> Path:
+    current = module
+    while current.is_relative_to(repository):
+        if any((current / name).is_file() for name in ("settings.gradle", "settings.gradle.kts")):
+            return current
+        if current == repository:
+            break
+        current = current.parent
+    return module
+
+
+def _read_detection_source(path: Path) -> str | None:
+    try:
+        if is_link_like(path):
+            return None
+        if path.stat().st_size > _MAX_DETECTION_SOURCE_BYTES:
+            return None
+        return _strip_detection_comments(path.read_text(encoding="utf-8"))
+    except OSError, UnicodeError:
+        return None
+
+
+def _strip_detection_comments(source: str) -> str:
+    output: list[str] = []
+    index = 0
+    quote: str | None = None
+    escaped = False
+    while index < len(source):
+        current = source[index]
+        following = source[index + 1] if index + 1 < len(source) else ""
+        if quote is not None:
+            output.append(current)
+            if escaped:
+                escaped = False
+            elif current == "\\":
+                escaped = True
+            elif current == quote:
+                quote = None
+            index += 1
+            continue
+        if current in {'"', "'"}:
+            quote = current
+            output.append(current)
+            index += 1
+            continue
+        if current == "/" and following == "*":
+            index += 2
+            while index < len(source) and source[index : index + 2] != "*/":
+                if source[index] == "\n":
+                    output.append("\n")
+                index += 1
+            index = min(index + 2, len(source))
+            continue
+        if (current == "/" and following == "/") or current == "#":
+            index += 2 if current == "/" else 1
+            while index < len(source) and source[index] != "\n":
+                index += 1
+            continue
+        output.append(current)
+        index += 1
+    return "".join(output)
+
+
+def _strip_quoted_literals(source: str) -> str:
+    output: list[str] = []
+    quote: str | None = None
+    escaped = False
+    for current in source:
+        if quote is None:
+            if current in {'"', "'"}:
+                quote = current
+                output.append(current)
+            else:
+                output.append(current)
+            continue
+        if escaped:
+            escaped = False
+        elif current == "\\":
+            escaped = True
+        elif current == quote:
+            quote = None
+            output.append(current)
+        elif current == "\n":
+            output.append("\n")
+        else:
+            output.append(" ")
+    return "".join(output)
 
 
 def _shallowest(root: Path, names: Sequence[str]) -> Path | None:
@@ -234,15 +473,29 @@ def build_plan(
     configs: Sequence[str] | None = None,
     python_dest: str | None = None,
     typescript_dest: str | None = None,
+    swift_dest: str | None = None,
+    kotlin_dest: str | None = None,
     profile: manifest.Profile = "standard",
     hook_manager: manifest.HookManager | None = None,
     allow_existing_nested_eslint: bool = False,
 ) -> Plan:
-    ecosystems = detect(root, python_dest=python_dest, typescript_dest=typescript_dest)
+    ecosystems = detect(
+        root,
+        python_dest=python_dest,
+        typescript_dest=typescript_dest,
+        swift_dest=swift_dest,
+        kotlin_dest=kotlin_dest,
+    )
     selected = (
         tuple(configs)
         if configs is not None
-        else manifest.default_configs(has_python=ecosystems.python, has_typescript=ecosystems.typescript)
+        else manifest.default_configs(
+            has_python=ecosystems.python,
+            has_typescript=ecosystems.typescript,
+            has_swift=ecosystems.swift,
+            has_kotlin=ecosystems.kotlin,
+            has_mobile=ecosystems.mobile,
+        )
     )
     selected_hook_manager: manifest.HookManager = hook_manager or hooks.detect_manager(root)
     plan = Plan(
@@ -253,6 +506,39 @@ def build_plan(
         hook_manager=selected_hook_manager,
     )
 
+    for label, explicit, roots in (
+        ("Swift", swift_dest, _swift_roots(root)),
+        ("Kotlin", kotlin_dest, _kotlin_roots(root)),
+    ):
+        independent = tuple(dict.fromkeys(path.resolve() for path in roots))
+        if explicit is None and len(independent) > 1:
+            destinations = ", ".join(path.relative_to(root).as_posix() for path in independent)
+            option = "--swift-dest" if label == "Swift" else "--kotlin-dest"
+            plan.errors.append(
+                f"multiple independent {label} mobile roots detected: {destinations}; "
+                f"rerun with {option} for one reviewed owning root"
+            )
+    if plan.errors:
+        return plan
+
+    if configs is not None:
+        unsupported = tuple(
+            name
+            for name in selected
+            if (name in manifest.PYTHON_CONFIGS and not ecosystems.python)
+            or (name in manifest.TYPESCRIPT_CONFIGS and not ecosystems.typescript)
+            or (name in manifest.SWIFT_CONFIGS and not ecosystems.swift)
+            or (name in manifest.KOTLIN_CONFIGS and not ecosystems.kotlin)
+            or (name in manifest.MOBILE_CONFIGS and not ecosystems.mobile)
+        )
+        if unsupported:
+            names = ", ".join(unsupported)
+            plan.errors.append(
+                f"cannot scaffold ecosystem-specific config(s) without an owning project: {names}; "
+                "add a supported project marker or select only configs owned by detected ecosystems"
+            )
+            return plan
+
     if python_dest is None and ecosystems.python_root is not None:
         _report_independent_roots(root, ecosystems.python_root, ("pyproject.toml",), "Python", plan)
     if typescript_dest is None and ecosystems.typescript_root is not None:
@@ -261,17 +547,11 @@ def build_plan(
         _report_independent_roots(root, ecosystems.typescript_root, candidates, "TypeScript", plan)
     if not ecosystems.any:
         if configs is None:
-            plan.notes.append("no pyproject.toml and no package.json found -- pass --config to scaffold anyway")
-            return plan
-        unsupported = tuple(name for name in selected if name in _ECOSYSTEM_CONFIGS)
-        if unsupported:
-            names = ", ".join(unsupported)
-            plan.errors.append(
-                f"cannot scaffold ecosystem-specific config(s) without an owning project: {names}; "
-                "add pyproject.toml/package.json or select only markdownlint, taplo, and yamllint"
+            plan.notes.append(
+                "no pyproject.toml and no package.json, Swift project marker, or mobile Gradle plugin found"
             )
             return plan
-        plan.notes.append("no Python or TypeScript project found; adopting repository-wide shared configs only")
+        plan.notes.append("no Python, TypeScript, Swift, or mobile Kotlin project found; adopting shared configs only")
 
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
     _plan_retired_repository_launcher(root, plan)
@@ -318,8 +598,21 @@ def build_plan(
         else:
             plan.writes.append((workflow, workflow_contents))
     elif existing_gates:
-        names = ", ".join(path.relative_to(root).as_posix() for path in existing_gates)
-        plan.skips.append((workflow, f"existing workflow already runs the canonical Standards check: {names}"))
+        incompatible = tuple(
+            path
+            for path in existing_gates
+            if not _workflow_supports_mobile(path, swift=ecosystems.swift, kotlin=ecosystems.kotlin)
+        )
+        if incompatible:
+            names = ", ".join(path.relative_to(root).as_posix() for path in incompatible)
+            plan.errors.append(
+                "existing Standards workflow lacks required mobile runner prerequisites: "
+                f"{names}; Swift requires macOS and Kotlin requires pinned Temurin 21. "
+                "Update the owning workflow or generate the managed Standards workflow."
+            )
+        else:
+            names = ", ".join(path.relative_to(root).as_posix() for path in existing_gates)
+            plan.skips.append((workflow, f"existing workflow already runs the canonical Standards check: {names}"))
     elif workflow.is_file() and (migrated := _migrate_legacy_workflow_gate(workflow)) is not None:
         plan.writes.append((workflow, migrated))
         plan.notes.append("migrated the removed Standards `verify` CI command to the canonical check")
@@ -353,6 +646,51 @@ def _is_managed_workflow(path: Path) -> bool:
         )
         is not None
     )
+
+
+def _workflow_supports_mobile(path: Path, *, swift: bool, kotlin: bool) -> bool:
+    if not swift and not kotlin:
+        return True
+    try:
+        parsed: object = yaml.safe_load(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    except OSError, yaml.YAMLError:
+        return False
+    repository = path.parents[2]
+    source_checkout = (repository / "packages" / "standards" / "src" / "sarj_standards").resolve() == Path(
+        __file__
+    ).parents[2]
+    jobs = manifest.table_field(manifest.as_table(parsed), "jobs")
+    standards_jobs = tuple(
+        manifest.as_table(raw_job)
+        for raw_job in jobs.values()
+        if any(
+            _run_value_executes_standards_check(command, source_checkout=source_checkout)
+            for command in _workflow_run_commands(raw_job)
+        )
+    )
+    if not standards_jobs:
+        return False
+    return all(_mobile_job_prerequisites(job, swift=swift, kotlin=kotlin) for job in standards_jobs)
+
+
+def _mobile_job_prerequisites(job: Mapping[str, object], *, swift: bool, kotlin: bool) -> bool:
+    runner = job.get("runs-on")
+    if swift and (not isinstance(runner, str) or re.fullmatch(r"macos-(?:14|15|latest)", runner) is None):
+        return False
+    if not kotlin:
+        return True
+    for raw_step in _object_list(job.get("steps")):
+        step = manifest.as_table(raw_step)
+        uses = step.get("uses")
+        inputs = manifest.table_field(step, "with")
+        if (
+            isinstance(uses, str)
+            and re.fullmatch(r"actions/setup-java@[0-9a-f]{40}", uses) is not None
+            and inputs.get("distribution") == "temurin"
+            and str(inputs.get("java-version")) == "21"
+        ):
+            return True
+    return False
 
 
 def _report_independent_roots(
@@ -430,6 +768,8 @@ def _note_subproject_destinations(root: Path, plan: Plan) -> None:
     for label, subdirectory in (
         ("python", plan.ecosystems.python_root),
         ("typescript", plan.ecosystems.typescript_root),
+        ("swift", plan.ecosystems.swift_root),
+        ("kotlin", plan.ecosystems.kotlin_root),
     ):
         dest = dest_of(root, subdirectory)
         if dest != ".":
@@ -450,6 +790,8 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
         configs=plan.configs,
         python_dest=dest_of(root, plan.ecosystems.python_root),
         typescript_dest=dest_of(root, plan.ecosystems.typescript_root),
+        swift_dest=dest_of(root, plan.ecosystems.swift_root),
+        kotlin_dest=dest_of(root, plan.ecosystems.kotlin_root),
         profile=plan.profile,
         hook_manager=plan.hook_manager,
         verify_paths=(".",) if current is None else current.verify_paths,
@@ -470,6 +812,15 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
             strict = None
         if strict is None:
             legacy_text = path.read_text(encoding="utf-8")
+            if re.search(r"(?m)^\s*schema\s*=", legacy_text):
+                try:
+                    migrated = _render_manifest_preserving_extensions(legacy_text, contents)
+                except ValueError as exc:
+                    plan.errors.append(str(exc))
+                    return
+                plan.writes.append((path, migrated))
+                plan.notes.append("migrated the schema 3 manifest to the current schema")
+                return
             plan.writes.append((path, _migrate_schema_less_manifest(legacy_text, desired)))
             plan.notes.append("migrated the legacy manifest to the current schema")
             return
@@ -477,7 +828,13 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
             if not force and not update_existing:
                 plan.skips.append((path, "exists; preserve repository-specific adoption settings"))
                 return
-            plan.writes.append((path, contents))
+            current_text = path.read_text(encoding="utf-8")
+            try:
+                updated = _render_manifest_preserving_extensions(current_text, contents)
+            except ValueError as exc:
+                plan.errors.append(str(exc))
+                return
+            plan.writes.append((path, updated))
             plan.notes.append("updated the manifest to match the requested capabilities and profile")
             return
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
@@ -494,6 +851,49 @@ def _plan_retired_repository_launcher(root: Path, plan: Plan) -> None:
         plan.errors.append(f"refusing to remove customized retired launcher: {path}")
         return
     plan.deletes.append(path)
+
+
+def _render_manifest_preserving_extensions(  # ruff: ignore[too-many-locals] -- preservation keeps source spans explicit.
+    text: str, rendered: str
+) -> str:
+    try:
+        parsed: object = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        msg = "cannot preserve extensions from an invalid Standards manifest"
+        raise ValueError(msg) from exc
+    data = manifest.as_table(parsed)
+    extensions = frozenset(data).difference(_OWNED_MANIFEST_ROOT_KEYS)
+    for name in extensions:
+        value = data[name]
+        if not isinstance(value, (dict, list)):
+            msg = f"cannot safely rewrite unowned top-level manifest key {name!r}; move it into an extension table"
+            raise TypeError(msg)
+    matches = tuple(_TOML_TABLE_HEADER.finditer(text))
+    preserved: list[str] = []
+    found: set[str] = set()
+    for index, match in enumerate(matches):
+        root_table = match.group("name").split(".", 1)[0]
+        if root_table not in extensions:
+            continue
+        found.add(root_table)
+        start = match.start()
+        while start > 0:
+            previous_end = start - 1
+            previous_start = text.rfind("\n", 0, previous_end) + 1
+            previous = text[previous_start:previous_end].strip()
+            if previous and not previous.startswith("#"):
+                break
+            start = previous_start
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        preserved.append(text[start:end].rstrip())
+    missing = extensions.difference(found)
+    if missing:
+        names = ", ".join(sorted(missing))
+        msg = f"cannot safely locate unowned manifest extension table(s): {names}"
+        raise ValueError(msg)
+    if not preserved:
+        return rendered
+    return f"{rendered.rstrip()}\n\n{'\n\n'.join(preserved)}\n"
 
 
 def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
@@ -1427,7 +1827,23 @@ def github_ci_workflow(root: Path) -> str:
         if adopted is None or not any(name in adopted.configs for name in manifest.TYPESCRIPT_CONFIGS)
         else adopted.typescript_dest
     )
-    ecosystems = detect(root, python_dest=python_override, typescript_dest=typescript_override)
+    swift_override = (
+        None
+        if adopted is None or not any(name in adopted.configs for name in manifest.SWIFT_CONFIGS)
+        else adopted.swift_dest
+    )
+    kotlin_override = (
+        None
+        if adopted is None or not any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
+        else adopted.kotlin_dest
+    )
+    ecosystems = detect(
+        root,
+        python_dest=python_override,
+        typescript_dest=typescript_override,
+        swift_dest=swift_override,
+        kotlin_dest=kotlin_override,
+    )
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = launcher.repository_command()
     lines = [
@@ -1448,8 +1864,8 @@ def github_ci_workflow(root: Path) -> str:
         "",
         "jobs:",
         "  standards:",
-        "    runs-on: ubuntu-latest",
-        "    timeout-minutes: 15",
+        f"    runs-on: {'macos-15' if ecosystems.swift else 'ubuntu-latest'}",
+        f"    timeout-minutes: {60 if ecosystems.mobile else 15}",
         "    steps:",
         "      - name: Harden the runner",
         "        uses: step-security/harden-runner@v2",
@@ -1459,14 +1875,27 @@ def github_ci_workflow(root: Path) -> str:
         "        with:",
         "          fetch-depth: 0",
         "          persist-credentials: false",
-        "      - uses: astral-sh/setup-uv@v10.0.1",
-        "        with:",
-        _setup_uv_version(root, ecosystems.python_root),
-        "          enable-cache: true",
-        "          cache-dependency-glob: |",
-        "            .sarj-standards.toml",
-        "            **/uv.lock",
     ]
+    if ecosystems.kotlin:
+        lines.extend(
+            (
+                "      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5",
+                "        with:",
+                "          distribution: temurin",
+                "          java-version: '21'",
+            )
+        )
+    lines.extend(
+        (
+            "      - uses: astral-sh/setup-uv@v10.0.1",
+            "        with:",
+            _setup_uv_version(root, ecosystems.python_root),
+            "          enable-cache: true",
+            "          cache-dependency-glob: |",
+            "            .sarj-standards.toml",
+            "            **/uv.lock",
+        )
+    )
     if ecosystems.typescript:
         if ecosystems.client is PackageManager.BUN:
             lines.append("      - uses: oven-sh/setup-bun@v2")

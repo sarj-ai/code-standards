@@ -45,6 +45,8 @@ class _Tool(StrEnum):
     PYTHON = "python"
     SQL = "sql"
     IAC = "iac"
+    KOTLIN = "kotlin"
+    SWIFT = "swift"
     TEXT = "text"
     TYPESCRIPT = "typescript"
 
@@ -60,10 +62,13 @@ _SUFFIX_TO_TOOL = MappingProxyType(
         ".cts": _Tool.TYPESCRIPT,
         ".js": _Tool.TYPESCRIPT,
         ".jsx": _Tool.TYPESCRIPT,
+        ".kt": _Tool.KOTLIN,
+        ".kts": _Tool.KOTLIN,
         ".mjs": _Tool.TYPESCRIPT,
         ".mts": _Tool.TYPESCRIPT,
         ".ts": _Tool.TYPESCRIPT,
         ".tsx": _Tool.TYPESCRIPT,
+        ".swift": _Tool.SWIFT,
         ".yaml": _Tool.IAC,
         ".yml": _Tool.IAC,
     }
@@ -104,13 +109,20 @@ _IGNORED_DIRS = frozenset(
         "_backups",
         "dist",
         "build",
+        "carthage",
         "cache",
         "caches",
         "coverage",
+        "deriveddata",
+        "deriveddataapi",
+        "deriveddatadist",
+        "fastlane",
         "htmlcov",
         "generated",
         "node_modules",
         "out",
+        "pods",
+        "sourcepackages",
         "storybook-static",
         "target",
         "vendor",
@@ -150,9 +162,11 @@ class GroupedPaths:
     python: list[str] = field(default_factory=list)
     sql: list[str] = field(default_factory=list)
     iac: list[str] = field(default_factory=list)
+    kotlin: list[str] = field(default_factory=list)
     shellcheck: list[str] = field(default_factory=list)
     unsupported_shell: list[str] = field(default_factory=list)
     text: list[str] = field(default_factory=list)
+    swift: list[str] = field(default_factory=list)
     typescript: list[str] = field(default_factory=list)
 
 
@@ -262,10 +276,11 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
     return grouped
 
 
-def accepts_hook_path(path: Path) -> bool:
+def accepts_hook_path(path: Path, *, root: Path | None = None) -> bool:
     return (
         _owns_path(path)
         and not _is_skill_artifact(path)
+        and not _is_ignored_path(path, root=root)
         and not _is_conventionally_generated(path)
         and not _has_generated_header(path)
     )
@@ -287,7 +302,7 @@ def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, poli
         dir_names[:] = sorted(
             name
             for name in dir_names
-            if name not in _IGNORED_DIRS and not (base.name in _SKILL_ARTIFACT_ROOTS and name == "skills")
+            if name.casefold() not in _IGNORED_DIRS and not (base.name in _SKILL_ARTIFACT_ROOTS and name == "skills")
         )
         for file_name in sorted(file_names):
             if file_name in _IGNORED_DISCOVERED_FILES:
@@ -338,9 +353,32 @@ def _validate_source_size(path: Path, size: int) -> None:
         raise ValueError(msg)
 
 
+def _is_ignored_path(path: Path, *, root: Path | None) -> bool:
+    if root is None:
+        return path.is_dir() and path.name.casefold() in _IGNORED_DIRS
+    try:
+        relative = path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return any(part.casefold() in _IGNORED_DIRS for part in relative.parts)
+
+
 def _is_conventionally_generated(path: Path) -> bool:
     name = path.name.lower()
-    return name.endswith((".gen.ts", ".gen.tsx", ".generated.ts", ".generated.tsx")) or name in {
+    return name.endswith(
+        (
+            ".gen.kt",
+            ".gen.kts",
+            ".gen.swift",
+            ".gen.ts",
+            ".gen.tsx",
+            ".generated.kt",
+            ".generated.kts",
+            ".generated.swift",
+            ".generated.ts",
+            ".generated.tsx",
+        )
+    ) or name in {
         "next-env.d.ts",
         "worker-configuration.d.ts",
     }
@@ -425,6 +463,10 @@ def _append_path(grouped: GroupedPaths, tool: _Tool | None, path: str) -> None:
             grouped.sql.append(path)
         case _Tool.IAC:
             grouped.iac.append(path)
+        case _Tool.KOTLIN:
+            grouped.kotlin.append(path)
+        case _Tool.SWIFT:
+            grouped.swift.append(path)
         case _Tool.TEXT:
             grouped.text.append(path)
         case _Tool.TYPESCRIPT:

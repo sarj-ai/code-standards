@@ -1,0 +1,13 @@
+# Canonical SwiftFormat 0.62.1 configuration for mobile Swift.
+# The owning project selects its Swift language mode; this shared policy must
+# remain valid for maintained Swift 5 and Swift 6 targets.
+--indent 4
+--maxwidth 120
+--disable redundantOptionalBinding
+--disable modifierOrder
+--disable sortImports
+--disable redundantInternal
+# These transforms can change semantics or conflict with the SwiftLint policy.
+--disable trailingClosures
+--disable redundantRawValues
+--disable redundantSelf

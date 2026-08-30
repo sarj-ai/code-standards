@@ -329,4 +329,4 @@ def test_python_publishers_smoke_and_bind_wheels_and_sdists(
     assert f"import {module}" in release
     assert f'bin/{executable}" --help' in release
     assert release.count("sha256sum --check --strict SHA256SUMS") == 5
-    assert "code_standards-*.whl pytest==9.1.1 'jsonschema>=4.26,<5' ruff" in release
+    assert "code_standards-*.whl pytest==9.1.1 jsonschema==4.25.1 ruff" in release

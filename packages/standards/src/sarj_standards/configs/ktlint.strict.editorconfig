@@ -1,0 +1,25 @@
+# Canonical ktlint 1.8.0 configuration.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+ij_kotlin_code_style_defaults = KOTLIN_OFFICIAL
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ij_kotlin_imports_layout = *,java.**,javax.**,kotlin.**,^
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647
+ktlint_code_style = ktlint_official
+ktlint_standard = enabled
+ktlint_standard_filename = enabled
+ktlint_standard_function-naming = enabled
+ktlint_standard_max-line-length = enabled
+ktlint_standard_no-wildcard-imports = enabled
+max_line_length = 120

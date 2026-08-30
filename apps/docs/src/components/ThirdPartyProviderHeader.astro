@@ -8,6 +8,12 @@ interface Props {
 }
 
 const { provider, rules } = Astro.props;
+const projectionDescription = {
+  complete: 'Complete effective rule inventory.',
+  'config-explicit': 'Config-explicit rules only; implicit upstream defaults are not projected.',
+  'provider-only': 'Pinned executable policy; individual provider rules are not expanded in this catalog.',
+}[provider.projectionScope];
+const displayedRuleCount = provider.id === 'mobsfscan' ? '51 runtime rules' : `${rules.length} rules`;
 ---
 
 <header class="provider-header">
@@ -15,7 +21,8 @@ const { provider, rules } = Astro.props;
     <ThirdPartyProviderIcon providerId={provider.id} />
     <div>
       <h1>{provider.label}</h1>
-      <p>{rules.length} rules <span aria-hidden="true">·</span> <code>{provider.package}@{provider.version}</code></p>
+      <p>{displayedRuleCount} <span aria-hidden="true">·</span> <code>{provider.package}@{provider.version}</code></p>
+      <p>{projectionDescription}</p>
     </div>
   </div>
   <a class="provider-official-link" href={provider.homepage} aria-label={`Open the official ${provider.label} reference`}>

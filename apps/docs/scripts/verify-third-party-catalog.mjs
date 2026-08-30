@@ -40,7 +40,15 @@ function verifySource() {
     const label = `providers[${String(index)}]`;
     exactFields(
       provider,
-      ["engine", "homepage", "id", "label", "package", "version"],
+      [
+        "engine",
+        "homepage",
+        "id",
+        "label",
+        "package",
+        "projectionScope",
+        "version",
+      ],
       label,
     );
     for (const field of ["engine", "id", "label", "package", "version"])
@@ -56,6 +64,12 @@ function verifySource() {
     );
     providerIds.add(provider.id);
     httpsUrl(provider.homepage, `${label}.homepage`);
+    assert.ok(
+      provider.projectionScope === 'complete' ||
+        provider.projectionScope === 'config-explicit' ||
+        provider.projectionScope === 'provider-only',
+      `${label}.projectionScope is invalid`,
+    );
   }
   assert.deepEqual(
     catalog.providers.map(({ id }) => id),
@@ -149,8 +163,11 @@ function verifySource() {
     [...ruleKeys].sort(),
     "rules must use canonical key order",
   );
-  for (const [providerId, count] of ruleCounts)
-    assert.ok(count > 0, `${providerId} must own at least one rule`);
+  for (const [providerId, count] of ruleCounts) {
+    const provider = catalog.providers.find(({ id }) => id === providerId);
+    if (provider.projectionScope !== "provider-only")
+      assert.ok(count > 0, `${providerId} must own at least one rule`);
+  }
   return ruleCounts;
 }
 

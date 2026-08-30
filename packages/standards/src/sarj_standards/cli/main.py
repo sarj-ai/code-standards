@@ -97,6 +97,8 @@ class _Args(argparse.Namespace):
     dry_run: bool = False
     python_dest: str | None = None
     typescript_dest: str | None = None
+    swift_dest: str | None = None
+    kotlin_dest: str | None = None
     configs: list[str]
     name: str = ""
     files: list[str]
@@ -646,6 +648,8 @@ def cmd_setup(args: _Args) -> int:
             configs=selected_configs or None,
             python_dest=args.python_dest,
             typescript_dest=args.typescript_dest,
+            swift_dest=args.swift_dest,
+            kotlin_dest=args.kotlin_dest,
             profile=args.profile,
             hook_manager=args.hooks,
         )
@@ -664,7 +668,12 @@ def cmd_setup(args: _Args) -> int:
 
     detected = [
         name
-        for name, present in (("python", plan.ecosystems.python), ("typescript", plan.ecosystems.typescript))
+        for name, present in (
+            ("python", plan.ecosystems.python),
+            ("typescript", plan.ecosystems.typescript),
+            ("swift", plan.ecosystems.swift),
+            ("kotlin-mobile", plan.ecosystems.kotlin),
+        )
         if present
     ]
     print(f"detected: {', '.join(detected) or 'nothing'}")
@@ -858,7 +867,9 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged an
             changed_names = _changed_file_names(root, base)
             react_doctor_triggered = _react_doctor_triggered_by(changed_names)
             args.files = [
-                path for path in _safe_staged_paths(root, changed_names) if runner.accepts_hook_path(Path(path))
+                path
+                for path in _safe_staged_paths(root, changed_names)
+                if runner.accepts_hook_path(Path(path), root=root)
             ]
             pull_request_scoped = True
         except (OSError, subprocess.SubprocessError) as exc:
@@ -877,7 +888,7 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged an
         health_status = _check_staged_adoption_health(root, args.files, args=args)
         if health_status:
             return health_status
-        args.files = [path for path in args.files if runner.accepts_hook_path(Path(path))]
+        args.files = [path for path in args.files if runner.accepts_hook_path(Path(path), root=root)]
         if not args.files and not react_doctor_triggered:
             return 0
     if args.output_format != "text":
@@ -2069,6 +2080,14 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     setup.add_argument(
         "--typescript-dest",
         help="the directory that owns the npm lockfile (default: detected)",
+    )
+    setup.add_argument(
+        "--swift-dest",
+        help="the directory that owns one reviewed mobile Swift project (default: detected)",
+    )
+    setup.add_argument(
+        "--kotlin-dest",
+        help="the directory that owns one reviewed Android/KMP project (default: detected)",
     )
     setup.add_argument("--dry-run", action="store_true", help="print the complete plan without writing")
     setup.add_argument(

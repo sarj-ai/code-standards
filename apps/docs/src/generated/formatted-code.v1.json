@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "5399fc9496af53cc31ccdb249d8e376d3593f7927a3caa11ae2d78e3b0d2d949",
-  "cliSha256": "9e76c2a18cca627c5180514a979f09709f688d5e20e110077faa14e909cb218a",
+  "cliSha256": "21112bc902a3cd2d807b3175c27201ec9b889558a9b64fbce1aded0df0f24040",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7950,7 +7950,7 @@
     "bootstrap": "[ci]\nbootstrap = [\"yarn generate\", \"uv run --project python generate-api\"]\n",
     "usage": {
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
-      "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--dry-run] [--force] [--profile PROFILE] [--no-install] [--config ONLY ...]\n",
+      "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--profile PROFILE] [--no-install] [--config ONLY ...]\n",
       "check": "code-standards check [-h] [--trust-repository-code] [--staged] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [files ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] --rule SELECTED_RULES ... [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [files ...]\n",

@@ -20,7 +20,8 @@ if TYPE_CHECKING:
 
 
 MANIFEST_NAME: Final = ".sarj-standards.toml"
-MANIFEST_SCHEMA: Final = 3
+MANIFEST_SCHEMA: Final = 4
+LEGACY_MANIFEST_SCHEMA: Final = 3
 Profile = Literal["standard", "application"]
 PROFILES: Final[tuple[Profile, ...]] = ("standard", "application")
 HookManager = Literal["pre-commit", "lefthook", "none"]
@@ -62,8 +63,19 @@ def adopted_version() -> str:
 #: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
 TYPESCRIPT_CONFIGS: Final = ("eslint",)
+SWIFT_CONFIGS: Final = ("swiftformat", "swiftlint")
+KOTLIN_CONFIGS: Final = ("ktlint", "detekt")
+MOBILE_CONFIGS: Final = ("mobile-security",)
 SHARED_CONFIGS: Final = ("markdownlint", "shellcheck", "taplo", "yamllint")
-ALL_CONFIGS: Final = (*PYTHON_CONFIGS, *TYPESCRIPT_CONFIGS, *SHARED_CONFIGS)
+_SCHEMA_THREE_CONFIGS: Final = (*PYTHON_CONFIGS, *TYPESCRIPT_CONFIGS, *SHARED_CONFIGS)
+ALL_CONFIGS: Final = (
+    *PYTHON_CONFIGS,
+    *TYPESCRIPT_CONFIGS,
+    *SWIFT_CONFIGS,
+    *KOTLIN_CONFIGS,
+    *MOBILE_CONFIGS,
+    *SHARED_CONFIGS,
+)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
     "**/README.md",
     "docs/**",
@@ -89,6 +101,8 @@ class Manifest:
     configs: tuple[str, ...]
     python_dest: str
     typescript_dest: str
+    swift_dest: str = "."
+    kotlin_dest: str = "."
     profile: Profile = "standard"
     verify_paths: tuple[str, ...] = (".",)
     hook_manager: HookManager = "pre-commit"
@@ -123,6 +137,8 @@ class Manifest:
                 "[dest]\n"
                 f'python = "{self.python_dest}"\n'
                 f'typescript = "{self.typescript_dest}"\n'
+                f'swift = "{self.swift_dest}"\n'
+                f'kotlin = "{self.kotlin_dest}"\n'
                 "\n"
                 "[hooks]\n"
                 f'manager = "{self.hook_manager}"\n'
@@ -180,13 +196,33 @@ def table_field(table: Mapping[str, object], key: str) -> dict[str, object]:
     return as_table(table.get(key))
 
 
-def default_configs(*, has_python: bool, has_typescript: bool) -> tuple[str, ...]:
+def default_configs(
+    *,
+    has_python: bool,
+    has_typescript: bool,
+    has_swift: bool = False,
+    has_kotlin: bool = False,
+    has_mobile: bool = False,
+) -> tuple[str, ...]:
     selected: set[str] = set(SHARED_CONFIGS)
     if has_python:
         selected.update(PYTHON_CONFIGS)
     if has_typescript:
         selected.update(TYPESCRIPT_CONFIGS)
-    order = (*PYTHON_CONFIGS, *TYPESCRIPT_CONFIGS, *SHARED_CONFIGS)
+    if has_mobile and has_swift:
+        selected.update(SWIFT_CONFIGS)
+    if has_mobile and has_kotlin:
+        selected.update(KOTLIN_CONFIGS)
+    if has_mobile and (has_swift or has_kotlin):
+        selected.update(MOBILE_CONFIGS)
+    order = (
+        *PYTHON_CONFIGS,
+        *TYPESCRIPT_CONFIGS,
+        *SWIFT_CONFIGS,
+        *KOTLIN_CONFIGS,
+        *MOBILE_CONFIGS,
+        *SHARED_CONFIGS,
+    )
     return tuple(name for name in order if name in selected)
 
 
@@ -194,7 +230,14 @@ def manifest_path(root: Path) -> Path:
     return root / MANIFEST_NAME
 
 
-def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one validation boundary keeps manifest errors coherent.
+def load(root: Path) -> Manifest | None:
+    return _load_schema(root, MANIFEST_SCHEMA)
+
+
+def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary keeps manifest errors coherent.
+    root: Path,
+    expected_schema: int,
+) -> Manifest | None:
     path = manifest_path(root)
     if not path.is_file():
         return None
@@ -206,8 +249,8 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
 
     data = as_table(parsed)
     raw_schema = data.get("schema")
-    if type(raw_schema) is not int or raw_schema != MANIFEST_SCHEMA:
-        msg = f"{path} `schema` must equal {MANIFEST_SCHEMA}"
+    if type(raw_schema) is not int or raw_schema != expected_schema:
+        msg = f"{path} `schema` must equal {expected_schema}"
         raise ValueError(msg)
     legacy_fields = tuple(field for field in ("version", "configs", "gradual") if field in data)
     if legacy_fields:
@@ -220,19 +263,25 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
     raw_profile = data.get("profile", "standard")
     capabilities_table = _manifest_table(data, "capabilities")
     disabled = _string_list(capabilities_table, "disable", label="manifest [capabilities].disable")
-    unknown_capabilities = sorted(set(disabled) - set(ALL_CONFIGS))
+    supported_configs = ALL_CONFIGS if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
+    unknown_capabilities = sorted(set(disabled) - set(supported_configs))
     if unknown_capabilities:
         msg = f"manifest disables unknown capabilities: {', '.join(unknown_capabilities)}"
         raise ValueError(msg)
-    names = [name for name in ALL_CONFIGS if name not in disabled]
     if declared is None:
         msg = f"{path} must set a string `bundle` declaration"
         raise TypeError(msg)
     try:
-        Version(declared)
+        bundle_version = Version(declared)
     except InvalidVersion as exc:
         msg = f"{path} `bundle` must be a valid PEP 440 version"
         raise ValueError(msg) from exc
+    enabled_configs = (
+        _SCHEMA_THREE_CONFIGS
+        if expected_schema == MANIFEST_SCHEMA and bundle_version < Version("7.8.0")
+        else supported_configs
+    )
+    names = [name for name in enabled_configs if name not in disabled]
     if not isinstance(raw_profile, str) or raw_profile not in PROFILES:
         msg = f"{path} `profile` must be one of: {', '.join(PROFILES)}"
         raise ValueError(msg)
@@ -257,6 +306,8 @@ def load(root: Path) -> Manifest | None:  # ruff: ignore[too-many-locals] - one 
         configs=tuple(names),
         python_dest=_dest_value(dest_table, "python"),
         typescript_dest=_dest_value(dest_table, "typescript"),
+        swift_dest=_dest_value(dest_table, "swift", root=root),
+        kotlin_dest=_dest_value(dest_table, "kotlin", root=root),
         profile=profile,
         verify_paths=_verify_paths(root, verify_table),
         hook_manager=hook_manager,
@@ -291,10 +342,24 @@ def load_for_setup(root: Path) -> Manifest | None:
     try:
         return load(root)
     except ValueError:
+        schema_three = _load_schema_three_manifest(root)
+        if schema_three is not None:
+            return schema_three
         legacy = _load_schema_less_manifest(root)
         if legacy is None:
             raise
         return legacy
+
+
+def _load_schema_three_manifest(root: Path) -> Manifest | None:
+    path = manifest_path(root)
+    try:
+        parsed: object = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError, tomllib.TOMLDecodeError:
+        return None
+    if as_table(parsed).get("schema") != LEGACY_MANIFEST_SCHEMA:
+        return None
+    return _load_schema(root, LEGACY_MANIFEST_SCHEMA)
 
 
 def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the complete legacy policy atomically.
@@ -489,13 +554,23 @@ def _exclusion_overrides(root: Path, table: Mapping[str, object]) -> tuple[Exclu
     return tuple(overrides)
 
 
-def _dest_value(table: dict[str, object], key: str) -> str:
+def _dest_value(table: dict[str, object], key: str, *, root: Path | None = None) -> str:
     if key not in table:
         return "."
     value = table[key]
     if not isinstance(value, str) or not value:
         msg = f"manifest [dest].{key} must be a non-empty string"
         raise TypeError(msg)
+    if root is not None:
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts:
+            msg = f"manifest [dest].{key} must stay inside the repository root: {value}"
+            raise ValueError(msg)
+        try:
+            (root / path).resolve().relative_to(root.resolve())
+        except (OSError, ValueError) as exc:
+            msg = f"manifest [dest].{key} escapes the repository root: {value}"
+            raise ValueError(msg) from exc
     return value
 
 
