@@ -77,6 +77,7 @@ import repeatedStaticCallCases from "./rules/repeated-static-call-cases.js";
 import preferZodInfer from "./rules/prefer-zod-infer.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
+import requireInterfaceForExportedClass from "./rules/require-interface-for-exported-class.js";
 import requirePortForService from "./rules/require-port-for-service.js";
 import requireSqlAccessClass from "./rules/require-sql-access-class.js";
 import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
@@ -171,6 +172,7 @@ const RULES = {
   "prefer-zod-infer": preferZodInfer,
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
+  "require-interface-for-exported-class": requireInterfaceForExportedClass,
   "require-port-for-service": requirePortForService,
   "require-sql-access-class": requireSqlAccessClass,
   "require-static-next-matcher": requireStaticNextMatcher,
@@ -184,7 +186,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.15.0",
+  version: "15.16.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -198,8 +200,10 @@ const APPLICATION_ONLY_RULES = [
 const ADVISORY_RULES = [
   "@sarj/prefer-named-complex-return-type",
   "@sarj/prefer-node-crypto-hash",
+  "@sarj/prefer-node-fs-promises",
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
+  "@sarj/require-interface-for-exported-class",
   "@sarj/require-pascal-case-zod-schema-name",
   "@sarj/require-sql-access-class",
   "@sarj/sole-export-matches-filename",
@@ -260,7 +264,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
-  "@sarj/prefer-node-fs-promises": "error",
+  "@sarj/prefer-node-fs-promises": "warn",
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/prefer-nullish-filter-predicate": "error",
   "@sarj/prefer-await-in-async-return": "error",
@@ -274,6 +278,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
+  "@sarj/require-interface-for-exported-class": "warn",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-sql-access-class": "warn",
   "@sarj/require-static-next-matcher": "error",
@@ -347,7 +352,7 @@ const STRICT_RULES = {
   "@sarj/prefer-module-level-schema": "error",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
-  "@sarj/prefer-node-fs-promises": "error",
+  "@sarj/prefer-node-fs-promises": "warn",
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/prefer-nullish-filter-predicate": "error",
   "@sarj/prefer-await-in-async-return": "error",
@@ -361,6 +366,7 @@ const STRICT_RULES = {
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
+  "@sarj/require-interface-for-exported-class": "warn",
   "@sarj/require-port-for-service": "error",
   "@sarj/require-sql-access-class": "warn",
   "@sarj/require-static-next-matcher": "error",

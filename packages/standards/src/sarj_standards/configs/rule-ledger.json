@@ -222,6 +222,7 @@
       "repeated-static-call-cases",
       "require-assert-never",
       "require-fetch-timeout",
+      "require-interface-for-exported-class",
       "require-pascal-case-zod-schema-name",
       "require-port-for-service",
       "require-sql-access-class",

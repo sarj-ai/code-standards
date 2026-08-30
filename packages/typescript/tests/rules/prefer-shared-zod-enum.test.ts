@@ -26,11 +26,15 @@ RULE_TESTER.run("prefer-shared-zod-enum", rule, {
       errors: [{ messageId: "shareEnumDomain" }],
     },
     {
-      code: "import * as schema from 'zod'; schema.enum(['a', 'b']); schema.enum(['a', 'b']); schema.enum(['a', 'b']);",
+      code: "import * as schema from 'zod'; const FirstSchema = schema.enum(['a', 'b']); const SecondSchema = schema.enum(['a', 'b']); const ThirdSchema = schema.enum(['a', 'b']);",
       errors: [{ messageId: "shareEnumDomain" }, { messageId: "shareEnumDomain" }],
     },
     {
-      code: "import { z as schema } from 'zod/v4'; schema.enum(['a', 'b']); schema.enum(['a', 'b']);",
+      code: "import { z as schema } from 'zod/v4'; const FirstSchema = schema.enum(['a', 'b']); const SecondSchema = schema.enum(['a', 'b']);",
+      errors: [{ messageId: "shareEnumDomain" }],
+    },
+    {
+      code: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']).optional() });",
       errors: [{ messageId: "shareEnumDomain" }],
     },
   ],

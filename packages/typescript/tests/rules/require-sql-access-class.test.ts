@@ -18,6 +18,8 @@ const RULE_TESTER = new RuleTester({
 RULE_TESTER.run("require-sql-access-class", rule, {
   valid: [
     REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION.examples[0].files[0].source,
+    "export class D1Repository { constructor(readonly env: { DB: D1Database }) {} find() { return this.env.DB.prepare('SELECT 1').first(); } }",
+    "export class AssignedRepository { readonly database: Database.Database; constructor(connection: Database.Database) { this.database = connection; } find() { return this.database.prepare('SELECT 1').get(); } }",
     "export function prepare(builder: Builder) { return builder.prepare(); }",
     {
       code: "export function find(database: Database.Database) { return database.prepare('SELECT 1').get(); }",
@@ -31,6 +33,18 @@ RULE_TESTER.run("require-sql-access-class", rule, {
     },
     {
       code: "export async function save(env: { DB: D1Database }) { await env.DB.batch([]); }",
+      errors: [{ messageId: "moveSqlIntoClass" }],
+    },
+    {
+      code: "export class HiddenGlobalRepository { find() { return database.prepare('SELECT 1').get(); } }",
+      errors: [{ messageId: "moveSqlIntoClass" }],
+    },
+    {
+      code: "export class SelfConstructingRepository { readonly database = new Database('db.sqlite'); find() { return this.database.prepare('SELECT 1').get(); } }",
+      errors: [{ messageId: "moveSqlIntoClass" }],
+    },
+    {
+      code: "export class ParameterRepository { find(database: Database.Database) { return database.prepare('SELECT 1').get(); } }",
       errors: [{ messageId: "moveSqlIntoClass" }],
     },
   ],

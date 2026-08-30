@@ -1337,6 +1337,12 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/eslint/require-interface-for-exported-class",
+      "family": "typescript",
+      "ruleId": "require-interface-for-exported-class",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/eslint/require-sql-access-class",
       "family": "typescript",
       "ruleId": "require-sql-access-class",

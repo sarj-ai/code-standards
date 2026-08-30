@@ -14,14 +14,14 @@ type MessageIds = "shareEnumDomain";
 type Options = [];
 
 export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
-  summary: "Reuse identical literal Zod enum domains within a module.",
-  rationale: "Repeating the same literal domain creates parallel contracts that can drift independently.",
-  remediation: "Declare one module-level named Zod enum schema and reuse it at each field or contract site.",
+  summary: "Give literal Zod enum domains one reusable module-level schema.",
+  rationale: "Inline or repeated literal domains hide a reusable contract and allow equivalent fields to drift independently.",
+  remediation: "Declare a module-level named Zod enum schema and reuse it at each field or contract site.",
   category: "maintainability",
-  limitations: ["Only direct z.enum calls with ordered string-literal arrays in the same module are compared."],
+  limitations: ["Only direct z.enum calls with string-literal arrays are inspected; computed domains require review."],
   examples: [
     { id: "shared-provider", title: "Reuse a named enum schema", outcome: "no-match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const ProviderSchema = z.enum(['agy', 'claude', 'sol']); const JobSchema = z.object({ provider: ProviderSchema }); const StatusSchema = z.object({ provider: ProviderSchema.optional() });" }], focusPath: "src/provider.ts", expectedCount: 0, public: true },
-    { id: "duplicate-provider", title: "Do not repeat one enum domain", outcome: "match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) }); const StatusSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']).optional() });" }], focusPath: "src/provider.ts", expectedCount: 1, public: true },
+    { id: "inline-provider", title: "Do not inline enum domains in object fields", outcome: "match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) });" }], focusPath: "src/provider.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -36,15 +36,36 @@ function literalDomain(node: TSESTree.CallExpression): readonly string[] | null 
   return values;
 }
 
+function isStandaloneSchema(node: TSESTree.CallExpression): boolean {
+  let current: TSESTree.Node = node;
+  while (
+    current.parent?.type === AST_NODE_TYPES.MemberExpression &&
+    current.parent.object === current
+  ) {
+    current = current.parent;
+    if (
+      current.parent?.type === AST_NODE_TYPES.CallExpression &&
+      current.parent.callee === current
+    ) current = current.parent;
+  }
+  return (
+    (current.parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+      current.parent.init === current &&
+      current.parent.id.type === AST_NODE_TYPES.Identifier) ||
+    (current.parent?.type === AST_NODE_TYPES.ExpressionStatement &&
+      current.parent.expression === current)
+  );
+}
+
 export default createRule<Options, MessageIds>({
   name: "prefer-shared-zod-enum",
   documentation: PREFER_SHARED_ZOD_ENUM_DOCUMENTATION,
   meta: {
     type: "suggestion",
-    docs: { description: "Reuse identical literal Zod enum domains within a module." },
+    docs: { description: "Give literal Zod enum domains one reusable module-level schema." },
     schema: [],
     messages: {
-      shareEnumDomain: "This Zod enum repeats an earlier identical domain; extract and reuse one module-level named schema.",
+      shareEnumDomain: "Extract this literal Zod enum to one module-level named schema and reuse it.",
     },
   },
   defaultOptions: [],
@@ -77,7 +98,9 @@ export default createRule<Options, MessageIds>({
         const domain = literalDomain(node);
         if (domain === null) return;
         const key = JSON.stringify(domain);
-        if (seen.has(key)) context.report({ node, messageId: "shareEnumDomain" });
+        const inline = !isStandaloneSchema(node);
+        if (inline || seen.has(key))
+          context.report({ node, messageId: "shareEnumDomain" });
         else seen.add(key);
       },
     };
