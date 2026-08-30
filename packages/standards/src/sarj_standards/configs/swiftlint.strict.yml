@@ -1,0 +1,202 @@
+# Canonical SwiftLint 0.65.1 configuration for mobile Swift.
+# SwiftFormat owns formatting; SwiftLint owns semantic and correctness policy.
+
+strict: true
+allow_zero_lintable_files: false
+
+excluded:
+  - Carthage
+  - Pods
+  - .build
+  - DerivedData
+  - DerivedDataAPI
+  - DerivedDataDist
+  - SourcePackages
+  - fastlane
+  - build
+  - .git
+
+line_length: 120
+
+disabled_rules:
+  - trailing_whitespace
+  - vertical_whitespace
+  - comma
+  - sorted_imports
+  # SwiftFormat is the formatter of record; disable SwiftLint rules that conflict
+  # with SwiftFormat output so `make fix` reaches a stable fixed point.
+  # SwiftLint keeps its semantic rules (force_unwrapping, ACL, complexity, docs…).
+  - trailing_comma
+  - opening_brace
+  # explicit_enum_raw_value (opt-in below) requires every enum case to carry an
+  # explicit raw value; redundant_string_enum_value (default-on) forbids raw
+  # values equal to the case name. They directly contradict each other for
+  # String enums whose wire key equals the case name (e.g. CodingKeys). The
+  # project deliberately opts into explicit values, so disable the redundant rule.
+  - redundant_string_enum_value
+
+opt_in_rules:
+  - async_without_await
+  - discarded_notification_center_observer
+  - duplicate_conditions
+  - empty_xctest_method
+  - final_test_case
+  - optional_data_string_conversion
+  - prefer_condition_list
+  - redundant_sendable
+  - return_value_from_void_function
+  - test_case_accessibility
+  - xct_specific_matcher
+  - accessibility_label_for_image
+  - anonymous_argument_in_multiline_closure
+  - array_init
+  - direct_return
+  - incompatible_concurrency_annotation
+  - period_spacing
+  - prefer_key_path
+  - unhandled_throwing_task
+  - unneeded_override
+  - closure_body_length
+  - closure_end_indentation
+  - closure_spacing
+  - collection_alignment
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - contains_over_range_nil_comparison
+  - convenience_type
+  - discouraged_assert
+  - discouraged_object_literal
+  - discouraged_optional_boolean
+  - discouraged_optional_collection
+  - empty_collection_literal
+  - empty_count
+  - empty_string
+  - enum_case_associated_values_count
+  - explicit_enum_raw_value
+  - explicit_init
+  - explicit_top_level_acl
+  - extension_access_modifier
+  - fallthrough
+  - fatal_error_message
+  - file_name
+  - file_name_no_space
+  - first_where
+  - flatmap_over_map_reduce
+  - force_unwrapping
+  - function_default_parameter_at_end
+  - ibinspectable_in_extension
+  - identical_operands
+  - implicit_return
+  - implicitly_unwrapped_optional
+  - joined_default_parameter
+  - last_where
+  - legacy_multiple
+  - legacy_random
+  - literal_expression_end_indentation
+  - local_doc_comment
+  - lower_acl_than_parent
+  - missing_docs
+  - multiline_arguments
+  - multiline_function_chains
+  - multiline_literal_brackets
+  - multiline_parameters
+  - nimble_operator
+  - no_extension_access_modifier
+  - no_grouping_extension
+  - nslocalizedstring_key
+  - nslocalizedstring_require_bundle
+  - number_separator
+  - object_literal
+  - operator_usage_whitespace
+  - optional_enum_case_matching
+  - overridden_super_call
+  - override_in_extension
+  - pattern_matching_keywords
+  - prefer_self_in_static_references
+  - prefer_self_type_over_type_of_self
+  - prefer_zero_over_explicit_init
+  - private_action
+  - private_outlet
+  - private_subject
+  - prohibited_interface_builder
+  - prohibited_super_call
+  - raw_value_for_camel_cased_codable_enum
+  - reduce_into
+  - redundant_nil_coalescing
+  - redundant_type_annotation
+  - required_enum_case
+  - sorted_first_last
+  - static_operator
+  - strict_fileprivate
+  - strong_iboutlet
+  - switch_case_on_newline
+  - toggle_bool
+  # trailing_closure removed: it conflicts with multi-closure functions like Combine's
+  # handleEvents (a trailing closure binds to the wrong parameter and won't compile).
+  # SwiftFormat's trailingClosures is disabled for the same reason.
+  - type_contents_order
+  - unavailable_function
+  - unneeded_parentheses_in_closure_argument
+  - unowned_variable_capture
+  - untyped_error_in_catch
+  - valid_ibinspectable
+  - vertical_parameter_alignment_on_call
+  - vertical_whitespace_closing_braces
+  - vertical_whitespace_opening_braces
+  - weak_delegate
+  - yoda_condition
+
+# Analyzer-only rules require a complete compiled build and compiler log.
+# They belong in CI rather than a changed-file pre-commit invocation.
+#
+# explicit_self is intentionally EXCLUDED: it requires `self.` on member access, which directly
+# conflicts with SwiftFormat's redundantSelf (the formatter of record strips `self.`). Enabling
+# it would make the two tools fight to a non-stable fixed point — the same class of conflict
+# already documented for trailingClosures / redundantRawValues.
+
+force_unwrapping: error
+file_length:
+  warning: 400
+  error: 500
+
+function_body_length:
+  warning: 40
+  error: 60
+
+type_body_length:
+  warning: 200
+  error: 300
+
+cyclomatic_complexity:
+  warning: 8
+  error: 12
+
+identifier_name:
+  min_length:
+    warning: 2
+    error: 1
+  max_length:
+    warning: 40
+    error: 50
+  excluded:
+    - i
+    - id
+    - x
+    - y
+    - z
+
+type_name:
+  min_length: 3
+  max_length: 40
+
+large_tuple:
+  warning: 3
+  error: 4
+
+nesting:
+  type_level:
+    warning: 2
+
+number_separator:
+  minimum_length: 5

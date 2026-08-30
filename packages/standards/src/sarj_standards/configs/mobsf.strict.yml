@@ -1,0 +1,17 @@
+# Canonical mobsfscan 1.0.0 configuration for mobile source security.
+# INFO rules are advisory product choices; WARNING and ERROR findings gate.
+- ignore-filenames: []
+  ignore-paths:
+    - .build
+    - build
+    - Carthage
+    - DerivedData
+    - Pods
+    - SourcePackages
+    - generated
+    - vendor
+  ignore-rules: []
+  severity-filter:
+    - WARNING
+    - ERROR
+  severity-overrides: {}

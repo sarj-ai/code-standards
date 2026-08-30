@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
 _NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.mjs")
 _REACT_DOCTOR_PROJECTION: Final = Path("apps/docs/scripts/project-react-doctor-rules.mjs")
+_MOBILE_CONFIG_ROOT: Final = Path("packages/standards/src/sarj_standards/configs")
 _RUFF_CONFIGS: Final = MappingProxyType(
     {
         "application": Path("packages/standards/src/sarj_standards/configs/ruff.application.toml"),
@@ -32,8 +33,25 @@ _RUFF_CONTEXTS: Final = (
     ("cli-python", "Python CLI modules", "src/cli/example.py"),
 )
 _ENABLED_RULE_RE: Final = re.compile(r"^\s*[^()]+\s\(([^()]+)\),$")
+_DETEKT_RULE_SETS: Final = frozenset(
+    {
+        "comments",
+        "complexity",
+        "coroutines",
+        "empty-blocks",
+        "exceptions",
+        "naming",
+        "performance",
+        "potential-bugs",
+        "style",
+    }
+)
 
 type ProfileName = Literal["application", "standard"]
+type ProviderEngine = Literal[
+    "detekt", "eslint", "ktlint", "mobsfscan", "react-doctor", "ruff", "swiftformat", "swiftlint"
+]
+type ProjectionScope = Literal["complete", "config-explicit", "provider-only"]
 RuleId = NewType("RuleId", str)
 DisplayRuleId = NewType("DisplayRuleId", str)
 
@@ -61,10 +79,15 @@ class _Profile(_FrozenModel):
 class _Provider(_FrozenModel):
     id: str
     label: str
-    engine: Literal["eslint", "react-doctor", "ruff"]
+    engine: ProviderEngine
     package: str
     version: str
     homepage: str
+    projection_scope: ProjectionScope = Field(
+        default="complete",
+        validation_alias="projectionScope",
+        serialization_alias="projectionScope",
+    )
 
 
 class _Rule(_FrozenModel):
@@ -128,6 +151,22 @@ class _RuffProjection:
 
 
 @dataclass(frozen=True, slots=True)
+class _MobileProviderSpec:
+    id: str
+    label: str
+    engine: ProviderEngine
+    package: str
+    homepage: str
+    projection_scope: ProjectionScope
+
+
+@dataclass(frozen=True, slots=True)
+class _MobileProjection:
+    providers: tuple[_Provider, ...]
+    rules: tuple[_Rule, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class SyncResult:
     status: int
     message: str
@@ -161,14 +200,15 @@ def build(root: Path) -> _CatalogArtifact:
     eslint = _eslint_projection(resolved, node)
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
-    rules = (*eslint.rules, *react_doctor.rules, *ruff_projection.rules)
-    used_providers = {rule.provider for rule in rules}
-    providers = (*eslint.providers, _react_doctor_provider(resolved), ruff_projection.provider)
+    mobile = _mobile_projections(resolved)
+    rules = (*eslint.rules, *react_doctor.rules, *ruff_projection.rules, *mobile.rules)
+    providers = (*eslint.providers, _react_doctor_provider(resolved), ruff_projection.provider, *mobile.providers)
+    included_providers = {rule.provider for rule in rules} | {provider.id for provider in mobile.providers}
     return _CatalogArtifact(
         schema_version=1,
         profiles=("application", "standard"),
         providers=tuple(
-            sorted((provider for provider in providers if provider.id in used_providers), key=lambda item: item.id)
+            sorted((provider for provider in providers if provider.id in included_providers), key=lambda item: item.id)
         ),
         rules=tuple(sorted(rules, key=lambda item: item.key)),
     )
@@ -240,6 +280,128 @@ def _react_doctor_provider(root: Path) -> _Provider:
         version=peers["react-doctor"],
         homepage="https://react.doctor/",
     )
+
+
+def _mobile_projections(root: Path) -> _MobileProjection:
+    config_root = root / _MOBILE_CONFIG_ROOT
+    versions = TypeAdapter(dict[str, str]).validate_json(
+        (config_root / "mobile-tools.versions.json").read_text(encoding="utf-8"), strict=True
+    )
+    provider_specs = (
+        _MobileProviderSpec("detekt", "Detekt", "detekt", "detekt", "https://detekt.dev/", "config-explicit"),
+        _MobileProviderSpec(
+            "ktlint", "ktlint", "ktlint", "ktlint", "https://pinterest.github.io/ktlint/", "config-explicit"
+        ),
+        _MobileProviderSpec(
+            "mobsfscan", "mobsfscan", "mobsfscan", "mobsfscan", "https://github.com/MobSF/mobsfscan", "provider-only"
+        ),
+        _MobileProviderSpec(
+            "swiftformat",
+            "SwiftFormat",
+            "swiftformat",
+            "swiftformat",
+            "https://github.com/nicklockwood/SwiftFormat",
+            "provider-only",
+        ),
+        _MobileProviderSpec(
+            "swiftlint", "SwiftLint", "swiftlint", "swiftlint", "https://realm.github.io/SwiftLint/", "config-explicit"
+        ),
+    )
+    providers = tuple(
+        _Provider(
+            id=spec.id,
+            label=spec.label,
+            engine=spec.engine,
+            package=spec.package,
+            version=versions[spec.package],
+            homepage=spec.homepage,
+            projection_scope=spec.projection_scope,
+        )
+        for spec in provider_specs
+    )
+    swiftlint_ids = _yaml_list_values(config_root / "swiftlint.strict.yml", ("opt_in_rules", "analyzer_rules"))
+    ktlint_ids = _enabled_ktlint_rules(config_root / "ktlint.strict.editorconfig")
+    detekt_ids = _enabled_detekt_rules(config_root / "detekt.strict.yml")
+    rules = (
+        *(
+            _mobile_rule(provider="swiftlint", rule_id=rule_id, context_label="Swift source", context_id="swift-source")
+            for rule_id in swiftlint_ids
+        ),
+        *(
+            _mobile_rule(provider="ktlint", rule_id=rule_id, context_label="Kotlin source", context_id="kotlin-source")
+            for rule_id in ktlint_ids
+        ),
+        *(
+            _mobile_rule(provider="detekt", rule_id=rule_id, context_label="Kotlin source", context_id="kotlin-source")
+            for rule_id in detekt_ids
+        ),
+    )
+    return _MobileProjection(providers, tuple(rules))
+
+
+def _mobile_rule(*, provider: str, rule_id: str, context_label: str, context_id: str) -> _Rule:
+    if provider == "detekt":
+        family, name = rule_id.split(":", maxsplit=1)
+        docs_url = f"https://detekt.dev/docs/1.23.8/rules/{family}/#{name.lower()}"
+    elif provider == "ktlint":
+        docs_url = "https://pinterest.github.io/ktlint/1.8.0/rules/standard/"
+    else:
+        docs_url = f"https://realm.github.io/SwiftLint/{rule_id}.html"
+    context = _Context(id=context_id, label=context_label, level="error")
+    return _Rule(
+        key=f"{provider}:{rule_id}",
+        provider=provider,
+        id=RuleId(rule_id),
+        display_id=DisplayRuleId(rule_id),
+        summary="Explicitly enabled by the canonical strict mobile configuration.",
+        docs_url=docs_url,
+        family=rule_id.split(":", maxsplit=1)[0] if ":" in rule_id else None,
+        autofix="available" if provider == "ktlint" else "none",
+        has_suggestions=False,
+        profiles=tuple(_Profile(name=profile, contexts=(context,)) for profile in ("application", "standard")),
+    )
+
+
+def _yaml_list_values(path: Path, keys: tuple[str, ...]) -> tuple[str, ...]:
+    selected: set[str] = set()
+    active = False
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.partition("#")[0].rstrip()
+        if line and not line.startswith(" "):
+            active = line.removesuffix(":") in keys
+            continue
+        if active and (match := re.match(r"^\s+-\s+([a-z0-9_]+)\s*$", line)) is not None:
+            selected.add(match.group(1))
+    return tuple(sorted(selected))
+
+
+def _enabled_ktlint_rules(path: Path) -> tuple[str, ...]:
+    enabled: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if (match := re.match(r"^ktlint_standard_([^= ]+)\s*=\s*enabled\s*$", line)) is not None:
+            enabled.add(f"standard:{match.group(1)}")
+    return tuple(sorted(enabled))
+
+
+def _enabled_detekt_rules(path: Path) -> tuple[str, ...]:
+    selected: set[str] = set()
+    current_set: str | None = None
+    set_active = False
+    current_rule: str | None = None
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.partition("#")[0].rstrip()
+        if (match := re.match(r"^([a-z][a-z-]+):\s*$", line)) is not None:
+            current_set = match.group(1) if match.group(1) in _DETEKT_RULE_SETS else None
+            set_active = False
+            current_rule = None
+        elif current_set is not None and (match := re.match(r"^  ([A-Z][A-Za-z0-9]+):\s*$", line)) is not None:
+            current_rule = match.group(1)
+        elif current_set is not None and current_rule is None and re.match(r"^  active:\s*true\s*$", line):
+            set_active = True
+        elif current_set is not None and current_rule is not None and re.match(r"^    active:\s*true\s*$", line):
+            if set_active:
+                selected.add(f"{current_set}:{current_rule}")
+    return tuple(sorted(selected))
 
 
 def _ruff_projection(root: Path, ruff: str) -> _RuffProjection:

@@ -10,15 +10,19 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed argv, no shell, bounded timeout.
 import sys
+import tempfile
 import threading
 import time
 import tomllib
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, Protocol
+import zipfile
 
 from pathspec import PathSpec
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+import yaml
 
 from sarj_standards.libs.adoption import manifest, packagemanager
 from sarj_standards.libs.adoption.lifecycle import select_eslint_commands
@@ -37,6 +41,7 @@ from sarj_standards.libs.diagnostics import (
     TrustMode,
 )
 
+from . import mobile_tools
 from .runner import GroupedPaths, group_paths
 
 
@@ -58,10 +63,13 @@ class _PreparedInputs(NamedTuple):
     grouped: GroupedPaths
 
 
-_TIMEOUT = timedelta(seconds=120)
+_TIMEOUT = timedelta(minutes=15)
 _ESLINT_ERROR = 2
+_DETEKT_FINDINGS = 2
 _MAX_STDOUT_BYTES = 16 * 1024 * 1024
 _MAX_STDERR_BYTES = 64 * 1024
+_MAX_MOBILE_CONFIG_BYTES = 1024 * 1024
+_PACKAGED_MOBILE_CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 _READ_BYTES = 64 * 1024
 _MAX_ESLINT_PROJECTS = 32
 _MAX_PYTHON_PROJECTS = 32
@@ -75,6 +83,8 @@ _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
 _REACT_DOCTOR_SOURCE_SUFFIXES = frozenset({".astro", ".htm", ".html", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
+_JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, object])
+_YAML_OBJECT_ADAPTER = TypeAdapter(object)
 _REACT_RUNTIME_PACKAGES = frozenset(
     {
         "@astrojs/react",
@@ -286,6 +296,19 @@ def analyze_external(
     reports: list[ToolReport] = []
     if capabilities is None or "shellcheck" in capabilities:
         reports.extend(_shellcheck_reports(routed, root=root, runner=execute, attest_version=runner is None))
+    try:
+        reports.extend(
+            _mobile_source_reports(
+                routed,
+                root=root,
+                runner=execute,
+                capabilities=capabilities,
+                managed_tools=runner is None,
+            )
+        )
+    except (OSError, TypeError, ValueError, RecursionError, yaml.YAMLError, zipfile.BadZipFile) as exc:
+        issue = ExecutionIssue("mobile-tools", "provisioning-failure", _redact_message(str(exc), root))
+        reports.append(ToolReport("mobile-tools", Completion.FAILED, issues=(issue,)))
     if routed.python:
         if capabilities is None or "ruff" in capabilities:
             reports.extend(
@@ -429,6 +452,379 @@ def analyze_external(
         )
         for report in reports
     )
+
+
+def _mobile_source_reports(
+    grouped: GroupedPaths,
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    capabilities: frozenset[str] | None,
+    managed_tools: bool,
+) -> tuple[ToolReport, ...]:
+    def enabled(name: str) -> bool:
+        return capabilities is not None and name in capabilities
+
+    reports: list[ToolReport] = []
+    swift_files = _mobile_language_paths(root, grouped.swift, language="swift")
+    kotlin_files = _mobile_language_paths(root, grouped.kotlin, language="kotlin")
+    if swift_files and enabled("swiftformat"):
+        swift_root = _mobile_capability_root(root, "swiftformat")
+        config = (
+            _PACKAGED_MOBILE_CONFIGS / "swiftformat.strict"
+            if managed_tools
+            else _first_existing(swift_root, (".swiftformat", "swiftformat.strict"))
+        )
+        argv = (*_swift_command(root, "swiftformat", managed=managed_tools), "--lint", "--strict")
+        if config is not None:
+            argv = (*argv, "--config", str(config))
+        reports.append(
+            _invoke_text_tool(
+                "swiftformat",
+                (*argv, *swift_files),
+                cwd=root,
+                root=root,
+                runner=runner,
+                parser=parse_swiftformat,
+                finding_codes=frozenset({1}),
+                file_count=len(swift_files),
+            )
+        )
+    if swift_files and enabled("swiftlint"):
+        swift_root = _mobile_capability_root(root, "swiftlint")
+        config = (
+            _PACKAGED_MOBILE_CONFIGS / "swiftlint.strict.yml"
+            if managed_tools
+            else _first_existing(swift_root, (".swiftlint.yml", ".swiftlint.yaml", "swiftlint.strict.yml"))
+        )
+        argv = (*_swift_command(root, "swiftlint", managed=managed_tools), "lint", "--strict", "--reporter", "json")
+        if config is not None:
+            argv = (*argv, "--config", str(config))
+        reports.append(
+            _invoke_text_tool(
+                "swiftlint",
+                (*argv, *swift_files),
+                cwd=root,
+                root=root,
+                runner=runner,
+                parser=parse_swiftlint,
+                finding_codes=frozenset({1, 2}),
+                file_count=len(swift_files),
+                empty_payload="[]",
+            )
+        )
+    if kotlin_files and enabled("ktlint"):
+        kotlin_root = _mobile_capability_root(root, "ktlint")
+        editorconfig = (
+            _PACKAGED_MOBILE_CONFIGS / "ktlint.strict.editorconfig"
+            if managed_tools
+            else _first_existing(kotlin_root, (".editorconfig", "ktlint.strict.editorconfig"))
+        )
+        editorconfig_arg = () if editorconfig is None else (f"--editorconfig={editorconfig}",)
+        reports.append(
+            _invoke_text_tool(
+                "ktlint",
+                (
+                    *_mobile_command("ktlint", managed=managed_tools),
+                    "--log-level=none",
+                    "--relative",
+                    "--reporter=json",
+                    *editorconfig_arg,
+                    *kotlin_files,
+                ),
+                cwd=root,
+                root=root,
+                runner=runner,
+                parser=parse_ktlint,
+                finding_codes=frozenset({1}),
+                file_count=len(kotlin_files),
+                empty_payload="[]",
+            )
+        )
+    if kotlin_files and enabled("detekt"):
+        kotlin_root = _mobile_capability_root(root, "detekt")
+        config = (
+            _PACKAGED_MOBILE_CONFIGS / "detekt.strict.yml"
+            if managed_tools
+            else _first_existing(kotlin_root, ("config/detekt/detekt.yml", ".detekt.yml", "detekt.yml"))
+        )
+        if any("," in path for path in kotlin_files):
+            issue = ExecutionIssue(
+                "detekt", "invalid-input", "Detekt cannot safely accept a selected path containing a comma"
+            )
+            reports.append(ToolReport("detekt", Completion.FAILED, issues=(issue,)))
+            return tuple(reports)
+        inputs = ",".join(kotlin_files)
+        detekt_argv = (*_mobile_command("detekt", managed=managed_tools), "--input", inputs, "--base-path", str(root))
+        if config is not None:
+            detekt_argv = (*detekt_argv, "--config", str(config))
+        reports.append(
+            _invoke_detekt(
+                detekt_argv,
+                cwd=root,
+                root=root,
+                runner=runner,
+                file_count=len(kotlin_files),
+            )
+        )
+    mobile_files = (*kotlin_files, *swift_files)
+    if mobile_files and enabled("mobile-security"):
+        config = (
+            _PACKAGED_MOBILE_CONFIGS / "mobsf.strict.yml"
+            if managed_tools
+            else _first_existing(root, (".mobsf", "mobsf.strict.yml"))
+        )
+        rules = mobile_tools.mobsf_rules() if managed_tools else Path("mobsfscan-rules")
+        argv = _mobsfscan_argv(rules, config=config)
+
+        def parse_mobile_security(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+            return parse_mobsfscan(payload, root=root, expected_paths=mobile_files)
+
+        reports.append(
+            _invoke_text_tool(
+                "mobsfscan",
+                (*argv, "--", *mobile_files),
+                cwd=root,
+                root=root,
+                runner=runner,
+                parser=parse_mobile_security,
+                finding_codes=frozenset(),
+                file_count=len(mobile_files),
+            )
+        )
+    return tuple(reports)
+
+
+def _first_existing(root: Path, names: Sequence[str]) -> Path | None:
+    return next((root / name for name in names if (root / name).is_file()), None)
+
+
+def _mobile_capability_root(root: Path, capability: str) -> Path:
+    adopted = manifest.load(root)
+    if adopted is None:
+        return root
+    if capability in {"swiftformat", "swiftlint"}:
+        return (root / adopted.swift_dest).resolve()
+    if capability in {"detekt", "ktlint"}:
+        return (root / adopted.kotlin_dest).resolve()
+    return root
+
+
+def _mobile_language_paths(
+    root: Path,
+    paths: Sequence[str],
+    *,
+    language: Literal["swift", "kotlin"],
+) -> tuple[str, ...]:
+    adopted = manifest.load(root)
+    if adopted is None:
+        return tuple(paths)
+    destination = adopted.swift_dest if language == "swift" else adopted.kotlin_dest
+    scope = (root / destination).resolve()
+    return tuple(path for path in paths if Path(path).resolve().is_relative_to(scope))
+
+
+def _mobile_command(name: Literal["detekt", "ktlint"], *, managed: bool) -> tuple[str, ...]:
+    return mobile_tools.command(name) if managed else (name,)
+
+
+def _mobsfscan_argv(rules: Path, *, config: Path | None) -> tuple[str, ...]:
+    argv = (
+        "semgrep",
+        "scan",
+        "--metrics=off",
+        "--disable-version-check",
+        "--disable-nosem",
+        "--no-git-ignore",
+        "--max-target-bytes=2097152",
+        "--quiet",
+        "--no-rewrite-rule-ids",
+        "--json",
+        "--config",
+        str(rules),
+    )
+    if config is None:
+        return (*argv, "--severity", "WARNING", "--severity", "ERROR")
+    raw = _YAML_OBJECT_ADAPTER.validate_python(yaml.safe_load(_read_mobile_config(config)))
+    entries = _array(raw, "mobsfscan config")
+    if len(entries) != 1:
+        msg = "mobsfscan config must contain exactly one mapping"
+        raise ValueError(msg)
+    settings = _table(entries[0], "mobsfscan config entry")
+    severities = _mobsfscan_string_list(settings.get("severity-filter"), "severity-filter")
+    if not {"WARNING", "ERROR"} <= set(severities) or not set(severities) <= {"INFO", "WARNING", "ERROR"}:
+        msg = "mobsfscan severity-filter must contain both WARNING and ERROR"
+        raise ValueError(msg)
+    for severity in severities:
+        argv = (*argv, "--severity", severity)
+    ignored_rules = _mobsfscan_string_list(settings.get("ignore-rules", []), "ignore-rules")
+    if ignored_rules:
+        msg = "mobsfscan ignore-rules must remain empty; use reviewed manifest exclusions"
+        raise ValueError(msg)
+    ignored_paths = (
+        *_mobsfscan_string_list(settings.get("ignore-paths", []), "ignore-paths"),
+        *_mobsfscan_string_list(settings.get("ignore-filenames", []), "ignore-filenames"),
+    )
+    for path in ignored_paths:
+        candidate = Path(path)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            msg = f"mobsfscan exclusion must be repository-relative: {path!r}"
+            raise ValueError(msg)
+        argv = (*argv, "--exclude", path)
+    overrides = _table(settings.get("severity-overrides", {}), "severity-overrides")
+    if overrides:
+        msg = "mobsfscan severity-overrides are not supported by the managed Semgrep adapter"
+        raise ValueError(msg)
+    return argv
+
+
+def _mobsfscan_string_list(value: object, label: str) -> tuple[str, ...]:
+    values = _array(value, f"mobsfscan {label}")
+    if any(not isinstance(item, str) or not item.strip() for item in values):
+        msg = f"mobsfscan {label} must contain non-empty strings"
+        raise ValueError(msg)
+    return tuple(item for item in values if isinstance(item, str))
+
+
+def _read_mobile_config(path: Path) -> str:
+    metadata = path.lstat()
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        msg = f"mobile security config is not a regular file: {path.name}"
+        raise OSError(msg)
+    with path.open("rb") as stream:
+        payload = stream.read(_MAX_MOBILE_CONFIG_BYTES + 1)
+    if len(payload) > _MAX_MOBILE_CONFIG_BYTES:
+        msg = f"mobile security config exceeds {_MAX_MOBILE_CONFIG_BYTES} bytes"
+        raise OutputLimitError(msg)
+    return payload.decode("utf-8")
+
+
+def _swift_command(root: Path, executable: Literal["swiftformat", "swiftlint"], *, managed: bool) -> tuple[str, ...]:
+    mintfile = (
+        _PACKAGED_MOBILE_CONFIGS / "Mintfile.mobile.strict"
+        if managed
+        else _first_existing(root, ("Mintfile.mobile.strict", "Mintfile"))
+    )
+    if mintfile is not None:
+        mint = mobile_tools.command("mint") if managed else ("mint",)
+        return (*mint, "run", "--silent", "--mintfile", str(mintfile), executable)
+    return (executable,)
+
+
+def _invoke_text_tool(
+    name: str,
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    root: Path,
+    runner: ProcessRunner,
+    parser: ProtocolParser,
+    finding_codes: frozenset[int],
+    file_count: int,
+    fatal_codes: frozenset[int] = frozenset(),
+    empty_payload: str = "",
+) -> ToolReport:
+    started = time.monotonic()
+    try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary normalizes process failures and diagnostics.
+        output = runner(argv, cwd=cwd)
+        if output.returncode in fatal_codes or output.returncode not in {0, *finding_codes}:
+            message = _redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
+            issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
+            return ToolReport(name, Completion.FAILED, issues=(issue,))
+        payload = output.stdout.strip() or empty_payload
+        if not payload:
+            diagnostics: tuple[Diagnostic, ...] = ()
+        else:
+            diagnostics = parser(payload, root=root)
+        if output.returncode in finding_codes and not diagnostics:
+            message = _redact_message(output.stderr.strip() or f"{name} reported findings without diagnostics", root)
+            issue = ExecutionIssue(name, "protocol-mismatch", message, output.returncode)
+            return ToolReport(name, Completion.FAILED, issues=(issue,))
+        return ToolReport(
+            name,
+            Completion.COMPLETE,
+            diagnostics=diagnostics,
+            analyzer_id=AnalyzerId(name),
+            invocation_id=InvocationId(name),
+            duration_ms=round((time.monotonic() - started) * 1_000),
+            file_count=file_count,
+        )
+    except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
+        issue = ExecutionIssue(name, "tool-failure", _redact_message(f"{type(exc).__name__}: {exc}", root))
+        return ToolReport(
+            name,
+            Completion.FAILED,
+            issues=(issue,),
+            analyzer_id=AnalyzerId(name),
+            invocation_id=InvocationId(name),
+            duration_ms=round((time.monotonic() - started) * 1_000),
+            file_count=file_count,
+        )
+
+
+def _invoke_detekt(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    root: Path,
+    runner: ProcessRunner,
+    file_count: int,
+) -> ToolReport:
+    started = time.monotonic()
+    try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary owns report lifecycle and protocol checks.
+        with tempfile.TemporaryDirectory(prefix="code-standards-detekt-") as temporary_directory:
+            report_path = Path(temporary_directory) / "report.sarif"
+            output = runner((*argv, "--report", f"sarif:{report_path}"), cwd=cwd)
+            if output.returncode in {1, 3} or output.returncode not in {0, _DETEKT_FINDINGS}:
+                message = _redact_message(output.stderr.strip() or f"detekt exited {output.returncode}", root)
+                issue = ExecutionIssue("detekt", "tool-failure", message, output.returncode)
+                return ToolReport("detekt", Completion.FAILED, issues=(issue,))
+            payload = _read_bounded_report(report_path)
+            diagnostics = parse_sarif(payload, root=root)
+            if output.returncode == _DETEKT_FINDINGS and not diagnostics:
+                message = _redact_message(
+                    output.stderr.strip() or "detekt reported findings without diagnostics",
+                    root,
+                )
+                issue = ExecutionIssue("detekt", "protocol-mismatch", message, output.returncode)
+                return ToolReport("detekt", Completion.FAILED, issues=(issue,))
+        return ToolReport(
+            "detekt",
+            Completion.COMPLETE,
+            diagnostics=diagnostics,
+            analyzer_id=AnalyzerId("detekt"),
+            invocation_id=InvocationId("detekt"),
+            duration_ms=round((time.monotonic() - started) * 1_000),
+            file_count=file_count,
+        )
+    except (OSError, TypeError, ValueError, RecursionError, json.JSONDecodeError, subprocess.SubprocessError) as exc:
+        issue = ExecutionIssue("detekt", "tool-failure", _redact_message(f"{type(exc).__name__}: {exc}", root))
+        return ToolReport(
+            "detekt",
+            Completion.FAILED,
+            issues=(issue,),
+            analyzer_id=AnalyzerId("detekt"),
+            invocation_id=InvocationId("detekt"),
+            duration_ms=round((time.monotonic() - started) * 1_000),
+            file_count=file_count,
+        )
+
+
+def _read_bounded_report(path: Path) -> str:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as exc:
+        msg = "detekt did not create its SARIF report"
+        raise OSError(msg) from exc
+    if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
+        msg = "detekt SARIF report is not a regular file"
+        raise OSError(msg)
+    with path.open("rb") as stream:
+        payload = stream.read(_MAX_STDOUT_BYTES + 1)
+    if len(payload) > _MAX_STDOUT_BYTES:
+        msg = f"detekt SARIF report exceeded {_MAX_STDOUT_BYTES} bytes"
+        raise OutputLimitError(msg)
+    return payload.decode("utf-8")
 
 
 def _missing_eslint_issue(project: Path, root: Path) -> ExecutionIssue | None:
@@ -1469,6 +1865,244 @@ def parse_ruff(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     return tuple(diagnostics)
 
 
+_SWIFTFORMAT_LINE: Final = re.compile(
+    r"^(?P<file>.+?):(?P<line>\d+)(?::(?P<column>\d+))?:\s*(?:warning|error):\s*"
+    r"(?P<message>.*?)(?:\s+\((?P<rule>[^()]+)\))?$"
+)
+
+
+def parse_swiftformat(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    documents: dict[Path, SourceDocument | None] = {}
+    for raw_line in payload.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith(("Running SwiftFormat", "SwiftFormat completed")):
+            continue
+        match = _SWIFTFORMAT_LINE.fullmatch(line)
+        if match is None:
+            msg = f"unsupported SwiftFormat diagnostic: {line!r}"
+            raise ValueError(msg)
+        path = _reported_path(match.group("file"), root)
+        position = _one_based_position(
+            {"row": int(match.group("line")), "column": int(match.group("column") or "1")},
+            path,
+            documents,
+        )
+        rule = match.group("rule") or "format"
+        diagnostics.append(
+            Diagnostic(
+                rule,
+                _redact_message(match.group("message"), root),
+                Severity.ERROR,
+                "swiftformat",
+                Location(_relative(path, root), position=position),
+                rule_id=rule,
+            )
+        )
+    return tuple(diagnostics)
+
+
+def parse_swiftlint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+    values = _array(_loads(payload), "SwiftLint output")
+    documents: dict[Path, SourceDocument | None] = {}
+    diagnostics: list[Diagnostic] = []
+    for value in values:
+        item = _table(value, "SwiftLint diagnostic")
+        path = _reported_path(_text(item, "file"), root)
+        line = _positive_int(item, "line")
+        column = 1 if item.get("character") is None else _positive_int(item, "character")
+        position = _one_based_position({"row": line, "column": column}, path, documents)
+        rule = _text(item, "rule_id")
+        raw_severity = _text(item, "severity").casefold()
+        try:
+            severity_value = _ExternalSeverity(raw_severity)
+        except ValueError as exc:
+            msg = f"unsupported SwiftLint severity: {raw_severity!r}"
+            raise ValueError(msg) from exc
+        if severity_value is _ExternalSeverity.ERROR:
+            severity = Severity.ERROR
+        elif severity_value is _ExternalSeverity.WARNING:
+            severity = Severity.WARNING
+        else:
+            msg = f"unsupported SwiftLint severity: {raw_severity!r}"
+            raise ValueError(msg)
+        diagnostics.append(
+            Diagnostic(
+                rule,
+                _redact_message(_text(item, "reason"), root),
+                severity,
+                "swiftlint",
+                Location(_relative(path, root), position=position),
+                rule_id=rule,
+            )
+        )
+    return tuple(diagnostics)
+
+
+def parse_ktlint(  # ruff: ignore[too-many-locals] -- protocol normalization keeps every untyped field explicit.
+    payload: str, *, root: Path
+) -> tuple[Diagnostic, ...]:
+    decoded = _loads(payload)
+    records = _array(decoded, "ktlint output")
+    documents: dict[Path, SourceDocument | None] = {}
+    diagnostics: list[Diagnostic] = []
+    for record in records:
+        result = _table(record, "ktlint file result")
+        path_value = result.get("file") or result.get("filePath")
+        if not isinstance(path_value, str) or not path_value:
+            msg = "ktlint file result must contain file or filePath"
+            raise TypeError(msg)
+        path = _reported_path(path_value, root)
+        raw_errors = result.get("errors")
+        errors = _array(raw_errors, "ktlint errors") if raw_errors is not None else (result,)
+        for raw_error in errors:
+            item = _table(raw_error, "ktlint diagnostic")
+            line = _positive_int(item, "line")
+            column = _positive_int(item, "column", default=1)
+            position = _one_based_position({"row": line, "column": column}, path, documents)
+            rule_value = item.get("rule") or item.get("ruleId")
+            rule = rule_value if isinstance(rule_value, str) and rule_value else "ktlint"
+            message_value = item.get("message") or item.get("detail")
+            if not isinstance(message_value, str) or not message_value:
+                msg = "ktlint diagnostic must contain a message"
+                raise TypeError(msg)
+            diagnostics.append(
+                Diagnostic(
+                    rule,
+                    _redact_message(message_value, root),
+                    Severity.ERROR,
+                    "ktlint",
+                    Location(_relative(path, root), position=position),
+                    rule_id=rule,
+                )
+            )
+    return tuple(diagnostics)
+
+
+def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization keeps untyped fields explicit.
+    payload: str, *, root: Path, expected_paths: Sequence[str] | None = None
+) -> tuple[Diagnostic, ...]:
+    report = _JSON_OBJECT_ADAPTER.validate_json(payload, strict=True)
+    errors = _array(report.get("errors", []), "mobsfscan errors")
+    if expected_paths is not None:
+        paths = _table(report.get("paths"), "mobsfscan paths")
+        scanned_values = _array(paths.get("scanned"), "mobsfscan scanned paths")
+        if any(not isinstance(value, str) or not value for value in scanned_values):
+            msg = "mobsfscan scanned paths must contain non-empty strings"
+            raise TypeError(msg)
+        scanned = {_reported_path(value, root) for value in scanned_values if isinstance(value, str)}
+        expected = {Path(value).resolve() for value in expected_paths}
+        if scanned != expected:
+            msg = f"mobsfscan coverage mismatch: expected {len(expected)} selected file(s), scanned {len(scanned)}"
+            raise ValueError(msg)
+    # Semgrep 1.175.0 does not yet parse Swift's `#Preview` macro. It reports a
+    # warning-only PartialParsing record while still scanning the complete file.
+    # Permit only that exact, known parser limitation and only when the caller
+    # requested and proved exact selected-file coverage above. Every other
+    # engine error remains fatal.
+    tolerated_partial_parsing = expected_paths is not None and all(
+        _is_tolerated_swift_partial_parsing(raw_error) for raw_error in errors
+    )
+    if errors and not tolerated_partial_parsing:
+        msg = f"mobsfscan Semgrep engine reported {len(errors)} error(s)"
+        raise ValueError(msg)
+    documents: dict[Path, SourceDocument | None] = {}
+    diagnostics: list[Diagnostic] = []
+    for raw_result in _array(report.get("results"), "mobsfscan results"):
+        result = _table(raw_result, "mobsfscan result")
+        rule = _text(result, "check_id")
+        path = _reported_path(_text(result, "path"), root)
+        start = _table(result.get("start"), "mobsfscan start")
+        line = _positive_int(start, "line", default=1)
+        column = _positive_int(start, "col", default=1)
+        position = _one_based_position({"row": line, "column": column}, path, documents)
+        extra = _table(result.get("extra"), "mobsfscan extra")
+        severity_value = _text(extra, "severity")
+        if severity_value == "ERROR":
+            severity = Severity.ERROR
+        elif severity_value == "WARNING":
+            severity = Severity.WARNING
+        else:
+            msg = f"unsupported mobsfscan severity: {severity_value!r}"
+            raise ValueError(msg)
+        diagnostics.append(
+            Diagnostic(
+                rule,
+                _redact_message(_text(extra, "message"), root),
+                severity,
+                "mobsfscan",
+                Location(_relative(path, root), position=position),
+                rule_id=rule,
+            )
+        )
+    return tuple(diagnostics)
+
+
+def _is_tolerated_swift_partial_parsing(value: object) -> bool:
+    try:
+        error = _table(value, "mobsfscan error")
+    except TypeError:
+        return False
+    error_type = error.get("type")
+    message = error.get("message")
+    if not isinstance(error_type, list):
+        return False
+    fields = _array(error.get("type"), "mobsfscan error type")
+    return (
+        fields[:1] == ["PartialParsing"]
+        and len(fields[1:]) == 1
+        and isinstance(fields[1], list)
+        and error.get("level") == "warn"
+        and isinstance(message, str)
+        and bool(message)
+    )
+
+
+def parse_sarif(  # ruff: ignore[too-many-locals] -- protocol normalization keeps SARIF containment explicit.
+    payload: str, *, root: Path
+) -> tuple[Diagnostic, ...]:
+    report = _JSON_OBJECT_ADAPTER.validate_json(payload, strict=True)
+    diagnostics: list[Diagnostic] = []
+    documents: dict[Path, SourceDocument | None] = {}
+    for raw_run in _array(report.get("runs"), "SARIF runs"):
+        run = _table(raw_run, "SARIF run")
+        for raw_result in _array(run.get("results", []), "SARIF results"):
+            result = _table(raw_result, "SARIF result")
+            rule = _text(result, "ruleId")
+            message_table = _table(result.get("message"), "SARIF message")
+            message = _text(message_table, "text")
+            level = result.get("level")
+            if level == "error":
+                severity = Severity.ERROR
+            elif level in {None, "warning", "note", "none"}:
+                severity = Severity.WARNING
+            else:
+                msg = f"unsupported SARIF severity: {level!r}"
+                raise ValueError(msg)
+            locations = _array(result.get("locations"), "SARIF locations")
+            if not locations:
+                msg = "SARIF result must contain at least one location"
+                raise ValueError(msg)
+            physical = _table(_table(locations[0], "SARIF location").get("physicalLocation"), "SARIF physical location")
+            artifact = _table(physical.get("artifactLocation"), "SARIF artifact location")
+            path = _reported_path(_text(artifact, "uri"), root)
+            region = _table(physical.get("region"), "SARIF region")
+            line = _positive_int(region, "startLine", default=1)
+            column = _positive_int(region, "startColumn", default=1)
+            position = _one_based_position({"row": line, "column": column}, path, documents)
+            diagnostics.append(
+                Diagnostic(
+                    rule,
+                    _redact_message(message, root),
+                    severity,
+                    "detekt",
+                    Location(_relative(path, root), position=position),
+                    rule_id=rule,
+                )
+            )
+    return tuple(diagnostics)
+
+
 def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     report = _BasedPyrightReport.model_validate_json(payload)
     documents: dict[Path, SourceDocument | None] = {}
@@ -1838,6 +2472,14 @@ def _integer(table: dict[str, object], key: str) -> int:
     value = table.get(key)
     if type(value) is not int:
         msg = f"{key} must be an integer"
+        raise TypeError(msg)
+    return value
+
+
+def _positive_int(table: dict[str, object], key: str, *, default: int | None = None) -> int:
+    value = table.get(key, default)
+    if type(value) is not int or value < 1:
+        msg = f"{key} must be a positive integer"
         raise TypeError(msg)
     return value
 

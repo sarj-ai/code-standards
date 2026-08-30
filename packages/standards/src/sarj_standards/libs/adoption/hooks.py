@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 LEFTHOOK_NAMES: Final = ("lefthook.yml", "lefthook.yaml")
 PRECOMMIT_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
 PRECOMMIT_FILES_PATTERN: Final = (
-    r"(?i)(\.py|\.[cm]?[jt]s|\.[jt]sx|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|"
+    r"(?i)(\.py|\.[cm]?[jt]s|\.[jt]sx|\.kts?|\.swift|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|"
     r"\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|"
     r"(?:^|/)requirements(?:/.*|[^/]*\.(?:txt|in))$|"
     r"(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile|package\.json|pyrightconfig\.json))$"

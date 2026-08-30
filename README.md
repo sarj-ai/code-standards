@@ -2,7 +2,7 @@
 
 # Code Standards
 
-One deterministic quality gate for Sarj Python, TypeScript, shell, SQL, IaC, and repository policy.
+One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy.
 
 ```bash
 uv tool install --python 3.14 code-standards

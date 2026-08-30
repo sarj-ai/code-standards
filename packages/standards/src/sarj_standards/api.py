@@ -704,6 +704,9 @@ def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> se
         routed.update(grouped.text)
     if RuleEngine.ESLINT in engines:
         routed.update(grouped.typescript)
+    if selected is None:
+        routed.update(grouped.kotlin)
+        routed.update(grouped.swift)
     return routed
 
 

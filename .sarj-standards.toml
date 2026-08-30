@@ -1,5 +1,5 @@
-schema = 3
-bundle = "7.7.0"
+schema = 4
+bundle = "7.8.0"
 rule_profile = "all"
 
 profile = "standard"
@@ -8,12 +8,14 @@ profile = "standard"
 # The TypeScript package defines the ESLint preset itself, so its authored
 # config is validated by the package's full lint/runtime suite instead of
 # importing the consumer preset from itself.
-disable = ["eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]
+disable = ["eslint", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security", "markdownlint", "shellcheck", "taplo", "yamllint"]
 
 
 [dest]
 python = "."
 typescript = "packages/typescript"
+swift = "."
+kotlin = "."
 
 [hooks]
 manager = "lefthook"

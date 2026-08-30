@@ -238,14 +238,14 @@ def test_manifest_round_trips(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("declared", ["not a version", "1.2.3 nope", "v"])
 def test_manifest_rejects_non_pep440_versions(tmp_path: Path, declared: str) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 3\nbundle = "{declared}"\n')
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 4\nbundle = "{declared}"\n')
 
     with pytest.raises(ValueError, match="valid PEP 440 version"):
         _ = manifest.load(tmp_path)
 
 
 def test_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 3\nbundle = "1.2.3"\n')
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\n')
     adopted = manifest.load(tmp_path)
     assert adopted is not None
     assert adopted.profile == "standard"
@@ -255,7 +255,7 @@ def test_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
 @pytest.mark.parametrize("section", ["capabilities", "dest", "hooks", "exclude", "ci"])
 def test_manifest_rejects_wrong_typed_optional_tables(tmp_path: Path, section: str) -> None:
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
-        f'schema = 3\nbundle = "1.2.3"\n{section} = "not-a-table"\n',
+        f'schema = 4\nbundle = "1.2.3"\n{section} = "not-a-table"\n',
         encoding="utf-8",
     )
 
@@ -265,7 +265,7 @@ def test_manifest_rejects_wrong_typed_optional_tables(tmp_path: Path, section: s
 
 def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> None:
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
-        'schema = 3\nbundle = "1.2.3"\n[verify]\npaths = ["src", "README.md"]\n'
+        'schema = 4\nbundle = "1.2.3"\n[verify]\npaths = ["src", "README.md"]\n'
     )
 
     adopted = manifest.load(tmp_path)
@@ -278,7 +278,7 @@ def test_manifest_loads_contained_custom_verification_paths(tmp_path: Path) -> N
 def test_manifest_rejects_unsafe_ci_bootstrap_shape(tmp_path: Path, command: str) -> None:
     rendered = json.dumps(command)
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
-        f'schema = 3\nbundle = "1.2.3"\n[ci]\nbootstrap = [{rendered}]\n',
+        f'schema = 4\nbundle = "1.2.3"\n[ci]\nbootstrap = [{rendered}]\n',
         encoding="utf-8",
     )
 
@@ -288,15 +288,42 @@ def test_manifest_rejects_unsafe_ci_bootstrap_shape(tmp_path: Path, command: str
 
 def test_manifest_rejects_custom_verification_path_escape(tmp_path: Path) -> None:
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
-        'schema = 3\nbundle = "1.2.3"\n[verify]\npaths = ["../outside"]\n'
+        'schema = 4\nbundle = "1.2.3"\n[verify]\npaths = ["../outside"]\n'
     )
 
     with pytest.raises(ValueError, match="escapes repository root"):
         _ = manifest.load(tmp_path)
 
 
+@pytest.mark.parametrize("escape", ["parent", "absolute"])
+@pytest.mark.parametrize("kind", ["swift", "kotlin"])
+def test_manifest_rejects_mobile_destination_escape(tmp_path: Path, kind: str, escape: str) -> None:
+    destination = "../outside" if escape == "parent" else str(tmp_path.parent)
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "1.2.3"\n[dest]\n{kind} = {json.dumps(destination)}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=rf"\[dest\]\.{kind}.*repository root"):
+        _ = manifest.load(tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["swift", "kotlin"])
+def test_manifest_rejects_mobile_destination_symlink_escape(tmp_path: Path, kind: str) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    (tmp_path / "mobile").symlink_to(outside, target_is_directory=True)
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "1.2.3"\n[dest]\n{kind} = "mobile"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=rf"\[dest\]\.{kind} escapes the repository root"):
+        _ = manifest.load(tmp_path)
+
+
 def test_manifest_rejects_unknown_profile(tmp_path: Path) -> None:
-    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 3\nbundle = "1.2.3"\nprofile = "library"\n')
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text('schema = 4\nbundle = "1.2.3"\nprofile = "library"\n')
     with pytest.raises(ValueError, match=r"profile.*standard, application"):
         _ = manifest.load(tmp_path)
 
@@ -304,11 +331,18 @@ def test_manifest_rejects_unknown_profile(tmp_path: Path) -> None:
 def test_manifest_renders_as_valid_toml() -> None:
     rendered = manifest.Manifest(version="1.2.3", configs=("ruff",), python_dest=".", typescript_dest=".").render()
     parsed = tomllib.loads(rendered)
-    assert parsed["schema"] == 3
+    assert parsed["schema"] == 4
+    assert parsed["dest"]["swift"] == "."
+    assert parsed["dest"]["kotlin"] == "."
     assert parsed["bundle"] == "1.2.3"
     assert parsed["capabilities"]["disable"] == [
         "pyright",
         "eslint",
+        "swiftformat",
+        "swiftlint",
+        "ktlint",
+        "detekt",
+        "mobile-security",
         "markdownlint",
         "shellcheck",
         "taplo",
@@ -322,7 +356,7 @@ def test_missing_manifest_is_not_an_error(tmp_path: Path) -> None:
 
 def test_malformed_manifest_is_reported_not_ignored(tmp_path: Path) -> None:
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text("configs = 3\n")
-    with pytest.raises(ValueError, match=r"schema.*equal 3"):
+    with pytest.raises(ValueError, match=r"schema.*equal 4"):
         _ = manifest.load(tmp_path)
 
 
@@ -332,12 +366,13 @@ def test_malformed_manifest_is_reported_not_ignored(tmp_path: Path) -> None:
         'version = "1.2.3"\nconfigs = ["ruff"]\n',
         'schema = 1\nversion = "1.2.3"\nconfigs = ["ruff"]\n',
         'schema = 2\nbundle = "1.2.3"\n[capabilities]\ndisable = []\n',
+        'schema = 3\nbundle = "1.2.3"\n[capabilities]\ndisable = []\n',
     ],
 )
 def test_manifest_rejects_every_obsolete_schema(tmp_path: Path, text: str) -> None:
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(text)
 
-    with pytest.raises(ValueError, match=r"schema.*equal 3"):
+    with pytest.raises(ValueError, match=r"schema.*equal 4"):
         _ = manifest.load(tmp_path)
 
 
@@ -355,7 +390,110 @@ def test_setup_one_way_migrates_the_final_schema_less_manifest(tmp_path: Path) -
     assert adopted is not None
     assert adopted.version == manifest.adopted_version()
     assert adopted.configs == ("ruff",)
-    assert "schema = 3" in (tmp_path / manifest.MANIFEST_NAME).read_text(encoding="utf-8")
+    assert "schema = 4" in (tmp_path / manifest.MANIFEST_NAME).read_text(encoding="utf-8")
+
+
+def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_tools(tmp_path: Path) -> None:
+    _ = (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'schema = 3\nbundle = "1.2.3"\nprofile = "application"\n'
+        '[capabilities]\ndisable = ["ruff"]\n'
+        '[dest]\npython = "backend"\ntypescript = "web"\n',
+        encoding="utf-8",
+    )
+
+    adopted = manifest.load_for_setup(tmp_path)
+
+    assert adopted is not None
+    assert adopted.profile == "application"
+    assert adopted.python_dest == "backend"
+    assert adopted.typescript_dest == "web"
+    assert adopted.swift_dest == "."
+    assert adopted.kotlin_dest == "."
+    assert not set(manifest.SWIFT_CONFIGS + manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).intersection(
+        adopted.configs
+    )
+
+
+def test_setup_losslessly_rerenders_schema_three_as_schema_four(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    baseline = tmp_path / "diagnostics.json"
+    baseline.write_text("{}\n", encoding="utf-8")
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    manifest_path.write_text(
+        'schema = 3\nbundle = "1.2.3"\nprofile = "application"\nrule_profile = "all"\n'
+        '[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n'
+        '[dest]\npython = "."\ntypescript = "."\n'
+        '[hooks]\nmanager = "none"\n'
+        '[verify]\npaths = ["src"]\n'
+        '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ052"]\n'
+        '[text]\nexclude = ["CHANGELOG.md"]\n'
+        '[doctor]\nexclude = ["vendor/**"]\n'
+        '[baseline]\ndiagnostics = "diagnostics.json"\n'
+        '[ci]\nbootstrap = ["uv sync --frozen"]\n'
+        "# Consumer repository policy must survive the owned schema migration.\n"
+        '[repository]\ncanonical_config_dir = "policy"\n'
+        '[[repository.filename_rules]]\nglob = "src/**"\npattern = "^[a-z]+$"\n',
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    migrated = manifest.load(tmp_path)
+    assert migrated is not None
+    assert migrated.profile == "application"
+    assert migrated.configs == ("ruff",)
+    assert migrated.verify_paths == ("src",)
+    assert migrated.hook_manager == "none"
+    assert migrated.excluded_paths == ("generated/**",)
+    assert migrated.excluded_rules == ("python:SARJ052",)
+    assert migrated.text_excluded_paths == ("CHANGELOG.md",)
+    assert migrated.doctor_excluded_paths == ("vendor/**",)
+    assert migrated.diagnostic_baseline == "diagnostics.json"
+    assert migrated.ci_bootstrap == ("uv sync --frozen",)
+    migrated_text = manifest_path.read_text(encoding="utf-8")
+    assert "schema = 4" in migrated_text
+    assert "# Consumer repository policy must survive" in migrated_text
+    assert '[repository]\ncanonical_config_dir = "policy"' in migrated_text
+    assert '[[repository.filename_rules]]\nglob = "src/**"' in migrated_text
+    assert "migrated the schema 3 manifest" in proc.stdout
+
+
+def test_setup_fails_closed_on_unowned_top_level_manifest_scalars(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    path = tmp_path / manifest.MANIFEST_NAME
+    path.write_text(
+        'schema = 3\nbundle = "1.2.3"\nconsumer_mode = "strict"\n'
+        '[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n',
+        encoding="utf-8",
+    )
+    before = path.read_bytes()
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "cannot safely rewrite unowned top-level manifest key 'consumer_mode'" in proc.stderr
+    assert path.read_bytes() == before
+
+
+def test_mobile_defaults_are_selected_only_for_mobile_projects() -> None:
+    generic = manifest.default_configs(
+        has_python=False,
+        has_typescript=False,
+        has_swift=True,
+        has_kotlin=True,
+        has_mobile=False,
+    )
+    mobile = manifest.default_configs(
+        has_python=False,
+        has_typescript=False,
+        has_swift=True,
+        has_kotlin=True,
+        has_mobile=True,
+    )
+
+    assert not set(manifest.SWIFT_CONFIGS + manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).intersection(generic)
+    assert mobile[:5] == ("swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security")
 
 
 def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_path: Path) -> None:
@@ -470,7 +608,7 @@ def test_schema_three_rejects_removed_fields(tmp_path: Path, field: str) -> None
     _ = (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 3\nbundle = "1.2.3"\n{suffix}')
 
     with pytest.raises(ValueError, match=f"removed manifest fields: {field}"):
-        _ = manifest.load(tmp_path)
+        _ = manifest.load_for_setup(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -1050,9 +1188,22 @@ def test_init_adopts_shared_configs_without_an_ecosystem(tmp_path: Path) -> None
     assert (tmp_path / ".pre-commit-config.yaml").is_file()
 
 
-@pytest.mark.parametrize("config", ["ruff", "pyright", "eslint"])
+@pytest.mark.parametrize(
+    "config",
+    ["ruff", "pyright", "eslint", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"],
+)
 def test_init_rejects_ecosystem_config_without_its_project(tmp_path: Path, config: str) -> None:
     proc = _cli("--root", str(tmp_path), "setup", "--config", config, "--no-install")
+
+    assert proc.returncode == 2
+    assert "ecosystem-specific" in proc.stderr
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
+def test_init_rejects_mobile_config_in_an_unrelated_python_project(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+
+    proc = _cli("--root", str(tmp_path), "setup", "--config", "swiftlint", "--no-install")
 
     assert proc.returncode == 2
     assert "ecosystem-specific" in proc.stderr
@@ -1303,8 +1454,8 @@ def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
     assert not adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
 
-@pytest.mark.parametrize("suffix", ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts"])
-def test_generated_precommit_block_routes_every_supported_javascript_suffix(tmp_path: Path, suffix: str) -> None:
+@pytest.mark.parametrize("suffix", ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "kt", "kts", "swift"])
+def test_generated_precommit_block_routes_every_supported_staged_suffix(tmp_path: Path, suffix: str) -> None:
     _ = _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
@@ -1929,6 +2080,359 @@ def test_detection_finds_a_package_json_in_a_subproject(tmp_path: Path) -> None:
     assert found.typescript_root == tmp_path / "services" / "web"
 
 
+@pytest.mark.parametrize("marker", ["Package.swift", "Bank.xcodeproj"])
+def test_detection_finds_explicit_swift_project_markers(marker: str, tmp_path: Path) -> None:
+    project = tmp_path / "mobile" / "ios"
+    project.mkdir(parents=True)
+    target = project / marker
+    if marker == "Package.swift":
+        target.write_text("let package = Package(platforms: [.iOS(.v16)])\n", encoding="utf-8")
+    else:
+        target.mkdir()
+        (target / "project.pbxproj").write_text("IPHONEOS_DEPLOYMENT_TARGET = 16.0;\n", encoding="utf-8")
+
+    found = scaffold.detect(tmp_path)
+
+    assert found.swift
+    assert found.swift_root == project
+    assert found.mobile
+
+
+def test_detection_finds_workspace_with_mobile_xcode_project(tmp_path: Path) -> None:
+    project = tmp_path / "mobile" / "ios"
+    project.mkdir(parents=True)
+    (project / "Bank.xcworkspace").mkdir()
+    xcode_project = project / "Bank.xcodeproj"
+    xcode_project.mkdir()
+    (xcode_project / "project.pbxproj").write_text(
+        'SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";\n',
+        encoding="utf-8",
+    )
+
+    found = scaffold.detect(tmp_path)
+
+    assert found.swift
+    assert found.swift_root == project
+    assert found.mobile
+
+
+@pytest.mark.parametrize(
+    "project_source",
+    [
+        "",
+        "SDKROOT = macosx;\nMACOSX_DEPLOYMENT_TARGET = 15.0;\n",
+        "/* IPHONEOS_DEPLOYMENT_TARGET = 16.0; */\nSDKROOT = macosx;\n",
+    ],
+)
+def test_detection_rejects_non_mobile_xcode_projects(project_source: str, tmp_path: Path) -> None:
+    project = tmp_path / "desktop"
+    project.mkdir()
+    (project / "Desktop.xcworkspace").mkdir()
+    xcode_project = project / "Desktop.xcodeproj"
+    xcode_project.mkdir()
+    (xcode_project / "project.pbxproj").write_text(project_source, encoding="utf-8")
+
+    found = scaffold.detect(tmp_path)
+
+    assert not found.swift
+    assert found.swift_root is None
+    assert not found.mobile
+
+
+def test_detection_accepts_large_mobile_xcode_projects(tmp_path: Path) -> None:
+    project = tmp_path / "mobile" / "Bank.xcodeproj"
+    project.mkdir(parents=True)
+    (project / "project.pbxproj").write_text(
+        "IPHONEOS_DEPLOYMENT_TARGET = 16.0;\n" + ("A" * (1024 * 1024)),
+        encoding="utf-8",
+    )
+
+    assert scaffold.detect(tmp_path).swift
+
+
+def test_detection_keeps_server_swift_packages_off(tmp_path: Path) -> None:
+    (tmp_path / "Package.swift").write_text(
+        '// swift-tools-version: 6.2\nlet package = Package(name: "Service")\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "Sources").mkdir()
+    (tmp_path / "Sources/Service.swift").touch()
+
+    found = scaffold.detect(tmp_path)
+
+    assert not found.swift
+    assert found.swift_root is None
+    assert not found.mobile
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [" // someday: .iOS(.v16)", '\nlet documentation = ".iOS(.v16)"'],
+)
+def test_detection_ignores_swift_mobile_markers_in_comments_and_strings(suffix: str, tmp_path: Path) -> None:
+    (tmp_path / "Package.swift").write_text(f'let package = Package(name: "Service"){suffix}\n', encoding="utf-8")
+
+    assert not scaffold.detect(tmp_path).swift
+
+
+@pytest.mark.parametrize(
+    "plugin",
+    [
+        'id("com.android.application")',
+        'id("com.android.library")',
+        'id("org.jetbrains.kotlin.android")',
+        "alias(libs.plugins.android.application)",
+    ],
+)
+def test_detection_finds_android_gradle_plugins(plugin: str, tmp_path: Path) -> None:
+    project = tmp_path / "mobile"
+    project.mkdir()
+    (project / "settings.gradle.kts").touch()
+    (project / "build.gradle.kts").write_text(f"plugins {{ {plugin} }}\n", encoding="utf-8")
+
+    found = scaffold.detect(tmp_path)
+
+    assert found.kotlin
+    assert found.kotlin_root == project
+    assert found.mobile
+
+
+def test_detection_does_not_treat_unused_version_catalog_plugins_as_mobile(tmp_path: Path) -> None:
+    project = tmp_path / "android"
+    catalog = project / "gradle" / "libs.versions.toml"
+    catalog.parent.mkdir(parents=True)
+    catalog.write_text(
+        "# Centralized plugin aliases.\n[plugins]\n"
+        'android-application = { id = "com.android.application", version = "8.8.0" }\n',
+        encoding="utf-8",
+    )
+    (project / "settings.gradle.kts").touch()
+
+    found = scaffold.detect(tmp_path)
+
+    assert not found.kotlin
+    assert found.kotlin_root is None
+
+
+@pytest.mark.parametrize("target", ["androidTarget()", "iosArm64()", "iosSimulatorArm64()"])
+def test_detection_finds_kmp_mobile_target(target: str, tmp_path: Path) -> None:
+    project = tmp_path / "shared"
+    project.mkdir()
+    (project / "build.gradle.kts").write_text(
+        f'plugins {{ id("org.jetbrains.kotlin.multiplatform") }}\nkotlin {{ {target} }}\n',
+        encoding="utf-8",
+    )
+
+    found = scaffold.detect(tmp_path)
+
+    assert found.kotlin
+    assert found.kotlin_root == project
+
+
+def test_detection_finds_modern_android_kmp_plugin(tmp_path: Path) -> None:
+    (tmp_path / "build.gradle.kts").write_text(
+        'plugins { id("org.jetbrains.kotlin.multiplatform"); '
+        'id("com.android.kotlin.multiplatform.library") }\nkotlin { android { } }\n',
+        encoding="utf-8",
+    )
+
+    assert scaffold.detect(tmp_path).kotlin
+
+
+@pytest.mark.parametrize(
+    "gradle",
+    [
+        'plugins { id("org.jetbrains.kotlin.jvm") }\n',
+        'plugins { id("org.jetbrains.kotlin.multiplatform") }\nkotlin { jvm() }\n',
+        '// id("com.android.application")\nplugins { id("org.jetbrains.kotlin.jvm") }\n',
+        'plugins { id("org.jetbrains.kotlin.jvm") } // id("com.android.application")\n',
+        'plugins { id("org.jetbrains.kotlin.jvm") }\nval docs = "use com.android.application"\n',
+        'plugins { id("com.android.application") version "9.0" apply false }\n',
+    ],
+)
+def test_detection_keeps_generic_kotlin_projects_off(gradle: str, tmp_path: Path) -> None:
+    (tmp_path / "build.gradle.kts").write_text(gradle, encoding="utf-8")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Service.kt").touch()
+
+    found = scaffold.detect(tmp_path)
+
+    assert not found.kotlin
+    assert found.kotlin_root is None
+    assert not found.mobile
+
+
+def test_detection_finds_kotlin_android_shorthand(tmp_path: Path) -> None:
+    (tmp_path / "build.gradle.kts").write_text('plugins { kotlin("android") }\n', encoding="utf-8")
+
+    assert scaffold.detect(tmp_path).kotlin
+
+
+def test_detection_collapses_android_modules_to_their_gradle_build_root(tmp_path: Path) -> None:
+    (tmp_path / "settings.gradle.kts").write_text('include(":app", ":core")\n', encoding="utf-8")
+    for module, plugin in (("app", "com.android.application"), ("core", "com.android.library")):
+        path = tmp_path / module
+        path.mkdir()
+        (path / "build.gradle.kts").write_text(f'plugins {{ id("{plugin}") }}\n', encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.kotlin_dest == "."
+
+
+def test_setup_fails_closed_for_multiple_mobile_projects_without_an_explicit_root(tmp_path: Path) -> None:
+    for name in ("consumer", "merchant"):
+        project = tmp_path / name
+        project.mkdir()
+        (project / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n", encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "multiple independent Swift mobile roots" in proc.stderr
+    assert "--swift-dest" in proc.stderr
+
+
+def test_setup_accepts_one_explicit_mobile_root_in_an_ambiguous_monorepo(tmp_path: Path) -> None:
+    for name in ("consumer", "merchant"):
+        project = tmp_path / name
+        project.mkdir()
+        (project / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n", encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--swift-dest", "consumer", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.swift_dest == "consumer"
+
+
+def test_setup_rejects_an_ancestor_as_an_explicit_mobile_root(tmp_path: Path) -> None:
+    project = tmp_path / "apps" / "consumer"
+    project.mkdir(parents=True)
+    (project / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n", encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--swift-dest", "apps", "--no-install")
+
+    assert proc.returncode == 2
+    assert "must be one exact configured mobile project root" in proc.stderr
+
+
+def test_setup_rejects_an_incompatible_unowned_mobile_ci_gate(tmp_path: Path) -> None:
+    (tmp_path / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n", encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/custom.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "name: custom\non: [push]\njobs:\n  standards:\n    runs-on: ubuntu-latest\n"
+        f"    steps:\n      - run: {BOOTSTRAP_COMMAND} check --trust-repository-code\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "lacks required mobile runner prerequisites" in proc.stderr
+
+
+def test_setup_does_not_borrow_mobile_prerequisites_from_unrelated_workflow_jobs(tmp_path: Path) -> None:
+    (tmp_path / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n", encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/custom.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        f"""name: custom
+on: [push]
+jobs:
+  standards:
+    runs-on: ubuntu-latest
+    steps:
+      - run: {BOOTSTRAP_COMMAND} check --trust-repository-code
+  unrelated:
+    runs-on: macos-15
+    steps:
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: echo unrelated
+""",
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 2
+    assert "lacks required mobile runner prerequisites" in proc.stderr
+
+
+def test_detection_ignores_vendored_mobile_markers(tmp_path: Path) -> None:
+    package = tmp_path / "Pods" / "SDK"
+    package.mkdir(parents=True)
+    (package / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n", encoding="utf-8")
+
+    assert not scaffold.detect(tmp_path).swift
+
+
+@pytest.mark.parametrize(
+    ("project_file", "detected", "expected_configs"),
+    [
+        ("Package.swift", "swift", manifest.SWIFT_CONFIGS),
+        ("build.gradle.kts", "kotlin-mobile", manifest.KOTLIN_CONFIGS),
+    ],
+)
+def test_setup_adopts_mobile_configs_and_staged_hook_only_for_configured_projects(
+    project_file: str,
+    detected: str,
+    expected_configs: tuple[str, ...],
+    tmp_path: Path,
+) -> None:
+    contents = (
+        'plugins { id("com.android.application") }\n'
+        if project_file == "build.gradle.kts"
+        else "// swift-tools-version: 6.2\nlet package = Package(platforms: [.iOS(.v16)])\n"
+    )
+    (tmp_path / project_file).write_text(contents, encoding="utf-8")
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"detected: {detected}" in proc.stdout
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert set(expected_configs + manifest.MOBILE_CONFIGS).issubset(adopted.configs)
+    hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    pattern = re.search(r"(?m)^\s*files: '(?P<pattern>.+)'$", hook)
+    assert pattern is not None
+    suffix = "swift" if detected == "swift" else "kt"
+    assert re.search(pattern.group("pattern"), f"Sources/Account.{suffix}") is not None
+    workflow = (tmp_path / ".github/workflows/standards.yml").read_text(encoding="utf-8")
+    assert "timeout-minutes: 60" in workflow
+    if detected == "swift":
+        assert "runs-on: macos-15" in workflow
+    else:
+        assert "runs-on: ubuntu-latest" in workflow
+        assert "actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961" in workflow
+        assert "distribution: temurin" in workflow
+        assert "java-version: '21'" in workflow
+
+
+def test_setup_does_not_adopt_generic_kotlin_project(tmp_path: Path) -> None:
+    (tmp_path / "build.gradle.kts").write_text(
+        'plugins { id("org.jetbrains.kotlin.jvm") }\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "Service.kt").touch()
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 1
+    assert "detected: nothing" in proc.stdout
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
 def test_init_fails_loudly_on_independent_project_roots(tmp_path: Path) -> None:
     for name in ("api", "worker"):
         project = tmp_path / name
@@ -1960,6 +2464,18 @@ def test_detection_ignores_node_modules(tmp_path: Path) -> None:
     (tmp_path / "node_modules" / "left-pad").mkdir(parents=True)
     _ = (tmp_path / "node_modules" / "left-pad" / "package.json").write_text("{}\n")
     assert scaffold.detect(tmp_path).typescript is False
+
+
+def test_detection_ignores_xcode_source_package_checkouts(tmp_path: Path) -> None:
+    checkout = tmp_path / "SourcePackages" / "checkouts" / "dependency"
+    checkout.mkdir(parents=True)
+    (checkout / "Package.swift").touch()
+    (checkout / "package.json").write_text("{}\n", encoding="utf-8")
+
+    found = scaffold.detect(tmp_path)
+
+    assert not found.swift
+    assert not found.typescript
 
 
 def test_doctor_accepts_isolated_python_adoption_without_consumer_bundle(tmp_path: Path) -> None:
@@ -2513,9 +3029,9 @@ def test_init_force_replaces_reviewed_unadopted_config(tmp_path: Path) -> None:
 #: Hand-edited fixtures for files owned by `init`.
 _SCAFFOLDED_FILES = {
     manifest.MANIFEST_NAME: (
-        f'# hand-edited\nschema = 3\nbundle = "{manifest.adopted_version()}"\nprofile = "standard"\n'
+        f'# hand-edited\nschema = {manifest.MANIFEST_SCHEMA}\nbundle = "7.6.3"\nprofile = "standard"\n'
         'rule_profile = "all"\n\n'
-        '[capabilities]\ndisable = []\n\n[dest]\npython = "."\ntypescript = "."\n\n'
+        '[capabilities]\ndisable = []\n\n[dest]\npython = "."\ntypescript = "."\nswift = "."\nkotlin = "."\n\n'
         '[hooks]\nmanager = "pre-commit"\n'
     ),
     "pyrightconfig.json": '{ "typeCheckingMode": "standard" }\n',

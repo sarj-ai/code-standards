@@ -1,11 +1,22 @@
 import assert from 'node:assert/strict';
 import { hash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import process from 'node:process';
 import { URL } from 'node:url';
 
 const expectedCommit = process.env.EXPECTED_COMMIT;
 assert.ok(expectedCommit, 'EXPECTED_COMMIT is required');
 const base = new URL(process.env.DOCS_BASE_URL ?? 'https://code-standards.sarj.ai/');
+const thirdPartyCatalog = JSON.parse(
+  await readFile(new URL('../src/generated/third-party-rules.v1.json', import.meta.url), 'utf8'),
+);
+const mobileProviderIds = ['detekt', 'ktlint', 'mobsfscan', 'swiftformat', 'swiftlint'];
+const expectedMobileRuleCounts = new Map(
+  mobileProviderIds.map((provider) => [
+    provider,
+    thirdPartyCatalog.rules.filter((rule) => rule.provider === provider).length,
+  ]),
+);
 
 async function verify() {
   const nonce = `?commit=${encodeURIComponent(expectedCommit)}`;
@@ -35,6 +46,15 @@ async function verify() {
   const ruffPage = await ruffResponse.text();
   const ruffLastPage = await ruffLastResponse.text();
   const ruffIndex = await ruffIndexResponse.json();
+  const mobileProviders = await Promise.all(
+    mobileProviderIds.map(async (provider) => {
+      const [providerResponse, indexResponse] = await Promise.all([
+        response(`third-party-linters/${provider}/${nonce}`),
+        response(`third-party-linters/${provider}/rules.json${nonce}`),
+      ]);
+      return { indexResponse, provider, providerResponse };
+    }),
+  );
   assert.equal(health.commit, expectedCommit, `live commit ${String(health.commit)} does not match ${expectedCommit}`);
   assert.equal(hash('sha256', catalogText, 'hex'), health.catalogSha256);
   assert.equal(upstreamResponse.status, 301);
@@ -46,6 +66,17 @@ async function verify() {
   assert.ok(ruffIndex.entries.every(({ href }) => typeof href === 'string' && href.includes('#rule-')));
   assert.match(ruffIndexResponse.headers.get('cache-control') ?? '', /must-revalidate/u);
   assert.match(ruffIndexResponse.headers.get('content-type') ?? '', /^application\/json\b/u);
+  for (const { indexResponse, provider, providerResponse } of mobileProviders) {
+    assert.ok(providerResponse.ok, `${provider} provider page returned ${String(providerResponse.status)}`);
+    assert.ok(indexResponse.ok, `${provider} rules index returned ${String(indexResponse.status)}`);
+    assert.match(await providerResponse.text(), /Third party Rules/u);
+    const index = await indexResponse.json();
+    assert.ok(Array.isArray(index.entries), `${provider} rules index entries must be an array`);
+    assert.equal(index.entries.length, expectedMobileRuleCounts.get(provider));
+    assert.match(indexResponse.headers.get('cache-control') ?? '', /must-revalidate/u);
+    assert.match(indexResponse.headers.get('content-type') ?? '', /^application\/json\b/u);
+    assert.match(page, new RegExp(`href="/third-party-linters/${provider}/"`, 'u'));
+  }
   assert.doesNotMatch(page, /site-search|pagefind|type="search"/iu);
   assert.doesNotMatch(page, /<meta http-equiv="content-security-policy"/iu);
   assert.doesNotMatch(page, /GTM-|zaraz|cloudflareinsights/iu);

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+import shutil
 import sys
 from typing import TYPE_CHECKING
 
@@ -16,15 +18,29 @@ from sarj_standards.libs.linting.external import (
     analyze_external,
     parse_basedpyright,
     parse_eslint,
+    parse_ktlint,
+    parse_mobsfscan,
     parse_react_doctor,
     parse_ruff,
+    parse_sarif,
     parse_shellcheck,
+    parse_swiftformat,
+    parse_swiftlint,
 )
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
+
+
+def _write_detekt_report(command: Sequence[str], payload: str = '{"runs":[]}') -> Path:
+    report = command[command.index("--report") + 1]
+    assert report.startswith("sarif:")
+    path = Path(report.removeprefix("sarif:"))
+    assert path.is_absolute()
+    assert path.parent.is_dir()
+    path.write_text(payload, encoding="utf-8")
+    return path
 
 
 def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
@@ -63,6 +79,463 @@ def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
     assert finding.location.region is not None
     assert finding.location.region.start.byte_offset == 0
     assert finding.location.region.end.byte_offset == 6
+
+
+def test_mobile_protocols_become_canonical_diagnostics(tmp_path: Path) -> None:
+    swift = tmp_path / "Screen.swift"
+    swift.write_text("struct Screen {}\n", encoding="utf-8")
+    kotlin = tmp_path / "Screen.kt"
+    kotlin.write_text("class Screen\n", encoding="utf-8")
+
+    swiftformat = parse_swiftformat(
+        f"{swift}:1:1: warning: replace braces (emptyBraces)\n",
+        root=tmp_path,
+    )[0]
+    swiftlint = parse_swiftlint(
+        json.dumps(
+            [
+                {
+                    "file": str(swift),
+                    "line": 1,
+                    "character": None,
+                    "reason": "Prefer a final declaration",
+                    "rule_id": "redundant_final",
+                    "severity": "Warning",
+                }
+            ]
+        ),
+        root=tmp_path,
+    )[0]
+    ktlint = parse_ktlint(
+        json.dumps(
+            [
+                {
+                    "file": str(kotlin),
+                    "errors": [{"line": 1, "column": 1, "rule": "standard:final-newline", "message": "newline"}],
+                }
+            ]
+        ),
+        root=tmp_path,
+    )[0]
+    detekt = parse_sarif(
+        json.dumps(
+            {
+                "runs": [
+                    {
+                        "results": [
+                            {
+                                "ruleId": "GlobalCoroutineUsage",
+                                "level": "error",
+                                "message": {"text": "Do not use GlobalScope"},
+                                "locations": [
+                                    {
+                                        "physicalLocation": {
+                                            "artifactLocation": {"uri": str(kotlin)},
+                                            "region": {"startLine": 1, "startColumn": 1},
+                                        }
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                ]
+            }
+        ),
+        root=tmp_path,
+    )[0]
+    mobsf = parse_mobsfscan(
+        json.dumps(
+            {
+                "errors": [],
+                "results": [
+                    {
+                        "check_id": "ios_insecure_random",
+                        "path": str(swift),
+                        "start": {"line": 1, "col": 1},
+                        "end": {"line": 1, "col": 2},
+                        "extra": {"severity": "ERROR", "message": "Insecure random source"},
+                    }
+                ],
+            }
+        ),
+        root=tmp_path,
+    )[0]
+
+    assert (swiftformat.source, swiftformat.code, swiftformat.location.path) == (
+        "swiftformat",
+        "emptyBraces",
+        "Screen.swift",
+    )
+    assert (swiftlint.source, swiftlint.code, swiftlint.severity) == (
+        "swiftlint",
+        "redundant_final",
+        Severity.WARNING,
+    )
+    assert (ktlint.source, ktlint.code) == ("ktlint", "standard:final-newline")
+    assert (detekt.source, detekt.code, detekt.severity) == (
+        "detekt",
+        "GlobalCoroutineUsage",
+        Severity.ERROR,
+    )
+    assert (mobsf.source, mobsf.code, mobsf.severity) == (
+        "mobsfscan",
+        "ios_insecure_random",
+        Severity.ERROR,
+    )
+
+
+def test_mobsfscan_tolerates_known_swift_preview_partial_parsing_with_exact_coverage(tmp_path: Path) -> None:
+    swift = tmp_path / "ContentView.swift"
+    swift.write_text("#Preview { ContentView() }\n", encoding="utf-8")
+    payload: dict[str, object] = {
+        "errors": [{"level": "warn", "type": ["PartialParsing", []], "message": "unsupported Swift macro"}],
+        "results": [],
+        "paths": {"scanned": [str(swift)]},
+    }
+
+    assert parse_mobsfscan(json.dumps(payload), root=tmp_path, expected_paths=(str(swift),)) == ()
+
+
+def test_mobsfscan_rejects_partial_parsing_without_proven_exact_coverage(tmp_path: Path) -> None:
+    payload: dict[str, object] = {
+        "errors": [{"level": "warn", "type": ["PartialParsing", []], "message": "unsupported Swift macro"}],
+        "results": [],
+    }
+
+    with pytest.raises(ValueError, match="Semgrep engine reported 1 error"):
+        parse_mobsfscan(json.dumps(payload), root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param({"level": "error", "type": ["PartialParsing", [0]]}, id="error-level"),
+        pytest.param({"level": "warn", "type": ["InvalidRuleSchema", [0]]}, id="unknown-warning"),
+        pytest.param({"level": "warn", "type": "PartialParsing"}, id="malformed-type"),
+    ],
+)
+def test_mobsfscan_rejects_fatal_or_malformed_semgrep_errors(tmp_path: Path, error: object) -> None:
+    with pytest.raises(ValueError, match="Semgrep engine reported 1 error"):
+        parse_mobsfscan(json.dumps({"errors": [error], "results": []}), root=tmp_path)
+
+
+def test_mobile_capabilities_run_only_for_mobile_files(tmp_path: Path) -> None:
+    swift = tmp_path / "Screen.swift"
+    swift.write_text("struct Screen {}\n", encoding="utf-8")
+    kotlin = tmp_path / "Screen.kt"
+    kotlin.write_text("class Screen\n", encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+    detekt_reports: list[Path] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        command = tuple(argv)
+        seen.append(command)
+        executable = command[0]
+        if executable == "swiftformat":
+            return ProcessOutput(0, "", "")
+        if executable in {"swiftlint", "ktlint"}:
+            return ProcessOutput(0, "[]", "")
+        if executable == "detekt":
+            detekt_reports.append(_write_detekt_report(command))
+            return ProcessOutput(0, "stdout is not the Detekt protocol", "")
+        if executable == "semgrep":
+            return ProcessOutput(
+                0,
+                json.dumps({"errors": [], "paths": {"scanned": [str(swift), str(kotlin)]}, "results": []}),
+                "",
+            )
+        raise AssertionError(command)
+
+    reports = analyze_external(
+        [str(swift), str(kotlin)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"}),
+    )
+
+    assert {report.name for report in reports} == {"swiftformat", "swiftlint", "ktlint", "detekt", "mobsfscan"}
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    assert {command[0] for command in seen} == {"swiftformat", "swiftlint", "ktlint", "detekt", "semgrep"}
+    security_command = next(command for command in seen if command[0] == "semgrep")
+    assert security_command[1:3] == ("scan", "--metrics=off")
+    assert "--disable-nosem" in security_command
+    assert "--no-git-ignore" in security_command
+    assert "--max-target-bytes=2097152" in security_command
+    assert security_command[security_command.index("--") + 1 :] == (str(kotlin), str(swift))
+    assert security_command[security_command.index("--config") + 1] == "mobsfscan-rules"
+    assert "--severity" in security_command
+    assert "mobsfscan" not in security_command
+    assert len(detekt_reports) == 1
+    assert not detekt_reports[0].exists()
+    assert not detekt_reports[0].parent.exists()
+
+
+def test_mobile_analyzers_use_manifest_destinations_and_pinned_mintfile(tmp_path: Path) -> None:
+    ios = tmp_path / "ios"
+    android = tmp_path / "android"
+    ios.mkdir()
+    android.mkdir()
+    swift = ios / "Screen.swift"
+    swift.write_text("struct Screen {}\n", encoding="utf-8")
+    kotlin = android / "Screen.kt"
+    kotlin.write_text("class Screen\n", encoding="utf-8")
+    swift_config = ios / ".swiftlint.yml"
+    swift_config.write_text("strict: true\n", encoding="utf-8")
+    format_config = ios / ".swiftformat"
+    format_config.write_text("--swiftversion 6.0\n", encoding="utf-8")
+    detekt_config = android / "config/detekt/detekt.yml"
+    detekt_config.parent.mkdir(parents=True)
+    detekt_config.write_text("build:\n  maxIssues: 0\n", encoding="utf-8")
+    editorconfig = android / ".editorconfig"
+    editorconfig.write_text("root = true\n", encoding="utf-8")
+    mintfile = tmp_path / "Mintfile.mobile.strict"
+    mintfile.write_text("realm/SwiftLint@0.65.0\n", encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'schema = 4\nbundle = "1.2.3"\n[dest]\npython = "."\ntypescript = "."\nswift = "ios"\nkotlin = "android"\n',
+        encoding="utf-8",
+    )
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        command = tuple(argv)
+        seen.append(command)
+        if "swiftformat" in command:
+            return ProcessOutput(0, "", "")
+        if "swiftlint" in command or command[0] == "ktlint":
+            return ProcessOutput(0, "[]", "")
+        if command[0] == "detekt":
+            _write_detekt_report(command)
+            return ProcessOutput(0, "", "")
+        raise AssertionError(command)
+
+    reports = analyze_external(
+        [str(swift), str(kotlin)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"swiftformat", "swiftlint", "ktlint", "detekt"}),
+    )
+
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    mint_commands = [command for command in seen if command[0] == "mint"]
+    assert mint_commands
+    assert all(command[:5] == ("mint", "run", "--silent", "--mintfile", str(mintfile)) for command in mint_commands)
+    assert any(
+        ("--config", str(swift_config)) == (command[-3], command[-2]) for command in seen if "swiftlint" in command
+    )
+    assert any(str(format_config) in command for command in seen if "swiftformat" in command)
+    assert all("--" not in command for command in seen if "swiftformat" in command)
+    assert any(f"--editorconfig={editorconfig}" in command for command in seen if command[0] == "ktlint")
+    assert all("--log-level=none" in command for command in seen if command[0] == "ktlint")
+    assert any(str(detekt_config) in command for command in seen if command[0] == "detekt")
+    detekt_command = next(command for command in seen if command[0] == "detekt")
+    assert detekt_command[detekt_command.index("--input") + 1] == str(kotlin)
+    report_argument = detekt_command[detekt_command.index("--report") + 1]
+    assert report_argument.startswith("sarif:")
+    assert report_argument != "sarif:/dev/stdout"
+
+
+def test_mobile_analyzers_ignore_same_language_files_outside_manifest_destinations(tmp_path: Path) -> None:
+    ios = tmp_path / "ios"
+    android = tmp_path / "android"
+    server = tmp_path / "server"
+    ios.mkdir()
+    android.mkdir()
+    server.mkdir()
+    included_swift = ios / "Screen.swift"
+    included_kotlin = android / "Screen.kt"
+    excluded_swift = server / "Service.swift"
+    excluded_kotlin = server / "Service.kt"
+    for path in (included_swift, included_kotlin, excluded_swift, excluded_kotlin):
+        path.write_text("// source\n", encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        manifest.Manifest(
+            version="1.2.3",
+            configs=("swiftformat", "ktlint", "mobile-security"),
+            python_dest=".",
+            typescript_dest=".",
+            swift_dest="ios",
+            kotlin_dest="android",
+        ).render(),
+        encoding="utf-8",
+    )
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        command = tuple(argv)
+        seen.append(command)
+        if "swiftformat" in command:
+            return ProcessOutput(0, "", "")
+        if command[0] == "ktlint":
+            return ProcessOutput(0, "[]", "")
+        if command[0] == "semgrep":
+            return ProcessOutput(
+                0,
+                json.dumps(
+                    {
+                        "errors": [],
+                        "paths": {"scanned": [str(included_kotlin), str(included_swift)]},
+                        "results": [],
+                    }
+                ),
+                "",
+            )
+        raise AssertionError(command)
+
+    reports = analyze_external(
+        [str(included_swift), str(included_kotlin), str(excluded_swift), str(excluded_kotlin)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"swiftformat", "ktlint", "mobile-security"}),
+    )
+
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    flattened = {argument for command in seen for argument in command}
+    assert str(included_swift) in flattened
+    assert str(included_kotlin) in flattened
+    assert str(excluded_swift) not in flattened
+    assert str(excluded_kotlin) not in flattened
+
+
+def test_mobsfscan_requires_exact_selected_file_coverage(tmp_path: Path) -> None:
+    first = tmp_path / "First.swift"
+    second = tmp_path / "Second.swift"
+    first.touch()
+    second.touch()
+    payload = json.dumps({"errors": [], "paths": {"scanned": [str(first)]}, "results": []})
+
+    with pytest.raises(ValueError, match=r"coverage mismatch: expected 2 selected file.*scanned 1"):
+        parse_mobsfscan(payload, root=tmp_path, expected_paths=(str(first), str(second)))
+
+
+def test_detekt_fails_closed_when_the_sarif_report_exceeds_the_output_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kotlin = tmp_path / "Screen.kt"
+    kotlin.write_text("class Screen\n", encoding="utf-8")
+    monkeypatch.setattr(external_module, "_MAX_STDOUT_BYTES", 8)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        _write_detekt_report(argv, '{"runs":[]}')
+        return ProcessOutput(0, "", "")
+
+    reports = analyze_external(
+        [str(kotlin)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"detekt"}),
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == "tool-failure"
+    assert "exceeded 8 bytes" in reports[0].issues[0].message
+
+
+def test_managed_mobsf_config_translates_strict_filters_and_exclusions(tmp_path: Path) -> None:
+    config = tmp_path / ".mobsf"
+    config.write_text(
+        "- severity-filter: [WARNING, ERROR]\n"
+        "  ignore-rules: []\n"
+        "  ignore-paths: [vendor]\n"
+        "  ignore-filenames: [Generated.swift]\n"
+        "  severity-overrides: {}\n",
+        encoding="utf-8",
+    )
+
+    argv = external_module._mobsfscan_argv(Path("rules"), config=config)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    assert argv[:2] == ("semgrep", "scan")
+    assert argv.count("--severity") == 2
+    assert "--exclude-rule" not in argv
+    assert argv.count("--exclude") == 2
+
+
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        ("- severity-filter: [ERROR]\n  ignore-rules: []\n", "must contain both WARNING and ERROR"),
+        ("- severity-filter: [WARNING, ERROR]\n  ignore-rules: [ios_insecure_random]\n", "must remain empty"),
+    ],
+)
+def test_managed_mobsf_config_cannot_weaken_the_strict_rule_floor(config: str, message: str, tmp_path: Path) -> None:
+    path = tmp_path / ".mobsf"
+    path.write_text(config, encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        external_module._mobsfscan_argv(Path("rules"), config=path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_managed_swift_commands_ignore_repository_mintfiles(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "Mintfile.mobile.strict").write_text("attacker/tool@main\n", encoding="utf-8")
+
+    def managed_command(name: str) -> tuple[str, ...]:
+        assert name == "mint"
+        return ("/managed/mint",)
+
+    monkeypatch.setattr(external_module.mobile_tools, "command", managed_command)
+
+    command = external_module._swift_command(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path, "swiftlint", managed=True
+    )
+
+    mintfile = Path(command[command.index("--mintfile") + 1])
+    assert command[:3] == ("/managed/mint", "run", "--silent")
+    assert mintfile.name == "Mintfile.mobile.strict"
+    assert mintfile != tmp_path / "Mintfile.mobile.strict"
+    assert "attacker/tool" not in mintfile.read_text(encoding="utf-8")
+
+
+def test_mobile_config_parse_failures_return_a_failed_tool_report(tmp_path: Path) -> None:
+    source = tmp_path / "Screen.swift"
+    source.write_text("internal struct Screen {}\n", encoding="utf-8")
+    (tmp_path / ".mobsf").write_text("[unterminated", encoding="utf-8")
+    invoked = False
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal invoked
+        _ = argv
+        assert cwd == tmp_path
+        invoked = True
+        return ProcessOutput(0, "", "")
+
+    reports = analyze_external(
+        [str(source)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"mobile-security"}),
+    )
+
+    assert not invoked
+    assert reports[-1].name == "mobile-tools"
+    assert reports[-1].completion is Completion.FAILED
+    assert reports[-1].issues[0].kind == "provisioning-failure"
+
+
+def test_managed_mobsf_config_rejects_symlinks_and_oversized_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "outside.yml"
+    target.write_text("- severity-filter: [ERROR]\n", encoding="utf-8")
+    linked = tmp_path / ".mobsf"
+    linked.symlink_to(target)
+
+    with pytest.raises(OSError, match="not a regular file"):
+        external_module._mobsfscan_argv(Path("rules"), config=linked)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+
+    oversized = tmp_path / "mobsf.strict.yml"
+    oversized.write_text("12345", encoding="utf-8")
+    monkeypatch.setattr(external_module, "_MAX_MOBILE_CONFIG_BYTES", 4)
+    with pytest.raises(external_module.OutputLimitError, match="exceeds 4 bytes"):
+        external_module._mobsfscan_argv(Path("rules"), config=oversized)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
 
 def test_shellcheck_json_preserves_native_rule_and_warning_rollout(tmp_path: Path) -> None:
@@ -1404,8 +1877,8 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
         calls.append((name, path))
         return str(tmp_path / "bin" / name) if path is not None else f"/system/{name}"
 
-    monkeypatch.setattr(external_module.sys, "executable", str(interpreter))  # pyright: ignore[reportPrivateLocalImportUsage]
-    monkeypatch.setattr(external_module.shutil, "which", which)  # pyright: ignore[reportPrivateLocalImportUsage]
+    monkeypatch.setattr(sys, "executable", str(interpreter))
+    monkeypatch.setattr(shutil, "which", which)
 
     assert external_module._analyzer_executable("basedpyright") == str(tmp_path / "bin" / "basedpyright")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     assert calls == [("basedpyright", str(tmp_path / "bin"))]

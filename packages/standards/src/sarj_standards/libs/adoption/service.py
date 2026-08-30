@@ -13,8 +13,12 @@ from . import lifecycle, manifest, scaffold, transaction
 from .configs import (
     APPLICATION_CONFIG_NAMES,
     CONFIG_NAMES,
+    KOTLIN_CONFIGS,
+    MOBILE_COMPANION_CONFIGS,
+    MOBILE_CONFIGS,
     PYTHON_COMPANION_CONFIGS,
     PYTHON_CONFIGS,
+    SWIFT_CONFIGS,
     TYPESCRIPT_COMPANION_CONFIGS,
 )
 
@@ -48,6 +52,8 @@ class SyncOutcome(StrEnum):
 class _DestinationKind(StrEnum):
     DEFAULT = "default"
     PYTHON = "python"
+    SWIFT = "swift"
+    KOTLIN = "kotlin"
     TYPESCRIPT = "typescript"
 
 
@@ -117,6 +123,8 @@ def plan_sync(
     configs: Sequence[str] | None = None,
     python_dest: str | None = None,
     typescript_dest: str | None = None,
+    swift_dest: str | None = None,
+    kotlin_dest: str | None = None,
     profile: manifest.Profile | None = None,
 ) -> SyncPlan:
     resolved = root.resolve()
@@ -137,6 +145,10 @@ def plan_sync(
                         recorded = adopted.typescript_dest
                     case _DestinationKind.PYTHON:
                         recorded = adopted.python_dest
+                    case _DestinationKind.SWIFT:
+                        recorded = adopted.swift_dest
+                    case _DestinationKind.KOTLIN:
+                        recorded = adopted.kotlin_dest
                     case _DestinationKind.DEFAULT:
                         pass
             requested = override or (str(resolved) if recorded is None else str(resolved / recorded))
@@ -155,6 +167,12 @@ def plan_sync(
             base = destination(_DestinationKind.TYPESCRIPT, typescript_dest)
         elif name in PYTHON_CONFIGS:
             base = destination(_DestinationKind.PYTHON, python_dest)
+        elif name in SWIFT_CONFIGS:
+            base = destination(_DestinationKind.SWIFT, swift_dest)
+        elif name in KOTLIN_CONFIGS:
+            base = destination(_DestinationKind.KOTLIN, kotlin_dest)
+        elif name in MOBILE_CONFIGS:
+            base = destination(_DestinationKind.DEFAULT, None)
         else:
             base = destination(_DestinationKind.DEFAULT, None)
         targets.append(SyncTarget(name, CONFIGS_DIR / source_name, base / target_name))
@@ -176,6 +194,16 @@ def plan_sync(
                         base / companion_target,
                     )
                 )
+    if set(selected) & (SWIFT_CONFIGS | KOTLIN_CONFIGS | MOBILE_CONFIGS):
+        base = destination(_DestinationKind.DEFAULT, None)
+        for companion, (companion_source, companion_target) in MOBILE_COMPANION_CONFIGS.items():
+            targets.append(
+                SyncTarget(
+                    companion,
+                    CONFIGS_DIR / companion_source,
+                    base / companion_target,
+                )
+            )
     return SyncPlan(resolved, selected_profile, tuple(targets))
 
 
@@ -193,6 +221,8 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     configs: Sequence[str] | None = None,
     python_dest: str | None = None,
     typescript_dest: str | None = None,
+    swift_dest: str | None = None,
+    kotlin_dest: str | None = None,
     profile: manifest.Profile | None = None,
     hook_manager: manifest.HookManager | None = None,
 ) -> InitPlan:
@@ -214,16 +244,29 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         if adopted is not None and any(name in adopted.configs for name in manifest.TYPESCRIPT_CONFIGS)
         else None
     )
+    selected_swift_dest = swift_dest or (
+        adopted.swift_dest
+        if adopted is not None and any(name in adopted.configs for name in manifest.SWIFT_CONFIGS)
+        else None
+    )
+    selected_kotlin_dest = kotlin_dest or (
+        adopted.kotlin_dest
+        if adopted is not None and any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
+        else None
+    )
     selected_hook_manager = hook_manager or (adopted.hook_manager if adopted is not None else None)
     scaffold_plan = scaffold.build_plan(
         resolved,
         force=force,
         update_manifest=any(
-            option is not None for option in (configs, python_dest, typescript_dest, profile, hook_manager)
+            option is not None
+            for option in (configs, python_dest, typescript_dest, swift_dest, kotlin_dest, profile, hook_manager)
         ),
         configs=selected_configs,
         python_dest=selected_python_dest,
         typescript_dest=selected_typescript_dest,
+        swift_dest=selected_swift_dest,
+        kotlin_dest=selected_kotlin_dest,
         profile=selected_profile,
         hook_manager=selected_hook_manager,
     )
@@ -231,11 +274,15 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         return InitPlan(scaffold_plan, None, ())
     python_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.python_root)
     typescript_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.typescript_root)
+    swift_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.swift_root)
+    kotlin_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.kotlin_root)
     sync_plan = plan_sync(
         resolved,
         configs=scaffold_plan.configs,
         python_dest=python_target,
         typescript_dest=typescript_target,
+        swift_dest=swift_target,
+        kotlin_dest=kotlin_target,
         profile=scaffold_plan.profile,
     )
     if not force and not already_adopted:
@@ -382,11 +429,23 @@ def _apply_planned_sync(plan: SyncPlan, preconditions: dict[Path, bytes | None])
     return SyncResult(records=tuple(records), check=False)
 
 
-def init_destination(root: Path, name: str, *, python_dest: str, typescript_dest: str) -> Path:
+def init_destination(
+    root: Path,
+    name: str,
+    *,
+    python_dest: str,
+    typescript_dest: str,
+    swift_dest: str = ".",
+    kotlin_dest: str = ".",
+) -> Path:
     if name == "eslint":
         base = root / typescript_dest
     elif name in PYTHON_CONFIGS:
         base = root / python_dest
+    elif name in SWIFT_CONFIGS:
+        base = root / swift_dest
+    elif name in KOTLIN_CONFIGS:
+        base = root / kotlin_dest
     else:
         base = root
     return base / CONFIG_NAMES[name][1]

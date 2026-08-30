@@ -281,7 +281,7 @@ class TestSafety:
             config.parent.mkdir(parents=True, exist_ok=True)
             config.write_text("export default [];\n", encoding="utf-8")
         (tmp_path / MANIFEST).write_text(
-            'schema = 3\nbundle = "7.1.0"\n\n[dest]\npython = "backend"\ntypescript = "typescript"\n',
+            'schema = 4\nbundle = "7.1.0"\n\n[dest]\npython = "backend"\ntypescript = "typescript"\n',
             encoding="utf-8",
         )
         allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
@@ -844,7 +844,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         repo.mkdir()
         manifest = repo / MANIFEST
         eslint = repo / "eslint.config.mjs"
-        manifest.write_text('schema = 3\nbundle = "5.8.0"\n', encoding="utf-8")
+        manifest.write_text('schema = 4\nbundle = "5.8.0"\n', encoding="utf-8")
         eslint.write_text("export default [];\n", encoding="utf-8")
         subprocess.run(("git", "init", "-b", "main"), cwd=repo, check=True, capture_output=True)
         subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=repo, check=True)
@@ -900,7 +900,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                     live_sha = "c" * 40 if target_moves else base_sha
                     return subprocess.CompletedProcess(rendered, 0, live_base_ref_payload(live_sha), "")
                 if "update" in rendered:
-                    manifest.write_text('schema = 3\nbundle = "5.8.1"\n', encoding="utf-8")
+                    manifest.write_text('schema = 4\nbundle = "5.8.1"\n', encoding="utf-8")
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[-1:] == ("doctor",):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
@@ -1222,7 +1222,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         backend.mkdir()
         (backend / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "6.0.4"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
+            'schema = 4\nbundle = "6.0.4"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
             encoding="utf-8",
         )
         shim_directory = tmp_path / "outside" / "bin"
@@ -1251,7 +1251,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         backend.mkdir()
         (backend / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "6.0.4"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
+            'schema = 4\nbundle = "6.0.4"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
             encoding="utf-8",
         )
         runner = FakeRunner([(7, "registry unavailable")])
@@ -1264,7 +1264,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         backend.mkdir()
         (backend / "uv.lock").write_text("version = 1\n", encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "5.16.5"\n\n[dest]\npython = "backend"\ntypescript = "."\n\n[ci]\n'
+            'schema = 4\nbundle = "5.16.5"\n\n[dest]\npython = "backend"\ntypescript = "."\n\n[ci]\n'
             'bootstrap = ["npm --prefix frontend run generate:api", "npm --prefix frontend run typegen"]\n',
             encoding="utf-8",
         )
@@ -1314,7 +1314,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         backend.mkdir()
         (backend / "uv.lock").write_text("version = 1\n", encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "5.16.5"\n\n[dest]\npython = "backend"\ntypescript = "."\n\n'
+            'schema = 4\nbundle = "5.16.5"\n\n[dest]\npython = "backend"\ntypescript = "."\n\n'
             '[ci]\nbootstrap = ["generate"]\n',
             encoding="utf-8",
         )
@@ -1332,7 +1332,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         (backend / "uv.lock").write_text("version = 1\n", encoding="utf-8")
         (backend / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "6.0.2"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
+            'schema = 4\nbundle = "6.0.2"\n\n[dest]\npython = "backend"\ntypescript = "."\n',
             encoding="utf-8",
         )
         runner = FakeRunner([(0, "synced")])
@@ -1357,7 +1357,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
     def test_stops_consumer_bootstrap_at_first_failure(self, tmp_path: Path) -> None:
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "5.16.5"\n\n[ci]\nbootstrap = ["first", "second"]\n',
+            'schema = 4\nbundle = "5.16.5"\n\n[ci]\nbootstrap = ["first", "second"]\n',
             encoding="utf-8",
         )
         runner = FakeRunner([(9, "failed")])
@@ -1380,7 +1380,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         fixture.mkdir(parents=True)
         (fixture / "package-lock.json").write_text("{}\n", encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript/dashboard"\n',
+            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript/dashboard"\n',
             encoding="utf-8",
         )
         runner = FakeRunner([(0, "installed")])
@@ -1409,7 +1409,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         secondary.mkdir()
         (secondary / "package-lock.json").write_text("{}\n", encoding="utf-8")
         (tmp_path / ".sarj-standards.toml").write_text(
-            'schema = 3\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript"\n\n'
+            'schema = 4\nbundle = "6.1.7"\n\n[dest]\npython = "."\ntypescript = "typescript"\n\n'
             '[ci]\nbootstrap = ["must-not-run"]\n',
             encoding="utf-8",
         )

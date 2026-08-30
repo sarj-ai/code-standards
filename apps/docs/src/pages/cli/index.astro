@@ -34,6 +34,36 @@ const workflow = [
     {workflow.map(([command, description]) => <li><code>{command}</code><span>{description}</span></li>)}
   </ol>
 
+  <section class="command-block" aria-labelledby="mobile-projects">
+    <div>
+      <h2 id="mobile-projects">Mobile projects</h2>
+      <p>
+        Swift and Kotlin checks are fail-closed and opt in only when setup finds a real Apple mobile project
+        (iOS, tvOS, watchOS, or visionOS) or an applied Android/Kotlin Multiplatform mobile plugin. Server-side
+        Swift, JVM-only Kotlin, unused version-catalog entries, dependency trees, and generated output do not
+        activate the mobile baseline.
+      </p>
+      <p>
+        The generated pre-commit or Lefthook command checks staged <code>.swift</code>, <code>.kt</code>, and
+        <code>.kts</code> files inside the recorded mobile destination. Swift runs SwiftFormat, SwiftLint, and the
+        MobSF security rules; Kotlin runs ktlint, Detekt, and the same security layer. Multiple independent mobile
+        roots fail setup until one reviewed owner is selected with <code>--swift-dest</code> or
+        <code>--kotlin-dest</code>.
+      </p>
+      <p>
+        Swift checks require macOS and Xcode command-line tools. Kotlin checks require Java. The first run downloads
+        version-, commit-, and checksum-pinned tools plus 51 checksum-pinned MobSF rules and may take several minutes;
+        generated mobile CI allows 60 minutes. Later runs reuse the managed cache. Semgrep parse warnings and incomplete file coverage
+        fail the security check instead of being reported as clean.
+      </p>
+      <p>
+        The fast Detekt pre-commit tier is source-only. Projects that use Compose, public-ABI, or type-resolution
+        Detekt plugins should keep their Gradle <code>detektMain</code> and Android Lint tasks as an additional CI
+        gate; Standards does not claim those project-aware checks ran from a standalone file invocation.
+      </p>
+    </div>
+  </section>
+
   <section class="command-block" aria-labelledby="ci-bootstrap">
     <div>
       <h2 id="ci-bootstrap">Generated analysis inputs</h2>

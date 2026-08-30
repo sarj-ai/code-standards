@@ -253,6 +253,45 @@ def test_mixed_files_are_grouped_by_tool(
     )
 
 
+def test_mobile_sources_are_grouped_for_staged_analyzers(tmp_path: Path) -> None:
+    swift = tmp_path / "AccountView.swift"
+    kotlin = tmp_path / "AccountView.kt"
+    gradle_script = tmp_path / "build.gradle.kts"
+    for source in (swift, kotlin, gradle_script):
+        source.touch()
+
+    grouped = runner.group_paths([str(swift), str(kotlin), str(gradle_script)])
+
+    assert grouped.swift == [str(swift)]
+    assert grouped.kotlin == [str(kotlin), str(gradle_script)]
+    assert runner.accepts_hook_path(swift)
+    assert runner.accepts_hook_path(kotlin)
+    assert runner.accepts_hook_path(gradle_script)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Model.generated.swift", "Model.gen.kt", "BuildConfig.generated.kts"],
+)
+def test_generated_mobile_sources_are_not_routed_or_hooked(name: str, tmp_path: Path) -> None:
+    source = tmp_path / name
+    source.touch()
+
+    assert runner.group_paths([str(source)]) == runner.GroupedPaths()
+    assert not runner.accepts_hook_path(source)
+
+
+@pytest.mark.parametrize("relative", ["build/generated/Model.kt", "Pods/SDK/Model.swift", "vendor/Model.kt"])
+def test_mobile_sources_in_ignored_directories_are_explicit_only_and_not_hooked(relative: str, tmp_path: Path) -> None:
+    source = tmp_path / relative
+    source.parent.mkdir(parents=True)
+    source.write_text("// generated or vendored\n", encoding="utf-8")
+    grouped = runner.group_paths([str(source)])
+    selected = grouped.kotlin if source.suffix == ".kt" else grouped.swift
+    assert selected == [str(source)]
+    assert not runner.accepts_hook_path(source, root=tmp_path)
+
+
 def test_symlink_input_is_rejected(tmp_path: Path) -> None:
     target = tmp_path / "target.py"
     target.write_text('"""Target."""\n')

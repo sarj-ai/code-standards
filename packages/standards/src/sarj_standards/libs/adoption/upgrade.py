@@ -16,7 +16,7 @@ from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
 
 from . import doctor, hooks, lifecycle, manifest, packagemanager, retired_suppressions, scaffold, transaction, uvtool
-from .configs import PYTHON_COMPANION_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
+from .configs import MOBILE_COMPANION_CONFIGS, PYTHON_COMPANION_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
 
 
 if TYPE_CHECKING:
@@ -59,6 +59,11 @@ _CONFIG_SOURCES = MappingProxyType(
         "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
         "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
         "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
+        "swiftformat": ("swiftformat.strict", "swiftformat.strict", ".swiftformat", "swift"),
+        "swiftlint": ("swiftlint.strict.yml", "swiftlint.strict.yml", ".swiftlint.yml", "swift"),
+        "ktlint": ("ktlint.strict.editorconfig", "ktlint.strict.editorconfig", ".editorconfig", "kotlin"),
+        "detekt": ("detekt.strict.yml", "detekt.strict.yml", "config/detekt/detekt.yml", "kotlin"),
+        "mobile-security": ("mobsf.strict.yml", "mobsf.strict.yml", ".mobsf", "root"),
         "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
         "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
         "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
@@ -122,6 +127,8 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         typescript_dest=(
             adopted.typescript_dest if any(name in adopted.configs for name in manifest.TYPESCRIPT_CONFIGS) else None
         ),
+        swift_dest=adopted.swift_dest if any(name in adopted.configs for name in manifest.SWIFT_CONFIGS) else None,
+        kotlin_dest=adopted.kotlin_dest if any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS) else None,
     )
     scaffold_plan = scaffold.build_plan(
         root,
@@ -129,6 +136,8 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         configs=adopted.configs,
         python_dest=adopted.python_dest if detected_ecosystems.python else None,
         typescript_dest=adopted.typescript_dest if detected_ecosystems.typescript else None,
+        swift_dest=adopted.swift_dest if detected_ecosystems.swift else None,
+        kotlin_dest=adopted.kotlin_dest if detected_ecosystems.kotlin else None,
         profile=adopted.profile,
         hook_manager=adopted.hook_manager,
         allow_existing_nested_eslint=True,
@@ -189,6 +198,8 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         "root": root,
         "python": (root / adopted.python_dest).resolve(),
         "typescript": (root / adopted.typescript_dest).resolve(),
+        "swift": (root / adopted.swift_dest).resolve(),
+        "kotlin": (root / adopted.kotlin_dest).resolve(),
     }
     config_writes: list[tuple[Path, Path]] = []
     for name in adopted.configs:
@@ -218,6 +229,19 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         for companion_name, (companion_source, companion_target) in companions.items():
             companion_source_path = CONFIGS_DIR / companion_source
             companion_target_path = destination / companion_target
+            if (
+                not companion_target_path.is_file()
+                or companion_target_path.read_bytes() != companion_source_path.read_bytes()
+            ):
+                changes.append(Change(companion_target_path, f"sync {companion_name} companion config"))
+                config_writes.append((companion_source_path, companion_target_path))
+
+    if set(adopted.configs) & (
+        set(manifest.SWIFT_CONFIGS) | set(manifest.KOTLIN_CONFIGS) | set(manifest.MOBILE_CONFIGS)
+    ):
+        for companion_name, (companion_source, companion_target) in MOBILE_COMPANION_CONFIGS.items():
+            companion_source_path = CONFIGS_DIR / companion_source
+            companion_target_path = root / companion_target
             if (
                 not companion_target_path.is_file()
                 or companion_target_path.read_bytes() != companion_source_path.read_bytes()
@@ -319,6 +343,8 @@ def _identical_config_mirrors(root: Path, target: Path) -> tuple[Path, ...]:
 def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str]) -> scaffold.Ecosystems:
     python = ecosystems.python and any(name in manifest.PYTHON_CONFIGS for name in configs)
     typescript = ecosystems.typescript and any(name in manifest.TYPESCRIPT_CONFIGS for name in configs)
+    swift = ecosystems.swift and any(name in manifest.SWIFT_CONFIGS for name in configs)
+    kotlin = ecosystems.kotlin and any(name in manifest.KOTLIN_CONFIGS for name in configs)
     return scaffold.Ecosystems(
         python=python,
         typescript=typescript,
@@ -327,6 +353,10 @@ def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str])
         typescript_install_root=ecosystems.typescript_install_root if typescript else None,
         client=ecosystems.client,
         yarn=ecosystems.yarn,
+        swift=swift,
+        kotlin=kotlin,
+        swift_root=ecosystems.swift_root if swift else None,
+        kotlin_root=ecosystems.kotlin_root if kotlin else None,
     )
 
 

@@ -51,6 +51,30 @@ def test_sync_service_reports_current_config_as_ok_without_rewriting(tmp_path: P
     assert plan.targets[0].destination.stat().st_mtime_ns == before
 
 
+def test_sync_service_routes_mobile_configs_to_their_language_roots(tmp_path: Path) -> None:
+    swift = tmp_path / "ios"
+    kotlin = tmp_path / "android"
+    swift.mkdir()
+    kotlin.mkdir()
+
+    plan = plan_sync(
+        tmp_path,
+        configs=("swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"),
+        swift_dest="ios",
+        kotlin_dest="android",
+    )
+
+    assert {target.name: target.destination.relative_to(tmp_path).as_posix() for target in plan.targets} == {
+        "swiftformat": "ios/.swiftformat",
+        "swiftlint": "ios/.swiftlint.yml",
+        "ktlint": "android/.editorconfig",
+        "detekt": "android/config/detekt/detekt.yml",
+        "mobile-security": ".mobsf",
+        "mobile-mintfile": "Mintfile.mobile.strict",
+        "mobile-tool-versions": "mobile-tools.versions.json",
+    }
+
+
 def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> None:
     _python_project(tmp_path)
     plan = plan_init(tmp_path)
