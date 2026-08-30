@@ -594,6 +594,10 @@ const publicMethodNames = (
   for (const member of body.body) {
     if (member.type === AST_NODE_TYPES.PropertyDefinition) {
       if (member.static || member.accessibility === "private" || member.accessibility === "protected") continue;
+      // ECMAScript #private fields have no TypeScript accessibility modifier.
+      // A function-valued #field is still implementation detail and must not
+      // become the synthetic public surface member `…`.
+      if (member.key.type === AST_NODE_TYPES.PrivateIdentifier) continue;
       if (
         member.value?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
         member.value?.type !== AST_NODE_TYPES.FunctionExpression &&

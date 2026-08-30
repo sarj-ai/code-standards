@@ -2,7 +2,7 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 import sarj, { STRICT_RULES } from "./dist/index.js";
-import { MODULE_CONSTANT_NAMING_OPTIONS } from "./eslint.naming-options.mjs";
+import { MODULE_CONSTANT_NAMING_OPTIONS } from "./module-constant-naming-options.mjs";
 
 const ALL_SARJ_RULES = Object.fromEntries(
   Object.keys(sarj.rules)

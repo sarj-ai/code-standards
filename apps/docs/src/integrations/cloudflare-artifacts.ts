@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import type { AstroIntegration } from 'astro';
 
@@ -111,7 +111,7 @@ function inlineScriptHashes(documents: readonly string[]): readonly string[] {
   for (const document of documents) {
     const pattern = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gu;
     for (const match of document.matchAll(pattern)) {
-      hashes.add(`'sha256-${createHash('sha256').update(match[1]).digest('base64')}'`);
+      hashes.add(`'sha256-${hash('sha256', match[1], 'base64')}'`);
     }
   }
   return [...hashes].sort();

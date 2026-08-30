@@ -27,6 +27,7 @@ RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
   valid: [
     PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[0].files[0].source,
     "class Service { public run() {} protected extend() {} }",
+    "class Service { private constructor() {} static create() { return new Service(); } }",
     "abstract class Service { abstract privateMethod(): void }",
     "class Service { private ['run']() {} }",
     "class Service { @logged private run() {} }",

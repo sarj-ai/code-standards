@@ -2,7 +2,7 @@ import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
-import { MODULE_CONSTANT_NAMING_OPTIONS } from "./eslint.naming-options.mjs";
+import { MODULE_CONSTANT_NAMING_OPTIONS } from "./module-constant-naming-options.mjs";
 
 export default defineConfig(
   { ignores: ["dist/**", "eslint.dogfood.config.mjs", "tests/fixtures/**"] },

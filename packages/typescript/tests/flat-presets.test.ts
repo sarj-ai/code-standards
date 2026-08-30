@@ -123,7 +123,15 @@ describe("configs.recommended / configs.strict are flat config", () => {
         return severity !== "error";
       })
       .map(([rule]) => rule);
-    expect(ADVISORY_RULES).toEqual(["@sarj/require-pascal-case-zod-schema-name"]);
-    expect(nonErrors).toEqual([...ADVISORY_RULES]);
+    expect(ADVISORY_RULES).toEqual([
+      "@sarj/prefer-named-complex-return-type",
+      "@sarj/prefer-node-crypto-hash",
+      "@sarj/prefer-shared-zod-enum",
+      "@sarj/prefer-switch-for-repeated-equality",
+      "@sarj/require-pascal-case-zod-schema-name",
+      "@sarj/require-sql-access-class",
+      "@sarj/sole-export-matches-filename",
+    ]);
+    expect(nonErrors.toSorted()).toEqual([...ADVISORY_RULES]);
   });
 });

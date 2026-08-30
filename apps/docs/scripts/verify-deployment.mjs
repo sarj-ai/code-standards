@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import process from 'node:process';
 import { URL } from 'node:url';
 
@@ -36,7 +36,7 @@ async function verify() {
   const ruffLastPage = await ruffLastResponse.text();
   const ruffIndex = await ruffIndexResponse.json();
   assert.equal(health.commit, expectedCommit, `live commit ${String(health.commit)} does not match ${expectedCommit}`);
-  assert.equal(createHash('sha256').update(catalogText).digest('hex'), health.catalogSha256);
+  assert.equal(hash('sha256', catalogText, 'hex'), health.catalogSha256);
   assert.equal(upstreamResponse.status, 301);
   assert.equal(new URL(upstreamResponse.headers.get('location'), base).pathname, '/third-party-linters/ruff/');
   assert.match(ruffPage, /Third party Rules/u);
