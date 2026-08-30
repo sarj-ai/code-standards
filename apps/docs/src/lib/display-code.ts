@@ -1,8 +1,8 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { hash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
-import type { Rule, RuleExample } from './catalog';
+import type { Rule, RuleExample } from "./catalog";
 
 interface DisplayRule {
   examples: RuleExample[];
@@ -22,52 +22,66 @@ interface DisplayProjection {
   };
 }
 
-const repositoryRoot = resolve(process.cwd(), '../..');
-const projectionPath = resolve(process.cwd(), 'src/generated/formatted-code.v1.json');
+const repositoryRoot = resolve(process.cwd(), "../..");
+const projectionPath = resolve(
+  process.cwd(),
+  "src/generated/formatted-code.v1.json",
+);
 const catalogPath = resolve(
   repositoryRoot,
-  'packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json',
+  "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
 );
 const cliPath = resolve(
   repositoryRoot,
-  'packages/standards/src/sarj_standards/configs/cli-reference.v1.json',
+  "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
 );
 
 // eslint-disable-next-line @sarj/stepdown -- hashing is a local implementation detail of projection loading.
 function sha256(source: string): string {
-  return createHash('sha256').update(source).digest('hex');
+  return hash("sha256", source, "hex");
 }
 
-function readProjection(): DisplayProjection {
-  const projection = JSON.parse(readFileSync(projectionPath, 'utf8')) as DisplayProjection;
-  if (projection.catalogSha256 !== sha256(readFileSync(catalogPath, 'utf8'))) {
-    throw new Error('Formatted code projection is stale for the rule catalog.');
+async function readProjection(): Promise<DisplayProjection> {
+  const projection = JSON.parse(
+    await readFile(projectionPath, "utf8"),
+  ) as DisplayProjection;
+  if (
+    projection.catalogSha256 !== sha256(await readFile(catalogPath, "utf8"))
+  ) {
+    throw new Error("Formatted code projection is stale for the rule catalog.");
   }
-  if (projection.cliSha256 !== sha256(readFileSync(cliPath, 'utf8'))) {
-    throw new Error('Formatted code projection is stale for the CLI reference.');
+  if (projection.cliSha256 !== sha256(await readFile(cliPath, "utf8"))) {
+    throw new Error(
+      "Formatted code projection is stale for the CLI reference.",
+    );
   }
   return projection;
 }
 
-const projection = readProjection();
+const projection = await readProjection();
 
 export const formattedStaticCode = projection.static;
 
 export function displayRule(rule: Rule): DisplayRule {
   const displayed = projection.rules[rule.key];
-  if (displayed === undefined) throw new Error(`Formatted code projection is missing ${rule.key}.`);
+  if (displayed === undefined)
+    throw new Error(`Formatted code projection is missing ${rule.key}.`);
   if (displayed.examples.length !== rule.examples.length) {
-    throw new Error(`Formatted code projection example count differs for ${rule.key}.`);
+    throw new Error(
+      `Formatted code projection example count differs for ${rule.key}.`,
+    );
   }
   for (const [index, example] of displayed.examples.entries()) {
     const raw = rule.examples.at(index);
     if (
-      raw === undefined
-      || example.id !== raw.id
-      || example.scenarioId !== raw.scenarioId
-      || example.outcome !== raw.outcome
+      raw === undefined ||
+      example.id !== raw.id ||
+      example.scenarioId !== raw.scenarioId ||
+      example.outcome !== raw.outcome
     ) {
-      throw new Error(`Formatted code projection topology differs for ${rule.key}.`);
+      throw new Error(
+        `Formatted code projection topology differs for ${rule.key}.`,
+      );
     }
   }
   return displayed;

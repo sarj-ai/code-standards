@@ -8,6 +8,7 @@ import { fixupPluginRules } from "@eslint/compat";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
+import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
 import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
@@ -472,6 +473,7 @@ export function createConfig(options = {}) {
       "react-hooks": reactHooks,
       unicorn,
       "@eslint-community/eslint-comments": eslintComments,
+      n: node,
       perfectionist,
       promise,
       "simple-import-sort": simpleImportSort,
@@ -816,6 +818,24 @@ export function createConfig(options = {}) {
       // rule for the whole file — including ones added later — which is the
       // file-level-suppression escape hatch flagged repeatedly in review.
       "@eslint-community/eslint-comments/no-unlimited-disable": "error",
+      // Range and whole-file disables turn every line between two comments
+      // into an unaudited suppression scope. Keep suppression ownership at the
+      // exact statement: non-suppression directives remain valid, but only
+      // eslint-disable-line and eslint-disable-next-line may disable rules.
+      "@eslint-community/eslint-comments/no-use": [
+        "error",
+        {
+          allow: [
+            "eslint",
+            "eslint-disable-line",
+            "eslint-disable-next-line",
+            "eslint-env",
+            "exported",
+            "global",
+            "globals",
+          ],
+        },
+      ],
       "@eslint-community/eslint-comments/disable-enable-pair": [
         "error",
         { allowWholeFile: false },
@@ -829,6 +849,14 @@ export function createConfig(options = {}) {
         "react-hooks/exhaustive-deps",
         "@sarj/no-vague-suppression-description",
       ],
+
+      // Callback-based fs APIs retain a second completion channel and make
+      // errors easier to drop. The maintained Node plugin recognizes ESM,
+      // CommonJS, and process.getBuiltinModule references and points callers
+      // to node:fs promises. Synchronous APIs are intentionally not covered:
+      // n/no-sync matches every user-defined *Sync method and cannot express a
+      // Node-fs-only policy without false positives.
+      "n/prefer-promises/fs": "error",
 
       // Dedup: TS-enum ban → @sarj/no-enum, oversized-try-block ban →
       // @sarj/no-fat-try-blocks, and process.env ban → @sarj/no-raw-env (all
@@ -959,6 +987,13 @@ export function createConfig(options = {}) {
       // the paired tests, which its `meta.docs.url` points at.
       //
       "@sarj/require-pascal-case-zod-schema-name": "warn",
+      "@sarj/prefer-named-complex-return-type": "warn",
+      "@sarj/prefer-node-crypto-hash": "warn",
+      "@sarj/prefer-node-fs-promises": "error",
+      "@sarj/prefer-shared-zod-enum": "warn",
+      "@sarj/prefer-switch-for-repeated-equality": "warn",
+      "@sarj/require-sql-access-class": "warn",
+      "@sarj/sole-export-matches-filename": "warn",
       "@sarj/require-assert-never": "error",
       "@sarj/require-static-next-matcher": "error",
       "@sarj/require-zod-form-validation": "error",

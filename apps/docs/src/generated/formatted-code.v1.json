@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "56d2e505b1862043c0434e431df1b7d7c670490db1f81789b2e43cbbfb268bab",
-  "cliSha256": "e88c49c73755b5dce9b9920447b25895da35403d165355d4cc54498639566931",
+  "catalogSha256": "5399fc9496af53cc31ccdb249d8e376d3593f7927a3caa11ae2d78e3b0d2d949",
+  "cliSha256": "9e76c2a18cca627c5180514a979f09709f688d5e20e110077faa14e909cb218a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2016,6 +2016,41 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"factories\": {\n      \"description\": \"Zod factory names to check. Defaults to the object-like composites; add `array` / `enum` to widen.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"ignoreTestFiles\": {\n      \"description\": \"Skip test files, where a fixture schema belongs next to its assertion.\",\n      \"type\": \"boolean\"\n    },\n    \"memoCallees\": {\n      \"description\": \"Wrappers that construct their callback at most once. Defaults to lazy, memo, once, and useMemo.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"minProperties\": {\n      \"description\": \"Minimum key count before an object-like schema is reported.\",\n      \"minimum\": 0,\n      \"type\": \"number\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "eslint:prefer-named-complex-return-type": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/queue.ts",
+              "source": "export function claim():\n  | { state: \"idle\" }\n  | { state: \"waiting\"; retryAt: number }\n  | { state: \"claimed\"; id: string } {\n  return { state: \"idle\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/queue.ts",
+          "id": "inline-result",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not inline a multi-state result"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/queue.ts",
+              "source": "type ClaimResult =\n  | { state: \"idle\" }\n  | { state: \"waiting\"; retryAt: number }\n  | { state: \"claimed\"; id: string };\nexport function claim(): ClaimResult {\n  return { state: \"idle\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/queue.ts",
+          "id": "named-result",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Name a multi-state result"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:prefer-native-random-uuid": {
       "examples": [
         {
@@ -2047,6 +2082,76 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not call uuid v4 without options"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-node-crypto-hash": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "case.ts",
+              "source": "import { createHash } from \"node:crypto\";\nexport const digest = createHash(\"sha256\").update(\"value\").digest(\"hex\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.ts",
+          "id": "mutable-one-shot-chain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Avoid mutable state for one value"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "case.ts",
+              "source": "import { hash } from \"node:crypto\";\nexport const digest = hash(\"sha256\", \"value\", \"hex\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.ts",
+          "id": "one-shot-hash",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use Node's one-shot hash API"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-node-fs-promises": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "import { readFile } from \"node:fs/promises\";\nexport async function load(path: string) {\n  return readFile(path, \"utf8\");\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "async-read",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the promise API"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/store.ts",
+              "source": "import { readFileSync } from \"node:fs\";\nexport function load(path: string) {\n  return readFileSync(path, \"utf8\");\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.ts",
+          "id": "sync-read",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not block on a synchronous read"
         }
       ],
       "optionsSchemaSource": null
@@ -2260,6 +2365,76 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"assumeAvailable\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:prefer-shared-zod-enum": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/provider.ts",
+              "source": "import { z } from \"zod\";\nconst JobSchema = z.object({ provider: z.enum([\"agy\", \"claude\", \"sol\"]) });\nconst StatusSchema = z.object({\n  provider: z.enum([\"agy\", \"claude\", \"sol\"]).optional(),\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/provider.ts",
+          "id": "duplicate-provider",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not repeat one enum domain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/provider.ts",
+              "source": "import { z } from \"zod\";\nconst ProviderSchema = z.enum([\"agy\", \"claude\", \"sol\"]);\nconst JobSchema = z.object({ provider: ProviderSchema });\nconst StatusSchema = z.object({ provider: ProviderSchema.optional() });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/provider.ts",
+          "id": "shared-provider",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Reuse a named enum schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-switch-for-repeated-equality": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/render.ts",
+              "source": "if (kind === \"a\") return a();\nelse if (kind === \"b\") return b();\nelse if (kind === \"c\") return c();\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/render.ts",
+          "id": "repeated-equality",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Avoid repeating the discriminant"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/render.ts",
+              "source": "switch (kind) {\n  case \"a\":\n    return a();\n  case \"b\":\n    return b();\n  case \"c\":\n    return c();\n  default:\n    return fallback();\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/render.ts",
+          "id": "switch-dispatch",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Make finite dispatch explicit"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:prefer-whole-object-assertion": {
       "examples": [
@@ -2511,6 +2686,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:require-sql-access-class": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/users.ts",
+              "source": "export function find(database: Database.Database, id: string) {\n  return database.prepare(\"SELECT id FROM user WHERE id = ?\").get(id);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/users.ts",
+          "id": "free-query",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not execute SQL in a free function"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/user-repository.ts",
+              "source": "export class UserRepository {\n  constructor(private readonly db: Database.Database) {}\n  find(id: string) {\n    return this.db.prepare(\"SELECT id FROM user WHERE id = ?\").get(id);\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user-repository.ts",
+          "id": "injected-repository",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Own queries in an injected repository"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:require-static-next-matcher": {
       "examples": [
         {
@@ -2647,6 +2857,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validate the form value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:sole-export-matches-filename": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/artifact-store.ts",
+              "source": "export class ArtifactStore {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/artifact-store.ts",
+          "id": "matching-class",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Match a class and module"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/artifacts.ts",
+              "source": "export class ArtifactStore {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/artifacts.ts",
+          "id": "mismatched-class",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not hide a sole class behind another filename"
         }
       ],
       "optionsSchemaSource": null

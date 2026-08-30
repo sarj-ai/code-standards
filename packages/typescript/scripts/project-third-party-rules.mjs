@@ -26,6 +26,7 @@ const PROVIDERS = {
   "react-hooks": ["React Hooks", "eslint-plugin-react-hooks", "https://react.dev/reference/eslint-plugin-react-hooks"],
   unicorn: ["Unicorn", "eslint-plugin-unicorn", "https://github.com/sindresorhus/eslint-plugin-unicorn"],
   "eslint-comments": ["ESLint Comments", "@eslint-community/eslint-plugin-eslint-comments", "https://eslint-community.github.io/eslint-plugin-eslint-comments/"],
+  n: ["Node.js", "eslint-plugin-n", "https://github.com/eslint-community/eslint-plugin-n"],
   perfectionist: ["Perfectionist", "eslint-plugin-perfectionist", "https://perfectionist.dev/"],
   promise: ["Promise", "eslint-plugin-promise", "https://github.com/eslint-community/eslint-plugin-promise"],
   "simple-import-sort": ["Simple Import Sort", "eslint-plugin-simple-import-sort", "https://github.com/lydell/eslint-plugin-simple-import-sort"],

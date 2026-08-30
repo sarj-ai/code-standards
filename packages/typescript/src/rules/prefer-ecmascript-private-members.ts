@@ -114,6 +114,7 @@ function isConvertible(member: TSESTree.ClassElement): member is PrivateConverti
   ) return false;
   return (
     member.accessibility === "private" &&
+    !(member.type === AST_NODE_TYPES.MethodDefinition && member.kind === "constructor") &&
     !member.computed &&
     member.key.type === AST_NODE_TYPES.Identifier &&
     member.decorators.length === 0 &&

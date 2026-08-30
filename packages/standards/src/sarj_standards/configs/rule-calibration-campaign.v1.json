@@ -1307,6 +1307,48 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/eslint/prefer-named-complex-return-type",
+      "family": "typescript",
+      "ruleId": "prefer-named-complex-return-type",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-node-fs-promises",
+      "family": "typescript",
+      "ruleId": "prefer-node-fs-promises",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-node-crypto-hash",
+      "family": "typescript",
+      "ruleId": "prefer-node-crypto-hash",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-shared-zod-enum",
+      "family": "typescript",
+      "ruleId": "prefer-shared-zod-enum",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-switch-for-repeated-equality",
+      "family": "typescript",
+      "ruleId": "prefer-switch-for-repeated-equality",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/require-sql-access-class",
+      "family": "typescript",
+      "ruleId": "require-sql-access-class",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/sole-export-matches-filename",
+      "family": "typescript",
+      "ruleId": "sole-export-matches-filename",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/eslint/require-pascal-case-zod-schema-name",
       "family": "typescript",
       "ruleId": "require-pascal-case-zod-schema-name",

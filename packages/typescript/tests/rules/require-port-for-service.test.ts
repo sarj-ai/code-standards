@@ -55,6 +55,18 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
     {
+      name: "ignores function-valued ECMAScript private fields when checking an implemented port",
+      filename: SRC,
+      code: `
+        interface CollectorPort { collect(): Promise<void>; }
+        export class CollectorCoordinator implements CollectorPort {
+          constructor(private readonly store: ArtifactStore) {}
+          readonly #claimNextWork = (): void => { this.store.claim(); };
+          async collect(): Promise<void> { this.#claimNextWork(); }
+        }
+      `,
+    },
+    {
       name: "resolves intersection and reference aliases used as ports",
       filename: SRC,
       code: `

@@ -60,11 +60,16 @@ import preferImmutableModuleConstant from "./rules/prefer-immutable-module-const
 import preferShadcnPrimitives from "./rules/prefer-shadcn-primitives.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
+import preferNamedComplexReturnType from "./rules/prefer-named-complex-return-type.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
+import preferNodeCryptoHash from "./rules/prefer-node-crypto-hash.js";
+import preferNodeFsPromises from "./rules/prefer-node-fs-promises.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import preferNullishFilterPredicate from "./rules/prefer-nullish-filter-predicate.js";
 import preferAwaitInAsyncReturn from "./rules/prefer-await-in-async-return.js";
 import preferSchemaForApiPayload from "./rules/prefer-schema-for-api-payload.js";
+import preferSharedZodEnum from "./rules/prefer-shared-zod-enum.js";
+import preferSwitchForRepeatedEquality from "./rules/prefer-switch-for-repeated-equality.js";
 import preferSemanticColors from "./rules/prefer-semantic-colors.js";
 import preferServerActions from "./rules/prefer-server-actions.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
@@ -73,6 +78,7 @@ import preferZodInfer from "./rules/prefer-zod-infer.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
 import requirePortForService from "./rules/require-port-for-service.js";
+import requireSqlAccessClass from "./rules/require-sql-access-class.js";
 import requireStaticNextMatcher from "./rules/require-static-next-matcher.js";
 import requireUseFormDefaultValues from "./rules/require-use-form-default-values.js";
 import requireUseServerInActionsFile from "./rules/require-use-server-in-actions-file.js";
@@ -80,6 +86,7 @@ import requireZodFormValidation from "./rules/require-zod-form-validation.js";
 import storeInsertRequiresOnConflict from "./rules/store-insert-requires-on-conflict.js";
 import stepdown from "./rules/stepdown.js";
 import sourceCoupledTest from "./rules/source-coupled-test.js";
+import soleExportMatchesFilename from "./rules/sole-export-matches-filename.js";
 import iacSourceCoupledTest from "./rules/iac-source-coupled-test.js";
 import requirePascalCaseZodSchemaName from "./rules/require-pascal-case-zod-schema-name.js";
 import { RENAMED_RULES } from "./rules/_renames.js";
@@ -147,11 +154,16 @@ const RULES = {
   "prefer-shadcn-primitives": preferShadcnPrimitives,
   "prefer-module-level-constant": preferModuleLevelConstant,
   "prefer-module-level-schema": preferModuleLevelSchema,
+  "prefer-named-complex-return-type": preferNamedComplexReturnType,
   "prefer-native-random-uuid": preferNativeRandomUuid,
+  "prefer-node-crypto-hash": preferNodeCryptoHash,
+  "prefer-node-fs-promises": preferNodeFsPromises,
   "prefer-non-nullable-collection": preferNonNullableCollection,
   "prefer-nullish-filter-predicate": preferNullishFilterPredicate,
   "prefer-await-in-async-return": preferAwaitInAsyncReturn,
   "prefer-schema-for-api-payload": preferSchemaForApiPayload,
+  "prefer-shared-zod-enum": preferSharedZodEnum,
+  "prefer-switch-for-repeated-equality": preferSwitchForRepeatedEquality,
   "prefer-semantic-colors": preferSemanticColors,
   "prefer-server-actions": preferServerActions,
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
@@ -160,17 +172,19 @@ const RULES = {
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
   "require-port-for-service": requirePortForService,
+  "require-sql-access-class": requireSqlAccessClass,
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
   "stepdown": stepdown,
   "source-coupled-test": sourceCoupledTest,
+  "sole-export-matches-filename": soleExportMatchesFilename,
   "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,
 } as const;
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.14.0",
+  version: "15.15.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -180,8 +194,16 @@ const APPLICATION_ONLY_RULES = [
   "prefer-shadcn-primitives",
 ] as const;
 
-/** No active rule remains advisory; retained as a public compatibility export. */
-const ADVISORY_RULES = ["@sarj/require-pascal-case-zod-schema-name"] as const;
+/** Rules staged as non-blocking warnings while corpus adoption evidence accumulates. */
+const ADVISORY_RULES = [
+  "@sarj/prefer-named-complex-return-type",
+  "@sarj/prefer-node-crypto-hash",
+  "@sarj/prefer-shared-zod-enum",
+  "@sarj/prefer-switch-for-repeated-equality",
+  "@sarj/require-pascal-case-zod-schema-name",
+  "@sarj/require-sql-access-class",
+  "@sarj/sole-export-matches-filename",
+] as const;
 
 const RECOMMENDED_RULES = {
   "@sarj/interface-contract-members-private": "error",
@@ -236,10 +258,15 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-immutable-module-constant": "error",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
+  "@sarj/prefer-named-complex-return-type": "warn",
+  "@sarj/prefer-node-crypto-hash": "warn",
+  "@sarj/prefer-node-fs-promises": "error",
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/prefer-nullish-filter-predicate": "error",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
+  "@sarj/prefer-shared-zod-enum": "warn",
+  "@sarj/prefer-switch-for-repeated-equality": "warn",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
   "@sarj/prefer-whole-object-assertion": "error",
@@ -248,6 +275,7 @@ const RECOMMENDED_RULES = {
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-port-for-service": "error",
+  "@sarj/require-sql-access-class": "warn",
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-use-form-default-values": "error",
   "@sarj/require-use-server-in-actions-file": "error",
@@ -255,6 +283,7 @@ const RECOMMENDED_RULES = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
+  "@sarj/sole-export-matches-filename": "warn",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "warn",
 } as const;
@@ -316,10 +345,15 @@ const STRICT_RULES = {
   "@sarj/prefer-immutable-module-constant": "error",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
+  "@sarj/prefer-named-complex-return-type": "warn",
+  "@sarj/prefer-node-crypto-hash": "warn",
+  "@sarj/prefer-node-fs-promises": "error",
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/prefer-nullish-filter-predicate": "error",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
+  "@sarj/prefer-shared-zod-enum": "warn",
+  "@sarj/prefer-switch-for-repeated-equality": "warn",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
   "@sarj/prefer-whole-object-assertion": "error",
@@ -328,6 +362,7 @@ const STRICT_RULES = {
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-port-for-service": "error",
+  "@sarj/require-sql-access-class": "warn",
   "@sarj/require-static-next-matcher": "error",
   "@sarj/require-use-form-default-values": "error",
   "@sarj/require-use-server-in-actions-file": "error",
@@ -335,6 +370,7 @@ const STRICT_RULES = {
   "@sarj/store-insert-requires-on-conflict": "error",
   "@sarj/stepdown": "error",
   "@sarj/source-coupled-test": "error",
+  "@sarj/sole-export-matches-filename": "warn",
   "@sarj/test-phase-label-comment": "error",
   "@sarj/require-pascal-case-zod-schema-name": "warn",
 } as const;

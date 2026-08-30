@@ -291,6 +291,55 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(ruleIds).toContain("prefer-object-has-own");
   });
 
+  it("rejects range disables while preserving line-local suppressions", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const [rangeResult] = await eslint.lintText(
+      "/* eslint-disable no-console -- generated compatibility region */\nconsole.log('hidden');\n/* eslint-enable no-console */\n",
+      { filePath: resolve(FIXTURE_DIR, "example.ts") },
+    );
+    const rangeMessages = rangeResult?.messages.filter(
+      (message) => message.ruleId === "@eslint-community/eslint-comments/no-use",
+    ) ?? [];
+    expect(rangeMessages).toHaveLength(2);
+
+    const [localResult] = await eslint.lintText(
+      "console.log('visible'); // eslint-disable-line no-console -- compatibility probe\n",
+      { filePath: resolve(FIXTURE_DIR, "example.ts") },
+    );
+    expect(
+      localResult?.messages.filter(
+        (message) => message.ruleId === "@eslint-community/eslint-comments/no-use",
+      ),
+    ).toEqual([]);
+  });
+
+  it("prefers the promise-based Node filesystem API", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const [result] = await eslint.lintText(
+      "import { readFile } from 'node:fs';\nreadFile('poem.txt', () => undefined);\n",
+      { filePath: resolve(FIXTURE_DIR, "example.ts") },
+    );
+    expect(result?.messages.map((message) => message.ruleId)).toContain(
+      "n/prefer-promises/fs",
+    );
+
+    const [promiseResult] = await eslint.lintText(
+      "import { readFile } from 'node:fs/promises';\nawait readFile('poem.txt');\n",
+      { filePath: resolve(FIXTURE_DIR, "example.ts") },
+    );
+    expect(
+      promiseResult?.messages.filter((message) => message.ruleId === "n/prefer-promises/fs"),
+    ).toEqual([]);
+  });
+
   it("keeps the nullish-filter suggestion compatible with the composed profile", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
