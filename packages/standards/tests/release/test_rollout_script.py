@@ -180,7 +180,23 @@ class TestRegistry:
         def load_adopted(_root: Path) -> Adopted:
             return Adopted()
 
-        monkeypatch.setattr(adoption_manifest, "load", load_adopted)
+        monkeypatch.setattr(adoption_manifest, "load_for_setup", load_adopted)
+
+        assert rollout.react_doctor_policy_snapshot(tmp_path) == rollout.ReactDoctorPolicy(config, "0.9.12")
+
+    def test_react_doctor_policy_snapshot_accepts_schema_three_before_migration(self, tmp_path: Path) -> None:
+        project = tmp_path / "frontend"
+        project.mkdir()
+        config = b'{"blocking":"error"}\n'
+        (project / "doctor.config.json").write_bytes(config)
+        (project / "package.json").write_text(
+            '{"devDependencies":{"react-doctor":"0.9.12"}}\n',
+            encoding="utf-8",
+        )
+        (tmp_path / adoption_manifest.MANIFEST_NAME).write_text(
+            'schema = 3\nbundle = "7.7.0"\n[dest]\ntypescript = "frontend"\n',
+            encoding="utf-8",
+        )
 
         assert rollout.react_doctor_policy_snapshot(tmp_path) == rollout.ReactDoctorPolicy(config, "0.9.12")
 
@@ -844,7 +860,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         repo.mkdir()
         manifest = repo / MANIFEST
         eslint = repo / "eslint.config.mjs"
-        manifest.write_text('schema = 4\nbundle = "5.8.0"\n', encoding="utf-8")
+        manifest.write_text('schema = 3\nbundle = "5.8.0"\n', encoding="utf-8")
         eslint.write_text("export default [];\n", encoding="utf-8")
         subprocess.run(("git", "init", "-b", "main"), cwd=repo, check=True, capture_output=True)
         subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=repo, check=True)
@@ -947,14 +963,6 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         def fixed_temporary_directory(**_kwargs: object) -> FixedTemporaryDirectory:
             return FixedTemporaryDirectory()
 
-        def provisioned_tools(
-            _repo: Path,
-            _shim_directory: Path,
-            _runner: rollout.CommandRunner,
-            _environment: Mapping[str, str],
-        ) -> rollout.ProvisionedTools:
-            return rollout.ProvisionedTools({"PATH": "/usr/bin:/bin"}, ())
-
         def no_version_pin_updates(_root: Path) -> tuple[()]:
             return ()
 
@@ -999,7 +1007,6 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         monkeypatch.setattr(rollout, "status_one", missing_status)
         monkeypatch.setattr(rollout, "prepare_branch", fresh_branch)
         monkeypatch.setattr(tempfile, "TemporaryDirectory", fixed_temporary_directory)
-        monkeypatch.setattr(rollout, "provision_consumer_tools", provisioned_tools)
         monkeypatch.setattr(adoption_doctor, "plan_version_pin_updates", no_version_pin_updates)
         monkeypatch.setattr(rollout, "run_consumer_bootstrap", no_bootstrap)
         monkeypatch.setattr(rollout, "pull_request", managed_pull_request)
