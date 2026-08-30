@@ -1025,9 +1025,13 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
     assert selection == (tmp_path, (included.resolve(),))
 
 
-def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path) -> None:
+@pytest.mark.parametrize("metadata_name", ["package.json", "tsconfig.base.json", "vite.config.ts"])
+def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path, metadata_name: str) -> None:
     package = tmp_path / "package.json"
     package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
+    metadata = tmp_path / metadata_name
+    if metadata != package:
+        metadata.write_text("{}\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
@@ -1058,14 +1062,14 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path) -> None:
         )
 
     reports = analyze_external(
-        (str(package),),
+        (str(metadata),),
         root=tmp_path,
         trust=TrustMode.SAFE,
         runner=runner,
         include_react_doctor=True,
     )
 
-    assert [item.name for item in reports] == ["react-doctor"]
+    assert "react-doctor" in [item.name for item in reports]
     assert any("react-doctor" in item for command in seen for item in command)
 
 
@@ -1077,6 +1081,8 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path) -> None:
             Completion.COMPLETE,
         ),
         ("apps/web/src/component.tsx\0", Completion.FAILED),
+        ("apps/web/src/component.cjs\0", Completion.FAILED),
+        ("apps/web/src/component.cts\0", Completion.FAILED),
     ],
 )
 def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_source(
@@ -1095,6 +1101,8 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
         seen.append(tuple(argv))
         if argv[:2] == ("git", "rev-parse"):
             assert cwd == tmp_path
+            if argv[-1] == "HEAD^{commit}":
+                return ProcessOutput(128, "", "HEAD unavailable")
             return ProcessOutput(0, f"{base}\n", "")
         if argv[:3] == ("git", "merge-base", "--is-ancestor"):
             assert cwd == tmp_path
@@ -1150,6 +1158,265 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
         assert "baseline degraded" in report.issues[0].message
 
 
+def test_react_doctor_skips_changed_scope_without_selected_project_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base = "a" * 40
+    head = "b" * 40
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        seen.append(tuple(argv))
+        assert cwd == tmp_path
+        if argv[:2] == ("git", "rev-parse"):
+            return ProcessOutput(0, f"{head if argv[-1] == 'HEAD^{commit}' else base}\n", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "status"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "diff"):
+            return ProcessOutput(0, "apps/worker/src/job.ts\0apps/worker/test/job.test.ts\0", "")
+        pytest.fail(f"React Doctor must not run for an unrelated changed scope: {argv!r}")
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=True,
+        file_count=2,
+        staged=False,
+    )
+
+    assert report.completion is Completion.COMPLETE
+    assert report.diagnostics == ()
+    assert report.issues == ()
+    assert report.file_count == 0
+    assert report.invocation_id == "react-doctor:."
+    assert seen == [
+        ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
+        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
+        ("git", "merge-base", "--is-ancestor", base, head),
+        (
+            "git",
+            "diff",
+            f"{base}...{head}",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            "--",
+        ),
+        ("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--"),
+        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("status", "changed"),
+    [
+        ("?? apps/web/untracked.tsx\0", "apps/worker/src/job.ts\0"),
+        ("", "apps/web/deleted.tsx\0"),
+        ("", "apps/web/package.json\0apps/worker/package.json\0"),
+    ],
+)
+def test_react_doctor_disjoint_preflight_fails_closed_for_dirty_deleted_or_renamed_project_inputs(
+    tmp_path: Path,
+    status: str,
+    changed: str,
+) -> None:
+    base = "a" * 40
+    head = "b" * 40
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        seen.append(tuple(argv))
+        assert cwd == tmp_path
+        if argv[:2] == ("git", "rev-parse"):
+            return ProcessOutput(0, f"{head if argv[-1] == 'HEAD^{commit}' else base}\n", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "status"):
+            return ProcessOutput(0, status, "")
+        if argv[:2] == ("git", "diff"):
+            assert "--no-renames" in argv
+            assert not any(item.startswith("--diff-filter") for item in argv)
+            return ProcessOutput(0, changed, "")
+        pytest.fail(f"unexpected command: {argv!r}")
+
+    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        (project,),
+        root=tmp_path,
+        runner=runner,
+        scope_root=tmp_path,
+        reported_base=base,
+    )
+    if status:
+        assert next(index for index, argv in enumerate(seen) if argv[:2] == ("git", "diff")) < next(
+            index for index, argv in enumerate(seen) if argv[:2] == ("git", "status")
+        )
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        "apps/web/package.json\0",
+        "package.json\0",
+        "tsconfig.base.json\0",
+        "apps/tsconfig.base.json\0",
+        "eslint.config.ts\0",
+    ],
+)
+def test_react_doctor_changed_scope_runs_for_project_or_ancestor_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    changed: str,
+) -> None:
+    base = "a" * 40
+    head = "b" * 40
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    source = project / "component.tsx"
+    source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
+    analyzer_seen = False
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal analyzer_seen
+        if argv[:2] == ("git", "rev-parse"):
+            return ProcessOutput(0, f"{head if argv[-1] == 'HEAD^{commit}' else base}\n", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "status"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "diff"):
+            assert "--no-renames" in argv
+            assert not any(item.startswith("--diff-filter") for item in argv)
+            return ProcessOutput(0, changed, "")
+        analyzer_seen = True
+        assert cwd == tmp_path
+        return ProcessOutput(
+            1,
+            json.dumps(
+                {
+                    "schemaVersion": 3,
+                    "version": manifest.eslint_peers()["react-doctor"],
+                    "ok": True,
+                    "reactDetected": True,
+                    "baselineDegraded": False,
+                    "projects": [
+                        {
+                            "directory": str(project),
+                            "complete": True,
+                            "skippedChecks": [],
+                            "analyzedFileCount": 1,
+                            "scannedFileCount": 1,
+                            "diagnostics": [
+                                {
+                                    "filePath": str(source),
+                                    "plugin": "react-doctor",
+                                    "rule": "button-has-type",
+                                    "severity": "error",
+                                    "message": "Button needs an explicit type.",
+                                    "line": 1,
+                                    "column": 32,
+                                }
+                            ],
+                        }
+                    ],
+                    "skippedProjects": [],
+                    "error": None,
+                }
+            ),
+            "",
+        )
+
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        projects=(project,),
+        root=tmp_path,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert analyzer_seen
+    assert report.completion is Completion.COMPLETE
+    assert tuple(item.location.path for item in report.diagnostics) == ("apps/web/component.tsx",)
+
+
+def test_react_doctor_disjoint_preflight_checks_every_selected_project(tmp_path: Path) -> None:
+    base = "a" * 40
+    head = "b" * 40
+    web = tmp_path / "apps" / "web"
+    admin = tmp_path / "apps" / "admin"
+    web.mkdir(parents=True)
+    admin.mkdir(parents=True)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        if argv[-1:] == (f"{base}^{{commit}}",):
+            return ProcessOutput(0, f"{base}\n", "")
+        if argv[-1:] == ("HEAD^{commit}",):
+            return ProcessOutput(0, f"{head}\n", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "status"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "diff"):
+            return ProcessOutput(0, "apps/admin/src/page.tsx\0", "")
+        pytest.fail(f"unexpected command: {argv!r}")
+
+    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        (web, admin),
+        root=tmp_path,
+        runner=runner,
+        scope_root=tmp_path,
+        reported_base=base,
+    )
+
+
+def test_react_doctor_disjoint_preflight_fails_closed_when_head_moves(tmp_path: Path) -> None:
+    base = "a" * 40
+    initial_head = "b" * 40
+    moved_head = "c" * 40
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    head_reads = 0
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal head_reads
+        assert cwd == tmp_path
+        if argv[-1:] == (f"{base}^{{commit}}",):
+            return ProcessOutput(0, f"{base}\n", "")
+        if argv[-1:] == ("HEAD^{commit}",):
+            head_reads += 1
+            resolved = initial_head if head_reads == 1 else moved_head
+            return ProcessOutput(0, f"{resolved}\n", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            return ProcessOutput(0, "", "")
+        if argv[:2] == ("git", "diff"):
+            return ProcessOutput(0, "apps/worker/src/job.ts\0", "")
+        if argv[:2] == ("git", "status"):
+            return ProcessOutput(0, "", "")
+        pytest.fail(f"unexpected command: {argv!r}")
+
+    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        (project,),
+        root=tmp_path,
+        runner=runner,
+        scope_root=tmp_path,
+        reported_base=base,
+    )
+    assert head_reads == 2
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -1195,8 +1462,10 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
 )
 def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_empty_projects(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
     case: tuple[str, str, int, int, int, Completion],
 ) -> None:
+    monkeypatch.setattr(external_module, "change_scope_base", lambda: "")
     reported_base, changed, reported_count, resolve_status, ancestor_status, expected_completion = case
     resolved_base = "b" * 40
     project = tmp_path / "apps" / "landing-page"
@@ -1780,7 +2049,13 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
-    assert git_seen == [("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")]
+    assert git_seen == [
+        ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"),
+        ("git", "rev-parse", "--verify", "--end-of-options", f"{event_base}^{{commit}}"),
+        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
+        ("git", "rev-parse", "--verify", "--end-of-options", "0123456789abcdef^{commit}"),
+        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
+    ]
     assert "--no-cache" in seen[0]
     duration_index = seen[0].index("--max-duration")
     assert seen[0][duration_index + 1] == "12"
