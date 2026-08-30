@@ -60,6 +60,9 @@ import preferImmutableModuleConstant from "./rules/prefer-immutable-module-const
 import preferShadcnPrimitives from "./rules/prefer-shadcn-primitives.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
 import preferModuleLevelSchema from "./rules/prefer-module-level-schema.js";
+import preferModuleLevelRefinedSchema from "./rules/prefer-module-level-refined-schema.js";
+import preferMultiValueZodLiteral from "./rules/prefer-multi-value-zod-literal.js";
+import preferNamedCallbackDomain from "./rules/prefer-named-callback-domain.js";
 import preferNamedComplexReturnType from "./rules/prefer-named-complex-return-type.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
 import preferNodeCryptoHash from "./rules/prefer-node-crypto-hash.js";
@@ -100,7 +103,8 @@ const RULES = {
   "no-client-side-data-fetching": noClientSideDataFetching,
   "no-comment-cruft": noCommentCruft,
   "no-cors-wildcard-with-credentials": noCorsWildcardWithCredentials,
-  "no-duplicate-lifecycle-refresh-listeners": noDuplicateLifecycleRefreshListeners,
+  "no-duplicate-lifecycle-refresh-listeners":
+    noDuplicateLifecycleRefreshListeners,
   "no-dangerously-allow-svg": noDangerouslyAllowSvg,
   "no-dynamic-sql": noDynamicSql,
   "no-enum": noEnum,
@@ -155,6 +159,9 @@ const RULES = {
   "prefer-shadcn-primitives": preferShadcnPrimitives,
   "prefer-module-level-constant": preferModuleLevelConstant,
   "prefer-module-level-schema": preferModuleLevelSchema,
+  "prefer-module-level-refined-schema": preferModuleLevelRefinedSchema,
+  "prefer-multi-value-zod-literal": preferMultiValueZodLiteral,
+  "prefer-named-callback-domain": preferNamedCallbackDomain,
   "prefer-named-complex-return-type": preferNamedComplexReturnType,
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-node-crypto-hash": preferNodeCryptoHash,
@@ -178,7 +185,7 @@ const RULES = {
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
-  "stepdown": stepdown,
+  stepdown: stepdown,
   "source-coupled-test": sourceCoupledTest,
   "sole-export-matches-filename": soleExportMatchesFilename,
   "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,
@@ -186,7 +193,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.16.1",
+  version: "15.17.0",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -198,6 +205,9 @@ const APPLICATION_ONLY_RULES = [
 
 /** Rules staged as non-blocking warnings while corpus adoption evidence accumulates. */
 const ADVISORY_RULES = [
+  "@sarj/prefer-module-level-refined-schema",
+  "@sarj/prefer-multi-value-zod-literal",
+  "@sarj/prefer-named-callback-domain",
   "@sarj/prefer-named-complex-return-type",
   "@sarj/prefer-node-crypto-hash",
   "@sarj/prefer-node-fs-promises",
@@ -262,6 +272,9 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-immutable-module-constant": "error",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
+  "@sarj/prefer-module-level-refined-schema": "warn",
+  "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
+  "@sarj/prefer-named-callback-domain": "warn",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
@@ -350,6 +363,9 @@ const STRICT_RULES = {
   "@sarj/prefer-immutable-module-constant": "error",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
+  "@sarj/prefer-module-level-refined-schema": "warn",
+  "@sarj/prefer-multi-value-zod-literal": ["warn", { zodMajorVersion: 4 }],
+  "@sarj/prefer-named-callback-domain": "warn",
   "@sarj/prefer-named-complex-return-type": "warn",
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
@@ -391,7 +407,10 @@ const PLUGIN = {
   meta,
   rules: RULES,
   retiredRules: RETIRED_RULES,
-  get configs(): { readonly recommended: FlatPreset; readonly strict: FlatPreset } {
+  get configs(): {
+    readonly recommended: FlatPreset;
+    readonly strict: FlatPreset;
+  } {
     return {
       recommended: {
         name: "@sarj/recommended",
@@ -414,7 +433,14 @@ export {
   RETIRED_RULES,
   RETIRED_RULES as retiredRules,
 } from "./rules/_retired.js";
-export { ADVISORY_RULES, APPLICATION_ONLY_RULES, RECOMMENDED_RULES, RENAMED_RULES, RULES, STRICT_RULES };
+export {
+  ADVISORY_RULES,
+  APPLICATION_ONLY_RULES,
+  RECOMMENDED_RULES,
+  RENAMED_RULES,
+  RULES,
+  STRICT_RULES,
+};
 export {
   ADVISORY_RULES as advisoryRules,
   APPLICATION_ONLY_RULES as applicationOnlyRules,

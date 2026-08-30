@@ -484,7 +484,7 @@ def test_setup_fails_closed_on_unowned_top_level_manifest_scalars(tmp_path: Path
     assert path.read_bytes() == before
 
 
-def test_mobile_defaults_are_selected_only_for_mobile_projects() -> None:
+def test_swift_defaults_are_language_wide_while_other_mobile_tools_require_mobile_projects() -> None:
     generic = manifest.default_configs(
         has_python=False,
         has_typescript=False,
@@ -500,7 +500,8 @@ def test_mobile_defaults_are_selected_only_for_mobile_projects() -> None:
         has_mobile=True,
     )
 
-    assert not set(manifest.SWIFT_CONFIGS + manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).intersection(generic)
+    assert set(manifest.SWIFT_CONFIGS).issubset(generic)
+    assert not set(manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).intersection(generic)
     assert mobile[:5] == ("swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security")
 
 
@@ -2318,6 +2319,69 @@ def test_setup_accepts_one_explicit_mobile_root_in_an_ambiguous_monorepo(tmp_pat
     assert adopted.swift_dest == "consumer"
 
 
+def test_setup_accepts_an_explicit_macos_swift_package_without_mobile_security(tmp_path: Path) -> None:
+    project = tmp_path / "macos" / "Monitor"
+    project.mkdir(parents=True)
+    (project / "Package.swift").write_text(
+        "let package = Package(platforms: [.macOS(.v15)])\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--swift-dest", "macos/Monitor", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.swift_dest == "macos/Monitor"
+    assert "swiftformat" in adopted.configs
+    assert "swiftlint" in adopted.configs
+    assert "mobile-security" not in adopted.configs
+    assert (project / ".swiftformat").is_file()
+    assert (project / ".swiftlint.yml").is_file()
+    assert not (tmp_path / ".mobsf").exists()
+    workflow = (tmp_path / ".github" / "workflows" / "standards.yml").read_text(encoding="utf-8")
+    assert "runs-on: macos-15" in workflow
+
+
+def test_adopted_manifest_reloads_an_explicit_macos_swift_package(tmp_path: Path) -> None:
+    project = tmp_path / "desktop"
+    project.mkdir()
+    (project / "Package.swift").write_text("let package = Package(platforms: [.macOS(.v15)])\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("swiftformat", "swiftlint"),
+        python_dest=".",
+        typescript_dest=".",
+        swift_dest="desktop",
+    )
+
+    detected = scaffold.detect_adopted(tmp_path, adopted)
+
+    assert detected.swift
+    assert detected.swift_root == project
+    assert not detected.mobile
+
+
+def test_setup_accepts_an_explicit_macos_xcode_project(tmp_path: Path) -> None:
+    project = tmp_path / "desktop"
+    xcode = project / "Monitor.xcodeproj"
+    xcode.mkdir(parents=True)
+    (xcode / "project.pbxproj").write_text(
+        "SDKROOT = macosx;\nMACOSX_DEPLOYMENT_TARGET = 15.0;\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--swift-dest", "desktop", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.swift_dest == "desktop"
+    assert "swiftformat" in adopted.configs
+    assert "swiftlint" in adopted.configs
+    assert "mobile-security" not in adopted.configs
+
+
 def test_setup_rejects_an_ancestor_as_an_explicit_mobile_root(tmp_path: Path) -> None:
     project = tmp_path / "apps" / "consumer"
     project.mkdir(parents=True)
@@ -2326,7 +2390,7 @@ def test_setup_rejects_an_ancestor_as_an_explicit_mobile_root(tmp_path: Path) ->
     proc = _cli("--root", str(tmp_path), "setup", "--swift-dest", "apps", "--no-install")
 
     assert proc.returncode == 2
-    assert "must be one exact configured mobile project root" in proc.stderr
+    assert "must be one exact configured Swift project root" in proc.stderr
 
 
 def test_setup_rejects_an_incompatible_unowned_mobile_ci_gate(tmp_path: Path) -> None:

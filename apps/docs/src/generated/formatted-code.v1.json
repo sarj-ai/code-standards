@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7cb8d39336e77c5a3e4c8913795bf39f8a97c3e3b17905c2dd374fd668393f67",
-  "cliSha256": "dcb6a2ad83407d7cd2483b039887dd5215402759fddb029a2e1a44de6e4673ca",
+  "catalogSha256": "d7bde23f8c8ccfdd5eb3abc2c1cea949633ab4f9eb8bba6749d848f458fffbe6",
+  "cliSha256": "46437909d16fdc0c1e5d0a1d8ad5233a6efc668038f1399589af4608295eef4e",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1981,6 +1981,41 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"checkRegex\": { \"type\": \"boolean\" },\n    \"ignoreTestFiles\": { \"type\": \"boolean\" },\n    \"minElements\": { \"minimum\": 1, \"type\": \"number\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "eslint:prefer-module-level-refined-schema": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/options.ts",
+              "source": "import { z } from \"zod\";\nexport function parse(value: unknown) {\n  return z.number().int().min(1).max(1000).parse(value);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.ts",
+          "id": "local-refinement",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not rebuild a closed validation chain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/options.ts",
+              "source": "import { z } from \"zod\";\nconst BatchSize = z.number().int().min(1).max(1000);\nexport function parse(value: unknown) {\n  return BatchSize.parse(value);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.ts",
+          "id": "module-refinement",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Share the validation schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:prefer-module-level-schema": {
       "examples": [
         {
@@ -2015,6 +2050,76 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"factories\": {\n      \"description\": \"Zod factory names to check. Defaults to the object-like composites; add `array` / `enum` to widen.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"ignoreTestFiles\": {\n      \"description\": \"Skip test files, where a fixture schema belongs next to its assertion.\",\n      \"type\": \"boolean\"\n    },\n    \"memoCallees\": {\n      \"description\": \"Wrappers that construct their callback at most once. Defaults to lazy, memo, once, and useMemo.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"minProperties\": {\n      \"description\": \"Minimum key count before an object-like schema is reported.\",\n      \"minimum\": 0,\n      \"type\": \"number\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:prefer-multi-value-zod-literal": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/schema.ts",
+              "source": "import { z } from \"zod\";\nexport const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/schema.ts",
+          "id": "literal-union",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Avoid repeated literal wrappers"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/schema.ts",
+              "source": "import { z } from \"zod\";\nexport const Version = z.literal([1, 2, 3]);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/schema.ts",
+          "id": "multi-value",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use one multi-value literal"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"zodMajorVersion\": { \"maximum\": 4, \"minimum\": 4, \"type\": \"integer\" }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:prefer-named-callback-domain": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/options.ts",
+              "source": "export interface Options {\n  done?: (boundary: \"seeded\" | \"queued\") => void;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.ts",
+          "id": "inline-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not inline a public callback domain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/options.ts",
+              "source": "export type Boundary = \"seeded\" | \"queued\";\nexport interface Options {\n  done?: (boundary: Boundary) => void;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.ts",
+          "id": "named-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Name the callback domain"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:prefer-named-complex-return-type": {
       "examples": [

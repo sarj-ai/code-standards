@@ -23,8 +23,10 @@ _GITHUB_MERGE_SUBJECT_RE: Final = re.compile(r"^Merge pull request #[1-9][0-9]* 
 _PRIVATE_REFS_FILE: Final = ".sarj-private-refs.toml"
 _TEST_COMMAND_RE: Final = re.compile(r"(?:npm test|pytest|make (?:verify|test)\b)")
 _PYPROJECT_VERSION_RE: Final = re.compile(r'^version = "([^"]+)"$', re.MULTILINE)
-_ESLINT_RULE_RE: Final = re.compile(r'^\s*"([a-z0-9-]+)":', re.MULTILINE)
-_ESLINT_MAP_RE: Final = re.compile(r"^const (?:RULES|rules) = \{$(?P<body>.*?)^\};$", re.MULTILINE | re.DOTALL)
+_ESLINT_RULE_RE: Final = re.compile(r'^\s*"?([a-z][a-z0-9-]*)"?:', re.MULTILINE)
+_ESLINT_MAP_RE: Final = re.compile(
+    r"^const (?:RULES|rules) = \{$(?P<body>.*?)^\}(?: as const)?;$", re.MULTILINE | re.DOTALL
+)
 _MARKDOWN_LOCATIONS: Final = (
     ".github/SECURITY.md",
     ".github/PULL_REQUEST_TEMPLATE.md",
@@ -431,6 +433,9 @@ def _check_rule_family(root: Path, family: RuleFamily) -> list[Finding]:
     source = root / family.source
     tests = root / family.tests
     registry = _read_text(root / family.registry)
+    registered_eslint: frozenset[str] = (
+        frozenset(eslint_rule_names(root)) if family.name == "typescript" else frozenset()
+    )
     findings: list[Finding] = []
     for path in sorted(source.glob(f"*.{family.extension}")):
         if path.stem.startswith("_"):
@@ -440,7 +445,12 @@ def _check_rule_family(root: Path, family: RuleFamily) -> list[Finding]:
             findings.append(
                 Finding("file-conventions", str(path.relative_to(root)), f"missing {test.relative_to(root)}")
             )
-        if family.registry_pattern.format(name=path.stem) not in registry:
+        registered = (
+            path.stem in registered_eslint
+            if family.name == "typescript"
+            else family.registry_pattern.format(name=path.stem) in registry
+        )
+        if not registered:
             findings.append(
                 Finding("file-conventions", str(path.relative_to(root)), "rule is absent from its registry")
             )

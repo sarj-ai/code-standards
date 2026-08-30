@@ -215,6 +215,9 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       .filter(([, setting]) => severityOf(setting) === 1)
       .map(([rule]) => rule);
     expect(ADVISORY_RULES).toEqual([
+      "@sarj/prefer-module-level-refined-schema",
+      "@sarj/prefer-multi-value-zod-literal",
+      "@sarj/prefer-named-callback-domain",
       "@sarj/prefer-named-complex-return-type",
       "@sarj/prefer-node-crypto-hash",
       "@sarj/prefer-node-fs-promises",
@@ -283,6 +286,9 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       .filter(([, setting]) => severityOf(setting) !== "error")
       .map(([rule]) => rule));
     expect(ADVISORY_RULES).toEqual([
+      "@sarj/prefer-module-level-refined-schema",
+      "@sarj/prefer-multi-value-zod-literal",
+      "@sarj/prefer-named-callback-domain",
       "@sarj/prefer-named-complex-return-type",
       "@sarj/prefer-node-crypto-hash",
       "@sarj/prefer-node-fs-promises",

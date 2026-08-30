@@ -96,6 +96,8 @@ def test_swiftformat_is_pinned_to_supported_swift_syntax() -> None:
     assert not any(line.startswith("--swiftversion") for line in lines)
     assert not any(line.startswith("--language-mode") for line in lines)
     assert "--maxwidth 120" in lines
+    assert "--decimal-grouping 3,5" in lines
+    assert "--allow-partial-wrapping false" in lines
     assert {
         "--disable redundantRawValues",
         "--disable redundantSelf",

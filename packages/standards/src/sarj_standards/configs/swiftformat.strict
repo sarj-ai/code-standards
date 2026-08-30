@@ -1,8 +1,14 @@
-# Canonical SwiftFormat 0.62.1 configuration for mobile Swift.
+# Canonical SwiftFormat 0.62.1 configuration for Swift projects.
 # The owning project selects its Swift language mode; this shared policy must
 # remain valid for maintained Swift 5 and Swift 6 targets.
 --indent 4
 --maxwidth 120
+# Match SwiftLint's number_separator.minimum_length so the formatter preserves
+# separators in five-digit decimal literals instead of creating lint findings.
+--decimal-grouping 3,5
+# SwiftLint's multiline_arguments requires every argument to occupy its own
+# line once a call wraps. Complete the wrap instead of leaving a partial list.
+--allow-partial-wrapping false
 --disable redundantOptionalBinding
 --disable modifierOrder
 --disable sortImports

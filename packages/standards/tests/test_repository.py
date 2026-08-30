@@ -489,6 +489,31 @@ def test_file_conventions_pair_rules_tests_and_registry(tmp_path: Path) -> None:
     }
 
 
+def test_file_conventions_accepts_unquoted_eslint_registry_keys(tmp_path: Path) -> None:
+    _git_repo(
+        tmp_path,
+        {
+            "packages/typescript/src/rules/stepdown.ts": "export default {};\n",
+            "packages/typescript/src/index.ts": "const RULES = {\n  stepdown: implementation,\n} as const;\n",
+            "packages/typescript/tests/rules/stepdown.test.ts": "export {};\n",
+        },
+    )
+    (tmp_path / "configs").mkdir()
+    family = repository.RuleFamily(
+        "typescript",
+        "packages/typescript/src/rules",
+        "packages/typescript/tests/rules",
+        "packages/typescript/src/index.ts",
+        "ts",
+        "{name}.test.ts",
+        '"{name}"',
+    )
+
+    findings = repository.check_file_conventions(tmp_path, _policy(rule_families=(family,)))
+
+    assert not findings
+
+
 def test_file_conventions_reject_forbidden_paths(tmp_path: Path) -> None:
     _git_repo(tmp_path, {"scripts/check.sh": "#!/bin/sh\n"})
     (tmp_path / "configs").mkdir()
@@ -1114,12 +1139,15 @@ def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tm
 
 
 @pytest.mark.parametrize("registry_name", ["RULES", "rules"])
-def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(tmp_path: Path, registry_name: str) -> None:
+@pytest.mark.parametrize("rule_key", ['"prefer-modern-syntax"', "stepdown"])
+def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(
+    tmp_path: Path, registry_name: str, rule_key: str
+) -> None:
     index = tmp_path / "packages/typescript/src/index.ts"
     index.parent.mkdir(parents=True)
     index.write_text(
-        f'const {registry_name} = {{\n  "prefer-modern-syntax": implementation,\n}};\n',
+        f"const {registry_name} = {{\n  {rule_key}: implementation,\n}} as const;\n",
         encoding="utf-8",
     )
 
-    assert repository.eslint_rule_names(tmp_path) == ["prefer-modern-syntax"]
+    assert repository.eslint_rule_names(tmp_path) == [rule_key.strip('"')]
