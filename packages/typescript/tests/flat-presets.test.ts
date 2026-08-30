@@ -126,8 +126,10 @@ describe("configs.recommended / configs.strict are flat config", () => {
     expect(ADVISORY_RULES).toEqual([
       "@sarj/prefer-named-complex-return-type",
       "@sarj/prefer-node-crypto-hash",
+      "@sarj/prefer-node-fs-promises",
       "@sarj/prefer-shared-zod-enum",
       "@sarj/prefer-switch-for-repeated-equality",
+      "@sarj/require-interface-for-exported-class",
       "@sarj/require-pascal-case-zod-schema-name",
       "@sarj/require-sql-access-class",
       "@sarj/sole-export-matches-filename",

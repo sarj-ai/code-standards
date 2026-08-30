@@ -28,9 +28,8 @@ export const SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 const EXCLUDED_STEMS: ReadonlySet<string> = new Set([
-  "common", "config", "constants", "error", "errors", "global", "handler", "helpers", "index", "layout",
-  "loading", "middleware", "misc", "models", "not-found", "page", "route", "schema", "shared", "template",
-  "types", "util", "utils", "worker",
+  "common", "global", "helpers", "index", "layout", "loading", "middleware", "misc", "not-found", "page",
+  "route", "shared", "template", "types", "util", "utils",
 ]);
 
 function stem(filename: string): string {

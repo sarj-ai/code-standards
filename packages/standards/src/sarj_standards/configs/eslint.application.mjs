@@ -826,7 +826,6 @@ export function createConfig(options = {}) {
         "error",
         {
           allow: [
-            "eslint",
             "eslint-disable-line",
             "eslint-disable-next-line",
             "eslint-env",
@@ -987,9 +986,10 @@ export function createConfig(options = {}) {
       // the paired tests, which its `meta.docs.url` points at.
       //
       "@sarj/require-pascal-case-zod-schema-name": "warn",
+      "@sarj/require-interface-for-exported-class": "warn",
       "@sarj/prefer-named-complex-return-type": "warn",
       "@sarj/prefer-node-crypto-hash": "warn",
-      "@sarj/prefer-node-fs-promises": "error",
+      "@sarj/prefer-node-fs-promises": "warn",
       "@sarj/prefer-shared-zod-enum": "warn",
       "@sarj/prefer-switch-for-repeated-equality": "warn",
       "@sarj/require-sql-access-class": "warn",

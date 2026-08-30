@@ -20,7 +20,7 @@ export const PREFER_NODE_FS_PROMISES_DOCUMENTATION = {
   limitations: [
     "Tests and generated files are excluded.",
     "ESLint rule implementations under src/rules are excluded because visitor creation and execution are synchronous by contract.",
-    "The rule covers static ESM imports and member calls through namespace/default imports from node:fs; CommonJS require flows are not inferred.",
+    "Only statically identifiable node:fs loads are inspected; filesystem objects passed through arbitrary functions or assignments require type-aware analysis.",
   ],
   examples: [
     { id: "async-read", title: "Use the promise API", outcome: "no-match", files: [{ path: "src/store.ts", source: "import { readFile } from 'node:fs/promises'; export async function load(path: string) { return readFile(path, 'utf8'); }" }], focusPath: "src/store.ts", expectedCount: 0, public: true },
@@ -33,6 +33,35 @@ function memberName(node: TSESTree.MemberExpression): string | null {
   if (node.computed && node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string") {
     return node.property.value;
   }
+  return null;
+}
+
+function unwrapAwait(node: TSESTree.Expression): TSESTree.Expression {
+  return node.type === AST_NODE_TYPES.AwaitExpression ? node.argument : node;
+}
+
+function isFsLoader(node: TSESTree.Expression): boolean {
+  const expression = unwrapAwait(node);
+  if (expression.type === AST_NODE_TYPES.ImportExpression) return isFsSpecifier(expression.source);
+  if (expression.type !== AST_NODE_TYPES.CallExpression || expression.arguments.length !== 1) return false;
+  const [argument] = expression.arguments;
+  if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement || !isFsSpecifier(argument)) return false;
+  if (expression.callee.type === AST_NODE_TYPES.Identifier) return expression.callee.name === "require";
+  return (
+    expression.callee.type === AST_NODE_TYPES.MemberExpression &&
+    expression.callee.object.type === AST_NODE_TYPES.Identifier &&
+    expression.callee.object.name === "process" &&
+    memberName(expression.callee) === "getBuiltinModule"
+  );
+}
+
+function isFsSpecifier(node: TSESTree.Expression): boolean {
+  return node.type === AST_NODE_TYPES.Literal && (node.value === "node:fs" || node.value === "fs");
+}
+
+function propertyName(node: TSESTree.Property): string | null {
+  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) return node.key.name;
+  if (node.key.type === AST_NODE_TYPES.Literal && typeof node.key.value === "string") return node.key.value;
   return null;
 }
 
@@ -80,10 +109,39 @@ export default createRule<Options, MessageIds>({
           });
         }
       },
+      VariableDeclarator(node): void {
+        if (
+          node.init === null ||
+          (!isFsLoader(node.init) &&
+            (node.init.type !== AST_NODE_TYPES.Identifier || !namespaces.has(node.init.name)))
+        )
+          return;
+        if (node.id.type === AST_NODE_TYPES.Identifier) {
+          namespaces.add(node.id.name);
+          return;
+        }
+        if (node.id.type !== AST_NODE_TYPES.ObjectPattern) return;
+        const synchronousImports = node.id.properties.flatMap((property) => {
+          if (property.type !== AST_NODE_TYPES.Property) return [];
+          const name = propertyName(property);
+          return name?.endsWith("Sync") === true ? [name] : [];
+        });
+        if (synchronousImports.length > 0) {
+          context.report({
+            node,
+            messageId: "preferAsyncFs",
+            data: { name: synchronousImports.join(", ") },
+          });
+        }
+      },
       MemberExpression(node): void {
-        if (node.object.type !== AST_NODE_TYPES.Identifier || !namespaces.has(node.object.name)) return;
         const name = memberName(node);
-        if (name?.endsWith("Sync") === true) {
+        if (name?.endsWith("Sync") !== true) return;
+        const object = unwrapAwait(node.object);
+        if (
+          (object.type === AST_NODE_TYPES.Identifier && namespaces.has(object.name)) ||
+          isFsLoader(object)
+        ) {
           context.report({ node, messageId: "preferAsyncFs", data: { name } });
         }
       },

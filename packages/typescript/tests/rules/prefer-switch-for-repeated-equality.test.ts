@@ -22,6 +22,14 @@ RULE_TESTER.run("prefer-switch-for-repeated-equality", rule, {
       code: "if (kind === 'a') a(); else if ('b' === kind) b(); else if (kind === 'c') c(); else fallback();",
       errors: [{ messageId: "preferSwitch", data: { discriminant: "kind" } }],
     },
+    {
+      code: "if (kind === Kind.A) a(); else if (Kind.B === kind) b(); else if (kind === Kind.C) c();",
+      errors: [{ messageId: "preferSwitch", data: { discriminant: "kind" } }],
+    },
+    {
+      code: "if (kind === STATUS_A) a(); else if (STATUS_B === kind) b(); else if (kind === STATUS_C) c();",
+      errors: [{ messageId: "preferSwitch", data: { discriminant: "kind" } }],
+    },
   ],
 });
 

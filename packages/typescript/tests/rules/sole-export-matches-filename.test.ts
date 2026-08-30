@@ -43,5 +43,15 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
       code: "function parsePoem() { return {}; } export { parsePoem };",
       errors: [{ messageId: "matchSoleExport", data: { exported: "parsePoem", expected: "parse-poem" } }],
     },
+    {
+      filename: "src/config.ts",
+      code: "export class RuntimeConfig {}",
+      errors: [{ messageId: "matchSoleExport", data: { exported: "RuntimeConfig", expected: "runtime-config" } }],
+    },
+    {
+      filename: "src/worker.ts",
+      code: "export class CollectionWorker {}",
+      errors: [{ messageId: "matchSoleExport", data: { exported: "CollectionWorker", expected: "collection-worker" } }],
+    },
   ],
 });
