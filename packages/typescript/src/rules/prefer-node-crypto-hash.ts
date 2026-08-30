@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-node-crypto-hash.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -17,7 +17,7 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
   remediation: "Import hash from node:crypto and replace a single-update chain with hash(algorithm, value, encoding). Keep createHash for streams or multiple incremental updates.",
   category: "performance",
   limitations: [
-    "Only direct ESM imports and namespace imports from node:crypto are analyzed.",
+    "Only bindings and inline calls with statically proven provenance from crypto or node:crypto are analyzed; arbitrary assignments and dynamic module specifiers are excluded.",
     "Only a literal algorithm with exactly one update call is reported; streaming and incremental hashes remain valid.",
   ],
   examples: [
@@ -26,25 +26,132 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
+type ScopeVariable = TSESLint.Scope.Variable;
+
+function memberName(node: TSESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) return node.property.name;
+  if (
+    node.computed &&
+    node.property.type === AST_NODE_TYPES.Literal &&
+    typeof node.property.value === "string"
+  ) {
+    return node.property.value;
+  }
+  return null;
+}
+
+function isCryptoLoader(
+  node: TSESTree.Expression,
+  resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
+): boolean {
+  if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 1) return false;
+  const [argument] = node.arguments;
+  if (
+    argument === undefined ||
+    argument.type === AST_NODE_TYPES.SpreadElement ||
+    !isCryptoSpecifier(argument)
+  ) {
+    return false;
+  }
+  if (node.callee.type === AST_NODE_TYPES.Identifier) {
+    return (
+      node.callee.name === "require" &&
+      isUnshadowedBuiltinIdentifier(node.callee, resolve)
+    );
+  }
+  return (
+    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    node.callee.object.type === AST_NODE_TYPES.Identifier &&
+    node.callee.object.name === "process" &&
+    isUnshadowedBuiltinIdentifier(node.callee.object, resolve) &&
+    memberName(node.callee) === "getBuiltinModule"
+  );
+}
+
+function isCryptoSpecifier(node: TSESTree.Expression): boolean {
+  return (
+    node.type === AST_NODE_TYPES.Literal &&
+    (node.value === "crypto" || node.value === "node:crypto")
+  );
+}
+
+function isUnshadowedBuiltinIdentifier(
+  identifier: TSESTree.Identifier,
+  resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
+): boolean {
+  const variable = resolve(identifier);
+  return variable === null || variable.defs.length === 0;
+}
+
+function propertyName(node: TSESTree.Property): string | null {
+  if (!node.computed && node.key.type === AST_NODE_TYPES.Identifier) return node.key.name;
+  if (node.key.type === AST_NODE_TYPES.Literal && typeof node.key.value === "string") {
+    return node.key.value;
+  }
+  return null;
+}
+
 export default createRule<Options, MessageIds>({
   name: "prefer-node-crypto-hash",
   documentation: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION,
   meta: { type: "problem", docs: { description: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.summary }, schema: [], messages: { preferNodeCryptoHash: 'Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.' } },
   defaultOptions: [],
   create(context) {
-    const directImports = new Set<string>();
-    const namespaceImports = new Set<string>();
+    const directBindings = new Set<ScopeVariable>();
+    const namespaceBindings = new Set<ScopeVariable>();
+
+    function resolve(identifier: TSESTree.Identifier): ScopeVariable | null {
+      return ASTUtils.findVariable(
+        context.sourceCode.getScope(identifier),
+        identifier.name,
+      );
+    }
+
+    function record(
+      identifier: TSESTree.Identifier,
+      destination: Set<ScopeVariable>,
+    ): void {
+      const variable = resolve(identifier);
+      if (variable !== null) destination.add(variable);
+    }
+
     return {
       ImportDeclaration(node): void {
-        if (node.source.value !== "node:crypto") return;
+        if (node.source.value !== "crypto" && node.source.value !== "node:crypto") return;
         for (const specifier of node.specifiers) {
-          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
-            namespaceImports.add(specifier.local.name);
+          if (
+            specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
+            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier
+          ) {
+            record(specifier.local, namespaceBindings);
           } else if (
             specifier.type === AST_NODE_TYPES.ImportSpecifier &&
             importedName(specifier.imported) === "createHash"
           ) {
-            directImports.add(specifier.local.name);
+            record(specifier.local, directBindings);
+          }
+        }
+      },
+      VariableDeclarator(node): void {
+        if (
+          node.parent.kind !== "const" ||
+          node.init === null ||
+          !isCryptoLoader(node.init, resolve)
+        ) {
+          return;
+        }
+        if (node.id.type === AST_NODE_TYPES.Identifier) {
+          record(node.id, namespaceBindings);
+          return;
+        }
+        if (node.id.type !== AST_NODE_TYPES.ObjectPattern) return;
+        for (const property of node.id.properties) {
+          if (
+            property.type === AST_NODE_TYPES.Property &&
+            propertyName(property) === "createHash" &&
+            property.value.type === AST_NODE_TYPES.Identifier
+          ) {
+            record(property.value, directBindings);
           }
         }
       },
@@ -63,7 +170,12 @@ export default createRule<Options, MessageIds>({
           create.arguments.length !== 1 ||
           create.arguments[0]?.type !== AST_NODE_TYPES.Literal ||
           typeof create.arguments[0].value !== "string" ||
-          !isCreateHashCall(create, directImports, namespaceImports)
+          !isCreateHashCall(
+            create,
+            directBindings,
+            namespaceBindings,
+            resolve,
+          )
         )
           return;
         context.report({ node, messageId: "preferNodeCryptoHash" });
@@ -84,25 +196,31 @@ function isMemberCall(
 } {
   return (
     node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    node.callee.property.name === name
+    memberName(node.callee) === name
   );
 }
 
 function isCreateHashCall(
   node: TSESTree.CallExpression,
-  directImports: ReadonlySet<string>,
-  namespaceImports: ReadonlySet<string>,
+  directBindings: ReadonlySet<ScopeVariable>,
+  namespaceBindings: ReadonlySet<ScopeVariable>,
+  resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
 ): boolean {
-  if (node.callee.type === AST_NODE_TYPES.Identifier)
-    return directImports.has(node.callee.name);
+  if (node.callee.type === AST_NODE_TYPES.Identifier) {
+    const variable = resolve(node.callee);
+    return variable !== null && directBindings.has(variable);
+  }
+  if (
+    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    memberName(node.callee) !== "createHash"
+  ) {
+    return false;
+  }
+  if (isCryptoLoader(node.callee.object, resolve)) return true;
+  if (node.callee.object.type !== AST_NODE_TYPES.Identifier) return false;
+  const variable = resolve(node.callee.object);
   return (
-    node.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !node.callee.computed &&
-    node.callee.object.type === AST_NODE_TYPES.Identifier &&
-    namespaceImports.has(node.callee.object.name) &&
-    node.callee.property.type === AST_NODE_TYPES.Identifier &&
-    node.callee.property.name === "createHash"
+    variable !== null &&
+    namespaceBindings.has(variable)
   );
 }

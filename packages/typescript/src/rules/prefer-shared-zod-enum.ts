@@ -36,7 +36,7 @@ function literalDomain(node: TSESTree.CallExpression): readonly string[] | null 
   return values;
 }
 
-function isStandaloneSchema(node: TSESTree.CallExpression): boolean {
+function isModuleLevelNamedSchema(node: TSESTree.CallExpression): boolean {
   let current: TSESTree.Node = node;
   while (
     current.parent?.type === AST_NODE_TYPES.MemberExpression &&
@@ -48,12 +48,18 @@ function isStandaloneSchema(node: TSESTree.CallExpression): boolean {
       current.parent.callee === current
     ) current = current.parent;
   }
+  const declarator = current.parent;
+  if (
+    declarator?.type !== AST_NODE_TYPES.VariableDeclarator ||
+    declarator.init !== current ||
+    declarator.id.type !== AST_NODE_TYPES.Identifier ||
+    declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration
+  ) return false;
+  const declarationParent = declarator.parent.parent;
   return (
-    (current.parent?.type === AST_NODE_TYPES.VariableDeclarator &&
-      current.parent.init === current &&
-      current.parent.id.type === AST_NODE_TYPES.Identifier) ||
-    (current.parent?.type === AST_NODE_TYPES.ExpressionStatement &&
-      current.parent.expression === current)
+    declarationParent.type === AST_NODE_TYPES.Program ||
+    (declarationParent.type === AST_NODE_TYPES.ExportNamedDeclaration &&
+      declarationParent.parent.type === AST_NODE_TYPES.Program)
   );
 }
 
@@ -98,7 +104,7 @@ export default createRule<Options, MessageIds>({
         const domain = literalDomain(node);
         if (domain === null) return;
         const key = JSON.stringify(domain);
-        const inline = !isStandaloneSchema(node);
+        const inline = !isModuleLevelNamedSchema(node);
         if (inline || seen.has(key))
           context.report({ node, messageId: "shareEnumDomain" });
         else seen.add(key);

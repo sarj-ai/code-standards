@@ -826,7 +826,6 @@ export function createConfig(options = {}) {
         "error",
         {
           allow: [
-            "eslint",
             "eslint-disable-line",
             "eslint-disable-next-line",
             "eslint-env",

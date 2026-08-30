@@ -16,8 +16,6 @@ RULE_TESTER.run("prefer-shared-zod-enum", rule, {
     PREFER_SHARED_ZOD_ENUM_DOCUMENTATION.examples[0].files[0].source,
     "const z = builder; z.enum(['a', 'b']); z.enum(['a', 'b']);",
     "import { z } from 'zod'; z.enum(values); z.enum(values);",
-    "import { z } from 'zod'; z.enum(['a', 'b']); z.enum(['b', 'a']);",
-    "import { z } from 'zod'; z.enum(['a', 'b']); z.enum(['a', 'c']);",
     { filename: "src/schema.test.ts", code: "import { z } from 'zod'; z.enum(['a', 'b']); z.enum(['a', 'b']);" },
   ],
   invalid: [
@@ -36,6 +34,18 @@ RULE_TESTER.run("prefer-shared-zod-enum", rule, {
     {
       code: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']).optional() });",
       errors: [{ messageId: "shareEnumDomain" }],
+    },
+    {
+      code: "import { z } from 'zod'; function schema() { const LocalSchema = z.enum(['a', 'b']); return LocalSchema; }",
+      errors: [{ messageId: "shareEnumDomain" }],
+    },
+    {
+      code: "import { z } from 'zod'; z.enum(['a', 'b']); z.enum(['b', 'a']);",
+      errors: [{ messageId: "shareEnumDomain" }, { messageId: "shareEnumDomain" }],
+    },
+    {
+      code: "import { z } from 'zod'; z.enum(['a', 'b']); z.enum(['a', 'c']);",
+      errors: [{ messageId: "shareEnumDomain" }, { messageId: "shareEnumDomain" }],
     },
   ],
 });

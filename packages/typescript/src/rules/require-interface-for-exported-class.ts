@@ -11,6 +11,12 @@ import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "requireContract";
 type Options = [];
+type ClassLike = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
+
+interface ClassBinding {
+  readonly declaration: ClassLike;
+  readonly name: string;
+}
 
 export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
   summary: "Require exported concrete classes with public behavior to declare a contract.",
@@ -20,7 +26,8 @@ export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
     "Declare a focused interface and add an implements clause, or inherit from an intentional base contract.",
   category: "architecture",
   limitations: [
-    "The warning-stage rule checks directly exported class declarations; classes exported later through a separate export list require review.",
+    "The warning-stage rule checks module-level class declarations and direct class-expression values exported directly, through local export specifiers, or through a default identifier; re-exports and expressions wrapped in other calls require review.",
+    "An extends clause satisfies the contract only when its target is a locally declared abstract class; imported base-class contracts require an explicit implements clause.",
     "Static factories and data-only classes without public instance methods are outside the contract requirement.",
   ],
   examples: [
@@ -57,11 +64,11 @@ export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function hasPublicInstanceBehavior(node: TSESTree.ClassDeclaration): boolean {
+function hasPublicInstanceBehavior(node: ClassLike): boolean {
   return node.body.body.some((member) => {
     if (member.type === AST_NODE_TYPES.MethodDefinition) {
       return (
-        member.kind === "method" &&
+        member.kind !== "constructor" &&
         !member.static &&
         member.accessibility !== "private" &&
         member.accessibility !== "protected" &&
@@ -81,6 +88,26 @@ function hasPublicInstanceBehavior(node: TSESTree.ClassDeclaration): boolean {
       member.typeAnnotation?.typeAnnotation.type === AST_NODE_TYPES.TSFunctionType
     );
   });
+}
+
+function classBindings(
+  statement: TSESTree.ProgramStatement,
+): readonly ClassBinding[] {
+  const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+    ? statement.declaration
+    : statement;
+  if (declaration?.type === AST_NODE_TYPES.ClassDeclaration) {
+    return declaration.id === null
+      ? []
+      : [{ declaration, name: declaration.id.name }];
+  }
+  if (declaration?.type !== AST_NODE_TYPES.VariableDeclaration) return [];
+  return declaration.declarations.flatMap((item) =>
+    item.id.type === AST_NODE_TYPES.Identifier &&
+    item.init?.type === AST_NODE_TYPES.ClassExpression
+      ? [{ declaration: item.init, name: item.id.name }]
+      : [],
+  );
 }
 
 export default createRule<Options, MessageIds>({
@@ -106,35 +133,67 @@ export default createRule<Options, MessageIds>({
       isGeneratedFile(context.filename, context.sourceCode.text)
     ) return {};
     return {
-      ExportNamedDeclaration(node): void {
-        const declaration = node.declaration;
-        if (
-          declaration?.type !== AST_NODE_TYPES.ClassDeclaration ||
-          declaration.abstract ||
-          declaration.implements.length > 0 ||
-          declaration.superClass !== null ||
-          !hasPublicInstanceBehavior(declaration)
-        ) return;
-        context.report({
-          node: declaration.id ?? declaration,
-          messageId: "requireContract",
-          data: { name: declaration.id?.name ?? "default" },
-        });
-      },
-      ExportDefaultDeclaration(node): void {
-        const declaration = node.declaration;
-        if (
-          declaration.type !== AST_NODE_TYPES.ClassDeclaration ||
-          declaration.abstract ||
-          declaration.implements.length > 0 ||
-          declaration.superClass !== null ||
-          !hasPublicInstanceBehavior(declaration)
-        ) return;
-        context.report({
-          node: declaration.id ?? declaration,
-          messageId: "requireContract",
-          data: { name: declaration.id?.name ?? "default" },
-        });
+      "Program:exit"(program): void {
+        const classes = new Map<string, ClassLike>();
+        const abstractBases = new Set<string>();
+        for (const statement of program.body) {
+          for (const binding of classBindings(statement)) {
+            classes.set(binding.name, binding.declaration);
+            if (binding.declaration.abstract) abstractBases.add(binding.name);
+          }
+        }
+
+        const exported = new Map<ClassLike, string>();
+        for (const statement of program.body) {
+          if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
+            for (const binding of classBindings(statement)) {
+              exported.set(binding.declaration, binding.name);
+            }
+            if (statement.source !== null || statement.exportKind === "type") continue;
+            for (const specifier of statement.specifiers) {
+              if (specifier.exportKind === "type") continue;
+              const candidate = classes.get(specifier.local.name);
+              if (candidate === undefined) continue;
+              const exportedName = specifier.exported.type === AST_NODE_TYPES.Identifier
+                ? specifier.exported.name
+                : specifier.exported.value;
+              exported.set(candidate, exportedName);
+            }
+            continue;
+          }
+          if (statement.type !== AST_NODE_TYPES.ExportDefaultDeclaration) continue;
+          if (
+            statement.declaration.type === AST_NODE_TYPES.ClassDeclaration ||
+            statement.declaration.type === AST_NODE_TYPES.ClassExpression
+          ) {
+            exported.set(
+              statement.declaration,
+              statement.declaration.id?.name ?? "default",
+            );
+          } else if (statement.declaration.type === AST_NODE_TYPES.Identifier) {
+            const candidate = classes.get(statement.declaration.name);
+            if (candidate !== undefined) {
+              exported.set(candidate, statement.declaration.name);
+            }
+          }
+        }
+
+        for (const [declaration, exportedName] of exported) {
+          const extendsLocalAbstractBase =
+            declaration.superClass?.type === AST_NODE_TYPES.Identifier &&
+            abstractBases.has(declaration.superClass.name);
+          if (
+            declaration.abstract ||
+            declaration.implements.length > 0 ||
+            extendsLocalAbstractBase ||
+            !hasPublicInstanceBehavior(declaration)
+          ) continue;
+          context.report({
+            node: declaration.id ?? declaration,
+            messageId: "requireContract",
+            data: { name: exportedName },
+          });
+        }
       },
     };
   },

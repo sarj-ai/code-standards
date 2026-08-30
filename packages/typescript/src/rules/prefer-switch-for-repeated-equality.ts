@@ -18,6 +18,7 @@ export const PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION = {
   category: "maintainability",
   limitations: [
     "Only direct if/else-if chains with at least three strict-equality tests are reported.",
+    "Case values may be literals, enum-like member references, or upper-case named constants; dynamic expressions are excluded.",
     "The rule deliberately ignores compound predicates, loose equality, ranges, and chains that compare different discriminants.",
   ],
   examples: [
@@ -31,10 +32,20 @@ function discriminantText(
   test: TSESTree.Expression,
 ): string | null {
   if (test.type !== AST_NODE_TYPES.BinaryExpression || test.operator !== "===") return null;
-  const leftIsCase = test.left.type === AST_NODE_TYPES.Literal;
-  const rightIsCase = test.right.type === AST_NODE_TYPES.Literal;
+  const leftIsCase = isCaseValue(test.left);
+  const rightIsCase = isCaseValue(test.right);
   if (leftIsCase === rightIsCase) return null;
   return sourceCode.getText(leftIsCase ? test.right : test.left);
+}
+
+function isCaseValue(node: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean {
+  if (node.type === AST_NODE_TYPES.Literal) return true;
+  if (node.type === AST_NODE_TYPES.Identifier) return /^[A-Z][A-Z0-9_]*$/u.test(node.name);
+  if (node.type !== AST_NODE_TYPES.MemberExpression || node.computed) return false;
+  return (
+    node.property.type === AST_NODE_TYPES.Identifier &&
+    (node.object.type === AST_NODE_TYPES.Identifier || isCaseValue(node.object))
+  );
 }
 
 export default createRule<Options, MessageIds>({

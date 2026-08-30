@@ -317,6 +317,25 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     ).toEqual([]);
   });
 
+  it.each(CONFIG_FACTORIES)(
+    "%s rejects file-scoped rule configuration comments",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig(),
+      });
+      const [result] = await eslint.lintText(
+        "/* eslint no-console: off -- file-scoped suppression */\nconsole.log('hidden');\n",
+        { filePath: resolve(FIXTURE_DIR, "example.ts") },
+      );
+
+      expect(
+        result?.messages.map((message) => message.ruleId),
+      ).toContain("@eslint-community/eslint-comments/no-use");
+    },
+  );
+
   it("prefers the promise-based Node filesystem API", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
