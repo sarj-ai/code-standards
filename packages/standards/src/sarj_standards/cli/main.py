@@ -2083,7 +2083,7 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     )
     setup.add_argument(
         "--swift-dest",
-        help="the directory that owns one reviewed mobile Swift project (default: detected)",
+        help="the directory that owns one reviewed Swift project (default: mobile project detection)",
     )
     setup.add_argument(
         "--kotlin-dest",

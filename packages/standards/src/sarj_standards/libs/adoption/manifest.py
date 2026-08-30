@@ -209,7 +209,7 @@ def default_configs(
         selected.update(PYTHON_CONFIGS)
     if has_typescript:
         selected.update(TYPESCRIPT_CONFIGS)
-    if has_mobile and has_swift:
+    if has_swift:
         selected.update(SWIFT_CONFIGS)
     if has_mobile and has_kotlin:
         selected.update(KOTLIN_CONFIGS)

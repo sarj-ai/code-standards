@@ -1313,6 +1313,24 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/eslint/prefer-module-level-refined-schema",
+      "family": "typescript",
+      "ruleId": "prefer-module-level-refined-schema",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-multi-value-zod-literal",
+      "family": "typescript",
+      "ruleId": "prefer-multi-value-zod-literal",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-named-callback-domain",
+      "family": "typescript",
+      "ruleId": "prefer-named-callback-domain",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/eslint/prefer-node-fs-promises",
       "family": "typescript",
       "ruleId": "prefer-node-fs-promises",

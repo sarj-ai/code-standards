@@ -47,16 +47,17 @@ class Ecosystems:
     kotlin: bool = False
     swift_root: Path | None = None
     kotlin_root: Path | None = None
+    mobile_swift: bool = False
 
     @property
     def any(self) -> bool:
         """Whether anything at all was detected."""
-        return self.python or self.typescript or self.mobile
+        return self.python or self.typescript or self.swift or self.kotlin
 
     @property
     def mobile(self) -> bool:
         """Whether the repository has explicit Apple or Android project configuration."""
-        return self.swift or self.kotlin
+        return self.mobile_swift or self.kotlin
 
 
 @dataclass
@@ -189,7 +190,8 @@ def detect(
 ) -> Ecosystems:
     python_root = _override(root, python_dest) or _python_root(root)
     typescript_root = _override(root, typescript_dest) or _typescript_root(root)
-    swift_root = _validated_mobile_override(root, swift_dest, language="Swift") or _swift_root(root)
+    explicit_swift_root = _validated_swift_override(root, swift_dest)
+    swift_root = explicit_swift_root or _swift_root(root)
     kotlin_root = _validated_mobile_override(root, kotlin_dest, language="Kotlin") or _kotlin_root(root)
     install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
     client = packagemanager.detect(install_root) if install_root else PackageManager.NPM
@@ -209,6 +211,7 @@ def detect(
         kotlin=kotlin_root is not None,
         swift_root=swift_root,
         kotlin_root=kotlin_root,
+        mobile_swift=swift_root is not None and _swift_root_is_mobile(swift_root),
     )
 
 
@@ -236,6 +239,7 @@ def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
         kotlin=kotlin,
         swift_root=detected.swift_root if swift else None,
         kotlin_root=detected.kotlin_root if kotlin else None,
+        mobile_swift=detected.mobile_swift if swift else False,
     )
 
 
@@ -276,6 +280,38 @@ def _validated_mobile_override(
         msg = f"{language.lower()} destination {dest!r} must be one exact configured mobile project root"
         raise ValueError(msg)
     return selected
+
+
+def _validated_swift_override(root: Path, dest: str | None) -> Path | None:
+    selected = _override(root, dest)
+    if selected is None:
+        return None
+    if not _is_exact_swift_project_root(selected):
+        msg = f"swift destination {dest!r} must be one exact configured Swift project root"
+        raise ValueError(msg)
+    return selected
+
+
+def _is_exact_swift_project_root(root: Path) -> bool:
+    package = root / "Package.swift"
+    if package.is_file() and not is_link_like(package):
+        return True
+    return any(
+        child.is_dir() and child.name.endswith(".xcodeproj") and not is_link_like(child) for child in root.iterdir()
+    )
+
+
+def _swift_root_is_mobile(root: Path) -> bool:
+    package = root / "Package.swift"
+    if package.is_file() and not is_link_like(package) and _swift_package_is_mobile(package):
+        return True
+    return any(
+        child.is_dir()
+        and child.name.endswith(".xcodeproj")
+        and not is_link_like(child)
+        and _xcode_project_is_mobile(child)
+        for child in root.iterdir()
+    )
 
 
 def _python_root(root: Path) -> Path | None:
@@ -590,7 +626,7 @@ def build_plan(
     else:
         plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
     workflow = root / ".github" / "workflows" / "standards.yml"
-    workflow_contents = github_ci_workflow(root)
+    workflow_contents = github_ci_workflow(root, ecosystems=ecosystems)
     existing_gates = standards_check_workflows(root)
     if workflow.is_file() and _is_managed_workflow(workflow):
         if workflow.read_text(encoding="utf-8") == workflow_contents:
@@ -1813,7 +1849,7 @@ def ci_snippet() -> str:
     return "\n".join(lines) + "\n"
 
 
-def github_ci_workflow(root: Path) -> str:
+def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> str:
     root = root.resolve()
     adopted = manifest.load_for_setup(root)
     python_dest = "." if adopted is None else adopted.python_dest
@@ -1837,13 +1873,14 @@ def github_ci_workflow(root: Path) -> str:
         if adopted is None or not any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
         else adopted.kotlin_dest
     )
-    ecosystems = detect(
-        root,
-        python_dest=python_override,
-        typescript_dest=typescript_override,
-        swift_dest=swift_override,
-        kotlin_dest=kotlin_override,
-    )
+    if ecosystems is None:
+        ecosystems = detect(
+            root,
+            python_dest=python_override,
+            typescript_dest=typescript_override,
+            swift_dest=swift_override,
+            kotlin_dest=kotlin_override,
+        )
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = launcher.repository_command()
     lines = [

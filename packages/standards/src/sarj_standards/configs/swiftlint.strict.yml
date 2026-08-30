@@ -1,4 +1,4 @@
-# Canonical SwiftLint 0.65.1 configuration for mobile Swift.
+# Canonical SwiftLint 0.65.1 configuration for Swift projects.
 # SwiftFormat owns formatting; SwiftLint owns semantic and correctness policy.
 
 strict: true
