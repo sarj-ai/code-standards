@@ -80,7 +80,9 @@ _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
 _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
 _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
-_REACT_DOCTOR_SOURCE_SUFFIXES = frozenset({".astro", ".htm", ".html", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
+_REACT_DOCTOR_SOURCE_SUFFIXES = frozenset(
+    {".astro", ".cjs", ".cts", ".htm", ".html", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"}
+)
 _ESLINT_NODE_OPTIONS: Final = "--max-old-space-size=4096"
 _ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
 _JSON_OBJECT_ADAPTER = TypeAdapter(dict[str, object])
@@ -101,13 +103,23 @@ _REACT_RUNTIME_PACKAGES = frozenset(
 _REACT_DOCTOR_METADATA_NAMES = frozenset(
     {
         "doctor.config.json",
+        "bun.lock",
+        "bun.lockb",
         "eslint.config.js",
+        "eslint.config.cjs",
+        "eslint.config.cts",
         "eslint.config.mjs",
+        "eslint.config.mts",
+        "eslint.config.ts",
+        "jsconfig.json",
+        "npm-shrinkwrap.json",
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
         "tsconfig.json",
         "yarn.lock",
+        "yarn.lock.yml",
     }
 )
 _JAVASCRIPT_SCAN_SKIP_DIRS = frozenset(
@@ -418,7 +430,7 @@ def analyze_external(
         enabled=include_react_doctor,
         has_typescript=force_react_doctor
         or bool(routed.typescript)
-        or any(Path(item).name in _REACT_DOCTOR_METADATA_NAMES for item in contained),
+        or any(_is_react_doctor_metadata(Path(item)) for item in contained),
         capabilities=capabilities,
     )
     if react_selection is not None:
@@ -933,6 +945,23 @@ def _react_project_roots(
     return tuple(projects)
 
 
+def _is_react_doctor_metadata(path: Path) -> bool:
+    name = path.name.casefold()
+    if name in _REACT_DOCTOR_METADATA_NAMES:
+        return True
+    return name.startswith(
+        (
+            "astro.config.",
+            "doctor.config.",
+            "eslint.config.",
+            "jsconfig.",
+            "next.config.",
+            "tsconfig.",
+            "vite.config.",
+        )
+    )
+
+
 def _invoke_react_doctor(
     project: Path,
     *,
@@ -946,6 +975,26 @@ def _invoke_react_doctor(
     allow_empty_projects: bool = False,
 ) -> ToolReport:
     name = "react-doctor"
+    # Hooks inspect the index and CI uses the native merge-base scope. A scoped
+    # baseline promotion explicitly requests a full scan so existing debt can be
+    # recorded even though the rollout itself changes no React source files.
+    scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan)
+    scope_base = None if staged or full_scan else change_scope_base()
+    if scope_base and _react_doctor_changed_scope_is_disjoint(
+        projects,
+        root=root,
+        runner=runner,
+        scope_root=project,
+        reported_base=scope_base,
+    ):
+        project_id = project.relative_to(root).as_posix() or "."
+        return ToolReport(
+            name,
+            Completion.COMPLETE,
+            analyzer_id=AnalyzerId(name),
+            invocation_id=InvocationId(f"{name}:{project_id}"),
+            file_count=0,
+        )
     if use_local_binary and (issue := _missing_local_binary_issue(name, project, root)) is not None:
         return ToolReport(
             name,
@@ -957,10 +1006,6 @@ def _invoke_react_doctor(
         )
     install_root = packagemanager.workspace_root(project, root)
     client = packagemanager.detect(install_root)
-    # Hooks inspect the index and CI uses the native merge-base scope. A scoped
-    # baseline promotion explicitly requests a full scan so existing debt can be
-    # recorded even though the rollout itself changes no React source files.
-    scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan)
     if staged and not full_scan:
         allow_empty_projects = allow_empty_projects or _react_doctor_scope_has_no_source(
             projects,
@@ -1144,6 +1189,82 @@ def _react_doctor_staged_paths(root: Path, *, runner: ProcessRunner) -> frozense
     return frozenset(paths)
 
 
+def _react_doctor_changed_scope_is_disjoint(
+    projects: Sequence[Path],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    scope_root: Path,
+    reported_base: str,
+) -> bool:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", reported_base):
+        return False
+    if ".." in reported_base or "@{" in reported_base:
+        return False
+    resolved_base_output = runner(
+        ("git", "rev-parse", "--verify", "--end-of-options", f"{reported_base}^{{commit}}"),
+        cwd=root,
+    )
+    resolved_head_output = runner(
+        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
+        cwd=root,
+    )
+    resolved_base = resolved_base_output.stdout.strip()
+    resolved_head = resolved_head_output.stdout.strip()
+    if (
+        resolved_base_output.returncode != 0
+        or resolved_head_output.returncode != 0
+        or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None
+        or re.fullmatch(r"[0-9a-f]{40}", resolved_head) is None
+    ):
+        return False
+    ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
+    if ancestor.returncode != 0:
+        return False
+    changed = runner(
+        (
+            "git",
+            "diff",
+            f"{resolved_base}...{resolved_head}",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            "--",
+        ),
+        cwd=root,
+    )
+    if changed.returncode != 0:
+        return False
+    resolved_root = root.resolve()
+    resolved_scope = scope_root.resolve()
+    resolved_projects = tuple(project.resolve() for project in projects)
+    if (
+        not resolved_scope.is_relative_to(resolved_root)
+        or not resolved_projects
+        or any(
+            not project.is_relative_to(resolved_root) or not project.is_relative_to(resolved_scope)
+            for project in resolved_projects
+        )
+    ):
+        return False
+    for relative in (item for item in changed.stdout.split("\0") if item):
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            return False
+        candidate = resolved_root / relative_path
+        if any(candidate.is_relative_to(project) for project in resolved_projects):
+            return False
+        if _is_react_doctor_metadata(candidate) and any(
+            project.is_relative_to(candidate.parent) for project in resolved_projects
+        ):
+            return False
+    status = runner(("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--"), cwd=root)
+    if status.returncode != 0 or status.stdout:
+        return False
+    final_head = runner(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    return final_head.returncode == 0 and final_head.stdout.strip() == resolved_head
+
+
 def _react_doctor_max_duration(file_count: int) -> timedelta:
     if file_count <= _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES:
         return timedelta(seconds=12)
@@ -1216,9 +1337,10 @@ def _react_doctor_scope_has_no_source(
         candidate = resolved_root / relative_path
         if candidate.is_relative_to(resolved_scope):
             scoped_changed_file_count += 1
+        within_project = any(candidate.is_relative_to(project) for project in resolved_projects)
         if candidate.suffix.casefold() not in _REACT_DOCTOR_SOURCE_SUFFIXES:
             continue
-        if any(candidate.is_relative_to(project) for project in resolved_projects):
+        if within_project:
             return False
     return reported_changed_file_count is None or scoped_changed_file_count == reported_changed_file_count
 
