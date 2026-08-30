@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _manifest(root: Path, *, schema: object = 3, bundle: object = "5.16.5") -> None:
+def _manifest(root: Path, *, schema: object = 4, bundle: object = "5.16.5") -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / bootstrap.MANIFEST_NAME).write_text(
         f"schema = {schema!r}\nbundle = {bundle!r}\n".replace("'", '"'),
@@ -62,7 +62,7 @@ def test_missing_manifest_is_concise(
     ("contents", "message"),
     [
         ("not toml = [", "not valid TOML"),
-        ('schema = 2\nbundle = "1.2.3"\n', "schema must equal 3"),
+        ('schema = 2\nbundle = "1.2.3"\n', "schema must be one of 3, 4"),
         ('schema = 3\nbundle = "latest"\n', "exact canonical X.Y.Z"),
         ('schema = 3\nbundle = "01.2.3"\n', "exact canonical X.Y.Z"),
         ("schema = 3\nbundle = 123\n", "exact canonical X.Y.Z"),
@@ -73,6 +73,13 @@ def test_rejects_invalid_manifest(tmp_path: Path, contents: str, message: str) -
 
     with pytest.raises(bootstrap.BootstrapError, match=message):
         bootstrap.bundle(tmp_path)
+
+
+@pytest.mark.parametrize("schema", [3, 4])
+def test_accepts_supported_manifest_schemas(tmp_path: Path, schema: int) -> None:
+    _manifest(tmp_path, schema=schema, bundle="1.2.3")
+
+    assert bootstrap.bundle(tmp_path) == "1.2.3"
 
 
 def test_execs_exact_bundle_and_preserves_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

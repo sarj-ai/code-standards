@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 MANIFEST_NAME: Final = ".sarj-standards.toml"
-MANIFEST_SCHEMA: Final = 3
+SUPPORTED_MANIFEST_SCHEMAS: Final = frozenset({3, 4})
 TOOL_PYTHON: Final = "3.14"
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
@@ -100,8 +100,9 @@ def bundle(root: Path) -> str:
         raise BootstrapError(message) from exc
     data = table(document)
     schema = data.get("schema")
-    if schema != MANIFEST_SCHEMA:
-        message = f"{manifest} schema must equal {MANIFEST_SCHEMA}, got {schema!r}"
+    if schema not in SUPPORTED_MANIFEST_SCHEMAS:
+        supported = ", ".join(str(value) for value in sorted(SUPPORTED_MANIFEST_SCHEMAS))
+        message = f"{manifest} schema must be one of {supported}; got {schema!r}"
         raise BootstrapError(message)
     selected_bundle = data.get("bundle")
     if not isinstance(selected_bundle, str) or _VERSION.fullmatch(selected_bundle) is None:
