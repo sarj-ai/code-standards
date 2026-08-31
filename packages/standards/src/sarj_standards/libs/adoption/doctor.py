@@ -76,7 +76,8 @@ class _PackageEslintPinRewrite(NamedTuple):
 
 #: `sarj-python-lint==0.25.0`, `"code-standards>=0.9"`, `--from sarj-sql-lint==1.2.3`.
 _PIN = re.compile(
-    r"(?P<name>sarj-(?:python|sql|iac)-lint|(?:code|sarj)-standards)\s*(?P<op>==|>=|~=)\s*"
+    r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards-bootstrap|(?:code|sarj)-standards)\s*"
+    r"(?P<op>==|>=|~=)\s*"
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
 )
 _PREAPPROVED_ESLINT = re.compile(
@@ -229,6 +230,7 @@ def _git_environment() -> dict[str, str]:
 
 def diagnose(root: Path) -> list[Finding]:
     installed = manifest.installed_versions()
+    installed[launcher.BOOTSTRAP_PACKAGE] = launcher.BOOTSTRAP_VERSION
     installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = authored_files(root)
     findings = [*_check_manifest(root)]
@@ -259,6 +261,7 @@ def authored_files(root: Path) -> tuple[Path, ...]:
 
 def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
     installed = manifest.installed_versions()
+    installed[launcher.BOOTSTRAP_PACKAGE] = launcher.BOOTSTRAP_VERSION
     installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = _adoption_health_files(root, selected)
     findings = [*_check_manifest(root)]
@@ -924,16 +927,21 @@ def _rewrite_age_gate_preapprovals(  # ruff: ignore[too-many-locals] -- lossless
             continue
         end = index + 1
         retained: list[str] = []
+        trailing: list[str] = []
+        saw_item = False
         while end < len(lines):
             candidate = lines[end]
             stripped = candidate.strip()
             indentation = len(candidate) - len(candidate.lstrip(" \t"))
-            if stripped and not stripped.startswith("#") and indentation <= len(header.group("indent")):
+            if stripped and indentation <= len(header.group("indent")) and (not stripped.startswith("#") or saw_item):
+                while retained and not retained[-1].strip():
+                    trailing.insert(0, retained.pop())
                 break
             item = _AGE_GATE_YAML_ITEM.fullmatch(candidate.rstrip("\r\n"))
             if item is None:
                 retained.append(candidate)
             else:
+                saw_item = True
                 value = item.group("value")
                 package = next(
                     (name for name in managed if value == name or value.startswith(f"{name}@")),
@@ -944,7 +952,7 @@ def _rewrite_age_gate_preapprovals(  # ruff: ignore[too-many-locals] -- lossless
             end += 1
         item_indent = f"{header.group('indent')}  "
         rendered = [f'{item_indent}- "{name}@{approvals[name]}"\n' for name in sorted(managed)]
-        replacement = [line, *retained, *rendered]
+        replacement = [line, *retained, *rendered, *trailing]
         original = lines[index:end]
         if replacement != original:
             lines[index:end] = replacement
@@ -967,6 +975,7 @@ def plan_version_pin_updates(
     installed: Mapping[str, str] | None = None,
 ) -> tuple[VersionPinUpdate, ...]:
     versions = dict(manifest.installed_versions() if installed is None else installed)
+    versions.setdefault(launcher.BOOTSTRAP_PACKAGE, launcher.BOOTSTRAP_VERSION)
     versions.setdefault(_ESLINT_PLUGIN, manifest.eslint_peers()[_ESLINT_PLUGIN])
     exclusions = _doctor_exclusions(root)
     updates: list[VersionPinUpdate] = []

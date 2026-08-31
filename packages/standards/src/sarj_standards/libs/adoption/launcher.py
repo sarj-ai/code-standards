@@ -9,7 +9,9 @@ from typing import Final, NamedTuple
 TOOL_PYTHON: Final = "3.14"
 PACKAGE: Final = "code-standards"
 COMMAND: Final = "code-standards"
+BOOTSTRAP_PACKAGE: Final = "sarj-standards-bootstrap"
 BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==2.0.2"
+BOOTSTRAP_VERSION: Final = BOOTSTRAP_SPEC.removeprefix(f"{BOOTSTRAP_PACKAGE}==")
 RETIRED_REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
 RETIRED_LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")

@@ -370,6 +370,23 @@ def test_doctor_deduplicates_indistinguishable_pin_findings(tmp_path: Path) -> N
     assert len(findings) == 1
 
 
+def test_doctor_reports_an_outdated_canonical_bootstrap_pin(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github" / "workflows" / "standards.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "steps:\n"
+        "  - run: uvx --no-config --isolated --python 3.14 "
+        "--from sarj-standards-bootstrap==2.0.0 code-standards check\n",
+        encoding="utf-8",
+    )
+
+    findings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.version.pin"]
+
+    assert len(findings) == 1
+    assert findings[0].level is doctor.Level.DRIFT
+    assert "sarj-standards-bootstrap==2.0.0" in findings[0].where
+
+
 def test_doctor_ignores_malformed_unrelated_nested_package_json(tmp_path: Path) -> None:
     fixture = tmp_path / "tests" / "fixtures" / "broken" / "package.json"
     fixture.parent.mkdir(parents=True)
