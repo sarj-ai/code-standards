@@ -978,8 +978,8 @@ def _invoke_react_doctor(
     # Hooks inspect the index and CI uses the native merge-base scope. A scoped
     # baseline promotion explicitly requests a full scan so existing debt can be
     # recorded even though the rollout itself changes no React source files.
-    scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan)
     scope_base = None if staged or full_scan else change_scope_base()
+    scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan, base=scope_base)
     if scope_base and _react_doctor_changed_scope_is_disjoint(
         projects,
         root=root,
@@ -1064,16 +1064,102 @@ def _invoke_react_doctor(
             scope_root=project,
             projects=projects,
         )
+    execution_runner = runner
+    if scope_base and not staged and not full_scan:
+        execution_runner = _react_doctor_baseline_retry_runner(
+            argv,
+            root=root,
+            runner=runner,
+            explicit_base=scope_base,
+        )
     return _invoke(
         name,
         argv,
         cwd=project,
         root=root,
-        runner=runner,
+        runner=execution_runner,
         parser=parser,
         invocation_id=project.relative_to(root).as_posix() or None,
         file_count=file_count,
     )
+
+
+def _react_doctor_baseline_retry_runner(
+    doctor_argv: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+    explicit_base: str,
+) -> ProcessRunner:
+    expected_argv = tuple(doctor_argv)
+    head_before = runner(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    expected_head = head_before.stdout.strip()
+    eligible = head_before.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", expected_head) is not None
+    attempted = False
+
+    def bounded(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal attempted
+        output = runner(argv, cwd=cwd)
+        if attempted or tuple(argv) != expected_argv:
+            return output
+        attempted = True
+        if not eligible or not _retryable_react_doctor_baseline(output, explicit_base=explicit_base):
+            return output
+        if not _react_doctor_retry_git_state_is_safe(
+            root,
+            runner=runner,
+            explicit_base=explicit_base,
+            expected_head=expected_head,
+        ):
+            return output
+        return runner(argv, cwd=cwd)
+
+    return bounded
+
+
+def _retryable_react_doctor_baseline(output: ProcessOutput, *, explicit_base: str) -> bool:
+    if output.returncode not in {0, 1} or not output.stdout.strip():
+        return False
+    try:
+        report = _ReactDoctorReport.model_validate_json(output.stdout)
+    except ValueError:
+        return False
+    return (
+        report.baseline_degraded
+        and report.version == manifest.eslint_peers()["react-doctor"]
+        and report.error is None
+        and report.diff is not None
+        and report.diff.base_branch == explicit_base
+    )
+
+
+def _react_doctor_retry_git_state_is_safe(
+    root: Path,
+    *,
+    runner: ProcessRunner,
+    explicit_base: str,
+    expected_head: str,
+) -> bool:
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", explicit_base) is None:
+        return False
+    if ".." in explicit_base or "@{" in explicit_base:
+        return False
+    base = runner(
+        ("git", "rev-parse", "--verify", "--end-of-options", f"{explicit_base}^{{commit}}"),
+        cwd=root,
+    )
+    head = runner(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    resolved_base = base.stdout.strip()
+    resolved_head = head.stdout.strip()
+    if (
+        base.returncode != 0
+        or head.returncode != 0
+        or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None
+        or resolved_head != expected_head
+    ):
+        return False
+    ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
+    return ancestor.returncode == 0
 
 
 def _parse_react_doctor_staged_with_full_fallback(
@@ -1273,14 +1359,19 @@ def _react_doctor_max_duration(file_count: int) -> timedelta:
     return _REACT_DOCTOR_MAX_DURATION
 
 
-def _react_doctor_scope_args(*, staged: bool, full_scan: bool = False) -> tuple[str, ...]:
+def _react_doctor_scope_args(
+    *,
+    staged: bool,
+    full_scan: bool = False,
+    base: str | None = None,
+) -> tuple[str, ...]:
     if full_scan:
         return ("--scope", "full")
     if staged:
         return ("--staged",)
-    base = change_scope_base()
-    if base:
-        return ("--scope", "changed", "--base", base)
+    selected_base = change_scope_base() if base is None else base
+    if selected_base:
+        return ("--scope", "changed", "--base", selected_base)
     return ("--scope", "changed")
 
 

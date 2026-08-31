@@ -64,6 +64,11 @@ class VersionPinRewrite(NamedTuple):
     packages: tuple[str, ...]
 
 
+class AgeGateRewrite(NamedTuple):
+    contents: str
+    packages: frozenset[str]
+
+
 class _PackageEslintPinRewrite(NamedTuple):
     contents: str
     changed: bool
@@ -78,6 +83,15 @@ _PREAPPROVED_ESLINT = re.compile(
     r"(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n"
     r'(?:[ \t]+-[^\n]*\n)*?[ \t]+-\s*["\']?@sarj/eslint-plugin@)'
     r'(?P<version>[0-9][0-9A-Za-z._+\-]*)(?P<suffix>["\']?\s*(?:#.*)?)$'
+)
+_AGE_GATE_YAML_HEADER = re.compile(
+    r"^(?P<indent>[ \t]*)(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[ \t]*(?:#.*)?$"
+)
+_AGE_GATE_YAML_ITEM = re.compile(
+    r"^(?P<indent>[ \t]*)-[ \t]*(?P<quote>['\"]?)(?P<value>[^'\"#\s]+)(?P=quote)[ \t]*(?:#.*)?$"
+)
+_NPM_AGE_GATE_EXCLUDE = re.compile(
+    r"(?m)^(?P<prefix>[ \t]*min-release-age-exclude[ \t]*=[ \t]*)(?P<value>[^\r\n#]*)(?P<suffix>[ \t]*(?:#.*)?)$"
 )
 _PACKAGE_DEPENDENCY_SECTION = re.compile(
     r'(?P<prefix>"(?:dependencies|devDependencies)"\s*:\s*\{)(?P<body>[^{}]*)(?P<suffix>\})',
@@ -834,6 +848,7 @@ def _is_pin_site(path: Path) -> bool:
         "lefthook.yaml",
         ".yarnrc.yml",
         ".yarnrc.yaml",
+        ".npmrc",
         "pnpm-workspace.yaml",
     }:
         return True
@@ -888,7 +903,63 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
             changed.add("code-standards")
             isolated = migrated
     pinned = _PIN.sub(replacement, isolated)
-    return VersionPinRewrite(_PREAPPROVED_ESLINT.sub(preapproved_eslint, pinned), tuple(sorted(changed)))
+    pinned = _PREAPPROVED_ESLINT.sub(preapproved_eslint, pinned)
+    preapprovals = manifest.eslint_age_gate_preapprovals()
+    if current_plugin := installed.get(_ESLINT_PLUGIN):
+        preapprovals[_ESLINT_PLUGIN] = current_plugin
+    pinned, age_gate_changed = _rewrite_age_gate_preapprovals(pinned, preapprovals)
+    changed.update(age_gate_changed)
+    return VersionPinRewrite(pinned, tuple(sorted(changed)))
+
+
+def _rewrite_age_gate_preapprovals(  # ruff: ignore[too-many-locals] -- lossless policy rewriting tracks layout.
+    text: str,
+    approvals: Mapping[str, str],
+) -> AgeGateRewrite:
+    managed = frozenset(approvals)
+    lines = text.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        header = _AGE_GATE_YAML_HEADER.fullmatch(line.rstrip("\r\n"))
+        if header is None:
+            continue
+        end = index + 1
+        retained: list[str] = []
+        while end < len(lines):
+            candidate = lines[end]
+            stripped = candidate.strip()
+            indentation = len(candidate) - len(candidate.lstrip(" \t"))
+            if stripped and not stripped.startswith("#") and indentation <= len(header.group("indent")):
+                break
+            item = _AGE_GATE_YAML_ITEM.fullmatch(candidate.rstrip("\r\n"))
+            if item is None:
+                retained.append(candidate)
+            else:
+                value = item.group("value")
+                package = next(
+                    (name for name in managed if value == name or value.startswith(f"{name}@")),
+                    None,
+                )
+                if package is None:
+                    retained.append(candidate)
+            end += 1
+        item_indent = f"{header.group('indent')}  "
+        rendered = [f'{item_indent}- "{name}@{approvals[name]}"\n' for name in sorted(managed)]
+        replacement = [line, *retained, *rendered]
+        original = lines[index:end]
+        if replacement != original:
+            lines[index:end] = replacement
+            return AgeGateRewrite("".join(lines), managed)
+        return AgeGateRewrite(text, frozenset())
+
+    def npm_replacement(match: re.Match[str]) -> str:
+        existing = [trimmed for item in match.group("value").split(",") if (trimmed := item.strip())]
+        retained = [item for item in existing if item not in managed]
+        values = ",".join((*retained, *sorted(managed)))
+        prefix, suffix = match.group("prefix", "suffix")
+        return f"{prefix}{values}{suffix}"
+
+    rewritten = _NPM_AGE_GATE_EXCLUDE.sub(npm_replacement, text, count=1)
+    return AgeGateRewrite(rewritten, managed if rewritten != text else frozenset())
 
 
 def plan_version_pin_updates(

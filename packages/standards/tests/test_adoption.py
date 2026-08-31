@@ -1684,6 +1684,38 @@ def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> Non
     assert "canonical lefthook Standards hook is also active" in conflicts[0].detail
 
 
+def test_lefthook_replaces_one_semantic_staged_command_with_a_stale_bootstrap_pin(tmp_path: Path) -> None:
+    config = tmp_path / "lefthook.yml"
+    stale = BOOTSTRAP_COMMAND.replace("==2.0.2", "==1.9.0")
+    config.write_text(
+        "pre-commit:\n  jobs:\n    - name: standards\n"
+        f"      run: {stale} check --staged --trust-repository-code -- {{staged_files}}\n",
+        encoding="utf-8",
+    )
+
+    write = adoption_hooks.wire_lefthook_staged_check(tmp_path)
+
+    assert write.path == config
+    assert BOOTSTRAP_COMMAND in write.contents
+    assert "==1.9.0" not in write.contents
+    assert write.contents.count("check --staged") == 1
+
+
+def test_lefthook_refuses_duplicate_semantic_staged_commands_even_with_stale_pins(tmp_path: Path) -> None:
+    config = tmp_path / "lefthook.yml"
+    first = BOOTSTRAP_COMMAND.replace("==2.0.2", "==1.8.0")
+    second = BOOTSTRAP_COMMAND.replace("==2.0.2", "==1.9.0")
+    config.write_text(
+        "pre-commit:\n  jobs:\n"
+        f"    - name: first\n      run: {first} check --staged --trust-repository-code -- {{staged_files}}\n"
+        f"    - name: second\n      run: {second} check --staged --trust-repository-code -- {{staged_files}}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="multiple staged Standards commands"):
+        adoption_hooks.wire_lefthook_staged_check(tmp_path)
+
+
 def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0

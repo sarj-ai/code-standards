@@ -121,15 +121,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
     hooks_table = manifest.table_field(manifest.as_table(parsed), "hooks")
     hook_manager = adopted.hook_manager if "manager" in hooks_table else hooks.detect_manager(root)
     adopted = replace(adopted, hook_manager=hook_manager)
-    detected_ecosystems = scaffold.detect(
-        root,
-        python_dest=adopted.python_dest if any(name in adopted.configs for name in manifest.PYTHON_CONFIGS) else None,
-        typescript_dest=(
-            adopted.typescript_dest if any(name in adopted.configs for name in manifest.TYPESCRIPT_CONFIGS) else None
-        ),
-        swift_dest=adopted.swift_dest if any(name in adopted.configs for name in manifest.SWIFT_CONFIGS) else None,
-        kotlin_dest=adopted.kotlin_dest if any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS) else None,
-    )
+    detected_ecosystems = scaffold.detect_adopted(root, adopted)
     scaffold_plan = scaffold.build_plan(
         root,
         force=False,

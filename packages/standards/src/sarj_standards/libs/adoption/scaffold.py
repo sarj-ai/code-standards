@@ -220,26 +220,30 @@ def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
     typescript = "eslint" in adopted.configs
     swift = bool({"swiftformat", "swiftlint"}.intersection(adopted.configs))
     kotlin = bool({"ktlint", "detekt"}.intersection(adopted.configs))
-    detected = detect(
-        root,
-        python_dest=adopted.python_dest if python else None,
-        typescript_dest=adopted.typescript_dest if typescript else None,
-        swift_dest=adopted.swift_dest if swift else None,
-        kotlin_dest=adopted.kotlin_dest if kotlin else None,
-    )
+    # An adopted manifest is authoritative. Do not auto-detect disabled
+    # ecosystems: a repository may intentionally contain several unowned mobile
+    # projects, and discovery would make an unrelated legacy migration ambiguous.
+    python_root = _override(root, adopted.python_dest) if python else None
+    typescript_root = _override(root, adopted.typescript_dest) if typescript else None
+    swift_root = _validated_swift_override(root, adopted.swift_dest) if swift else None
+    kotlin_root = _validated_mobile_override(root, adopted.kotlin_dest, language="Kotlin") if kotlin else None
+    install_root = packagemanager.workspace_root(typescript_root, root) if typescript_root else None
+    client = packagemanager.detect(install_root) if install_root else PackageManager.NPM
     return Ecosystems(
         python=python,
         typescript=typescript,
-        python_root=detected.python_root if python else None,
-        typescript_root=detected.typescript_root if typescript else None,
-        typescript_install_root=detected.typescript_install_root if typescript else None,
-        client=detected.client,
-        yarn=detected.yarn,
+        python_root=python_root,
+        typescript_root=typescript_root,
+        typescript_install_root=install_root,
+        client=client,
+        yarn=packagemanager.yarn_variant(install_root)
+        if install_root and client is PackageManager.YARN
+        else YarnVariant.CLASSIC,
         swift=swift,
         kotlin=kotlin,
-        swift_root=detected.swift_root if swift else None,
-        kotlin_root=detected.kotlin_root if kotlin else None,
-        mobile_swift=detected.mobile_swift if swift else False,
+        swift_root=swift_root,
+        kotlin_root=kotlin_root,
+        mobile_swift=swift_root is not None and _swift_root_is_mobile(swift_root),
     )
 
 
@@ -542,10 +546,12 @@ def build_plan(
         hook_manager=selected_hook_manager,
     )
 
-    for label, explicit, roots in (
-        ("Swift", swift_dest, _swift_roots(root)),
-        ("Kotlin", kotlin_dest, _kotlin_roots(root)),
+    for label, explicit, roots, enabled in (
+        ("Swift", swift_dest, _swift_roots(root), any(name in selected for name in manifest.SWIFT_CONFIGS)),
+        ("Kotlin", kotlin_dest, _kotlin_roots(root), any(name in selected for name in manifest.KOTLIN_CONFIGS)),
     ):
+        if not enabled:
+            continue
         independent = tuple(dict.fromkeys(path.resolve() for path in roots))
         if explicit is None and len(independent) > 1:
             destinations = ", ".join(path.relative_to(root).as_posix() for path in independent)

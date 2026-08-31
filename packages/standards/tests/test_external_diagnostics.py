@@ -1145,6 +1145,10 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
     )
 
     assert report.completion is expected_completion
+    doctor_commands = [command for command in seen if "react-doctor" in command]
+    assert len(doctor_commands) == 1
+    doctor_command = doctor_commands[0]
+    assert doctor_command[doctor_command.index("--base") + 1] == base
     assert (
         "git",
         "diff",
@@ -1213,6 +1217,115 @@ def test_react_doctor_skips_changed_scope_without_selected_project_source(
         ("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--"),
         ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
     ]
+
+
+def _degraded_react_doctor_output(base: str) -> ProcessOutput:
+    return ProcessOutput(
+        0,
+        json.dumps(
+            {
+                "schemaVersion": 3,
+                "mode": "diff",
+                "version": manifest.eslint_peers()["react-doctor"],
+                "ok": True,
+                "baselineDegraded": True,
+                "diff": {"baseBranch": base, "changedFileCount": 1},
+                "projects": [],
+                "diagnostics": [],
+                "skippedProjects": [],
+                "error": None,
+            }
+        ),
+        "",
+    )
+
+
+def test_react_doctor_retries_one_valid_upstream_baseline_degradation() -> None:
+    base = "a" * 40
+    head = "b" * 40
+    command = ("react-doctor", "--scope", "changed", "--base", base)
+    doctor_calls = 0
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal doctor_calls
+        assert cwd == Path("/repo")
+        if tuple(argv) == command:
+            doctor_calls += 1
+            return _degraded_react_doctor_output(base) if doctor_calls == 1 else ProcessOutput(0, "{}", "")
+        if argv[:2] == ("git", "rev-parse"):
+            return ProcessOutput(0, f"{base if argv[-1].startswith(base) else head}\n", "")
+        if argv[:3] == ("git", "merge-base", "--is-ancestor"):
+            return ProcessOutput(0, "", "")
+        pytest.fail(f"unexpected command: {argv!r}")
+
+    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        command,
+        root=Path("/repo"),
+        runner=runner,
+        explicit_base=base,
+    )
+
+    assert bounded(command, cwd=Path("/repo")) == ProcessOutput(0, "{}", "")
+    assert doctor_calls == 2
+
+
+def test_react_doctor_repeated_baseline_degradation_is_not_retried_twice() -> None:
+    base = "a" * 40
+    head = "b" * 40
+    command = ("react-doctor", "--scope", "changed", "--base", base)
+    doctor_calls = 0
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal doctor_calls
+        assert cwd == Path("/repo")
+        if tuple(argv) == command:
+            doctor_calls += 1
+            return _degraded_react_doctor_output(base)
+        if argv[:2] == ("git", "rev-parse"):
+            return ProcessOutput(0, f"{base if argv[-1].startswith(base) else head}\n", "")
+        return ProcessOutput(0, "", "")
+
+    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        command,
+        root=Path("/repo"),
+        runner=runner,
+        explicit_base=base,
+    )
+
+    assert bounded(command, cwd=Path("/repo")) == _degraded_react_doctor_output(base)
+    assert doctor_calls == 2
+
+
+def test_react_doctor_baseline_retry_stops_when_head_moves() -> None:
+    base = "a" * 40
+    initial_head = "b" * 40
+    moved_head = "c" * 40
+    command = ("react-doctor", "--scope", "changed", "--base", base)
+    head_reads = 0
+    doctor_calls = 0
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal doctor_calls, head_reads
+        assert cwd == Path("/repo")
+        if tuple(argv) == command:
+            doctor_calls += 1
+            return _degraded_react_doctor_output(base)
+        if argv[:2] == ("git", "rev-parse"):
+            if argv[-1].startswith(base):
+                return ProcessOutput(0, f"{base}\n", "")
+            head_reads += 1
+            return ProcessOutput(0, f"{initial_head if head_reads == 1 else moved_head}\n", "")
+        pytest.fail(f"unexpected command: {argv!r}")
+
+    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        command,
+        root=Path("/repo"),
+        runner=runner,
+        explicit_base=base,
+    )
+
+    assert bounded(command, cwd=Path("/repo")) == _degraded_react_doctor_output(base)
+    assert doctor_calls == 1
 
 
 @pytest.mark.parametrize(
@@ -2049,13 +2162,16 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
-    assert git_seen == [
-        ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--"),
-        ("git", "rev-parse", "--verify", "--end-of-options", f"{event_base}^{{commit}}"),
-        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
-        ("git", "rev-parse", "--verify", "--end-of-options", "0123456789abcdef^{commit}"),
-        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
-    ]
+    assert ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--") in git_seen
+    assert ("git", "rev-parse", "--verify", "--end-of-options", f"{event_base}^{{commit}}") in git_seen
+    assert (
+        "git",
+        "rev-parse",
+        "--verify",
+        "--end-of-options",
+        "0123456789abcdef^{commit}",
+    ) in git_seen
+    assert git_seen.count(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}")) >= 2
     assert "--no-cache" in seen[0]
     duration_index = seen[0].index("--max-duration")
     assert seen[0][duration_index + 1] == "12"

@@ -312,6 +312,21 @@ class TestSafety:
         with pytest.raises(rollout.RolloutError, match="protected paths"):
             rollout.reject_unsafe_diff((MANIFEST, arbitrary_config), allowed_paths=allowed)
 
+    def test_managed_paths_allow_only_the_selected_root_lefthook_config(self, tmp_path: Path) -> None:
+        (tmp_path / MANIFEST).write_text(
+            'schema = 4\nbundle = "7.9.5"\n\n[hooks]\nmanager = "lefthook"\n',
+            encoding="utf-8",
+        )
+        (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
+        nested = tmp_path / "nested" / "lefthook.yml"
+        nested.parent.mkdir()
+        nested.write_text("pre-commit: {}\n", encoding="utf-8")
+
+        allowed = rollout.managed_rollout_paths(tmp_path, frozenset())
+
+        assert "lefthook.yml" in allowed
+        assert "nested/lefthook.yml" not in allowed
+
     def test_prevalidated_pin_bearing_workflow_is_allowed(self) -> None:
         workflow = ".github/workflows/ci-internal-tools.yml"
 
