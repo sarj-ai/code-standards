@@ -90,10 +90,18 @@ def test_pnpm_gets_a_flat_selector_for_its_workspace_policy() -> None:
     assert "eslint-plugin-react>eslint" in overrides.entries
 
 
-def test_yarn_gets_a_path_selector_with_the_version_resolved() -> None:
+def test_yarn_gets_resolved_overrides_and_one_tested_typescript_eslint_identity() -> None:
     overrides = packagemanager.overrides_for(PackageManager.YARN)
     assert overrides.key_path == ("resolutions",)
-    assert overrides.entries == {"eslint-plugin-react/eslint": manifest.eslint_peers()["eslint"]}
+    expected_identity = {
+        name: version
+        for name, version in manifest.eslint_age_gate_preapprovals().items()
+        if name == "typescript-eslint" or name.startswith("@typescript-eslint/")
+    }
+    assert overrides.entries == {
+        "eslint-plugin-react/eslint": manifest.eslint_peers()["eslint"],
+        **expected_identity,
+    }
     assert "$" not in json.dumps(overrides.as_document())
 
 
@@ -383,7 +391,51 @@ def test_init_writes_resolutions_into_a_yarn_repo(tmp_path: Path) -> None:
     assert "overrides" not in written, "a bare `overrides` key is ignored by Yarn"
     resolutions = manifest.table_field(written, "resolutions")
     assert resolutions["eslint-plugin-react/eslint"] == manifest.eslint_peers()["eslint"]
+    expected_identity = {
+        name: version
+        for name, version in manifest.eslint_age_gate_preapprovals().items()
+        if name == "typescript-eslint" or name.startswith("@typescript-eslint/")
+    }
+    assert {name: resolutions[name] for name in expected_identity} == expected_identity
     assert "yarn install --no-immutable --mode=skip-build" in proc.stdout
+
+
+def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(tmp_path: Path) -> None:
+    child = tmp_path / "packages" / "client"
+    child.mkdir(parents=True)
+    _ = _project(
+        tmp_path,
+        "yarn.lock",
+        {
+            "name": "web",
+            "packageManager": "yarn@4.15.0",
+            "workspaces": ["packages/*"],
+        },
+    )
+    child_package = {
+        "name": "client",
+        "devDependencies": {
+            "@typescript-eslint/parser": "^8.67.0",
+            "typescript-eslint": "^8.67.0",
+        },
+    }
+    (child / "package.json").write_text(json.dumps(child_package), encoding="utf-8")
+    (child / "eslint.config.js").write_text(
+        'import strict from "../../eslint.strict.mjs";\n'
+        'import tseslint from "typescript-eslint";\n'
+        "export default [...strict, ...tseslint.configs.strictTypeChecked];\n",
+        encoding="utf-8",
+    )
+
+    proc = _cli("init", "--dest", str(tmp_path))
+
+    assert proc.returncode == 0, proc.stderr
+    root: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    resolutions = manifest.table_field(manifest.as_table(root), "resolutions")
+    approvals = manifest.eslint_age_gate_preapprovals()
+    assert resolutions["typescript-eslint"] == approvals["typescript-eslint"]
+    assert resolutions["@typescript-eslint/parser"] == approvals["@typescript-eslint/parser"]
+    assert json.loads((child / "package.json").read_text(encoding="utf-8")) == child_package
 
 
 def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> None:
