@@ -11,7 +11,7 @@ import pytest
 import yaml
 
 import sarj_standards.cli.main as cli
-from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold, transaction, upgrade
+from sarj_standards.libs.adoption import doctor, launcher, lifecycle, manifest, scaffold, transaction, upgrade
 from sarj_standards.libs.diagnostics import baseline
 
 
@@ -439,6 +439,31 @@ def test_upgrade_gives_a_custom_standards_workflow_full_history_for_change_scopi
     assert "      persist-credentials: false\n      fetch-depth: 0\n" in updated
 
 
+def test_upgrade_rewrites_an_outdated_bootstrap_launcher_in_a_managed_workflow(tmp_path: Path) -> None:
+    workflow = tmp_path / ".github" / "workflows" / "standards.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "steps:\n"
+        "  - run: uvx --no-config --isolated --python 3.14 "
+        "--from sarj-standards-bootstrap==2.0.0 code-standards check --format github\n",
+        encoding="utf-8",
+    )
+
+    updates = doctor.plan_version_pin_updates(tmp_path, {"code-standards": "7.9.8"})
+
+    [updated] = [update.contents for update in updates if update.path == workflow]
+    assert BOOTSTRAP_COMMAND in updated
+    assert "sarj-standards-bootstrap==2.0.0" not in updated
+
+
+def test_canonical_bootstrap_launcher_is_one_idempotent_version_authority() -> None:
+    command = launcher.repository_command("check")
+
+    assert f"{launcher.BOOTSTRAP_PACKAGE}=={launcher.BOOTSTRAP_VERSION}" == launcher.BOOTSTRAP_SPEC
+    assert launcher.BOOTSTRAP_SPEC in command
+    assert doctor.rewrite_version_pins(command, {}).contents == command
+
+
 @pytest.mark.parametrize(
     ("relative", "heading"),
     [
@@ -500,6 +525,25 @@ def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_pat
     assert '  - "unrelated@1.2.3" # retained\n' in update.contents
     assert "8.67.0" not in update.contents
     assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.0"}).contents == update.contents
+
+
+def test_upgrade_keeps_a_root_comment_after_yaml_preapprovals(tmp_path: Path) -> None:
+    policy = tmp_path / "pnpm-workspace.yaml"
+    policy.write_text(
+        "minimumReleaseAgeExclude:\n"
+        '  - "@typescript-eslint/utils@8.67.0"\n'
+        "\n"
+        "# The next policy is independent of the age gate.\n"
+        "peerDependencyRules:\n"
+        "  allowedVersions: {}\n",
+        encoding="utf-8",
+    )
+
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.0"})
+
+    comment = update.contents.index("# The next policy")
+    assert update.contents.rfind('  - "', 0, comment) > 0
+    assert update.contents[comment - 2 : comment] == "\n\n"
 
 
 def test_upgrade_ignores_unselected_ambiguous_mobile_roots(tmp_path: Path) -> None:
