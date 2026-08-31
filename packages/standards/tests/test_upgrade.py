@@ -460,8 +460,60 @@ def test_upgrade_advances_an_existing_package_age_preapproval_for_the_tested_plu
 
     updates = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.10.0"})
 
-    assert [(update.path, update.packages) for update in updates] == [(policy, ("@sarj/eslint-plugin",))]
-    assert updates[0].contents == f'{heading}:\n  - "@sarj/eslint-plugin@15.10.0" # internal\n'
+    assert [update.path for update in updates] == [policy]
+    approvals = manifest.eslint_age_gate_preapprovals()
+    approvals["@sarj/eslint-plugin"] = "15.10.0"
+    assert updates[0].packages == tuple(sorted(approvals))
+    assert updates[0].contents == f"{heading}:\n" + "".join(
+        f'  - "{name}@{version}"\n' for name, version in sorted(approvals.items())
+    )
+
+
+def test_upgrade_converges_npm_age_gate_package_exclusions_without_weakening_the_gate(tmp_path: Path) -> None:
+    policy = tmp_path / ".npmrc"
+    policy.write_text(
+        "min-release-age=20160\nmin-release-age-exclude=unrelated,@sarj/eslint-plugin\n",
+        encoding="utf-8",
+    )
+
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.0"})
+
+    assert "min-release-age=20160\n" in update.contents
+    [exclude] = [line for line in update.contents.splitlines() if line.startswith("min-release-age-exclude=")]
+    values = exclude.partition("=")[2].split(",")
+    assert values[0] == "unrelated"
+    assert set(values[1:]) == set(manifest.eslint_age_gate_preapprovals())
+    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.0"}).contents == update.contents
+
+
+def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_path: Path) -> None:
+    policy = tmp_path / "pnpm-workspace.yaml"
+    policy.write_text(
+        "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\nminimumReleaseAgeExclude:\n"
+        '  - "unrelated@1.2.3" # retained\n  - "@typescript-eslint/utils@8.67.0"\n',
+        encoding="utf-8",
+    )
+
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.0"})
+
+    assert "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n" in update.contents
+    assert '  - "unrelated@1.2.3" # retained\n' in update.contents
+    assert "8.67.0" not in update.contents
+    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.0"}).contents == update.contents
+
+
+def test_upgrade_ignores_unselected_ambiguous_mobile_roots(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    for relative in ("mobile/first", "mobile/second"):
+        project = tmp_path / relative
+        project.mkdir(parents=True)
+        (project / "Package.swift").write_text("// swift-tools-version: 6.2\n", encoding="utf-8")
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert not plan.scaffold_plan.errors
+    assert not plan.ecosystems.swift
+    assert plan.ecosystems.swift_root is None
 
 
 def test_upgrade_does_not_rewrite_the_plugin_outside_an_age_preapproval_section(tmp_path: Path) -> None:

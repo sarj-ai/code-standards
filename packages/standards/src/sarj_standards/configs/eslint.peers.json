@@ -31,7 +31,21 @@
     "eslint-plugin-zod": "4.9.1",
     "react-doctor": "0.9.12",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.67.0"
+    "typescript-eslint": "8.68.0"
+  },
+  "ageGatePreapprovals": {
+    "@sarj/eslint-plugin": "15.17.0",
+    "@typescript-eslint/eslint-plugin": "8.68.0",
+    "@typescript-eslint/parser": "8.68.0",
+    "@typescript-eslint/project-service": "8.68.0",
+    "@typescript-eslint/scope-manager": "8.68.0",
+    "@typescript-eslint/tsconfig-utils": "8.68.0",
+    "@typescript-eslint/type-utils": "8.68.0",
+    "@typescript-eslint/types": "8.68.0",
+    "@typescript-eslint/typescript-estree": "8.68.0",
+    "@typescript-eslint/utils": "8.68.0",
+    "@typescript-eslint/visitor-keys": "8.68.0",
+    "typescript-eslint": "8.68.0"
   },
   "npmOverrides": {
     "eslint-plugin-react": {

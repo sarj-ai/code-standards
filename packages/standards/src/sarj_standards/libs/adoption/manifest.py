@@ -60,6 +60,16 @@ def adopted_version() -> str:
     return __version__ if declared is None else declared
 
 
+def eslint_age_gate_preapprovals() -> dict[str, str]:
+    raw: object = json.loads(PEERS_JSON.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    table = as_table(raw)
+    approvals = as_table(table.get("ageGatePreapprovals"))
+    if not approvals or any(not isinstance(value, str) or not value for value in approvals.values()):
+        msg = "eslint.peers.json ageGatePreapprovals must map package names to exact versions"
+        raise ValueError(msg)
+    return {name: value for name, value in approvals.items() if isinstance(value, str)}
+
+
 #: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
 TYPESCRIPT_CONFIGS: Final = ("eslint",)

@@ -343,7 +343,21 @@ def _runs_staged_check(value: object) -> bool:
     except ValueError:
         return False
     prefix = launcher.repository_argv()
+    if _is_standards_bootstrap_argv(tokens):
+        prefix = tuple(tokens[: len(prefix)])
     return tuple(tokens[: len(prefix)]) == prefix and tokens[len(prefix) : len(prefix) + 2] == ["check", "--staged"]
+
+
+def _is_standards_bootstrap_argv(tokens: list[str]) -> bool:
+    prefix = launcher.repository_argv()
+    if len(tokens) < len(prefix):
+        return False
+    candidate = tokens[: len(prefix)]
+    return (
+        candidate[:6] == list(prefix[:6])
+        and re.fullmatch(r"sarj-standards-bootstrap==[0-9]+\.[0-9]+\.[0-9]+", candidate[6]) is not None
+        and candidate[7] == launcher.COMMAND
+    )
 
 
 def _canonical_lefthook_command(root: Path | None = None) -> str:
