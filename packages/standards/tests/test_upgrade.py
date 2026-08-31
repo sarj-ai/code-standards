@@ -899,6 +899,126 @@ def test_update_migrates_a_legacy_manifest_before_applying(tmp_path: Path, capsy
     assert source.read_text(encoding="utf-8") == "export const value = 1;\n"
 
 
+@pytest.mark.parametrize(
+    ("relative", "initial_policy", "versioned"),
+    [
+        (
+            ".npmrc",
+            "min-release-age=20160\nmin-release-age-exclude=@sarj/eslint-plugin\n",
+            False,
+        ),
+        (
+            "pnpm-workspace.yaml",
+            'minimumReleaseAge: 20160\nminimumReleaseAgeExclude:\n  - "@sarj/eslint-plugin@15.9.0"\n',
+            True,
+        ),
+        (
+            ".yarnrc.yml",
+            'npmMinimalAgeGate: 20160\nnpmPreapprovedPackages:\n  - "@sarj/eslint-plugin@15.9.0"\n',
+            True,
+        ),
+    ],
+)
+def test_update_migrates_legacy_wiring_before_the_single_dependency_install(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    relative: str,
+    initial_policy: str,
+    versioned: bool,
+) -> None:
+    (tmp_path / "package.json").write_text(
+        '{"name":"fixture","private":true,"devDependencies":{"@sarj/eslint-plugin":"15.9.0"}}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    policy = tmp_path / relative
+    policy.write_text(initial_policy, encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'version = "0.42.0"\nconfigs = ["eslint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
+        encoding="utf-8",
+    )
+    observed_policies: list[str] = []
+
+    def execute_after_rewrites(_commands: object) -> int:
+        observed_policies.append(policy.read_text(encoding="utf-8"))
+        return 0
+
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+    monkeypatch.setattr(lifecycle, "execute", execute_after_rewrites)
+
+    status = _main(["update", str(tmp_path)])
+
+    assert status == 0
+    assert len(observed_policies) == 1
+    [rewritten] = observed_policies
+    approvals = manifest.eslint_age_gate_preapprovals()
+    if versioned:
+        assert all(f'"{name}@{version}"' in rewritten for name, version in approvals.items())
+    else:
+        exclusions = next(line for line in rewritten.splitlines() if line.startswith("min-release-age-exclude="))
+        assert set(exclusions.partition("=")[2].split(",")) == set(approvals)
+
+
+def test_update_installs_once_after_a_no_drift_legacy_migration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    package = tmp_path / "package.json"
+    package.write_text(
+        '{"name":"fixture","private":true,"devDependencies":{"@sarj/eslint-plugin":"15.9.0"}}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'version = "0.42.0"\nconfigs = ["eslint"]\n\n[dest]\npython = "."\ntypescript = "."\n',
+        encoding="utf-8",
+    )
+    observed_packages: list[str] = []
+
+    def execute_after_migration(_commands: object) -> int:
+        observed_packages.append(package.read_text(encoding="utf-8"))
+        return 0
+
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+    monkeypatch.setattr(lifecycle, "execute", execute_after_migration)
+
+    status = _main(["update", str(tmp_path)])
+
+    assert status == 0
+    assert len(observed_packages) == 1
+    assert manifest.eslint_peers()["@sarj/eslint-plugin"] in observed_packages[0]
+
+
+def test_update_preserves_existing_nested_eslint_projects_during_schema_migration(tmp_path: Path) -> None:
+    selected = tmp_path / "apps" / "dashboard"
+    selected.mkdir(parents=True)
+    (selected / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
+    (selected / "eslint.config.mjs").write_text(
+        'import strict from "./eslint.strict.mjs";\nexport default strict;\n',
+        encoding="utf-8",
+    )
+    nested = selected / "packages" / "legacy"
+    nested.mkdir(parents=True)
+    (nested / "package.json").write_text('{"name":"independent"}\n', encoding="utf-8")
+    nested_config = nested / "eslint.config.mjs"
+    original_nested = "export default makeIndependentPolicy();\n"
+    nested_config.write_text(original_nested, encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name":"workspace","private":true}\n', encoding="utf-8")
+    (tmp_path / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'bundle = "7.5.4"\nprofile = "standard"\nrule_profile = "all"\nschema = 3\n\n'
+        "[capabilities]\ndisable = []\n\n[artifacts]\ndurable = []\n\n"
+        '[dest]\npython = "."\ntypescript = "apps/dashboard"\n\n[hooks]\nmanager = "none"\n',
+        encoding="utf-8",
+    )
+
+    status = _main(["update", "--offline", "--no-install", str(tmp_path)])
+
+    assert status == 0
+    assert manifest.load(tmp_path) is not None
+    assert nested_config.read_text(encoding="utf-8") == original_nested
+
+
 def test_update_refuses_to_discard_a_legacy_python_baseline(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

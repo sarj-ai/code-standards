@@ -429,6 +429,10 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
         typescript_dest=legacy.typescript_dest,
         profile=legacy.profile,
         hook_manager=legacy.hook_manager,
+        # A schema-three manifest already made an explicit TypeScript authority
+        # choice. Preserve unrelated nested projects during its one-way schema
+        # migration; the subsequent upgrade diagnoses the selected authority.
+        allow_existing_nested_eslint=True,
     )
     if migration.scaffold.errors or migration.sync is None:
         detail = "; ".join(migration.scaffold.errors) or "setup plan is not applicable"
@@ -524,6 +528,7 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
     if args.offline:
         args.no_install = True
     root = _resolve_dest(args.dest)
+    migrated_legacy = False
     try:
         _ = manifest.load(root)
     except (OSError, TypeError, ValueError) as exc:
@@ -544,7 +549,12 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             )
             return 2
         try:
-            _ = _repair_legacy_manifest(root, install=not args.no_install)
+            # The normal upgrade transaction owns dependency installation.  A
+            # legacy-manifest repair must only establish the current manifest
+            # and wiring first, otherwise its installer runs before the
+            # upgrade plan can refresh package-manager age-gate exemptions.
+            _ = _repair_legacy_manifest(root, install=False)
+            migrated_legacy = True
         except (OSError, TypeError, ValueError) as migration_error:
             print(f"error: cannot migrate legacy adoption before update: {migration_error}", file=sys.stderr)
             return 2
@@ -591,7 +601,7 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         if args.no_install
         else []
     )
-    if not preview and not current_drift and not skipped_commands:
+    if not preview and not current_drift and not skipped_commands and not migrated_legacy:
         print(f"current: {root} already matches standards {__version__}")
         return 0
     print(preview or f"current: {root} already matches standards {__version__}")

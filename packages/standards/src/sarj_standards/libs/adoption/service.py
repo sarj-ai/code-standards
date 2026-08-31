@@ -225,6 +225,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     kotlin_dest: str | None = None,
     profile: manifest.Profile | None = None,
     hook_manager: manifest.HookManager | None = None,
+    allow_existing_nested_eslint: bool = False,
 ) -> InitPlan:
     if profile is not None and profile not in manifest.PROFILES:
         msg = f"profile must be one of: {', '.join(manifest.PROFILES)}"
@@ -269,6 +270,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         kotlin_dest=selected_kotlin_dest,
         profile=selected_profile,
         hook_manager=selected_hook_manager,
+        allow_existing_nested_eslint=allow_existing_nested_eslint,
     )
     if scaffold_plan.errors or (not scaffold_plan.ecosystems.any and configs is None):
         return InitPlan(scaffold_plan, None, ())
