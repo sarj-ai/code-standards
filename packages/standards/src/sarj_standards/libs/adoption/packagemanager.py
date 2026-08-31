@@ -151,7 +151,22 @@ def overrides_for(client: PackageManager) -> Overrides:
         case PackageManager.PNPM:
             return Overrides(("overrides",), dict(_flatten(npm_entries, ">")))
         case PackageManager.YARN:
-            return Overrides(("resolutions",), dict(_flatten(npm_entries, "/")))
+            # Yarn preserves a workspace package's older compatible lockfile
+            # resolution when the install-root pin advances. A nested ESLint
+            # config can then load a second `typescript-eslint` plugin object,
+            # which flat config rejects even though both declared ranges are
+            # individually valid. Keep the complete tested family on one
+            # identity across every workspace; the age-gate catalog is the
+            # exact-version authority already used by adoption updates.
+            identity_pins = {
+                name: version
+                for name, version in manifest.eslint_age_gate_preapprovals().items()
+                if name == "typescript-eslint" or name.startswith("@typescript-eslint/")
+            }
+            return Overrides(
+                ("resolutions",),
+                {**dict(_flatten(npm_entries, "/")), **identity_pins},
+            )
         case PackageManager.BUN:
             # Bun ignores nested npm overrides, so pin ESLint at the root.
             return Overrides(("overrides",), {_ESLINT: manifest.eslint_peers()[_ESLINT]})
