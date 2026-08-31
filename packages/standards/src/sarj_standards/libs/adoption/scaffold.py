@@ -754,7 +754,10 @@ def _report_independent_roots(
 
 
 def _report_unwired_nested_eslint_configs(repository: Path, selected: Path, plan: Plan) -> None:
-    for config_root in _all_roots(repository, _ESLINT_CONFIG_NAMES):
+    # A selected TypeScript destination is an authority boundary. ESLint roots
+    # in sibling workspaces cannot shadow that project and must not be
+    # rewritten as though they were its descendants.
+    for config_root in _all_roots(selected, _ESLINT_CONFIG_NAMES):
         if config_root == selected:
             continue
         configs = tuple(config_root / name for name in _ESLINT_CONFIG_NAMES if (config_root / name).is_file())

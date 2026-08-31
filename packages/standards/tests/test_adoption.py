@@ -3263,6 +3263,34 @@ def test_setup_wires_a_conventional_nested_named_eslint_export(tmp_path: Path) -
     assert "export default [...sarjStrict, ...eslintConfig];" in updated
 
 
+def test_setup_with_an_explicit_typescript_destination_preserves_independent_eslint_roots(tmp_path: Path) -> None:
+    selected = tmp_path / "apps" / "dashboard"
+    selected.mkdir(parents=True)
+    (selected / "package.json").write_text('{"name":"dashboard"}\n', encoding="utf-8")
+    independent = tmp_path / "apps" / "independent"
+    independent.mkdir(parents=True)
+    (independent / "package.json").write_text('{"name":"independent"}\n', encoding="utf-8")
+    config = independent / "eslint.config.mjs"
+    original = "export default makeIndependentPolicy();\n"
+    config.write_text(original, encoding="utf-8")
+
+    proc = _cli(
+        "--root",
+        str(tmp_path),
+        "setup",
+        "--typescript-dest",
+        "apps/dashboard",
+        "--config",
+        "eslint",
+        "--hooks",
+        "none",
+        "--no-install",
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert config.read_text(encoding="utf-8") == original
+
+
 def test_setup_does_not_spread_a_nested_object_default_export(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     nested = tmp_path / "apps" / "legacy"
