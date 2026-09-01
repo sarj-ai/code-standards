@@ -129,10 +129,12 @@
       "enforce-timestamptz",
       "excessive-commentary",
       "idempotent-ddl",
+      "index-budget",
       "index-concurrently",
       "insert-requires-replay-policy",
       "no-comment-cruft",
       "no-database-triggers",
+      "no-duplicate-index",
       "no-offset-pagination",
       "no-pg-enum",
       "prefer-jsonb",
@@ -377,7 +379,9 @@
       "SARJ112",
       "SARJ113",
       "SARJ114",
-      "SARJ115"
+      "SARJ115",
+      "SARJ116",
+      "SARJ117"
     ],
     "iac": [
       "SARJ201",

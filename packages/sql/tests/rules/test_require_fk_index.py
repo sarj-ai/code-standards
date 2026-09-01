@@ -54,7 +54,7 @@ def test_allows_fk_whose_index_arrives_in_a_later_migration(tmp_path: Path) -> N
             "20220711182928_add_workflows": (
                 'CREATE TABLE "WorkflowsOnEventTypes" (\n'
                 '    "eventTypeId" INTEGER NOT NULL,\n'
-                '    FOREIGN KEY ("eventTypeId") REFERENCES "EventType"("id")\n'
+                '    FOREIGN KEY ("eventTypeId") REFERENCES "EventType"("id") ON DELETE CASCADE\n'
                 ");\n"
             ),
             "20230410234751_add_foreign_key_indexes": (
@@ -73,7 +73,7 @@ def test_flags_fk_that_no_migration_in_the_tree_indexes(tmp_path: Path) -> None:
             "20220711182928_add_workflows": (
                 'CREATE TABLE "WorkflowsOnEventTypes" (\n'
                 '    "eventTypeId" INTEGER NOT NULL,\n'
-                '    FOREIGN KEY ("eventTypeId") REFERENCES "EventType"("id")\n'
+                '    FOREIGN KEY ("eventTypeId") REFERENCES "EventType"("id") ON DELETE CASCADE\n'
                 ");\n"
             ),
             "20230410234751_add_other_indexes": ('CREATE INDEX "Booking_userId_idx" ON "Booking"("userId");\n'),
@@ -92,7 +92,7 @@ def test_tree_scan_does_not_reach_outside_the_migrations_directory(tmp_path: Pat
             "20220711182928_add_workflows": (
                 'CREATE TABLE "Child" (\n'
                 '    "parentId" INTEGER NOT NULL,\n'
-                '    FOREIGN KEY ("parentId") REFERENCES "Parent"("id")\n'
+                '    FOREIGN KEY ("parentId") REFERENCES "Parent"("id") ON UPDATE SET NULL\n'
                 ");\n"
             )
         },
@@ -105,15 +105,15 @@ def test_tree_scan_does_not_reach_outside_the_migrations_directory(tmp_path: Pat
 
 
 def test_in_memory_source_is_judged_on_its_own_content() -> None:
-    src = "CREATE TABLE child (parent_id INT REFERENCES parent(id));"
+    src = "CREATE TABLE child (parent_id INT REFERENCES parent(id) ON DELETE CASCADE);"
     assert len(_check(src)) == 1
 
 
 def test_reports_the_line_of_the_fk_it_names() -> None:
     src = """CREATE TABLE membership (
     account_id INT,
-    FOREIGN KEY (account_id) REFERENCES tenant(id),
-    FOREIGN KEY (account_id) REFERENCES billing_account(id)
+    FOREIGN KEY (account_id) REFERENCES tenant(id) ON DELETE CASCADE,
+    FOREIGN KEY (account_id) REFERENCES billing_account(id) ON UPDATE SET DEFAULT
 );
 """
     # Both clauses share the text `FOREIGN KEY (account_id) REFERENCES`, so a
@@ -124,8 +124,8 @@ def test_reports_the_line_of_the_fk_it_names() -> None:
 def test_reports_the_line_of_each_inline_reference() -> None:
     src = """CREATE TABLE order_item (
     id INT PRIMARY KEY,
-    customer_id INT REFERENCES customer(id),
-    product_id INT REFERENCES product(id)
+    customer_id INT REFERENCES customer(id) ON DELETE CASCADE,
+    product_id INT REFERENCES product(id) ON DELETE SET NULL
 );
 """
     diags = _check(src)
@@ -133,19 +133,17 @@ def test_reports_the_line_of_each_inline_reference() -> None:
     assert by_column == {"customer_id": 3, "product_id": 4}
 
 
-def test_dump_findings_are_kept_and_point_at_the_migration() -> None:
+def test_dump_foreign_keys_are_excluded() -> None:
     src = """-- PostgreSQL database dump
 -- Dumped by pg_dump version 16.2
-CREATE TABLE public.child (parent_id integer REFERENCES public.parent(id));
+CREATE TABLE public.child (parent_id integer REFERENCES public.parent(id) ON DELETE CASCADE);
 """
     diags = RequireFkIndex().check(Path("schema.sql"), src)
-    assert len(diags) == 1
-    assert "schema dump" in diags[0].message
-    assert "add the index in a migration" in diags[0].message
+    assert diags == []
 
 
 def test_non_dump_findings_keep_the_plain_message() -> None:
-    src = "CREATE TABLE child (parent_id INT REFERENCES parent(id));"
+    src = "CREATE TABLE child (parent_id INT REFERENCES parent(id) ON DELETE CASCADE);"
     diags = _check(src)
     assert len(diags) == 1
     assert "schema dump" not in diags[0].message
@@ -153,7 +151,7 @@ def test_non_dump_findings_keep_the_plain_message() -> None:
 
 def test_multiline_using_btree_index_covers_the_fk() -> None:
     src = """
-    CREATE TABLE orders (user_id UUID REFERENCES users(id));
+    CREATE TABLE orders (user_id UUID REFERENCES users(id) ON DELETE CASCADE);
     CREATE INDEX idx_orders
       ON orders USING btree (user_id);
     """
@@ -165,7 +163,7 @@ def test_table_level_primary_key_covers_the_fk() -> None:
     CREATE TABLE profiles (
         user_id UUID,
         PRIMARY KEY (user_id),
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
     """
     assert _check(src) == []
@@ -175,7 +173,7 @@ def test_inline_primary_key_column_covers_a_table_level_fk() -> None:
     src = """
     CREATE TABLE profiles (
         user_id UUID PRIMARY KEY,
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE SET NULL
     );
     """
     assert _check(src) == []
@@ -185,7 +183,7 @@ def test_inline_unique_column_covers_a_table_level_fk() -> None:
     src = """
     CREATE TABLE profiles (
         user_id UUID UNIQUE,
-        FOREIGN KEY (user_id) REFERENCES users(id)
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET DEFAULT
     );
     """
     assert _check(src) == []
@@ -196,7 +194,7 @@ def test_table_level_unique_covers_the_fk() -> None:
     CREATE TABLE child (
         parent_id BIGINT,
         UNIQUE (parent_id),
-        FOREIGN KEY (parent_id) REFERENCES parent(id)
+        FOREIGN KEY (parent_id) REFERENCES parent(id) ON DELETE CASCADE
     );
     """
     assert _check(source) == []
@@ -206,7 +204,7 @@ def test_nonleading_index_does_not_cover_the_fk() -> None:
     source = """
     CREATE TABLE child (
         id BIGINT,
-        parent_id BIGINT REFERENCES parent(id)
+        parent_id BIGINT REFERENCES parent(id) ON DELETE CASCADE
     );
     CREATE INDEX child_idx ON child(id, parent_id);
     """
@@ -216,7 +214,7 @@ def test_nonleading_index_does_not_cover_the_fk() -> None:
 def test_named_inline_constraint_reference_is_checked() -> None:
     src = """
     CREATE TABLE child (
-        parent_id INT CONSTRAINT child_parent_fk REFERENCES parent(id)
+        parent_id INT CONSTRAINT child_parent_fk REFERENCES parent(id) ON DELETE CASCADE
     );
     """
     diags = _check(src)
@@ -227,7 +225,7 @@ def test_named_inline_constraint_reference_is_checked() -> None:
 def test_index_covers_a_named_inline_constraint_reference() -> None:
     src = """
     CREATE TABLE child (
-        parent_id INT CONSTRAINT child_parent_fk REFERENCES parent(id)
+        parent_id INT CONSTRAINT child_parent_fk REFERENCES parent(id) ON DELETE CASCADE
     );
     CREATE INDEX child_parent_id_idx ON child (parent_id);
     """
@@ -237,7 +235,7 @@ def test_index_covers_a_named_inline_constraint_reference() -> None:
 def test_inline_unique_named_constraint_covers_its_reference() -> None:
     src = """
     CREATE TABLE child (
-        parent_id INT CONSTRAINT parent_unique UNIQUE CONSTRAINT child_parent_fk REFERENCES parent(id)
+        parent_id INT CONSTRAINT parent_unique UNIQUE CONSTRAINT child_parent_fk REFERENCES parent(id) ON DELETE CASCADE
     );
     """
     assert _check(src) == []
@@ -249,7 +247,7 @@ def test_alter_table_only_composite_fk_is_covered_by_a_concurrent_index() -> Non
 
     ALTER TABLE ONLY public.pdi
         ADD CONSTRAINT pdi_person_id_fkey
-        FOREIGN KEY (team_id, person_id) REFERENCES person_new(team_id, id) NOT VALID;
+        FOREIGN KEY (team_id, person_id) REFERENCES person_new(team_id, id) ON DELETE CASCADE NOT VALID;
     """
     assert _check(src) == []
 
@@ -259,7 +257,7 @@ def test_composite_fk_is_not_covered_by_only_its_first_column() -> None:
     CREATE TABLE membership (
         team_id BIGINT,
         person_id BIGINT,
-        FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id)
+        FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id) ON DELETE CASCADE
     );
     CREATE INDEX membership_team_idx ON membership(team_id);
     """
@@ -281,7 +279,7 @@ def test_composite_fk_requires_all_columns_in_the_index_prefix(index_columns: st
         team_id BIGINT,
         person_id BIGINT,
         archived_at TIMESTAMPTZ,
-        FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id)
+        FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id) ON DELETE CASCADE
     );
     CREATE INDEX membership_person_idx ON membership({index_columns});
     """
@@ -295,7 +293,7 @@ def test_composite_fk_uses_a_covering_index_from_a_sibling_migration(tmp_path: P
         {
             "001_membership": (
                 "CREATE TABLE membership (team_id BIGINT, person_id BIGINT, "
-                "FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id));\n"
+                "FOREIGN KEY (team_id, person_id) REFERENCES person(team_id, id) ON DELETE CASCADE);\n"
             ),
             "002_index": "CREATE INDEX membership_person_idx ON membership(person_id, team_id);\n",
         },
@@ -311,7 +309,7 @@ def test_nested_comment_cannot_create_a_foreign_key_or_index() -> None:
        CREATE INDEX fake ON child(parent_id);
        FOREIGN KEY (other_id) REFERENCES other(id)
     */
-    CREATE TABLE child (parent_id BIGINT REFERENCES parent(id));
+    CREATE TABLE child (parent_id BIGINT REFERENCES parent(id) ON DELETE CASCADE);
     """
 
     diagnostics = _check(source)
@@ -323,7 +321,7 @@ def test_nested_comment_cannot_create_a_foreign_key_or_index() -> None:
 def test_postgres_escape_string_cannot_create_a_foreign_key_or_index() -> None:
     source = """
     SELECT E'it\\'s CREATE INDEX fake ON child(parent_id)';
-    CREATE TABLE child (parent_id BIGINT REFERENCES parent(id));
+    CREATE TABLE child (parent_id BIGINT REFERENCES parent(id) ON DELETE CASCADE);
     """
 
     diagnostics = _check(source)
@@ -335,9 +333,26 @@ def test_postgres_escape_string_cannot_create_a_foreign_key_or_index() -> None:
 def test_alter_add_column_if_not_exists_uses_the_real_fk_column_name() -> None:
     src = """
     ALTER TABLE provisioned_number
-      ADD COLUMN IF NOT EXISTS sip_connection_id UUID REFERENCES sip_connection(id);
+      ADD COLUMN IF NOT EXISTS sip_connection_id UUID REFERENCES sip_connection(id) ON DELETE CASCADE;
     CREATE INDEX CONCURRENTLY idx_number_connection
       ON provisioned_number (sip_connection_id) WHERE sip_connection_id IS NOT NULL;
     """
 
     assert _check(src) == []
+
+
+@pytest.mark.parametrize("action", ["", " ON DELETE NO ACTION", " ON UPDATE RESTRICT"])
+def test_non_cascading_foreign_keys_do_not_require_an_index(action: str) -> None:
+    source = f"CREATE TABLE child (parent_id BIGINT REFERENCES parent(id){action});"
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["ON DELETE CASCADE", "ON UPDATE CASCADE", "ON DELETE SET NULL", "ON UPDATE SET DEFAULT"],
+)
+def test_cascading_and_set_value_actions_require_an_index(action: str) -> None:
+    source = f"CREATE TABLE child (parent_id BIGINT REFERENCES parent(id) {action});"
+
+    assert len(_check(source)) == 1

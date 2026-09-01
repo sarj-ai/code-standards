@@ -1413,6 +1413,18 @@
       "outcome": "Narrowed the warning to oversized unattached file-header JSDoc that narrates module layout or change history. Durable protocol, runtime, algorithm, and declaration documentation remains accepted."
     },
     {
+      "task": "rule-audit/sql/index-budget",
+      "family": "sql",
+      "ruleId": "index-budget",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/sql/no-duplicate-index",
+      "family": "sql",
+      "ruleId": "no-duplicate-index",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/eslint/require-pascal-case-zod-schema-name",
       "family": "typescript",
       "ruleId": "require-pascal-case-zod-schema-name",
