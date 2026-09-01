@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b1a5742f1597663b25c6c5d10549414d89278dcbd260c2cd8002327d4031e75e",
+  "catalogSha256": "9c654596bbfdd934caf2541daf30723ace45364b8f9a4426111e5dbc123bf609",
   "cliSha256": "95fbccc120e0da5a75cd2cfe8ae3fbaf07bad7e143a1a226863680ad3f4fa738",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -7218,6 +7218,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:typed-error-reasons": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class DomainError(Exception): ...\n\n\nclass IncompleteError(DomainError):\n    def __init__(self, reasons: list[str]) -> None:\n        self.reasons = reasons\n        super().__init__(f\"Incomplete: {'; '.join(reasons)}\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "rendered-reason-list",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An exception renders raw reason strings"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from dataclasses import dataclass\nfrom enum import StrEnum\n\n\nclass ReasonCode(StrEnum):\n    MISSING_URL = \"missing_url\"\n\n\n@dataclass(frozen=True)\nclass Reason:\n    code: ReasonCode\n    field: str | None = None\n\n\nclass DomainError(Exception): ...\n\n\nclass IncompleteError(DomainError):\n    def __init__(self, reasons: list[Reason]) -> None:\n        self.reasons = reasons\n        super().__init__(\"Integration is incomplete\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "typed-reason-list",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An exception carries nominal reason records"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:uncontrolled-randomness-in-test": {
       "examples": [
         {
@@ -7428,6 +7463,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "sql:index-budget": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/004_indexes.sql",
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\n-- index-justification: app-read: event delivery queue; ticket: APP-812\nCREATE INDEX d_idx ON event (d);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_indexes.sql",
+          "id": "measured-index-burst",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An excess application-read index carries durable evidence"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/004_indexes.sql",
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\nCREATE INDEX d_idx ON event (d);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_indexes.sql",
+          "id": "unjustified-index-burst",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fourth secondary index has no read-path evidence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "sql:index-concurrently": {
       "examples": [
         {
@@ -7564,6 +7634,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Hidden trigger behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-duplicate-index": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/002_indexes.sql",
+              "source": "CREATE INDEX event_open ON event (owner_id)\nWHERE\n  status = 'open';\n\nCREATE INDEX event_closed ON event (owner_id)\nWHERE\n  status = 'closed';\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/002_indexes.sql",
+          "id": "distinct-index-predicates",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Partial indexes with different predicates remain distinct"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/002_indexes.sql",
+              "source": "CREATE INDEX event_owner_a ON event (owner_id DESC);\n\nCREATE INDEX event_owner_b ON event (owner_id DESC);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/002_indexes.sql",
+          "id": "duplicate-index-shape",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Two differently named indexes have the same structure"
         }
       ],
       "optionsSchemaSource": null
@@ -7750,7 +7855,7 @@
           "files": [
             {
               "path": "migrations/001_orders.sql",
-              "source": "CREATE TABLE orders (customer_id BIGINT REFERENCES customer (id));\n\nCREATE INDEX orders_customer_id_idx ON orders (customer_id);\n"
+              "source": "CREATE TABLE orders (\n  customer_id BIGINT REFERENCES customer (id) ON DELETE CASCADE\n);\n\nCREATE INDEX orders_customer_id_idx ON orders (customer_id);\n"
             }
           ],
           "fixedFiles": [],
@@ -7765,7 +7870,7 @@
           "files": [
             {
               "path": "migrations/001_orders.sql",
-              "source": "CREATE TABLE orders (customer_id BIGINT REFERENCES customer (id));\n"
+              "source": "CREATE TABLE orders (\n  customer_id BIGINT REFERENCES customer (id) ON DELETE CASCADE\n);\n"
             }
           ],
           "fixedFiles": [],
