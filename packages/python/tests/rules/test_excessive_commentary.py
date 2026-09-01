@@ -73,3 +73,27 @@ reasons.extend(endpoint_reasons())
 reasons.extend(action_reasons())
 """
     assert ExcessiveCommentary().check(Path("activation.py"), source) == []
+
+
+def test_long_comment_without_manual_accumulation_is_not_reported() -> None:
+    source = """def render_response():
+    # This paragraph describes several nearby implementation choices in detail.
+    # It has enough words and lines to exceed the general prose budget used here.
+    # Mature projects sometimes retain such context while a subsystem is evolving.
+    # A deterministic style rule must not classify every such paragraph as harmful.
+    response = build_response()
+    return response
+"""
+    assert ExcessiveCommentary().check(Path("response.py"), source) == []
+
+
+def test_long_comment_before_unused_empty_collection_is_not_reported() -> None:
+    source = """def collect_items():
+    # This paragraph describes several nearby implementation choices in detail.
+    # It has enough words and lines to exceed the general prose budget used here.
+    # An empty collection alone does not prove that the prose narrates accumulation.
+    # Require repeated adjacent mutation calls to keep the warning high confidence.
+    items = []
+    return load_items(items)
+"""
+    assert ExcessiveCommentary().check(Path("items.py"), source) == []
