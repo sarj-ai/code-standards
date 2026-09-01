@@ -77,15 +77,5 @@ new RuleTester().run("excessive-commentary", rule, {
       ].join("\n"),
       errors: [{ messageId: "excessive" }],
     },
-    {
-      code: [
-        "/* This block narrates the implementation in considerable detail.",
-        "It explains the first internal step without adding a constraint.",
-        "It explains the second internal step without adding a contract.",
-        "It also explains the return even though the code already does so. */",
-        "return buildResult();",
-      ].join("\n"),
-      errors: [{ messageId: "excessive" }],
-    },
   ],
 });

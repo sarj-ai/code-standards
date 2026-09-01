@@ -8,19 +8,14 @@ import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
   documentsTypedFunction,
-  hasTechnicalAnchor,
   proseGroups,
 } from "./_prose-budget.js";
 
 type MessageIds = "excessive";
 type Options = readonly [];
 
-const MIN_LINES = 4;
-const MIN_WORDS = 28;
 const ABSOLUTE_JSDOC_LINES = 10;
 const ABSOLUTE_JSDOC_WORDS = 65;
-const RATIONALE_RE = /\b(?:because|otherwise|therefore|must|never|cannot|can't|required?|invariant|compatibility|security|race|atomic|deadlock|rollback|lock|data loss)\b|\bso\s+(?:that|a|an|the|this|it|we|they)\b/iu;
-const BULLET_RE = /^\s*(?:[-*+] |\d+[.)] )/mu;
 
 export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
   summary: "Flag long standalone implementation commentary that should be expressed by code.",
@@ -28,8 +23,8 @@ export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
   remediation: "Delete narration and clarify names, types, or structure; retain only durable constraints and external contracts.",
   category: "maintainability",
   limitations: [
-    "Standalone comments are inspected at four non-empty lines and 28 words; unattached file-level JSDoc is inspected at ten lines and 80 words.",
-    "Generated files, tests, scripts, stories, directives, licenses, typed API documentation, structured lists, rationale markers, and concrete technical anchors are excluded.",
+    "Only an unattached file-header JSDoc block with at least ten non-empty lines and 65 words is inspected.",
+    "Generated files, tests, scripts, stories, licenses, typed API documentation, and comments attached to declarations are excluded.",
   ],
   examples: [
     {
@@ -39,11 +34,19 @@ export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
       files: [{
         path: "src/adapter.ts",
         source: [
-          "// Field names use the API shape at this layer.",
-          "// The draft uses the application shape everywhere else.",
-          "// This function translates every field between those representations.",
-          "// Keeping both spellings here makes future additions easy to miss.",
-          "export const adapt = (raw: Raw): Draft => transform(raw);",
+          "/**",
+          " * This file is the seam between the draft and backend models.",
+          " * Everything above it uses the local application representation.",
+          " * Everything below it uses a separately mirrored wire representation.",
+          " * Field names use the API shape while the draft uses another shape.",
+          " * This module translates every field between those representations.",
+          " * The backend models changed several times during early development.",
+          " * Each historical change required another edit in this adapter file.",
+          " * The write half previously assembled several resources in one payload.",
+          " * It now saves those resources separately through their own routes.",
+          " * Clear contract types and generated clients should express this boundary.",
+          " */",
+          "import type { Draft } from './draft';",
         ].join("\n"),
       }],
       focusPath: "src/adapter.ts",
@@ -79,6 +82,10 @@ function wordCount(text: string): number {
 
 function isJSDoc(comment: TSESTree.Comment): boolean {
   return comment.type === "Block" && comment.value.startsWith("*");
+}
+
+function isFileHeader(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTree.Comment): boolean {
+  return sourceCode.getTokenBefore(comment, { includeComments: false }) === null;
 }
 
 function documentsTypeOrMember(
@@ -134,22 +141,14 @@ export default createRule<Options, MessageIds>({
           const words = wordCount(group.text);
           if (isJSDoc(group.comment)) {
             if (
+              isFileHeader(context.sourceCode, group.comment) &&
               lines >= ABSOLUTE_JSDOC_LINES &&
               words >= ABSOLUTE_JSDOC_WORDS &&
               !group.hasTypedTags &&
               !documentsTypedFunction(context.sourceCode, group.comment) &&
               !documentsTypeOrMember(context.sourceCode, group.comment)
             ) context.report({ node: group.comment, messageId: "excessive" });
-            continue;
           }
-          if (
-            lines < MIN_LINES ||
-            words < MIN_WORDS ||
-            BULLET_RE.test(group.text) ||
-            hasTechnicalAnchor(group.text) ||
-            RATIONALE_RE.test(group.text)
-          ) continue;
-          context.report({ node: group.comment, messageId: "excessive" });
         }
       },
     };
