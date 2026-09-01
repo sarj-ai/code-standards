@@ -14,9 +14,10 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository co
 import sys
 import tempfile
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, NoReturn
+from typing import TYPE_CHECKING, Final, NoReturn, TypeIs
 
 from packaging.version import InvalidVersion, Version
+from pydantic import TypeAdapter, ValidationError
 
 from sarj_standards import __version__
 from sarj_standards._meta import CONFIGS_DIR
@@ -155,6 +156,8 @@ class _Args(argparse.Namespace):
     ratchet_cmd: str = ""
     baseline_cmd: str = ""
     selected_rules: list[RuleSelector]
+    corpus_manifest: Path | None = None
+    private_overlay: Path | None = None
     selector: RuleSelector | None = None
     evaluation_scope: _EvaluationScope = _EvaluationScope.CORPUS
     baseline: Path | None = None
@@ -1064,6 +1067,11 @@ def cmd_rule_evaluate(args: _Args) -> int:
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
+    if args.private_overlay is not None and args.corpus_manifest is None:
+        print("error: --private-overlay requires --corpus-manifest", file=sys.stderr)
+        return 2
+    if args.corpus_manifest is not None:
+        return _cmd_rule_evaluate_manifest(args, root)
     if _validate_analysis_output(args, root):
         return 2
     report = Standards(root).analyze(
@@ -1077,6 +1085,163 @@ def cmd_rule_evaluate(args: _Args) -> int:
     if args.output_format == "text" and not report.issues:
         print(_rule_evaluation_summary(report, args.selected_rules))
     return status
+
+
+def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
+    from sarj_standards.libs.corpus import (  # ruff: ignore[import-outside-top-level]
+        CorpusVisibility,
+        load_manifest,
+        load_private_overlay,
+        merge_manifests,
+    )
+    from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level]
+        CorpusLintError,
+        run_isolated_corpora,
+    )
+
+    if args.files:
+        print("error: positional files cannot be combined with --corpus-manifest", file=sys.stderr)
+        return 2
+    if args.evaluation_scope is not _EvaluationScope.CORPUS:
+        print("error: --corpus-manifest requires --scope corpus", file=sys.stderr)
+        return 2
+    if _validate_analysis_output(args, root):
+        return 2
+    public_argument = args.corpus_manifest
+    if public_argument is None:  # pragma: no cover - caller routes only manifest requests.
+        msg = "corpus manifest routing lost its manifest"
+        raise TypeError(msg)
+    public_path = public_argument if public_argument.is_absolute() else root / public_argument
+    private_path = args.private_overlay
+    if private_path is not None and not private_path.is_absolute():
+        private_path = root / private_path
+    try:
+        public = load_manifest(public_path)
+        private = None if private_path is None else load_private_overlay(private_path)
+        corpus_manifest = merge_manifests(public, private)
+    except (OSError, PermissionError, TypeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    command = [
+        sys.executable,
+        "-I",
+        "-m",
+        "sarj_standards",
+        "--root",
+        ".",
+        "maintain",
+        "rules",
+        "evaluate",
+    ]
+    for selector in args.selected_rules:
+        command.extend(("--rule", str(selector)))
+    command.extend(("--scope", "corpus", "--format", "json"))
+    if args.trust_repository_code:
+        command.append("--trust-repository-code")
+
+    diagnostics: list[dict[str, object]] = []
+    batches: list[dict[str, object]] = []
+
+    def observe(source: object, batch: object, stdout: bytes, _stderr: bytes) -> None:
+        from sarj_standards.libs.corpus import CorpusSource  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.rules import CorpusBatchResult  # ruff: ignore[import-outside-top-level]
+
+        if not isinstance(source, CorpusSource) or not isinstance(batch, CorpusBatchResult):
+            msg = "corpus runner returned an invalid result"
+            raise TypeError(msg)
+        try:
+            report_payload = TypeAdapter(dict[str, object]).validate_json(stdout)
+            raw_diagnostics = TypeAdapter(list[dict[str, object]]).validate_python(report_payload.get("diagnostics"))
+        except ValidationError as exc:
+            msg = f"corpus {source.report_name} batch {batch.ordinal} returned invalid JSON"
+            raise CorpusLintError(msg) from exc
+        for raw in raw_diagnostics:
+            if not raw:
+                msg = f"corpus {source.report_name} batch {batch.ordinal} returned an invalid diagnostic"
+                raise CorpusLintError(msg)
+            diagnostic = _corpus_diagnostic(
+                raw, source.report_name, private=source.visibility is CorpusVisibility.PRIVATE
+            )
+            diagnostics.append(diagnostic)
+        batches.append(
+            {
+                "corpus": source.report_name,
+                "ordinal": batch.ordinal,
+                "files": batch.files,
+                "findings": len(raw_diagnostics),
+            }
+        )
+
+    try:
+        report = run_isolated_corpora(corpus_manifest.sources, tuple(command), observer=observe)
+    except (CorpusLintError, OSError, TypeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    result = {
+        "schemaVersion": 1,
+        "scope": "corpus",
+        "rules": [str(selector) for selector in sorted(set(args.selected_rules))],
+        "files": report.files,
+        "batches": batches,
+        "diagnostics": diagnostics,
+        "exitCode": 1 if diagnostics else 0,
+    }
+    payload = json.dumps(result, indent=2, sort_keys=True) + "\n"
+    if args.output_format == "text":
+        lines = [
+            f"{item.get('corpus')}: {item.get('findings')} finding(s) across {item.get('files')} file(s)"
+            for item in batches
+        ]
+        lines.append(f"calibration summary: {len(diagnostics)} finding(s) across {report.files} file(s)")
+        payload = "\n".join(lines) + "\n"
+    if args.output is None or str(args.output) == "-":
+        print(payload, end="")
+    else:
+        _write_report(root, args.output, payload, output_format=args.output_format)
+    return 1 if diagnostics else 0
+
+
+def _corpus_diagnostic(
+    diagnostic: dict[str, object],
+    corpus: str,
+    *,
+    private: bool,
+) -> dict[str, object]:
+    def rewrite(value: object) -> object:
+        if _is_object_list(value):
+            return [rewrite(item) for item in value]
+        table = _object_table(value)
+        if table is None:
+            return value
+        rewritten: dict[str, object] = {}
+        for key, item in table.items():
+            if key == "path" and isinstance(item, str):
+                rewritten[key] = "<private-corpus-file>" if private else f"{corpus}/{item}"
+            else:
+                rewritten[key] = rewrite(item)
+        return rewritten
+
+    rendered = rewrite(diagnostic)
+    table = _object_table(rendered)
+    if table is None:  # pragma: no cover - input is a dictionary.
+        msg = "corpus diagnostic rendering failed"
+        raise TypeError(msg)
+    return table
+
+
+def _is_object_list(value: object) -> TypeIs[list[object]]:
+    return isinstance(value, list)
+
+
+def _object_table(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    table: dict[str, object] = {}
+    for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
+        if isinstance(key, str):
+            table[key] = item  # ruff: ignore[manual-dict-comprehension] -- pyright needs explicit narrowing.
+    return table
 
 
 def cmd_observe(args: _Args) -> int:
@@ -2772,6 +2937,16 @@ def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[to
         type=_parse_rule_selector,
         required=True,
         help="canonical ENGINE:ID selector (repeatable)",
+    )
+    rule_evaluate.add_argument(
+        "--corpus-manifest",
+        type=Path,
+        help="evaluate immutable repositories declared by a public corpus manifest",
+    )
+    rule_evaluate.add_argument(
+        "--private-overlay",
+        type=Path,
+        help="merge an owner-readable private corpus overlay (requires --corpus-manifest)",
     )
     rule_evaluate.add_argument(
         "--scope",

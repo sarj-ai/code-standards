@@ -3081,6 +3081,35 @@ def test_doctor_treats_a_repository_that_was_never_setup_as_drift(tmp_path: Path
     assert "doctor.manifest.absent" in proc.stdout
 
 
+def test_doctor_rejects_zero_warning_budget_for_an_adopted_eslint_consumer(tmp_path: Path) -> None:
+    _ = _typescript_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
+    package = tmp_path / "package.json"
+    parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
+    parsed["scripts"] = {"lint": "eslint . --max-warnings 0"}
+    package.write_text(json.dumps(parsed), encoding="utf-8")
+
+    findings = doctor.diagnose_adoption_health(tmp_path)
+
+    assert any(item.id == "doctor.eslint.warning-exit" and item.level is doctor.Level.DRIFT for item in findings)
+
+
+def test_doctor_allows_eslint_warnings_to_remain_nonblocking(tmp_path: Path) -> None:
+    _ = _typescript_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
+    package = tmp_path / "package.json"
+    parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
+    parsed["scripts"] = {
+        "lint": "eslint .",
+        "unrelated": "echo eslint-config && other-tool --max-warnings 0",
+    }
+    package.write_text(json.dumps(parsed), encoding="utf-8")
+
+    findings = doctor.diagnose_adoption_health(tmp_path)
+
+    assert not any(item.id == "doctor.eslint.warning-exit" for item in findings)
+
+
 def test_doctor_reports_drift_after_a_synced_config_is_deleted(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0

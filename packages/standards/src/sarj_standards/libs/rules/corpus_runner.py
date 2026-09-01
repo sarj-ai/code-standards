@@ -13,6 +13,7 @@ from sarj_standards.libs.corpus.snapshot import selected_files, snapshot_invento
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
     from typing import BinaryIO
 
@@ -68,6 +69,7 @@ class CorpusLintError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class _StreamSummary:
+    data: bytes
     retained_bytes: int
     total_bytes: int
     lines: int
@@ -81,6 +83,13 @@ class _ProcessResult:
     stderr: _StreamSummary
 
 
+@dataclass(frozen=True, slots=True)
+class _BatchExecution:
+    result: CorpusBatchResult
+    stdout: bytes
+    stderr: bytes
+
+
 def run_isolated_corpora(
     sources: tuple[CorpusSource, ...],
     command: tuple[str, ...],
@@ -92,6 +101,7 @@ def run_isolated_corpora(
     max_files_per_corpus: int = _DEFAULT_MAX_FILES_PER_CORPUS,
     max_batches: int = _DEFAULT_MAX_BATCHES,
     accepted_returncodes: frozenset[int] = frozenset({0, 1}),
+    observer: Callable[[CorpusSource, CorpusBatchResult, bytes, bytes], None] | None = None,
 ) -> IsolatedCorpusReport:
     if not sources:
         msg = "isolated corpus evaluation requires at least one corpus"
@@ -134,17 +144,19 @@ def run_isolated_corpora(
             if remaining <= 0:
                 msg = f"corpus evaluation exceeded {total_timeout.total_seconds():g}s total"
                 raise CorpusLintError(msg)
-            results.append(
-                _run_batch(
-                    source,
-                    command,
-                    batch,
-                    ordinal=ordinal,
-                    timeout=min(timeout, timedelta(seconds=remaining)),
-                    max_output_bytes=max_output_bytes,
-                    accepted_returncodes=accepted_returncodes,
-                )
+            execution = _run_batch(
+                source,
+                command,
+                batch,
+                ordinal=ordinal,
+                timeout=min(timeout, timedelta(seconds=remaining)),
+                max_output_bytes=max_output_bytes,
+                accepted_returncodes=accepted_returncodes,
             )
+            result = execution.result
+            results.append(result)
+            if observer is not None:
+                observer(source, result, execution.stdout, execution.stderr)
         try:
             if selected_files(source) != files:
                 msg = f"corpus {source.report_name} changed during evaluation"
@@ -197,7 +209,7 @@ def _run_batch(
     timeout: timedelta,
     max_output_bytes: int,
     accepted_returncodes: frozenset[int],
-) -> CorpusBatchResult:
+) -> _BatchExecution:
     relative_files = tuple(path.relative_to(source.root).as_posix() for path in files if path.is_file())
     if not relative_files:
         msg = f"corpus {source.report_name} batch {ordinal} contains no existing files"
@@ -229,18 +241,22 @@ def _run_batch(
     if completed.returncode not in accepted_returncodes:
         msg = f"corpus {source.report_name} batch {ordinal} exited with {completed.returncode}"
         raise CorpusLintError(msg)
-    return CorpusBatchResult(
-        corpus=source.report_name,
-        ordinal=ordinal,
-        files=len(relative_files),
-        returncode=completed.returncode,
-        stdout_lines=completed.stdout.lines,
-        stderr_lines=completed.stderr.lines,
-        elapsed=elapsed,
-        stdout_bytes=completed.stdout.total_bytes,
-        stderr_bytes=completed.stderr.total_bytes,
-        stdout_truncated=completed.stdout.truncated,
-        stderr_truncated=completed.stderr.truncated,
+    return _BatchExecution(
+        CorpusBatchResult(
+            corpus=source.report_name,
+            ordinal=ordinal,
+            files=len(relative_files),
+            returncode=completed.returncode,
+            stdout_lines=completed.stdout.lines,
+            stderr_lines=completed.stderr.lines,
+            elapsed=elapsed,
+            stdout_bytes=completed.stdout.total_bytes,
+            stderr_bytes=completed.stderr.total_bytes,
+            stdout_truncated=completed.stdout.truncated,
+            stderr_truncated=completed.stderr.truncated,
+        ),
+        getattr(completed.stdout, "data", b""),
+        getattr(completed.stderr, "data", b""),
     )
 
 
@@ -328,6 +344,7 @@ def _drain_stream(
     summaries: list[_StreamSummary | None],
     index: int,
 ) -> None:
+    retained = bytearray()
     retained_bytes = 0
     total_bytes = 0
     newline_count = 0
@@ -340,6 +357,7 @@ def _drain_stream(
             has_trailing_content = not chunk.endswith(b"\n")
             remaining = max_output_bytes - retained_bytes
             if remaining > 0:
+                retained.extend(chunk[:remaining])
                 retained_bytes += min(len(chunk), remaining)
             if len(chunk) > remaining:
                 truncated = True
@@ -348,6 +366,7 @@ def _drain_stream(
     finally:
         stream.close()
     summaries[index] = _StreamSummary(
+        bytes(retained),
         retained_bytes,
         total_bytes,
         newline_count + int(has_trailing_content),

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "d7bde23f8c8ccfdd5eb3abc2c1cea949633ab4f9eb8bba6749d848f458fffbe6",
-  "cliSha256": "895d98e5fde5054f11c1884d087e1554f2ebbcf160a3ac2b696df56fb6f34c56",
+  "cliSha256": "95fbccc120e0da5a75cd2cfe8ae3fbaf07bad7e143a1a226863680ad3f4fa738",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8145,7 +8145,7 @@
       "maintain/rules/prepare": "code-standards maintain rules prepare [-h] selector [--check]\n",
       "maintain/rules/verify": "code-standards maintain rules verify [-h] selector\n",
       "maintain/rules/changes": "code-standards maintain rules changes [-h] --before BEFORE --after AFTER [--format OUTPUT_FORMAT] [--require-added-level REQUIRED_ADDED_LEVEL]\n",
-      "maintain/rules/evaluate": "code-standards maintain rules evaluate [-h] --rule SELECTED_RULES ... [--scope EVALUATION_SCOPE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [files ...]\n",
+      "maintain/rules/evaluate": "code-standards maintain rules evaluate [-h] --rule SELECTED_RULES ... [--corpus-manifest CORPUS_MANIFEST] [--private-overlay PRIVATE_OVERLAY] [--scope EVALUATION_SCOPE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [files ...]\n",
       "maintain/catalog": "code-standards maintain catalog [-h] {check,sync}\n",
       "maintain/catalog/check": "code-standards maintain catalog check [-h]\n",
       "maintain/catalog/sync": "code-standards maintain catalog sync [-h]\n",

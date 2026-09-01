@@ -985,7 +985,7 @@ export function createConfig(options = {}) {
       // plugin's own `configs.strict` does not. Each rule's measurements live in
       // the paired tests, which its `meta.docs.url` points at.
       //
-      "@sarj/require-pascal-case-zod-schema-name": "warn",
+      "@sarj/require-pascal-case-zod-schema-name": "error",
       "@sarj/require-interface-for-exported-class": "warn",
       "@sarj/prefer-named-complex-return-type": "warn",
       "@sarj/prefer-module-level-refined-schema": "warn",
@@ -1047,7 +1047,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
-      "@sarj/prefer-nullish-filter-predicate": "error",
+      "@sarj/prefer-nullish-filter-predicate": "warn",
       "@sarj/prefer-await-in-async-return": "error",
       "@sarj/no-sleep-in-test-body": "error",
       "@sarj/iac-source-coupled-test": "error",

@@ -211,10 +211,10 @@ const ADVISORY_RULES = [
   "@sarj/prefer-named-complex-return-type",
   "@sarj/prefer-node-crypto-hash",
   "@sarj/prefer-node-fs-promises",
+  "@sarj/prefer-nullish-filter-predicate",
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
   "@sarj/require-interface-for-exported-class",
-  "@sarj/require-pascal-case-zod-schema-name",
   "@sarj/require-sql-access-class",
   "@sarj/sole-export-matches-filename",
 ] as const;
@@ -279,7 +279,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
   "@sarj/prefer-non-nullable-collection": "error",
-  "@sarj/prefer-nullish-filter-predicate": "error",
+  "@sarj/prefer-nullish-filter-predicate": "warn",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-shared-zod-enum": "warn",
@@ -303,7 +303,7 @@ const RECOMMENDED_RULES = {
   "@sarj/source-coupled-test": "error",
   "@sarj/sole-export-matches-filename": "warn",
   "@sarj/test-phase-label-comment": "error",
-  "@sarj/require-pascal-case-zod-schema-name": "warn",
+  "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
 
 const STRICT_RULES = {
@@ -370,7 +370,7 @@ const STRICT_RULES = {
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
   "@sarj/prefer-non-nullable-collection": "error",
-  "@sarj/prefer-nullish-filter-predicate": "error",
+  "@sarj/prefer-nullish-filter-predicate": "warn",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-shared-zod-enum": "warn",
@@ -394,7 +394,7 @@ const STRICT_RULES = {
   "@sarj/source-coupled-test": "error",
   "@sarj/sole-export-matches-filename": "warn",
   "@sarj/test-phase-label-comment": "error",
-  "@sarj/require-pascal-case-zod-schema-name": "warn",
+  "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
 
 type FlatPreset = {

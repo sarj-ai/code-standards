@@ -8,7 +8,12 @@ from types import MappingProxyType
 from typing import Final, TypeGuard
 
 from sarj_standards.libs.adoption import transaction
-from sarj_standards.libs.repository import rule_catalog_artifact, rule_inventory_artifact, rule_maintenance
+from sarj_standards.libs.repository import (
+    config_generation,
+    rule_catalog_artifact,
+    rule_inventory_artifact,
+    rule_maintenance,
+)
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
@@ -16,6 +21,11 @@ _WARNING_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-
 _INVENTORY_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-inventory.v1.json")
 _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
 _LEDGER_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-ledger.json")
+_ESLINT_MANAGED_PATHS: Final = (
+    Path("packages/typescript/src/index.ts"),
+    Path("packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
+    Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs"),
+)
 _ENGINE_BY_FAMILY: Final = MappingProxyType(
     {
         "typescript": RuleEngine.ESLINT,
@@ -67,7 +77,7 @@ def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) ->
             ),
         )
 
-    managed = (_WARNING_PATH, _INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH)
+    managed = (_WARNING_PATH, _INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH, *_ESLINT_MANAGED_PATHS)
     paths = tuple(repository / path for path in managed)
     mutation = transaction.FileTransaction.capture(repository, paths)
     try:
@@ -118,10 +128,17 @@ def _derived_current(repository: Path) -> bool:
         rule_maintenance.sync_ledger(repository, check=True),
         rule_catalog_artifact.sync(repository, check=True),
     )
-    return all(result.status == 0 for result in results)
+    return all(result.status == 0 for result in results) and config_generation.sync_warning_levels(
+        repository, check=True
+    )
 
 
 def _synchronize(repository: Path, mutation: transaction.FileTransaction) -> None:
+    if not config_generation.sync_warning_levels(repository, check=False):  # pragma: no cover - writer returns true.
+        msg = "could not synchronize ESLint warning levels"
+        raise RuntimeError(msg)
+    for path in _ESLINT_MANAGED_PATHS:
+        mutation.mark_written(repository / path)
     operations = (
         (rule_maintenance.sync_ledger, repository / _LEDGER_PATH),
         (rule_inventory_artifact.sync, repository / _INVENTORY_PATH),

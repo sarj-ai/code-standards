@@ -9,6 +9,7 @@ from sarj_standards import __version__
 import sarj_standards.api as standards_api
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
+from sarj_standards.libs.corpus import CorpusKind, CorpusSource, snapshot
 from sarj_standards.libs.linting import policy as lint_policy
 from sarj_standards.libs.rules import RuleSelector
 
@@ -82,6 +83,134 @@ def test_corpus_evaluation_runs_only_the_selected_rule(tmp_path: Path, capsys: p
     diagnostics: list[dict[str, object]] = raw_diagnostics  # pyright: ignore[reportUnknownVariableType]
     assert len(diagnostics) == 1
     assert diagnostics[0]["ruleId"] == "no-string-concat-in-loop"
+
+
+def test_manifest_evaluation_isolatedly_merges_public_and_private_corpora(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    public_root = tmp_path / "public"
+    private_root = tmp_path / "customer"
+    _source(public_root)
+    _source(private_root)
+
+    def digest(root: Path, name: str) -> str:
+        source = CorpusSource(name, root, CorpusKind.LOCAL, "sha256:" + "0" * 64, ("**/*.py",))
+        return snapshot(source).digest
+
+    public = tmp_path / "corpora.toml"
+    public.write_text(
+        "schema = 1\n"
+        "[[corpus]]\n"
+        'name = "public-app"\n'
+        'root = "public"\n'
+        'kind = "local"\n'
+        f'digest = "{digest(public_root, "public-app")}"\n'
+        'include = ["**/*.py"]\n',
+        encoding="utf-8",
+    )
+    private = tmp_path / "private.toml"
+    private.write_text(
+        "schema = 1\nprivate = true\n"
+        "[[corpus]]\n"
+        'name = "customer-app"\n'
+        f'root = "{private_root}"\n'
+        'kind = "local"\n'
+        f'digest = "{digest(private_root, "customer-app")}"\n'
+        'include = ["**/*.py"]\n',
+        encoding="utf-8",
+    )
+    private.chmod(0o600)
+
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "maintain",
+            "rules",
+            "evaluate",
+            "--rule",
+            _SELECTOR,
+            "--corpus-manifest",
+            str(public),
+            "--private-overlay",
+            str(private),
+            "--format",
+            "json",
+        ]
+    )
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+
+    assert status == 1
+    assert payload["files"] == 2
+    diagnostics = payload["diagnostics"]
+    assert isinstance(diagnostics, list)
+    rendered = json.dumps(diagnostics)
+    assert "public-app/app/render.py" in rendered
+    assert "<private-corpus-file>" in rendered
+    assert "customer-app" not in rendered
+    assert str(private_root) not in rendered
+
+
+def test_private_overlay_requires_a_public_manifest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "maintain",
+            "rules",
+            "evaluate",
+            "--rule",
+            _SELECTOR,
+            "--private-overlay",
+            "private.toml",
+        ]
+    )
+
+    assert status == 2
+    assert "requires --corpus-manifest" in capsys.readouterr().err
+
+
+def test_manifest_evaluation_isolates_linter_imports_from_corpus_packages(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    public_root = tmp_path / "pydantic-source"
+    shadow = public_root / "pydantic" / "__init__.py"
+    shadow.parent.mkdir(parents=True)
+    shadow.write_text("raise RuntimeError('corpus package must not shadow linter dependencies')\n", encoding="utf-8")
+    source = CorpusSource("pydantic-source", public_root, CorpusKind.LOCAL, "sha256:" + "0" * 64, ("**/*.py",))
+    manifest = tmp_path / "corpora.toml"
+    manifest.write_text(
+        "schema = 1\n"
+        "[[corpus]]\n"
+        'name = "pydantic-source"\n'
+        'root = "pydantic-source"\n'
+        'kind = "local"\n'
+        f'digest = "{snapshot(source).digest}"\n'
+        'include = ["**/*.py"]\n',
+        encoding="utf-8",
+    )
+
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "maintain",
+            "rules",
+            "evaluate",
+            "--rule",
+            _SELECTOR,
+            "--corpus-manifest",
+            str(manifest),
+            "--format",
+            "json",
+        ]
+    )
+
+    assert status == 0
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    assert payload["files"] == 1
 
 
 def test_text_evaluation_summarizes_per_rule_findings_and_next_step(
