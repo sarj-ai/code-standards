@@ -16,6 +16,9 @@ type Options = readonly [];
 
 const ABSOLUTE_JSDOC_LINES = 10;
 const ABSOLUTE_JSDOC_WORDS = 65;
+const FILE_SELF_REFERENCE_RE = /\bthis (?:file|module)\b/iu;
+const CHANGE_HISTORY_RE = /\b(?:used to|previously|histor(?:y|ical)|keep moving|models? (?:move|moved|change|changed)|still under review)\b/iu;
+const IMPLEMENTATION_MAP_RE = /\b(?:everything (?:above|below)|nothing else|only thing|write half|maps? between|seam between)\b/iu;
 
 export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
   summary: "Flag long standalone implementation commentary that should be expressed by code.",
@@ -23,7 +26,7 @@ export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
   remediation: "Delete narration and clarify names, types, or structure; retain only durable constraints and external contracts.",
   category: "maintainability",
   limitations: [
-    "Only an unattached file-header JSDoc block with at least ten non-empty lines and 65 words is inspected.",
+    "Only an unattached file-header JSDoc block with at least ten non-empty lines and 65 words that narrates file layout or change history is inspected.",
     "Generated files, tests, scripts, stories, licenses, typed API documentation, and comments attached to declarations are excluded.",
   ],
   examples: [
@@ -88,6 +91,13 @@ function isFileHeader(sourceCode: Readonly<TSESLint.SourceCode>, comment: TSESTr
   return sourceCode.getTokenBefore(comment, { includeComments: false }) === null;
 }
 
+function narratesFileImplementation(text: string): boolean {
+  const selfReference = FILE_SELF_REFERENCE_RE.test(text);
+  const changeHistory = CHANGE_HISTORY_RE.test(text);
+  const implementationMap = IMPLEMENTATION_MAP_RE.test(text);
+  return (selfReference && (changeHistory || implementationMap)) || (changeHistory && implementationMap);
+}
+
 function documentsTypeOrMember(
   sourceCode: Readonly<TSESLint.SourceCode>,
   comment: TSESTree.Comment,
@@ -144,6 +154,7 @@ export default createRule<Options, MessageIds>({
               isFileHeader(context.sourceCode, group.comment) &&
               lines >= ABSOLUTE_JSDOC_LINES &&
               words >= ABSOLUTE_JSDOC_WORDS &&
+              narratesFileImplementation(group.text) &&
               !group.hasTypedTags &&
               !documentsTypedFunction(context.sourceCode, group.comment) &&
               !documentsTypeOrMember(context.sourceCode, group.comment)

@@ -1376,7 +1376,9 @@
       "task": "rule-audit/python/excessive-commentary",
       "family": "python",
       "ruleId": "excessive-commentary",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Fleet calibration scanned 6,636 present tracked Python files across 83 local checkouts with zero findings; one absent tracked file was recorded as incomplete coverage. Immutable public calibration scanned 4,506 FastAPI, Pydantic, and Django files with zero findings, while the cited PR 5401 activation helper produced exactly one finding.",
+      "outcome": "Narrowed the warning from lexical comment density to a long paragraph immediately preceding an empty local collection followed by at least two adjacent accumulator calls. Ordinary rationale comments and multiple extend calls without narration remain accepted."
     },
     {
       "task": "rule-audit/sql/excessive-commentary",
@@ -1388,7 +1390,9 @@
       "task": "rule-audit/eslint/excessive-commentary",
       "family": "typescript",
       "ruleId": "excessive-commentary",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Safe config-independent fleet calibration parsed 13,290 present tracked JavaScript and TypeScript files across 61 local checkouts with zero parser failures and one reviewed true positive; six absent tracked files were recorded as incomplete coverage. Immutable public calibration scanned 1,105 Zod, Hono, and Axios files with zero findings, while the cited PR 5401 adapter and API-contract headers produced exactly two findings.",
+      "outcome": "Narrowed the warning to oversized unattached file-header JSDoc that narrates module layout or change history. Durable protocol, runtime, algorithm, and declaration documentation remains accepted."
     },
     {
       "task": "rule-audit/eslint/require-pascal-case-zod-schema-name",

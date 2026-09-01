@@ -53,6 +53,21 @@ new RuleTester().run("excessive-commentary", rule, {
       " */",
       "export interface ParseResult { ok: boolean; value?: string; issues?: string[] }",
     ].join("\n"),
+    [
+      "/**",
+      " * Server side of a room-scoped event channel with a global sequence.",
+      " * Every event is tagged with a room before browsers poll for updates.",
+      " * Filtering preserves monotonic order while allowing harmless gaps.",
+      " * A per-room counter requires a read followed by a racing write.",
+      " * Server-side filtering prevents foreign traffic from blocking cursors.",
+      " * The sequence is a durable protocol invariant shared with every client.",
+      " * Clients advance only from identifiers present in returned event arrays.",
+      " * Failed cosmetic writes never break the conversation-driving request.",
+      " * These constraints are not apparent from one declaration in isolation.",
+      " * Keep the protocol explanation beside the server implementation.",
+      " */",
+      "export const channel = createChannel();",
+    ].join("\n"),
   ],
   invalid: [
     {
