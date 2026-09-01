@@ -861,6 +861,12 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/eslint/no-bespoke-api-case-conversion",
+      "family": "typescript",
+      "ruleId": "no-bespoke-api-case-conversion",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/eslint/no-client-side-data-fetching",
       "family": "typescript",
       "ruleId": "no-client-side-data-fetching",
@@ -1158,6 +1164,12 @@
       "task": "rule-audit/eslint/prefer-input-group-search",
       "family": "typescript",
       "ruleId": "prefer-input-group-search",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/prefer-millisecond-control-duration-schema",
+      "family": "typescript",
+      "ruleId": "prefer-millisecond-control-duration-schema",
       "state": "pending"
     },
     {

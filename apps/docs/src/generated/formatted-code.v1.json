@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "53ca55299b653690e994fd5e9a120eed0305a3e90b8dbce6ce4b56d29e3026d7",
+  "catalogSha256": "b1a5742f1597663b25c6c5d10549414d89278dcbd260c2cd8002327d4031e75e",
   "cliSha256": "95fbccc120e0da5a75cd2cfe8ae3fbaf07bad7e143a1a226863680ad3f4fa738",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -88,7 +88,7 @@
           "files": [
             {
               "path": "src/adapter.ts",
-              "source": "// Field names use the API shape at this layer.\n// The draft uses the application shape everywhere else.\n// This function translates every field between those representations.\n// Keeping both spellings here makes future additions easy to miss.\nexport const adapt = (raw: Raw): Draft => transform(raw);\n"
+              "source": "/**\n * This file is the seam between the draft and backend models.\n * Everything above it uses the local application representation.\n * Everything below it uses a separately mirrored wire representation.\n * Field names use the API shape while the draft uses another shape.\n * This module translates every field between those representations.\n * The backend models changed several times during early development.\n * Each historical change required another edit in this adapter file.\n * The write half previously assembled several resources in one payload.\n * It now saves those resources separately through their own routes.\n * Clear contract types and generated clients should express this boundary.\n */\nimport type { Draft } from \"./draft\";\n"
             }
           ],
           "fixedFiles": [],
@@ -217,6 +217,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Preserve the failure"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-bespoke-api-case-conversion": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/user-adapter.ts",
+              "source": "import type { User } from \"./api-contract\";\nexport const toUser = (raw: User) => ({ displayName: raw.display_name });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user-adapter.ts",
+          "id": "bespoke-wire-case-conversion",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not reproduce SDK case conversion in an application adapter"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/user-adapter.ts",
+              "source": "import type { User } from \"./generated-client\";\nexport const toUser = (raw: User) => ({ displayName: raw.displayName });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user-adapter.ts",
+          "id": "generated-client-surface",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the generated client's application-facing property names"
         }
       ],
       "optionsSchemaSource": null
@@ -1977,6 +2012,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not pair loose search controls"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-millisecond-control-duration-schema": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1) });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "millisecond-timeout-schema",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Encode control timing in milliseconds"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1) });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "second-timeout-schema",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not expose second-granularity timeout controls"
         }
       ],
       "optionsSchemaSource": null
@@ -3760,7 +3830,7 @@
           "files": [
             {
               "path": "app.py",
-              "source": "# Everything standing between this integration and being usable.\n# Returns all the reasons rather than the first failure.\n# Someone activating a half-built integration wants the complete list.\n# That avoids discovering one problem per round trip.\nreasons = []\n"
+              "source": "def activation_reasons():\n    # Everything standing between this integration and being usable.\n    # Returns all the reasons rather than the first failure.\n    # Someone activating a half-built integration wants the complete list.\n    # That avoids discovering one problem per round trip.\n    reasons = []\n    reasons.extend(integration_reasons())\n    reasons.extend(endpoint_reasons())\n    return reasons\n"
             }
           ],
           "fixedFiles": [],
