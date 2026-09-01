@@ -943,6 +943,7 @@ export function createConfig(options = {}) {
       "@sarj/no-production-browser-source-maps": "error",
       "@sarj/no-router-refresh-polling": "error",
       "@sarj/no-server-env-in-client-component": "error",
+      "@sarj/excessive-commentary": "warn",
       "@sarj/no-long-comment": "error",
       "@sarj/no-vague-suppression-description": "error",
       "@sarj/no-generic-single-export-module": "error",

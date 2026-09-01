@@ -26,9 +26,15 @@ if TYPE_CHECKING:
 # SARJ101 `TIMESTAMP`, SARJ102 + SARJ108 + SARJ110 the bare `CREATE INDEX` on a
 # table this file does not create, SARJ111 a validating `ADD CONSTRAINT`,
 # SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ107 `LIMIT ... OFFSET`, and
-# SARJ113 the commented-out `DROP TABLE`, and SARJ114 `CREATE TRIGGER`.
+# SARJ113 the commented-out `DROP TABLE`, SARJ114 `CREATE TRIGGER`, and SARJ115
+# a long implementation narrative with no durable schema constraint.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
+-- This paragraph explains the first ordinary implementation step in detail.
+-- It then narrates a second ordinary step already expressed by the schema.
+-- It continues describing local behavior without recording a durable rule.
+-- The final sentence repeats the nearby implementation instead of clarifying intent.
+
 -- DROP TABLE legacy_children;
 CREATE TABLE IF NOT EXISTS children (
     id uuid PRIMARY KEY,
@@ -73,7 +79,7 @@ def _total(path: Path, source: str) -> int:
 def test_the_shared_source_fires_every_rule_exactly_once() -> None:
     fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in REGISTRY.values()}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 14
+    assert len(fired) == 15
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -86,8 +92,8 @@ def test_require_fk_index_deliberately_declines_the_dump_exemption() -> None:
     assert len(RequireFkIndex().check(Path("db/structure.sql"), ALL_RULES)) == 1
 
 
-def test_the_dump_exemption_is_what_stands_between_fourteen_findings_and_one() -> None:
-    assert _total(HAND_WRITTEN, ALL_RULES) == 14
+def test_the_dump_exemption_is_what_stands_between_fifteen_findings_and_one() -> None:
+    assert _total(HAND_WRITTEN, ALL_RULES) == 15
     assert _total(Path("db/structure.sql"), ALL_RULES) == 1
 
 
@@ -105,7 +111,7 @@ def test_a_restore_directory_is_a_dump_signal() -> None:
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 14
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 15
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_RULES}"

@@ -27,6 +27,7 @@
       "defect-xfail-requires-explicit-strict",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
+      "excessive-commentary",
       "fakes-in-shared-location",
       "fastapi-explicit-openapi-contract",
       "iac-source-coupled-test",
@@ -125,6 +126,7 @@
     "sql": [
       "add-constraint-requires-not-valid",
       "enforce-timestamptz",
+      "excessive-commentary",
       "idempotent-ddl",
       "index-concurrently",
       "insert-requires-replay-policy",
@@ -150,6 +152,7 @@
     "eslint": [
       "duplicate-test-body",
       "enforce-file-structure",
+      "excessive-commentary",
       "iac-source-coupled-test",
       "interface-contract-members-private",
       "no-bare-return-from-test-catch",
@@ -352,7 +355,8 @@
       "SARJ429",
       "SARJ430",
       "SARJ431",
-      "SARJ432"
+      "SARJ432",
+      "SARJ434"
     ],
     "sql": [
       "SARJ101",
@@ -368,7 +372,8 @@
       "SARJ111",
       "SARJ112",
       "SARJ113",
-      "SARJ114"
+      "SARJ114",
+      "SARJ115"
     ],
     "iac": [
       "SARJ201",

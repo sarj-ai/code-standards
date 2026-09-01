@@ -4,6 +4,7 @@
 
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
+import excessiveCommentary from "./rules/excessive-commentary.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
 import noCorsWildcardWithCredentials from "./rules/no-cors-wildcard-with-credentials.js";
@@ -97,6 +98,7 @@ import { RENAMED_RULES } from "./rules/_renames.js";
 import { RETIRED_RULES } from "./rules/_retired.js";
 
 const RULES = {
+  "excessive-commentary": excessiveCommentary,
   "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
   "enforce-file-structure": enforceFileStructure,
@@ -205,6 +207,7 @@ const APPLICATION_ONLY_RULES = [
 
 /** Rules staged as non-blocking warnings while corpus adoption evidence accumulates. */
 const ADVISORY_RULES = [
+  "@sarj/excessive-commentary",
   "@sarj/prefer-module-level-refined-schema",
   "@sarj/prefer-multi-value-zod-literal",
   "@sarj/prefer-named-callback-domain",
@@ -220,6 +223,7 @@ const ADVISORY_RULES = [
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "@sarj/excessive-commentary": "warn",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
@@ -307,6 +311,7 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/excessive-commentary": "warn",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d7bde23f8c8ccfdd5eb3abc2c1cea949633ab4f9eb8bba6749d848f458fffbe6",
+  "catalogSha256": "53ca55299b653690e994fd5e9a120eed0305a3e90b8dbce6ce4b56d29e3026d7",
   "cliSha256": "95fbccc120e0da5a75cd2cfe8ae3fbaf07bad7e143a1a226863680ad3f4fa738",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -77,6 +77,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Imports precede module declarations"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:excessive-commentary": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/adapter.ts",
+              "source": "// Field names use the API shape at this layer.\n// The draft uses the application shape everywhere else.\n// This function translates every field between those representations.\n// Keeping both spellings here makes future additions easy to miss.\nexport const adapt = (raw: Raw): Draft => transform(raw);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/adapter.ts",
+          "id": "adapter-narration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Adapter paragraph narrates application behavior"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/adapter.ts",
+              "source": "// Legacy clients send `execution_phase` until API-812 is retired.\n// Keep conversion in GeneratedClientAdapter.\nexport const phase = raw.execution_phase;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/adapter.ts",
+          "id": "protocol-constraint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Concrete wire compatibility constraint remains local"
         }
       ],
       "optionsSchemaSource": null
@@ -3718,6 +3753,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:excessive-commentary": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "# Everything standing between this integration and being usable.\n# Returns all the reasons rather than the first failure.\n# Someone activating a half-built integration wants the complete list.\n# That avoids discovering one problem per round trip.\nreasons = []\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "activation-narration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Implementation paragraph narrates a validation helper"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "# Legacy clients send `execution_phase` until API-812 is retired.\n# Keep the adapter at this boundary so internal models stay camelCase.\nphase = payload[\"execution_phase\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "durable-constraint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A concrete compatibility constraint remains local"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:fakes-in-shared-location": {
       "examples": [
         {
@@ -7214,6 +7284,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Timestamp with time-zone semantics"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:excessive-commentary": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Create the integration table used by the application.\n-- The table stores every custom integration row.\n-- The next statement defines the identifier and name.\n-- The final statement creates the table in the database.\nCREATE TABLE IF NOT EXISTS integration (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "ddl-narration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Migration comments narrate the table declarations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Keep lock_timeout at 3 seconds because API-812 writes continuously.\n-- Roll back by dropping the new index concurrently.\nSET\n  lock_timeout = '3s';\n\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "rollback-constraint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Rollback and locking guidance remains local"
         }
       ],
       "optionsSchemaSource": null

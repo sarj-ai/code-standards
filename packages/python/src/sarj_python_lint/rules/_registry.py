@@ -10,6 +10,7 @@ from sarj_python_lint.rules.docstring_args_restate_signature import (
 from sarj_python_lint.rules.docstring_returns_restate_signature import (
     DocstringReturnsRestateSignature,
 )
+from sarj_python_lint.rules.excessive_commentary import ExcessiveCommentary
 from sarj_python_lint.rules.fakes_in_shared_location import FakesInSharedLocation
 from sarj_python_lint.rules.fastapi_explicit_openapi_contract import FastapiExplicitOpenapiContract
 from sarj_python_lint.rules.iac_source_coupled_test import IacSourceCoupledTest
@@ -163,6 +164,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        ExcessiveCommentary.id: ExcessiveCommentary,
         PreferWalrusAwaitedNoneGuard.id: PreferWalrusAwaitedNoneGuard,
         TimestampOrderRequiresTiebreaker.id: TimestampOrderRequiresTiebreaker,
         NoStringConcatInLoop.id: NoStringConcatInLoop,

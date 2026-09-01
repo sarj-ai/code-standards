@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from sarj_sql_lint.rules.add_constraint_requires_not_valid import AddConstraintRequiresNotValid
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
+from sarj_sql_lint.rules.excessive_commentary import ExcessiveCommentary
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
 from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 from sarj_sql_lint.rules.insert_requires_on_conflict import InsertRequiresOnConflict
@@ -27,6 +28,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        ExcessiveCommentary.id: ExcessiveCommentary,
         EnforceTimestamptz.id: EnforceTimestamptz,
         IdempotentDdl.id: IdempotentDdl,
         NoPgEnum.id: NoPgEnum,

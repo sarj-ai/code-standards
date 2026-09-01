@@ -1373,6 +1373,24 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/python/excessive-commentary",
+      "family": "python",
+      "ruleId": "excessive-commentary",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/sql/excessive-commentary",
+      "family": "sql",
+      "ruleId": "excessive-commentary",
+      "state": "pending"
+    },
+    {
+      "task": "rule-audit/eslint/excessive-commentary",
+      "family": "typescript",
+      "ruleId": "excessive-commentary",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/eslint/require-pascal-case-zod-schema-name",
       "family": "typescript",
       "ruleId": "require-pascal-case-zod-schema-name",
