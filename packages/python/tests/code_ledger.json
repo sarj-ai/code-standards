@@ -170,5 +170,6 @@
   "SARJ430": "prefer-collection-comprehension",
   "SARJ431": "prefer-set-isdisjoint",
   "SARJ432": "prefer-walrus-awaited-none-guard",
-  "SARJ434": "excessive-commentary"
+  "SARJ434": "excessive-commentary",
+  "SARJ435": "typed-error-reasons"
 }

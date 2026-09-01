@@ -1393,6 +1393,12 @@
       "outcome": "Narrowed the warning from lexical comment density to a long paragraph immediately preceding an empty local collection followed by at least two adjacent accumulator calls. Ordinary rationale comments and multiple extend calls without narration remain accepted."
     },
     {
+      "task": "rule-audit/python/typed-error-reasons",
+      "family": "python",
+      "ruleId": "typed-error-reasons",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/sql/excessive-commentary",
       "family": "sql",
       "ruleId": "excessive-commentary",

@@ -120,6 +120,7 @@
       "timestamp-order-requires-tiebreaker",
       "trailing-value-narration",
       "trivially-true-assertion",
+      "typed-error-reasons",
       "uncontrolled-randomness-in-test",
       "unused-mock-setup"
     ],
@@ -358,7 +359,8 @@
       "SARJ430",
       "SARJ431",
       "SARJ432",
-      "SARJ434"
+      "SARJ434",
+      "SARJ435"
     ],
     "sql": [
       "SARJ101",
