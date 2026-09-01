@@ -6,6 +6,7 @@ import pytest
 
 from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.repository import (
+    config_generation,
     rule_catalog_artifact,
     rule_inventory_artifact,
     rule_lifecycle,
@@ -28,6 +29,9 @@ def _files(root: Path) -> tuple[Path, ...]:
         "packages/standards/src/sarj_standards/configs/rule-inventory.v1.json",
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
         "packages/standards/src/sarj_standards/configs/rule-ledger.json",
+        "packages/typescript/src/index.ts",
+        "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
+        "packages/standards/src/sarj_standards/configs/eslint.application.mjs",
     )
     paths = tuple(root / item for item in relative)
     for path in paths:
@@ -53,6 +57,16 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
         build_inventory,
     )
     monkeypatch.setattr(rule_catalog_artifact, "build", build_catalog)
+
+    def sync_warning_levels(_root: Path, *, check: bool) -> bool:
+        _ = check
+        return True
+
+    monkeypatch.setattr(
+        config_generation,
+        "sync_warning_levels",
+        sync_warning_levels,
+    )
 
     def sync_to(relative: str, *, fail: bool = False) -> Callable[..., object]:
         def sync(root: Path, *, check: bool) -> object:

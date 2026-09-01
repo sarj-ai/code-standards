@@ -27,6 +27,7 @@
       "defect-xfail-requires-explicit-strict",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
+      "excessive-commentary",
       "fakes-in-shared-location",
       "fastapi-explicit-openapi-contract",
       "iac-source-coupled-test",
@@ -119,17 +120,21 @@
       "timestamp-order-requires-tiebreaker",
       "trailing-value-narration",
       "trivially-true-assertion",
+      "typed-error-reasons",
       "uncontrolled-randomness-in-test",
       "unused-mock-setup"
     ],
     "sql": [
       "add-constraint-requires-not-valid",
       "enforce-timestamptz",
+      "excessive-commentary",
       "idempotent-ddl",
+      "index-budget",
       "index-concurrently",
       "insert-requires-replay-policy",
       "no-comment-cruft",
       "no-database-triggers",
+      "no-duplicate-index",
       "no-offset-pagination",
       "no-pg-enum",
       "prefer-jsonb",
@@ -150,9 +155,11 @@
     "eslint": [
       "duplicate-test-body",
       "enforce-file-structure",
+      "excessive-commentary",
       "iac-source-coupled-test",
       "interface-contract-members-private",
       "no-bare-return-from-test-catch",
+      "no-bespoke-api-case-conversion",
       "no-client-side-data-fetching",
       "no-comment-cruft",
       "no-cors-wildcard-with-credentials",
@@ -203,6 +210,7 @@
       "prefer-ecmascript-private-members",
       "prefer-immutable-module-constant",
       "prefer-input-group-search",
+      "prefer-millisecond-control-duration-schema",
       "prefer-module-level-constant",
       "prefer-module-level-refined-schema",
       "prefer-module-level-schema",
@@ -352,7 +360,9 @@
       "SARJ429",
       "SARJ430",
       "SARJ431",
-      "SARJ432"
+      "SARJ432",
+      "SARJ434",
+      "SARJ435"
     ],
     "sql": [
       "SARJ101",
@@ -368,7 +378,10 @@
       "SARJ111",
       "SARJ112",
       "SARJ113",
-      "SARJ114"
+      "SARJ114",
+      "SARJ115",
+      "SARJ116",
+      "SARJ117"
     ],
     "iac": [
       "SARJ201",

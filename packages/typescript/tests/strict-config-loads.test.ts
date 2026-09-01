@@ -41,6 +41,7 @@ import strictConfig, {
   createConfig as createStrictConfig,
 } from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
 import { ADVISORY_RULES } from "../src/index.js";
+import { warningStageEslintRules } from "./_config.js";
 
 /**
  * Paths chosen to exercise every `files:`-scoped block in the config, because a
@@ -214,20 +215,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const warnings = Object.entries(plainConfig.rules ?? {})
       .filter(([, setting]) => severityOf(setting) === 1)
       .map(([rule]) => rule);
-    expect(ADVISORY_RULES).toEqual([
-      "@sarj/prefer-module-level-refined-schema",
-      "@sarj/prefer-multi-value-zod-literal",
-      "@sarj/prefer-named-callback-domain",
-      "@sarj/prefer-named-complex-return-type",
-      "@sarj/prefer-node-crypto-hash",
-      "@sarj/prefer-node-fs-promises",
-      "@sarj/prefer-shared-zod-enum",
-      "@sarj/prefer-switch-for-repeated-equality",
-      "@sarj/require-interface-for-exported-class",
-      "@sarj/require-pascal-case-zod-schema-name",
-      "@sarj/require-sql-access-class",
-      "@sarj/sole-export-matches-filename",
-    ]);
+    expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
     expect(warnings.toSorted()).toEqual([...ADVISORY_RULES]);
 
     // Component identifiers are PascalCase, while component filenames remain
@@ -285,20 +273,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       )
       .filter(([, setting]) => severityOf(setting) !== "error")
       .map(([rule]) => rule));
-    expect(ADVISORY_RULES).toEqual([
-      "@sarj/prefer-module-level-refined-schema",
-      "@sarj/prefer-multi-value-zod-literal",
-      "@sarj/prefer-named-callback-domain",
-      "@sarj/prefer-named-complex-return-type",
-      "@sarj/prefer-node-crypto-hash",
-      "@sarj/prefer-node-fs-promises",
-      "@sarj/prefer-shared-zod-enum",
-      "@sarj/prefer-switch-for-repeated-equality",
-      "@sarj/require-interface-for-exported-class",
-      "@sarj/require-pascal-case-zod-schema-name",
-      "@sarj/require-sql-access-class",
-      "@sarj/sole-export-matches-filename",
-    ]);
+    expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
     expect([...nonErrors].sort()).toEqual([...ADVISORY_RULES]);
   });
 

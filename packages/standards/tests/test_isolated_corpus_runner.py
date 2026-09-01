@@ -201,6 +201,22 @@ def test_child_output_accounts_for_total_bytes_and_trailing_line(tmp_path: Path)
     assert not batch.stdout_truncated
 
 
+def test_observer_receives_bounded_output_without_putting_it_in_the_public_report(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    (corpus / "app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    observed: list[tuple[bytes, bytes]] = []
+
+    report = run_isolated_corpora(
+        (_source(corpus, "sample"),),
+        (sys.executable, "-c", "import sys; print('json'); print('note', file=sys.stderr)"),
+        observer=lambda _source, _batch, stdout, stderr: observed.append((stdout, stderr)),
+    )
+
+    assert observed == [(b"json\n", b"note\n")]
+    assert not hasattr(report.batches[0], "stdout")
+
+
 def test_five_repositories_use_five_real_fresh_processes(tmp_path: Path) -> None:
     marker = tmp_path / "pids.txt"
     sources: list[CorpusSource] = []

@@ -97,6 +97,14 @@ def test_defers_shapes_owned_by_ruff(source: str) -> None:
         "from contextlib import suppress\ndef build(rows):\n    with suppress(AttributeError):\n        caps = {}\n        for row in rows:\n            caps[row.id] = row.cap\n    return caps\n",
         "def build(value, rows):\n    match value:\n        case {'factory': set}:\n            active = set()\n            for row in rows:\n                if row.active:\n                    active.add(row.id)\n",
         "def build(rows):\n    try:\n        load()\n    except Error as set:\n        active = set()\n        for row in rows:\n            if row.active:\n                active.add(row.id)\n",
+        (
+            "def reasons(integration, endpoints, actions):\n"
+            "    result = []\n"
+            "    result.extend(integration_reasons(integration))\n"
+            "    result.extend(endpoint_reasons(endpoints))\n"
+            "    result.extend(action_reasons(actions, endpoints))\n"
+            "    return result\n"
+        ),
     ],
 )
 def test_excludes_non_equivalent_or_less_readable_forms(source: str) -> None:

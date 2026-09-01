@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Final
+from pathlib import Path
+import re
+from typing import TYPE_CHECKING, Final, TypeGuard
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.linting import library_policy
@@ -9,7 +11,6 @@ from sarj_standards.libs.linting import library_policy
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from pathlib import Path
 
 
 _RUFF_APPLICATION: Final = CONFIGS_DIR / "ruff.application.toml"
@@ -18,6 +19,13 @@ _RUFF_MARKER: Final = "[lint.per-file-ignores]"
 _ESLINT_MARKER: Final = "          paths: [\n"
 _ESLINT_PATTERNS_MARKER: Final = '          patterns: ["*/index", "*/index.ts"],\n'
 _ESLINT_CONFIG_END: Final = "\n  ];\n}\n\nconst config = createConfig();\nexport default config;\n"
+_WARNING_LEVELS: Final = Path("packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json")
+_ESLINT_STRICT: Final = Path("packages/standards/src/sarj_standards/configs/eslint.strict.mjs")
+_ESLINT_APPLICATION_REPO: Final = Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs")
+_TYPESCRIPT_PRESET: Final = Path("packages/typescript/src/index.ts")
+_ADVISORY_START: Final = "const ADVISORY_RULES = [\n"
+_ADVISORY_END: Final = "] as const;"
+_RULE_LEVEL = re.compile(r'(?m)^(?P<prefix>\s+"@sarj/(?P<rule>[a-z0-9-]+)":\s*)(?P<array>\[?)"(?:warn|error)"')
 
 
 def render_ruff_application() -> str:
@@ -36,8 +44,9 @@ def _python_bans() -> Mapping[str, str]:
     return library_policy.python_banned_api()
 
 
-def render_eslint_application() -> str:
-    standard = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
+def render_eslint_application(standard: str | None = None) -> str:
+    if standard is None:
+        standard = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
     bans = _typescript_bans()
     entries = "".join(f"            {json.dumps(dict(entry), sort_keys=True)},\n" for entry in bans)
     addition = (
@@ -135,7 +144,85 @@ def generated_configs() -> Mapping[Path, str]:
     }
 
 
+def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
+    warning_path = repository / _WARNING_LEVELS
+    payload: object = json.loads(warning_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    if not _is_object(payload) or set(payload) != {"schemaVersion", "rules"}:
+        msg = "rule warning lifecycle must contain exactly schemaVersion and rules"
+        raise ValueError(msg)
+    raw_rules = payload.get("rules")
+    if payload.get("schemaVersion") != 1 or not _is_array(raw_rules):
+        msg = "rule warning lifecycle must use schemaVersion 1 and a rules array"
+        raise ValueError(msg)
+    rules = tuple(item for item in raw_rules if isinstance(item, str))
+    if len(rules) != len(raw_rules):
+        msg = "rule warning lifecycle must use schemaVersion 1 and a rules array"
+        raise ValueError(msg)
+    warnings: frozenset[str] = frozenset(item.removeprefix("eslint:") for item in rules if item.startswith("eslint:"))
+
+    preset_path = repository / _TYPESCRIPT_PRESET
+    strict_path = repository / _ESLINT_STRICT
+    preset = preset_path.read_text(encoding="utf-8")
+    strict = strict_path.read_text(encoding="utf-8")
+    rendered_preset = _render_typescript_preset(preset, warnings)
+    rendered_strict = _render_rule_levels(strict, warnings, label="eslint.strict.mjs")
+    application = render_eslint_application(rendered_strict)
+    return {
+        preset_path: rendered_preset,
+        strict_path: rendered_strict,
+        repository / _ESLINT_APPLICATION_REPO: application,
+    }
+
+
+def sync_warning_levels(repository: Path, *, check: bool) -> bool:
+    expected = warning_level_artifacts(repository)
+    if check:
+        return all(path.is_file() and path.read_text(encoding="utf-8") == text for path, text in expected.items())
+    for path, text in expected.items():
+        _ = path.write_text(text, encoding="utf-8")
+    return True
+
+
+def _render_typescript_preset(source: str, warnings: frozenset[str]) -> str:
+    if source.count(_ADVISORY_START) != 1 or source.count(_ADVISORY_END) < 1:
+        msg = "TypeScript preset is missing the advisory-rule generation markers"
+        raise ValueError(msg)
+    start = source.index(_ADVISORY_START) + len(_ADVISORY_START)
+    end = source.index(_ADVISORY_END, start)
+    advisory = "".join(f'  "@sarj/{name}",\n' for name in sorted(warnings))
+    with_advisory = source[:start] + advisory + source[end:]
+    return _render_rule_levels(with_advisory, warnings, label="TypeScript presets")
+
+
+def _render_rule_levels(source: str, warnings: frozenset[str], *, label: str) -> str:
+    configured = {match.group("rule") for match in _RULE_LEVEL.finditer(source)}
+    missing = sorted(warnings - configured)
+    if missing:
+        msg = f"{label} is missing warning-stage ESLint rules: {', '.join(missing)}"
+        raise ValueError(msg)
+
+    def replace(match: re.Match[str]) -> str:
+        level = "warn" if match.group("rule") in warnings else "error"
+        return f'{match.group("prefix")}{match.group("array")}"{level}"'
+
+    return _RULE_LEVEL.sub(replace, source)
+
+
+def _is_object(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict)
+
+
+def _is_array(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
 def sync(*, check: bool) -> bool:
+    repository = CONFIGS_DIR.parents[4]
+    warning_levels_are_managed = (repository / _WARNING_LEVELS).is_file() and (
+        repository / _TYPESCRIPT_PRESET
+    ).is_file()
+    if warning_levels_are_managed and not sync_warning_levels(repository, check=check):
+        return False
     expected = generated_configs()
     if check:
         return all(

@@ -25,6 +25,12 @@ code-standards --root . maintain rules evaluate --rule python:no-string-concat-i
 make verify
 ```
 
+For reproducible multi-repository calibration, use an immutable public manifest and an optional owner-readable private overlay:
+
+```bash
+code-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop --corpus-manifest corpora.toml --private-overlay private-corpora.toml
+```
+
 After committing the resulting changes, review the complete rule diff:
 
 ```bash

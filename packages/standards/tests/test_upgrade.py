@@ -501,14 +501,14 @@ def test_upgrade_converges_npm_age_gate_package_exclusions_without_weakening_the
         encoding="utf-8",
     )
 
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.0"})
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.1"})
 
     assert "min-release-age=20160\n" in update.contents
     [exclude] = [line for line in update.contents.splitlines() if line.startswith("min-release-age-exclude=")]
     values = exclude.partition("=")[2].split(",")
     assert values[0] == "unrelated"
     assert set(values[1:]) == set(manifest.eslint_age_gate_preapprovals())
-    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.0"}).contents == update.contents
+    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.1"}).contents == update.contents
 
 
 def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_path: Path) -> None:
@@ -519,12 +519,12 @@ def test_upgrade_preserves_unrelated_yaml_preapprovals_and_is_idempotent(tmp_pat
         encoding="utf-8",
     )
 
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.0"})
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.1"})
 
     assert "minimumReleaseAge: 20160\nminimumReleaseAgeStrict: true\n" in update.contents
     assert '  - "unrelated@1.2.3" # retained\n' in update.contents
     assert "8.67.0" not in update.contents
-    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.0"}).contents == update.contents
+    assert doctor.rewrite_version_pins(update.contents, {"@sarj/eslint-plugin": "15.17.1"}).contents == update.contents
 
 
 def test_upgrade_keeps_a_root_comment_after_yaml_preapprovals(tmp_path: Path) -> None:
@@ -539,7 +539,7 @@ def test_upgrade_keeps_a_root_comment_after_yaml_preapprovals(tmp_path: Path) ->
         encoding="utf-8",
     )
 
-    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.0"})
+    [update] = doctor.plan_version_pin_updates(tmp_path, {"@sarj/eslint-plugin": "15.17.1"})
 
     comment = update.contents.index("# The next policy")
     assert update.contents.rfind('  - "', 0, comment) > 0

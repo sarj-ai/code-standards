@@ -10,6 +10,7 @@ from sarj_python_lint.rules.docstring_args_restate_signature import (
 from sarj_python_lint.rules.docstring_returns_restate_signature import (
     DocstringReturnsRestateSignature,
 )
+from sarj_python_lint.rules.excessive_commentary import ExcessiveCommentary
 from sarj_python_lint.rules.fakes_in_shared_location import FakesInSharedLocation
 from sarj_python_lint.rules.fastapi_explicit_openapi_contract import FastapiExplicitOpenapiContract
 from sarj_python_lint.rules.iac_source_coupled_test import IacSourceCoupledTest
@@ -152,6 +153,7 @@ from sarj_python_lint.rules.store_insert_requires_on_conflict import (
 from sarj_python_lint.rules.timestamp_order_requires_tiebreaker import TimestampOrderRequiresTiebreaker
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
+from sarj_python_lint.rules.typed_error_reasons import TypedErrorReasons
 from sarj_python_lint.rules.uncontrolled_randomness_in_test import UncontrolledRandomnessInTest
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
 
@@ -163,6 +165,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        ExcessiveCommentary.id: ExcessiveCommentary,
         PreferWalrusAwaitedNoneGuard.id: PreferWalrusAwaitedNoneGuard,
         TimestampOrderRequiresTiebreaker.id: TimestampOrderRequiresTiebreaker,
         NoStringConcatInLoop.id: NoStringConcatInLoop,
@@ -260,6 +263,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
+        TypedErrorReasons.id: TypedErrorReasons,
     }
 )
 

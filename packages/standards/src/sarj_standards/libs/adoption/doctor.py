@@ -15,6 +15,8 @@ import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
+from pydantic import TypeAdapter, ValidationError
+
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.repository import ledger
@@ -103,6 +105,8 @@ _PACKAGE_ESLINT_PIN = re.compile(
     r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
     r'(?P<suffix>")'
 )
+_ZERO_ESLINT_WARNING_BUDGET = re.compile(r"(?:^|\s)--max-warnings(?:=|\s+)0(?:\s|$)")
+_ESLINT_INVOCATION = re.compile(r"(?:^|[\s;&|])(?:[^\s;&|]*/)?eslint(?:\s|$)")
 
 #: Standards must not inherit a consumer repository's ``uv.toml`` policy. In
 #: particular, ``exclude-newer`` can make a just-published exact bundle appear
@@ -244,6 +248,7 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
+    findings.extend(_check_eslint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
     unique = dict.fromkeys(findings)
@@ -275,6 +280,7 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
     findings.extend(_check_adoption_wiring(root))
+    findings.extend(_check_eslint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
     return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))
@@ -1279,6 +1285,38 @@ def _check_ci_gate(root: Path) -> Iterator[Finding]:
         "doctor.ci.gate",
         "run `code-standards show ci --output .github/workflows/standards.yml`",
     )
+
+
+def _check_eslint_warning_exit_semantics(root: Path) -> Iterator[Finding]:
+    try:
+        adopted = manifest.load(root)
+    except OSError, TypeError, ValueError:
+        return
+    if adopted is None or "eslint" not in adopted.configs:
+        return
+    typescript_root = _manifest_destination(root, adopted.typescript_dest)
+    if typescript_root is None:
+        return
+    package_root = packagemanager.workspace_root(typescript_root, root)
+    candidates = tuple(dict.fromkeys((package_root / "package.json", typescript_root / "package.json")))
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            package = TypeAdapter(dict[str, object]).validate_json(_read(path))
+            scripts = TypeAdapter(dict[str, str]).validate_python(package.get("scripts", {}))
+        except RecursionError, ValidationError:
+            continue  # The package-json validator owns malformed documents.
+        for name, command in sorted(scripts.items()):
+            if not _ESLINT_INVOCATION.search(command) or not _ZERO_ESLINT_WARNING_BUDGET.search(command):
+                continue
+            yield Finding(
+                Level.DRIFT,
+                f"{path.relative_to(root)}: scripts.{name}",
+                "--max-warnings 0 makes warning-stage Standards rules block the canonical consumer lint command",
+                "doctor.eslint.warning-exit",
+                "remove --max-warnings 0; Standards owns warning-to-error promotion after corpus evidence is clean",
+            )
 
 
 def _nested_eslint_configs(typescript_root: Path, active_entrypoint: Path) -> tuple[Path, ...]:

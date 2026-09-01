@@ -4,6 +4,7 @@
 
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
+import excessiveCommentary from "./rules/excessive-commentary.js";
 import noClientSideDataFetching from "./rules/no-client-side-data-fetching.js";
 import noCommentCruft from "./rules/no-comment-cruft.js";
 import noCorsWildcardWithCredentials from "./rules/no-cors-wildcard-with-credentials.js";
@@ -20,6 +21,7 @@ import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-boun
 import interfaceContractMembersPrivate from "./rules/interface-contract-members-private.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
 import noBareReturnFromTestCatch from "./rules/no-bare-return-from-test-catch.js";
+import noBespokeApiCaseConversion from "./rules/no-bespoke-api-case-conversion.js";
 import noLongComment from "./rules/no-long-comment.js";
 import noVagueSuppressionDescription from "./rules/no-vague-suppression-description.js";
 import noGenericSingleExportModule from "./rules/no-generic-single-export-module.js";
@@ -56,6 +58,7 @@ import preferConstantTimeSecretCompare from "./rules/prefer-constant-time-secret
 import preferEcmascriptPrivateMembers from "./rules/prefer-ecmascript-private-members.js";
 import preferDiscriminatedUnion from "./rules/prefer-discriminated-union.js";
 import preferInputGroupSearch from "./rules/prefer-input-group-search.js";
+import preferMillisecondControlDurationSchema from "./rules/prefer-millisecond-control-duration-schema.js";
 import preferImmutableModuleConstant from "./rules/prefer-immutable-module-constant.js";
 import preferShadcnPrimitives from "./rules/prefer-shadcn-primitives.js";
 import preferModuleLevelConstant from "./rules/prefer-module-level-constant.js";
@@ -97,6 +100,7 @@ import { RENAMED_RULES } from "./rules/_renames.js";
 import { RETIRED_RULES } from "./rules/_retired.js";
 
 const RULES = {
+  "excessive-commentary": excessiveCommentary,
   "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
   "enforce-file-structure": enforceFileStructure,
@@ -117,6 +121,7 @@ const RULES = {
   "interface-contract-members-private": interfaceContractMembersPrivate,
   "no-log-only-catch": noLogOnlyCatch,
   "no-bare-return-from-test-catch": noBareReturnFromTestCatch,
+  "no-bespoke-api-case-conversion": noBespokeApiCaseConversion,
   "no-long-comment": noLongComment,
   "no-vague-suppression-description": noVagueSuppressionDescription,
   "no-generic-single-export-module": noGenericSingleExportModule,
@@ -155,6 +160,7 @@ const RULES = {
   "prefer-ecmascript-private-members": preferEcmascriptPrivateMembers,
   "prefer-discriminated-union": preferDiscriminatedUnion,
   "prefer-input-group-search": preferInputGroupSearch,
+  "prefer-millisecond-control-duration-schema": preferMillisecondControlDurationSchema,
   "prefer-immutable-module-constant": preferImmutableModuleConstant,
   "prefer-shadcn-primitives": preferShadcnPrimitives,
   "prefer-module-level-constant": preferModuleLevelConstant,
@@ -193,7 +199,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.0",
+  version: "15.17.1",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
@@ -205,21 +211,25 @@ const APPLICATION_ONLY_RULES = [
 
 /** Rules staged as non-blocking warnings while corpus adoption evidence accumulates. */
 const ADVISORY_RULES = [
+  "@sarj/excessive-commentary",
+  "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/prefer-millisecond-control-duration-schema",
   "@sarj/prefer-module-level-refined-schema",
   "@sarj/prefer-multi-value-zod-literal",
   "@sarj/prefer-named-callback-domain",
   "@sarj/prefer-named-complex-return-type",
   "@sarj/prefer-node-crypto-hash",
   "@sarj/prefer-node-fs-promises",
+  "@sarj/prefer-nullish-filter-predicate",
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
   "@sarj/require-interface-for-exported-class",
-  "@sarj/require-pascal-case-zod-schema-name",
   "@sarj/require-sql-access-class",
   "@sarj/sole-export-matches-filename",
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "@sarj/excessive-commentary": "warn",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
@@ -236,6 +246,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "error",
+  "@sarj/no-bespoke-api-case-conversion": "warn",
   "@sarj/no-dangerously-allow-svg": "error",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
@@ -269,6 +280,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-ecmascript-private-members": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
+  "@sarj/prefer-millisecond-control-duration-schema": "warn",
   "@sarj/prefer-immutable-module-constant": "error",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
@@ -279,7 +291,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
   "@sarj/prefer-non-nullable-collection": "error",
-  "@sarj/prefer-nullish-filter-predicate": "error",
+  "@sarj/prefer-nullish-filter-predicate": "warn",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-shared-zod-enum": "warn",
@@ -303,10 +315,11 @@ const RECOMMENDED_RULES = {
   "@sarj/source-coupled-test": "error",
   "@sarj/sole-export-matches-filename": "warn",
   "@sarj/test-phase-label-comment": "error",
-  "@sarj/require-pascal-case-zod-schema-name": "warn",
+  "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/excessive-commentary": "warn",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
@@ -324,6 +337,7 @@ const STRICT_RULES = {
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "error",
+  "@sarj/no-bespoke-api-case-conversion": "warn",
   "@sarj/no-dangerously-allow-svg": "error",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
@@ -360,6 +374,7 @@ const STRICT_RULES = {
   "@sarj/prefer-ecmascript-private-members": "error",
   "@sarj/prefer-discriminated-union": "error",
   "@sarj/prefer-input-group-search": "error",
+  "@sarj/prefer-millisecond-control-duration-schema": "warn",
   "@sarj/prefer-immutable-module-constant": "error",
   "@sarj/prefer-module-level-constant": "error",
   "@sarj/prefer-module-level-schema": "error",
@@ -370,7 +385,7 @@ const STRICT_RULES = {
   "@sarj/prefer-node-crypto-hash": "warn",
   "@sarj/prefer-node-fs-promises": "warn",
   "@sarj/prefer-non-nullable-collection": "error",
-  "@sarj/prefer-nullish-filter-predicate": "error",
+  "@sarj/prefer-nullish-filter-predicate": "warn",
   "@sarj/prefer-await-in-async-return": "error",
   "@sarj/prefer-schema-for-api-payload": "error",
   "@sarj/prefer-shared-zod-enum": "warn",
@@ -394,7 +409,7 @@ const STRICT_RULES = {
   "@sarj/source-coupled-test": "error",
   "@sarj/sole-export-matches-filename": "warn",
   "@sarj/test-phase-label-comment": "error",
-  "@sarj/require-pascal-case-zod-schema-name": "warn",
+  "@sarj/require-pascal-case-zod-schema-name": "error",
 } as const;
 
 type FlatPreset = {

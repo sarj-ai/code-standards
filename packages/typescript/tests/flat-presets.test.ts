@@ -23,7 +23,7 @@ import plugin, {
   RECOMMENDED_RULES,
   STRICT_RULES,
 } from "../src/index.js";
-import { rulesOf } from "./_config.js";
+import { rulesOf, warningStageEslintRules } from "./_config.js";
 
 const PRESETS = ["recommended", "strict"] as const;
 
@@ -123,20 +123,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
         return severity !== "error";
       })
       .map(([rule]) => rule);
-    expect(ADVISORY_RULES).toEqual([
-      "@sarj/prefer-module-level-refined-schema",
-      "@sarj/prefer-multi-value-zod-literal",
-      "@sarj/prefer-named-callback-domain",
-      "@sarj/prefer-named-complex-return-type",
-      "@sarj/prefer-node-crypto-hash",
-      "@sarj/prefer-node-fs-promises",
-      "@sarj/prefer-shared-zod-enum",
-      "@sarj/prefer-switch-for-repeated-equality",
-      "@sarj/require-interface-for-exported-class",
-      "@sarj/require-pascal-case-zod-schema-name",
-      "@sarj/require-sql-access-class",
-      "@sarj/sole-export-matches-filename",
-    ]);
+    expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
     expect(nonErrors.toSorted()).toEqual([...ADVISORY_RULES]);
   });
 });

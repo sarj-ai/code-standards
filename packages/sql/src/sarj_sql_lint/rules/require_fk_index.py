@@ -38,7 +38,8 @@ TABLE_SCOPE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 TABLE_FK_PATTERN = re.compile(
-    r"\bFOREIGN\s+KEY\s*\(\s*([a-zA-Z0-9_,\s\"]+)\s*\)\s*REFERENCES\b",
+    r"\bFOREIGN\s+KEY\s*\(\s*([a-zA-Z0-9_,\s\"]+)\s*\)\s*REFERENCES\s+"
+    r"[a-zA-Z0-9_\"\.]+(?:\s*\([^)]*\))?",
     re.IGNORECASE,
 )
 TABLE_PK_OR_UNIQUE_PATTERN = re.compile(
@@ -56,6 +57,10 @@ INLINE_PK_OR_UNIQUE_PATTERN = re.compile(
 )
 _FK_CLEAN_PATTERN = re.compile(
     r'\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_"\.]+(?:\([^)]*\))?', re.IGNORECASE
+)
+_INDEX_REQUIRING_ACTION_RE = re.compile(
+    r"\bON\s+(?:DELETE|UPDATE)\s+(?:CASCADE|SET\s+NULL|SET\s+DEFAULT)\b",
+    re.IGNORECASE,
 )
 
 
@@ -180,12 +185,19 @@ class RequireFkIndex(Rule):
     id = "require-fk-index"
     code = "SARJ112"
     documentation = RuleDocumentation(
-        summary="FOREIGN KEY column missing index — causes full-table scans and locks on parent row deletes.",
-        rationale="PostgreSQL does not automatically index referencing columns, so parent updates and deletes may scan the child table.",
+        summary="Cascading or set-value FOREIGN KEY action lacks a child-table index.",
+        rationale=(
+            "PostgreSQL does not automatically index referencing columns, so cascading deletes/updates and SET NULL/DEFAULT "
+            "actions may scan and lock the child table."
+        ),
         remediation="Create an index whose leading columns cover the foreign-key columns on the child table.",
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
-        limitations=("A bounded scan includes indexes from sibling files in the same migration tree.",),
+        limitations=(
+            "Only CASCADE, SET NULL, and SET DEFAULT actions are checked; ordinary NO ACTION/RESTRICT foreign keys stay silent.",
+            "A bounded scan includes indexes from sibling files in the same migration tree.",
+            "Schema dumps are excluded; add the owning change to an authored migration.",
+        ),
         examples=(
             RuleExample(
                 example_id="unindexed-foreign-key",
@@ -194,7 +206,7 @@ class RequireFkIndex(Rule):
                 files=(
                     ExampleFile.sql(
                         "migrations/001_orders.sql",
-                        "CREATE TABLE orders (customer_id BIGINT REFERENCES customer(id));\n",
+                        "CREATE TABLE orders (customer_id BIGINT REFERENCES customer(id) ON DELETE CASCADE);\n",
                     ),
                 ),
                 focus_path=PurePosixPath("migrations/001_orders.sql"),
@@ -208,7 +220,7 @@ class RequireFkIndex(Rule):
                 files=(
                     ExampleFile.sql(
                         "migrations/001_orders.sql",
-                        "CREATE TABLE orders (customer_id BIGINT REFERENCES customer(id));\nCREATE INDEX orders_customer_id_idx ON orders(customer_id);\n",
+                        "CREATE TABLE orders (customer_id BIGINT REFERENCES customer(id) ON DELETE CASCADE);\nCREATE INDEX orders_customer_id_idx ON orders(customer_id);\n",
                     ),
                 ),
                 focus_path=PurePosixPath("migrations/001_orders.sql"),
@@ -221,7 +233,7 @@ class RequireFkIndex(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_mysql(source):
+        if is_mysql(source) or is_dump_file(source, path):
             return []
         diags: list[Diagnostic] = []
         masked = mask_sql_literals_and_comments(source)
@@ -251,7 +263,12 @@ class RequireFkIndex(Rule):
     ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
 
-        for fk_match in TABLE_FK_PATTERN.finditer(ctx.stmt):
+        fk_matches = tuple(TABLE_FK_PATTERN.finditer(ctx.stmt))
+        for position, fk_match in enumerate(fk_matches):
+            boundary = fk_matches[position + 1].start() if position + 1 < len(fk_matches) else len(ctx.stmt)
+            boundary = min(boundary, _clause_end(ctx.stmt, fk_match.end()))
+            if _INDEX_REQUIRING_ACTION_RE.search(ctx.stmt, fk_match.end(), boundary) is None:
+                continue
             fk_cols = tuple(_normalize_name(c) for c in fk_match.group(1).split(","))
             if fk_cols and not _has_covering_index(indexes, fk_cols):
                 # `fk_match.start()`, NOT `ctx.stmt.find(fk_match.group(0))` — the
@@ -278,12 +295,7 @@ class RequireFkIndex(Rule):
         # Align segment_start with source using header_end and fixed-length substitutions.
         segment_start = ctx.header_end
         for segment in body.split(","):
-            if (
-                "REFERENCES" in segment.upper()
-                and not TABLE_FK_PATTERN.search(segment)
-                and not PRIMARY_OR_UNIQUE_KEYWORD.search(segment)
-                and "FOREIGN KEY" not in segment.upper()
-            ) and (col_match := INLINE_COLUMN_PATTERN.search(segment)):
+            if _is_index_requiring_inline_reference(segment) and (col_match := INLINE_COLUMN_PATTERN.search(segment)):
                 col_name = _normalize_name(col_match.group(1))
                 if col_name not in RESERVED_KEYWORDS and not _has_covering_index(indexes, (col_name,)):
                     # Point at the column token itself, not the segment start,
@@ -312,3 +324,29 @@ def _message(column: str, table: str, *, is_dump: bool) -> str:
     if is_dump:
         return f"{head} This file is a schema dump — add the index in a migration, not here."
     return head
+
+
+def _clause_end(statement: str, start: int) -> int:
+    depth = 0
+    for position in range(start, len(statement)):
+        char = statement[position]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            if depth == 0:
+                return position
+            depth -= 1
+        elif char == "," and depth == 0:
+            return position
+    return len(statement)
+
+
+def _is_index_requiring_inline_reference(segment: str) -> bool:
+    upper = segment.upper()
+    return (
+        "REFERENCES" in upper
+        and "FOREIGN KEY" not in upper
+        and TABLE_FK_PATTERN.search(segment) is None
+        and PRIMARY_OR_UNIQUE_KEYWORD.search(segment) is None
+        and _INDEX_REQUIRING_ACTION_RE.search(segment) is not None
+    )

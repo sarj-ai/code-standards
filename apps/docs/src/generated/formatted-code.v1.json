@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d7bde23f8c8ccfdd5eb3abc2c1cea949633ab4f9eb8bba6749d848f458fffbe6",
-  "cliSha256": "895d98e5fde5054f11c1884d087e1554f2ebbcf160a3ac2b696df56fb6f34c56",
+  "catalogSha256": "9c654596bbfdd934caf2541daf30723ace45364b8f9a4426111e5dbc123bf609",
+  "cliSha256": "20c13a82555158b066b90c31c9e4e89bce7e72c154db3258fba10a85e86d2a9c",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -77,6 +77,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Imports precede module declarations"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:excessive-commentary": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/adapter.ts",
+              "source": "/**\n * This file is the seam between the draft and backend models.\n * Everything above it uses the local application representation.\n * Everything below it uses a separately mirrored wire representation.\n * Field names use the API shape while the draft uses another shape.\n * This module translates every field between those representations.\n * The backend models changed several times during early development.\n * Each historical change required another edit in this adapter file.\n * The write half previously assembled several resources in one payload.\n * It now saves those resources separately through their own routes.\n * Clear contract types and generated clients should express this boundary.\n */\nimport type { Draft } from \"./draft\";\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/adapter.ts",
+          "id": "adapter-narration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Adapter paragraph narrates application behavior"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/adapter.ts",
+              "source": "// Legacy clients send `execution_phase` until API-812 is retired.\n// Keep conversion in GeneratedClientAdapter.\nexport const phase = raw.execution_phase;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/adapter.ts",
+          "id": "protocol-constraint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Concrete wire compatibility constraint remains local"
         }
       ],
       "optionsSchemaSource": null
@@ -182,6 +217,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Preserve the failure"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-bespoke-api-case-conversion": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/user-adapter.ts",
+              "source": "import type { User } from \"./api-contract\";\nexport const toUser = (raw: User) => ({ displayName: raw.display_name });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user-adapter.ts",
+          "id": "bespoke-wire-case-conversion",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not reproduce SDK case conversion in an application adapter"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/user-adapter.ts",
+              "source": "import type { User } from \"./generated-client\";\nexport const toUser = (raw: User) => ({ displayName: raw.displayName });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user-adapter.ts",
+          "id": "generated-client-surface",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the generated client's application-facing property names"
         }
       ],
       "optionsSchemaSource": null
@@ -1942,6 +2012,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not pair loose search controls"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-millisecond-control-duration-schema": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1) });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "millisecond-timeout-schema",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Encode control timing in milliseconds"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1) });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "second-timeout-schema",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not expose second-granularity timeout controls"
         }
       ],
       "optionsSchemaSource": null
@@ -3714,6 +3819,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Return description repeats the signature"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:excessive-commentary": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "def activation_reasons():\n    # Everything standing between this integration and being usable.\n    # Returns all the reasons rather than the first failure.\n    # Someone activating a half-built integration wants the complete list.\n    # That avoids discovering one problem per round trip.\n    reasons = []\n    reasons.extend(integration_reasons())\n    reasons.extend(endpoint_reasons())\n    return reasons\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "activation-narration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Implementation paragraph narrates a validation helper"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "# Legacy clients send `execution_phase` until API-812 is retired.\n# Keep the adapter at this boundary so internal models stay camelCase.\nphase = payload[\"execution_phase\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "durable-constraint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A concrete compatibility constraint remains local"
         }
       ],
       "optionsSchemaSource": null
@@ -7078,6 +7218,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:typed-error-reasons": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class DomainError(Exception): ...\n\n\nclass IncompleteError(DomainError):\n    def __init__(self, reasons: list[str]) -> None:\n        self.reasons = reasons\n        super().__init__(f\"Incomplete: {'; '.join(reasons)}\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "rendered-reason-list",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An exception renders raw reason strings"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from dataclasses import dataclass\nfrom enum import StrEnum\n\n\nclass ReasonCode(StrEnum):\n    MISSING_URL = \"missing_url\"\n\n\n@dataclass(frozen=True)\nclass Reason:\n    code: ReasonCode\n    field: str | None = None\n\n\nclass DomainError(Exception): ...\n\n\nclass IncompleteError(DomainError):\n    def __init__(self, reasons: list[Reason]) -> None:\n        self.reasons = reasons\n        super().__init__(\"Integration is incomplete\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "typed-reason-list",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An exception carries nominal reason records"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:uncontrolled-randomness-in-test": {
       "examples": [
         {
@@ -7218,6 +7393,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "sql:excessive-commentary": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Create the integration table used by the application.\n-- The table stores every custom integration row.\n-- The next statement defines the identifier and name.\n-- The final statement creates the table in the database.\nCREATE TABLE IF NOT EXISTS integration (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "ddl-narration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Migration comments narrate the table declarations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Keep lock_timeout at 3 seconds because API-812 writes continuously.\n-- Roll back by dropping the new index concurrently.\nSET\n  lock_timeout = '3s';\n\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "rollback-constraint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Rollback and locking guidance remains local"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "sql:idempotent-ddl": {
       "examples": [
         {
@@ -7249,6 +7459,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Table creation that fails on replay"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:index-budget": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/004_indexes.sql",
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\n-- index-justification: app-read: event delivery queue; ticket: APP-812\nCREATE INDEX d_idx ON event (d);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_indexes.sql",
+          "id": "measured-index-burst",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An excess application-read index carries durable evidence"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/004_indexes.sql",
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\nCREATE INDEX d_idx ON event (d);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_indexes.sql",
+          "id": "unjustified-index-burst",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fourth secondary index has no read-path evidence"
         }
       ],
       "optionsSchemaSource": null
@@ -7389,6 +7634,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Hidden trigger behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-duplicate-index": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/002_indexes.sql",
+              "source": "CREATE INDEX event_open ON event (owner_id)\nWHERE\n  status = 'open';\n\nCREATE INDEX event_closed ON event (owner_id)\nWHERE\n  status = 'closed';\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/002_indexes.sql",
+          "id": "distinct-index-predicates",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Partial indexes with different predicates remain distinct"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/002_indexes.sql",
+              "source": "CREATE INDEX event_owner_a ON event (owner_id DESC);\n\nCREATE INDEX event_owner_b ON event (owner_id DESC);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/002_indexes.sql",
+          "id": "duplicate-index-shape",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Two differently named indexes have the same structure"
         }
       ],
       "optionsSchemaSource": null
@@ -7575,7 +7855,7 @@
           "files": [
             {
               "path": "migrations/001_orders.sql",
-              "source": "CREATE TABLE orders (customer_id BIGINT REFERENCES customer (id));\n\nCREATE INDEX orders_customer_id_idx ON orders (customer_id);\n"
+              "source": "CREATE TABLE orders (\n  customer_id BIGINT REFERENCES customer (id) ON DELETE CASCADE\n);\n\nCREATE INDEX orders_customer_id_idx ON orders (customer_id);\n"
             }
           ],
           "fixedFiles": [],
@@ -7590,7 +7870,7 @@
           "files": [
             {
               "path": "migrations/001_orders.sql",
-              "source": "CREATE TABLE orders (customer_id BIGINT REFERENCES customer (id));\n"
+              "source": "CREATE TABLE orders (\n  customer_id BIGINT REFERENCES customer (id) ON DELETE CASCADE\n);\n"
             }
           ],
           "fixedFiles": [],
@@ -8145,7 +8425,7 @@
       "maintain/rules/prepare": "code-standards maintain rules prepare [-h] selector [--check]\n",
       "maintain/rules/verify": "code-standards maintain rules verify [-h] selector\n",
       "maintain/rules/changes": "code-standards maintain rules changes [-h] --before BEFORE --after AFTER [--format OUTPUT_FORMAT] [--require-added-level REQUIRED_ADDED_LEVEL]\n",
-      "maintain/rules/evaluate": "code-standards maintain rules evaluate [-h] --rule SELECTED_RULES ... [--scope EVALUATION_SCOPE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [files ...]\n",
+      "maintain/rules/evaluate": "code-standards maintain rules evaluate [-h] --rule SELECTED_RULES ... [--corpus-manifest CORPUS_MANIFEST] [--private-overlay PRIVATE_OVERLAY] [--scope EVALUATION_SCOPE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [files ...]\n",
       "maintain/catalog": "code-standards maintain catalog [-h] {check,sync}\n",
       "maintain/catalog/check": "code-standards maintain catalog check [-h]\n",
       "maintain/catalog/sync": "code-standards maintain catalog sync [-h]\n",

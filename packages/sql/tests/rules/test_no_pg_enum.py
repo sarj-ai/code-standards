@@ -101,3 +101,14 @@ def test_reports_each_postgres_enum_operation() -> None:
     source = "CREATE TYPE status AS ENUM ('open');\nALTER TYPE status ADD VALUE 'closed';"
 
     assert [finding.line for finding in _check(source)] == [1, 2]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [Path("schema.sql"), Path("db/structure.sql"), Path("backup_dump.sql")],
+    ids=["schema", "structure", "dump-suffix"],
+)
+def test_postgres_dumps_are_excluded(path: Path) -> None:
+    source = "-- PostgreSQL database dump\nCREATE TYPE public.status AS ENUM ('open', 'closed');\n"
+
+    assert NoPgEnum().check(path, source) == []
