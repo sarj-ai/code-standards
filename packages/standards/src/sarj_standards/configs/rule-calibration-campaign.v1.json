@@ -86,7 +86,9 @@
       "task": "rule-audit/python/docstring-returns-restate-signature",
       "family": "python",
       "ruleId": "docstring-returns-restate-signature",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews classified 32 local findings clustered into 14 unique contexts: 13 were straightforward redundancies and one lost a boolean truth-condition contract. A 529-file dependency sample exposed two unannotated-function false positives, while a pydantic-heavy public API sample produced 91 intentional complete-table findings. Upstream tools own missing, extraneous, and mismatched result docs but not semantic restatement. Forty-six focused cases pass after repair.",
+      "outcome": "Kept SARJ087 and the established docstring-returns-restate-signature ID, staged it as warning, required one Google-style section and an informative explicit result annotation, compared only callable/class and the matching result slot, distinguished Generator yield and return slots, preserved input relationships, conditions, polarity, cardinality, ordering, identity, tuple roles, typed sections, overloads, and aliased runtime consumers, and rewrote UI guidance to remove only the redundant section."
     },
     {
       "task": "rule-audit/python/no-repeated-test-body",
