@@ -54,7 +54,9 @@
       "task": "rule-audit/iac/require-prevent-destroy-on-irreplaceable",
       "family": "iac",
       "ruleId": "require-prevent-destroy-on-irreplaceable",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed resource type alone cannot prove irreplaceability and found a critical false negative: force_destroy = true silenced SARJ203 even though it enables contained-data deletion, including when the attribute was unsupported. The pinned corpus had eight useful but judgment-dependent unguarded Google Secret Manager leads and no force-destroy exemptions. Sixty-eight focused cases pass after repair.",
+      "outcome": "Kept the shipped selector for compatibility, changed the category to correctness, staged it as warning, replaced categorical irreplaceability claims with durable-data review language, made Google provider PREVENT the primary UI example, treated force_destroy/force_delete as destructive evidence instead of exemptions, required exact HCL booleans, restricted scope to maintained Terraform files, abstained on malformed inputs, and documented that lifecycle protection disappears when the resource block is removed."
     },
     {
       "task": "rule-audit/python/timestamp-order-requires-tiebreaker",

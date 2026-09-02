@@ -163,23 +163,25 @@ resource "google_storage_bucket" "b" {
     assert "prevent_destroy = false" in diags[0].message
 
 
-def test_force_destroy_true_exempts():
+def test_force_destroy_true_is_not_a_disposable_exemption():
     src = """
 resource "google_storage_bucket" "scratch" {
   name          = "scratch"
   force_destroy = true
 }
 """
-    assert _check(src) == []
+    [diagnostic] = _check(src)
+    assert "allowing contained data to be deleted" in diagnostic.message
 
 
-def test_force_destroy_true_exempts_aws_s3_bucket():
+def test_force_destroy_true_is_not_an_aws_disposable_exemption():
     src = """
 resource "aws_s3_bucket" "scratch" {
   force_destroy = true
 }
 """
-    assert _check(src) == []
+    [diagnostic] = _check(src)
+    assert "allowing contained data to be deleted" in diagnostic.message
 
 
 def test_force_destroy_expression_does_not_exempt():
@@ -191,7 +193,7 @@ resource "google_storage_bucket" "recordings" {
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert "force_destroy is not literal true" in diags[0].message
+    assert "destructive behavior is unresolved" in diags[0].message
 
 
 @pytest.mark.parametrize("value", ["null", "NULL", "var.force_destroy", "local.disposable"])
@@ -203,7 +205,7 @@ def test_null_or_unknown_force_destroy_does_not_exempt(value: str):
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert "force_destroy is not literal true" in diags[0].message
+    assert "destructive behavior is unresolved" in diags[0].message
 
 
 def test_explicit_force_destroy_false_does_not_exempt():
@@ -327,7 +329,7 @@ def test_the_curated_set_is_exactly_this():
     assert expected == IRREPLACEABLE_TYPES
 
 
-def test_an_uppercase_prevent_destroy_still_guards():
+def test_non_hcl_boolean_prevent_destroy_does_not_guard():
     src = """
 resource "aws_s3_bucket" "artifacts" {
   bucket = "artifacts"
@@ -336,7 +338,46 @@ resource "aws_s3_bucket" "artifacts" {
   }
 }
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
+
+
+def test_force_delete_true_on_ecr_is_destructive_evidence():
+    source = 'resource "aws_ecr_repository" "images" {\n  force_delete = true\n}\n'
+    [diagnostic] = _check(source)
+    assert "force_delete = true" in diagnostic.message
+
+
+def test_provider_guard_can_protect_force_enabled_bucket():
+    source = """
+resource "google_storage_bucket" "records" {
+  name            = "records"
+  force_destroy   = true
+  deletion_policy = "PREVENT"
+}
+"""
+    assert _check(source) == []
+
+
+def test_unsupported_force_destroy_cannot_silence_secret_rule():
+    source = 'resource "google_secret_manager_secret" "main" {\n  force_destroy = true\n}\n'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("name", ["terragrunt.hcl", "tests/fixtures/main.tf", "generated/main.tf"])
+def test_non_terraform_and_fixture_inputs_are_excluded(name: str):
+    source = 'resource "aws_s3_bucket" "records" {\n}\n'
+    assert _check(source, name=name) == []
+
+
+def test_excessively_nested_malformed_hcl_abstains():
+    assert _check("x {" * 130 + "}" * 130) == []
+
+
+def test_lifecycle_limitation_is_documented():
+    documentation = RequirePreventDestroyOnIrreplaceable.documentation
+    assert documentation is not None
+    limitations = " ".join(documentation.limitations)
+    assert "does not survive removal" in limitations
 
 
 def test_an_uppercase_force_destroy_false_still_does_not_exempt():
