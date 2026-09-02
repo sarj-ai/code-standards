@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.docstring_args_restate_signature import DocstringArgsRestateSignature
 
 
@@ -121,6 +122,72 @@ def test_one_informative_entry_protects_the_whole_block():
                 window: Rolling window, defaulting to the calendar month
             """
             return 0
+        ''')
+        == []
+    )
+
+
+def test_unknown_documented_parameter_is_left_to_signature_consistency_tools():
+    assert (
+        _check('''
+        def load(user_id: str) -> None:
+            """Load the user.
+
+            Args:
+                tenant_id: Tenant ID
+            """
+        ''')
+        == []
+    )
+
+
+def test_docstring_only_or_mismatched_type_is_informative():
+    untyped = '''
+        def render(widget) -> None:
+            """Render the widget.
+
+            Args:
+                widget (Widget): Widget
+            """
+    '''
+    mismatched = '''
+        def render(widget: str) -> None:
+            """Render the widget.
+
+            Args:
+                widget (Widget): Widget
+            """
+    '''
+
+    assert _check(untyped) == []
+    assert _check(mismatched) == []
+
+
+def test_sibling_parameter_words_do_not_prove_redundancy():
+    assert (
+        _check('''
+        def copy(source_path: Path, destination_path: Path) -> None:
+            """Copy a file.
+
+            Args:
+                source_path: Destination path
+                destination_path: Source path
+            """
+        ''')
+        == []
+    )
+
+
+@pytest.mark.parametrize("description", ["Existing path", "Supported path", "Optional path", "Required path"])
+def test_semantic_qualifier_is_preserved(description: str):
+    assert (
+        _check(f'''
+        def load(path: Path) -> None:
+            """Load a resource.
+
+            Args:
+                path: {description}
+            """
         ''')
         == []
     )
@@ -245,6 +312,56 @@ def test_prompt_and_cli_decorators_are_exempt(decorator: str):
     )
 
 
+def test_import_aliased_runtime_tool_decorator_is_exempt():
+    assert (
+        _check('''
+        from agents import function_tool as exposed
+
+        @exposed
+        def count_widgets(tenant_id: str) -> int:
+            """Count widgets.
+
+            Args:
+                tenant_id: Tenant ID
+            """
+            return 0
+        ''')
+        == []
+    )
+
+
+def test_overload_docstring_is_left_to_upstream_rule():
+    assert (
+        _check('''
+        from typing import overload as signature
+
+        @signature
+        def load(tenant_id: str) -> int:
+            """Load widgets.
+
+            Args:
+                tenant_id: Tenant ID
+            """
+            ...
+        ''')
+        == []
+    )
+
+
+def test_varargs_and_kwargs_resolve_to_signature_parameters():
+    diagnostics = _check('''
+        def merge(*items: Item, **options: Option) -> None:
+            """Merge items.
+
+            Args:
+                *items: Items to merge
+                **options: Merge options
+            """
+    ''')
+
+    assert len(diagnostics) == 1
+
+
 def test_numpy_style_parameter_blocks_are_not_parsed():
     assert (
         _check('''
@@ -292,6 +409,21 @@ def test_an_abstract_stub_keeps_compiling_after_the_fix():
                 """
         ''')
     assert len(diags) == 1
+
+
+def test_diagnostic_names_callable_and_is_advisory():
+    [diagnostic] = _check('''
+        def count_widgets(tenant_id: UUID) -> int:
+            """Count widgets.
+
+            Args:
+                tenant_id: Tenant ID
+            """
+            return 0
+    ''')
+
+    assert "`count_widgets`" in diagnostic.message
+    assert diagnostic.severity is Severity.WARNING
 
 
 def test_unparseable_source_returns_nothing():

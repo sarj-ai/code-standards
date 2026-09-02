@@ -78,7 +78,9 @@
       "task": "rule-audit/python/docstring-args-restate-signature",
       "family": "python",
       "ruleId": "docstring-args-restate-signature",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews found 20 local diagnostics representing about 10 unique contexts, all policy-consistent, plus two genuine redundancies in a 529-file dependency sample. A broader pydantic-focused sample produced 87 deliberate structured API-table findings, proving the convention is unsuitable as a universal error. Reviewers also reproduced wrong deletion advice for stale documented names, docstring-only or mismatched types, swapped sibling descriptions, and aliased runtime decorators. Forty-seven focused cases pass after repair.",
+      "outcome": "Kept SARJ086 and the established docstring-args-restate-signature ID, staged it as warning, retained Google-style whole-block scope, mapped every entry to its actual parameter, compared only callable and matching-parameter name/type facts, preserved semantic qualifiers and mismatched or docstring-only types, exempted known aliased runtime decorators and overloads, named the callable in diagnostics, and replaced the misleading accepted UI example with a real unit-and-sentinel contract."
     },
     {
       "task": "rule-audit/python/docstring-returns-restate-signature",
