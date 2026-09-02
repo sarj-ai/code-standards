@@ -103,8 +103,8 @@
       "family": "python",
       "ruleId": "no-copied-inherited-docstring",
       "state": "complete",
-      "evidence": "Three-repository AST calibration produced 45 inherited-docstring copies, all mechanically confirmed against their resolved local base contract. Broadening retained the same corpus set while targeted cases exposed previously unreachable generic and alias inheritance forms.",
-      "outcome": "Kept the precise renamed ID, normalized wrapping and terminal punctuation before comparison, and added safe resolution for parameterized local bases and simple preceding class aliases. Imported and dynamically constructed bases remain excluded rather than guessed."
+      "evidence": "Three independent re-reviews found 48 to 54 local findings, all genuine cleaned-content copies on proven same-file bases, plus 14 representative dependency findings. Seven dependency findings were decorated methods whose direct runtime __doc__ could change. Reviewers reproduced a C3 diamond false positive, stale local bindings after imports or assignments, and meaningful formatting collapsed as equivalent. Thirty-two focused cases pass after repair.",
+      "outcome": "Kept SARJ084, no-copied-inherited-docstring, and its alias; staged it as warning; limited resolution to one fully resolved local base; invalidated local base and alias bindings on imports and reassignment; abstained on multiple inheritance instead of guessing C3; excluded decorated methods; compared exact cleaned content without erasing internal formatting or punctuation; and rewrote UI guidance to disclose direct __doc__ behavior and preserve override-specific public documentation."
     },
     {
       "task": "rule-audit/python/fakes-in-shared-location",

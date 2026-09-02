@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInheritedDocstring
 
 
@@ -104,12 +105,12 @@ def test_indentation_differences_do_not_hide_a_copy():
     assert len(_check(src)) == 1
 
 
-def test_wrapping_and_terminal_period_do_not_hide_a_copy() -> None:
+def test_meaningful_wrapping_and_terminal_punctuation_are_preserved() -> None:
     source = _pair(
         "Fetch the value while preserving transactional consistency.",
         "Fetch the value while preserving\n        transactional consistency",
     )
-    assert len(_check(source)) == 1
+    assert _check(source) == []
 
 
 def test_a_reworded_override_is_kept():
@@ -237,6 +238,82 @@ def test_resolves_a_simple_local_class_alias() -> None:
     assert len(_check(source)) == 1
 
 
+def test_assignment_rebinding_invalidates_a_local_alias() -> None:
+    source = (
+        "class Store:\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n\n"
+        "StoreContract = Store\n"
+        "StoreContract = factory()\n\n"
+        "class MemoryStore(StoreContract):\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_import_rebinding_invalidates_a_local_class() -> None:
+    source = (
+        "class Store:\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n\n"
+        "from upstream import Store\n\n"
+        "class MemoryStore(Store):\n"
+        "    def get(self, key):\n"
+        '        """Get a value by key."""\n'
+        "        return key\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_multiple_inheritance_abstains_instead_of_guessing_c3_mro() -> None:
+    source = '''
+class A:
+    def get(self):
+        """A contract."""
+        return 1
+
+class B(A):
+    pass
+
+class C(A):
+    def get(self):
+        """C contract."""
+        return 2
+
+class D(B, C):
+    def get(self):
+        """A contract."""
+        return 3
+'''
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("decorator", ["@property", "@classmethod", "@contextmanager"])
+def test_decorated_override_keeps_direct_runtime_doc(decorator: str) -> None:
+    source = f'''
+class Store:
+    {decorator}
+    def get(self):
+        """Get a value."""
+        return "value"
+
+class MemoryStore(Store):
+    {decorator}
+    def get(self):
+        """Get a value."""
+        return "value"
+'''
+
+    assert _check(source) == []
+
+
 def test_a_sibling_class_is_not_a_parent():
     src = (
         "class Store:\n"
@@ -311,7 +388,10 @@ def test_banner_less_generated_tree_is_skipped_by_path():
 
 def test_a_hand_written_path_still_reports():
     src = _pair("Get a value.", "Get a value.")
-    assert len(_check(src, Path("src/app/stores.py"))) == 1
+    [diagnostic] = _check(src, Path("src/app/stores.py"))
+    assert diagnostic.severity is Severity.WARNING
+    assert "direct `__doc__`" in diagnostic.message
+    assert "every editor" not in diagnostic.message
 
 
 def test_unparseable_source_returns_nothing():
