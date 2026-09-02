@@ -37,15 +37,15 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 @pytest.mark.parametrize(
     "query",
     [
-        "SELECT id FROM task ORDER BY created_at",
-        "SELECT id FROM task ORDER BY created_at ASC",
+        "SELECT id FROM task ORDER BY created_at LIMIT 20",
+        "SELECT id FROM task ORDER BY created_at ASC LIMIT 20",
         "SELECT id FROM task ORDER BY created_at DESC NULLS LAST LIMIT 20",
         "SELECT id FROM task ORDER BY task.created_at DESC OFFSET 10",
         "SELECT id FROM task ORDER BY public.task.created_at ASC NULLS FIRST FETCH FIRST 5 ROWS ONLY",
-        "SELECT id FROM task ORDER BY priority DESC, created_at DESC",
-        "SELECT id FROM task ORDER BY task.updated_at DESC",
-        "SELECT id FROM task ORDER BY processed_at ASC NULLS LAST",
-        "select id from task order    by created_at desc",
+        "SELECT id FROM task ORDER BY priority DESC, created_at DESC LIMIT 20",
+        "SELECT id FROM task ORDER BY task.updated_at DESC LIMIT 20",
+        "SELECT id FROM task ORDER BY processed_at ASC NULLS LAST LIMIT 20",
+        "select id from task order    by created_at desc limit 20",
     ],
     ids=[
         "sole-default-direction",
@@ -64,9 +64,9 @@ def test_reports_timestamp_as_final_same_depth_order_item(query: str) -> None:
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ407"
-    assert findings[0].severity is Severity.ERROR
-    assert "tie-break key" in findings[0].message
-    assert "`id`" in findings[0].message
+    assert findings[0].severity is Severity.WARNING
+    assert "unique secondary key" in findings[0].message
+    assert "cursor predicate" in findings[0].message
 
 
 def test_reports_nested_order_clause_at_its_own_depth() -> None:
@@ -77,6 +77,7 @@ def test_reports_nested_order_clause_at_its_own_depth() -> None:
                 SELECT id
                 FROM task
                 ORDER BY created_at DESC
+                LIMIT 20
             ) AS recent
             ORDER BY recent.id
         """
@@ -95,6 +96,7 @@ def test_reports_outer_order_clause_without_confusing_nested_commas() -> None:
                 ORDER BY created_at DESC, id DESC
             ) AS recent
             ORDER BY coalesce(recent.priority, 0), recent.created_at DESC
+            LIMIT 20
         """
     '''
 
@@ -102,7 +104,7 @@ def test_reports_outer_order_clause_without_confusing_nested_commas() -> None:
 
 
 def test_reconstructs_static_concatenation_without_duplicate_diagnostics() -> None:
-    source = 'QUERY = "SELECT id FROM task " + "ORDER BY created_at DESC"\n'
+    source = 'QUERY = "SELECT id FROM task " + "ORDER BY created_at DESC LIMIT 20"\n'
 
     findings = _check(source)
 
@@ -114,9 +116,9 @@ def test_reports_once_when_one_literal_has_multiple_unstable_order_clauses() -> 
     source = '''
         QUERY = """
             WITH recent AS (
-                SELECT id FROM task ORDER BY created_at DESC
+                SELECT id FROM task ORDER BY created_at DESC LIMIT 20
             )
-            SELECT id FROM recent ORDER BY created_at DESC
+            SELECT id FROM recent ORDER BY created_at DESC LIMIT 20
         """
     '''
 
@@ -125,9 +127,9 @@ def test_reports_once_when_one_literal_has_multiple_unstable_order_clauses() -> 
 
 def test_reports_multiple_query_literals_in_source_order() -> None:
     source = (
-        'FIRST = "SELECT id FROM task ORDER BY created_at DESC"\n'
+        'FIRST = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"\n'
         'SAFE = "SELECT id FROM task ORDER BY created_at DESC, id DESC"\n'
-        'SECOND = "SELECT id FROM task ORDER BY task.created_at ASC"\n'
+        'SECOND = "SELECT id FROM task ORDER BY task.created_at ASC LIMIT 20"\n'
     )
 
     findings = _check(source)
@@ -139,7 +141,6 @@ def test_reports_multiple_query_literals_in_source_order() -> None:
     "query",
     [
         "SELECT id FROM task ORDER BY created_at DESC, id DESC",
-        "SELECT id FROM task ORDER BY created_at, random()",
         "SELECT id FROM task ORDER BY priority, created_at DESC, lower(name)",
         "SELECT id FROM task ORDER BY id, updated_epoch",
         "SELECT id FROM task ORDER BY created_at_epoch DESC",
@@ -149,7 +150,6 @@ def test_reports_multiple_query_literals_in_source_order() -> None:
     ],
     ids=[
         "id-tiebreaker",
-        "any-later-key-is-accepted",
         "created-at-has-later-expression",
         "non-timestamp-final-column",
         "identifier-suffix",
@@ -169,7 +169,7 @@ def test_same_depth_ignores_commas_inside_a_later_expression() -> None:
 
 
 def test_same_depth_ignores_commas_inside_an_earlier_expression() -> None:
-    source = 'QUERY = "SELECT id FROM task ORDER BY coalesce(priority, 0), created_at DESC"\n'
+    source = 'QUERY = "SELECT id FROM task ORDER BY coalesce(priority, 0), created_at DESC LIMIT 20"\n'
 
     assert len(_check(source)) == 1
 
@@ -197,6 +197,48 @@ def test_skips_sql_that_is_not_fully_reconstructable(source: str) -> None:
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM task ORDER BY created_at DESC",
+        "SELECT DISTINCT id FROM task ORDER BY created_at DESC LIMIT 20",
+        "SELECT created_at, count(*) FROM task GROUP BY created_at ORDER BY created_at DESC LIMIT 20",
+        "SELECT id FROM task ORDER BY created_at DESC FETCH FIRST 5 ROWS WITH TIES",
+    ],
+    ids=["unbounded", "distinct", "grouped", "fetch-with-ties"],
+)
+def test_skips_queries_without_a_stable_bounded_row_selection_contract(query: str) -> None:
+    assert _check(f"QUERY = {query!r}\n") == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM task ORDER BY created_at DESC, random() LIMIT 20",
+        "SELECT id FROM task ORDER BY created_at DESC, 1 LIMIT 20",
+        "SELECT id FROM task ORDER BY created_at DESC, NULL LIMIT 20",
+    ],
+    ids=["volatile-function", "ordinal-constant", "null-constant"],
+)
+def test_rejects_pseudo_tiebreakers(query: str) -> None:
+    assert len(_check(f"QUERY = {query!r}\n")) == 1
+
+
+def test_checks_static_f_string_without_interpolation() -> None:
+    source = 'QUERY = f"SELECT id FROM task ORDER BY created_at DESC LIMIT 20"\n'
+
+    assert len(_check(source)) == 1
+
+
+def test_skips_sql_in_docstrings() -> None:
+    source = '''
+        def explain_query() -> None:
+            """SELECT id FROM task ORDER BY created_at DESC LIMIT 20."""
+    '''
+
+    assert _check(source) == []
+
+
 def test_ignores_sql_tokens_inside_values_and_comments() -> None:
     source = '''
         QUERY = """
@@ -214,7 +256,7 @@ def test_ignores_sql_tokens_inside_values_and_comments() -> None:
 
 @pytest.mark.parametrize("path", ["task_store.py", "app/store.py", "app/stores/task.py"])
 def test_reports_only_in_recognized_store_modules(path: str) -> None:
-    source = 'QUERY = "SELECT id FROM task ORDER BY created_at DESC"\n'
+    source = 'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"\n'
 
     assert len(_check(source, path)) == 1
 
@@ -239,9 +281,9 @@ def test_skips_generated_and_malformed_source() -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        'QUERY = "SELECT id FROM task ORDER BY created_at DESC"  # sarj-noqa\n',
-        'QUERY = "SELECT id FROM task ORDER BY created_at DESC"  # sarj-noqa: SARJ407\n',
-        'QUERY = "SELECT id FROM task ORDER BY created_at DESC"  # sarj-noqa: SARJ025, SARJ407\n',
+        'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa\n',
+        'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa: SARJ407\n',
+        'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa: SARJ025, SARJ407\n',
     ],
     ids=["bare", "exact-code", "multiple-codes"],
 )
@@ -250,6 +292,6 @@ def test_local_suppression_can_remove_the_warning(source: str) -> None:
 
 
 def test_unrelated_suppression_code_does_not_remove_the_warning() -> None:
-    source = 'QUERY = "SELECT id FROM task ORDER BY created_at DESC"  # sarj-noqa: SARJ025\n'
+    source = 'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa: SARJ025\n'
 
     assert len(_kept(source)) == 1

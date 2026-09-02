@@ -62,7 +62,9 @@
       "task": "rule-audit/python/timestamp-order-requires-tiebreaker",
       "family": "python",
       "ruleId": "timestamp-order-requires-tiebreaker",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed the rule's name should remain stable but found that unlimited result sets, grouped and distinct queries, SQL in docstrings, and FETCH WITH TIES produced misleading findings, while volatile functions and constants were accepted as tie-break keys. Corpus review found 35 Bulbul and three AI findings with mixed impact, confirming this remains advisory without schema-level uniqueness evidence. Fifty-four focused cases pass after repair.",
+      "outcome": "Kept the established timestamp-order-requires-tiebreaker ID and alias, staged it as warning, limited findings to bounded row selection, excluded grouped, distinct, WITH TIES, generated, fixture, and docstring content, recognized static f-strings, rejected volatile or constant pseudo-keys, and rewrote examples and diagnostics to teach matching composite ORDER BY and keyset cursor predicates."
     },
     {
       "task": "rule-audit/python/defect-xfail-requires-explicit-strict",
