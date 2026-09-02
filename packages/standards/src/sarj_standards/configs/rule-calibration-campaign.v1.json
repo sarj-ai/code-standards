@@ -118,7 +118,9 @@
       "task": "rule-audit/python/fastapi-explicit-openapi-contract",
       "family": "python",
       "ruleId": "fastapi-explicit-openapi-contract",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 91 focused tests and classified a local fleet scan of 1,459 findings across 149 files: 625 parameter, 526 metadata, 263 alternate-response, 43 return, one routing, and one status finding. Roughly 80 percent were stricter organizational explicitness rather than broken generated OpenAPI. Reviewers reproduced false positives for concrete typed mappings, self-documenting non-JSON response classes, caught HTTPException calls, responses[*].model, and statically inherited APIRouter defaults and response maps.",
+      "outcome": "Kept the compatible SARJ094 selector and alias but staged the composite rule as warning. Reworded its UI to distinguish FastAPI's valid inference from local explicitness policy, added a second public schema-integrity scenario, accepted concretely typed mappings and supported response models, inherited statically resolvable router response metadata, ignored caught exceptions and unverifiable custom response classes, and retained conservative direct-only analysis. Routing and other independently error-safe families remain candidates for future split rules after separate calibration."
     },
     {
       "task": "rule-audit/python/pytest-fixture-returns-bare-tuple",

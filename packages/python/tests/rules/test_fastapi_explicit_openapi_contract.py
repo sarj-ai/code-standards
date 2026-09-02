@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.fastapi_explicit_openapi_contract import FastapiExplicitOpenapiContract
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 
@@ -36,7 +37,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 _PRELUDE = """
 from typing import Annotated, Any, Optional
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Path, Query, Request, status
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 router = APIRouter()
 """
@@ -139,7 +140,7 @@ async def users() -> list[UserResponse]:
     ("parameter", "fragment"),
     [
         ("term: str", "explicit Annotated"),
-        ("payload: Annotated[dict[str, str], Body(description='Payload')]", "schema-erasing"),
+        ("payload: Annotated[dict[str, Any], Body(description='Payload')]", "schema-erasing"),
         ("other: Annotated[str, Path(description='Other')]", "not present in route path"),
     ],
 )
@@ -472,7 +473,7 @@ async def users(limit = Query(10)):
     [
         ("Any", ""),
         ("object", ""),
-        ("dict[str, str]", ""),
+        ("dict[str, Any]", ""),
         ("UserResponse", ", response_model=None"),
         ("Optional[UserResponse]", ", response_model=None"),
         ("StreamingResponse", ""),
@@ -837,7 +838,7 @@ async def create_item(payload: dict[str, str] = Body(description="Payload")) -> 
     assert any("[parameter]" in diagnostic.message and "Annotated" in diagnostic.message for diagnostic in diagnostics)
 
 
-def test_direct_response_requires_response_class_but_not_response_model_none():
+def test_file_response_class_documents_its_wire_format_without_a_response_model():
     clean = (
         _PRELUDE
         + """
@@ -855,10 +856,8 @@ async def report() -> FileResponse:
     )
     assert _check(clean) == []
 
-    incomplete = clean.replace('    responses={200: {"content": {"application/pdf": {}}}},\n', "")
-    diagnostics = _check(incomplete)
-    assert len(diagnostics) == 1
-    assert "responses content schema" in diagnostics[0].message
+    without_redundant_content = clean.replace('    responses={200: {"content": {"application/pdf": {}}}},\n', "")
+    assert _check(without_redundant_content) == []
 
 
 def test_no_content_return_contract_problems_are_aggregated_per_handler():
@@ -1138,6 +1137,137 @@ async def health() -> dict[str, Any]:
 
     unannotated = _PRELUDE + "\n@router.get('/health')\nasync def health():\n    return {'status': 'ok'}\n"
     assert len(PydanticAtBoundaries().check(Path("api.py"), unannotated)) == 1
+
+
+def test_concretely_typed_mapping_preserves_schema_but_erased_members_do_not():
+    typed_response = _source("""
+@router.get("/items", status_code=200)
+async def read_items() -> dict[str, str]:
+    return {"status": "ok"}
+""")
+    assert _check(typed_response) == []
+
+    typed_body = _source("""
+@router.post("/items", status_code=201)
+async def create_item(payload: Annotated[dict[str, str], Body()]) -> ItemResponse:
+    return ItemResponse()
+""")
+    assert _check(typed_body) == []
+
+    erased = _source("""
+@router.get("/items", status_code=200)
+async def read_items() -> dict[str, Any]:
+    return {}
+""")
+    assert any("schema" in finding.message for finding in _check(erased))
+
+
+@pytest.mark.parametrize(
+    "response_class", ["HTMLResponse", "PlainTextResponse", "RedirectResponse", "StreamingResponse"]
+)
+def test_non_json_response_class_documents_its_wire_format(response_class: str):
+    source = _source(f"""
+@router.get("/items", status_code=200, response_class={response_class})
+async def read_items() -> {response_class}:
+    return {response_class}("ok")
+""")
+    assert _check(source) == []
+
+
+def test_router_default_response_class_is_inherited():
+    source = """
+from fastapi import APIRouter
+from fastapi.responses import HTMLResponse
+
+router = APIRouter(default_response_class=HTMLResponse)
+
+@router.get("/", status_code=200)
+async def home() -> HTMLResponse:
+    return HTMLResponse("ok")
+"""
+    assert _check(source) == []
+
+
+def test_router_level_responses_document_direct_exception():
+    source = """
+from fastapi import APIRouter, HTTPException
+
+router = APIRouter(responses={404: {"description": "Missing"}})
+
+@router.get("/items", status_code=200)
+async def read_item() -> ItemResponse:
+    raise HTTPException(status_code=404)
+"""
+    assert _check(source) == []
+
+
+def test_route_responses_merge_with_router_level_responses():
+    source = """
+from fastapi import APIRouter, HTTPException
+
+router = APIRouter(responses={404: {"description": "Missing"}})
+
+@router.get("/items", status_code=200, responses={409: {"description": "Conflict"}})
+async def read_item(conflict: bool) -> ItemResponse:
+    if conflict:
+        raise HTTPException(status_code=409)
+    raise HTTPException(status_code=404)
+"""
+    findings = _check(source)
+    assert [finding for finding in findings if "[responses]" in finding.message] == []
+
+
+def test_unresolved_custom_response_class_is_treated_as_dynamic():
+    source = """
+from fastapi import APIRouter
+from fastapi.responses import Response
+from project.responses import CsvResponse
+
+router = APIRouter()
+
+@router.get("/export", status_code=200, response_class=CsvResponse)
+async def export() -> Response:
+    return CsvResponse("id,name")
+"""
+    assert _check(source) == []
+
+
+def test_response_mapping_model_documents_direct_json_response():
+    source = _source("""
+@router.get(
+    "/items",
+    status_code=200,
+    response_class=JSONResponse,
+    responses={200: {"model": ItemResponse}},
+)
+async def read_item() -> JSONResponse:
+    return JSONResponse({"id": "item-1"})
+""")
+    assert _check(source) == []
+
+
+def test_caught_http_exception_does_not_escape_into_operation_contract():
+    source = _source("""
+@router.get("/items", status_code=200)
+async def read_item() -> ItemResponse:
+    try:
+        raise HTTPException(status_code=404)
+    except HTTPException:
+        return ItemResponse()
+""")
+    assert _check(source) == []
+
+
+def test_contract_diagnostics_are_warning_level():
+    findings = _check(
+        _source("""
+@router.get("/items")
+async def read_items() -> list[ItemResponse]:
+    return []
+""")
+    )
+    assert findings
+    assert {finding.severity for finding in findings} == {Severity.WARNING}
 
 
 @pytest.mark.parametrize(

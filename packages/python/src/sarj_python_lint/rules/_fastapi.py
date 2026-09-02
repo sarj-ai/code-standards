@@ -41,6 +41,8 @@ class Route:
     path: str | None
     receiver_kind: Literal["FastAPI", "APIRouter"]
     inherited_hidden: bool = False
+    inherited_responses: ast.expr | None = None
+    inherited_response_class: ast.expr | None = None
 
     @property
     def keywords(self) -> dict[str, ast.expr]:
@@ -119,6 +121,7 @@ class FastapiIndex:
         self.receiver_origins: dict[_ReceiverKey, _ReceiverKey] = {}
         self.receiver_kinds: dict[_ReceiverKey, Literal["FastAPI", "APIRouter"]] = {}
         self.hidden_receivers: set[_ReceiverKey] = set()
+        self.receiver_defaults: dict[_ReceiverKey, dict[str, ast.expr]] = {}
         self.decorators: dict[_ReceiverKey, _DecoratorBinding] = {}
         self.bound_names: set[_ReceiverKey] = set()
         self._node_scopes: dict[int, int] = {}
@@ -243,6 +246,12 @@ class FastapiIndex:
                     self.receivers.add(key)
                     self.receiver_origins[key] = key
                     self.receiver_kinds[key] = constructor_kind
+                    if isinstance(value, ast.Call):
+                        self.receiver_defaults[key] = {
+                            keyword.arg: keyword.value
+                            for keyword in value.keywords
+                            if keyword.arg in {"responses", "default_response_class"}
+                        }
                     if self._constructor_is_hidden(value):
                         self.hidden_receivers.add(key)
                     changed = True
@@ -346,6 +355,7 @@ class FastapiIndex:
             path = path_node.value if isinstance(path_node, ast.Constant) and isinstance(path_node.value, str) else None
             route_methods = self._route_methods(decorator) if method == "api_route" else (method,)
             origin = self.receiver_origins[receiver_key]
+            defaults = self.receiver_defaults.get(origin, {})
             routes.extend(
                 Route(
                     decorator=decorator,
@@ -354,6 +364,8 @@ class FastapiIndex:
                     path=path,
                     receiver_kind=self.receiver_kinds[receiver_key],
                     inherited_hidden=receiver_key in self.hidden_receivers,
+                    inherited_responses=defaults.get("responses"),
+                    inherited_response_class=defaults.get("default_response_class"),
                 )
                 for route_method in route_methods
             )

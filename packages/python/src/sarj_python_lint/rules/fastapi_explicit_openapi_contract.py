@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children, nodes
@@ -43,6 +44,9 @@ _RAW_MAPPINGS = frozenset({"dict", "Dict", "Mapping", "MutableMapping"})
 _CONTAINERS = frozenset({"list", "List", "set", "Set", "tuple", "Tuple", "Sequence"})
 _BODY_MARKERS = frozenset({"Body", "Form", "File"})
 _NO_CONTENT_STATUSES = frozenset({204, 304})
+_SELF_DOCUMENTING_RESPONSE_CLASSES = frozenset(
+    {"FileResponse", "HTMLResponse", "PlainTextResponse", "RedirectResponse", "StreamingResponse"}
+)
 _STATUS_CODE_DIGITS = 3
 _MIN_HTTP_STATUS = 100
 _MAX_HTTP_STATUS = 599
@@ -68,17 +72,21 @@ class FastapiExplicitOpenapiContract(Rule):
     id: str = "fastapi-explicit-openapi-contract"
     code: str = "SARJ094"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="FastAPI operations must make request, response, and status contracts explicit in generated OpenAPI.",
+        summary="Visible FastAPI operations pin locally reviewable metadata and avoid statically provable OpenAPI gaps.",
         rationale=(
-            "Locally explicit route metadata keeps generated OpenAPI reviewable and stable across framework defaults "
-            "without duplicating self-documenting names in prose."
+            "FastAPI can infer valid schemas and default statuses. This stricter organizational policy pins locally "
+            "reviewable metadata while also detecting response, status, and routing mismatches that inference cannot fix."
         ),
-        remediation="Declare status codes, typed parameters, response schemas, and alternate responses raised directly by the handler.",
+        remediation=(
+            "Follow the diagnostic family: pin operation metadata, annotate parameter locations, preserve concrete schemas, "
+            "document escaping alternate statuses, or correct a statically proven route conflict."
+        ),
         category=RuleCategory.CORRECTNESS,
         aliases=("fastapi-openapi-contract",),
         limitations=(
             "Hidden routes, WebSocket handlers, tests, generated files, documentation-source examples, and unrelated decorators are excluded.",
             "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
+            "Explicit status and parameter-location findings are organizational policy even when FastAPI inference would generate valid OpenAPI.",
             "Imported dependency aliases are followed only through unique, nonsymlinked relative or same-package modules inside the detected checkout; traversal is bounded and ambiguity remains diagnostic.",
         ),
         examples=(
@@ -108,6 +116,40 @@ class FastapiExplicitOpenapiContract(Rule):
                 ),
                 focus_path=PurePosixPath("api.py"),
                 expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="schema-erasing-response",
+                title="A bare mapping erases the generated response schema",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n"
+                        "@router.get('/users', status_code=200)\n"
+                        "async def read_users() -> dict:\n    return {}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=1,
+                scenario="schema-integrity",
+                public=True,
+            ),
+            RuleExample(
+                example_id="typed-response-model",
+                title="A named response type preserves a concrete schema",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n"
+                        "@router.get('/users', status_code=200)\n"
+                        "async def read_users() -> list[UserResponse]:\n    return []\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=0,
+                scenario="schema-integrity",
                 public=True,
             ),
         ),
@@ -151,6 +193,7 @@ class FastapiExplicitOpenapiContract(Rule):
                 col=finding.node.col_offset + 1,
                 code=self.code,
                 message=finding.message,
+                severity=Severity.WARNING,
             )
             for finding in sorted(
                 findings, key=lambda finding: (finding.node.lineno, finding.node.col_offset, finding.message)
@@ -320,7 +363,9 @@ def _schema_erasing(node: ast.expr, index: FastapiIndex) -> bool:
     if name in {"Any", "object"}:
         return True
     if name in _RAW_MAPPINGS:
-        return True
+        if not isinstance(resolved, ast.Subscript):
+            return True
+        return any(_schema_erasing(item, index) for item in _slice_items(resolved.slice))
     if name in _CONTAINERS:
         if not isinstance(resolved, ast.Subscript):
             return True
@@ -354,19 +399,21 @@ def _check_return(
         response_model = keywords.get("response_model")
         response_model_none = response_model is not None and _literal_none(response_model)
         status = _status_code(keywords.get("status_code"), index)
-        if is_response and status not in _NO_CONTENT_STATUSES and "response_class" not in keywords:
+        response_class = keywords.get("response_class") or route.inherited_response_class
+        if is_response and status not in _NO_CONTENT_STATUSES and response_class is None:
             problems.add("direct Response return requires response_class= for accurate OpenAPI")
-        response_class = keywords.get("response_class")
         response_name = index.response_name(annotation)
         class_name = index.response_name(response_class)
+        response_class_is_unresolved = response_class is not None and not class_name
+        has_documented_body = (
+            _concrete_response_model(response_model, index)
+            or any(_documents_response_content(node, status, index) for node in _route_response_nodes(route))
+            or class_name in _SELF_DOCUMENTING_RESPONSE_CLASSES
+            or response_class_is_unresolved
+        )
         if response_name not in {"", "Response"} and class_name and response_name != class_name:
             problems.add(f"return type {response_name} conflicts with response_class={class_name}")
-        if (
-            is_response
-            and status not in _NO_CONTENT_STATUSES
-            and not _concrete_response_model(response_model, index)
-            and not _documents_response_content(keywords.get("responses"), status, index)
-        ):
+        if is_response and status not in _NO_CONTENT_STATUSES and not has_documented_body:
             problems.add("direct Response return requires a concrete response_model or responses content schema")
         elif not is_response and not is_none and response_model_none:
             problems.add("response_model=None suppresses the declared response schema")
@@ -405,10 +452,20 @@ def _documents_response_content(node: ast.expr | None, status: int | None, index
             continue
         if not isinstance(value, ast.Dict):
             return True
-        for entry_key in value.keys:
+        for entry_key, entry_value in zip(value.keys, value.values, strict=True):
             if isinstance(entry_key, ast.Constant) and entry_key.value == "content":
                 return True
+            if (
+                isinstance(entry_key, ast.Constant)
+                and entry_key.value == "model"
+                and _concrete_response_model(entry_value, index)
+            ):
+                return True
     return False
+
+
+def _route_response_nodes(route: Route) -> tuple[ast.expr, ...]:
+    return tuple(node for node in (route.inherited_responses, route.keywords.get("responses")) if node is not None)
 
 
 def _check_projection(route: Route) -> list[_Finding]:
@@ -466,15 +523,23 @@ def _check_direct_responses(
 ) -> list[_Finding]:
     statuses: set[int] = set()
     invalid: dict[int, ast.Call] = {}
-    stack: list[ast.AST] = list(function.body)
+    stack: list[tuple[ast.AST, bool]] = [(node, False) for node in function.body]
     while stack:
-        current = stack.pop()
+        current, catches_http_exception = stack.pop()
         if current is not function and isinstance(
             current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
         ):
             continue
+        if isinstance(current, (ast.Try, ast.TryStar)):
+            catches_here = any(_catches_http_exception(handler, index) for handler in current.handlers)
+            stack.extend((node, catches_http_exception or catches_here) for node in current.body)
+            stack.extend((node, catches_http_exception) for node in current.orelse)
+            stack.extend((node, catches_http_exception) for node in current.finalbody)
+            for handler in current.handlers:
+                stack.extend((node, catches_http_exception) for node in handler.body)
+            continue
         call = current.exc if isinstance(current, ast.Raise) else None
-        if isinstance(call, ast.Call) and index.is_http_exception(call.func):
+        if isinstance(call, ast.Call) and index.is_http_exception(call.func) and not catches_http_exception:
             status = _status_code(_keyword(call, "status_code") or (call.args[0] if call.args else None), index)
             if status is not None:
                 if _valid_http_status(status):
@@ -489,7 +554,7 @@ def _check_direct_responses(
                     statuses.add(status)
                 else:
                     invalid.setdefault(status, returned)
-        stack.extend(children(current))
+        stack.extend((child, catches_http_exception) for child in children(current))
     findings = [
         _Finding(node, f"[status] {status} is outside the HTTP status range 100..599.")
         for status, node in invalid.items()
@@ -497,10 +562,12 @@ def _check_direct_responses(
     if not statuses:
         return findings
     for route in _operations(routes):
-        responses = route.keywords.get("responses")
-        if responses is not None and not isinstance(responses, ast.Dict):
+        responses = _route_response_nodes(route)
+        if any(not isinstance(node, ast.Dict) for node in responses):
             continue
-        documented: set[int] = _response_codes(responses, index) if isinstance(responses, ast.Dict) else set()
+        documented = {
+            status for node in responses if isinstance(node, ast.Dict) for status in _response_codes(node, index)
+        }
         primary = _status_code(route.keywords.get("status_code"), index)
         missing = sorted(statuses - documented - ({primary} if primary is not None else set()))
         if missing:
@@ -511,6 +578,17 @@ def _check_direct_responses(
                 )
             )
     return findings
+
+
+def _catches_http_exception(handler: ast.ExceptHandler, index: FastapiIndex) -> bool:
+    if handler.type is None:
+        return True
+    caught = handler.type.elts if isinstance(handler.type, ast.Tuple) else (handler.type,)
+    return any(
+        isinstance(exception, (ast.Name, ast.Attribute))
+        and (index.canonical(exception) == "HTTPException" or flat_name(exception) in {"Exception", "BaseException"})
+        for exception in caught
+    )
 
 
 def _check_response_statuses(route: Route, index: FastapiIndex) -> list[_Finding]:
