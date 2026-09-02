@@ -11,6 +11,7 @@ RuleTester.itOnly = it.only;
 const RULE_TESTER = new RuleTester();
 const NEXT_CLIENT_MODULE = "/repo/app/ui/actions.tsx";
 const USE_CLIENT = '"use client"; ';
+const GATEWAY_BASE_PATH = [{ basePaths: ["/gateway"] }] as const;
 
 RULE_TESTER.run("prefer-server-actions", rule, {
   valid: [
@@ -72,6 +73,23 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       name: "still allows external mutations in a Next.js module",
       code: `${USE_CLIENT}fetch('https://api.example.com/users', { method: 'POST' });`,
       filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "does not infer an unconfigured base path",
+      code: `${USE_CLIENT}fetch('/gateway/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "requires an exact configured base path segment",
+      code: `${USE_CLIENT}fetch('/gateway-v2/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+    },
+    {
+      name: "does not reinterpret absolute URLs under a configured base path",
+      code: `${USE_CLIENT}fetch('https://example.com/gateway/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
     },
     {
       name: "ignores codemod fixtures because they are not running code",
@@ -219,6 +237,27 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       name: "reports with an explicit Next import outside app and pages trees",
       code: 'import { useRouter } from "next/navigation"; fetch("/api/items", { method: "POST" });',
       filename: "/repo/src/components/actions.tsx",
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports fetch mutations under a configured Next base path",
+      code: `${USE_CLIENT}fetch('/gateway/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports dynamic templates under a configured Next base path",
+      code: `${USE_CLIENT}api.delete(\`/gateway/api/users/\${id}\`);`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports nested configured base paths",
+      code: `${USE_CLIENT}axios({ method: 'patch', url: '/global/show/api/tickets/1' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: [{ basePaths: ["/global/show"] }],
       errors: [{ messageId: "preferServerAction" }],
     },
   ],

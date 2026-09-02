@@ -5,24 +5,27 @@
  */
 
 import { type TSESTree } from "@typescript-eslint/utils";
+import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 type MessageIds = "preferServerAction";
 
 export const PREFER_SERVER_ACTIONS_DOCUMENTATION = {
-  summary: "Prefer Next.js Server Actions over /api/* mutations.",
+  summary: "Prefer Next.js Server Actions over same-origin API mutations.",
   rationale: "Server Actions preserve typed application calls and avoid an internal JSON request-response boundary.",
   remediation: "Move the mutation into a Server Action and invoke that action from the React client.",
   category: "architecture",
-  limitations: ["Only statically recognizable /api/ mutations in modules with positive Next.js evidence are reported: an explicit next import, or an app/pages path with a top-level use-client directive."],
+  limitations: ["Only statically recognizable /api/ mutations, including explicitly configured literal deployment base paths, in modules with positive Next.js evidence are reported."],
   examples: [
     { id: "server-action-call", title: "Call a Server Action", outcome: "no-match", files: [{ path: "app/tasks/page.tsx", source: "import { createTask } from './actions'; await createTask(input);" }], focusPath: "app/tasks/page.tsx", expectedCount: 0, public: true },
     { id: "api-mutation", title: "Do not mutate through an API route", outcome: "match", files: [{ path: "app/tasks/page.tsx", source: "'use client'; await fetch('/api/tasks', { method: 'POST', body });" }], focusPath: "app/tasks/page.tsx", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
-type Options = readonly [];
+export interface RuleOptions {
+  readonly basePaths?: readonly string[];
+}
+type Options = readonly [RuleOptions?];
 
 const MUTATION_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 const AXIOS_MUTATION_METHODS: ReadonlySet<string> = new Set(["post", "put", "delete", "patch"]);
@@ -34,6 +37,7 @@ const NON_REACT_FRAMEWORK_RE =
   /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
 
 const NEXT_MODULE_PATH_RE = /(?:^|[/\\])(?:app|pages)[/\\]/u;
+const BASE_PATH_RE = /^\/(?!$)(?!.*[?#])(?:[^/]+\/)*[^/]+$/u;
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
 
@@ -74,22 +78,30 @@ function resolveNode(
 function isApiUrl(
   node: TSESTree.Node | null | undefined,
   context: Ctx,
+  apiPrefixes: readonly string[],
 ): boolean {
   const resolved = resolveNode(node, context);
   if (!resolved) return false;
 
   if (resolved.type === "Literal" && typeof resolved.value === "string") {
-    return resolved.value.startsWith("/api/");
+    return apiPrefixes.some((prefix) => resolved.value.startsWith(prefix));
   }
   if (resolved.type === "TemplateLiteral") {
     const firstQuasi = resolved.quasis[0];
     const cooked = firstQuasi?.value.cooked;
-    return typeof cooked === "string" && cooked.startsWith("/api/");
+    return typeof cooked === "string" && apiPrefixes.some((prefix) => cooked.startsWith(prefix));
   }
   if (resolved.type === "BinaryExpression" && resolved.operator === "+") {
-    return isApiUrl(resolved.left, context);
+    return isApiUrl(resolved.left, context, apiPrefixes);
   }
   return false;
+}
+
+function isValidBasePath(basePath: string): boolean {
+  return (
+    BASE_PATH_RE.test(basePath) &&
+    !basePath.split("/").some((segment) => segment === "." || segment === "..")
+  );
 }
 
 function isMutationMethod(
@@ -191,16 +203,31 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "suggestion",
     docs: {
-      description: "Prefer Next.js Server Actions over /api/* mutations.",
+      description: "Prefer Next.js Server Actions over same-origin API mutations.",
     },
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          basePaths: {
+            type: "array",
+            uniqueItems: true,
+            items: {
+              type: "string",
+              pattern: "^/(?!$)(?!.*[?#])(?:[^/]+/)*[^/]+$",
+            },
+          },
+        },
+      },
+    ],
     messages: {
       preferServerAction:
-        "Mutation against /api/* — prefer a Next.js Server Action for type-safety and to avoid the JSON round-trip.",
+        "Mutation against a same-origin API route — prefer a Next.js Server Action for type-safety and to avoid the JSON round-trip.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
     const filename = context.filename;
     if (SKIP_FILE_REGEX.test(filename)) {
       return {};
@@ -232,6 +259,15 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
+    const apiPrefixes = [
+      "/api/",
+      ...new Set(
+        (options?.basePaths ?? [])
+          .filter(isValidBasePath)
+          .map((basePath) => `${basePath}/api/`),
+      ),
+    ];
+
     return {
       CallExpression(node) {
         if (isNonReactFramework) return;
@@ -243,7 +279,7 @@ export default createRule<Options, MessageIds>({
           node.callee.name === "fetch"
         ) {
           const urlArg = node.arguments[0];
-          if (urlArg && urlArg.type !== "SpreadElement" && isApiUrl(urlArg, context)) {
+          if (urlArg && urlArg.type !== "SpreadElement" && isApiUrl(urlArg, context, apiPrefixes)) {
             const initArg = node.arguments[1];
             if (initArg && initArg.type !== "SpreadElement") {
               const resolvedInit = resolveNode(initArg, context);
@@ -272,7 +308,7 @@ export default createRule<Options, MessageIds>({
               urlArg &&
               urlArg.type !== "SpreadElement" &&
               !hasHandlerArg &&
-              isApiUrl(urlArg, context)
+              isApiUrl(urlArg, context, apiPrefixes)
             ) {
               isMutation = true;
             }
@@ -291,7 +327,7 @@ export default createRule<Options, MessageIds>({
               const methodNode = getPropertyNode(configArg, "method");
               if (
                 urlNode &&
-                isApiUrl(urlNode, context) &&
+                isApiUrl(urlNode, context, apiPrefixes) &&
                 methodNode &&
                 isMutationMethod(methodNode, context)
               ) {

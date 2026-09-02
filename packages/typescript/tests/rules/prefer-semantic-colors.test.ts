@@ -357,6 +357,7 @@ const RAW_PALETTE_COMPONENT = `export const Badge = () => <span className="text-
 
 interface Options {
   readonly requireSemanticTokens?: boolean;
+  readonly opaqueNeutrals?: "off" | "surfaces-and-declared-pairs";
 }
 
 function lintFile(root: string, filename: string, options: Options = {}): string[] {
@@ -364,6 +365,28 @@ function lintFile(root: string, filename: string, options: Options = {}): string
   const linter = new Linter({ cwd: root });
   const messages = linter.verify(
     RAW_PALETTE_COMPONENT,
+    {
+      files: ["**/*.tsx"],
+      plugins: { sarj: { rules: { "prefer-semantic-colors": rule as never } } },
+      languageOptions: { parser: tsParser as never, parserOptions: { ecmaFeatures: { jsx: true } } },
+      rules: { [RULE_ID]: ["error", options] },
+    } as never,
+    filename,
+  );
+  const noise = messages.filter((message) => message.ruleId !== RULE_ID);
+  expect(noise, `harness produced non-rule messages: ${JSON.stringify(noise)}`).toEqual([]);
+  return messages.map((message) => message.messageId ?? "?");
+}
+
+function lintSource(
+  root: string,
+  filename: string,
+  source: string,
+  options: Options,
+): string[] {
+  const linter = new Linter({ cwd: root });
+  const messages = linter.verify(
+    source,
     {
       files: ["**/*.tsx"],
       plugins: { sarj: { rules: { "prefer-semantic-colors": rule as never } } },
@@ -409,6 +432,62 @@ describe("requireSemanticTokens gates on a real design system", () => {
     expect(lintFile(root, join(root, "src/badge.tsx"), { requireSemanticTokens: true })).toEqual([
       "rawPalette",
     ]);
+  });
+});
+
+describe("opaque neutral semantic-token enforcement", () => {
+  const TOKENS = `:root {
+    --background: 0 0% 100%;
+    --primary: 222 47% 11%;
+    --primary-foreground: 210 40% 98%;
+  }`;
+  const OPTIONS = {
+    opaqueNeutrals: "surfaces-and-declared-pairs",
+  } as const;
+
+  function messages(source: string, css: string = TOKENS): readonly string[] {
+    const root = makeRepo({ "app/globals.css": css, "src/app/card.tsx": source });
+    return lintSource(root, join(root, "src/app/card.tsx"), source, OPTIONS);
+  }
+
+  it("reports opaque white and black surfaces in a tokenized app", () => {
+    expect(messages(`<><div className="bg-white" /><div className="dark:bg-black/100" /></>`)).toEqual([
+      "opaqueSurface",
+      "opaqueSurface",
+    ]);
+  });
+
+  it("reports a raw foreground only when its semantic pair is declared", () => {
+    expect(messages(`<button className="bg-primary text-white">Save</button>`)).toEqual([
+      "opaqueForegroundPair",
+    ]);
+  });
+
+  it("allows translucent overlays and unpaired foregrounds", () => {
+    expect(messages(`<><div className="bg-black/50" /><span className="text-white" /></>`)).toEqual([]);
+  });
+
+  it("allows exact paper colors in print-only variants", () => {
+    expect(messages(`<div className="print:bg-white print:text-black" />`)).toEqual([]);
+  });
+
+  it("allows a foreground when the matching semantic pair is not declared", () => {
+    expect(messages(
+      `<button className="bg-primary text-white">Save</button>`,
+      `:root { --primary: 222 47% 11%; }`,
+    )).toEqual([]);
+  });
+
+  it("stays silent when no semantic token system exists", () => {
+    expect(messages(`<div className="bg-white" />`, `body { margin: 0; }`)).toEqual([]);
+  });
+
+  it("excludes opaque utility classes inside SVG artwork", () => {
+    expect(messages(`<svg className="bg-white"><path className="text-white" /></svg>`)).toEqual([]);
+  });
+
+  it("excludes Remotion render trees", () => {
+    expect(messages(`import { AbsoluteFill } from "remotion"; <AbsoluteFill className="bg-white" />;`)).toEqual([]);
   });
 });
 

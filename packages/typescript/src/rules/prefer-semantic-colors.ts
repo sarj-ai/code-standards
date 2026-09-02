@@ -11,14 +11,22 @@ import { dirname, join, parse } from "path";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { classTokens, tailwindBase } from "./_tailwind.js";
 
-type MessageIds = "rawPalette" | "arbitraryColor" | "inlineColor";
+type MessageIds =
+  | "rawPalette"
+  | "arbitraryColor"
+  | "inlineColor"
+  | "opaqueSurface"
+  | "opaqueForegroundPair";
 
 export const PREFER_SEMANTIC_COLORS_DOCUMENTATION = {
   summary: "Enforce semantic color tokens over raw Tailwind palette classes, arbitrary color values, and inline color literals.",
   rationale: "Semantic tokens keep themes and product meaning consistent while raw colors couple components to a palette value.",
   remediation: "Replace raw palette and literal colors with the closest semantic design-system token or CSS variable.",
   category: "style",
-  limitations: ["Email, PDF, icon artwork, masks, gradients, stories, and explicitly configured non-token projects have targeted exclusions."],
+  limitations: [
+    "Email, PDF, video-rendering, print-only, icon artwork, masks, gradients, stories, and explicitly configured non-token projects have targeted exclusions.",
+    "Opaque-neutral checks are opt-in: surfaces are limited to fully opaque bg-white/bg-black, while foregrounds require a same-variant semantic background and a declared matching foreground token.",
+  ],
   examples: [
     { id: "semantic-text-color", title: "Use a semantic color token", outcome: "no-match", files: [{ path: "src/notice.tsx", source: "const notice = <div className=\"text-destructive\" />;" }], focusPath: "src/notice.tsx", expectedCount: 0, public: true },
     { id: "raw-text-color", title: "Do not use a raw palette color", outcome: "match", files: [{ path: "src/notice.tsx", source: "const notice = <div className=\"text-red-500\" />;" }], focusPath: "src/notice.tsx", expectedCount: 1, public: true },
@@ -26,6 +34,7 @@ export const PREFER_SEMANTIC_COLORS_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 type Options = readonly [
   {
+    opaqueNeutrals?: "off" | "surfaces-and-declared-pairs";
     requireSemanticTokens?: boolean;
   }?,
 ];
@@ -191,8 +200,14 @@ const SVG_SHAPE_PRIMITIVES: ReadonlySet<string> = new Set([
   "use",
 ]);
 
-/** Email and PDF renderers cannot resolve CSS-variable-backed semantic tokens. */
-const EMAIL_OR_PDF_MODULE_RE = /^@react-(?:email|pdf)\//;
+/** Render targets that cannot safely inherit the application's semantic CSS variables. */
+const EXTERNAL_RENDERER_MODULE_RE = /^(?:@react-(?:email|pdf)\/|remotion$|@remotion\/)/;
+
+const OPAQUE_SURFACE_RE = /^bg-(?:white|black)(?:\/100)?$/;
+const OPAQUE_FOREGROUND_RE = /^text-(?:white|black)(?:\/100)?$/;
+const SEMANTIC_BACKGROUND_RE = /^bg-([a-z][a-z0-9-]*)$/;
+const DECLARED_FOREGROUND_RE = /--(?:color-)?([a-z][a-z0-9-]*)-foreground\b/giu;
+const DECLARED_FOREGROUND_CACHE = new Map<string, ReadonlySet<string>>();
 
 function isSvgLikeElementName(name: string): boolean {
   return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
@@ -389,7 +404,7 @@ const propName = (key: TSESTree.Property["key"]): string | null => {
   return null;
 };
 
-const staticallyImportsEmailOrPdfRenderer = (program: TSESTree.Program): boolean =>
+const staticallyImportsExternalRenderer = (program: TSESTree.Program): boolean =>
   program.body.some((statement) => {
     if (
       statement.type !== AST_NODE_TYPES.ImportDeclaration &&
@@ -401,9 +416,44 @@ const staticallyImportsEmailOrPdfRenderer = (program: TSESTree.Program): boolean
     return (
       statement.source !== null &&
       typeof statement.source.value === "string" &&
-      EMAIL_OR_PDF_MODULE_RE.test(statement.source.value)
+      EXTERNAL_RENDERER_MODULE_RE.test(statement.source.value)
     );
   });
+
+const variantPrefix = (token: string): string => {
+  const separator = token.lastIndexOf(":");
+  return separator === -1 ? "" : token.slice(0, separator + 1);
+};
+
+/** Semantic foreground roles explicitly declared in stylesheets visible to this file. */
+const declaredForegroundRoles = (filename: string): ReadonlySet<string> => {
+  const startDir = dirname(filename);
+  const cached = DECLARED_FOREGROUND_CACHE.get(startDir);
+  if (cached !== undefined) return cached;
+
+  const roles = new Set<string>();
+  let dir = startDir;
+  const root = parse(dir).root;
+  for (;;) {
+    for (const rel of CSS_DETECTION_FILES) {
+      const candidate = join(dir, rel);
+      if (!existsSync(candidate)) continue;
+      try {
+        for (const match of readFileSync(candidate, "utf8").matchAll(DECLARED_FOREGROUND_RE)) {
+          if (match[1] !== undefined) roles.add(match[1].toLowerCase());
+        }
+      } catch {
+        // An unreadable stylesheet cannot safely prove that a token exists.
+      }
+    }
+    const parent = dirname(dir);
+    if (dir === root || parent === dir) break;
+    dir = parent;
+  }
+
+  DECLARED_FOREGROUND_CACHE.set(startDir, roles);
+  return roles;
+};
 
 export default createRule<Options, MessageIds>({
   name: "prefer-semantic-colors",
@@ -420,6 +470,10 @@ export default createRule<Options, MessageIds>({
         additionalProperties: false,
         properties: {
           requireSemanticTokens: { type: "boolean" },
+          opaqueNeutrals: {
+            type: "string",
+            enum: ["off", "surfaces-and-declared-pairs"],
+          },
         },
       },
     ],
@@ -430,17 +484,28 @@ export default createRule<Options, MessageIds>({
         "Hardcoded color '{{class}}' — use a semantic token, or var(--…). For charts/brand add an eslint-disable with a reason.",
       inlineColor:
         "Hardcoded color '{{value}}' — use a semantic token / CSS variable. For charts/standalone pages add an eslint-disable with a reason.",
+      opaqueSurface:
+        "Opaque neutral surface '{{class}}' bypasses the semantic theme; use the appropriate background, card, or popover token.",
+      opaqueForegroundPair:
+        "'{{class}}' bypasses the declared '{{replacement}}' token paired with '{{background}}'.",
     },
   },
   defaultOptions: [{}],
   create(context, [options]) {
     if (STORIES_FILE_RE.test(context.filename)) return {};
-    if (staticallyImportsEmailOrPdfRenderer(context.sourceCode.ast)) return {};
-    if (options?.requireSemanticTokens === true && !hasSemanticTokenSystem(context.filename)) {
+    if (staticallyImportsExternalRenderer(context.sourceCode.ast)) return {};
+    const checkOpaqueNeutrals = options?.opaqueNeutrals === "surfaces-and-declared-pairs";
+    if (
+      (options?.requireSemanticTokens === true || checkOpaqueNeutrals) &&
+      !hasSemanticTokenSystem(context.filename)
+    ) {
       return {};
     }
 
-    let importsEmailOrPdfRenderer = false;
+    let importsExternalRenderer = false;
+    const foregroundRoles = checkOpaqueNeutrals
+      ? declaredForegroundRoles(context.filename)
+      : new Set<string>();
     const pendingReports: Array<{
       node: TSESTree.Node;
       messageId: MessageIds;
@@ -455,13 +520,40 @@ export default createRule<Options, MessageIds>({
     };
 
     const reportClasses = (value: string, node: TSESTree.Node): void => {
-      for (const token of classTokens(value)) {
+      const tokens = classTokens(value);
+      for (const token of tokens) {
         const base = tailwindBase(token);
         if (RAW_PALETTE_RE.test(base)) {
           report(node, "rawPalette", { class: token });
         } else if (ARBITRARY_COLOR_RE.test(base) && !CSS_VAR_REFERENCE_RE.test(base)) {
           report(node, "arbitraryColor", { class: token });
         }
+      }
+
+      if (!checkOpaqueNeutrals || isInsideSvg(node)) return;
+      for (const token of tokens) {
+        if (variantPrefix(token).split(":").includes("print")) continue;
+        const base = tailwindBase(token);
+        if (OPAQUE_SURFACE_RE.test(base)) {
+          report(node, "opaqueSurface", { class: token });
+          continue;
+        }
+        if (!OPAQUE_FOREGROUND_RE.test(base)) continue;
+
+        const prefix = variantPrefix(token);
+        const semanticBackground = tokens.find((candidate) => {
+          if (variantPrefix(candidate) !== prefix) return false;
+          const match = SEMANTIC_BACKGROUND_RE.exec(tailwindBase(candidate));
+          return match?.[1] !== undefined && foregroundRoles.has(match[1]);
+        });
+        if (semanticBackground === undefined) continue;
+        const role = SEMANTIC_BACKGROUND_RE.exec(tailwindBase(semanticBackground))?.[1];
+        if (role === undefined) continue;
+        report(node, "opaqueForegroundPair", {
+          background: semanticBackground,
+          class: token,
+          replacement: `${prefix}text-${role}-foreground`,
+        });
       }
     };
 
@@ -524,9 +616,9 @@ export default createRule<Options, MessageIds>({
           node.callee.name === "require" &&
           node.arguments[0]?.type === AST_NODE_TYPES.Literal &&
           typeof node.arguments[0].value === "string" &&
-          EMAIL_OR_PDF_MODULE_RE.test(node.arguments[0].value)
+          EXTERNAL_RENDERER_MODULE_RE.test(node.arguments[0].value)
         ) {
-          importsEmailOrPdfRenderer = true;
+          importsExternalRenderer = true;
         }
         if (node.callee.type === AST_NODE_TYPES.Identifier && CLASS_FNS.has(node.callee.name)) {
           for (const arg of node.arguments) {
@@ -567,13 +659,13 @@ export default createRule<Options, MessageIds>({
         if (
           node.source.type === AST_NODE_TYPES.Literal &&
           typeof node.source.value === "string" &&
-          EMAIL_OR_PDF_MODULE_RE.test(node.source.value)
+          EXTERNAL_RENDERER_MODULE_RE.test(node.source.value)
         ) {
-          importsEmailOrPdfRenderer = true;
+          importsExternalRenderer = true;
         }
       },
       "Program:exit"(): void {
-        if (importsEmailOrPdfRenderer) return;
+        if (importsExternalRenderer) return;
         for (const descriptor of pendingReports) context.report(descriptor);
       },
     };

@@ -5,13 +5,17 @@
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
+import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "preferShadcnPrimitive";
 export interface RuleOptions {
   readonly assumeAvailable?: boolean;
+  readonly detectProjectPrimitives?: boolean;
 }
 type Options = readonly [RuleOptions?];
 
@@ -23,6 +27,7 @@ export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
   limitations: [
     "Hidden and file inputs, unassociated labels, and non-control semantic elements are excluded.",
     "Tests and the shared components/ui primitive implementation tree are excluded.",
+    "Project detection is opt-in and fails closed unless components.json, one unambiguous tsconfig/jsconfig alias, the exact primitive module, and its expected export all exist.",
   ],
   examples: [
     { id: "shared-button", title: "Use a shared button", outcome: "no-match", files: [{ path: "src/form.tsx", source: "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;" }], focusPath: "src/form.tsx", expectedCount: 0, public: true },
@@ -38,6 +43,17 @@ const SHADCN_PRIMITIVES = {
   progress: "Progress",
   select: "Select family",
   table: "Table family",
+  textarea: "Textarea",
+} as const;
+
+const SHADCN_EXPORTS = {
+  button: "Button",
+  dialog: "Dialog",
+  input: "Input",
+  label: "Label",
+  progress: "Progress",
+  select: "Select",
+  table: "Table",
   textarea: "Textarea",
 } as const;
 
@@ -65,6 +81,139 @@ const AMBIGUOUS_INPUT_TYPES: ReadonlySet<string> = new Set([
   "reset",
   "submit",
 ]);
+
+interface ProjectPrimitives {
+  readonly available: ReadonlySet<RawPrimitive>;
+  readonly uiRoot: string | null;
+}
+
+const PROJECT_PRIMITIVES_CACHE = new Map<string, ProjectPrimitives>();
+
+function detectProjectPrimitives(filename: string): ProjectPrimitives {
+  const packageRoot = findPackageRoot(dirname(filename));
+  if (packageRoot === null) return { available: new Set(), uiRoot: null };
+  const cached = PROJECT_PRIMITIVES_CACHE.get(packageRoot);
+  if (cached !== undefined) return cached;
+
+  const manifest = readJsonc(join(packageRoot, "components.json"));
+  const alias = stringProperty(manifest, "aliases", "ui");
+  const uiRoot = alias === null ? null : resolveAlias(packageRoot, alias);
+  if (uiRoot === null || !isWithin(packageRoot, uiRoot)) {
+    const missing = { available: new Set<RawPrimitive>(), uiRoot: null } as const;
+    PROJECT_PRIMITIVES_CACHE.set(packageRoot, missing);
+    return missing;
+  }
+
+  const available = new Set<RawPrimitive>();
+  for (const primitive of Object.keys(SHADCN_PRIMITIVES) as RawPrimitive[]) {
+    const exportName = SHADCN_EXPORTS[primitive];
+    const moduleCandidates = ["tsx", "ts", "jsx", "js"].flatMap((extension) => [
+      join(uiRoot, `${primitive}.${extension}`),
+      join(uiRoot, primitive, `index.${extension}`),
+    ]);
+    if (
+      moduleCandidates.some(
+        (candidate) => existsSync(candidate) && exportsPrimitive(candidate, exportName),
+      )
+    ) {
+      available.add(primitive);
+    }
+  }
+  const detected = { available, uiRoot } as const;
+  PROJECT_PRIMITIVES_CACHE.set(packageRoot, detected);
+  return detected;
+}
+
+function isWithin(root: string, candidate: string): boolean {
+  const path = relative(root, candidate);
+  return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
+}
+
+function findPackageRoot(startDir: string): string | null {
+  let dir = startDir;
+  const filesystemRoot = parsePath(dir).root;
+  for (;;) {
+    if (existsSync(join(dir, "package.json"))) return dir;
+    const parent = dirname(dir);
+    if (dir === filesystemRoot || parent === dir) return null;
+    dir = parent;
+  }
+}
+
+function readJsonc(path: string): unknown {
+  try {
+    const errors: ParseError[] = [];
+    const value: unknown = parseJsonc(readFileSync(path, "utf8"), errors, {
+      allowTrailingComma: true,
+      disallowComments: false,
+    });
+    return errors.length === 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function stringProperty(value: unknown, ...keys: string[]): string | null {
+  let current = value;
+  for (const key of keys) {
+    if (typeof current !== "object" || current === null || !(key in current)) return null;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return typeof current === "string" && current.trim() !== "" ? current : null;
+}
+
+function resolveAlias(packageRoot: string, alias: string): string | null {
+  if (isAbsolute(alias)) return null;
+  if (alias.startsWith(".")) return resolve(packageRoot, alias);
+
+  const configPath = ["tsconfig.json", "jsconfig.json"]
+    .map((name) => join(packageRoot, name))
+    .find(existsSync);
+  if (configPath === undefined) return null;
+  const config = readJsonc(configPath);
+  if (typeof config !== "object" || config === null) return null;
+  const compilerOptions = (config as Record<string, unknown>)["compilerOptions"];
+  if (typeof compilerOptions !== "object" || compilerOptions === null) return null;
+  const options = compilerOptions as Record<string, unknown>;
+  const baseUrl = typeof options["baseUrl"] === "string" ? options["baseUrl"] : ".";
+  const paths = options["paths"];
+  if (typeof paths !== "object" || paths === null) return null;
+
+  const matches: string[] = [];
+  for (const [pattern, rawTargets] of Object.entries(paths as Record<string, unknown>)) {
+    if (!Array.isArray(rawTargets) || rawTargets.length !== 1) {
+      continue;
+    }
+    const [target] = rawTargets as unknown[];
+    if (typeof target !== "string") continue;
+    const star = pattern.indexOf("*");
+    if (star === -1) {
+      if (pattern === alias) matches.push(target);
+      continue;
+    }
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (!alias.startsWith(prefix) || !alias.endsWith(suffix)) continue;
+    const substitution = alias.slice(prefix.length, alias.length - suffix.length);
+    matches.push(target.replace("*", substitution));
+  }
+  const [match] = matches;
+  if (matches.length !== 1 || match === undefined) return null;
+  return resolve(packageRoot, baseUrl, match);
+}
+
+function exportsPrimitive(path: string, exportName: string): boolean {
+  try {
+    const source = readFileSync(path, "utf8");
+    const escapedName = exportName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    return (
+      new RegExp(`\\bexport\\s+(?:const|function|class)\\s+${escapedName}\\b`, "u").test(source) ||
+      new RegExp(`\\bexport\\s*\\{[^}]*\\b${escapedName}\\b[^}]*\\}`, "u").test(source)
+    );
+  } catch {
+    return false;
+  }
+}
 
 function rawElementName(
   node: TSESTree.JSXOpeningElement,
@@ -206,6 +355,7 @@ export default createRule<Options, MessageIds>({
         type: "object",
         properties: {
           assumeAvailable: { type: "boolean" },
+          detectProjectPrimitives: { type: "boolean" },
         },
         additionalProperties: false,
       },
@@ -218,9 +368,15 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [{}],
   create(context, [options]) {
     const filename = context.filename.replaceAll("\\", "/");
+    const projectPrimitives = options?.detectProjectPrimitives === true
+      ? detectProjectPrimitives(context.filename)
+      : { available: new Set<RawPrimitive>(), uiRoot: null };
     if (
       isTestFile(filename) ||
-      SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename)
+      isStoryFile(filename) ||
+      isGeneratedFile(filename, context.sourceCode.text) ||
+      SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename) ||
+      (projectPrimitives.uiRoot !== null && isWithin(projectPrimitives.uiRoot, context.filename))
     ) {
       return {};
     }
@@ -251,8 +407,13 @@ export default createRule<Options, MessageIds>({
         candidates.push({ element, node, replacement });
       },
       "Program:exit"(): void {
-        if (!hasSharedPrimitiveImport) return;
         for (const { element, node, replacement } of candidates) {
+          if (
+            !hasSharedPrimitiveImport &&
+            !projectPrimitives.available.has(element)
+          ) {
+            continue;
+          }
           context.report({
             node,
             messageId: "preferShadcnPrimitive",
