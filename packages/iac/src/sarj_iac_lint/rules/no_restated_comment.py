@@ -23,10 +23,8 @@ if TYPE_CHECKING:
 
 _COMMENT_RE = re.compile(r"^(?P<indent>\s*)(?:#|//)\s?(?P<body>.*)$")
 _BLOCK_START_RE = re.compile(r"^(?P<indent>\s*)/\*\s?(?P<body>.*)$")
-_DECLARATION_RE = re.compile(
-    r"^(?:resource|data|module|variable|output|provider|locals|terraform|dynamic|moved)\b|^[A-Za-z_][\w-]*\s*=",
-    re.IGNORECASE,
-)
+_ATTRIBUTE_RE = re.compile(r"^(?P<name>[A-Za-z_][\w-]*)\s*=(?!=)")
+_BLOCK_RE = re.compile(r'^(?P<kind>[A-Za-z_][\w-]*)(?P<labels>(?:\s+(?:"(?:\\.|[^"\\])*"|[A-Za-z_][\w.-]*)){0,3})\s*\{')
 _WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _DIRECTIVE_RE = re.compile(
     r"^(?:sarj-noqa|tflint|checkov|tfsec|trivy|terrascan|kics|semgrep|snyk|infracost|renovate|"
@@ -34,7 +32,7 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _PROTECTED_RE = re.compile(
-    r"https?://|\b(?:because|otherwise|must|never|requires?|workaround|upstream|security|race|invariant)\b|"
+    r"https?://|\b(?:because|otherwise|must|never|requires?|workaround|upstream|race|invariant)\b|"
     r"\b[A-Z][A-Z0-9]{1,9}-\d+\b|\d+\s*(?:ms|seconds?|minutes?|hours?|days?|%|MB|GB)\b",
     re.IGNORECASE,
 )
@@ -72,14 +70,17 @@ _TRAILING_SUPPRESSION_RE = re.compile(
 _MAX_COMMENT_WORDS = 8
 _MIN_CONTENT_WORDS = 2
 _MIN_STEM_LENGTH = 3
+_RESOURCE_LABEL_COUNT = 2
 
 
 class _CommentCandidate(NamedTuple):
     body: str
     declaration: str
+    subject: str
     line: int
     column: int
     indent: int
+    declaration_index: int
 
 
 @final
@@ -88,28 +89,66 @@ class NoRestatedComment(Rule):
     code = "SARJ207"
     documentation = RuleDocumentation(
         summary=(
-            "HCL comment restates the adjacent declaration — delete it; clarify an author-controlled label or extract "
-            "a named local if the declaration is unclear."
+            "Flag a short comment attached to an HCL declaration when it only repeats that declaration's kind, "
+            "label, or attribute name."
         ),
-        rationale="Narrating a resource, block, or attribute duplicates executable configuration and can drift from it.",
+        rationale=(
+            "A declaration-label comment adds no durable information and can drift; comments that explain constraints, "
+            "grouping, or operational rationale remain useful."
+        ),
         remediation=(
-            "Delete the restatement. If the declaration is unclear, improve an author-controlled resource, module, "
-            "local, or output label; keep provider constraints and operational rationale."
+            "Delete the restatement or replace it with the constraint the configuration cannot express. Improve an "
+            "author-controlled label when the declaration itself is unclear."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only short line or block comments immediately above a declaration at the same indentation are compared.",
-            "Heredocs, directives, generated files, references, units, modality, and causal explanations are preserved.",
+            "Only short comments immediately above native HCL declarations at the same indentation are compared.",
+            (
+                "Comment groups, sibling headings, heredocs, directives, generated files, fixtures, references, "
+                "units, modality, and causal explanations are preserved."
+            ),
         ),
         examples=(
             RuleExample(
                 example_id="attribute-restatement",
-                title="Comment repeats an attribute name and value",
+                title="Comment merely narrates an assignment",
                 outcome=ExampleOutcome.MATCH,
                 files=(ExampleFile.iac("main.tf", "# Set instance type\ninstance_type = var.instance_type\n"),),
                 focus_path=PurePosixPath("main.tf"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="single-declaration-label",
+                title="Comment repeats one declaration label",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        "# Service account\nservice_account_email = module.iam.api_email\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                scenario="sibling-group",
+                public=True,
+            ),
+            RuleExample(
+                example_id="group-heading",
+                title="Comment labels a group of sibling attributes",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        "# Service accounts\n"
+                        "api_service_account_email = module.iam.api_email\n"
+                        "worker_service_account_email = module.iam.worker_email\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                scenario="sibling-group",
                 public=True,
             ),
             RuleExample(
@@ -163,16 +202,28 @@ class NoRestatedComment(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if _generated_header(source):
+        if not _path_is_hcl(path) or _fixture_path(path) or _generated_header(source):
             return []
         lines = source.splitlines()
         in_heredoc = heredoc_body_mask(lines)
         findings: list[Diagnostic] = []
-        for body, declaration, line, column, indent in _comment_candidates(lines, in_heredoc):
+        for body, declaration, subject, line, column, indent, declaration_index in _comment_candidates(
+            lines, in_heredoc
+        ):
             normalized_body = _TRAILING_SUPPRESSION_RE.sub("", body).strip()
-            if not _eligible(normalized_body, declaration, indent):
+            if not _eligible(normalized_body, declaration, indent) or _labels_sibling_group(
+                normalized_body, lines, declaration_index, indent
+            ):
                 continue
-            findings.append(Diagnostic(path, line, column, self.code, self.description))
+            findings.append(
+                Diagnostic(
+                    path,
+                    line,
+                    column,
+                    self.code,
+                    f"Comment only repeats the following `{subject}` declaration; delete it or state its constraint.",
+                )
+            )
         return findings
 
 
@@ -185,11 +236,29 @@ def _comment_candidates(lines: list[str], in_heredoc: tuple[bool, ...]) -> list[
             continue
         raw = lines[index]
         if (line_match := _COMMENT_RE.match(raw)) is not None:
-            if not in_heredoc[index + 1]:
-                indent = len(line_match["indent"])
-                candidates.append(
-                    _CommentCandidate(line_match["body"], lines[index + 1], index + 1, indent + 1, indent)
-                )
+            start = index
+            indent = len(line_match["indent"])
+            bodies = [line_match["body"]]
+            while index + 1 < len(lines) and (following := _COMMENT_RE.match(lines[index + 1])) is not None:
+                if len(following["indent"]) != indent:
+                    break
+                index += 1
+                bodies.append(following["body"])
+            declaration_index = index + 1
+            if declaration_index < len(lines) and not in_heredoc[declaration_index]:
+                declaration = lines[declaration_index]
+                if (subject := _declaration_subject(declaration.strip())) is not None:
+                    candidates.append(
+                        _CommentCandidate(
+                            " ".join(bodies),
+                            declaration,
+                            subject,
+                            start + 1,
+                            indent + 1,
+                            indent,
+                            declaration_index,
+                        )
+                    )
             index += 1
             continue
         block_match = _BLOCK_START_RE.match(raw)
@@ -207,7 +276,9 @@ def _comment_candidates(lines: list[str], in_heredoc: tuple[bool, ...]) -> list[
         if end + 1 < len(lines) and "*/" in lines[end] and not in_heredoc[end + 1]:
             body_lines[-1] = body_lines[-1].split("*/", 1)[0].strip()
             body = " ".join(part for part in body_lines if part)
-            candidates.append(_CommentCandidate(body, lines[end + 1], index + 1, indent + 1, indent))
+            declaration = lines[end + 1]
+            if (subject := _declaration_subject(declaration.strip())) is not None:
+                candidates.append(_CommentCandidate(body, declaration, subject, index + 1, indent + 1, indent, end + 1))
         index = max(index + 1, end + 1)
     return candidates
 
@@ -218,42 +289,89 @@ def _eligible(body: str, declaration: str, indent: int) -> bool:
     if len(body.split()) > _MAX_COMMENT_WORDS or len(declaration) - len(declaration.lstrip()) != indent:
         return False
     code = declaration.strip()
-    if not _DECLARATION_RE.match(code):
+    if _declaration_subject(body) is not None:
         return False
     content = [word for match in _WORD_RE.finditer(body) if (word := match.group(0).lower()) not in _STOPWORDS]
     if len(content) < _MIN_CONTENT_WORDS:
         return False
-    present = {part.lower() for match in _WORD_RE.finditer(code) for part in re.split(r"_+", match.group(0)) if part}
-    return all(word in present or _stem(word) in {_stem(item) for item in present} for word in content)
+    present = _declaration_words(code)
+    return bool(present) and all(_word_matches(word, present) for word in content)
+
+
+def _declaration_subject(code: str) -> str | None:
+    if (attribute := _ATTRIBUTE_RE.match(code)) is not None:
+        return attribute["name"]
+    if (block := _BLOCK_RE.match(code)) is not None:
+        labels = [match.group(0).strip('"') for match in _WORD_RE.finditer(block["labels"])]
+        if block["kind"] in {"resource", "data"} and len(labels) >= _RESOURCE_LABEL_COUNT:
+            return f'{block["kind"]} {labels[0]}.{labels[1]}'
+        return f'{block["kind"]} {labels[-1]}' if labels else block["kind"]
+    return None
+
+
+def _declaration_words(code: str) -> set[str]:
+    if (attribute := _ATTRIBUTE_RE.match(code)) is not None:
+        text = attribute["name"]
+    elif (block := _BLOCK_RE.match(code)) is not None:
+        text = f"{block['kind']} {block['labels']}"
+    else:
+        return set()
+    return {part.lower() for match in _WORD_RE.finditer(text) for part in re.split(r"_+", match.group(0)) if part}
+
+
+def _word_matches(word: str, present: set[str]) -> bool:
+    return bool(_word_forms(word) & {form for item in present for form in _word_forms(item)})
+
+
+def _word_forms(word: str) -> set[str]:
+    stem = _stem(word)
+    return {word, stem, f"{stem}e"}
+
+
+def _labels_sibling_group(body: str, lines: list[str], declaration_index: int, indent: int) -> bool:
+    content = [word for match in _WORD_RE.finditer(body) if (word := match.group(0).lower()) not in _STOPWORDS]
+    if not content:
+        return False
+    cursor = declaration_index + 1
+    while cursor < len(lines) and not lines[cursor].strip():
+        cursor += 1
+    if cursor >= len(lines) or len(lines[cursor]) - len(lines[cursor].lstrip()) != indent:
+        return False
+    sibling_words = _declaration_words(lines[cursor].strip())
+    return bool(sibling_words) and all(_word_matches(word, sibling_words) for word in content)
+
+
+def _path_is_hcl(path: Path) -> bool:
+    name = path.name.lower()
+    return name.endswith((".tf", ".tfvars")) or name == "terragrunt.hcl"
+
+
+def _fixture_path(path: Path) -> bool:
+    return any(part.lower() in {"fixture", "fixtures", "testdata", "generated"} for part in path.parts)
 
 
 def _generated_header(source: str) -> bool:
     lines = source.splitlines()[:20]
-    index = 0
-    while index < len(lines):
-        line = lines[index]
-        if not line.strip():
-            index += 1
+    fragments: list[str] = []
+    in_block = False
+    for line in lines:
+        stripped = line.lstrip()
+        if in_block:
+            fragments.append(stripped.removeprefix("*").strip())
+            if "*/" in stripped:
+                in_block = False
             continue
-        if (match := _COMMENT_RE.match(line)) is not None:
-            if _GENERATED_RE.search(match["body"]):
-                return True
-            index += 1
+        if not stripped:
             continue
-        block = _BLOCK_START_RE.match(line)
-        if block is None:
-            return False
-        body = [block["body"]]
-        while "*/" not in lines[index]:
-            index += 1
-            if index >= len(lines):
-                return False
-            body.append(lines[index].strip().removeprefix("*").strip())
-        body[-1] = body[-1].split("*/", 1)[0].strip()
-        if _GENERATED_RE.search(" ".join(body)):
-            return True
-        index += 1
-    return False
+        if stripped.startswith(("#", "//")):
+            fragments.append(stripped.lstrip("#/ "))
+            continue
+        if stripped.startswith("/*"):
+            fragments.append(stripped.removeprefix("/*").strip())
+            in_block = "*/" not in stripped
+            continue
+        break
+    return _GENERATED_RE.search(" ".join(fragments)) is not None
 
 
 def _stem(word: str) -> str:

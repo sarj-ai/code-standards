@@ -30,7 +30,9 @@
       "task": "rule-audit/iac/no-restated-comment",
       "family": "iac",
       "ruleId": "no-restated-comment",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews kept the established name but found concrete false positives in YAML block scalars, fixture inputs, contiguous rationale comments, and plural headings over sibling declarations. Thirty-eight focused cases pass after repair. Local corpus reviews covered between 1,120 and 7,020 eligible files; the largest labeled review classified 40 of 43 matches as genuine and three grouping headings as false positives.",
+      "outcome": "Kept the compatible no-restated-comment ID, staged it as warning, limited it to Terraform and Terragrunt HCL, excluded generated and fixture inputs, evaluated contiguous comment groups atomically, preserved sibling headings, recognized generic HCL blocks and common inflections, removed a broad security-word exemption, avoided overlap with commented-out HCL, and made public examples and diagnostics describe the actual declaration-level signal."
     },
     {
       "task": "rule-audit/iac/no-mocked-terraform-test-oracle",
