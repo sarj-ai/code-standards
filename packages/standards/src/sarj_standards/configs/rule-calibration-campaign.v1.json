@@ -38,7 +38,9 @@
       "task": "rule-audit/iac/no-mocked-terraform-test-oracle",
       "family": "iac",
       "ruleId": "no-mocked-terraform-test-oracle",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews rejected the categorical mock ban. HashiCorp documents empty mock providers as a supported credential-free configuration-testing mechanism, while the original matcher did not inspect assertions or data flow. The pinned local corpus contained one canonical match: an empty Google/PagerDuty mock used to assert configured plan values, a false positive under the rule's own rendered-plan allowance. Nineteen replacement cases pass.",
+      "outcome": "Kept SARJ206 and its established selector for compatibility, staged it as warning, and replaced block-presence matching with run-scoped flow matching that reports only an assertion directly equating an override_resource, override_data, or override_module literal to the same target attribute. Empty mock providers, transformed assertions, provider-scoped overrides, JSON syntax, dynamic values, malformed HCL, and cross-run flows now abstain; public examples and remediation teach layered unit and provider-backed testing."
     },
     {
       "task": "rule-audit/iac/require-deletion-protection",
