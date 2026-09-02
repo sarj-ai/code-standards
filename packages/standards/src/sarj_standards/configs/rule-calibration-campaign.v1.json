@@ -46,7 +46,9 @@
       "task": "rule-audit/iac/require-deletion-protection",
       "family": "iac",
       "ruleId": "require-deletion-protection",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews found the safety objective useful but the error implementation provider-inaccurate: it accepted unsupported cross-provider attribute spellings, treated lifecycle.prevent_destroy as equivalent to provider protection, reported documented safe defaults as missing, and classified dynamic module inputs as proven unsafe. The pinned corpus had two actionable unguarded Cloud SQL child databases and one advisory variable-driven GKE guard. One hundred nineteen focused cases pass after repair.",
+      "outcome": "Kept the compatible require-deletion-protection ID, changed the category to correctness, staged it as warning, introduced exact resource-specific guard spellings, recognized documented protected-by-default Google resources and Cloud SQL API-side protection, rejected invalid quoted or case-incorrect booleans, limited parsing to maintained Terraform files, abstained on malformed inputs, and made each diagnostic recommend only valid controls while explaining that lifecycle protection disappears with the resource block."
     },
     {
       "task": "rule-audit/iac/require-prevent-destroy-on-irreplaceable",
