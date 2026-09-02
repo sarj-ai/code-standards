@@ -191,7 +191,7 @@ const RULES = {
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
-  stepdown: stepdown,
+  "stepdown": stepdown,
   "source-coupled-test": sourceCoupledTest,
   "sole-export-matches-filename": soleExportMatchesFilename,
   "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,

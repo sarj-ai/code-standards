@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9c654596bbfdd934caf2541daf30723ace45364b8f9a4426111e5dbc123bf609",
+  "catalogSha256": "6ad3cca4f31ab721dec2e0bf003151f162e1bfbf8c6de0d1e9ca4d507aa1c259",
   "cliSha256": "20c13a82555158b066b90c31c9e4e89bce7e72c154db3258fba10a85e86d2a9c",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -2093,7 +2093,7 @@
           "files": [
             {
               "path": "src/options.ts",
-              "source": "import { z } from \"zod\";\nexport function parse(value: unknown) {\n  return z.number().int().min(1).max(1000).parse(value);\n}\n"
+              "source": "import { z } from \"zod\";\nexport function parse(value: unknown) {\n  return z.string().trim().min(1).max(128).parse(value);\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -2108,7 +2108,7 @@
           "files": [
             {
               "path": "src/options.ts",
-              "source": "import { z } from \"zod\";\nconst BatchSize = z.number().int().min(1).max(1000);\nexport function parse(value: unknown) {\n  return BatchSize.parse(value);\n}\n"
+              "source": "import { z } from \"zod\";\nconst BatchSizeSchema = z.number().int().min(1).max(1000);\nexport function parse(value: unknown) {\n  return BatchSizeSchema.parse(value);\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -2166,7 +2166,12 @@
               "source": "import { z } from \"zod\";\nexport const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "src/schema.ts",
+              "source": "import { z } from \"zod\";\nexport const Version = z.literal([1, 2, 3]);\n"
+            }
+          ],
           "focusPath": "src/schema.ts",
           "id": "literal-union",
           "outcome": "reject",
