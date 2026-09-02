@@ -144,15 +144,13 @@ def test_bool_never_equals_number(tmp_path: Path) -> None:
     assert _check_env(root, "dev") == []
 
 
-def test_lists_compare_structurally_not_textually(tmp_path: Path) -> None:
+def test_collection_values_are_conservatively_opaque(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         'variable "zones" {\n  type = list(string)\n}\n',
         {"dev": 'zones = ["a", "b"]\n', "prod": 'zones = [ "a" ,"b" , ]\n'},
     )
-    diags = _check_env(root, "dev")
-    assert len(diags) == 1
-    assert "required-but-constant" in diags[0].message
+    assert _check_env(root, "dev") == []
 
 
 def test_reordered_list_items_are_a_real_difference(tmp_path: Path) -> None:
@@ -164,15 +162,13 @@ def test_reordered_list_items_are_a_real_difference(tmp_path: Path) -> None:
     assert _check_env(root, "dev") == []
 
 
-def test_maps_compare_by_sorted_keys(tmp_path: Path) -> None:
+def test_map_values_are_conservatively_opaque(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         'variable "labels" {\n  type = map(string)\n}\n',
         {"dev": 'labels = { team = "voice", tier = "gold" }\n', "prod": 'labels = { tier = "gold", team = "voice" }\n'},
     )
-    diags = _check_env(root, "dev")
-    assert len(diags) == 1
-    assert "required-but-constant" in diags[0].message
+    assert _check_env(root, "dev") == []
 
 
 def test_identical_heredocs_stay_opaque_and_unflagged(tmp_path: Path) -> None:
@@ -297,7 +293,7 @@ def test_non_tfvars_files_are_ignored(tmp_path: Path) -> None:
     assert NoDeadEnvironmentInput().check(tf, tf.read_text(encoding="utf-8")) == []
 
 
-def test_an_envs_manifest_secret_environment_makes_the_root_blind(tmp_path: Path) -> None:
+def test_an_envs_manifest_secret_environment_suppresses_value_judgments(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -309,41 +305,31 @@ def test_an_envs_manifest_secret_environment_makes_the_root_blind(tmp_path: Path
         "prod": {"tfvars_secret": "production-tfvars"},
     }
     _ = (root / "envs.json").write_text(json.dumps(manifest), encoding="utf-8")
-    diags = _check_env(root, "dev")
-    assert len(diags) == 1
-    assert "blind-environment" in diags[0].message
-    assert "`prod`" in diags[0].message
-    assert "production-tfvars" in diags[0].message
-    assert "constant-everywhere: `" not in diags[0].message
+    assert _check_env(root, "dev") == []
 
 
-def test_the_blind_error_lands_once_on_the_anchor_file(tmp_path: Path) -> None:
+def test_an_incomplete_environment_set_emits_no_speculative_diagnostic(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
         {"dev": 'pagerduty_enabled = "false"\n', "preview": 'pagerduty_enabled = "false"\n'},
     )
     _ = (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
-    dev_diags = _check_env(root, "dev")
-    assert len(dev_diags) == 1
-    assert (dev_diags[0].line, dev_diags[0].col) == (1, 1)
+    assert _check_env(root, "dev") == []
     assert _check_env(root, "preview") == []
 
 
-def test_a_sibling_environment_directory_without_tfvars_is_blind(tmp_path: Path) -> None:
+def test_a_sibling_directory_without_tfvars_only_suppresses_comparison(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
         {"dev": 'pagerduty_enabled = "false"\n', "prod": 'pagerduty_enabled = "false"\n'},
     )
     (root / "env" / "staging").mkdir()
-    diags = _check_env(root, "dev")
-    assert len(diags) == 1
-    assert "blind-environment" in diags[0].message
-    assert "staging" in diags[0].message
+    assert _check_env(root, "dev") == []
 
 
-def test_a_json_tfvars_environment_is_blind_not_half_read(tmp_path: Path) -> None:
+def test_a_json_tfvars_environment_is_skipped_not_half_read(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
@@ -352,10 +338,7 @@ def test_a_json_tfvars_environment_is_blind_not_half_read(tmp_path: Path) -> Non
     staging = root / "env" / "staging"
     staging.mkdir()
     _ = (staging / "terraform.tfvars.json").write_text('{"pagerduty_enabled": "false"}', encoding="utf-8")
-    diags = _check_env(root, "dev")
-    assert len(diags) == 1
-    assert "blind-environment" in diags[0].message
-    assert "JSON" in diags[0].message
+    assert _check_env(root, "dev") == []
 
 
 def test_blind_roots_keep_only_the_declaration_based_finding(tmp_path: Path) -> None:
@@ -366,23 +349,19 @@ def test_blind_roots_keep_only_the_declaration_based_finding(tmp_path: Path) -> 
     )
     _ = (root / "envs.json").write_text('{"prod": {"tfvars_secret": "production-tfvars"}}', encoding="utf-8")
     dev_messages = [diag.message for diag in _check_env(root, "dev")]
-    assert len(dev_messages) == 2
-    assert any("blind-environment" in message for message in dev_messages)
-    assert any("orphaned-key" in message for message in dev_messages)
+    assert len(dev_messages) == 1
+    assert dev_messages[0].startswith("orphaned-key:")
     assert not any(message.startswith(("equals-default:", "constant-everywhere:")) for message in dev_messages)
 
 
-def test_an_unparseable_envs_manifest_fails_loud(tmp_path: Path) -> None:
+def test_an_unparseable_envs_manifest_causes_conservative_abstention(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         _DECLARED_BOOL,
         {"dev": 'pagerduty_enabled = "false"\n', "prod": 'pagerduty_enabled = "false"\n'},
     )
     _ = (root / "envs.json").write_text("{not json", encoding="utf-8")
-    diags = _check_env(root, "dev")
-    assert len(diags) == 1
-    assert "blind-environment" in diags[0].message
-    assert "cannot be parsed" in diags[0].message
+    assert _check_env(root, "dev") == []
 
 
 def test_reports_the_assignment_line_and_column(tmp_path: Path) -> None:
@@ -421,7 +400,7 @@ def test_a_noqa_on_the_assignment_line_suppresses(tmp_path: Path) -> None:
     assert is_suppressed(source.splitlines(), diags[0].line, diags[0].code)
 
 
-def test_cli_run_over_the_whole_root_reports_the_blind_error_once(
+def test_cli_run_over_an_incomplete_root_does_not_report_tool_uncertainty(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = _write_root(
@@ -434,9 +413,8 @@ def test_cli_run_over_the_whole_root_reports_the_blind_error_once(
     rc = main(["check", "--rule", "no-dead-environment-input", str(root)])
 
     out = capsys.readouterr().out
-    assert rc == 1
-    assert out.count("blind-environment") == 1
-    assert "constant-everywhere: `" not in out
+    assert rc == 0
+    assert not out
 
 
 def test_cli_noqa_suppresses_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -519,17 +497,14 @@ def test_sensitive_false_keeps_normal_nonsecret_remediation(tmp_path: Path) -> N
     assert "(true)" in findings[0].message
 
 
-def test_a_list_value_is_named_but_never_echoed(tmp_path: Path) -> None:
+def test_a_list_value_is_not_compared_without_full_type_normalization(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         'variable "hosts" {\n  type = list(string)\n}\n',
         {"dev": 'hosts = ["a.internal"]\n', "prod": 'hosts = ["a.internal"]\n'},
     )
 
-    findings = _check_env(root, "dev")
-
-    assert len(findings) == 1
-    assert "a.internal" not in findings[0].message
+    assert _check_env(root, "dev") == []
 
 
 def test_a_backup_tfvars_is_neither_linted_nor_an_environment(tmp_path: Path) -> None:
@@ -591,19 +566,17 @@ def test_a_specimen_word_inside_a_longer_name_is_still_an_environment(tmp_path: 
     assert [d for d in _check_file(west) if "old-west, prod" in d.message]
 
 
-def test_a_json_only_root_reports_that_it_cannot_be_read(tmp_path: Path) -> None:
+def test_a_json_only_root_is_skipped_until_json_is_supported(tmp_path: Path) -> None:
     root = tmp_path / "stack"
     root.mkdir()
     _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
     json_tfvars = root / "dev.tfvars.json"
     _ = json_tfvars.write_text('{"region": "me-central2"}', encoding="utf-8")
 
-    messages = [d.message for d in _check_file(json_tfvars)]
-
-    assert [m for m in messages if m.startswith("blind-environment:") and "JSON" in m]
+    assert _check_file(json_tfvars) == []
 
 
-def test_an_unreadable_environment_reports_on_a_readable_file(tmp_path: Path) -> None:
+def test_an_unreadable_environment_suppresses_cross_environment_judgments(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         _DECLARED_REGION,
@@ -612,11 +585,11 @@ def test_an_unreadable_environment_reports_on_a_readable_file(tmp_path: Path) ->
     unreadable = root / "env" / "dev" / _TFVARS_NAME
     unreadable.chmod(0o000)
     try:
-        messages = [d.message for d in _check_env(root, "prod")]
+        findings = _check_env(root, "prod")
     finally:
         unreadable.chmod(0o600)
 
-    assert [m for m in messages if m.startswith("blind-environment:") and "cannot be read" in m]
+    assert findings == []
 
 
 def test_a_symlinked_input_is_linted_in_the_root_it_is_linked_into(tmp_path: Path) -> None:
@@ -633,9 +606,7 @@ def test_a_symlinked_input_is_linted_in_the_root_it_is_linked_into(tmp_path: Pat
     linked.symlink_to(source)
     (root / "env" / "staging").mkdir()
 
-    messages = [d.message for d in _check_file(linked)]
-
-    assert [m for m in messages if m.startswith("blind-environment:") and "staging" in m]
+    assert _check_file(linked) == []
 
 
 def test_a_symlinked_alias_is_not_a_second_environment(tmp_path: Path) -> None:
@@ -739,7 +710,7 @@ def test_default_equal_is_flagged_when_no_environment_differs(tmp_path: Path) ->
     assert [m for m in messages if m.startswith("equals-default:")]
 
 
-def test_two_files_disagreeing_about_one_environment_go_blind(tmp_path: Path) -> None:
+def test_two_files_disagreeing_about_one_environment_cause_abstention(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,
         'variable "gke_enabled" {\n  type    = bool\n  default = false\n}\n',
@@ -751,7 +722,7 @@ def test_two_files_disagreeing_about_one_environment_go_blind(tmp_path: Path) ->
     across_root = [d.message for d in (*_check_env(root, "dev"), *_check_file(conflicting))]
 
     assert not [m for m in across_root if m.startswith("constant-everywhere:")]
-    assert [m for m in across_root if "blind-environment" in m and "var-file order" in m]
+    assert not across_root
 
 
 def test_two_files_agreeing_about_one_environment_stay_analyzable(tmp_path: Path) -> None:
@@ -778,3 +749,90 @@ def test_a_real_second_environment_still_reports_constant(tmp_path: Path) -> Non
 
     assert len(findings) == 1
     assert "constant-everywhere" in findings[0].message
+
+
+def test_omitted_type_is_dynamic_and_not_compared(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "flag" {\n  default = "false"\n}\n',
+        {"dev": "flag = false\n", "prod": 'flag = "false"\n'},
+    )
+
+    assert _check_env(root, "dev") == []
+
+
+def test_nested_any_type_is_not_partially_normalized(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "flags" {\n  type = list(any)\n}\n',
+        {"dev": "flags = [false]\n", "prod": 'flags = ["false"]\n'},
+    )
+
+    assert _check_env(root, "dev") == []
+
+
+def test_string_format_is_preserved_during_type_conversion(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "code" {\n  type = string\n}\n',
+        {"dev": 'code = "01"\n', "prod": "code = 1\n"},
+    )
+
+    assert _check_env(root, "dev") == []
+
+
+def test_number_conversion_compares_a_quoted_number_safely(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "replicas" {\n  type = number\n}\n',
+        {"dev": 'replicas = "01"\n', "prod": "replicas = 1\n"},
+    )
+
+    assert len(_check_env(root, "dev")) == 1
+
+
+def test_tf_json_declarations_make_orphan_analysis_incomplete(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": "json_declared = true\n"})
+    _ = (root / "extra.tf.json").write_text(
+        '{"variable":{"json_declared":{"type":"bool"}}}',
+        encoding="utf-8",
+    )
+
+    assert _check_env(root, "dev") == []
+
+
+@pytest.mark.parametrize("name", ["backend.tfvars", "backend-config.tfvars"])
+def test_backend_configuration_is_not_assumed_to_be_variable_input(name: str, tmp_path: Path) -> None:
+    root = tmp_path / "stack"
+    root.mkdir()
+    _ = (root / "variables.tf").write_text(_DECLARED_REGION, encoding="utf-8")
+    backend = root / name
+    _ = backend.write_text('bucket = "terraform-state"\n', encoding="utf-8")
+
+    assert _check_file(backend) == []
+
+
+@pytest.mark.parametrize("directory", ["fixture", "fixtures", "testdata"])
+def test_fixture_inputs_are_excluded(directory: str, tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {directory: "ghost = true\n"})
+
+    assert _check_env(root, directory) == []
+
+
+def test_generated_tfvars_are_excluded(tmp_path: Path) -> None:
+    root = _write_root(tmp_path, _DECLARED_REGION, {"dev": "# Code generated. DO NOT EDIT.\nghost = true\n"})
+
+    assert _check_env(root, "dev") == []
+
+
+def test_repeated_checks_observe_sibling_file_changes(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path,
+        'variable "enabled" {\n  type = bool\n}\n',
+        {"dev": "enabled = true\n", "prod": "enabled = true\n"},
+    )
+    assert len(_check_env(root, "dev")) == 1
+
+    _ = (root / "env" / "prod" / _TFVARS_NAME).write_text("enabled = false\n", encoding="utf-8")
+
+    assert _check_env(root, "dev") == []

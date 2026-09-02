@@ -14,7 +14,9 @@
       "task": "rule-audit/iac/no-dead-environment-input",
       "family": "iac",
       "ruleId": "no-dead-environment-input",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed the combined rule was not safe at error severity and reproduced false positives from omitted or nested-any types, JSON-backed declarations, backend/fixture files, inferred environment topology, and path-only caches. Eighty-six focused cases pass. A 23-file local tfvars corpus produced 286 advisory findings; the reviewers' stratified samples confirmed that cross-environment redundancy remains judgment-heavy.",
+      "outcome": "Kept the shipped ID for selector and baseline compatibility, staged it as warning, rewrote certainty claims and public pairs, limited value comparison to fully declared scalar types, made unsupported or incomplete inputs abstain without tool-limitation diagnostics, excluded backend and fixture inputs, suppressed unsafe orphans when JSON declarations may exist, and removed stale path-only caches. A future major release should split provable orphan checks from advisory redundancy and explicit environment-inventory policy."
     },
     {
       "task": "rule-audit/iac/no-environment-conditional",

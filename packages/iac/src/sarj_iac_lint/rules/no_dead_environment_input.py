@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from functools import lru_cache
+from enum import StrEnum
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -56,15 +56,20 @@ _PRINTABLE_TAGS = frozenset({"bool", "num", "null"})
 # A `backup.tfvars` beside `production.tfvars` is that file's backup, so treating
 # it as a second environment makes every shared line "constant everywhere" — a
 # tautology comparing a file against its own copy.
-_NON_ENVIRONMENT_STEMS = frozenset({"backup", "bak", "example", "sample", "template", "old", "copy", "tmp"})
+_NON_ENVIRONMENT_STEMS = frozenset(
+    {"backup", "bak", "backend", "backend-config", "example", "sample", "template", "old", "copy", "tmp"}
+)
 
 # Terraform's own filename: it names no environment, so it takes the name of the
 # directory that holds it.
 _CONVENTIONAL_STEM = "terraform"
 
-# `type = any` opts out of Terraform's conversions, so this rule's comparison
-# does not hold for such a variable and it is left alone.
-_ANY_TYPE = "any"
+
+class _ScalarType(StrEnum):
+    BOOL = "bool"
+    NUMBER = "number"
+    STRING = "string"
+
 
 # Every auto-loaded root var-file belongs to one plan, so they share one label
 # rather than each inventing an environment named after its file.
@@ -72,6 +77,7 @@ _AUTO_ENVIRONMENT = "(auto-loaded)"
 
 _NUMBER_RE = re.compile(r"-?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?")
 _IDENT_RE = re.compile(r"[A-Za-z_][\w-]*")
+_GENERATED_RE = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGNORECASE)
 
 
 # One comparable value: a tagged record so `"false"` and `false` canonicalize
@@ -107,104 +113,34 @@ class NoDeadEnvironmentInput(Rule):
     code = "SARJ205"
     documentation = RuleDocumentation(
         summary=(
-            "A per-environment tfvars input must vary or exist: constant-everywhere, default-equal, and "
-            "undeclared assignments are dead configuration."
+            "Find undeclared tfvars assignments and potentially redundant scalar values across discovered Terraform "
+            "environments."
         ),
         rationale=(
-            "An input assigned one semantic value in every environment, or its declared default, or a variable "
-            "that no longer exists, is indirection with no decision behind it — reviewers keep re-reading it."
+            "Undeclared assignments are stale configuration, while repeated scalar values can hide whether a setting "
+            "is truly environment-specific or belongs in shared configuration."
         ),
         remediation=(
-            "Inline the constant as the variable's default and delete the per-environment assignments; delete "
-            "assignments equal to the default; delete assignments for variables the root no longer declares. "
-            "For sensitive variables, inject one shared secret value instead of hard-coding a default."
+            "Remove assignments that have no parsed declaration. For repeated values, confirm the setting is not an "
+            "intentional per-environment contract before moving it to a default or shared input source."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            "Cross-environment comparisons require at least two discovered, readable HCL tfvars environments.",
             (
-                "A variable declared but never assigned in any tfvars is NOT flagged: in the measured corpus 52 "
-                "of 67 such variables were module plumbing wired from parent calls, not dead flags."
+                "Only scalar variables declared exactly as bool, number, or string are compared; dynamic, collection, "
+                "interpolated, heredoc, JSON, and incomplete roots are conservatively skipped."
             ),
             (
-                "Scope is root modules only — a root is a directory whose own .tf files declare at least one "
-                "variable, with tfvars beside it or under an env/<name>/ layout. Shared modules without tfvars, "
-                "and tfvars with no such root within two directory levels, produce nothing."
+                "Named tfvars files are inferred as environments; repeated values are advisory because invocation "
+                "order and intentional fail-closed contracts cannot be proven from filenames."
             ),
             (
-                "When the root's own configuration names an environment whose inputs are not readable on disk — "
-                "an envs.json entry with tfvars held in a secret, an env directory without a tfvars file while "
-                "siblings have one, or a JSON-only tfvars — the rule reports a blind-environment error and "
-                "suppresses constant-everywhere and required-but-constant for that root instead of computing "
-                "them from the visible subset. Default-equal and orphaned findings remain valid per file."
+                "Generated fixtures, testdata, backend configuration, backups, templates, and other specimen inputs "
+                "are excluded."
             ),
-            (
-                "The blind-environment error is attributed once, to the root's first tfvars file in path order, "
-                "so a changed-files run that omits that file shows no root-level error; the full-tree scan is "
-                "the gate that always sees it."
-            ),
-            (
-                'Values compare semantically: "false" equals false and "1" equals 1 (HCL\'s string '
-                "conversions), 1 equals 1.0 (HCL has one number type), lists and objects compare structurally; "
-                "bool never equals number. Heredocs and interpolations are opaque (bodies are masked) and never "
-                "compare equal, so a constant heredoc goes undetected rather than misread."
-            ),
-            (
-                "Cross-environment findings need at least two on-disk environment tfvars; a single-environment "
-                "root gets only default-equal and orphaned-key findings."
-            ),
-            (
-                "A default-equal assignment is NOT flagged when a sibling environment gives the variable a "
-                "different value: the line is the parallel entry for a knob in use, and deleting it hides the "
-                "knob. A blind root reports no value-based finding at all, since the environment it cannot read "
-                "is exactly the one whose override would keep the line."
-            ),
-            (
-                "A variable declared `type = any` is left alone: Terraform performs none of the string "
-                'conversions this rule\'s comparison relies on, so `"false"` beside `false` is two values there.'
-            ),
-            (
-                "An environment is named by the tfvars file's own stem, except for terraform.tfvars, which takes "
-                "the name of its directory — so env/<name>/terraform.tfvars and env/<name>.tfvars both resolve. "
-                "Files are keyed by resolved path, so a symlinked alias is not a second environment."
-            ),
-            (
-                "Root-level terraform.tfvars and *.auto.tfvars are auto-loaded into every plan, so they are one "
-                "environment between them, never one each. Beside named environment files they are a baseline "
-                "whose precedence this rule does not model, and the root reports blind-environment."
-            ),
-            (
-                "A key assigned twice in one file is a redefinition Terraform refuses to load, so that "
-                "environment is reported blind rather than judged on whichever assignment came last."
-            ),
-            (
-                "The blind-environment error is suppressed by a `# sarj-noqa: SARJ205` on line 1 of the file it "
-                "is reported on; scope such a suppression to the code it means to silence."
-            ),
-            (
-                "When two files define one environment (a root-level <env>.tfvars beside an env/<env>/ file) and "
-                "they assign a variable different values, the effective input depends on var-file order, which is "
-                "not observable here: the rule reports a blind-environment error rather than picking one."
-            ),
-            (
-                "Only boolean, number and null values are printed in a diagnostic. A tfvars string, list or map "
-                "is routinely a password or token, and lint output reaches CI logs and PR annotations that the "
-                "(often gitignored) tfvars file never reaches, so those values are named and never echoed."
-            ),
-            (
-                "A variable declared `sensitive = true` never has its value echoed, including boolean and numeric "
-                "values, and constant-value remediation keeps the value in secret injection rather than advising "
-                "a source-controlled default."
-            ),
-            (
-                "A tfvars file or env directory labelled backup, bak, old, copy, tmp, example, sample or "
-                "template is a copy or specimen, not a deployment: it is neither linted nor counted as an "
-                "environment, because comparing a file against its own backup makes every shared line constant."
-            ),
-            (
-                "*.tfvars.json and *.tf.json are not parsed. A JSON tfvars makes its environment blind rather "
-                "than silently half-read."
-            ),
+            "Sensitive and non-primitive values are never printed in diagnostics.",
         ),
         examples=(
             RuleExample(
@@ -214,10 +150,10 @@ class NoDeadEnvironmentInput(Rule):
                 files=(
                     ExampleFile.iac(
                         "variables.tf",
-                        'variable "pagerduty_enabled" {\n  type    = string\n  default = "true"\n}\n',
+                        'variable "pagerduty_enabled" {\n  type    = bool\n  default = true\n}\n',
                     ),
                     ExampleFile.iac("env/dev/terraform.tfvars", "pagerduty_enabled = false\n"),
-                    ExampleFile.iac("env/prod/terraform.tfvars", 'pagerduty_enabled = "false"\n'),
+                    ExampleFile.iac("env/prod/terraform.tfvars", "pagerduty_enabled = false\n"),
                 ),
                 focus_path=PurePosixPath("env/dev/terraform.tfvars"),
                 expected_count=1,
@@ -284,6 +220,24 @@ class NoDeadEnvironmentInput(Rule):
                 ),
                 focus_path=PurePosixPath("env/dev/terraform.tfvars"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="default-is-an-active-environment-choice",
+                title="A sibling environment overrides the declared default",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="equals-default",
+                files=(
+                    ExampleFile.iac(
+                        "variables.tf",
+                        'variable "text_llm_enable_thinking" {\n  type    = bool\n  default = true\n}\n',
+                    ),
+                    ExampleFile.iac("env/dev/terraform.tfvars", "text_llm_enable_thinking = true\n"),
+                    ExampleFile.iac("env/prod/terraform.tfvars", "text_llm_enable_thinking = false\n"),
+                ),
+                focus_path=PurePosixPath("env/dev/terraform.tfvars"),
+                expected_count=0,
+                public=True,
             ),
             RuleExample(
                 example_id="orphaned-assignment-after-variable-deletion",
@@ -296,6 +250,23 @@ class NoDeadEnvironmentInput(Rule):
                 ),
                 focus_path=PurePosixPath("env/dev/terraform.tfvars"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="declared-assignment",
+                title="Every tfvars assignment has a parsed root declaration",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="orphaned-key",
+                files=(
+                    ExampleFile.iac(
+                        "variables.tf",
+                        'variable "region" {\n  type = string\n}\nvariable "gke_enabled" {\n  type = bool\n}\n',
+                    ),
+                    ExampleFile.iac("env/dev/terraform.tfvars", 'region = "me-central2"\ngke_enabled = true\n'),
+                ),
+                focus_path=PurePosixPath("env/dev/terraform.tfvars"),
+                expected_count=0,
+                public=True,
             ),
         ),
     )
@@ -303,26 +274,19 @@ class NoDeadEnvironmentInput(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        # A JSON tfvars is never parsed, but it still has to reach the analysis:
-        # a root whose only inputs are JSON would otherwise be silently skipped
-        # instead of reporting that it cannot be read.
         if not path.name.endswith((_TFVARS_SUFFIX, _TFVARS_JSON_SUFFIX)):
+            return []
+        if (
+            path.name.endswith(_TFVARS_JSON_SUFFIX)
+            or any(part.lower() in {"fixture", "fixtures", "testdata"} for part in path.parts)
+            or _generated_header(source)
+        ):
             return []
         root = _find_root(path)
         if root is None:
             return []
         analysis = _analyze_root(root)
         resolved = path.resolve()
-        if path.name.endswith(_TFVARS_JSON_SUFFIX):
-            # An unparsed file has no assignments to judge, so it carries only
-            # the report that this environment could not be read. Reporting it
-            # here rather than on the anchor is what makes a JSON-only root —
-            # which contributes no anchor at all — visible.
-            return [
-                Diagnostic(path=path, line=1, col=1, code=self.code, message=_blind_message(analysis, blind))
-                for blind in analysis.blind
-                if path.name in blind.reason
-            ]
         environment = analysis.environment_of(resolved)
         if environment is None:
             return []
@@ -331,11 +295,6 @@ class NoDeadEnvironmentInput(Rule):
             for attr in document(source).attributes
             if (message := _assignment_message(analysis, environment, attr.name, attr.value)) is not None
         ]
-        if analysis.blind and resolved == analysis.anchor:
-            diags.extend(
-                Diagnostic(path=path, line=1, col=1, code=self.code, message=_blind_message(analysis, blind))
-                for blind in analysis.blind
-            )
         return sorted(diags, key=lambda d: (d.line, d.col))
 
 
@@ -343,7 +302,7 @@ class NoDeadEnvironmentInput(Rule):
 class _Declaration:
     has_default: bool
     default: _Canon | None
-    untyped: bool
+    scalar_type: _ScalarType | None
     sensitive: bool
 
 
@@ -367,7 +326,7 @@ class _RootAnalysis:
     declarations: Mapping[str, _Declaration]
     values: Mapping[str, Mapping[str, _AssignmentValue]]
     blind: tuple[_BlindEnvironment, ...]
-    anchor: Path | None
+    declarations_complete: bool
 
     def environment_of(self, resolved: Path) -> str | None:
         return next((env for env, paths in self.files.items() if any(resolved == p.resolve() for p in paths)), None)
@@ -376,13 +335,15 @@ class _RootAnalysis:
 def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, value: str) -> str | None:
     declaration = analysis.declarations.get(name)
     if declaration is None:
+        if not analysis.declarations_complete:
+            return None
         return (
-            f"orphaned-key: `{name}` is not declared as a variable of root `{analysis.root.name}` — "
-            "deletion residue; remove the assignment."
+            f"orphaned-key: `{name}` has no declaration in the parsed root `{analysis.root.name}`; "
+            "remove it if this is a variable file, or restore the missing declaration."
         )
-    if declaration.untyped:
+    if declaration.scalar_type is None:
         return None
-    canon = _canonical(value)
+    canon = _canonical_for_type(value, declaration.scalar_type)
     display = _display(canon, value, sensitive=declaration.sensitive)
     if (
         canon is not None
@@ -395,7 +356,7 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, va
     ):
         return (
             f"equals-default: `{name}` is assigned its declared default{display} — "
-            "the assignment changes nothing; delete it."
+            "consider removing it only if this environment should inherit future default changes."
         )
     if not _constant_everywhere(analysis, environment, name, canon):
         return None
@@ -409,12 +370,11 @@ def _assignment_message(analysis: _RootAnalysis, environment: str, name: str, va
     if declaration.has_default:
         return (
             f"constant-everywhere: `{name}` carries one value{display} across every environment "
-            f"({environments}) — dead per-environment indirection; make it the variable's default "
-            "and delete the assignments."
+            f"({environments}); consider using the shared default if the repetition is not an intentional contract."
         )
     return (
         f"required-but-constant: `{name}` has no default yet every environment ({environments}) assigns "
-        f"one value{display} — declare that value as the variable's default instead of repeating it."
+        f"one value{display}; consider a shared input source while preserving requiredness when it is intentional."
     )
 
 
@@ -437,19 +397,16 @@ def _constant_everywhere(analysis: _RootAnalysis, environment: str, name: str, c
     )
 
 
-def _blind_message(analysis: _RootAnalysis, blind: _BlindEnvironment) -> str:
-    return (
-        f"blind-environment: {blind.reason}; cross-environment analysis (constant-everywhere, "
-        f"required-but-constant) is suppressed for root `{analysis.root.name}` because the scan cannot "
-        "enumerate every environment's inputs."
-    )
-
-
 def _display(canon: _Canon | None, value: str, *, sensitive: bool) -> str:
     text = " ".join(value.split())
     if sensitive or canon is None or canon.tag not in _PRINTABLE_TAGS or text.startswith(('"', "'")):
         return ""
     return f" ({text})" if len(text) <= _MAX_VALUE_DISPLAY else ""
+
+
+def _generated_header(source: str) -> bool:
+    header = "\n".join(line for line in source.splitlines()[:20] if line.lstrip().startswith(("#", "//", "/*", "*")))
+    return _GENERATED_RE.search(header) is not None
 
 
 def _find_root(path: Path) -> Path | None:
@@ -466,17 +423,15 @@ def _find_root(path: Path) -> Path | None:
     return None
 
 
-@lru_cache(maxsize=256)
 def _has_tf_files(directory: Path) -> bool:
     return next(iter(directory.glob("*.tf")), None) is not None
 
 
-@lru_cache(maxsize=256)
 def _declares_variables(directory: Path) -> bool:
     return next(_variable_blocks(directory), None) is not None
 
 
-def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, bool, bool]]:
+def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, _ScalarType | None, bool]]:
     for tf in sorted(directory.glob("*.tf")):
         text = _read_text(tf)
         if text is None:
@@ -485,10 +440,14 @@ def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, bool, b
             if block.type == "variable" and block.labels:
                 default = block.attribute("default")
                 declared = block.attribute("type")
-                untyped = declared is not None and declared.value.strip() == _ANY_TYPE
+                declared_type = None if declared is None else declared.value.strip()
+                try:
+                    scalar_type = None if declared_type is None else _ScalarType(declared_type)
+                except ValueError:
+                    scalar_type = None
                 sensitive_attr = block.attribute("sensitive")
                 sensitive = sensitive_attr is not None and _canonical(sensitive_attr.value) != _BOOL_SCALARS["false"]
-                yield block.labels[0], None if default is None else default.value, untyped, sensitive
+                yield block.labels[0], None if default is None else default.value, scalar_type, sensitive
 
 
 def _read_text(path: Path) -> str | None:
@@ -498,12 +457,16 @@ def _read_text(path: Path) -> str | None:
         return None
 
 
-@lru_cache(maxsize=64)
 def _analyze_root(root: Path) -> _RootAnalysis:
     files = _environment_files(root)
     declarations = {
-        name: _Declaration(default is not None, None if default is None else _canonical(default), untyped, sensitive)
-        for name, default, untyped, sensitive in _variable_blocks(root)
+        name: _Declaration(
+            default is not None,
+            None if default is None or scalar_type is None else _canonical_for_type(default, scalar_type),
+            scalar_type,
+            sensitive,
+        )
+        for name, default, scalar_type, sensitive in _variable_blocks(root)
     }
     values: dict[str, dict[str, _AssignmentValue]] = {}
     blind = list(_structural_blind(root, files))
@@ -518,7 +481,14 @@ def _analyze_root(root: Path) -> _RootAnalysis:
                 blind.append(_BlindEnvironment(env, f"`{file.name}` for environment `{env}` cannot be read"))
                 continue
             for attr in document(text).attributes:
-                assignment = _AssignmentValue(attr.value, _canonical(attr.value), file)
+                declaration = declarations.get(attr.name)
+                assignment = _AssignmentValue(
+                    attr.value,
+                    None
+                    if declaration is None or declaration.scalar_type is None
+                    else _canonical_for_type(attr.value, declaration.scalar_type),
+                    file,
+                )
                 previous = values.setdefault(attr.name, {}).get(env)
                 if previous is not None and env not in conflicted:
                     # Terraform rejects a key redefined inside one file, so that
@@ -538,21 +508,13 @@ def _analyze_root(root: Path) -> _RootAnalysis:
                         )
                 values[attr.name][env] = assignment
     blind.extend(_manifest_blind(root, frozenset(files)))
-    # Resolved, and readable: the blind error is reported on this file, so an
-    # anchor the CLI skips (unreadable) or never matches (an unresolved symlink
-    # compared against a resolved path) would silently delete the whole warning.
-    anchor = min(
-        (path.resolve() for paths in files.values() for path in paths if _read_text(path) is not None),
-        default=None,
-        key=str,
-    )
     return _RootAnalysis(
         root=root,
         files={env: tuple(paths) for env, paths in files.items()},
         declarations=declarations,
         values=values,
         blind=tuple(sorted(blind, key=lambda item: (item.name, item.reason))),
-        anchor=anchor,
+        declarations_complete=next(iter(root.glob("*.tf.json")), None) is None,
     )
 
 
@@ -667,7 +629,7 @@ def _manifest_blind(root: Path, environments: frozenset[str]) -> Iterator[_Blind
         yield _BlindEnvironment("(all)", f"`{_ENVS_MANIFEST}` names this root's environments but cannot be read")
         return
     try:
-        raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is an untyped stdlib boundary; the shape is narrowed below
+        raw: object = json.loads(  # pyright: ignore[reportAny] — json.loads is untyped; the shape is narrowed below
             text
         )
     except json.JSONDecodeError as exc:
@@ -695,6 +657,28 @@ def _tfvars_secret(entry: object) -> str | None:
         if isinstance(key, str) and "tfvars" in key and isinstance(value, str):
             return value
     return None
+
+
+def _canonical_for_type(text: str, scalar_type: _ScalarType) -> _Canon | None:
+    canon = _canonical(text)
+    if canon is None:
+        return None
+    if scalar_type is _ScalarType.BOOL:
+        return canon if canon.tag == "bool" else None
+    if scalar_type is _ScalarType.NUMBER:
+        return canon if canon.tag == "num" else None
+
+    stripped = text.strip()
+    if stripped.startswith('"'):
+        parsed = _parse_string(stripped, 0)
+        if parsed.value is None or parsed.next_index != len(stripped):
+            return None
+        return _Canon("str", stripped[1:-1])
+    if canon.tag == "bool":
+        return _Canon("str", "true" if canon.value is True else "false")
+    if canon.tag == "num" and isinstance(canon.value, Decimal):
+        return _Canon("str", format(canon.value.normalize(), "f"))
+    return canon if canon.tag == "str" else None
 
 
 def _canonical(text: str) -> _Canon | None:
