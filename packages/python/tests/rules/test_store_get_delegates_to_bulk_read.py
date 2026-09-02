@@ -41,8 +41,8 @@ def test_flags_compatible_async_get_and_get_many() -> None:
 
     assert len(diagnostics) == 1
     assert diagnostics[0].line == 2
-    assert diagnostics[0].severity is Severity.ERROR
-    assert "`get_many` with a one-key collection" in diagnostics[0].message
+    assert diagnostics[0].severity is Severity.WARNING
+    assert "signatures suggest" in diagnostics[0].message
 
 
 def test_flags_compatible_get_by_ids_mapping() -> None:
@@ -57,7 +57,7 @@ def test_flags_compatible_get_by_ids_mapping() -> None:
     diagnostics = _check(source)
 
     assert len(diagnostics) == 1
-    assert "`get_by_ids` with a one-key collection" in diagnostics[0].message
+    assert "and `get_by_ids` expose the same keyed read" in diagnostics[0].message
 
 
 @pytest.mark.parametrize(
@@ -247,3 +247,81 @@ def test_exact_suppression_applies_on_reported_method_line() -> None:
 
 def test_malformed_source_is_ignored() -> None:
     assert _check("class UserStore:\n  async def get(") == []
+
+
+def test_common_private_read_helper_is_already_one_canonical_path() -> None:
+    source = """class UserStore:
+    async def get(self, user_id: UserId) -> User | None:
+        rows = await self._read([user_id])
+        return rows.get(user_id)
+
+    async def get_many(self, user_ids: list[UserId]) -> dict[UserId, User]:
+        return await self._read(user_ids)
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "singleton_body",
+    [
+        "return await self.query_one(user_id, for_update=True)",
+        "return await self.query_one('SELECT * FROM users FOR UPDATE', user_id)",
+        "async with self.db.transaction():\n            return await self.query_one(user_id)",
+        "return await self.query_one(user_id, prepare=False)",
+    ],
+)
+def test_distinct_singleton_access_semantics_are_not_assumed_equivalent(singleton_body: str) -> None:
+    source = f"""class UserStore:
+    async def get(self, user_id: UserId) -> User | None:
+        {singleton_body}
+
+    async def get_many(self, user_ids: list[UserId]) -> list[User]:
+        return await self.query_many(user_ids)
+"""
+    assert _check(source) == []
+
+
+def test_operational_decorator_mismatch_is_not_assumed_equivalent() -> None:
+    source = """class UserStore:
+    @read_your_writes
+    async def get(self, user_id: UserId) -> User | None:
+        return await self.query_one(user_id)
+
+    async def get_many(self, user_ids: list[UserId]) -> list[User]:
+        return await self.query_many(user_ids)
+"""
+    assert _check(source) == []
+
+
+def test_multi_statement_not_implemented_stub_is_not_concrete() -> None:
+    source = """class UserStore:
+    async def get(self, user_id: UserId) -> User | None:
+        message = "not implemented"
+        raise NotImplementedError(message)
+
+    async def get_many(self, user_ids: list[UserId]) -> list[User]:
+        return await self.query_many(user_ids)
+"""
+    assert _check(source) == []
+
+
+def test_same_python_type_with_different_key_domains_is_not_compatible() -> None:
+    source = """class UserStore:
+    async def get(self, email: str) -> User | None:
+        return await self.query_by_email(email)
+
+    async def get_many(self, user_ids: list[str]) -> list[User]:
+        return await self.query_by_ids(user_ids)
+"""
+    assert _check(source) == []
+
+
+def test_non_store_class_in_store_module_is_not_owned() -> None:
+    source = """class UserRepository:
+    async def get(self, user_id: UserId) -> User | None:
+        return await self.query_one(user_id)
+
+    async def get_many(self, user_ids: list[UserId]) -> list[User]:
+        return await self.query_many(user_ids)
+"""
+    assert _check(source) == []

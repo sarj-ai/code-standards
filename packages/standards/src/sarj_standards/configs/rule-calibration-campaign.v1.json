@@ -135,8 +135,8 @@
       "family": "python",
       "ruleId": "store-get-delegates-to-bulk-read",
       "state": "complete",
-      "evidence": "Two-repository AST scan initially produced 0 findings; manual pair discovery found one duplicated singleton/bulk SQL path hidden by three over-narrow guards, and the broadened rule reports that one valid finding.",
-      "outcome": "Renamed the rule around its store boundary, supports matching context parameters and mapping-returning get_many methods, reports ordinary missing-row branches, and retains cache/lock divergence guards."
+      "evidence": "Three independent re-reviews ran 29 focused tests and found five unique local candidates: four Bulbul stores with parallel ID-based SQL paths and one stateful AI computation-cache store. Adversarial probes showed that compatible annotations do not prove matching authorization, locking, transaction, replica, cache, conversion, or missing-row semantics; one live Bulbul singleton alone used prepare=False. The matcher also misclassified shared private helpers and multi-statement NotImplementedError stubs. Ruff and Pylint have no equivalent cross-method store-contract rule.",
+      "outcome": "Kept SARJ421 and its compatibility alias, but staged the architectural inference as warning. Reworded the UI around equivalent observable semantics and concrete duplicated SQL, required Store-class and key-domain alignment, recognized shared private read helpers and multi-statement NotImplementedError stubs, and abstained on mismatched operational decorators, cache/authorization/transaction/replica signals, locking SQL, and behavior-affecting call keywords. Deliberately retained conservative method-name and type-shape boundaries."
     },
     {
       "task": "rule-audit/python/iac-source-coupled-test",
