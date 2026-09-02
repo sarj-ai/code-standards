@@ -127,8 +127,8 @@
       "family": "python",
       "ruleId": "pytest-fixture-returns-bare-tuple",
       "state": "complete",
-      "evidence": "Two-repository AST scan: 2 findings reviewed, 2 positional-record fixture APIs, 0 false positives; Ruff's complete pytest rule catalog has no equivalent fixture-result-shape rule.",
-      "outcome": "Renamed the rule to identify pytest explicitly, corrected its guidance to require attribute-based consumption, added multi-file consumer examples, and exempted PEP 646 variadic tuple annotations."
+      "evidence": "Three independent re-reviews ran 56 focused tests and scanned 7,097 or more local Python files, finding 20 diagnostics across 19 paths. Every fleet finding reviewed was a record-like role bundle, but adversarial probes reproduced false positives for generator teardown return values, nested non-discoverable fixtures, rebound pytest imports, later type-alias rebinding, and explicitly homogeneous tuple sequences. Ruff has no equivalent fixture-result-shape rule; B901 owns generator return values instead.",
+      "outcome": "Kept SARJ044, the accurate pytest-specific selector, and its compatibility alias; staged it as warning because a producer-only AST cannot distinguish every domain tuple protocol. Reworded the UI around unnamed positional records, upgraded the accepted UI flow to a frozen dataclass with typed consumers, made import and alias resolution lexical and rebinding-aware, limited fixtures to discoverable module or class scope, inspected only yielded values for generator fixtures, detected assigned yield expressions, unwrapped Annotated, exempted homogeneous and PEP 646 variadic tuple sequences, and aggregated branch results into one diagnostic per fixture."
     },
     {
       "task": "rule-audit/python/store-get-delegates-to-bulk-read",

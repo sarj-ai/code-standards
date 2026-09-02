@@ -124,10 +124,10 @@ def pair(flag):
         return a, b
     return c, d
 """
-    assert len(_check(src)) == 2
+    assert len(_check(src)) == 1
 
 
-def test_message_reports_the_field_count():
+def test_message_reports_fixture_name_and_field_count():
     src = """
 import pytest
 
@@ -136,7 +136,8 @@ def triple():
     return a, b, c
 """
     [diag] = _check(src)
-    assert "bare 3-field tuple" in diag.message
+    assert "fixture `triple`" in diag.message
+    assert "3-value record" in diag.message
 
 
 # FP guard: the named alternative and the factory-closure shape.               #
@@ -318,9 +319,7 @@ def pair():
     assert len(_check(src)) == 1
 
 
-def test_homogeneous_variadic_tuple_annotation_still_fires():
-    # `tuple[str, ...]` is a sequence, not a record — the distinctness argument
-    # does not apply, so the rule keeps its say.
+def test_homogeneous_variadic_tuple_annotation_is_a_sequence_and_is_clean():
     src = """
 import pytest
 
@@ -328,7 +327,7 @@ import pytest
 def names() -> tuple[str, ...]:
     return first, second
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 @pytest.mark.parametrize("annotation", ["tuple[*Ts]", "tuple[Unpack[Ts]]", "typing.Tuple[typing.Unpack[Ts]]"])
@@ -470,3 +469,104 @@ def pair() -> tuple[OrgStore, UserStore]:
     return org, user
 """
     assert _check(src, path="python/app/tests/generated/fixtures.py") == []
+
+
+def test_generator_cleanup_return_is_not_the_exposed_fixture_value():
+    src = """
+import pytest
+
+@pytest.fixture
+def resource():
+    yield resource
+    return cleanup_a, cleanup_b
+"""
+    assert _check(src) == []
+
+
+def test_assigned_yield_tuple_is_the_exposed_fixture_value():
+    src = """
+import pytest
+
+@pytest.fixture
+def resource():
+    received = yield resource, cleanup
+    assert received is None
+"""
+    assert len(_check(src)) == 1
+
+
+def test_nested_fixture_factory_is_not_pytest_discoverable():
+    src = """
+import pytest
+
+def build_fixture():
+    @pytest.fixture
+    def pair():
+        return first, second
+    return pair
+"""
+    assert _check(src) == []
+
+
+def test_class_fixture_is_discoverable():
+    src = """
+import pytest
+
+class TestService:
+    @pytest.fixture
+    def pair(self):
+        return first, second
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import pytest\npytest = framework\n\n@pytest.fixture\ndef pair():\n    return first, second\n",
+        "from pytest import fixture\nfixture = framework.fixture\n\n@fixture\ndef pair():\n    return first, second\n",
+    ],
+)
+def test_rebound_fixture_import_is_not_treated_as_pytest(source: str):
+    assert _check(source) == []
+
+
+def test_later_type_alias_rebinding_does_not_change_earlier_fixture_contract():
+    src = """
+import pytest
+
+Pair = list[str]
+
+@pytest.fixture
+def pair() -> Pair:
+    return existing_values
+
+Pair = tuple[int, str]
+"""
+    assert _check(src) == []
+
+
+def test_annotated_fixed_tuple_contract_is_reported():
+    src = """
+from typing import Annotated
+import pytest
+
+@pytest.fixture
+def pair() -> Annotated[tuple[OrgStore, UserStore], "fixture contract"]:
+    return existing_pair
+"""
+    assert len(_check(src)) == 1
+
+
+def test_multiple_tuple_branches_report_once_with_all_arities():
+    src = """
+import pytest
+
+@pytest.fixture
+def values(flag):
+    if flag:
+        return first, second
+    return first, second, third
+"""
+    [diagnostic] = _check(src)
+    assert "2 or 3-value record" in diagnostic.message
