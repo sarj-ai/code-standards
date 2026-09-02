@@ -70,7 +70,9 @@
       "task": "rule-audit/python/defect-xfail-requires-explicit-strict",
       "family": "python",
       "ruleId": "defect-xfail-requires-explicit-strict",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed the local-explicitness policy is useful and has no Ruff or flake8-pytest-style equivalent. They reviewed 45 maintained local xfail calls: 38 literal-strict deterministic defect pins, six intentional nondeterministic or generated-case pins, and one non-defect environment marker. The rule emitted zero findings across a larger 83-repository, 6,634-file local Python sweep, so noise is low but live positive precision is not yet proven. One hundred focused cases pass after repair.",
+      "outcome": "Kept SARJ046, the established defect-xfail-requires-explicit-strict ID, and both aliases; staged it as warning; limited function findings to default-collected tests; excluded conftest, fixtures, generated code, nested helpers, and fully dynamic reasons; required literal strict=True; resolved Hypothesis and environment probes through imports; recognized statically false conditions and safe local xfail aliases; narrowed broad should prose to contrast statements; and rewrote UI copy to describe XPASS exit behavior and parameter-level remediation accurately."
     },
     {
       "task": "rule-audit/python/docstring-args-restate-signature",

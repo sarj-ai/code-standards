@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.defect_xfail_requires_explicit_strict import DefectXfailRequiresExplicitStrict
 
 
@@ -38,7 +39,7 @@ def test_thing():
 # Test-path gating.                                                            #
 
 
-@pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "conftest.py", "a/tests/h.py"])
+@pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/h.py"])
 def test_fires_in_test_paths(path: str):
     assert len(_check(_ROTTING_PIN, path)) == 1
 
@@ -46,6 +47,10 @@ def test_fires_in_test_paths(path: str):
 @pytest.mark.parametrize("path", ["src/service.py", "a/testing/thing.py"])
 def test_skips_non_test_paths(path: str):
     assert _check(_ROTTING_PIN, path) == []
+
+
+def test_conftest_is_not_a_collected_test_module() -> None:
+    assert _check(_ROTTING_PIN, "tests/conftest.py") == []
 
 
 # Positive: a defect-naming reason with no strict flag.                        #
@@ -176,6 +181,89 @@ def test_policy():
     assert _check(src) == []
 
 
+def test_resolves_unshadowed_module_xfail_alias() -> None:
+    src = """
+import pytest
+
+xfail = pytest.mark.xfail
+
+@xfail(reason="BUG: wrong result")
+def test_policy():
+    assert correct()
+"""
+
+    assert len(_check(src)) == 1
+
+
+def test_rebound_module_xfail_alias_is_ignored() -> None:
+    src = """
+import pytest
+
+xfail = pytest.mark.xfail
+xfail = custom_xfail
+
+@xfail(reason="BUG: wrong result")
+def test_policy():
+    assert correct()
+"""
+
+    assert _check(src) == []
+
+
+def test_non_collected_helper_is_ignored() -> None:
+    src = """
+import pytest
+
+@pytest.mark.xfail(reason="BUG: wrong result")
+def helper():
+    assert correct()
+"""
+
+    assert _check(src) == []
+
+
+def test_nested_test_function_is_ignored() -> None:
+    src = """
+import pytest
+
+def test_outer():
+    @pytest.mark.xfail(reason="BUG: wrong result")
+    def test_nested():
+        assert correct()
+"""
+
+    assert _check(src) == []
+
+
+def test_xfail_on_fixture_is_not_given_strict_remediation() -> None:
+    src = """
+import pytest
+
+@pytest.fixture
+@pytest.mark.xfail(reason="BUG: wrong result")
+def test_payload():
+    return payload()
+"""
+
+    assert _check(src) == []
+
+
+def test_custom_given_decorator_does_not_hide_a_defect_pin() -> None:
+    src = """
+import pytest
+
+def given(value):
+    return decorate
+
+@given(cases())
+@pytest.mark.xfail(reason="BUG: wrong result")
+def test_payload(value):
+    assert correct(value)
+"""
+
+    assert len(_check(src)) == 1
+
+
 # FP guard: strict pins, nondeterministic markers, and environment gates.      #
 # The real_llm exemption is mandatory — every non-strict xfail in one          #
 # first-party repo sits on a live-model eval that cannot be strict.            #
@@ -277,21 +365,22 @@ def test_thing():
 
 
 @pytest.mark.parametrize(
-    "decorator",
+    ("property_import", "decorator"),
     [
-        "@given(st.text())",
-        "@given(value=st.integers())",
-        "@known_bug_schema.parametrize()",
-        "@schema.parametrize()",
-        "@self.schema.parametrize()",
+        ("from hypothesis import given", "@given(st.text())"),
+        ("from hypothesis import given as generate", "@generate(value=st.integers())"),
+        ("", "@known_bug_schema.parametrize()"),
+        ("", "@schema.parametrize()"),
+        ("", "@self.schema.parametrize()"),
     ],
 )
-def test_property_based_tests_are_exempt(decorator: str):
+def test_property_based_tests_are_exempt(property_import: str, decorator: str):
     # One test function expands into many generated inputs; a documented bug is
     # usually tripped by only a subset, so the rest legitimately XPASS and
     # strict=True would turn every passing input into a failure.
     src = f"""
 import pytest
+{property_import}
 
 {decorator}
 @pytest.mark.xfail(reason="BUG: unroutable ids return the wrong envelope", strict=False)
@@ -428,7 +517,7 @@ def test_thing():
     assert _check(src) == []
 
 
-def test_dynamic_strict_value_is_exempt():
+def test_dynamic_strict_value_is_not_literal_true():
     src = """
 import pytest
 
@@ -436,6 +525,37 @@ import pytest
 def test_thing():
     assert correct()
 """
+    [diagnostic] = _check(src)
+    assert diagnostic.severity is Severity.WARNING
+
+
+@pytest.mark.parametrize("strict_value", ["None", "0", "''"], ids=["none", "zero", "empty-string"])
+def test_falsey_literal_strict_value_is_not_compliant(strict_value: str) -> None:
+    src = f"""\
+import pytest
+
+@pytest.mark.xfail(reason="BUG: bad", strict={strict_value})
+def test_thing():
+    assert correct()
+"""
+
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "reason_expression",
+    ['f"{kind}: wrong result"', 'kind + ": wrong result"'],
+    ids=["formatted", "concatenated"],
+)
+def test_dynamic_reason_is_not_treated_as_static_defect_evidence(reason_expression: str) -> None:
+    src = f"""\
+import pytest
+
+@pytest.mark.xfail(reason={reason_expression})
+def test_thing():
+    assert correct()
+"""
+
     assert _check(src) == []
 
 
@@ -499,6 +619,18 @@ def test_empty_source_is_clean(source: str):
 
 def test_syntax_error_returns_no_diagnostics():
     assert _check('@pytest.mark.xfail(reason="BUG")\ndef test_x(:\n') == []
+
+
+def test_generated_test_is_ignored() -> None:
+    src = """# generated by test compiler
+import pytest
+
+@pytest.mark.xfail(reason="BUG: wrong result")
+def test_thing():
+    assert correct()
+"""
+
+    assert _check(src) == []
 
 
 def test_multiple_hits_in_one_file():
@@ -582,6 +714,9 @@ async def test_receive_encoding_error():
 
 def test_allows_os_gated_conditional_xfail():
     src = """
+import pytest
+import sys
+
 @pytest.mark.xfail(sys.platform == "win32", reason="broken on Windows only")
 def test_paths():
     assert resolve() == "/tmp"
@@ -620,9 +755,72 @@ def test_feature():
     assert len(_check(src)) == 1
 
 
+def test_feature_name_containing_platform_is_not_an_environment_probe() -> None:
+    src = """\
+import pytest
+
+@pytest.mark.xfail(condition=platform_feature_enabled, reason="BUG: wrong envelope")
+def test_feature():
+    pass
+"""
+
+    assert len(_check(src)) == 1
+
+
+def test_aliased_platform_probe_is_environment_gated() -> None:
+    src = """\
+import platform as runtime_platform
+import pytest
+
+@pytest.mark.xfail(runtime_platform.system() == "Windows", reason="BUG: wrong envelope")
+def test_feature():
+    pass
+"""
+
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("condition", ["False", "0", "None"], ids=["false", "zero", "none"])
+def test_string_condition_that_is_statically_false_cannot_xpass(condition: str) -> None:
+    src = f"""\
+import pytest
+
+@pytest.mark.xfail("{condition}", reason="BUG: dormant defect pin")
+def test_feature():
+    pass
+"""
+
+    assert _check(src) == []
+
+
+def test_bare_should_question_is_not_defect_evidence() -> None:
+    src = """\
+import pytest
+
+@pytest.mark.xfail(reason="Should CUDA be available here?")
+def test_feature():
+    pass
+"""
+
+    assert _check(src) == []
+
+
+def test_should_but_contrast_is_defect_evidence() -> None:
+    src = """\
+import pytest
+
+@pytest.mark.xfail(reason="Should return 422 but returns 500")
+def test_feature():
+    pass
+"""
+
+    assert len(_check(src)) == 1
+
+
 def test_flags_unconditional_bug_pin_in_same_file_as_gated_one():
     src = """
 import pytest
+import sys
 
 @pytest.mark.xfail(sys.platform == "win32", reason="broken on Windows only")
 def test_paths():
@@ -634,7 +832,7 @@ def test_envelope():
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert diags[0].line == 8
+    assert diags[0].line == 9
 
 
 def test_flags_conditional_xfail_gated_on_a_non_environment_flag():
