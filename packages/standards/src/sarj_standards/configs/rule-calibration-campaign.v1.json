@@ -22,7 +22,9 @@
       "task": "rule-audit/iac/no-environment-conditional",
       "family": "iac",
       "ruleId": "no-environment-conditional",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed this is an organization-specific architecture preference rather than a universal Terraform error. They reproduced false positives for data-driven map selection, ambiguous workspace/stage/deployment names, malformed calls, and non-Terraform HCL, plus safe normalized-comparison misses. One hundred one focused cases pass. A 1,097-file local Terraform/Terragrunt scan produced 28 reviewed syntax matches, all within the intended advisory boundary, including security gates that still require human judgment.",
+      "outcome": "Kept the shipped ID for compatibility, staged it as warning, rewrote categorical UI claims, allowed environment-keyed map lookup/index selection, restricted dialect scope, required literal evidence for ambiguous identity names, recognized bounded pure normalizers, enforced contains arity, excluded generated/fixture inputs, and made assertion exemptions structural. A future major release may rename it to no-environment-name-branching with executable selector aliases."
     },
     {
       "task": "rule-audit/iac/no-restated-comment",

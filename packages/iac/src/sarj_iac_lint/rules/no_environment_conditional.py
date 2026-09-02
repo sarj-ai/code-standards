@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
@@ -23,13 +24,14 @@ if TYPE_CHECKING:
 
     from sarj_iac_lint._hcl import Attribute, Block
 
-# Segments that only ever name a deploy, so a match anywhere in the name is enough.
-ENVIRONMENT_SEGMENTS = frozenset({"environment", "env", "stage", "workspace", "deployment"})
+# Names that directly identify an environment. More ambiguous deployment terms
+# require corroboration from an environment-shaped literal.
+ENVIRONMENT_SEGMENTS = frozenset({"environment", "env"})
 
 # Segments that are also ordinary product words. These count only when every other
 # segment is a neutral qualifier, so `var.project` and `var.gcp_project_id` match
 # while `var.langfuse_ui_project_id` (a third-party resource id) does not.
-QUALIFIED_SEGMENTS = frozenset({"project", "slug", "branch", "account", "tenant"})
+QUALIFIED_SEGMENTS = frozenset({"project", "slug", "branch", "account", "tenant", "stage", "workspace", "deployment"})
 
 _NEUTRAL_QUALIFIERS = frozenset(
     {
@@ -60,17 +62,13 @@ _ENVIRONMENT_LITERAL_SEGMENTS = frozenset(
 )
 _LITERAL_SEGMENT_RE = re.compile(r"[^a-z0-9]+")
 
-# Whole subtrees that assert which inputs are legal. Comparing the environment to a
-# literal is the assertion there, and there is no named input that could replace it.
-_ASSERTION_BLOCKS = frozenset({"validation", "precondition", "postcondition", "check", "assert"})
-
 _WORKSPACE = "terraform.workspace"
 _IDENTITY_PREFIXES = ("var.", "local.")
 
 _CONTAINS = "contains"
-_LOOKUP = "lookup"
 _COMPARISONS = frozenset({"==", "!="})
-_MIN_CALL_ARGS = 2
+_NORMALIZERS = frozenset({"lower", "trimspace", "upper"})
+_CONTAINS_ARGS = 2
 
 _OPEN = frozenset({"(", "[", "{"})
 _CLOSE = frozenset({")", "]", "}"})
@@ -78,7 +76,6 @@ _CLOSE = frozenset({")", "]", "}"})
 # Words that read like identifiers but head expressions: `if (x)` groups, `foo(x)` calls.
 _EXPRESSION_KEYWORDS = frozenset({"if", "for", "in"})
 
-_HCL_SUFFIXES = (".tf", ".hcl")
 # Checked first to avoid duplicate diagnostics: SARJ206 categorically owns these files.
 _TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
 
@@ -87,11 +84,22 @@ _LIST_TOKENS = 3
 _GROUP_TOKENS = 3
 # A string literal is at least its two quotes.
 _MIN_QUOTED_LENGTH = 2
+_GENERATED_RE = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGNORECASE)
 
 
 class _Use(NamedTuple):
     identity: str
     shape: str
+
+
+class _AssertionBlockKind(StrEnum):
+    ASSERT = "assert"
+    CHECK = "check"
+    LIFECYCLE = "lifecycle"
+    POSTCONDITION = "postcondition"
+    PRECONDITION = "precondition"
+    VALIDATION = "validation"
+    VARIABLE = "variable"
 
 
 @final
@@ -100,20 +108,16 @@ class NoEnvironmentConditional(Rule):
     code = "SARJ204"
     documentation = RuleDocumentation(
         summary=(
-            "Terraform must not branch on the environment or project name; declare a variable and pass the value "
-            "in from tfvars."
+            "Warn when Terraform chooses behavior from deployment-identity comparisons; prefer explicit typed "
+            "capabilities or values."
         ),
         rationale=(
-            "Terraform that reads which environment it is in keeps the decision in code rather than in "
-            "configuration, so a caller cannot see what varies, and every new environment is an edit to every "
-            "expression that names the old ones — including at a module call site, where the value belongs in "
-            "that environment's tfvars instead."
+            "Hard-coded environment branches scatter deployment policy through expressions and obscure the actual "
+            "capability or value that callers intend to vary."
         ),
         remediation=(
-            "Declare a typed variable carrying the selected value, pass it through child-module calls, and set "
-            "it at the root from per-environment tfvars (`tier = var.redis_tier`); use one `enable_<thing>` bool "
-            "consumed by count/for_each only when the branch gates existence, never computed from the "
-            "environment name."
+            "Pass the selected typed value or one named capability from the root configuration. Retain an explicit "
+            "validation, precondition, or check when environment identity is itself the safety invariant."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
@@ -130,15 +134,16 @@ class NoEnvironmentConditional(Rule):
                 "are masked."
             ),
             (
-                "A function result such as upper(var.environment) is not treated as the environment identity, "
-                "so a comparison against it is exempt."
+                "Pure case/whitespace normalization with lower, upper, or trimspace is unwrapped; arbitrary function "
+                "results remain opaque."
             ),
             (
                 "Ambiguous identity names (`project`, `account`, `tenant`, `branch`, and `slug`) require an "
                 "environment-labelled comparison literal such as `platform-prod`; comparisons to ordinary "
                 "business values and map indexing by those names are intentionally ignored."
             ),
-            "Only .tf and .hcl are read: the suffix filter keeps .tfvars out of scope.",
+            "Only .tf and terragrunt.hcl are read; Packer, Nomad, and other HCL dialects are outside this rule.",
+            "Environment-keyed map indexing and lookup are data selection rather than branching and are allowed.",
             (
                 "A diagnostic is reported at the attribute's line. In a multi-line value the comparison itself "
                 "may sit further down, so `# sarj-noqa: SARJ204` belongs on the attribute line."
@@ -176,6 +181,36 @@ class NoEnvironmentConditional(Rule):
                     ),
                 ),
                 focus_path=PurePosixPath("sandbox.tf"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="hard-coded-environment-choice",
+                title="Code branches on a hard-coded environment label",
+                outcome=ExampleOutcome.MATCH,
+                scenario="data-selection",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'locals {\n  redis_tier = var.environment == "prod" ? "STANDARD_HA" : "BASIC"\n}\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="environment-keyed-input-map",
+                title="Externally supplied map selects a value without hard-coded branches",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="data-selection",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        "locals {\n  redis_tier = var.redis_tiers_by_environment[var.environment]\n}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
                 expected_count=0,
                 public=True,
             ),
@@ -254,7 +289,13 @@ class NoEnvironmentConditional(Rule):
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         name = str(path)
-        if name.endswith(_TEST_SUFFIXES) or not name.endswith(_HCL_SUFFIXES):
+        fixture_input = any(part.lower() in {"fixture", "fixtures", "testdata"} for part in path.parts)
+        if (
+            name.endswith(_TEST_SUFFIXES)
+            or (path.suffix != ".tf" and path.name != "terragrunt.hcl")
+            or fixture_input
+            or _generated_header(source)
+        ):
             return []
         diags = [
             Diagnostic(
@@ -270,13 +311,32 @@ class NoEnvironmentConditional(Rule):
         return sorted(diags, key=lambda d: (d.line, d.col))
 
 
-def _attributes(bs: tuple[Block, ...]) -> Iterator[tuple[Block, Attribute]]:
+def _attributes(
+    bs: tuple[Block, ...],
+    parents: tuple[Block, ...] = (),
+) -> Iterator[tuple[Block, Attribute]]:
     for block in bs:
-        if block.type in _ASSERTION_BLOCKS:
+        if _is_assertion_block(block, parents):
             continue
         for attr in block.attributes:
             yield block, attr
-        yield from _attributes(block.blocks)
+        yield from _attributes(block.blocks, (*parents, block))
+
+
+def _is_assertion_block(block: Block, parents: tuple[Block, ...]) -> bool:
+    try:
+        kind = _AssertionBlockKind(block.type)
+        parent = _AssertionBlockKind(parents[-1].type) if parents else None
+    except ValueError:
+        return False
+    return (
+        (kind is _AssertionBlockKind.VALIDATION and parent is _AssertionBlockKind.VARIABLE)
+        or (
+            kind in {_AssertionBlockKind.PRECONDITION, _AssertionBlockKind.POSTCONDITION}
+            and parent is _AssertionBlockKind.LIFECYCLE
+        )
+        or (kind is _AssertionBlockKind.ASSERT and parent is _AssertionBlockKind.CHECK)
+    )
 
 
 def _environment_use(value: str) -> _Use | None:
@@ -284,10 +344,8 @@ def _environment_use(value: str) -> _Use | None:
     for index, tok in enumerate(toks):
         if tok in _COMPARISONS:
             use = _comparison(toks, index)
-        elif tok in {_CONTAINS, _LOOKUP} and index + 1 < len(toks) and toks[index + 1] == "(":
+        elif tok == _CONTAINS and index + 1 < len(toks) and toks[index + 1] == "(":
             use = _call(toks, index)
-        elif tok == "[":
-            use = _index(toks, index)
         else:
             continue
         if use is not None:
@@ -319,14 +377,17 @@ def _left_operand(toks: tuple[str, ...], index: int) -> str | None:
     open_index = _matching_open(toks, index - 1)
     if open_index is None:
         return None
-    # A group closing a call — `upper(var.environment)` — is that function's
-    # result, not the bare identity, so it never reads as the environment name.
     if open_index > 0 and _is_reference(toks[open_index - 1]):
-        return None
+        return _normalized_identity(toks[open_index - 1], toks[open_index + 1 : index - 1])
     return _single_token(toks[open_index + 1 : index - 1])
 
 
 def _right_operand(toks: tuple[str, ...], index: int) -> str | None:
+    if index + 2 < len(toks) and toks[index + 1] in _NORMALIZERS and toks[index + 2] == "(":
+        close_index = _matching_close(toks, index + 2)
+        if close_index is None:
+            return None
+        return _normalized_identity(toks[index + 1], toks[index + 3 : close_index])
     if toks[index + 1] != "(":
         return toks[index + 1]
     close_index = _matching_close(toks, index + 1)
@@ -337,20 +398,14 @@ def _right_operand(toks: tuple[str, ...], index: int) -> str | None:
 
 def _call(toks: tuple[str, ...], index: int) -> _Use | None:
     args = _call_arguments(toks, index + 1)
-    if len(args) < _MIN_CALL_ARGS:
+    if len(args) != _CONTAINS_ARGS:
         return None
-    if toks[index] == _CONTAINS:
-        needle = _single_identity(args[1])
-        if needle is None:
-            return None
-        # Membership via an intermediate list is the same branch, so the haystack
-        # only shapes the message; the needle is the anchor, as with lookup's map.
-        listing = "[...]" if _is_literal_list(args[0]) else "..."
-        return _Use(needle, f"contains({listing}, {needle})")
-    key = _single_identity(args[1])
-    if key is None:
+    needle = _single_identity(args[1])
+    haystack = _single_token(args[0])
+    if needle is None or (haystack is not None and haystack.startswith("var.")):
         return None
-    return _Use(key, f"lookup(..., {key}, ...)")
+    listing = "[...]" if _is_literal_list(args[0]) else "..."
+    return _Use(needle, f"contains({listing}, {needle})")
 
 
 def _call_arguments(toks: tuple[str, ...], open_index: int) -> list[list[str]]:
@@ -375,8 +430,18 @@ def _call_arguments(toks: tuple[str, ...], open_index: int) -> list[list[str]]:
 
 
 def _single_identity(arg: Sequence[str]) -> str | None:
-    tok = _single_token(arg)
-    return tok if tok is not None and _is_environment_identity(tok) else None
+    peeled = _peel(arg)
+    tok = _single_token(peeled)
+    if tok is not None:
+        return tok if _is_environment_identity(tok) else None
+    if (
+        len(peeled) >= _GROUP_TOKENS + 1
+        and peeled[0] in _NORMALIZERS
+        and peeled[1] == "("
+        and _matching_close(peeled, 1) == len(peeled) - 1
+    ):
+        return _normalized_identity(peeled[0], peeled[2:-1])
+    return None
 
 
 def _single_token(group: Sequence[str]) -> str | None:
@@ -414,21 +479,6 @@ def _matching_open(toks: Sequence[str], close_index: int) -> int | None:
     return None
 
 
-def _index(toks: tuple[str, ...], index: int) -> _Use | None:
-    if index == 0 or index + 2 >= len(toks):
-        return None
-    # An index needs a subject; a `[` after an operator, comma, or another
-    # opener starts a list literal, so `contains([var.environment], "prod")`
-    # holds the identity rather than branching on it.
-    subject = toks[index - 1]
-    if subject not in {")", "]"} and not _is_reference(subject):
-        return None
-    key = toks[index + 1]
-    if toks[index + 2] != "]" or not _is_environment_identity(key):
-        return None
-    return _Use(key, f"...[{key}]")
-
-
 def _is_reference(tok: str) -> bool:
     return tok not in _EXPRESSION_KEYWORDS and (tok[:1].isalpha() or tok[:1] == "_")
 
@@ -441,15 +491,16 @@ def _is_literal_list(arg: list[str]) -> bool:
 
 
 def _is_environment_identity(tok: str, *, literal: str | None = None) -> bool:
-    if tok == _WORKSPACE:
+    lowered = tok.lower()
+    if lowered == _WORKSPACE:
         return True
-    if not tok.startswith(_IDENTITY_PREFIXES):
+    if not lowered.startswith(_IDENTITY_PREFIXES):
         return False
-    return _is_environment_name(tok.rsplit(".", 1)[-1], literal=literal)
+    return any(_is_environment_name(component, literal=literal) for component in lowered.split(".")[1:])
 
 
 def _is_environment_name(name: str, *, literal: str | None) -> bool:
-    segments = [segment for segment in name.split("_") if segment]
+    segments = [segment for segment in re.split(r"[_-]", name.lower()) if segment]
     if not segments:
         return False
     if ENVIRONMENT_SEGMENTS & set(segments):
@@ -481,9 +532,17 @@ def _message(owner: Block, attr: Attribute, use: _Use) -> str:
     labelled = " ".join([owner.type, *(f'"{label}"' for label in owner.labels)])
     where = labelled if owner.type else "the file root"
     return (
-        f"`{attr.name}` in {where} branches on the environment name ({use.shape}) — "
-        "adding an environment means editing this expression, and the decision is code rather than "
-        "configuration. Replace it with a typed variable set per environment in tfvars — the value "
-        "itself, passed through child-module calls from the root, or one `enable_<thing>` bool when the branch "
-        "gates whether the resource exists."
+        f"`{attr.name}` in {where} selects behavior from deployment identity ({use.shape}); pass the selected typed "
+        "value or one named capability from the root configuration."
     )
+
+
+def _normalized_identity(function: str, argument: Sequence[str]) -> str | None:
+    if function not in _NORMALIZERS:
+        return None
+    return _single_identity(argument)
+
+
+def _generated_header(source: str) -> bool:
+    header = "\n".join(line for line in source.splitlines()[:20] if line.lstrip().startswith(("#", "//", "/*", "*")))
+    return _GENERATED_RE.search(header) is not None
