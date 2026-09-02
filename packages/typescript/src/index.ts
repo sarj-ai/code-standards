@@ -191,7 +191,7 @@ const RULES = {
   "require-static-next-matcher": requireStaticNextMatcher,
   "require-zod-form-validation": requireZodFormValidation,
   "store-insert-requires-on-conflict": storeInsertRequiresOnConflict,
-  stepdown: stepdown,
+  "stepdown": stepdown,
   "source-coupled-test": sourceCoupledTest,
   "sole-export-matches-filename": soleExportMatchesFilename,
   "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,
@@ -199,7 +199,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.1",
+  version: "15.17.2",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */
