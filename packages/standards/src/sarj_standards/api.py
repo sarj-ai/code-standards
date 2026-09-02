@@ -250,7 +250,11 @@ class Standards:
         except ValueError as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
-            adopted = load_manifest(self.root) if normalized_mode is not AnalysisMode.RAW else None
+            adopted = (
+                load_manifest(self.root)
+                if normalized_mode not in {AnalysisMode.RAW, AnalysisMode.CORPUS}
+                else None
+            )
             selection_policy = (
                 Policy.corpus_from_manifest(self.root, adopted)
                 if normalized_mode is AnalysisMode.CORPUS

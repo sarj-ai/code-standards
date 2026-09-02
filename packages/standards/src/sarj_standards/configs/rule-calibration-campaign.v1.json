@@ -6,7 +6,9 @@
       "task": "rule-audit/iac/no-comment-cruft",
       "family": "iac",
       "ruleId": "no-comment-cruft",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews reproduced unanchored-banner and directive-prefix false positives, plus modern-HCL and block-comment false negatives. Fifty-eight focused cases and all 467 IaC tests pass. The repaired isolated corpus runner found zero diagnostics across 272 pinned tracked IaC/YAML files in Bulbul, Saqi, Automations, and Standards.",
+      "outcome": "Kept the established no-comment-cruft ID, replaced broad substring and prefix matching with bounded forms, excluded generated/fixture and YAML scalar data, added conservative modern and balanced block-comment HCL coverage, improved paired public examples and messages, and collapsed disabled runs to one actionable diagnostic. Retain at error level."
     },
     {
       "task": "rule-audit/iac/no-dead-environment-input",
