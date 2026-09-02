@@ -111,8 +111,8 @@
       "family": "python",
       "ruleId": "fakes-in-shared-location",
       "state": "complete",
-      "evidence": "Fleet calibration scanned 6,636 tracked Python files across 36 local projects and classified all 60 findings. Forty-eight doubles were reused by multiple tests; 12 were scenario-local or fixture-driven and require repository judgment rather than a blocking default.",
-      "outcome": "Kept path-aware SARJ428 at warning level with lexical class matching, generated-source guards, shared-support exemptions, executable examples, and an exact suppression for deliberately scenario-local doubles. Promotion requires a clean adoption window."
+      "evidence": "Three independent re-reviews classified 60 raw findings and 31 unique class ASTs across the local fleet: 21 had two or more direct test uses, two had one direct use, and eight were fixture- or helper-driven. Reviewers also found legitimate scenario-local doubles and confirmed that per-file analysis cannot prove cross-module reuse. A 772-file installed dependency sample produced zero findings.",
+      "outcome": "Kept SARJ428 for compatibility as an explicitly advisory warning, not an error candidate. Reworded the UI to avoid asserting reuse, added Scripted coverage and a public scenario-local example, excluded non-collected support modules and non-infrastructure roots, and made support-directory recognition relative to a test root. A future repository-aware replacement should require cross-file import or structural-duplication evidence."
     },
     {
       "task": "rule-audit/python/fastapi-explicit-openapi-contract",
