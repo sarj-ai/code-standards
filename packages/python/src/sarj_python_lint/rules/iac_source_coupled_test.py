@@ -31,17 +31,21 @@ class IacSourceCoupledTest(Rule):
     id = "iac-source-coupled-test"
     code = "SARJ412"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Test asserts on raw IaC source text instead of a parsed plan, provider state, or runtime behavior.",
+        summary="Test uses raw Terraform/HCL text as an infrastructure-behavior oracle.",
         rationale=(
             "Substring and regex checks can pass on comments, formatting, or unreachable Terraform configuration "
             "without proving the plan or deployed behavior."
         ),
-        remediation="Parse rendered plan JSON, query the provider, or exercise the deployed runtime contract.",
+        remediation=(
+            "Assert on parsed configuration, Terraform test or rendered plan/state JSON, provider state, or runtime behavior. "
+            "When exact source representation is the contract, suppress the assertion with that rationale."
+        ),
         category=RuleCategory.TESTING,
         limitations=(
             "The rule follows local aliases, path collections, context-managed reads, and common normalization; interprocedural flows remain unreported.",
             "Files produced beneath recognized temporary-directory fixtures are generated outputs and remain unreported.",
-            "The rule remains suppressible for exceptional compatibility boundaries.",
+            "The Python detector currently owns Terraform and HCL suffixes; YAML remains with the general source-coupled rule.",
+            "Golden, packaging, formatter, and compatibility representation contracts require an exact suppression.",
         ),
         examples=(
             RuleExample(
@@ -51,7 +55,10 @@ class IacSourceCoupledTest(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_policy.py",
-                        "def test_policy():\n    plan = json.loads(Path('plan.json').read_text())\n    assert verify(plan) == []\n",
+                        "def test_policy(rendered_plan_json: str):\n"
+                        "    plan = json.loads(rendered_plan_json)\n"
+                        "    changes = plan['resource_changes']\n"
+                        "    assert changes[0]['change']['actions'] == ['create']\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_policy.py"),
@@ -94,9 +101,10 @@ class IacSourceCoupledTest(Rule):
                 line=assertion.lineno,
                 col=assertion.col_offset + 1,
                 code=self.code,
-                severity=Severity.ERROR,
+                severity=Severity.WARNING,
                 message=(
-                    "raw IaC source text is the test oracle; inspect rendered plan JSON, provider state, or runtime behavior instead."
+                    "raw Terraform/HCL text is being used to infer infrastructure behavior; assert on parsed configuration, "
+                    "rendered plan or state, provider state, or runtime behavior instead."
                 ),
             )
             for assertion in assertions

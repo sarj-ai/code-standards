@@ -143,8 +143,8 @@
       "family": "python",
       "ruleId": "iac-source-coupled-test",
       "state": "complete",
-      "evidence": "Two-repository AST scan produced 1 finding; review identified 1 false positive where a Python module __file__ path was tainted as every source suffix. After source-kind refinement the corpora are clean while labeled IaC cases remain detected.",
-      "outcome": "Restricted runtime __file__/inspect.getfile taint to Python-source scans, preserved IaC paths derived from module directories, clarified the behavioral premise, and added regression coverage for direct and indirect runtime source paths."
+      "evidence": "Three independent re-reviews ran 30 focused tests and found three live diagnostics, all in Bulbul scripts/local_secrets/test_iac.py; each used Terraform substrings to infer project, IAM, conditional-binding, or deletion-protection behavior. Adversarial probes found ambiguity for golden and packaged representation contracts, false positives for tmp_path_factory outputs and suffix-changing Path calls, and misses for Path.open and decoded whole-file bytes. Ruff and Pylint have no equivalent oracle-dataflow rule.",
+      "outcome": "Kept the cross-engine-compatible iac-source-coupled-test selector, clarified that Python currently targets Terraform/HCL behavior oracles, and staged SARJ412 as warning because exact representation contracts require judgment. Replaced the opaque plan example with a rendered-plan data assertion, documented exact suppression for golden or compatibility contracts, recognized Path.open, io.open, readlines, and decoded read_bytes flows, recomputed with_suffix and with_name source kinds, and treated tmp_path_factory and tmpdir_factory outputs as ephemeral."
     },
     {
       "task": "rule-audit/python/invalid-pydantic-field-default",
