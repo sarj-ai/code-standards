@@ -94,7 +94,9 @@
       "task": "rule-audit/python/no-repeated-test-body",
       "family": "python",
       "ruleId": "no-repeated-test-body",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews scanned between 7,097 and 7,477 Python files and reviewed 52 to 68 raw findings, with duplicated worktrees collapsing the independent set substantially. Many were useful parameterization prompts, but distinct liveness/readiness, authentication, card-action, privacy, and failure contracts were also reported. Four representative installed-package findings were plausible. Reviewers reproduced terminal-route and aliased pytest.raises match false positives. One hundred twenty-two focused cases pass after repair.",
+      "outcome": "Kept SARJ066, no-repeated-test-body, and its alias; staged it as warning; preserved every differing route literal as contract identity; resolved pytest.raises through import aliases; excluded conftest and methods on non-collected classes; narrowed external unittest inference to TestCase evidence; retained strong structural, fixture, prose, decorator, signature, and verbatim-copy guards; and rewrote UI claims from mandatory one-behavior parameterization to conditional consolidation or correction advice."
     },
     {
       "task": "rule-audit/python/no-copied-inherited-docstring",

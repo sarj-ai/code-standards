@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
 from tests.illustrative_examples import illustrative_examples
 
@@ -42,9 +43,13 @@ def test_editor_can_delete():
 # Path gating and generated sources.                                           #
 
 
-@pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/thing.py", "conftest.py"])
+@pytest.mark.parametrize("path", ["test_x.py", "x_test.py", "a/tests/thing.py"])
 def test_fires_in_test_paths(path: str):
     assert len(_check(_COPY_PASTED_PAIR, path)) == 1
+
+
+def test_conftest_is_not_a_collected_test_module():
+    assert _check(_COPY_PASTED_PAIR, "tests/conftest.py") == []
 
 
 @pytest.mark.parametrize("path", ["src/service.py", "a/testing/thing.py", "app/models.py"])
@@ -69,6 +74,7 @@ def test_flags_the_copy_and_not_the_original():
     assert diag.line == 8
     assert diag.col == 1
     assert diag.code == "SARJ066"
+    assert diag.severity is Severity.WARNING
 
 
 def test_message_is_checkout_root_independent():
@@ -183,6 +189,49 @@ def test_unknown_environment():
     with pytest.raises(ValueError, match="unknown environment"):
         parse_port(value)
 """
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    ("import_line", "raises_name"),
+    [
+        ("import pytest as pt", "pt.raises"),
+        ("from pytest import raises", "raises"),
+        ("from pytest import raises as expect_error", "expect_error"),
+    ],
+)
+def test_preserves_aliased_pytest_raises_match(import_line: str, raises_name: str):
+    src = f"""{import_line}
+
+def test_alpha():
+    value = load("a")
+    with {raises_name}(ValueError, match="alpha message"):
+        parse(value)
+
+
+def test_beta():
+    value = load("b")
+    with {raises_name}(ValueError, match="beta message"):
+        parse(value)
+"""
+
+    assert _check(src) == []
+
+
+def test_distinct_health_routes_are_separate_operational_contracts():
+    src = """
+def test_liveness_returns_healthy(client):
+    response = client.get("/health/liveness")
+    payload = response.json()
+    assert payload == {"healthy": True}
+
+
+def test_readiness_returns_healthy(client):
+    response = client.get("/health/readiness")
+    payload = response.json()
+    assert payload == {"healthy": True}
+"""
+
     assert _check(src) == []
 
 
@@ -401,6 +450,40 @@ class TestDeletion(DeletionFixtures):
         assert allowed is True
 """
     assert len(_check(src)) == 1
+
+
+def test_external_tests_base_is_not_assumed_to_be_unittest():
+    src = """
+class TestParser(Tests):
+    def test_one(self):
+        value = load(1)
+        result = parse(value)
+        assert result
+
+    def test_two(self):
+        value = load(2)
+        result = parse(value)
+        assert result
+"""
+
+    assert len(_check(src)) == 1
+
+
+def test_methods_on_non_test_class_are_not_pytest_items():
+    src = """
+class ParserExamples:
+    def test_one(self):
+        value = load(1)
+        result = parse(value)
+        assert result
+
+    def test_two(self):
+        value = load(2)
+        result = parse(value)
+        assert result
+"""
+
+    assert _check(src) == []
 
 
 def test_a_nested_class_inherits_the_test_case_exemption():
@@ -647,7 +730,7 @@ async def test_get_async():
     assert _check(src) == []
 
 
-def test_two_async_tests_for_terminal_route_cases_still_fire():
+def test_two_async_tests_for_terminal_routes_are_distinct_contracts():
     src = """
 async def test_get_a():
     client = make_client()
@@ -660,7 +743,7 @@ async def test_get_b():
     response = client.get("/b")
     assert response.ok
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_tests_taking_different_fixtures_are_exempt():
@@ -679,7 +762,7 @@ def test_two(async_client):
     assert _check(src) == []
 
 
-def test_a_fixture_reading_terminal_route_cases_still_fires():
+def test_a_fixture_reading_terminal_routes_keeps_distinct_contracts():
     # The parameter names are identity, so declaring the same fixture and using
     # it identically is what re-groups the two.
     src = """
@@ -694,7 +777,7 @@ def test_two(client):
     body = response.json()
     assert body == {}
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_a_method_taking_an_extra_fixture_is_a_different_test():

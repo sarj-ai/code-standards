@@ -18,10 +18,12 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import standalone_comments, trailing_comments
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -31,7 +33,7 @@ if TYPE_CHECKING:
 
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
-_TEST_PREFIX = "test_"
+_TEST_PREFIX = "test"
 
 # Collapse case literals so differing inputs do not hide duplicated test structure.
 _LITERAL_PLACEHOLDER = "\x00sarj-literal"
@@ -49,7 +51,7 @@ _MIN_EMBEDDED_SOURCE_GROUP = 5
 _MIN_REPEATED_SOURCE_OPERATION = 3
 
 # Pytest cannot parametrize unittest-style classes, including project-specific TestCase bases.
-_UNITTEST_BASE_RE = re.compile(r"Test(Case|s)?$")
+_UNITTEST_BASE_RE = re.compile(r"TestCase$")
 
 # `self.<name>` calls that only exist on a `unittest.TestCase`.
 _UNITTEST_SELF_ATTRS = frozenset({"subTest", "skipTest", "addCleanup", "addTypeEqualityFunc", "fail"})
@@ -72,11 +74,11 @@ _LONG_SINGLE_LINE_FIXTURE_MIN_WORDS = 10
 # Two-test coincidences need corroborating names; these words are too generic
 # to establish that both tests exercise one behavior.
 _WEAK_TEST_NAME_TOKENS = frozenset({"case", "key", "test", "value"})
-_GENERIC_ORDINAL_TEST_RE = re.compile(r"test_(?:[a-z]|first|one|second|three|third|two)$")
+_GENERIC_ORDINAL_TEST_RE = re.compile(r"test_?(?:[a-z]|first|one|second|three|third|two)$")
 
 _PARAMETRIZE_ADVICE = (
-    "Collapse them into one `@pytest.mark.parametrize(...)`, passing `ids=` so each scenario "
-    "keeps the name it has today (see SARJ042)."
+    "Consider one `@pytest.mark.parametrize(...)` with descriptive `ids=` when these are cases of one contract "
+    "(see SARJ042); otherwise retain and document the distinct contracts."
 )
 
 _IDENTICAL_ADVICE = (
@@ -100,9 +102,12 @@ class NoRepeatedTestBody(Rule):
     id: str = "no-repeated-test-body"
     code: str = "SARJ066"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Repeated sibling test bodies must become one named parameterized case table.",
+        summary="Substantial sibling pytest tests repeat the same structural body.",
         rationale="Copy-pasted tests drift independently and obscure the input dimension that changes behavior.",
-        remediation="Collapse the copies into `pytest.mark.parametrize` cases with descriptive `ids`.",
+        remediation=(
+            "Parameterize literal-varying copies with descriptive `ids` when they exercise one contract; correct or "
+            "remove verbatim copies that never received their intended edit."
+        ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         aliases=("duplicate-test-body",),
@@ -120,7 +125,7 @@ class NoRepeatedTestBody(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_permissions.py",
-                        'def test_admin_can_delete():\n    user = make_user("admin")\n    allowed = can_delete(user)\n    assert allowed\n\ndef test_editor_can_delete():\n    user = make_user("editor")\n    allowed = can_delete(user)\n    assert allowed\n',
+                        'def test_rejects_blank_role():\n    role = parse_role("")\n    result = validate(role)\n    assert result.invalid\n\ndef test_rejects_space_role():\n    role = parse_role(" ")\n    result = validate(role)\n    assert result.invalid\n\ndef test_rejects_tab_role():\n    role = parse_role("\\t")\n    result = validate(role)\n    assert result.invalid\n',
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_permissions.py"),
@@ -177,7 +182,7 @@ class NoRepeatedTestBody(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+        if not is_test_path(path) or path.name == "conftest.py" or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -197,6 +202,7 @@ class NoRepeatedTestBody(Rule):
                 col=group[1].node.col_offset + 1,
                 code=self.code,
                 message=_message(group),
+                severity=Severity.WARNING,
             )
             for group in groups
         ]
@@ -229,11 +235,13 @@ class _Outline:
 
 
 class _Shape:
-    def __init__(self, node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[int, str]) -> None:
+    def __init__(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef, comments: dict[int, str], imports: ImportIndex
+    ) -> None:
         super().__init__()
         self.node: ast.FunctionDef | ast.AsyncFunctionDef = node
         body = _body_without_docstring(node)
-        canonical = _Canonicalizer(_bound_names(body))
+        canonical = _Canonicalizer(_bound_names(body), imports)
         self.body: str = "".join(canonical.render(stmt) for stmt in body)
         self.literals: tuple[object, ...] = tuple(canonical.literals)
         self.embedded_source_checker: bool = _is_embedded_source_checker(node)
@@ -244,9 +252,10 @@ class _Shape:
 
 
 class _Canonicalizer(ast.NodeVisitor):
-    def __init__(self, bound: frozenset[str]) -> None:
+    def __init__(self, bound: frozenset[str], imports: ImportIndex) -> None:
         super().__init__()
         self._bound: frozenset[str] = bound
+        self._imports: ImportIndex = imports
         self._aliases: dict[str, str] = {}
         self._preserve_literals: int = 0
         self.literals: list[object] = []
@@ -278,7 +287,7 @@ class _Canonicalizer(ast.NodeVisitor):
         self.visit(node.func)
         for argument in node.args:
             self.visit(argument)
-        preserves_match = _is_pytest_raises(node.func)
+        preserves_match = _is_pytest_raises(node.func, self._imports)
         for keyword in node.keywords:
             if preserves_match and keyword.arg == "match":
                 self._visit_with_literal_values(keyword.value)
@@ -324,16 +333,12 @@ class _Canonicalizer(ast.NodeVisitor):
             self._preserve_literals -= 1
 
 
-def _is_pytest_raises(node: ast.expr) -> bool:
-    return (
-        isinstance(node, ast.Attribute)
-        and node.attr == "raises"
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "pytest"
-    )
+def _is_pytest_raises(node: ast.expr, imports: ImportIndex) -> bool:
+    return imports.resolves(node, sources=frozenset({"pytest"}), symbol="raises")
 
 
 def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
+    imports = ImportIndex.from_tree(tree)
     test_functions = _test_functions(tree)
     positions = {
         id(node): position
@@ -358,7 +363,7 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
     for bucket in buckets:
         groups: dict[tuple[str, tuple[str, ...]], list[_Shape]] = {}
         for outline in bucket:
-            shape = _Shape(outline.node, comments)
+            shape = _Shape(outline.node, comments, imports)
             groups.setdefault(shape.key, []).append(shape)
         for members in groups.values():
             candidates = (
@@ -446,20 +451,9 @@ def _is_fixture_document(value: object) -> bool:
 def _erases_contract_identity(members: list[_Shape]) -> bool:
     columns: list[tuple[object, ...]] = list(zip(*(member.literals for member in members), strict=True))
     return any(
-        len(set(column)) > 1
-        and all(isinstance(value, str) and value.startswith("/") for value in column)
-        and not _paths_differ_only_by_terminal_action(column)
+        len(set(column)) > 1 and all(isinstance(value, str) and value.startswith("/") for value in column)
         for column in columns
     )
-
-
-def _paths_differ_only_by_terminal_action(paths: tuple[object, ...]) -> bool:
-    segments = [str(path).strip("/").split("/") for path in paths]
-    if not segments or len({len(parts) for parts in segments}) != 1:
-        return False
-    width = len(segments[0])
-    differing = [index for index in range(width) if len({parts[index] for parts in segments}) > 1]
-    return differing == [width - 1]
 
 
 def _has_enough_duplicate_evidence(members: list[_Shape]) -> bool:
@@ -474,26 +468,23 @@ def _has_enough_duplicate_evidence(members: list[_Shape]) -> bool:
 
 
 def _test_name_tokens(name: str) -> set[str]:
-    return {token for token in name.removeprefix(_TEST_PREFIX).split("_") if token}
+    suffix = name[4:].lstrip("_") if name.startswith(_TEST_PREFIX) else name
+    return {token for token in suffix.split("_") if token}
 
 
 def _test_functions(tree: ast.Module) -> list[_TestFunction]:
     classes = _class_index(tree)
     found: list[_TestFunction] = []
-    pending: list[tuple[str, bool, ast.Module | ast.ClassDef]] = [("", False, tree)]
-    while pending:
-        container, in_test_case, node = pending.pop()
-        for stmt in node.body:
-            if isinstance(stmt, ast.ClassDef):
-                pending.append(
-                    (
-                        f"{container}{stmt.name}.",
-                        in_test_case or _is_test_case_class(stmt, classes, frozenset()),
-                        stmt,
-                    )
-                )
-            elif isinstance(stmt, _FUNC_NODES) and stmt.name.startswith(_TEST_PREFIX):
-                found.append(_TestFunction(container, in_test_case, stmt))
+    for statement in tree.body:
+        if isinstance(statement, _FUNC_NODES) and statement.name.startswith(_TEST_PREFIX):
+            found.append(_TestFunction(container="", in_test_case=False, node=statement))
+        elif isinstance(statement, ast.ClassDef) and statement.name.startswith("Test"):
+            in_test_case = _is_test_case_class(statement, classes, frozenset())
+            found.extend(
+                _TestFunction(container=f"{statement.name}.", in_test_case=in_test_case, node=member)
+                for member in statement.body
+                if isinstance(member, _FUNC_NODES) and member.name.startswith(_TEST_PREFIX)
+            )
     return found
 
 
@@ -688,8 +679,8 @@ def _message(group: list[_Shape]) -> str:
         )
     return (
         f"`{duplicate.node.name}`{also} repeats the body of {origin} differing only in "
-        f"{_render_differences(differences)} — two tests, one behaviour, and every future edit "
-        f"has to be made in both. {_PARAMETRIZE_ADVICE}"
+        f"{_render_differences(differences)} — the same test structure now has to be maintained in multiple places. "
+        f"{_PARAMETRIZE_ADVICE}"
     )
 
 
