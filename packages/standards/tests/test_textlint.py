@@ -783,6 +783,7 @@ def test_workflow_embedded_program_reports_once_per_run_scalar_at_run_line(
     findings = [finding for finding in textlint.check_paths([str(path)], root=tmp_path) if finding.code == "SARJ310"]
 
     assert [(finding.line, finding.code) for finding in findings] == [(5, "SARJ310")]
+    assert "typed Python, TypeScript, or type-checked JavaScript entrypoint" in findings[0].message
 
 
 def test_workflow_embedded_program_deduplicates_yaml_aliases(tmp_path: Path) -> None:
@@ -1071,7 +1072,7 @@ def test_large_shell_program_uses_a_fixed_substantive_line_boundary(
     assert bool(findings) is expected
     if findings:
         assert findings[0].line == 4
-        assert "fully annotated Python" in findings[0].message
+        assert "repository's typed application language" in findings[0].message
 
 
 def test_large_shell_program_excludes_heredoc_bodies_and_supports_extensionless_shebangs(tmp_path: Path) -> None:

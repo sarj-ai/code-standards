@@ -710,9 +710,11 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "should select events, permissions, and stable commands—not implement programs."
             ),
             remediation=(
-                "Move the control flow or inline interpreter source into a tested repository-owned script, Make target, "
-                "or package command. Invoke that entrypoint from an existing shared workflow when it already owns the "
-                "component; add a distinct workflow only for a genuinely distinct trigger or delivery boundary."
+                "Move the control flow or inline source into a tested repository-owned entrypoint. Prefer the "
+                "repository's established typed application language: fully annotated Python, TypeScript, or "
+                "type-checked JavaScript. Keep shell, Make targets, and package commands as thin invocation adapters. "
+                "Reuse an existing shared workflow when it already owns the component; add a workflow only for a "
+                "distinct trigger or delivery boundary."
             ),
             category=RuleCategory.ARCHITECTURE,
             languages=frozenset({Language.CONFIG}),
@@ -899,8 +901,9 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "languages, making orchestration and domain logic harder to evolve safely."
             ),
             remediation=(
-                "Move substantive logic into a fully annotated Python CLI or module covered by Ruff, Sarj Python, and "
-                "strict BasedPyright; retain only a thin shell adapter when the platform requires one."
+                "Move substantive logic into the repository's established typed application language: fully annotated "
+                "Python, TypeScript, or type-checked JavaScript, covered by its formatter, linter, type checker, and "
+                "tests. Retain only a thin shell adapter when the platform requires one."
             ),
             category=RuleCategory.ARCHITECTURE,
             languages=frozenset({Language.SHELL}),
@@ -908,7 +911,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             examples=(
                 _public_example(
                     example_id="large-shell-program",
-                    title="A large shell program moves typed logic to Python",
+                    title="A large shell program moves logic to a typed application language",
                     outcome=ExpectedOutcome.MATCH,
                     path="scripts/release.sh",
                     source="#!/bin/sh\n" + "run_step\n" * _LARGE_SHELL_SUBSTANTIVE_LINES,
@@ -1048,8 +1051,8 @@ def _large_shell_program_findings(path: Path, source: str) -> list[Finding]:
                     path,
                     first_substantive,
                     "SARJ311",
-                    "Large shell program — move substantive logic to a fully annotated Python CLI/module covered by "
-                    "Ruff, Sarj Python, and strict BasedPyright; keep only a thin shell adapter.",
+                    "Large shell program — move substantive logic to the repository's typed application language and "
+                    "keep only a thin shell adapter.",
                 )
             ]
     return []
@@ -1184,7 +1187,8 @@ def _workflow_embedded_program_findings(
                     path,
                     step.line,
                     "SARJ310",
-                    "Workflow run: embeds procedural logic — move it into a locally tested repository entrypoint and keep GitHub Actions to orchestration.",
+                    "Workflow run: embeds procedural logic — move it into a tested typed Python, TypeScript, or "
+                    "type-checked JavaScript entrypoint and keep GitHub Actions declarative.",
                 )
             )
     return findings
