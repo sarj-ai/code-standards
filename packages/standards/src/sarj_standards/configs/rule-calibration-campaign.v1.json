@@ -450,7 +450,9 @@
       "task": "rule-audit/python/prefer-library-fake",
       "family": "python",
       "ruleId": "prefer-library-fake",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 178 focused cases. Separate live scans covered 7,119 tracked Python files across 85 repositories and 7,276 files across 86 repositories, both with zero findings or scanner errors; a normalized 462-file Pygments, packaging, and pytest corpus also produced zero findings. Seeded adversarial cases exposed and then verified fixes for application ports, failure scripts, call recorders, generated doubles, aliased protocols, import provenance, clocks, vendor HTTP clients, and unsupported fidelity claims.",
+      "outcome": "Retained the compatible prefer-library-fake selector because Python migration aliases are not accepted as runtime selectors, but rewrote the UI around maintained service doubles and staged SARJ059 as a warning. Most service families now require multiple recognized protocol methods plus non-bookkeeping state produced by one protocol operation and read by another; LLM and BigQuery require distinctive raw envelopes. Removed clock, SendGrid, Mailgun, and Bedrock misclassifications; made maintained-tool imports unconditional and service-specific; excluded generated code; resolved aliased extension bases; softened fidelity claims; and replaced the opaque public example with a real boto3 client exercised under Moto."
     },
     {
       "task": "rule-audit/python/prefer-match-assert-never",
