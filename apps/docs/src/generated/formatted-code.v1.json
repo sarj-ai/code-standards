@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4041714f387aaa8bc74f72dcdfc16f43613c813c19091e6ad39842edbcdd403c",
+  "catalogSha256": "c39f4d8a19a7874ebf8fb739e66f3fac487744168b7fe82fb2777fa99cee82ad",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6007,7 +6007,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "def configure(value):\n    match value:\n        case LocalSettings():\n            return build(value)\n        case RemoteSettings():\n            return build(value)\n"
+              "source": "def status(value):\n    match value:\n        case \"queued\":\n            return \"active\"\n        case \"running\":\n            return \"active\"\n"
             }
           ],
           "fixedFiles": [],
@@ -6022,7 +6022,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "def configure(value):\n    match value:\n        case LocalSettings() | RemoteSettings():\n            return build(value)\n"
+              "source": "def status(value):\n    match value:\n        case \"queued\" | \"running\":\n            return \"active\"\n"
             }
           ],
           "fixedFiles": [],
@@ -6037,6 +6037,21 @@
     },
     "python:prefer-self-documenting-constant": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/retry.py",
+              "source": "# Retry HTTP responses 408 and 429.\nRETRYABLE_HTTP_STATUS_CODES = {408, 429}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry.py",
+          "id": "bare-http-status-collection",
+          "outcome": "reject",
+          "scenarioId": "http-status",
+          "title": "HTTP status collection uses bare integers"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -6056,8 +6071,23 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/retry.py",
+              "source": "from http import HTTPStatus\n\nRETRYABLE_HTTP_STATUS_CODES = {\n    HTTPStatus.REQUEST_TIMEOUT,\n    HTTPStatus.TOO_MANY_REQUESTS,\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry.py",
+          "id": "named-http-status-collection",
+          "outcome": "accept",
+          "scenarioId": "http-status",
+          "title": "HTTP status members carry protocol meaning"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/settings.py",
-              "source": "# Request deadline in seconds.\nREQUEST_DEADLINE_SECONDS = 10\n"
+              "source": "# The upstream gateway closes idle requests first.\nREQUEST_DEADLINE_SECONDS = 10\n"
             }
           ],
           "fixedFiles": [],

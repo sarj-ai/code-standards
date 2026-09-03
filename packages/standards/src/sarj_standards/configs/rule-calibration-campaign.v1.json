@@ -514,7 +514,9 @@
       "task": "rule-audit/python/prefer-self-documenting-constant",
       "family": "python",
       "ruleId": "prefer-self-documenting-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 105 focused cases and scanned up to 7,325 tracked Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced two broad-fleet findings, both useful, and zero popular-corpus findings, but adversarial probes reproduced invalid HTTPStatus advice for non-HTTP and vendor codes, shadowed and mutated frozenset constructors, aliased enum members, bare m interpreted as minutes, unrelated unit clauses, and duplicate SARJ014 duration diagnostics. Post-change validation ran 472 combined SARJ097, SARJ014, and precedence cases. The broad fleet retained one manually confirmed packed-ID byte-size warning, Bulbul/Automations/Saqi produced zero findings, the popular corpus remained clean, and runtime stayed within normal variance of the original scan.",
+      "outcome": "Retained the compatible prefer-self-documenting-constant umbrella selector, expanded its public UI to show both unit and HTTP-status cases, and staged SARJ097 as a maintainability warning. Unit inference now binds context-only phrases to the declaration or generic value subject, respects punctuation, conjunction, dash, and multiline clause boundaries, rejects conflicting unit-shaped names, and does not treat bare m as minutes. HTTP guidance requires explicit HTTP evidence, standard HTTPStatus members, and a provenance-safe frozenset constructor; exact-int boundaries receive .value guidance. Generated/comment scans are gated behind syntactic candidates, enum aliases and builtins mutation are respected, and same-location SARJ014 findings take precedence while SARJ097 remains available alone, in excluded contexts, or after a specific suppression."
     },
     {
       "task": "rule-audit/python/prefer-self-type-annotation",
