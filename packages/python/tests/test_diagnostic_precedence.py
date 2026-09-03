@@ -86,12 +86,6 @@ def test_owner_precedence_never_crosses_docstrings(tmp_path: Path) -> None:
     assert [finding.code for finding in diagnostics] == ["SARJ086", "SARJ092"]
 
 
-def test_closed_local_union_finding_suppresses_generic_type_dispatch() -> None:
-    diagnostics = [_diagnostic("SARJ080"), _diagnostic("SARJ003")]
-
-    assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ003"]
-
-
 def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
     source.write_text(

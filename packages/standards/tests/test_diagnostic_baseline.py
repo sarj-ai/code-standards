@@ -72,18 +72,29 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
 
 
 def test_mocked_terraform_test_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
-    source = tmp_path / "routing.tftest.json"
-    source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
+    test_source = """override_resource {
+  target = aws_s3_bucket.main
+  values = { arn = "fixture-arn" }
+}
+run "routing" {
+  assert {
+    condition = aws_s3_bucket.main.arn == "fixture-arn"
+    error_message = "ARN mismatch"
+  }
+}
+"""
+    source = tmp_path / "routing.tftest.hcl"
+    source.write_text(test_source, encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
 
-    new_source = tmp_path / "new-routing.tftest.json"
-    new_source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
+    new_source = tmp_path / "new-routing.tftest.hcl"
+    new_source.write_text(test_source, encoding="utf-8")
     policy = api.Standards(tmp_path).analyze([str(source), str(new_source)])
 
-    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.json"]
+    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.hcl"]
 
 
 def test_missing_diagnostic_baseline_is_an_execution_failure(tmp_path: Path) -> None:

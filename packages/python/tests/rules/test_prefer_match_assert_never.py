@@ -333,7 +333,7 @@ def normalize(payload):
 
 
 def test_allows_imported_class_pattern_arms():
-    # Cannot prove an imported class union is closed — SARJ003's local gate.
+    # Imported classes alone do not prove that the subject has a closed union.
     src = """
 from events import Created, Deleted
 

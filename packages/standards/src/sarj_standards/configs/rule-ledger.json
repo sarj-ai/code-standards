@@ -46,7 +46,6 @@
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
-      "no-isinstance-union-chain",
       "no-long-comment",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
@@ -265,7 +264,6 @@
   "codes": {
     "python": [
       "SARJ002",
-      "SARJ003",
       "SARJ006",
       "SARJ008",
       "SARJ009",
@@ -567,6 +565,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ001 suppressions and baseline keys; syntax cannot prove that concurrent iterations preserve ordering, rate limits, resource safety, or transaction semantics."
+    },
+    {
+      "id": "SARJ003",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ003 suppressions and baseline keys. The rule incorrectly required match syntax even though type checkers prove exhaustive isinstance dispatch with assert_never; use SARJ080 only when optional match-style guidance is desired."
     },
     {
       "id": "SARJ007",
@@ -896,6 +901,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Removed in sarj-python-lint 0.37.0. Delete the `sarj-no-implicit-attribute-access` pre-commit hook; there is no replacement."
+    },
+    {
+      "id": "no-isinstance-union-chain",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. Local class declarations do not prove a closed union, and match is not required for type-checker exhaustiveness; use assert_never with either dispatch syntax."
     },
     {
       "id": "no-limit-offset",

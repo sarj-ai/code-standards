@@ -45,7 +45,6 @@ from sarj_python_lint.rules.no_generic_single_export_module import NoGenericSing
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
 )
-from sarj_python_lint.rules.no_isinstance_union_chain import NoIsinstanceUnionChain
 from sarj_python_lint.rules.no_long_comment import NoLongComment
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -172,7 +171,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferClassRow.id: PreferClassRow,
         PreferCollectionComprehension.id: PreferCollectionComprehension,
         PreferStrEnum.id: PreferStrEnum,
-        NoIsinstanceUnionChain.id: NoIsinstanceUnionChain,
         NoOffsetPagination.id: NoOffsetPagination,
         PreferNamedtupleOverTupleReturn.id: PreferNamedtupleOverTupleReturn,
         NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,

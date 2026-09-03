@@ -273,12 +273,6 @@
       "outcome": "Kept the precise rule name and its strong settings-provider plus first-party-construction gates. Expanded optional-parameter detection from keyword-only arguments to positional-only and positional-or-keyword defaults, and recognized `if option is None: self.option = settings.VALUE` without treating assignments to unrelated fields as the option's fallback."
     },
     {
-      "task": "rule-audit/python/no-isinstance-union-chain",
-      "family": "python",
-      "ruleId": "no-isinstance-union-chain",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/python/no-long-comment",
       "family": "python",
       "ruleId": "no-long-comment",
