@@ -426,7 +426,9 @@
       "task": "rule-audit/python/prefer-constant-time-secret-compare",
       "family": "python",
       "ruleId": "prefer-constant-time-secret-compare",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 71 focused cases and a stable scan of 7,098 tracked Python files across 85 repositories. The final detector reported six high-confidence authentication gates with zero observed false positives or scanner errors: three Bulbul metrics bearer-token gates, two byte-identical demo webhook-token gates, and one Summer X-Secret-Key gate. A normalized 462-file popular-source sample plus 164 detect-secrets and 72 pre-commit-hooks files produced zero findings, eliminating the original Pygments lexer, cache-hash, secret-object, and mock-client noise.",
+      "outcome": "Kept the accurate prefer-constant-time-secret-compare name and staged SARJ011 as a warning. Narrowed ordinary equality findings to a proven cross-operand pair of externally supplied authenticator and configured or stored secret, with same-scope position-aware aliases, neutral-rebinding kills, request-shaped mapping provenance, proven os imports, dominating if-walrus bindings, camelCase roles, password-specific remediation, exact public sentinels, and generated/test exclusions. Chained comparisons and ambiguous token, hash, model, protocol-marker, and equality-method shapes remain excluded; the public UI now demonstrates compatible ASCII byte operands for hmac.compare_digest."
     },
     {
       "task": "rule-audit/python/prefer-fstring-over-concat",
