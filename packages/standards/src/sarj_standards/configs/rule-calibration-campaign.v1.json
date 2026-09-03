@@ -159,8 +159,8 @@
       "family": "python",
       "ruleId": "repeated-kwarg-heavy-call-in-test",
       "state": "complete",
-      "evidence": "Two-repository AST calibration: the prior nine-keyword threshold found 3/3 valid cases; seven-or-more found 12/12 valid cases. Six-or-more added calls where every argument was the asserted contract, establishing the retained boundary.",
-      "outcome": "Renamed the rule around its actual call-level signal, lowered the threshold from nine to seven explicit keywords, removed the local-helper loophole, and added explicit suppression guidance for all-arguments-under-test cases."
+      "evidence": "Three fresh independent reviews ran 53 focused tests and scanned up to 7,097 Python files. A primary-checkout scan produced 53 diagnostics across 14 files: many were useful repeated-construction clusters, while explicit expected records and full-contract calls confirmed the signal remains judgment-heavy. All reviewers reproduced false positives for disjoint keyword sets and generated tests; targeted probes also exposed pytest fixtures named test_*, import-resolved SimpleNamespace records, and unittest.mock.call expectations.",
+      "outcome": "Kept repeated-kwarg-heavy-call-in-test and its compatibility alias, made SARJ045 explicitly warning-only, and required at least seven shared keyword names between calls to the same syntactic callee. Excluded generated files, exact pytest fixtures, import-resolved types.SimpleNamespace and unittest.mock.call data, and cross-class self/cls collisions. Reworked the public UI pair around incidental order setup, added parametrized-case remediation, and made diagnostics quantify keyword overlap and occurrences. Post-change calibration reported 47 warnings across 2,971 primary-checkout files, removing the demonstrated noise while preserving the reviewed high-value clusters."
     },
     {
       "task": "rule-audit/python/mock-without-spec",
