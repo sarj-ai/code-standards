@@ -16,9 +16,11 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children, walk
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -27,7 +29,7 @@ if TYPE_CHECKING:
 
 
 #: Per-variable accumulator containing location and literals grouped by comparison operator.
-type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str]]
+type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str], bool]
 
 _MIN_CAST_ARGS = 2
 _MIN_TYPE_ALIAS_ARGS = 2
@@ -140,6 +142,7 @@ _OPEN_DOMAIN_SUFFIXES = ("_encoding", "_ext", "_protocol", "_username")
 
 #: A "short lowercase token" — the shape enum member values take.
 _LOWER_TOKEN_RE = re.compile(r"^[a-z][a-z0-9_-]{0,30}$")
+_STRING_MEMBERSHIP_RE = re.compile(r"\b(?:not\s+)?in\s*[({[]\s*[\"']")
 
 #: The stdlib `open()` mode vocabulary: 1-3 characters drawn from `rwxab+t`.
 _FILE_MODE_RE = re.compile(r"[rwxabt+]{1,3}")
@@ -183,9 +186,6 @@ _OWNED_ROOTS = frozenset({"self", "cls"})
 #: Depth at which an attribute chain has left the object the module owns:
 #: `self._config_wrapper.extra` reads a collaborator's field, not `self`'s.
 _FOREIGN_CHAIN_DEPTH = 2
-_BUILDER_PREFIXES = ("build_", "make_")
-_MIN_COPIED_LITERAL_DOMAINS = 2
-_MIN_LITERAL_DOMAIN_VALUES = 3
 _ENUM_BASE_NAMES = frozenset({"Enum", "Flag", "IntEnum", "IntFlag", "ReprEnum", "StrEnum"})
 _ENUM_BASE_SUFFIXES = ("Enum", "Flag")
 
@@ -195,14 +195,14 @@ class PreferStrEnum(Rule):
     id: str = "prefer-str-enum"
     code: str = "SARJ006"
     documentation = RuleDocumentation(
-        summary="Represent corroborated closed string domains with `StrEnum` or a named `Literal` alias.",
+        summary="Prefer `StrEnum` for application-owned string domains with explicit closed-set evidence.",
         rationale="A named closed domain lets type checking and review catch invalid values and incomplete handling.",
-        remediation="Define a `StrEnum` for model fields, or reuse one named `Literal` alias across transparent builders.",
-        category=RuleCategory.CORRECTNESS,
+        remediation="Define a `StrEnum`, or a named `Literal` alias when enum runtime behavior is unnecessary.",
+        category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The rule requires corroborating choice collections, comparison clusters, or repeated literal domains.",
-            "Tests, generated code, external vocabularies, and open-ended name domains receive conservative exemptions.",
+            "The rule requires a sibling choice collection or dispatch that explicitly rejects unlisted strings.",
+            "Generated code, external vocabularies, open-ended name domains, and test-only comparison clusters are excluded.",
         ),
         examples=(
             RuleExample(
@@ -218,6 +218,7 @@ class PreferStrEnum(Rule):
                 focus_path=PurePosixPath("app/order.py"),
                 expected_count=1,
                 public=True,
+                scenario="choice-field",
             ),
             RuleExample(
                 example_id="string-enum-field",
@@ -232,6 +233,49 @@ class PreferStrEnum(Rule):
                 focus_path=PurePosixPath("app/order.py"),
                 expected_count=0,
                 public=True,
+                scenario="choice-field",
+            ),
+            RuleExample(
+                example_id="rejecting-string-dispatch",
+                title="Dispatch rejects every unlisted string",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        "def render(kind: str) -> str:\n"
+                        "    match kind:\n"
+                        '        case "text":\n'
+                        '            return "Text"\n'
+                        '        case "image":\n'
+                        '            return "Image"\n'
+                        "        case _:\n"
+                        '            raise ValueError("unsupported kind")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=1,
+                public=True,
+                scenario="rejecting-dispatch",
+            ),
+            RuleExample(
+                example_id="open-string-dispatch",
+                title="Dispatch forwards unlisted strings",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        "def render(kind: str) -> str:\n"
+                        '    if kind == "text":\n'
+                        '        return "Text"\n'
+                        '    if kind == "image":\n'
+                        '        return "Image"\n'
+                        "    return render_plugin(kind)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=0,
+                public=True,
+                scenario="rejecting-dispatch",
             ),
         ),
     )
@@ -248,12 +292,17 @@ class PreferStrEnum(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        class_choice_signal = "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES)
+        imports = ImportIndex.from_tree(tree) if class_choice_signal or "assert_never" in source else None
         test_path = is_test_path(path)
         check_clusters = not test_path
         literal_aliases = _module_literal_aliases(tree)
         alias_names = literal_aliases.names
         alias_valuesets = literal_aliases.value_sets
         raw_string_aliases = _module_raw_string_aliases(tree)
+        choice_string_aliases: frozenset[str] = (
+            _module_proven_raw_string_aliases(tree, imports) if imports is not None else frozenset()
+        )
         literal_funcs = _literal_returning_functions(tree)
         module_func_names = frozenset(
             statement.name for statement in tree.body if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -265,6 +314,7 @@ class PreferStrEnum(Rule):
         all_clusters: list[tuple[dict[str, _ClusterEntry], frozenset[str], frozenset[str] | None]] = []
         cluster_opacity: dict[int, frozenset[str]] = {}
         cluster_owned_attributes: dict[int, frozenset[str] | None] = {}
+        cluster_closed_nodes: dict[int, frozenset[int]] = {}
         comprehension_opacity: dict[int, frozenset[str]] = {}
         stack: list[tuple[ast.AST, dict[str, _ClusterEntry] | None]] = [(tree, None)]
         while stack:
@@ -305,6 +355,7 @@ class PreferStrEnum(Rule):
                         all_clusters.append((child_active, opaque, owned_attributes))
                         cluster_opacity[id(child_active)] = opaque
                         cluster_owned_attributes[id(child_active)] = owned_attributes
+                        cluster_closed_nodes[id(child_active)] = _closed_domain_node_ids(node, imports)
                     else:
                         child_active = None
                 case ast.Lambda():
@@ -335,13 +386,20 @@ class PreferStrEnum(Rule):
                         all_clusters.append((child_active, frozenset(opaque), owned_attributes))
                         cluster_opacity[id(child_active)] = frozenset(opaque)
                         cluster_owned_attributes[id(child_active)] = owned_attributes
+                        cluster_closed_nodes[id(child_active)] = frozenset()
                 case _:
                     child_active = active
                     if active is not None:
                         if isinstance(node, ast.Compare):
-                            _accumulate_compare(active, node)
-                        elif isinstance(node, ast.Match):
-                            _accumulate_match(active, node)
+                            _accumulate_compare(
+                                active,
+                                node,
+                                closed=id(node) in cluster_closed_nodes.get(id(active), frozenset()),
+                            )
+                        elif isinstance(node, ast.Match) and id(node) in cluster_closed_nodes.get(
+                            id(active), frozenset()
+                        ):
+                            _accumulate_match(active, node, imports)
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 outer_expressions = {
                     id(expression)
@@ -357,11 +415,15 @@ class PreferStrEnum(Rule):
             else:
                 stack.extend((child, child_active) for child in children(node))
 
-        class_diags = [
-            diag
-            for cls in class_nodes
-            for diag in self._class_field_diags(path, cls, raw_string_aliases, enum_like_classes)
-        ]
+        class_diags = (
+            [
+                diag
+                for cls in class_nodes
+                for diag in self._class_field_diags(path, cls, choice_string_aliases, enum_like_classes, imports)
+            ]
+            if imports is not None
+            else []
+        )
         choice_field_names = {
             diag.message.split("`", maxsplit=2)[1].split(":", maxsplit=1)[0]
             for diag in class_diags
@@ -389,15 +451,17 @@ class PreferStrEnum(Rule):
                         line=entry[0],
                         col=entry[1],
                         code=self.code,
-                        message=(f"`{key}` is compared against a closed set of string literals — define a StrEnum"),
+                        message=(
+                            f"`{key}` rejects unlisted string values — define a named `Literal` alias or `StrEnum`"
+                        ),
+                        severity=Severity.WARNING,
                     )
                 )
 
         diags.extend(class_diags)
-        if not test_path:
-            diags.extend(_named_literal_builder_diags(path, tree, self.code))
         diags.sort(key=lambda d: (d.line, d.col))
-        return diags
+        source_lines = source.splitlines()
+        return [diag for diag in diags if not is_suppressed(source_lines, diag.line, self.code)]
 
     def _class_field_diags(
         self,
@@ -405,6 +469,7 @@ class PreferStrEnum(Rule):
         cls: ast.ClassDef,
         raw_string_aliases: frozenset[str],
         enum_like_classes: frozenset[int],
+        imports: ImportIndex,
     ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
         if id(cls) in enum_like_classes or any(_trailing_name(base) in _ENUM_BASE_NAMES for base in cls.bases):
@@ -432,7 +497,7 @@ class PreferStrEnum(Rule):
                 continue
             if not isinstance(stmt.target, ast.Name):
                 continue
-            if not _is_choice_string_annotation(stmt.annotation, raw_string_aliases):
+            if not _is_choice_string_annotation(stmt.annotation, raw_string_aliases, imports):
                 continue
             name = stmt.target.id
             default = _str_const(stmt.value) if stmt.value is not None else None
@@ -461,18 +526,24 @@ class PreferStrEnum(Rule):
                         f"`{name}: str` is used as a closed choice set — "
                         "prefer `StrEnum`. (`Literal[...]` is also acceptable.)"
                     ),
+                    severity=Severity.WARNING,
                 )
             )
         return diags
 
 
 def _has_str_enum_signal(source: str) -> bool:
-    if "Literal[" in source and any(f"def {prefix}" in source for prefix in _BUILDER_PREFIXES):
-        return True
     has_string_literal = '"' in source or "'" in source
     if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
         return True
-    return has_string_literal and ("==" in source or "!=" in source or "case " in source or "match " in source)
+    has_rejection = "raise" in source or "assert_never" in source
+    return has_string_literal and has_rejection and (
+        "==" in source
+        or "!=" in source
+        or _STRING_MEMBERSHIP_RE.search(source) is not None
+        or "case " in source
+        or "match " in source
+    )
 
 
 def _enum_like_class_ids(tree: ast.Module) -> frozenset[int]:
@@ -528,94 +599,23 @@ def _looks_like_enum_base_name(name: str) -> bool:
     return name in _ENUM_BASE_NAMES or name.endswith(_ENUM_BASE_SUFFIXES)
 
 
-def _named_literal_builder_diags(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:
-    findings: list[Diagnostic] = []
-    for statement in tree.body:
-        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if statement.decorator_list or not statement.name.startswith(_BUILDER_PREFIXES):
-            continue
-        call = _transparent_constructor_call(statement)
-        if call is None:
-            continue
-        inline_domains = _inline_literal_parameters(statement.args)
-        copied = [name for name in inline_domains if _forwards_keyword_unchanged(call, name)]
-        if len(copied) < _MIN_COPIED_LITERAL_DOMAINS:
-            continue
-        findings.append(
-            Diagnostic(
-                path=path,
-                line=statement.lineno,
-                col=statement.col_offset + 1,
-                code=code,
-                message=(
-                    f"`{statement.name}` copies {len(copied)} inline Literal domains into "
-                    f"`{_trailing_name(call.func) or ast.unparse(call.func)}`; export named aliases from the model owner "
-                    "and reuse them here so the accepted values have one source of truth."
-                ),
-                severity=Severity.ERROR,
-            )
-        )
-    return findings
-
-
-def _transparent_constructor_call(function: ast.FunctionDef | ast.AsyncFunctionDef) -> ast.Call | None:
-    body = function.body
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-        and isinstance(body[0].value.value, str)
-    ):
-        body = body[1:]
-    if len(body) != 1 or not isinstance(body[0], ast.Return) or not isinstance(body[0].value, ast.Call):
-        return None
-    call = body[0].value
-    callee = _trailing_name(call.func)
-    return call if callee is not None and callee[:1].isupper() else None
-
-
-def _inline_literal_parameters(arguments: ast.arguments) -> frozenset[str]:
-    parameters = (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
-    return frozenset(
-        argument.arg
-        for argument in parameters
-        if argument.annotation is not None and _is_inline_string_domain(argument.annotation)
-    )
-
-
-def _is_inline_string_domain(annotation: ast.expr) -> bool:
-    if not isinstance(annotation, ast.Subscript) or _trailing_name(annotation.value) != "Literal":
-        return False
-    values = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-    return len(values) >= _MIN_LITERAL_DOMAIN_VALUES and all(
-        isinstance(value, ast.Constant) and isinstance(value.value, str) for value in values
-    )
-
-
-def _forwards_keyword_unchanged(call: ast.Call, name: str) -> bool:
-    return any(
-        keyword.arg == name and isinstance(keyword.value, ast.Name) and keyword.value.id == name
-        for keyword in call.keywords
-    )
-
-
 def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:
-    _line, _col, literals, eq_literals, ne_literals, in_literals = entry
-    if not eq_literals and not ne_literals:
-        return False  # a lone `in`/`not in` membership guard is not an app enum
+    _line, _col, _literals, eq_literals, _ne_literals, in_literals, closed = entry
+    if not closed or (not eq_literals and not in_literals):
+        return False
+    domain_literals = eq_literals | in_literals
     # One operator must enumerate multiple alternatives before the vocabulary is demonstrably closed.
-    enumerated = max(len(eq_literals | in_literals), len(ne_literals | in_literals))
+    enumerated = len(domain_literals)
     if enumerated < _MIN_CLUSTER_SIZE:
         return False
-    if not all(_LOWER_TOKEN_RE.fullmatch(lit) for lit in literals):
+    if not all(_LOWER_TOKEN_RE.fullmatch(lit) for lit in domain_literals):
         return False
-    if all(lit in EXTERNAL_VOCAB for lit in literals):
+    if all(lit in EXTERNAL_VOCAB for lit in domain_literals):
         return False  # URL schemes, language keywords, HTTP methods, reflection args
-    if _is_file_mode_key(key) and all(_FILE_MODE_RE.fullmatch(lit) for lit in literals):
+    if _is_file_mode_key(key) and all(_FILE_MODE_RE.fullmatch(lit) for lit in domain_literals):
         return False  # `mode not in {"r", "rt", "rb"}` — the stdlib open() vocabulary
     # A single-character cluster on a char/token variable is a tokenizer scan.
-    return not (_is_scanner_key(key) and all(len(lit) == 1 for lit in literals))
+    return not (_is_scanner_key(key) and all(len(lit) == 1 for lit in domain_literals))
 
 
 def _cluster_is_already_closed(
@@ -629,8 +629,9 @@ def _cluster_is_already_closed(
         return True
     if key in literal_typed:
         return True
-    _line, _col, literals, _eq, _ne, _in = entry
-    return any(literals <= vs for vs in alias_valuesets)
+    _line, _col, _literals, eq_literals, _ne, in_literals, _closed = entry
+    domain_literals = eq_literals | in_literals
+    return any(domain_literals <= vs for vs in alias_valuesets)
 
 
 def _module_literal_aliases(tree: ast.Module) -> _LiteralAliases:
@@ -692,6 +693,58 @@ def _module_raw_string_aliases(tree: ast.Module) -> frozenset[str]:
             break
         raw |= grown
     return frozenset(raw)
+
+
+def _module_proven_raw_string_aliases(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
+    assignments: dict[str, list[ast.expr]] = {}
+    for statement in tree.body:
+        match statement:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=value)
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr() as value)
+                | ast.TypeAlias(name=ast.Name(id=name), value=value)
+            ):
+                assignments.setdefault(name, []).append(value)
+            case _:
+                pass
+    binding_counts: dict[str, int] = {}
+    for node in ast.walk(tree):
+        match node:
+            case ast.Name(id=name, ctx=(ast.Store() | ast.Del())) | ast.arg(arg=name):
+                binding_counts[name] = binding_counts.get(name, 0) + 1
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                binding_counts[node.name] = binding_counts.get(node.name, 0) + 1
+            case ast.alias(name=name, asname=asname):
+                local = asname or name.partition(".")[0]
+                binding_counts[local] = binding_counts.get(local, 0) + 1
+            case _:
+                pass
+    unique = {
+        name: values[0]
+        for name, values in assignments.items()
+        if len(values) == 1 and binding_counts.get(name) == 1
+    }
+    aliases: set[str] = set()
+    for _round in range(len(unique)):
+        grown = {
+            name
+            for name, value in unique.items()
+            if name not in aliases
+            and (_is_builtin_str(value, imports) or (isinstance(value, ast.Name) and value.id in aliases))
+        }
+        if not grown:
+            break
+        aliases.update(grown)
+    return frozenset(aliases)
+
+
+def _is_builtin_str(node: ast.expr, imports: ImportIndex) -> bool:
+    return (
+        isinstance(node, ast.Name) and node.id == "str" and imports.builtin_is_unshadowed("str")
+    ) or (
+        isinstance(node, ast.Name)
+        and imports.resolves(node, sources=frozenset({"builtins"}), symbol="str")
+    )
 
 
 def _opaque_names(
@@ -1254,18 +1307,39 @@ def _parse_string_annotation(value: str) -> ast.expr | None:
         return None
 
 
-def _is_choice_string_annotation(annotation: ast.expr, raw_string_aliases: frozenset[str]) -> bool:
+def _is_choice_string_annotation(
+    annotation: ast.expr,
+    raw_string_aliases: frozenset[str],
+    imports: ImportIndex,
+) -> bool:
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
         parsed = _parse_string_annotation(annotation.value)
-        return parsed is not None and _is_choice_string_annotation(parsed, raw_string_aliases)
-    annotation = _strip_optional(annotation)
-    if isinstance(annotation, ast.Subscript) and _trailing_name(annotation.value) == "Annotated":
+        return parsed is not None and _is_choice_string_annotation(parsed, raw_string_aliases, imports)
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        members = _flatten_annotation_union(annotation)
+        non_none = [member for member in members if not _is_none_annotation(member)]
+        return len(non_none) == 1 and len(non_none) < len(members) and _is_choice_string_annotation(
+            non_none[0], raw_string_aliases, imports
+        )
+    if isinstance(annotation, ast.Subscript) and imports.resolves(
+        annotation.value,
+        sources=frozenset({"typing", "typing_extensions"}),
+        symbol="Optional",
+    ):
+        return _is_choice_string_annotation(annotation.slice, raw_string_aliases, imports)
+    if isinstance(annotation, ast.Subscript) and imports.resolves(
+        annotation.value,
+        sources=frozenset({"typing", "typing_extensions"}),
+        symbol="Annotated",
+    ):
         first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts else None
-        return first is not None and _is_choice_string_annotation(first, raw_string_aliases)
-    return isinstance(annotation, ast.Name) and (annotation.id == "str" or annotation.id in raw_string_aliases)
+        return first is not None and _is_choice_string_annotation(first, raw_string_aliases, imports)
+    return _is_builtin_str(annotation, imports) or (
+        isinstance(annotation, ast.Name) and annotation.id in raw_string_aliases
+    )
 
 
-def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare) -> None:
+def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare, *, closed: bool) -> None:
     extracted = _extract_compare(node)
     if extracted is None:
         return
@@ -1275,40 +1349,138 @@ def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare) -
         extracted.literals,
         (node.lineno, node.col_offset + 1),
         operator=extracted.operator,
+        closed=closed,
     )
 
 
-def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match) -> None:
+def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match, imports: ImportIndex | None) -> None:
     key = _name_key(node.subject)
-    if key is None or _match_accepts_unlisted_values(node):
+    if key is None or not _match_rejects_unlisted_values(node, key, imports):
         return
     literals: list[str] = []
     for case in node.cases:
         literals.extend(_match_pattern_literals(case.pattern))
     if not literals:
         return
-    _merge_cluster(clusters, key, literals, (node.lineno, node.col_offset + 1), operator=_EQ)
+    _merge_cluster(clusters, key, literals, (node.lineno, node.col_offset + 1), operator=_EQ, closed=True)
 
 
-def _match_accepts_unlisted_values(node: ast.Match) -> bool:
+def _match_rejects_unlisted_values(node: ast.Match, key: str, imports: ImportIndex | None) -> bool:
     return any(
         case.guard is None
         and isinstance(case.pattern, ast.MatchAs)
         and case.pattern.pattern is None
-        and not _statements_reject_value(case.body)
+        and _statements_definitely_reject(case.body, key, imports)
         for case in node.cases
     )
 
 
-def _statements_reject_value(statements: list[ast.stmt]) -> bool:
-    return len(statements) == 1 and (
-        isinstance(statements[0], ast.Raise)
+def _statements_definitely_reject(statements: list[ast.stmt], key: str, imports: ImportIndex | None) -> bool:
+    if not statements:
+        return False
+    if any(not isinstance(statement, (ast.Expr, ast.Pass)) for statement in statements[:-1]):
+        return False
+    final = statements[-1]
+    return (
+        isinstance(final, ast.Raise)
         or (
-            isinstance(statements[0], ast.Expr)
-            and isinstance(statements[0].value, ast.Call)
-            and _trailing_name(statements[0].value.func) == "assert_never"
+            isinstance(final, ast.Expr)
+            and isinstance(final.value, ast.Call)
+            and imports is not None
+            and imports.resolves(
+                final.value.func,
+                sources=frozenset({"typing", "typing_extensions"}),
+                symbol="assert_never",
+            )
+            and len(final.value.args) == 1
+            and _name_key(final.value.args[0]) == key
+        )
+        or (
+            isinstance(final, ast.If)
+            and _statements_definitely_reject(final.body, key, imports)
+            and _statements_definitely_reject(final.orelse, key, imports)
         )
     )
+
+
+def _closed_domain_node_ids(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: ImportIndex | None,
+) -> frozenset[int]:
+    closed: set[int] = set()
+    # A rejecting branch proves a closed domain only when it governs the whole
+    # function. Nested branches may be optional, repeated, or have their
+    # rejection caught before an open-domain fallback executes.
+    for node in function.body:
+        if isinstance(node, ast.If):
+            _record_rejecting_membership_guard(node, imports, closed)
+            _record_exhaustive_if_chain(node, imports, closed)
+        elif isinstance(node, ast.Match) and _match_rejects_unlisted_values(
+            node, _name_key(node.subject) or "", imports
+        ):
+            closed.add(id(node))
+        if not _statement_always_falls_through(node):
+            break
+    return frozenset(closed)
+
+
+def _statement_always_falls_through(statement: ast.stmt) -> bool:
+    stack: list[ast.AST] = [statement]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        if isinstance(node, (ast.Return, ast.Yield, ast.YieldFrom, ast.Break, ast.Continue, ast.Raise)):
+            return False
+        stack.extend(children(node))
+    return True
+
+
+def _record_rejecting_membership_guard(node: ast.If, imports: ImportIndex | None, closed: set[int]) -> None:
+    if (
+        isinstance(node.test, ast.Compare)
+        and len(node.test.ops) == 1
+        and isinstance(node.test.ops[0], ast.NotIn)
+        and (extracted := _extract_compare(node.test)) is not None
+        and _statements_definitely_reject(node.body, extracted.key, imports)
+    ):
+        closed.add(id(node.test))
+
+
+def _record_exhaustive_if_chain(node: ast.If, imports: ImportIndex | None, closed: set[int]) -> None:
+    comparisons: list[ast.Compare] = []
+    key: str | None = None
+    current = node
+    while True:
+        branch = _positive_domain_comparisons(current.test)
+        branch_keys = {
+            extracted.key
+            for compare in branch
+            if (extracted := _extract_compare(compare)) is not None
+        }
+        if not branch or len(branch_keys) != 1:
+            return
+        branch_key = next(iter(branch_keys))
+        if key is not None and branch_key != key:
+            return
+        key = branch_key
+        comparisons.extend(branch)
+        if len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
+            current = current.orelse[0]
+            continue
+        if not current.orelse or not _statements_definitely_reject(current.orelse, key, imports):
+            return
+        closed.update(id(compare) for compare in comparisons)
+        return
+
+
+def _positive_domain_comparisons(node: ast.expr) -> list[ast.Compare]:
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        parts = [_positive_domain_comparisons(value) for value in node.values]
+        return [comparison for part in parts for comparison in part] if all(parts) else []
+    if not isinstance(node, ast.Compare) or len(node.ops) != 1 or not isinstance(node.ops[0], (ast.Eq, ast.In)):
+        return []
+    return [node] if _extract_compare(node) is not None else []
 
 
 def _merge_cluster(
@@ -1318,9 +1490,10 @@ def _merge_cluster(
     pos: tuple[int, int],
     *,
     operator: str,
+    closed: bool,
 ) -> None:
-    entry = clusters.get(key, (*pos, set[str](), set[str](), set[str](), set[str]()))
-    line, col, seen, eq_seen, ne_seen, in_seen = entry
+    entry = clusters.get(key, (*pos, set[str](), set[str](), set[str](), set[str](), False))
+    line, col, seen, eq_seen, ne_seen, in_seen, was_closed = entry
     line, col = min((line, col), pos)
     if operator == _EQ:
         eq_seen |= set(literals)
@@ -1328,7 +1501,7 @@ def _merge_cluster(
         ne_seen |= set(literals)
     else:
         in_seen |= set(literals)
-    clusters[key] = (line, col, seen | set(literals), eq_seen, ne_seen, in_seen)
+    clusters[key] = (line, col, seen | set(literals), eq_seen, ne_seen, in_seen, was_closed or closed)
 
 
 def _match_pattern_literals(pattern: ast.pattern) -> list[str]:

@@ -538,7 +538,9 @@
       "task": "rule-audit/python/prefer-str-enum",
       "family": "python",
       "ruleId": "prefer-str-enum",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 278 focused cases and scanned up to 8,249 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced 18 broad-fleet findings and 14 popular-corpus findings, including false positives for open plugin and platform vocabularies, already-Literal producers, pure inequality, non-exhaustive matches, shadowed builtins, and constructor forwarding. Post-change validation ran 242 rule cases, 248 combined rule and CLI-severity cases, the 7,316-test Python suite, strict BasedPyright, and dogfood across 93 rules and 456 source files. The final matcher retained three manually confirmed local rejecting dispatches, produced zero popular-corpus findings, and cut the popular-corpus runtime by more than half after a rejection-aware lexical gate and linear dominance scan.",
+      "outcome": "Retained the compatible prefer-str-enum selector, reclassified SARJ006 as a maintainability warning, and rewrote its UI around application-owned string domains with explicit closed-set evidence. Class fields require a provenance-safe builtin str annotation plus an associated sibling choice collection. Dispatch findings require a direct function-body rejecting membership guard, exhaustive if chain, or rejecting wildcard match; open, nested, caught, prior-return, test-only, external, wire-bound, generated, already-Literal, and suppressed cases abstain. Removed speculative constructor-copy inference, made import provenance lazy, added deterministic linear-scan coverage, synchronized catalog and formatted examples, and recommends either StrEnum or a named Literal without autofix."
     },
     {
       "task": "rule-audit/python/prefer-struct-over-namedtuple",

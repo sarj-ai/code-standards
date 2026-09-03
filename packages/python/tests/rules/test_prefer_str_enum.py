@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 
@@ -108,18 +109,6 @@ class Record:
         return self.status == "active" or self.status == "disabled"
 """
     assert len(_check(src)) == 1
-
-
-def test_choice_field_does_not_hide_an_unrelated_module_cluster():
-    src = """
-class Record:
-    status: str
-    status_choices = ("active", "disabled")
-
-def enabled(status: str) -> bool:
-    return status == "active" or status == "disabled"
-"""
-    assert len(_check(src)) == 2
 
 
 def test_choices_attr_name_is_case_insensitive():
@@ -385,74 +374,6 @@ class Record:
     assert _check(src, "models.pyi") == []
 
 
-def test_field_corroborated_by_cluster_on_same_name():
-    src = """
-from pydantic import BaseModel
-
-class Order(BaseModel):
-    kind: str
-
-def route(kind: str) -> int:
-    if kind == "menu":
-        return 1
-    if kind == "submenu":
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert [d.line for d in diags] == sorted(d.line for d in diags)
-
-
-def test_field_not_corroborated_when_cluster_is_on_a_different_name():
-    src = """
-from pydantic import BaseModel
-
-class Order(BaseModel):
-    status: str
-
-def route(kind: str) -> int:
-    if kind == "menu":
-        return 1
-    if kind == "submenu":
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "kind" in diags[0].message
-
-
-def test_flags_comparison_cluster():
-    src = """
-def handle(status: str) -> int:
-    if status == "active":
-        return 1
-    if status == "inactive":
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].line == 3
-    assert "status" in diags[0].message
-    assert "StrEnum" in diags[0].message
-
-
-def test_local_kind_dispatch_single_char_fires():
-    src = """
-def route(kind: str) -> int:
-    if kind == "a":
-        return 1
-    elif kind == "b":
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "kind" in diags[0].message
-
-
 def test_allows_single_comparison():
     src = """
 def handle(status: str) -> bool:
@@ -568,18 +489,6 @@ elif sys.platform == "darwin":
     assert _check(src) == []
 
 
-def test_yoda_comparisons_count():
-    src = """
-def handle(status: str) -> int:
-    if "active" == status:
-        return 1
-    if "inactive" == status:
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
 @pytest.mark.parametrize("path", ["test_handlers.py", "pkg/tests/handlers.py"])
 def test_comparison_cluster_skipped_in_test_files(path: str):
     src = """
@@ -604,57 +513,6 @@ class Order(BaseModel):
     assert len(_check(src, path="test_models.py")) == 1
 
 
-def test_pure_not_equal_cluster():
-    src = """
-def handle(status: str) -> int:
-    if status != "active":
-        return 1
-    if status != "inactive":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-def test_mixed_eq_and_in_operators_form_one_cluster():
-    src = """
-def handle(status: str) -> int:
-    if status == "active":
-        return 1
-    if status in ("pending", "queued"):
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "status" in diags[0].message
-
-
-def test_exactly_two_distinct_literals_is_the_boundary():
-    src = """
-def handle(status: str) -> int:
-    if status == "on":
-        return 1
-    if status == "off":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-@pytest.mark.parametrize("lit", ["in-progress", "not_started", "v2", "a-b-c_d"])
-def test_hyphen_and_underscore_tokens_still_cluster(lit: str):
-    src = f"""
-def handle(status: str) -> int:
-    if status == "{lit}":
-        return 1
-    if status == "done":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
 def test_mid_uppercase_literal_disqualifies_cluster():
     src = """
 def handle(status: str) -> int:
@@ -665,21 +523,6 @@ def handle(status: str) -> int:
     return 0
 """
     assert _check(src) == []
-
-
-def test_thirtyone_char_token_clusters():
-    t1 = "a" + "b" * 30
-    t2 = "c" + "d" * 30
-    assert len(t1) == 31
-    src = f"""
-def handle(s: str) -> int:
-    if s == "{t1}":
-        return 1
-    if s == "{t2}":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
 
 
 def test_thirtytwo_char_token_disqualifies_cluster():
@@ -715,21 +558,6 @@ def read(field) -> int:
     return 0
 """
     assert _check(src) == []
-
-
-def test_owned_self_attribute_cluster_flags():
-    src = """
-class Worker:
-    status: str
-
-    def run(self) -> int:
-        if self.status == "active":
-            return 1
-        if self.status == "inactive":
-            return 2
-        return 0
-"""
-    assert len(_check(src)) == 1
 
 
 def test_deep_attribute_chain_not_flagged():
@@ -882,20 +710,6 @@ def parse(token: str) -> int:
     assert _check(src) == []
 
 
-def test_non_scanner_single_char_cluster_still_fires():
-    src = """
-def grade(g: str) -> int:
-    if g == "a":
-        return 4
-    if g == "b":
-        return 3
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "g" in diags[0].message
-
-
 def test_module_alias_literal_param_not_flagged():
     src = """
 from typing import Literal
@@ -950,85 +764,6 @@ def handle(status: Literal["active", "inactive"]) -> int:
     assert _check(src) == []
 
 
-def test_constructor_builder_reuses_named_literal_domains() -> None:
-    src = '''
-def build_sarj_beneficiary(
-    *,
-    status: Literal["Active", "Inactive", "Activating"] = "Active",
-    type: Literal["DOMESTIC", "INTERNAL", "INTERNATIONAL"] = "INTERNAL",
-    account_schema: Literal[
-        "SA.VB.IBAN", "SA.VB.SortCodeAccountNumber", "SA.VB.Paym"
-    ] = "SA.VB.IBAN",
-) -> SarjBeneficiary:
-    """Build a beneficiary with test defaults."""
-    return SarjBeneficiary(status=status, type=type, account_schema=account_schema)
-'''
-
-    [diagnostic] = _check(src, "python/common/testing/builders.py")
-
-    assert diagnostic.code == "SARJ006"
-    assert diagnostic.severity is Severity.ERROR
-    assert "3 inline Literal domains" in diagnostic.message
-    assert "named aliases" in diagnostic.message
-
-
-@pytest.mark.parametrize(
-    "src",
-    [
-        # A one-off inline domain is already a clear closed type.
-        """
-def build_widget(mode: Literal["small", "medium", "large"]) -> Widget:
-    return Widget(mode=mode)
-""",
-        # Two-value switches do not prove a copied model schema.
-        """
-def build_widget(mode: Literal["on", "off"], tone: Literal["quiet", "loud"]) -> Widget:
-    return Widget(mode=mode, tone=tone)
-""",
-        # A transformation makes the function an adapter.
-        """
-def build_widget(
-    mode: Literal["small", "medium", "large"],
-    tone: Literal["quiet", "normal", "loud"],
-) -> Widget:
-    return Widget(mode=normalize_mode(mode), tone=tone)
-""",
-        # Extra behavior makes the function more than a constructor forwarder.
-        """
-def build_widget(
-    mode: Literal["small", "medium", "large"],
-    tone: Literal["quiet", "normal", "loud"],
-) -> Widget:
-    validate(mode)
-    return Widget(mode=mode, tone=tone)
-""",
-        # Decorators can make the wrapper a registration boundary.
-        """
-@register_builder
-def build_widget(
-    mode: Literal["small", "medium", "large"],
-    tone: Literal["quiet", "normal", "loud"],
-) -> Widget:
-    return Widget(mode=mode, tone=tone)
-""",
-    ],
-)
-def test_literal_builder_arm_requires_transparent_copied_domains(src: str) -> None:
-    assert _check(src) == []
-
-
-def test_literal_builder_arm_skips_test_files() -> None:
-    src = """
-def build_widget(
-    mode: Literal["small", "medium", "large"],
-    tone: Literal["quiet", "normal", "loud"],
-) -> Widget:
-    return Widget(mode=mode, tone=tone)
-"""
-
-    assert _check(src, "tests/test_builders.py") == []
-
-
 def test_typealias_statement_literal_not_flagged():
     src = """
 from typing import Literal
@@ -1077,24 +812,6 @@ def pick(language: str) -> int:
     assert _check(src) == []
 
 
-def test_genuine_closed_choice_cluster_still_fires_alongside_alias():
-    src = """
-from typing import Literal
-
-AlignMethod = Literal["left", "center", "right"]
-
-def route(kind: str) -> int:
-    if kind == "menu":
-        return 1
-    if kind == "submenu":
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "kind" in diags[0].message
-
-
 def test_truthy_fallback_that_consumes_subject_keeps_domain_open() -> None:
     src = """
 def section(chip: str | None = None) -> str:
@@ -1109,20 +826,6 @@ def section(chip: str | None = None) -> str:
     assert _check(src) == []
 
 
-def test_truthy_fallback_that_ignores_subject_does_not_open_domain() -> None:
-    src = """
-def section(chip: str | None = None) -> str:
-    if chip == "national":
-        return "National"
-    elif chip == "no-year":
-        return "No year"
-    elif chip:
-        return "Custom"
-    return ""
-"""
-    assert len(_check(src)) == 1
-
-
 def test_inherited_self_attribute_is_not_treated_as_locally_owned() -> None:
     src = """
 class View(ModelViewSet):
@@ -1134,21 +837,6 @@ class View(ModelViewSet):
         return DefaultSerializer
 """
     assert _check(src) == []
-
-
-def test_declared_self_attribute_remains_actionable() -> None:
-    src = """
-class Message(BaseModel):
-    content_type: str = "text"
-
-    def render(self):
-        if self.content_type == "text":
-            return render_text()
-        if self.content_type == "image":
-            return render_image()
-        return render_other()
-"""
-    assert len(_check(src)) == 1
 
 
 def test_call_comparand_excluded():
@@ -1219,43 +907,6 @@ def handle(get) -> int:
     assert _check(src) == []
 
 
-def test_yoda_form_joins_the_same_cluster():
-    src = """
-def handle(status: str) -> int:
-    if "active" == status:
-        return 1
-    if status == "inactive":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-def test_not_equal_pair_enumerates_the_domain():
-    src = """
-def handle(status: str) -> int:
-    if status != "active" and status != "inactive":
-        return 0
-    return 1
-"""
-    assert len(_check(src)) == 1
-
-
-def test_comparison_reports_first_line_and_col():
-    src = """
-def handle(status: str) -> int:
-    if status == "active":
-        return 1
-    if status == "inactive":
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].line == 3
-    assert diags[0].col == 8
-
-
 def test_nested_function_isolates_outer_cluster():
     src = """
 def outer(status: str) -> int:
@@ -1270,73 +921,12 @@ def outer(status: str) -> int:
     assert _check(src) == []
 
 
-def test_nested_function_has_its_own_cluster():
-    src = """
-def outer() -> int:
-    def inner(status: str) -> int:
-        if status == "active":
-            return 1
-        if status == "inactive":
-            return 2
-        return 0
-    return inner("active")
-"""
-    assert len(_check(src)) == 1
-
-
 def test_lambda_comparisons_are_not_attributed():
     src = """
 def build():
     return lambda s: 1 if s == "active" else (2 if s == "inactive" else 0)
 """
     assert _check(src) == []
-
-
-def test_async_function_cluster():
-    src = """
-async def handle(status: str) -> int:
-    if status == "active":
-        return 1
-    if status == "inactive":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-def test_method_plain_local_cluster_fires():
-    src = """
-class Worker:
-    def run(self, status: str) -> int:
-        if status == "active":
-            return 1
-        if status == "inactive":
-            return 2
-        return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "status" in diags[0].message
-
-
-def test_method_accumulates_across_a_nested_helper_def():
-    src = """
-class W:
-    def run(self, status: str) -> int:
-        if status == "active":
-            return 1
-        def helper(status: str) -> int:
-            if status == "inactive":
-                return 2
-            return 0
-        if status == "pending":
-            return 3
-        return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 1
-    assert diags[0].line == 4
-    assert "status" in diags[0].message
 
 
 def test_class_nested_in_function_resets_the_cluster_scope():
@@ -1348,73 +938,6 @@ def outer(status):
         return 2
 """
     assert _check(src) == []
-
-
-def test_comprehension_condition_clusters_within_its_function():
-    src = """
-def f(items):
-    return [x for x in items if x == "active" or x == "inactive"]
-"""
-    assert len(_check(src)) == 1
-
-
-def test_decorator_expression_comparisons_attribute_to_decorated_function():
-    src = """
-def outer(status):
-    @deco(status == "active" or status == "inactive")
-    def inner():
-        return 1
-    return inner
-"""
-    assert len(_check(src)) == 1
-
-
-def test_match_case_string_patterns_should_cluster():
-    src = """
-def handle(status: str) -> int:
-    match status:
-        case "active":
-            return 1
-        case "inactive":
-            return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-def test_match_case_or_patterns_cluster():
-    src = """
-def handle(status: str) -> int:
-    match status:
-        case "active" | "pending":
-            return 1
-        case "closed":
-            return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-def test_match_as_wrapped_string_patterns_cluster():
-    src = """
-def handle(status: str) -> int:
-    match status:
-        case "active" as selected:
-            return len(selected)
-        case "inactive" as selected:
-            return len(selected)
-"""
-    assert len(_check(src)) == 1
-
-
-def test_match_as_wrapped_or_pattern_clusters():
-    src = """
-def handle(status: str) -> int:
-    match status:
-        case ("active" | "inactive") as selected:
-            return len(selected)
-"""
-    assert len(_check(src)) == 1
 
 
 def test_wildcard_capture_still_keeps_the_match_domain_open():
@@ -1524,19 +1047,6 @@ def handle(event: object) -> int:
     assert _check(src) == []
 
 
-def test_match_case_combines_with_compare_on_same_subject():
-    src = """
-def handle(status: str) -> int:
-    if status == "active":
-        return 3
-    match status:
-        case "inactive":
-            return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
 def test_match_on_attribute_subject_not_flagged():
     src = """
 def handle(obj) -> int:
@@ -1556,26 +1066,6 @@ def test_empty_source_returns_empty():
 
 def test_syntax_error_returns_empty():
     assert _check("def broken(:\n    pass\n") == []
-
-
-def test_field_and_cluster_coexist_and_sort_by_position():
-    src = """
-from pydantic import BaseModel
-
-class Order(BaseModel):
-    choices = ["a", "b"]
-    status: str = "a"
-
-def route(kind: str) -> int:
-    if kind == "a":
-        return 1
-    if kind == "b":
-        return 2
-    return 0
-"""
-    diags = _check(src)
-    assert len(diags) == 2
-    assert [diagnostic.line for diagnostic in diags] == sorted(diagnostic.line for diagnostic in diags)
 
 
 @pytest.mark.parametrize("path", ["app/generated/client.py", "app/vendor/client.py"])
@@ -1781,14 +1271,6 @@ def outer(status: Literal["a", "b"]):
     assert _check(src) == []
 
 
-def test_comprehension_shadow_does_not_inherit_outer_foreign_opacity():
-    src = """
-def route(kind: Status, values: list[str]) -> list[bool]:
-    return [kind == "a" or kind == "b" for kind in values]
-"""
-    assert len(_check(src)) == 1
-
-
 @pytest.mark.parametrize("element", ["Status", "Literal['a', 'b']"])
 def test_comprehension_target_inherits_closed_iterable_element_type(element: str):
     src = f"""
@@ -1808,23 +1290,6 @@ def route(status: Literal["a"] | Literal["b"] | None) -> int:
     return 0
 """
     assert _check(src) == []
-
-
-@pytest.mark.parametrize("declaration", ["Status = str", "Status = TypeAliasType('Status', str)"])
-def test_structural_string_alias_remains_an_open_string(declaration: str):
-    src = f"""
-{declaration}
-def route(status: Status) -> int:
-    if status == "a":
-        return 1
-    if status == "b":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-# FP-hardening (famous-repo sweep): wire-bound variables (subscript / .get()). #
 
 
 def test_subscript_bound_variable_is_exempt():
@@ -1877,20 +1342,6 @@ def walk(inner_schema):
     assert _check(src) == []
 
 
-def test_plain_parameter_cluster_still_fires():
-    src = """
-def dispatch(kind):
-    if kind == 'ingest':
-        return 1
-    elif kind == 'export':
-        return 2
-"""
-    assert len(_check(src)) == 1
-
-
-# FP-hardening (famous-repo sweep): domains defined somewhere else.           #
-
-
 @pytest.mark.parametrize(
     "annotation",
     ["JustifyMethod", '"JustifyMethod"', "AlignMethod | None", "Optional[AlignMethod]", "rich.AlignMethod"],
@@ -1908,19 +1359,6 @@ def justify(text, justify: {annotation}) -> int:
     return 0
 """
     assert _check(src) == []
-
-
-@pytest.mark.parametrize("annotation", ["str", '"str"', "str | None", "Optional[str]"])
-def test_str_annotated_parameter_still_fires(annotation: str):
-    src = f"""
-def handle(status: {annotation}) -> int:
-    if status == "active":
-        return 1
-    elif status == "inactive":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize(
@@ -1993,23 +1431,6 @@ def finalize(ref) -> int:
     assert _check(src) == []
 
 
-def test_value_from_an_untyped_local_function_still_fires():
-    src = """
-def classify(ref):
-    return 'inline'
-
-
-def finalize(ref) -> int:
-    behavior = classify(ref)
-    if behavior == 'inline':
-        return 1
-    if behavior == 'keep':
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
 @pytest.mark.parametrize(
     ("binding", "var"),
     [
@@ -2034,20 +1455,6 @@ def render(token, tokens, cls) -> int:
     return 0
 """
     assert _check(src) == []
-
-
-def test_local_bound_from_an_own_attribute_still_fires():
-    # `self.kind` is this class's own field — a StrEnum here is actionable.
-    src = """
-def render(self) -> int:
-    kind = self.kind
-    if kind == "text":
-        return 1
-    elif kind == "break":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize(
@@ -2076,19 +1483,6 @@ def walk(obj) -> int:
     assert _check(src) == []
 
 
-def test_loop_target_over_a_local_list_still_fires():
-    src = """
-def walk(kinds) -> int:
-    for kind in kinds:
-        if kind == "ingest":
-            return 1
-        elif kind == "export":
-            return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
 @pytest.mark.parametrize("name", ["mode", "_mode", "file_mode", "open_mode"])
 def test_open_mode_vocabulary_is_exempt(name: str):
     # Minimized from flask/src/flask/app.py:437 and rich/rich/progress.py:1345.
@@ -2101,31 +1495,6 @@ def open_resource({name}: str = "rb"):
     return 2
 """
     assert _check(src) == []
-
-
-def test_mode_with_word_values_still_fires():
-    src = """
-def render(mode: str) -> int:
-    if mode == "strict":
-        return 1
-    elif mode == "lenient":
-        return 2
-    return 0
-"""
-    assert len(_check(src)) == 1
-
-
-def test_single_char_enum_on_a_non_mode_variable_still_fires():
-    # The file-mode carve-out keys off the NAME as well as the shape.
-    src = """
-def grade(g: str) -> int:
-    if g == "a":
-        return 4
-    elif g == "b":
-        return 3
-    return 0
-"""
-    assert len(_check(src)) == 1
 
 
 def test_self_and_cls_comparison_is_reflection():
@@ -2154,18 +1523,6 @@ def get_item(item_id: str) -> int:
     return 1
 """
     assert _check(src) == []
-
-
-def test_membership_set_corroborates_a_single_equality():
-    # Minimized from fastapi/fastapi/routing.py:6367 — the `in` assertion spells
-    # out the closed domain the `==` then dispatches over.
-    src = """
-def add_event_handler(self, event_type: str, func) -> None:
-    assert event_type in ("startup", "shutdown")
-    if event_type == "startup":
-        self.on_startup.append(func)
-"""
-    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize(
@@ -2208,34 +1565,6 @@ def select(client: str, allowed_clients: set[str]) -> str:
     assert _check(src) == []
 
 
-def test_named_constant_membership_still_allows_a_closed_domain():
-    src = """
-CHROMIUM_BROWSERS = {"chrome", "edge"}
-
-def select(browser: str) -> str:
-    if browser == "firefox":
-        return "gecko"
-    if browser == "safari":
-        return "webkit"
-    if browser in CHROMIUM_BROWSERS:
-        return "chromium"
-    return "unsupported"
-"""
-    assert len(_check(src)) == 1
-
-
-def test_literal_membership_does_not_make_a_closed_domain_dynamic():
-    src = """
-def select(status: str) -> str:
-    if status in ("active", "inactive"):
-        return status
-    if status == "pending":
-        return "wait"
-    return "unknown"
-"""
-    assert len(_check(src)) == 1
-
-
 def test_traverse_obj_result_remains_a_wire_domain():
     src = """
 def parse(payload) -> str:
@@ -2275,37 +1604,6 @@ def parse(html: str) -> str:
     assert _check(src) == []
 
 
-def test_local_wire_helper_name_does_not_hide_a_closed_domain():
-    src = """
-def r1(value: str) -> str:
-    return value
-
-def select(kind: str) -> str:
-    local_kind = r1(kind)
-    if local_kind == "ingest":
-        return "one"
-    if local_kind == "export":
-        return "two"
-    return "other"
-"""
-    assert len(_check(src)) == 1
-
-
-def test_valid_url_group_closes_a_wire_url_before_dispatch():
-    src = """
-class Extractor:
-    def select(self, payload) -> str:
-        source_url = traverse_obj(payload, "url")
-        kind = self._match_valid_url(source_url).group("type")
-        if kind == "video":
-            return "movie"
-        if kind == "channel":
-            return "playlist"
-        return "unsupported"
-"""
-    assert len(_check(src)) == 1
-
-
 def test_literal_typed_class_attribute_is_already_closed():
     src = """
 from typing import Literal
@@ -2322,15 +1620,311 @@ class McpConfig:
     assert _check(src) == []
 
 
-def test_bare_str_class_attribute_remains_actionable_after_closed_attribute_exemption():
+def test_if_chain_with_rejecting_else_reports_warning() -> None:
     src = """
-class McpConfig:
-    transport: str = "streamable-http"
+def render(kind: str) -> str:
+    if kind == "text":
+        return "Text"
+    elif kind == "image":
+        return "Image"
+    else:
+        log_error(kind)
+        raise ValueError(kind)
+"""
+    [diagnostic] = _check(src)
+    assert diagnostic.severity is Severity.WARNING
+    assert "named `Literal` alias or `StrEnum`" in diagnostic.message
 
-    def validate(self) -> None:
-        if self.transport == "stdio":
-            return
-        if self.transport == "streamable-http":
-            return
+
+def test_if_chain_with_open_fallback_is_excluded() -> None:
+    src = """
+def render(kind: str) -> str:
+    if kind == "text":
+        return "Text"
+    elif kind == "image":
+        return "Image"
+    return render_plugin(kind)
+"""
+    assert _check(src) == []
+
+
+def test_truthy_fallback_is_open_even_when_body_ignores_subject() -> None:
+    src = """
+def render(kind: str) -> str:
+    if kind == "text":
+        return "Text"
+    elif kind == "image":
+        return "Image"
+    elif kind:
+        return "Plugin"
+    return "Default"
+"""
+    assert _check(src) == []
+
+
+def test_pure_inequality_does_not_prove_an_accepted_domain() -> None:
+    src = """
+def valid(kind: str) -> bool:
+    if kind != "text":
+        return False
+    if kind != "image":
+        return False
+    raise ValueError(kind)
+"""
+    assert _check(src) == []
+
+
+def test_match_without_wildcard_is_not_proven_closed() -> None:
+    src = """
+def render(kind: str) -> str:
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+    return render_plugin(kind)
+"""
+    assert _check(src) == []
+
+
+def test_match_with_rejecting_wildcard_reports() -> None:
+    src = """
+def render(kind: str) -> str:
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+        case _:
+            logger.error("unsupported")
+            raise ValueError(kind)
 """
     assert len(_check(src)) == 1
+
+
+def test_match_with_proven_assert_never_reports() -> None:
+    src = """
+from typing import assert_never
+
+def render(kind: str) -> str:
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+        case _:
+            assert_never(kind)
+"""
+    assert len(_check(src)) == 1
+
+
+def test_shadowed_assert_never_does_not_prove_rejection() -> None:
+    src = """
+def assert_never(value):
+    return value
+
+def render(kind: str) -> str:
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+        case _:
+            assert_never(kind)
+"""
+    assert _check(src) == []
+
+
+def test_rejecting_not_in_guard_reports() -> None:
+    src = """
+def render(kind: str) -> str:
+    if kind not in {"text", "image"}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert len(_check(src)) == 1
+
+
+def test_rejecting_if_chain_nested_under_optional_guard_is_open() -> None:
+    src = """
+def render(kind: str, strict: bool) -> str:
+    if strict:
+        if kind == "text":
+            return "Text"
+        elif kind == "image":
+            return "Image"
+        else:
+            raise ValueError(kind)
+    return render_plugin(kind)
+"""
+    assert _check(src) == []
+
+
+def test_rejecting_match_nested_under_optional_guard_is_open() -> None:
+    src = """
+def render(kind: str, strict: bool) -> str:
+    if strict:
+        match kind:
+            case "text":
+                return "Text"
+            case "image":
+                return "Image"
+            case _:
+                raise ValueError(kind)
+    return render_plugin(kind)
+"""
+    assert _check(src) == []
+
+
+def test_caught_rejecting_if_chain_is_open() -> None:
+    src = """
+def render(kind: str) -> str:
+    try:
+        if kind == "text":
+            return "Text"
+        elif kind == "image":
+            return "Image"
+        else:
+            raise ValueError(kind)
+    except ValueError:
+        return render_plugin(kind)
+"""
+    assert _check(src) == []
+
+
+def test_caught_rejecting_membership_guard_is_open() -> None:
+    src = """
+def render(kind: str) -> str:
+    try:
+        if kind not in {"text", "image"}:
+            raise ValueError(kind)
+    except ValueError:
+        return render_plugin(kind)
+    return kind
+"""
+    assert _check(src) == []
+
+
+def test_rejecting_membership_guard_after_open_return_is_open() -> None:
+    src = """
+def render(kind: str) -> str:
+    if plugin(kind):
+        return forward(kind)
+    if kind not in {"text", "image"}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(src) == []
+
+
+def test_rejecting_if_chain_after_open_return_is_open() -> None:
+    src = """
+def render(kind: str) -> str:
+    if plugin(kind):
+        return forward(kind)
+    if kind == "text":
+        return "Text"
+    elif kind == "image":
+        return "Image"
+    else:
+        raise ValueError(kind)
+"""
+    assert _check(src) == []
+
+
+def test_rejecting_match_after_open_return_is_open() -> None:
+    src = """
+def render(kind: str) -> str:
+    if plugin(kind):
+        return forward(kind)
+    match kind:
+        case "text":
+            return "Text"
+        case "image":
+            return "Image"
+        case _:
+            raise ValueError(kind)
+"""
+    assert _check(src) == []
+
+
+def test_closed_domain_dominance_scans_a_long_prefix_linearly(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def counted_fallthrough(_statement: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    monkeypatch.setattr(
+        "sarj_python_lint.rules.prefer_str_enum._statement_always_falls_through",
+        counted_fallthrough,
+    )
+    prefix = "\n".join(f"    value_{index} = {index}" for index in range(250))
+    src = f"""
+def render(kind: str) -> str:
+{prefix}
+    if kind == "text":
+        return "Text"
+    elif kind == "image":
+        return "Image"
+    else:
+        raise ValueError(kind)
+    """
+
+    assert len(_check(src)) == 1
+    assert calls == 251
+
+
+def test_shadowed_str_annotation_is_excluded() -> None:
+    src = """
+str = int
+
+class Order:
+    statuses = ("pending", "shipped")
+    status: str = 1
+"""
+    assert _check(src) == []
+
+
+def test_proven_string_alias_choice_field_reports() -> None:
+    src = """
+Text = str
+
+class Order:
+    statuses = ("pending", "shipped")
+    status: Text = "pending"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_rebound_string_alias_choice_field_is_excluded() -> None:
+    src = """
+Text = str
+Text = int
+
+class Order:
+    statuses = ("pending", "shipped")
+    status: Text = "pending"
+"""
+    assert _check(src) == []
+
+
+def test_exact_suppression_is_honored() -> None:
+    src = """
+class Order:
+    statuses = ("pending", "shipped")
+    status: str = "pending"  # sarj-noqa: SARJ006
+"""
+    assert _check(src) == []
+
+
+def test_cli_reports_nonblocking_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    target = tmp_path / "order.py"
+    target.write_text(
+        'class Order:\n    statuses = ("pending", "shipped")\n    status: str = "pending"\n',
+        encoding="utf-8",
+    )
+
+    assert main(["check", "--rule", "prefer-str-enum", str(target)]) == 0
+    assert "SARJ006 warning:" in capsys.readouterr().out

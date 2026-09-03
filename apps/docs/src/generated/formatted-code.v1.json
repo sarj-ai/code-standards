@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c7d2e347a3681cd91b35a6519ae229aa125933af630287a278130881e63a6660",
+  "catalogSha256": "ce44509f5bf0c94765e71d328a3e77d2347e49b9793b50fae27ebabe5abbae42",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6203,6 +6203,21 @@
     "python:prefer-str-enum": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    if kind == \"text\":\n        return \"Text\"\n    if kind == \"image\":\n        return \"Image\"\n    return render_plugin(kind)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "open-string-dispatch",
+          "outcome": "accept",
+          "scenarioId": "rejecting-dispatch",
+          "title": "Dispatch forwards unlisted strings"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -6214,8 +6229,23 @@
           "focusPath": "app/order.py",
           "id": "raw-string-choice-field",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "choice-field",
           "title": "String field backed by a closed choice collection"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    match kind:\n        case \"text\":\n            return \"Text\"\n        case \"image\":\n            return \"Image\"\n        case _:\n            raise ValueError(\"unsupported kind\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "rejecting-string-dispatch",
+          "outcome": "reject",
+          "scenarioId": "rejecting-dispatch",
+          "title": "Dispatch rejects every unlisted string"
         },
         {
           "expectedCount": 0,
@@ -6229,7 +6259,7 @@
           "focusPath": "app/order.py",
           "id": "string-enum-field",
           "outcome": "accept",
-          "scenarioId": "primary",
+          "scenarioId": "choice-field",
           "title": "Closed domain represented by a string enum"
         }
       ],
