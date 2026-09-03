@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c39f4d8a19a7874ebf8fb739e66f3fac487744168b7fe82fb2777fa99cee82ad",
+  "catalogSha256": "c7d2e347a3681cd91b35a6519ae229aa125933af630287a278130881e63a6660",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6107,6 +6107,21 @@
           "files": [
             {
               "path": "app/builder.py",
+              "source": "class Builder:\n    @classmethod\n    def create(cls) -> \"Builder\":\n        return cls()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/builder.py",
+          "id": "concrete-classmethod-return",
+          "outcome": "reject",
+          "scenarioId": "alternate-constructor",
+          "title": "Alternate constructor names its enclosing class"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/builder.py",
               "source": "class Builder:\n    def set_name(self, name: str) -> \"Builder\":\n        self.name = name\n        return self\n"
             }
           ],
@@ -6114,8 +6129,23 @@
           "focusPath": "app/builder.py",
           "id": "enclosing-class-return",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "fluent-method",
           "title": "Fluent method names its enclosing class"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/builder.py",
+              "source": "from typing import Self\n\n\nclass Builder:\n    @classmethod\n    def create(cls) -> Self:\n        return cls()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/builder.py",
+          "id": "self-classmethod-return",
+          "outcome": "accept",
+          "scenarioId": "alternate-constructor",
+          "title": "Alternate constructor preserves subclass type"
         },
         {
           "expectedCount": 0,
@@ -6129,7 +6159,7 @@
           "focusPath": "app/builder.py",
           "id": "self-return-annotation",
           "outcome": "accept",
-          "scenarioId": "primary",
+          "scenarioId": "fluent-method",
           "title": "Fluent method preserves subclass type"
         }
       ],

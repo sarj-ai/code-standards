@@ -522,7 +522,9 @@
       "task": "rule-audit/python/prefer-self-type-annotation",
       "family": "python",
       "ruleId": "prefer-self-type-annotation",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 18 focused cases and scanned up to 7,326 local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced 42 broad-fleet findings and nine Bulbul findings, but reproduced invalid Self advice for static methods, generators, __init__, final classes, metaclasses, generic specialization changes, rebound receivers, shadowed or mutated decorators, and deliberate base-class contracts. Post-change validation ran 60 focused cases. The broad fleet produced 38 reviewed warning-level suggestions with zero semantic false positives, Bulbul retained nine valid findings while Automations and Saqi remained clean, and the popular corpus retained five plausible advisory findings after four final-class findings disappeared.",
+      "outcome": "Retained the accurate and compatible prefer-self-type-annotation selector, reclassified SARJ078 as a maintainability warning, and added paired fluent-method and alternate-constructor examples. The matcher now requires an exact enclosing-class annotation and receiver-preserving returns; resolves method decorators and Pydantic constructors by provenance; derives the actual receiver; rejects every owning-scope rebinding family; excludes static methods, generators, __init__, final classes, behavior-changing decorators, deliberate base contracts, generic specializations, metaclasses, and Ruff-owned iterator methods; follows safe metaclass aliases; and abstains after builtin decorator mutation. A structural candidate gate confines the added analysis to relevant files, and the diagnostic presents Self as a reviewed public-contract improvement rather than an automatic correction."
     },
     {
       "task": "rule-audit/python/prefer-set-isdisjoint",
