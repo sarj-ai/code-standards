@@ -434,7 +434,9 @@
       "task": "rule-audit/python/prefer-fstring-over-concat",
       "family": "python",
       "ruleId": "prefer-fstring-over-concat",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 75 focused cases and scanned 7,098 tracked first-party Python files across 85 repositories plus a normalized 462-file Pygments and pytest corpus. The original broad rule produced 39 first-party findings with 17 bad recommendations and 130 popular-source findings dominated by regex, style-table, ANSI, path, identifier, and protocol fragments. Final calibration produced seven first-party and eleven popular-source warnings; all 18 were inspected as defensible human-readable interpolation improvements, with zero observed false positives or scanner errors.",
+      "outcome": "Kept the compatible prefer-fstring-over-concat name and staged SARJ068 as a warning. Narrowed it to short prose-like interpolation inside callable scopes with proven string operands; added conservative binding and import provenance, late-rebinding kills, and exclusions for generated code, logging, common SQL and regex forms, long literals, module and class declarations, URL and path fragments, units, filenames, identifiers, protocol punctuation, lazy strings, and ORM expressions. Removed arbitrary operand-count join advice and comment bypasses. The UI now preserves explicit str and repr semantics with !s and !r instead of claiming wrappers can disappear."
     },
     {
       "task": "rule-audit/python/prefer-immutable-module-constant",

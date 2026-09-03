@@ -5,768 +5,265 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverConcat
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+    from sarj_python_lint.rule_base import Diagnostic
 
 
-SRC_PATH = "python/app/services/render.py"
+_PATH = Path("src/render.py")
 
 
-def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
-    return PreferFstringOverConcat().check(Path(path), textwrap.dedent(source))
+def _check(source: str, path: Path = _PATH) -> list[Diagnostic]:
+    return PreferFstringOverConcat().check(path, textwrap.dedent(source))
+
+
+def _typed(source: str) -> str:
+    tree = ast.parse(source)
+    names = sorted(
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    )
+    declarations = "; ".join(f"{name}: str" for name in names)
+    return f"{declarations}\n{source}" if declarations else source
 
 
 _PUBLIC_EXAMPLES = PreferFstringOverConcat.public_examples()
 
 
-@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(PreferFstringOverConcat().check(Path(focus.path), focus.source)) == example.expected_count
 
 
-def _typed(source: str) -> str:
-    tree = ast.parse(textwrap.dedent(source))
-    called_names = {
-        node.func.id for node in ast.walk(tree) if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
-    names = sorted(
-        {
-            node.id
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id not in called_names
-        }
-    )
-    declarations = "; ".join(f"{name}: str" for name in names)
-    return f"{declarations}\n{textwrap.dedent(source)}" if declarations else textwrap.dedent(source)
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def greeting(name: str) -> str:\n    return "Hello, " + name + "!"\n',
+        'def label(user_id: str) -> str:\n    return "User " + user_id + " failed"\n',
+        'def message():\n    name = "known"\n    return "Welcome, " + name\n',
+        'def label(value: str) -> str:\n    return "Value: " + value.upper()\n',
+        'def label(value: str) -> str:\n    return "Value: " + value[:3]\n',
+    ],
+)
+def test_short_human_readable_interpolation_warns(source: str) -> None:
+    [diagnostic] = _check(source)
+    assert diagnostic.code == "SARJ068"
+    assert diagnostic.severity is Severity.WARNING
+    assert "human-readable" in diagnostic.message
 
 
-# The shapes the rule exists for.                                             #
+def test_explicit_str_guidance_preserves_semantics() -> None:
+    [diagnostic] = _check('def label(value):\n    return "Value: " + str(value)\n')
+    assert "{value!s}" in diagnostic.message
+    assert "disappears" not in diagnostic.message
+
+
+def test_explicit_repr_guidance_preserves_semantics() -> None:
+    [diagnostic] = _check('def label(value):\n    return "Value: " + repr(value)\n')
+    assert "{value!r}" in diagnostic.message
+
+
+def test_plain_interpolation_message_does_not_mention_string_coercion() -> None:
+    [diagnostic] = _check('def label(value: str) -> str:\n    return "Value: " + value\n')
+    assert "str(" not in diagnostic.message
+    assert "join" not in diagnostic.message
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('msg = "user " + name + " failed"', id="literal-name-literal"),
-        pytest.param('url = base + "/" + path', id="name-sep-name"),
-        pytest.param('label = "id=" + str(user.id)', id="str-coercion"),
-        pytest.param('greeting = "hello " + name', id="two-operand-prefix"),
-        pytest.param('suffix = name + "!"', id="two-operand-suffix"),
-        pytest.param('key = "prefix_" + str(record.identifier)', id="attribute-operand"),
-        pytest.param('key = "prefix_" + str(record["id"])', id="subscript-operand"),
-        pytest.param('key = "prefix_" + str(compute())', id="call-operand"),
-        pytest.param('key = "prefix_" + str(row[0].name.upper())', id="mixed-chain-operand"),
-        pytest.param('body = "head\\n" + f"{value}"', id="fstring-operand"),
-        pytest.param('masked = number[:6] + "****" + number[-4:]', id="masking"),
-        pytest.param('path = "django.db.models" + tail.removeprefix("django")', id="dotted-path"),
-        pytest.param('await_ed = "v" + str(await fetch())', id="await-operand"),
-        pytest.param('walrus = "v" + str(found := lookup())', id="walrus-operand"),
+        'def route(base_url: str) -> str:\n    return base_url + "/v1"\n',
+        'def path(root: str, child: str) -> str:\n    return root + "/" + child\n',
+        'def regex(prefix: str) -> str:\n    return r"^" + prefix + r"\\d+$"\n',
+        'def like(value: str) -> str:\n    return "%" + value + "%"\n',
+        'def quote(value: str) -> str:\n    return "\'" + value\n',
+        'def suffix(value: str) -> str:\n    return value + "..."\n',
+        'def ansi(code: str) -> str:\n    return "\\x1b[" + code\n',
+        'def protocol(raw: str) -> str:\n    return "+" + raw\n',
+        'def identity(prefix: str) -> str:\n    return prefix + "!pQw9"\n',
+        'def module_name(modname: str) -> str:\n    return "_pytest." + modname\n',
+        'def generated(index: str) -> str:\n    return "@py_assert" + index\n',
+        'def attribute(name: str) -> str:\n    return "st_" + name\n',
     ],
 )
-def test_fires(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-def test_reports_position_of_the_whole_chain():
-    diags = _check('name: str\n\nvalue = "a" + name + "b"\n')
-    assert (diags[0].line, diags[0].col) == (3, 9)
-    assert diags[0].code == "SARJ068"
-
-
-def test_reports_position_of_a_chain_nested_in_a_class_and_a_with_block():
-    # Both coordinates are non-1, so neither a hardcoded line nor a hardcoded
-    # `col=1` (the `col_offset + 1` conversion) can pass this.
-    diags = _check(
-        """
-        class Renderer:
-            def render(self, name: str):
-                with open(name) as handle:
-                    label = "user " + name
-                    handle.write(label)
-        """
-    )
-    assert [(d.line, d.col) for d in diags] == [(5, 21)]
-
-
-# the exact message text (each of the three message fragments, verbatim)      #
-
-
-_BASE_MESSAGE = (
-    "string built with `+` from a literal and a runtime value — write it as one f-string, "
-    "which keeps the literal's spacing visible and needs no `str()` coercion"
-)
-
-
-def test_message_is_exactly_the_base_advice():
-    (diag,) = _check(_typed('greeting = "hello " + name'))
-    assert diag.message == _BASE_MESSAGE
-
-
-def test_message_appends_the_str_wrapper_clause_verbatim():
-    (diag,) = _check('label = "id=" + str(user.id)')
-    assert diag.message == f"{_BASE_MESSAGE}; the `str(...)` wrapper disappears"
-
-
-def test_message_appends_the_join_clause_verbatim():
-    (diag,) = _check(_typed('v = "a" + b + "c" + d + "e" + f + "g"'))
-    assert diag.message == f"{_BASE_MESSAGE}; at 7 operands `''.join(...)` may read better still"
-
-
-def test_message_appends_both_clauses_in_order():
-    (diag,) = _check(_typed('v = "a" + str(b) + "c" + d + "e"'))
-    assert diag.message == (
-        f"{_BASE_MESSAGE}; the `str(...)` wrapper disappears; at 5 operands `''.join(...)` may read better still"
-    )
-
-
-def test_reports_outermost_chain_only():
-    assert len(_check(_typed('value = "a" + one + "b" + two + "c" + three'))) == 1
-
-
-def test_reports_each_independent_chain():
-    assert len(_check(_typed('a = "x" + one\nb = "y" + two\n'))) == 2
-
-
-def test_message_mentions_dropping_str():
-    (diag,) = _check('label = "id=" + str(user.id)')
-    assert "str(...)" in diag.message
-
-
-def test_message_omits_str_hint_without_a_str_call():
-    (diag,) = _check('user_id: str\nlabel = "id=" + user_id')
-    assert "str(...)" not in diag.message
-
-
-def test_message_suggests_join_for_long_chains():
-    (diag,) = _check(_typed('v = "a" + b + "c" + d + "e" + f + "g"'))
-    assert "join" in diag.message
-
-
-def test_message_omits_join_hint_for_short_chains():
-    (diag,) = _check(_typed('v = "a" + b + "c"'))
-    assert "join" not in diag.message
-
-
-@pytest.mark.parametrize(
-    ("source", "operands", "suggests_join"),
-    [
-        pytest.param('v = "a" + b + "c"', 3, False, id="three-operands"),
-        pytest.param('v = "a" + b + "c" + d', 4, False, id="four-operands-just-below"),
-        pytest.param('v = "a" + b + "c" + d + "e"', 5, True, id="five-operands-exactly-at"),
-        pytest.param('v = "a" + b + "c" + d + "e" + f', 6, True, id="six-operands-just-above"),
-    ],
-)
-def test_join_hint_threshold_is_exactly_five_operands(source: str, operands: int, suggests_join: bool):
-    # Pins `_JOIN_RECOMMENDATION_OPERANDS`: moving it to 4 or 6 flips one row.
-    (diag,) = _check(_typed(source))
-    assert (f"at {operands} operands `''.join(...)` may read better still" in diag.message) is suggests_join
-
-
-# false-positive guards: non-string `+` (the type-evidence requirement)        #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param("total = a + b", id="two-bare-names"),
-        pytest.param("total = a + b + c", id="three-bare-names"),
-        pytest.param("total = count + 1", id="int-literal"),
-        pytest.param("total = amount + 1.5", id="float-literal"),
-        pytest.param("total = flag + True", id="bool-literal"),
-        pytest.param('blob = b"GET " + payload', id="bytes-literal"),
-        pytest.param('blob = payload + b"\\r\\n"', id="bytes-literal-suffix"),
-        pytest.param('mixed = "a" + name + b"z"', id="bytes-anywhere-in-chain"),
-        pytest.param("merged = items + extras", id="list-concat-names"),
-        pytest.param("when = start + delta", id="timedelta-shaped"),
-        pytest.param("moved = Path(base) + suffix", id="domain-add-overload"),
-        pytest.param("merged = xs + [1, 2]", id="list-literal-operand"),
-        pytest.param("merged = xs + (1, 2)", id="tuple-literal-operand"),
-    ],
-)
-def test_skips_without_string_literal_evidence(source: str):
-    assert _check(source) == []
-
-
-def test_fires_once_a_string_literal_joins_the_chain():
-    # Same shape as `total = a + b`, with the one piece of type evidence added.
-    assert len(_check(_typed('total = a + "-" + b'))) == 1
-
-
-def test_fires_on_bytes_shape_once_the_literal_is_str():
-    assert len(_check(_typed('blob = "GET " + payload'))) == 1
-
-
-# false-positive guards: logging (SARJ017 says the opposite there)            #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('logger.info("call " + cid + " failed")', id="logger-info"),
-        pytest.param('log.error("call " + cid)', id="log-error"),
-        pytest.param('logging.warning("call " + cid)', id="logging-module"),
-        pytest.param('self.logger.debug("call " + cid)', id="self-logger"),
-        pytest.param('logger.bind(x=1).info("call " + cid)', id="loguru-bind-builder"),
-        pytest.param('logging.getLogger(__name__).info("call " + cid)', id="getlogger-inline"),
-        pytest.param('logger.exception("call " + cid)', id="logger-exception"),
-        pytest.param('logger.info("msg", extra={"k": "v" + cid})', id="nested-in-logging-arg"),
-        pytest.param('logger.info("done", detail="x " + cid)', id="logging-keyword-argument"),
-    ],
-)
-def test_skips_logging_calls(source: str):
+def test_protocol_path_and_structural_fragments_are_clean(source: str) -> None:
     assert _check(source) == []
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('warnings.warn("call " + cid, stacklevel=2)', id="warnings-warn-formats-eagerly"),
-        pytest.param('console.log("call " + cid)', id="non-logger-receiver"),
-        pytest.param('audit.info("call " + cid)', id="non-logger-named-receiver"),
-        pytest.param('result = logger_name + " ready"', id="logger-shaped-name-not-a-call"),
+        'import re\ndef pattern(prefix: str):\n    return re.compile(r"^" + prefix + r"\\d+$")\n',
+        'import re\ndef found(token: str, text: str):\n    return re.search(r"\\b" + token + r"\\b", text)\n',
+        'from re import compile as rc\ndef pattern(prefix: str):\n    return rc("prefix-" + prefix)\n',
     ],
 )
-def test_fires_outside_logging_calls(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-def test_fires_on_the_same_concat_outside_a_logger_receiver():
-    # `logger.info("call " + cid)` is exempt; the identical expression assigned
-    # to a variable is not.
-    assert len(_check(_typed('message = "call " + cid'))) == 1
-
-
-# false-positive guards: braces (regex / format templates)                    #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param(r'pattern = r"\s*\{" + re.escape(key) + r"\}\s*"', id="regex-with-braces"),
-        pytest.param(r'pattern = r"(\d{4,6})(?!\s*" + CURRENCY + r")"', id="regex-repetition-braces"),
-        pytest.param('template = fmt + "\\n{exception}"', id="loguru-template"),
-        pytest.param('template = "{" + key + "}"', id="brace-wrapping"),
-        pytest.param('template = "prefix }" + key', id="closing-brace-only"),
-    ],
-)
-def test_skips_literals_containing_braces(source: str):
+def test_regex_api_arguments_are_clean(source: str) -> None:
     assert _check(source) == []
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param(r'pattern = r"\s*" + re.escape(key) + r"\s*"', id="regex-without-braces"),
-        pytest.param('template = fmt + "\\nexception"', id="template-without-braces"),
+        'def query(table: str):\n    return "select * from " + table\n',
+        'def query(tail: str):\n    return "SELECT * FROM users " + tail\n',
+        'def query(table: str):\n    return "WITH rows AS (SELECT 1) SELECT * FROM " + table\n',
     ],
 )
-def test_fires_when_the_braces_are_removed(source: str):
-    assert len(_check(_typed(source))) == 1
+def test_probable_sql_fragments_are_clean(source: str) -> None:
+    assert _check(source) == []
 
 
-# false-positive guards: `%`-format template assembly                         #
+def test_prose_with_sql_word_still_warns() -> None:
+    assert len(_check('def note(source: str):\n    return "Selected from " + source + " today"\n')) == 1
+    assert len(_check('def note(place: str):\n    return "Where " + place\n')) == 1
+    assert len(_check('def note(value: str):\n    return "Set " + value\n')) == 1
+
+
+def test_long_literal_template_is_clean() -> None:
+    literal = "Explain this OCR field in detail. " * 8
+    assert _check(f"def prompt(value: str):\n    return {literal!r} + value\n") == []
+
+
+def test_literal_budget_boundary() -> None:
+    assert len(_check(f'def prompt(value: str):\n    return {"a" * 160!r} + value\n')) == 1
+    assert _check(f'def prompt(value: str):\n    return {"a" * 161!r} + value\n') == []
+
+
+def test_unrelated_inline_comment_does_not_suppress_warning() -> None:
+    source = """
+        def greeting(name: str) -> str:
+            return "Hello, " + name  # displayed in the account menu
+    """
+    assert len(_check(source)) == 1
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('line = ("%0" + width + "d") % (index, text)', id="width-in-template"),
-        pytest.param('line = ("%" + str(arg)) % value', id="spec-in-template"),
+        'def label(str, value):\n    return "Value: " + str(value)\n',
+        'def label(repr, value):\n    return "Value: " + repr(value)\n',
+        'class str: pass\ndef label(value: str):\n    return "Value: " + value\n',
+        'def str(value):\n    return value\ndef label(item):\n    return "Value: " + str(item)\n',
+        'json = serializer\ndef label(item):\n    return "Value: " + json.dumps(item)\n',
+        'def label(item):\n    return "Value: " + str(item)\nstr = custom\n',
+        'import json\ndef label(item):\n    return "Value: " + json.dumps(item)\njson = serializer\n',
+        'import custom as builtins\ndef label(value: builtins.str):\n    return "Value: " + value\n',
+        'from custom import str\ndef label(value):\n    return "Value: " + str(value)\n',
+        'import custom as str\ndef label(value):\n    return "Value: " + str(value)\n',
+        'from custom import Annotated\ndef label(value: Annotated[str, "x"]):\n    return "Value: " + value\n',
     ],
 )
-def test_skips_percent_format_template_assembly(source: str):
+def test_shadowed_string_producers_are_clean(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_imported_json_dumps_is_known_string() -> None:
+    assert len(_check('import json\ndef label(item):\n    return "Payload: " + json.dumps(item)\n')) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def label(flag: bool):\n    value: str = "ok"\n    if flag:\n        value = object()\n    return "Value: " + value\n',
+        'def label(items: list[object]):\n    value: str = "ok"\n    for value in items:\n        pass\n    return "Value: " + value\n',
+        'value: str = "ok"\nvalue = load()\nlabel = "Value: " + value\n',
+        'def label():\n    value: str = "ok"\n    import module as value\n    return "Value: " + value\n',
+        'def label():\n    value: str = "ok"\n    def value():\n        return object()\n    return "Value: " + value\n',
+        'def label():\n    value: str = "ok"\n    (value := load())\n    return "Value: " + value\n',
+    ],
+)
+def test_unknown_rebinding_clears_string_evidence(source: str) -> None:
     assert _check(source) == []
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('line = ("%0" + width + "d")', id="template-not-applied"),
-        pytest.param('line = value % ("%0" + width + "d")', id="chain-on-the-right-of-percent"),
+        'def emit(logger, user_id: str):\n    logger.info("User " + user_id)',
+        'def emit(logging, user_id: str):\n    logging.warning("User " + user_id)',
+        'def emit(self, user_id: str):\n    self.logger.error("User " + user_id)',
     ],
 )
-def test_fires_when_the_chain_is_not_the_percent_left_operand(source: str):
-    # `"%0"` on its own is a width fragment, not a conversion specifier, so the
-    # literal guard below stays silent and only the `%`-left-operand guard is
-    # under test here.
-    assert len(_check(_typed(source))) == 1
-
-
-# false-positive guards: literals carrying a `%`-conversion specifier          #
+def test_logging_concatenation_is_left_to_logging_rules(source: str) -> None:
+    assert _check(_typed(source)) == []
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        pytest.param('query = "SELECT %s" + suffix', id="percent-s"),
-        pytest.param('msg = template + " You may need to add %r to ALLOWED_HOSTS."', id="percent-r"),
-        pytest.param('fmt = "%(asctime)s " + name + ": %(message)s"', id="mapping-key"),
-        pytest.param('path = candidate + ".%s"', id="specifier-only-literal"),
-        pytest.param('bar = "progress: %.2f" + tail', id="precision-spec"),
-        pytest.param("pattern = \"SELECT '%%', %s\" + suffix", id="escaped-percent"),
+        'value = "x" + unknown',
+        "value = left + right",
+        'value = "x" + b"bytes"',
+        'value = "x" + lazy("translated")',
+        'value = "x" + literal(column)',
+        'value = "x" + (name if flag else other)',
+        'value = "x" + "y"',
+        'value = f"{name + \'!\'}"',
     ],
 )
-def test_skips_literals_carrying_a_conversion_specifier(source: str):
+def test_ambiguous_or_owned_shapes_are_clean(source: str) -> None:
     assert _check(source) == []
 
 
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('segment = "%2F" + rest', id="url-encoded-slash"),
-        pytest.param('segment = "%20" + rest', id="url-encoded-space"),
-        pytest.param('segment = "%3D" + rest', id="url-encoded-equals"),
-        pytest.param('note = "50% of " + total', id="percent-in-prose"),
-        pytest.param('query = "SELECT id" + suffix', id="specifier-removed"),
-    ],
-)
-def test_fires_when_the_percent_is_not_a_conversion_specifier(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-# false-positive guards: ORM / SQL expression operands                        #
+def test_multiline_comment_does_not_suppress_warning() -> None:
+    source = """
+        def label(value: str):
+            return (
+                "Value: "  # durable protocol prefix
+                + value
+            )
+    """
+    assert len(_check(source)) == 1
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        # django/tests/expressions/tests.py:1299 — an injection regression test
-        # whose payload an f-string rewrite would silently delete.
-        pytest.param('qs = Company.objects.filter(name__in=[F("num_chairs") + "1)) OR ((1==1"])', id="django-f"),
-        pytest.param('label = "[" + Value(name) + "]"', id="django-value"),
-        pytest.param('label = "[" + Concat(first, last) + "]"', id="django-concat"),
-        pytest.param('clause = RawSQL("x", []) + "-suffix"', id="django-raw-sql"),
-        pytest.param('clause = literal("x") + "-suffix"', id="sqlalchemy-literal"),
-        pytest.param('perm = "[" + cls.name + "].(id:" + expression.cast(cls.id, String) + ")"', id="sa-expression"),
-        pytest.param('label = func.trim(first) + " " + func.trim(last)', id="sa-func"),
-        pytest.param('label = sa.func.lower(col) + "-suffix"', id="sa-dotted-func"),
-        pytest.param('label = sqla.func.lower(col) + "-suffix"', id="sqla-dotted-func"),
-        pytest.param('label = sqlalchemy.func.lower(col) + "-suffix"', id="sqlalchemy-dotted-func"),
-        pytest.param('clause = literal_column("a") + "-suffix"', id="literal-column"),
-        pytest.param('clause = "prefix-" + bindparam("x")', id="bindparam"),
+        'STYLE = "bold " + COLOR\n',
+        'class Lexer:\n    TOKEN = r"[a-z]" + SUFFIX\n',
+        'ANSI = "\\x1b[" + CODE\n',
     ],
 )
-def test_skips_orm_expression_operands(source: str):
+def test_module_and_class_declarative_fragments_are_clean(source: str) -> None:
     assert _check(source) == []
 
 
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('qs = Company.objects.filter(name__in=[chairs + "1)) OR ((1==1"])', id="orm-call-hoisted"),
-        pytest.param('label = str(trim(first)) + " x " + str(trim(last))', id="unrelated-call-root"),
-        pytest.param('label = helper.lower(col) + "-suffix"', id="unrelated-attribute-root"),
-    ],
-)
-def test_fires_without_the_orm_operand(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-# false-positive guards: boolean-fallback operands                            #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('port = (os.environ.get("HOST") or "localhost") + ":" + port', id="or-fallback-prefix"),
-        pytest.param('cursor = (context.cursor or "") + "."', id="or-fallback-suffix"),
-        pytest.param('label = (lang or "") + ":" + code', id="or-fallback-middle"),
-        pytest.param('body = "</think>" + (delta.content or "")', id="or-fallback-trailing"),
-        pytest.param('body = "x" + (ready and label)', id="and-fallback"),
-    ],
-)
-def test_skips_boolean_fallback_operands(source: str):
+def test_nested_url_receiver_chain_is_clean() -> None:
+    source = 'def health(url: str):\n    return url.replace("/v1", "").rstrip("/") + "/health"\n'
     assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('port = host + ":" + port', id="fallback-hoisted-to-a-name"),
-        pytest.param('cursor = cursor_value + "."', id="fallback-removed"),
-    ],
-)
-def test_fires_when_the_boolean_fallback_is_hoisted(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-def test_fires_when_the_whole_chain_is_a_boolean_operand():
-    # The BoolOp is the parent here, not an operand — the chain itself is plain.
-    assert len(_check(_typed('label = override or ("-" + field)'))) == 1
-
-
-# false-positive guards: `.join(...)` operands                                #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('msg = "routes:\\n" + "\\n".join(rows)', id="literal-then-join"),
-        pytest.param('msg = " AND ".join(conds) + " LIMIT 1"', id="join-then-literal"),
-        pytest.param('msg = "a" + sep.join(rows) + "b"', id="join-in-the-middle"),
-        pytest.param('msg = "a" + os.path.join(root, name)', id="os-path-join-conservative"),
-    ],
-)
-def test_skips_join_operands(source: str):
-    assert _check(source) == []
-
-
-def test_fires_when_the_join_is_replaced_by_a_plain_call():
-    assert len(_check('msg = "routes:\\n" + str(render(rows))')) == 1
-
-
-# false-positive guards: whitespace-only blob gluing                          #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        # This repo's own tests/rules/test_over_mocked_test.py:65.
-        pytest.param(
-            'src = _patches(6).replace("t", "a") + "\\n\\n" + _patches(6).replace("t", "b")',
-            id="two-source-fixtures",
-        ),
-        pytest.param('table = "\\n" + tabulate(rows, tablefmt="github") + "\\n\\n"', id="rendered-table"),
-        pytest.param('bar = "\\n" + f" {title} ".center(width, "=") + "\\n"', id="whitespace-only-fstring-operand"),
-        pytest.param('name = first.get("a", "") + " " + last.get("b", "")', id="keyword-lookup-pair"),
-    ],
-)
-def test_skips_whitespace_only_blob_gluing(source: str):
-    assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        # The chain carries prose, so the f-string has something to make readable
-        # — even when the prose lives inside an f-string operand.
-        pytest.param('src = str(_patches(6)).replace("t", "a") + " then " + tail', id="literal-carries-prose"),
-        pytest.param('text = str(title.get("k", "")) + "\\n\\n" + f"phone: {phone}\\n"', id="fstring-carries-prose"),
-        # No call argument to quote, so nothing has to nest inside a placeholder.
-        pytest.param('src = str(_try_with(4)) + "\\n" + str(_try_with(5))', id="no-string-literal-argument"),
-        pytest.param('src = GUARDED + "\\n" + UNGUARDED', id="bare-name-operands"),
-    ],
-)
-def test_fires_when_the_blob_glue_guard_does_not_apply(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-# false-positive guards: string repetition                                    #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('prompt = "A" * MIN_LENGTH + " tail"', id="literal-times-name"),
-        pytest.param('bar = COUNT * "-" + title', id="name-times-literal"),
-        pytest.param('sample = "x" + "\\n" * 51 + "y"', id="repetition-in-the-middle"),
-    ],
-)
-def test_skips_string_repetition(source: str):
-    assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('prompt = prefix + " tail"', id="repetition-removed"),
-        pytest.param('sample = "x" + middle + "y"', id="repetition-replaced-by-name"),
-    ],
-)
-def test_fires_without_the_repetition(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-def test_skips_numeric_multiplication_operand_without_string_type_proof():
-    # `n * 3` carries no string literal of its own, but the chain still needs
-    # its own literal to fire — and here it has one, so the guard must be the
-    # string-repetition test, not a blanket Mult exclusion.
-    assert _check('v = "n=" + n * 3') == []
-
-
-# false-positive guards: whitespace-only two-operand chains                    #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('out = json.dumps(payload) + "\\n"', id="trailing-newline"),
-        pytest.param('out = "\\n" + body', id="leading-newline"),
-        pytest.param('out = name + " "', id="trailing-space"),
-        pytest.param('out = name + ""', id="empty-literal"),
-        pytest.param('out = name + "\\t"', id="trailing-tab"),
-    ],
-)
-def test_skips_two_operand_whitespace_terminators(source: str):
-    assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('out = first + " " + last', id="three-operands-still-fire"),
-        pytest.param('out = json.dumps(payload) + "END"', id="non-whitespace-literal"),
-        pytest.param('out = body + " ok"', id="whitespace-plus-text"),
-    ],
-)
-def test_fires_when_the_whitespace_guard_does_not_apply(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-# false-positive guards: lazy translation / SafeString operands               #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('title = "Error: " + _("not found")', id="gettext-underscore"),
-        pytest.param('title = "Error: " + gettext_lazy("not found")', id="gettext-lazy"),
-        pytest.param('title = "Error: " + ngettext("a", "b", n)', id="ngettext"),
-        pytest.param('title = "Error: " + ngettext_lazy("a", "b", n)', id="ngettext-lazy"),
-        pytest.param('title = "Error: " + pgettext("ctx", "not found")', id="pgettext"),
-        pytest.param('title = "Error: " + pgettext_lazy("ctx", "not found")', id="pgettext-lazy"),
-        pytest.param('title = "Error: " + npgettext("ctx", "a", "b", n)', id="npgettext"),
-        pytest.param('title = "Error: " + npgettext_lazy("ctx", "a", "b", n)', id="npgettext-lazy"),
-        pytest.param('title = "Error: " + ugettext("not found")', id="ugettext"),
-        pytest.param('title = "Error: " + ugettext_lazy("not found")', id="ugettext-lazy"),
-        pytest.param('title = "Error: " + format_lazy("{}", value)', id="format-lazy"),
-        pytest.param('title = "Error: " + lazy(render, str)', id="lazy"),
-        pytest.param('title = "Error: " + translation.gettext("x")', id="dotted-gettext"),
-        pytest.param('html = "<b>" + mark_safe(fragment)', id="mark-safe"),
-        pytest.param('html = "<b>" + format_html("{}", value)', id="format-html"),
-    ],
-)
-def test_skips_lazy_and_safe_string_operands(source: str):
-    assert _check(source) == []
-
-
-def test_fires_on_an_ordinary_call_operand():
-    assert len(_check('title = "Error: " + str(describe("not found"))')) == 1
-
-
-# false-positive guards: conditional-expression operands                      #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('order = ("-" if desc else "") + "datefield"', id="conditional-prefix"),
-        pytest.param('clause = "SESSION" + (" UTC" if use_tz else "")', id="conditional-suffix"),
-    ],
-)
-def test_skips_conditional_operands(source: str):
-    assert _check(source) == []
-
-
-def test_fires_when_the_conditional_is_hoisted_to_a_name():
-    assert len(_check(_typed('order = sign + "datefield"'))) == 1
-
-
-def test_fires_when_the_whole_chain_is_a_conditional_branch():
-    # The IfExp is the parent here, not an operand — the chain itself is plain.
-    assert len(_check(_typed('order = ("-" + field) if desc else field'))) == 1
-
-
-# false-positive guards: SQL fragments (defer to S608 / SARJ021)              #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('q = "SELECT * FROM " + table', id="select-from"),
-        pytest.param('q = "DELETE FROM " + table', id="delete-from"),
-        pytest.param('q = "... WHERE " + predicate', id="where"),
-        pytest.param('q = "INSERT INTO " + table', id="insert-into"),
-        pytest.param('q = "UPDATE " + table', id="update"),
-        pytest.param('q = "JOIN " + table', id="join"),
-        pytest.param('q = "ORDER BY " + column', id="order-by"),
-        pytest.param('q = "GROUP BY " + column', id="group-by"),
-        pytest.param('q = "VALUES " + values', id="values"),
-        pytest.param('q = "SET " + assignments', id="set"),
-    ],
-)
-def test_skips_sql_fragments(source: str):
-    assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('note = "selected from " + source_name + " today"', id="keyword-not-at-the-end"),
-        pytest.param('label = "Updated " + when', id="prose-not-sql"),
-    ],
-)
-def test_fires_on_prose_that_merely_contains_sql_words(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-# file-scope gating and robustness                                            #
 
 
 @pytest.mark.parametrize(
     "path",
-    [
-        "src/service.py",
-        "tests/test_service.py",
-        "conftest.py",
-        "scripts/build.py",
-    ],
+    [Path("src/generated/client.py"), Path("generated.py")],
+    ids=["generated-directory", "generated-header"],
 )
-def test_fires_everywhere_including_tests(path: str):
-    # A general readability rule, not a test-scoped one: tests build ids and
-    # fixtures with `"prefix_" + str(uuid7())` more than production code does.
-    assert len(_check('name = "trunk_" + str(uuid7())', path)) == 1
+def test_generated_files_are_clean(path: Path) -> None:
+    source = '# @generated\ndef label(value: str):\n    return "Value: " + value\n'
+    assert _check(source, path) == []
 
 
 @pytest.mark.parametrize(
-    "header",
-    [
-        "# Code generated by Speakeasy. DO NOT EDIT.",
-        "# This file was automatically generated by protoc.",
-        "# @generated",
-    ],
+    "path",
+    [Path("tests/test_label.py"), Path("scripts/label.py"), Path(".agents/skills/x/a.py")],
+    ids=["test", "script", "skill"],
 )
-def test_skips_generated_files(header: str):
-    assert _check(f'{header}\nvalue = "a" + name\n') == []
+def test_semantic_rule_is_not_path_routed(path: Path) -> None:
+    source = 'def label(value: str):\n    return "Value: " + value\n'
+    assert len(_check(source, path)) == 1
 
 
-def test_fires_when_the_generated_header_is_absent():
-    assert len(_check(_typed('# Hand written module\nvalue = "a" + name\n'))) == 1
-
-
-def test_syntax_error_source_is_silent():
-    assert _check('def broken(:\n    x = "a" + name\n') == []
-
-
-def test_source_without_plus_is_silent():
-    assert _check('value = f"{name} ok"') == []
-
-
-def test_diagnostics_are_sorted_by_position():
-    diags = _check(_typed('a = "z" + one\nb = "y" + two\nc = "x" + three\n'))
-    assert [d.line for d in diags] == [2, 3, 4]
-
-
-def test_augmented_assignment_operand_still_fires():
-    assert len(_check(_typed('msg += " (" + reason + ")"'))) == 1
-
-
-def test_implicit_literal_concatenation_alone_is_silent():
-    assert _check('msg = ("part one " "part two")') == []
-
-
-def test_explicit_literal_only_concatenation_is_silent():
-    # Ruff's ISC003 owns literal + literal; this rule requires a runtime operand.
-    assert _check('msg = "part one " + "part two"') == []
-
-
-def test_a_pathologically_long_chain_does_not_exhaust_the_stack():
-    src = 'x = "a" + ' + " + ".join(f"n{i}" for i in range(5000))
-    assert _check(src, "m.py") == []
-
-
-# The 19-repo re-read: 18% FP over 3,401 findings, in two guarded classes.     #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('pattern = re.compile(re.escape(uri) + r".*")', id="dot-star"),
-        pytest.param(r'found = re.search(r"\b" + re.escape(token) + r"\b", text)', id="word-boundary"),
-        pytest.param(r'pattern = prefix + r"\d+"', id="digit-class"),
-    ],
-)
-def test_a_concatenated_regex_without_braces_is_still_reported(source: str):
-    assert len(_check(_typed(source))) == 1
-
-
-def test_a_comment_between_operands_is_not_deletable():
-    source = """
-        keystrokes = (
-            "n"  # Enter invalid interval
-            + readchar.key.ENTER
-            + "abc"  # Enter valid interval
-            + readchar.key.ENTER
-        )
-    """
+@pytest.mark.parametrize("source", ["", "# comment\n", "def broken(:\n"])
+def test_empty_or_invalid_source_is_clean(source: str) -> None:
     assert _check(source) == []
 
 
-def test_a_multi_line_chain_without_a_comment_still_fires():
-    source = """
-        keystrokes = (
-            "n"
-            + str(readchar.key.ENTER)
-            + "abc"
-        )
-    """
-    assert len(_check(source)) == 1
-
-
-def test_a_trailing_comment_on_a_single_line_chain_still_fires():
-    assert len(_check(_typed('msg = "user " + name  # who failed'))) == 1
-
-
-def test_a_nested_quoted_call_is_still_reported():
-    source = 'path = "django.db.models" + tail.removeprefix("django.db.models.fields")'
-    assert len(_check(_typed(source))) == 1
-
-
-# Type-proof calibration from the follow-up corpus audit.                    #
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('label = "prefix-" + value', id="bare-name"),
-        pytest.param('label = "prefix-" + value.code', id="attribute"),
-        pytest.param('label = "prefix-" + build_value()', id="call"),
-        pytest.param('label = "prefix-" + values[0]', id="unknown-subscript"),
-        pytest.param(
-            'def label(series: pandas.Series) -> object:\n    return series + "-suffix"',
-            id="pandas-series-overload",
-        ),
-    ],
-)
-def test_unknown_or_overloaded_operands_are_not_rewritten(source: str) -> None:
+def test_long_chain_does_not_exhaust_the_stack() -> None:
+    source = 'value = "a" + ' + " + ".join(f"name_{index}" for index in range(5_000))
     assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param('def label(value: str) -> str:\n    return "prefix-" + value', id="parameter"),
-        pytest.param('value: str\nlabel = "prefix-" + value', id="local-annotation"),
-        pytest.param('value = "known"\nlabel = "prefix-" + value', id="literal-assignment"),
-        pytest.param('label = "prefix-" + str(value)', id="explicit-conversion"),
-        pytest.param('label = "prefix-" + json.dumps(value)', id="json-dumps"),
-        pytest.param('value: str\nlabel = "prefix-" + value.upper()', id="known-string-method"),
-        pytest.param('value: str\nlabel = "prefix-" + value[:3]', id="known-string-slice"),
-    ],
-)
-def test_proven_string_operands_are_still_reported(source: str) -> None:
-    assert len(_check(source)) == 1
-
-
-def test_an_unknown_assignment_invalidates_an_earlier_annotation() -> None:
-    source = 'value: str\nvalue = load_value()\nlabel = "prefix-" + value'
-    assert _check(source) == []
-
-
-def test_concat_nested_inside_an_existing_fstring_is_not_reported() -> None:
-    source = "def label(value: str) -> str:\n    return f\"wrapped: {value + '-suffix'}\""
-    assert _check(source) == []
-
-
-@pytest.mark.parametrize("root", [".agents", ".claude"])
-def test_skill_utility_trees_are_exempt(root: str) -> None:
-    source = 'value: str\nlabel = "prefix-" + value'
-    assert _check(source, f"{root}/skills/example/scripts/render.py") == []
-
-
-def test_similarly_named_non_skill_tree_is_still_checked() -> None:
-    source = 'value: str\nlabel = "prefix-" + value'
-    assert len(_check(source, ".agents/tools/render.py")) == 1
