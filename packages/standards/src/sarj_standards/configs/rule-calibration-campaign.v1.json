@@ -151,8 +151,8 @@
       "family": "python",
       "ruleId": "invalid-pydantic-field-default",
       "state": "complete",
-      "evidence": "Two-repository AST scan initially produced 0 findings; targeted Annotated-alias discovery exposed one invalid direct default. The broadened scan reports that 1 reviewed true positive and 0 false positives.",
-      "outcome": "Added direct-default and Annotated Field-contract analysis, bounded unique local-module alias resolution, merged annotation/assignment bounds, modern public examples, and documentation of Pydantic's unvalidated-default behavior."
+      "evidence": "Three fresh independent reviews ran 41 focused tests and scanned up to 2,959 tracked Python files across eight local repositories. The broadest scan found one live diagnostic, ai/python/shared/export_models.py:38, and runtime validation confirmed it is a true invalid NonEmptyStr default. An installed-source sample found five additional genuine non-null defaults. Two reviewers independently reproduced false positives where Pydantic before validators transform defaults during default validation; Ruff has no equivalent constraint-aware rule.",
+      "outcome": "Kept invalid-pydantic-field-default and error severity after adding validator-aware abstention for exact field, model, root, and Annotated before/plain/wrap transformers. Clarified that direct assignments are covered, fixed the direct-None diagnostic, added a public nullability pair, recognized exact BaseModel plus Generic declarations, and expanded literal length checks to list, tuple, set, and dict defaults. Broader model inheritance, coercion inference, Pydantic v1, and dynamic constraints remain excluded to protect precision."
     },
     {
       "task": "rule-audit/python/repeated-kwarg-heavy-call-in-test",

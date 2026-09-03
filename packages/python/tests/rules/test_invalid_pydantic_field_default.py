@@ -95,7 +95,117 @@ def test_checks_direct_none_default_without_field_call() -> None:
             name: str = None
     """
 
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert "has a `None` default" in findings[0].message
+    assert "gives `Field`" not in findings[0].message
+
+
+def test_checks_generic_direct_base_model() -> None:
+    source = """
+        from typing import Generic, TypeVar
+        from pydantic import BaseModel
+
+        T = TypeVar("T")
+
+        class Model(BaseModel, Generic[T]):
+            name: str = None
+    """
+
     assert len(_check(source)) == 1
+
+
+def test_ignores_default_transformed_by_exact_field_validator() -> None:
+    source = """
+        from pydantic import BaseModel, Field, field_validator
+
+        class Model(BaseModel):
+            name: str = Field(None, validate_default=True)
+            untouched: str = None
+
+            @field_validator("name", mode="before")
+            @classmethod
+            def normalize_name(cls, value):
+                return "anonymous" if value is None else value
+    """
+
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert "`untouched`" in findings[0].message
+
+
+@pytest.mark.parametrize("mode", ["before", "wrap"])
+def test_ignores_defaults_transformed_by_model_validator(mode: str) -> None:
+    source = f"""\
+        from pydantic import BaseModel, model_validator
+
+        class Model(BaseModel):
+            name: str = None
+
+            @model_validator(mode="{mode}")
+            @classmethod
+            def normalize_model(cls, value):
+                return value
+    """
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("validator", ["BeforeValidator", "PlainValidator", "WrapValidator"])
+def test_ignores_default_transformed_by_annotated_validator(validator: str) -> None:
+    source = f"""\
+        from typing import Annotated
+        from pydantic import BaseModel, Field, {validator} as Normalize
+
+        def normalize(value):
+            return "anonymous" if value is None else value
+
+        class Model(BaseModel):
+            name: Annotated[str, Normalize(normalize)] = Field(None, validate_default=True)
+    """
+
+    assert _check(source) == []
+
+
+def test_after_validator_does_not_hide_invalid_default() -> None:
+    source = """
+        from pydantic import BaseModel, field_validator
+
+        class Model(BaseModel):
+            name: str = None
+
+            @field_validator("name", mode="after")
+            @classmethod
+            def normalize_name(cls, value):
+                return value
+    """
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("annotation", "default", "bound"),
+    [
+        ("list[int]", "[]", "min_length=1"),
+        ("tuple[int, ...]", "(1, 2)", "max_length=1"),
+        ("dict[str, int]", "{}", "min_length=1"),
+        ("set[int]", "{1, 2}", "max_length=1"),
+    ],
+)
+def test_checks_literal_container_length_bounds(annotation: str, default: str, bound: str) -> None:
+    source = f"""\
+        from pydantic import BaseModel, Field
+
+        class Model(BaseModel):
+            value: {annotation} = Field({default}, {bound})
+    """
+
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert bound in findings[0].message
 
 
 def test_follows_unique_imported_annotated_alias(tmp_path: Path) -> None:
