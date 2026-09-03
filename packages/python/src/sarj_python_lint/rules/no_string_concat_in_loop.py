@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import ast
+from operator import itemgetter
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, TypeGuard, final, override
+from typing import TYPE_CHECKING, NamedTuple, TypeGuard, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -24,6 +25,15 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_RANGE_MAX_ARGS = 3
+
+
+class _StringStateEvent(NamedTuple):
+    line: int
+    target: str
+    is_string: bool
+
+
 def _src(node: ast.expr) -> str:
     if isinstance(node, ast.Name):
         return node.id
@@ -37,9 +47,9 @@ class NoStringConcatInLoop(Rule):
     id: str = "no-string-concat-in-loop"
     code: str = "SARJ002"
     documentation = RuleDocumentation(
-        summary="Do not grow one string with repeated concatenation inside a loop.",
-        rationale="Repeated string growth copies the accumulated value on each iteration and can take quadratic time.",
-        remediation="Append each fragment to a list and join the fragments once after the loop.",
+        summary="Avoid repeatedly growing a proven string accumulator across a loop backedge.",
+        rationale="Repeated immutable-string growth can copy the accumulated value on each iteration and become quadratic.",
+        remediation="Collect fragments and join once, or use `io.StringIO` when incremental writes are required.",
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
         aliases=("inefficient-string-concat-in-loop",),
@@ -55,7 +65,7 @@ class NoStringConcatInLoop(Rule):
                 files=(
                     ExampleFile.python(
                         "app/render.py",
-                        'def render(items):\n    result = ""\n    for item in items:\n        result += f"{item}\\n"\n    return result\n',
+                        'def render(items):\n    result = ""\n    for item in items:\n        result += str(item)\n    return result\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/render.py"),
@@ -69,7 +79,7 @@ class NoStringConcatInLoop(Rule):
                 files=(
                     ExampleFile.python(
                         "app/render.py",
-                        'def render(items):\n    lines = []\n    for item in items:\n        lines.append(f"{item}\\n")\n    return "".join(lines)\n',
+                        'def render(items):\n    return "".join(str(item) for item in items)\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/render.py"),
@@ -97,7 +107,10 @@ class NoStringConcatInLoop(Rule):
                 line=node.lineno,
                 col=node.col_offset + 1,
                 code=self.code,
-                message="String concat in a loop is O(n²). Append to a list and `''.join(...)`.",
+                message=(
+                    "Repeated immutable-string growth in a loop can become quadratic — collect fragments and join "
+                    "once, or use `io.StringIO`."
+                ),
             )
             for node in visitor.hits
         ]
@@ -106,15 +119,21 @@ class NoStringConcatInLoop(Rule):
 class _ConcatVisitor(ast.NodeVisitor):
     def __init__(self) -> None:
         self._loop_depth: int = 0
-        self._string_vars: list[frozenset[str]] = [frozenset()]
         self._loop_reassigns: list[dict[str, list[int]]] = []
         self._loop_reads: list[frozenset[str]] = []
         self._loop_reported: list[set[str]] = []
         self._while_probe_names: list[frozenset[str]] = []
+        self._class_string_attrs: list[frozenset[str]] = [frozenset()]
+        self._functions: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda] = []
         self.hits: list[ast.AugAssign | ast.Assign] = []
 
     @override
     def generic_visit(self, node: ast.AST) -> None:
+        if isinstance(node, ast.ClassDef):
+            self._class_string_attrs.append(_class_string_attributes(node))
+            super().generic_visit(node)
+            self._class_string_attrs.pop()
+            return
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
             saved_depth = self._loop_depth
             saved_probes = self._while_probe_names
@@ -122,27 +141,15 @@ class _ConcatVisitor(ast.NodeVisitor):
             self._loop_depth = 0
             self._while_probe_names = []
             self._loop_reads = []
-            self._string_vars.append(_string_typed_locals(node))
+            self._functions.append(node)
             super().generic_visit(node)
-            self._string_vars.pop()
+            self._functions.pop()
             self._loop_depth = saved_depth
             self._while_probe_names = saved_probes
             self._loop_reads = saved_reads
             return
         if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
-            self._loop_depth += 1
-            self._loop_reassigns.append(_loop_local_reassignments(node))
-            self._loop_reads.append(_loop_read_names(node))
-            self._loop_reported.append(set())
-            if isinstance(node, ast.While):
-                self._while_probe_names.append(frozenset(_test_names(node.test)))
-            super().generic_visit(node)
-            if isinstance(node, ast.While):
-                self._while_probe_names.pop()
-            self._loop_reads.pop()
-            self._loop_reassigns.pop()
-            self._loop_reported.pop()
-            self._loop_depth -= 1
+            self._visit_loop(node)
             return
         if (
             self._loop_depth
@@ -156,6 +163,29 @@ class _ConcatVisitor(ast.NodeVisitor):
                 self.hits.append(node)
         super().generic_visit(node)
 
+    def _visit_loop(self, node: ast.For | ast.AsyncFor | ast.While) -> None:
+        for expression in _loop_header_expressions(node):
+            self.visit(expression)
+        bounded = _loop_runs_at_most_once(node)
+        if not bounded:
+            self._loop_depth += 1
+            self._loop_reassigns.append(_loop_local_reassignments(node))
+            self._loop_reads.append(_loop_read_names(node))
+            self._loop_reported.append(set())
+            if isinstance(node, ast.While):
+                self._while_probe_names.append(frozenset(_test_names(node.test)))
+        for statement in node.body:
+            self.visit(statement)
+        if not bounded:
+            if isinstance(node, ast.While):
+                self._while_probe_names.pop()
+            self._loop_reads.pop()
+            self._loop_reassigns.pop()
+            self._loop_reported.pop()
+            self._loop_depth -= 1
+        for statement in node.orelse:
+            self.visit(statement)
+
     def _is_probe_target(self, node: ast.AugAssign | ast.Assign) -> bool:
         target_src = _src(self._accumulation_target(node))
         if any(target_src in names for names in self._while_probe_names):
@@ -167,7 +197,7 @@ class _ConcatVisitor(ast.NodeVisitor):
     def _is_loop_local_target(self, node: ast.AugAssign | ast.Assign) -> bool:
         target = self._accumulation_target(node)
         rebinds = self._loop_reassigns[-1].get(_src(target), ())
-        return any(line < node.lineno for line in rebinds)
+        return bool(rebinds)
 
     def _accumulation_target(self, node: ast.AugAssign | ast.Assign) -> ast.expr:
         if isinstance(node, ast.AugAssign):
@@ -188,22 +218,138 @@ class _ConcatVisitor(ast.NodeVisitor):
         if isinstance(value, ast.JoinedStr):
             return any(
                 isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in value.values
-            )
+            ) and self._is_string_growth(target, value)
         if not isinstance(value, ast.BinOp) or not isinstance(value.op, ast.Add):
             return False
-        other = _other_add_operand(target, value)
-        if other is None:
+        if not _add_tree_contains_target(target, value):
             return False
-        return self._is_string_growth(target, other)
+        return self._is_string_growth(target, value)
 
-    def _is_string_growth(self, target: ast.expr, rhs: ast.expr) -> bool:
+    def _is_string_growth(self, target: ast.expr, _rhs: ast.expr) -> bool:
         if isinstance(target, ast.Subscript):
             return False
-        if _looks_like_string(rhs):
+        if _is_definitely_non_string(_rhs):
+            return False
+        target_name = _src(target)
+        if target_name in self._class_string_attrs[-1]:
             return True
-        if isinstance(rhs, ast.Name) and isinstance(target, ast.Name):
-            return target.id in self._string_vars[-1]
+        return bool(self._functions) and _target_is_string_before(self._functions[-1], target_name, target.lineno)
+
+
+def _is_definitely_non_string(value: ast.expr) -> bool:
+    if isinstance(value, ast.Constant):
+        return not isinstance(value.value, str)
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in {"bool", "float", "int", "len"}
+    )
+
+
+def _loop_header_expressions(node: ast.For | ast.AsyncFor | ast.While) -> tuple[ast.expr, ...]:
+    if isinstance(node, (ast.For, ast.AsyncFor)):
+        return (node.target, node.iter)
+    return (node.test,)
+
+
+def _loop_runs_at_most_once(node: ast.For | ast.AsyncFor | ast.While) -> bool:
+    if isinstance(node, (ast.For, ast.AsyncFor)):
+        if isinstance(node.iter, (ast.List, ast.Tuple, ast.Set)):
+            return len(node.iter.elts) <= 1
+        if isinstance(node.iter, ast.Call) and isinstance(node.iter.func, ast.Name) and node.iter.func.id == "range":
+            return _range_cardinality_at_most_one(node.iter)
+    return (
+        bool(node.body)
+        and isinstance(node.body[-1], ast.Break)
+        and not any(isinstance(inner, ast.Continue) for statement in node.body[:-1] for inner in walk(statement))
+    )
+
+
+def _range_cardinality_at_most_one(call: ast.Call) -> bool:
+    if call.keywords or not 1 <= len(call.args) <= _RANGE_MAX_ARGS:
         return False
+    values = [
+        argument.value
+        for argument in call.args
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, int)
+    ]
+    if len(values) != len(call.args):
+        return False
+    return len(range(*values)) <= 1
+
+
+def _target_is_string_before(
+    func: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+    target_name: str,
+    line: int,
+) -> bool:
+    if isinstance(func, ast.Lambda):
+        return False
+    state = _parameter_string_state(func, target_name)
+    for event_line, event_name, event_state in sorted(_assignment_states(func), key=itemgetter(0)):
+        if event_line >= line:
+            break
+        if event_name == target_name:
+            state = event_state
+    return state
+
+
+def _parameter_string_state(func: ast.FunctionDef | ast.AsyncFunctionDef, target_name: str) -> bool:
+    arguments = (*func.args.posonlyargs, *func.args.args, *func.args.kwonlyargs)
+    return any(argument.arg == target_name and _annotation_is_str(argument.annotation) for argument in arguments)
+
+
+def _assignment_states(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_StringStateEvent]:
+    events: list[_StringStateEvent] = []
+    for statement in func.body:
+        _collect_assignment_states(statement, events)
+    return events
+
+
+def _collect_assignment_states(node: ast.AST, events: list[_StringStateEvent]) -> None:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+        return
+    match node:
+        case ast.Assign(targets=targets, value=value):
+            for target in targets:
+                events.extend(
+                    _StringStateEvent(bound.lineno, _src(bound), _looks_like_string(value))
+                    for bound in _iter_binding_targets(target)
+                    if not _is_accumulation_assign(bound, value)
+                )
+        case ast.AnnAssign(target=target, annotation=annotation, value=value):
+            if isinstance(target, (ast.Name, ast.Attribute)) and value is not None:
+                events.append(_StringStateEvent(target.lineno, _src(target), _annotation_is_str(annotation)))
+        case ast.NamedExpr(target=target, value=value):
+            events.append(_StringStateEvent(target.lineno, _src(target), _looks_like_string(value)))
+        case _:
+            pass
+    for child in children(node):
+        _collect_assignment_states(child, events)
+
+
+def _class_string_attributes(node: ast.ClassDef) -> frozenset[str]:
+    states: dict[str, list[bool]] = {}
+    for statement in node.body:
+        _collect_class_attr_states(statement, states)
+    return frozenset(name for name, evidence in states.items() if evidence and all(evidence))
+
+
+def _collect_class_attr_states(node: ast.AST, states: dict[str, list[bool]]) -> None:
+    if isinstance(node, ast.ClassDef):
+        return
+    match node:
+        case ast.Assign(targets=targets, value=value):
+            for target in targets:
+                if isinstance(target, ast.Attribute) and _src(target).startswith("self."):
+                    states.setdefault(_src(target), []).append(_looks_like_string(value))
+        case ast.AnnAssign(target=ast.Attribute() as target, annotation=annotation):
+            if _src(target).startswith("self."):
+                states.setdefault(_src(target), []).append(_annotation_is_str(annotation))
+        case _:
+            pass
+    for child in children(node):
+        _collect_class_attr_states(child, states)
 
 
 def _test_names(test: ast.expr) -> set[str]:
@@ -219,6 +365,15 @@ def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]
             continue
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
             target = node.targets[0]
+            if isinstance(node.value, ast.JoinedStr) and any(
+                isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in node.value.values
+            ):
+                stack.extend(
+                    part.value
+                    for part in node.value.values
+                    if isinstance(part, ast.FormattedValue) and _src(part.value) != _src(target)
+                )
+                continue
             if _is_accumulation_assign(target, node.value) and isinstance(node.value, ast.BinOp):
                 # Skip the self-read operand; still record reads in the other one.
                 other = _other_add_operand(target, node.value)
@@ -234,29 +389,18 @@ def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]
 def _loop_local_reassignments(loop: ast.For | ast.AsyncFor | ast.While) -> dict[str, list[int]]:
     reassigns: dict[str, list[int]] = {}
     for stmt in loop.body:
-        _collect_reassignments(stmt, reassigns)
+        match stmt:
+            case ast.Assign(targets=targets, value=value):
+                for target in targets:
+                    for bound in _iter_binding_targets(target):
+                        if not _is_accumulation_assign(bound, value):
+                            reassigns.setdefault(_src(bound), []).append(bound.lineno)
+            case ast.AnnAssign(target=target, value=value) if value is not None:
+                if not _is_accumulation_assign(target, value):
+                    reassigns.setdefault(_src(target), []).append(target.lineno)
+            case _:
+                pass
     return reassigns
-
-
-def _collect_reassignments(node: ast.AST, reassigns: dict[str, list[int]]) -> None:
-    if isinstance(
-        node,
-        (ast.For, ast.AsyncFor, ast.While, ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef),
-    ):
-        return
-    if isinstance(node, ast.Assign):
-        for target in node.targets:
-            for bound in _iter_binding_targets(target):
-                if not _is_accumulation_assign(bound, node.value):
-                    reassigns.setdefault(_src(bound), []).append(bound.lineno)
-    elif (
-        isinstance(node, ast.AnnAssign)
-        and node.value is not None
-        and not _is_accumulation_assign(node.target, node.value)
-    ):
-        reassigns.setdefault(_src(node.target), []).append(node.target.lineno)
-    for child in children(node):
-        _collect_reassignments(child, reassigns)
 
 
 def _iter_binding_targets(target: ast.expr) -> Iterator[ast.Name | ast.Attribute]:
@@ -273,9 +417,16 @@ def _iter_binding_targets(target: ast.expr) -> Iterator[ast.Name | ast.Attribute
 
 
 def _is_accumulation_assign(target: ast.expr, value: ast.expr) -> bool:
+    if isinstance(value, ast.JoinedStr):
+        return any(isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in value.values)
     if isinstance(value, ast.BinOp) and isinstance(value.op, ast.Add):
-        return _other_add_operand(target, value) is not None
+        return _add_tree_contains_target(target, value)
     return False
+
+
+def _add_tree_contains_target(target: ast.expr, value: ast.expr) -> bool:
+    target_src = _src(target)
+    return any(_src(node) == target_src for node in walk(value) if isinstance(node, (ast.Name, ast.Attribute)))
 
 
 def _other_add_operand(target: ast.expr, binop: ast.BinOp) -> ast.expr | None:
@@ -285,126 +436,6 @@ def _other_add_operand(target: ast.expr, binop: ast.BinOp) -> ast.expr | None:
     if _src(binop.right) == target_src:
         return binop.left
     return None
-
-
-def _string_typed_locals(func: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> frozenset[str]:
-    if isinstance(func, ast.Lambda):
-        return frozenset()
-    names: set[str] = set()
-    for stmt in func.body:
-        _collect_string_targets(stmt, names)
-    names.update(_stable_annotated_string_names(func))
-    return frozenset(names)
-
-
-@final
-class _StringAnnotationCollector(ast.NodeVisitor):
-    def __init__(self, parameter_names: set[str]) -> None:
-        self.parameter_names = parameter_names
-        self.local_annotations: dict[str, int] = {}
-        self.rebound: set[str] = set()
-
-    def _record_rebound_target(self, target: ast.expr) -> None:
-        for bound in _iter_binding_targets(target):
-            if isinstance(bound, ast.Name):
-                self.rebound.add(bound.id)
-
-    @override
-    def visit_Assign(self, node: ast.Assign) -> None:
-        for target in node.targets:
-            self._record_rebound_target(target)
-        self.visit(node.value)
-
-    @override
-    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        if isinstance(node.target, ast.Name) and _annotation_is_str(node.annotation):
-            name = node.target.id
-            self.local_annotations[name] = self.local_annotations.get(name, 0) + 1
-            if name in self.parameter_names:
-                self.rebound.add(name)
-        else:
-            self._record_rebound_target(node.target)
-        if node.value is not None:
-            self.visit(node.value)
-
-    @override
-    def visit_AugAssign(self, node: ast.AugAssign) -> None:
-        if not isinstance(node.op, ast.Add):
-            self._record_rebound_target(node.target)
-        self.visit(node.value)
-
-    @override
-    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
-        self._record_rebound_target(node.target)
-        self.visit(node.value)
-
-    @override
-    def visit_For(self, node: ast.For) -> None:
-        self._visit_for(node)
-
-    @override
-    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
-        self._visit_for(node)
-
-    def _visit_for(self, node: ast.For | ast.AsyncFor) -> None:
-        self._record_rebound_target(node.target)
-        self.visit(node.iter)
-        for statement in (*node.body, *node.orelse):
-            self.visit(statement)
-
-    @override
-    def visit_With(self, node: ast.With) -> None:
-        self._visit_with(node)
-
-    @override
-    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
-        self._visit_with(node)
-
-    def _visit_with(self, node: ast.With | ast.AsyncWith) -> None:
-        for item in node.items:
-            self.visit(item.context_expr)
-            if item.optional_vars is not None:
-                self._record_rebound_target(item.optional_vars)
-        for statement in node.body:
-            self.visit(statement)
-
-    @override
-    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
-        if node.name is not None:
-            self.rebound.add(node.name)
-        if node.type is not None:
-            self.visit(node.type)
-        for statement in node.body:
-            self.visit(statement)
-
-    @override
-    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        self.rebound.add(node.name)
-
-    @override
-    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        self.rebound.add(node.name)
-
-    @override
-    def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        self.rebound.add(node.name)
-
-    @override
-    def visit_Lambda(self, node: ast.Lambda) -> None:
-        pass
-
-
-def _stable_annotated_string_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-    arguments = (*func.args.posonlyargs, *func.args.args, *func.args.kwonlyargs)
-    parameters = {argument.arg for argument in arguments if _annotation_is_str(argument.annotation)}
-    collector = _StringAnnotationCollector(parameters)
-    for statement in func.body:
-        collector.visit(statement)
-    stable_parameters = parameters - collector.rebound
-    stable_locals = {
-        name for name, count in collector.local_annotations.items() if count == 1 and name not in collector.rebound
-    }
-    return frozenset(stable_parameters | stable_locals)
 
 
 def _annotation_is_str(annotation: ast.expr | None) -> bool:
@@ -420,24 +451,6 @@ def _annotation_is_str(annotation: ast.expr | None) -> bool:
         return False
     first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
     return _annotation_is_str(first)
-
-
-def _collect_string_targets(node: ast.AST, names: set[str]) -> None:
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
-        return
-    if isinstance(node, ast.Assign) and _looks_like_string(node.value):
-        for target in node.targets:
-            if isinstance(target, ast.Name):
-                names.add(target.id)
-    if (
-        isinstance(node, ast.AnnAssign)
-        and node.value is not None
-        and isinstance(node.target, ast.Name)
-        and _looks_like_string(node.value)
-    ):
-        names.add(node.target.id)
-    for child in children(node):
-        _collect_string_targets(child, names)
 
 
 def _looks_like_string(node: ast.AST) -> bool:

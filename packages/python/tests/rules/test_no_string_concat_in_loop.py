@@ -80,8 +80,7 @@ def f(items, dt, bits, prefix):
     assert _count(src) == 1
 
 
-# Coercion / join / os.path.join RHS is NOT accumulation — never fires.        #
-# These are the prescribed remedy or a bounded transform, not the O(n²) bug.   #
+# A proven string accumulator grows regardless of how each string is rendered. #
 
 
 _NON_ACCUMULATION_RHS = [
@@ -92,35 +91,55 @@ _NON_ACCUMULATION_RHS = [
     pytest.param('dt.strftime("%Y")', id="rhs-strftime-method"),
     pytest.param('",".join(bits)', id="rhs-join-method"),
     pytest.param("os.path.join(root, x)", id="rhs-ospath-join"),
-    pytest.param("len(x)", id="rhs-len-call"),
 ]
 
 
 @pytest.mark.parametrize("rhs", _NON_ACCUMULATION_RHS)
-def test_allows_coercion_or_join_rhs_in_loop(rhs: str):
+def test_flags_rendered_string_rhs_in_loop(rhs: str):
     src = f"""
 def f(items, dt, bits, prefix, root, os):
     s = ""
     for x in items:
         s += {rhs}
 """
+    assert _count(src) == 1
+
+
+def test_unknown_name_and_attribute_targets_are_allowed() -> None:
+    src = """
+def f(self, items, fragment):
+    for x in items:
+        accumulator += fragment
+        self.buf += f"{x}"
+"""
     assert _check(src) == []
 
 
-_ACCUMULATOR_TARGETS = [
-    pytest.param("s", id="target-name"),
-    pytest.param("self.buf", id="target-attribute"),
-]
+def test_class_initialized_string_attribute_is_flagged() -> None:
+    src = """
+class Renderer:
+    def __init__(self):
+        self.buf = ""
 
-
-@pytest.mark.parametrize("target", _ACCUMULATOR_TARGETS)
-def test_flags_name_and_attribute_targets(target: str):
-    src = f"""
-def f(self, items):
-    for x in items:
-        {target} += f"{{x}}"
+    def render(self, items):
+        for item in items:
+            self.buf += str(item)
 """
     assert _count(src) == 1
+
+
+def test_nested_class_does_not_prove_outer_attribute_type() -> None:
+    src = """
+class Renderer:
+    class Buffer:
+        def __init__(self):
+            self.buf = ""
+
+    def render(self, items):
+        for item in items:
+            self.buf += str(item)
+"""
+    assert _check(src) == []
 
 
 _SUBSCRIPT_TARGETS = [
@@ -150,7 +169,7 @@ def f(items):
     assert _count(src) == 1
 
 
-def test_flags_concat_in_for_else_clause():
+def test_allows_concat_in_for_else_clause():
     src = """
 def f(items):
     s = ""
@@ -159,7 +178,7 @@ def f(items):
     else:
         s += "done"
 """
-    assert _count(src) == 1
+    assert _check(src) == []
 
 
 def test_flags_concat_after_walrus_condition():
@@ -249,7 +268,7 @@ def test_reports_line_and_one_based_column():
     (diag,) = _check(src)
     assert (diag.line, diag.col) == (4, 9)
     assert diag.code == "SARJ002"
-    assert "O(n" in diag.message
+    assert "can become quadratic" in diag.message
 
 
 def test_reports_distinct_positions_in_source_order():
@@ -431,7 +450,7 @@ def f(rows):
     assert _count(src) == 1
 
 
-def test_flags_when_rebind_comes_after_concat():
+def test_allows_when_rebind_comes_after_concat_before_backedge():
     src = """
 def f(items):
     s = ""
@@ -440,7 +459,7 @@ def f(items):
         s = base()
     return s
 """
-    assert _count(src) == 1
+    assert _check(src) == []
 
 
 def test_allows_subscript_fstring_write_in_loop():
@@ -666,13 +685,13 @@ def f(items):
 
 
 @pytest.mark.parametrize(
-    "nested_scope",
+    ("nested_scope", "expected"),
     [
-        pytest.param("for value in values:\n            s = value", id="loop"),
-        pytest.param("class Holder:\n            s = value", id="class"),
+        pytest.param("for value in values:\n            s = value", 0, id="loop-may-rebind-type"),
+        pytest.param("class Holder:\n            s = value", 1, id="class-has-separate-scope"),
     ],
 )
-def test_nested_scope_rebind_does_not_make_later_concat_loop_local(nested_scope: str):
+def test_nested_scope_rebind_affects_type_only_when_it_shares_scope(nested_scope: str, expected: int):
     src = f"""
 def f(items, values, value):
     s = ""
@@ -681,7 +700,7 @@ def f(items, values, value):
         s += f"{{x}}"
     return s
 """
-    assert _count(src) == 1
+    assert _count(src) == expected
 
 
 # Adversarial coverage — compound statements wrapping an in-loop concat.        #
@@ -757,7 +776,7 @@ def f(items):
     assert _count(src) == 1
 
 
-def test_flags_concat_in_while_true_loop():
+def test_allows_concat_in_single_iteration_while_true_loop():
     src = """
 def f(items):
     s = ""
@@ -766,7 +785,7 @@ def f(items):
         break
     return s
 """
-    assert _count(src) == 1
+    assert _check(src) == []
 
 
 def test_flags_concat_over_generator_expression_iterable():
@@ -945,3 +964,68 @@ def render(failed, indent_1):
     return s
 """
     assert len(_check(src)) == 1
+
+
+def test_latest_definition_must_still_be_string() -> None:
+    src = """
+def collect(items):
+    result = ""
+    result = []
+    for item in items:
+        result += "ab"
+"""
+    assert _check(src) == []
+
+
+def test_future_string_assignment_does_not_retype_earlier_loop() -> None:
+    src = """
+def collect(items, builder):
+    result = builder
+    for item in items:
+        result += "ab"
+    result = ""
+"""
+    assert _check(src) == []
+
+
+def test_conditional_reset_does_not_hide_loop_carried_growth() -> None:
+    src = """
+def render(items, reset):
+    result = ""
+    for item in items:
+        if reset:
+            result = ""
+        result += str(item)
+"""
+    assert _count(src) == 1
+
+
+def test_nested_self_add_tree_is_reported() -> None:
+    src = """
+def render(items):
+    result = ""
+    for item in items:
+        result = "[" + result + "]"
+"""
+    assert _count(src) == 1
+
+
+@pytest.mark.parametrize("iterable", ["range(0)", "range(1)", "[]", "[item]"])
+def test_statically_single_iteration_loops_are_allowed(iterable: str) -> None:
+    src = f"""
+def render(item):
+    result = ""
+    for value in {iterable}:
+        result += str(value)
+"""
+    assert _check(src) == []
+
+
+def test_known_numeric_rhs_is_not_string_growth() -> None:
+    src = """
+def render(items):
+    result = ""
+    for item in items:
+        result += len(item)
+"""
+    assert _check(src) == []

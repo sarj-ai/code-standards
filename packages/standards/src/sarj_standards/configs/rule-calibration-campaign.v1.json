@@ -348,7 +348,9 @@
       "task": "rule-audit/python/no-string-concat-in-loop",
       "family": "python",
       "ruleId": "no-string-concat-in-loop",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 121 original focused tests and scanned 2,929 to 7,099 tracked Python files. They manually classified 17 to 70 findings: every emitted shape was genuine repeated string growth, but only about 16 alignment/transcription paths were clearly hot or unbounded; report, UI, script, and test builders did not justify error severity. Popular-source samples produced 9 to 18 syntactic findings in pytest, Pygments, packaging, SQLFluff, detect-secrets, and codespell, again supporting advisory severity. Reviewers reproduced false positives from RHS-only type inference, stale future string definitions, custom attributes, loop else suites, one-pass loops, and unconditional backedge resets, plus false negatives for ordinary str/join/render calls, nested self-add trees, and conditional resets. Pylint R1713 owns the common pattern, but Ruff has no equivalent and Pylint is not a supported fleet dependency.",
+      "outcome": "Kept no-string-concat-in-loop and its compatibility alias, and staged SARJ002 as a warning. Changed the UI from categorical O(n-squared) language to a conditional immutable-copy cost and documented both join and StringIO remedies. Replaced RHS-driven guessing with reaching-definition evidence for proven string names and class attributes, killed stale evidence on rebinds, recognized arbitrary rendered fragments and nested self-reference, excluded definite non-string RHS values, loop else suites, statically zero/one-iteration loops, and unconditional direct-body resets while retaining conditional-reset findings. One hundred thirty focused cases pass. The final primary-fleet scan reports 18 genuine string-growth warnings, including a newly recovered rendered-fragment case, with no observed shape/type false positive."
     },
     {
       "task": "rule-audit/python/no-tautological-expect",
