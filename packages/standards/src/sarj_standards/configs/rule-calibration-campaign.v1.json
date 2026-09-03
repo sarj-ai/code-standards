@@ -394,7 +394,9 @@
       "task": "rule-audit/python/opaque-parametrize-case-needs-id",
       "family": "python",
       "ruleId": "opaque-parametrize-case-needs-id",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 68 original focused cases and scanned between 1,976 and 7,099 tracked Python files plus a normalized 462-file popular corpus. The broad scan found 36 diagnostics covering 112 opaque rows; every finding was reviewed and all 36 were valid diagnosability problems. A second corpus exposed six definite false positives from string-producing dedent/format and encode calls. Post-change validation ran 89 focused cases, preserved all 36 first-party findings with zero observed false positives, and produced zero findings in the same popular corpus.",
+      "outcome": "Kept SARJ042, opaque-parametrize-case-needs-id, and its compatibility alias, but staged it as warning because it governs test-output diagnosability and repository-level pytest_make_parametrize_id hooks remain outside analysis. Added import- and rebinding-aware pytest mark and param resolution, positional and keyword argnames/argvalues, literal None handling for decorator and per-case IDs, partial static ID lists, positional ids, Ellipsis, generated-file exclusion, unshadowed builtin constructors, import-proven re.compile, and proven string-producing encode/format/textwrap.dedent chains. Removed invalid bare pytest imports and terminal-name guesses. Reworked the UI around semantic per-case IDs and pytest's real argument-name/index fallback such as payload0, including correct singular grammar."
     },
     {
       "task": "rule-audit/python/over-mocked-test",

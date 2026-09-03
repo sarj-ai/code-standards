@@ -1,4 +1,5 @@
 from pathlib import Path
+from textwrap import dedent
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,7 +15,7 @@ TEST_PATH = "python/app/tests/stores/test_call_flag_store.py"
 
 
 def _check(source: str, path: str = TEST_PATH) -> list[Diagnostic]:
-    return OpaqueParametrizeCaseNeedsId().check(Path(path), source)
+    return OpaqueParametrizeCaseNeedsId().check(Path(path), dedent(source))
 
 
 _PUBLIC_EXAMPLES = OpaqueParametrizeCaseNeedsId.public_examples()
@@ -131,7 +132,8 @@ def test_thing(payload):
     assert payload
 """
     [diag] = _check(src)
-    assert "3 of this table's cases" in diag.message
+    assert "3 cases rely" in diag.message
+    assert "payload0" in diag.message
 
 
 def test_one_diagnostic_per_table_not_per_case():
@@ -204,7 +206,7 @@ def test_thing(cfg):
     assert cfg
 """
     [diag] = _check(src)
-    assert "1 of this table's cases" in diag.message
+    assert "1 case relies" in diag.message
 
 
 @pytest.mark.parametrize(
@@ -224,7 +226,7 @@ def test_thing(value):
 
 @pytest.mark.parametrize(
     "case",
-    ["float('nan')", "int(1e10)", "type(None)", "str(raw)", "bytes(raw)", "re.compile('a')"],
+    ["float('nan')", "int(1e10)", "type(None)", "str(raw)", "bytes(raw)"],
 )
 def test_builtin_scalar_constructor_cases_are_exempt(case: str):
     src = f"""
@@ -294,7 +296,7 @@ class TestThing:
     assert len(_check(src)) == 1
 
 
-def test_bare_parametrize_decorator_still_fires():
+def test_invalid_bare_parametrize_import_is_not_treated_as_pytest():
     src = """
 from pytest import parametrize
 
@@ -302,7 +304,7 @@ from pytest import parametrize
 def test_thing(payload):
     assert payload
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_parametrize_decorating_an_async_function_still_fires():
@@ -438,6 +440,216 @@ def test_thing(a, b):
     assert a and b
 """
     assert len(_check(src)) == 2
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        "@custom.parametrize('payload', [{}, {}])",
+        "@parametrize('payload', [{}, {}])",
+    ],
+)
+def test_unproven_parametrize_decorators_are_ignored(decorator: str) -> None:
+    source = f"""
+def parametrize(*args):
+    return custom
+
+{decorator}
+def test_thing(payload):
+    assert payload
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("import_line", "decorator"),
+    [
+        ("import pytest as pt", "pt.mark.parametrize"),
+        ("from pytest import mark as pytest_mark", "pytest_mark.parametrize"),
+    ],
+)
+def test_import_proven_pytest_aliases_are_supported(import_line: str, decorator: str) -> None:
+    source = f"""
+{import_line}
+
+@{decorator}("payload", [{{}}, {{"status": "invalid"}}])
+def test_thing(payload):
+    assert payload
+"""
+    assert len(_check(source)) == 1
+
+
+def test_rebound_pytest_import_is_ignored() -> None:
+    source = """
+import pytest
+pytest = custom_pytest
+
+@pytest.mark.parametrize("payload", [{}, {}])
+def test_thing(payload):
+    assert payload
+"""
+    assert _check(source) == []
+
+
+def test_keyword_argnames_and_argvalues_are_analyzed() -> None:
+    source = """
+import pytest
+
+@pytest.mark.parametrize(argnames="payload", argvalues=[{}, {}])
+def test_thing(payload):
+    assert payload
+"""
+    assert len(_check(source)) == 1
+
+
+def test_ids_none_does_not_exempt_cases() -> None:
+    source = """
+import pytest
+
+@pytest.mark.parametrize("payload", [{}, {}], ids=None)
+def test_thing(payload):
+    assert payload
+"""
+    assert len(_check(source)) == 1
+
+
+def test_literal_none_ids_leave_only_corresponding_cases_unnamed() -> None:
+    source = """
+import pytest
+
+@pytest.mark.parametrize("payload", [{}, {}], ids=[None, "invalid-status"])
+def test_thing(payload):
+    assert payload
+"""
+    [diagnostic] = _check(source)
+    assert "1 case relies" in diagnostic.message
+
+
+def test_positional_none_ids_leave_only_corresponding_cases_unnamed() -> None:
+    source = """
+import pytest
+
+@pytest.mark.parametrize("payload", [{}, {}], False, [None, "invalid-status"])
+def test_thing(payload):
+    assert payload
+"""
+    [diagnostic] = _check(source)
+    assert "1 case relies" in diagnostic.message
+
+
+def test_pytest_param_id_none_does_not_exempt_case() -> None:
+    source = """
+import pytest
+
+@pytest.mark.parametrize("payload", [pytest.param({}, id=None), pytest.param({}, id="empty")])
+def test_thing(payload):
+    assert payload
+"""
+    [diagnostic] = _check(source)
+    assert "1 case relies" in diagnostic.message
+
+
+def test_imported_pytest_param_alias_is_supported() -> None:
+    source = """
+from pytest import mark, param as case
+
+@mark.parametrize("payload", [case({}, id="empty"), case({}, id="other")])
+def test_thing(payload):
+    assert payload
+"""
+    assert _check(source) == []
+
+
+def test_foreign_param_id_does_not_claim_to_name_a_pytest_case() -> None:
+    source = """
+import pytest
+
+@pytest.mark.parametrize("payload", [factory.param({}, id="empty"), factory.param({}, id="other")])
+def test_thing(payload):
+    assert payload
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "compile('x = 1', '<test>', 'exec')",
+        "codec.compile('x')",
+        "...",
+    ],
+)
+def test_non_scalar_calls_and_ellipsis_are_opaque(value: str) -> None:
+    source = f"""
+import pytest
+
+@pytest.mark.parametrize("value", [{value}, {value}])
+def test_thing(value):
+    assert value
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        import pytest
+        import re
+
+        @pytest.mark.parametrize("value", [re.compile("a"), re.compile("b")])
+        def test_thing(value):
+            assert value
+        """,
+        """
+        import pytest
+        from re import compile as compile_pattern
+
+        @pytest.mark.parametrize("value", [compile_pattern("a"), compile_pattern("b")])
+        def test_thing(value):
+            assert value
+        """,
+        """
+        import pytest
+
+        @pytest.mark.parametrize("value", ["a".encode(), "b".encode()])
+        def test_thing(value):
+            assert value
+        """,
+        """
+        import pytest
+        import textwrap
+
+        @pytest.mark.parametrize("value", [textwrap.dedent("a").format(), textwrap.dedent("b").format()])
+        def test_thing(value):
+            assert value
+        """,
+    ],
+)
+def test_proven_scalar_calls_are_nameable(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_shadowed_builtin_scalar_constructor_is_opaque() -> None:
+    source = """
+import pytest
+
+class str:
+    pass
+
+@pytest.mark.parametrize("value", [str("a"), str("b")])
+def test_thing(value):
+    assert value
+"""
+    assert len(_check(source)) == 1
+
+
+def test_generated_test_source_is_excluded() -> None:
+    assert _check("# @generated\n" + _OPAQUE_TABLE) == []
+
+
+def test_reports_as_warning() -> None:
+    assert _check(_OPAQUE_TABLE)[0].severity.value == "warning"
 
 
 def test_flags_list_values_for_one_parameter():
