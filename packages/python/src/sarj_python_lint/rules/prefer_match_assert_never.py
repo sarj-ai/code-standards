@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
@@ -14,9 +13,12 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -26,26 +28,28 @@ if TYPE_CHECKING:
 # A dispatch needs at least this many real (non-wildcard) arms to be flagged.
 _MIN_ARMS = 2
 
-_ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "Flag", "IntFlag", "ReprEnum"})
-
-# Methods that grow a dict in place — a map built in pieces is not incomplete.
-_DICT_GROWING_METHODS = frozenset({"update", "setdefault"})
-
-# Imported settings/configuration objects expose attributes, but do not define
-# a closed value domain merely because those attributes appear in patterns.
-_OPEN_MEMBER_OWNER_RE = re.compile(r"(?:Settings|Config|Configuration|Options)$", re.IGNORECASE)
-
-
-class _DispatchShortfall(NamedTuple):
-    enum_name: str
-    covered: int
-    total: int
-    missing: str
+_ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "ReprEnum"})
 
 
 class _EnumComparison(NamedTuple):
     target: ast.expr
     enum_name: str
+    members: frozenset[str]
+
+
+class _Binding(NamedTuple):
+    name: str
+    line: int
+
+
+class _EnumMember(NamedTuple):
+    enum_name: str
+    member: str
+
+
+class _EnumMemberSet(NamedTuple):
+    enum_name: str
+    members: frozenset[str]
 
 
 @final
@@ -53,14 +57,19 @@ class PreferMatchAssertNever(Rule):
     id: str = "prefer-match-assert-never"
     code: str = "SARJ032"
     documentation = RuleDocumentation(
-        summary="Closed-set dispatch should fail explicitly when a variant is unhandled.",
-        rationale="A silent wildcard, `else`, or incomplete dispatch map lets newly added variants pass unnoticed.",
-        remediation="Handle every variant and use `assert_never` or an explicit exception for the unreachable fallthrough.",
+        summary="Typed enum dispatch must not silently ignore unhandled members.",
+        rationale=(
+            "A no-op wildcard or else branch hides missing enum members and lets newly added members pass unnoticed."
+        ),
+        remediation=(
+            "Handle every enum member, bind the catch-all value, and pass it to `typing.assert_never`; "
+            "raise an explicit exception when static exhaustiveness is unavailable."
+        ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "The rule recognizes closed sets from local classes, enums, imported member owners, and static handler maps.",
-            "Guarded matches, dynamically grown or non-invoked maps, and open-ended value domains are excluded.",
+            "Only subjects explicitly annotated as a locally declared Enum, StrEnum, IntEnum, or ReprEnum are checked.",
+            "Flags, imported or untyped domains, class-pattern unions, guarded arms, generated files, and dynamic dispatch are excluded.",
         ),
         examples=(
             RuleExample(
@@ -70,7 +79,7 @@ class PreferMatchAssertNever(Rule):
                 files=(
                     ExampleFile.python(
                         "dispatch.py",
-                        "from kinds import Kind\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            pass\n",
+                        'from enum import StrEnum\n\nclass Kind(StrEnum):\n    A = "a"\n    B = "b"\n    C = "c"\n\ndef handle(kind: Kind) -> None:\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            pass\n',
                     ),
                 ),
                 focus_path=PurePosixPath("dispatch.py"),
@@ -84,7 +93,7 @@ class PreferMatchAssertNever(Rule):
                 files=(
                     ExampleFile.python(
                         "dispatch.py",
-                        "from kinds import Kind\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            raise AssertionError(kind)\n",
+                        'from enum import StrEnum\nfrom typing import assert_never\n\nclass Kind(StrEnum):\n    A = "a"\n    B = "b"\n    C = "c"\n\ndef handle(kind: Kind) -> None:\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case Kind.C:\n            handle_c()\n        case _ as unreachable:\n            assert_never(unreachable)\n',
                     ),
                 ),
                 focus_path=PurePosixPath("dispatch.py"),
@@ -97,28 +106,26 @@ class PreferMatchAssertNever(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated(path, source):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
         module_classdefs = _module_scope_classdefs(tree)
-        local_classes = frozenset(node.name for node in module_classdefs)
+        imports = ImportIndex.from_tree(tree)
         local_enums = frozenset(
             node.name
             for node in module_classdefs
-            if any(
-                (isinstance(b, ast.Name) and b.id in _ENUM_BASES)
-                or (isinstance(b, ast.Attribute) and b.attr in _ENUM_BASES)
-                for b in node.bases
-            )
+            if any(_is_enum_base(base, imports) for base in node.bases)
+            and sum(bound == node.name for bound, _ in _scope_bindings(tree.body)) == 1
         )
-        member_owners = local_classes | _importfrom_bound_names(tree)
-        enum_members = _enum_member_names(module_classdefs, local_enums)
-        map_usage = _grown_dict_names(tree), _called_mapping_names(tree)
+        enum_members = _enum_members(module_classdefs, local_enums)
         diags: list[Diagnostic] = []
         consumed_elifs: set[int] = set()
-        for node in nodes(tree, ast.Match, ast.If, ast.Assign, ast.AnnAssign):
+        for node in nodes(tree, ast.Match, ast.If):
             if isinstance(node, ast.Match):
-                wildcard = _silent_closed_set_wildcard(node, local_classes, member_owners)
+                enum_name = _annotated_local_enum(tree, node.subject, node, local_enums)
+                wildcard = _silent_enum_wildcard(node, enum_name, enum_members)
                 if wildcard is not None:
                     diags.append(
                         Diagnostic(
@@ -126,16 +133,17 @@ class PreferMatchAssertNever(Rule):
                             line=wildcard.pattern.lineno,
                             col=wildcard.pattern.col_offset + 1,
                             code=self.code,
+                            severity=Severity.WARNING,
                             message=(
-                                "silent `case _:` on a closed-set match — a new variant no-ops "
-                                "instead of failing; use `assert_never(subject)` or raise."
+                                f"typed `{enum_name}` match has a no-op catch-all — an unhandled member "
+                                "is silently ignored; bind it and call `assert_never`, or raise."
                             ),
                         )
                     )
-            elif isinstance(node, ast.If):
+            else:
                 if id(node) in consumed_elifs:
                     continue
-                enum_name = _silent_enum_chain(node, local_enums, consumed_elifs)
+                enum_name = _silent_enum_chain(tree, node, enum_members, consumed_elifs)
                 if enum_name is not None:
                     diags.append(
                         Diagnostic(
@@ -143,27 +151,10 @@ class PreferMatchAssertNever(Rule):
                             line=node.lineno,
                             col=node.col_offset + 1,
                             code=self.code,
+                            severity=Severity.WARNING,
                             message=(
-                                f"if/elif over `{enum_name}` members with a silent `else` — a new "
-                                "member no-ops instead of failing; use `assert_never` or raise "
-                                "(ideally as a match/case)."
-                            ),
-                        )
-                    )
-            else:
-                shortfall = _incomplete_dispatch_map(node, enum_members, map_usage)
-                if shortfall is not None:
-                    diags.append(
-                        Diagnostic(
-                            path=path,
-                            line=node.lineno,
-                            col=node.col_offset + 1,
-                            code=self.code,
-                            message=(
-                                f"dispatch map covers {shortfall.covered} of `{shortfall.enum_name}`'s "
-                                f"{shortfall.total} members (missing {shortfall.missing}) — a new member falls through to "
-                                "a KeyError or a silent None; cover every member and "
-                                "`assert_never` (or raise) on a lookup miss."
+                                f"typed `{enum_name}` if/elif dispatch has a no-op `else` — an unhandled "
+                                "member is silently ignored; prefer match/case with `assert_never`, or raise."
                             ),
                         )
                     )
@@ -172,158 +163,135 @@ class PreferMatchAssertNever(Rule):
 
 
 def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
-    found: list[ast.ClassDef] = []
-    stack: list[ast.stmt] = list(tree.body)
-    while stack:
-        stmt = stack.pop()
-        if isinstance(stmt, ast.ClassDef):
-            found.append(stmt)
-            stack.extend(stmt.body)
-    return found
+    return [stmt for stmt in tree.body if isinstance(stmt, ast.ClassDef)]
 
 
-def _enum_member_names(classdefs: list[ast.ClassDef], local_enums: frozenset[str]) -> dict[str, frozenset[str]]:
-    members: dict[str, frozenset[str]] = {}
-    for classdef in classdefs:
-        if classdef.name not in local_enums:
-            continue
-        by_value: dict[str, str] = {}
-        names: set[str] = set()
-        for stmt in classdef.body:
-            if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1:
-                continue
-            target = stmt.targets[0]
-            if not isinstance(target, ast.Name) or target.id.startswith("_"):
-                continue
-            if isinstance(stmt.value, ast.Constant):
-                key = f"{type(stmt.value.value).__name__}:{stmt.value.value!r}"
-                if key in by_value:
-                    # An alias of an already-counted member.
-                    continue
-                by_value[key] = target.id
-            names.add(target.id)
-        members[classdef.name] = frozenset(names)
-    return members
+def _is_enum_base(base: ast.expr, imports: ImportIndex) -> bool:
+    return any(imports.resolves(base, sources=frozenset({"enum"}), symbol=symbol) for symbol in _ENUM_BASES)
 
 
-def _grown_dict_names(tree: ast.Module) -> frozenset[str]:
-    grown: set[str] = set()
-    for node in nodes(tree, ast.Call, ast.Assign):
+def _enum_members(
+    classdefs: list[ast.ClassDef], local_enums: frozenset[str]
+) -> dict[str, frozenset[str]]:
+    return {
+        classdef.name: frozenset(
+            target.id
+            for statement in classdef.body
+            if isinstance(statement, (ast.Assign, ast.AnnAssign))
+            and (not isinstance(statement, ast.AnnAssign) or statement.value is not None)
+            for target in (statement.targets if isinstance(statement, ast.Assign) else (statement.target,))
+            if isinstance(target, ast.Name) and not target.id.startswith("_")
+        )
+        for classdef in classdefs
+        if classdef.name in local_enums
+    }
+
+
+def _annotated_local_enum(
+    tree: ast.Module,
+    subject: ast.expr,
+    anchor: ast.stmt,
+    local_enums: frozenset[str],
+) -> str | None:
+    if not isinstance(subject, ast.Name):
+        return None
+    scopes = [
+        scope
+        for scope in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef)
+        if scope.lineno <= anchor.lineno <= (scope.end_lineno or scope.lineno)
+    ]
+    if not scopes:
+        return None
+    scope = min(scopes, key=lambda candidate: (candidate.end_lineno or candidate.lineno) - candidate.lineno)
+    parameters = (
+        *scope.args.posonlyargs,
+        *scope.args.args,
+        *scope.args.kwonlyargs,
+        *((scope.args.vararg,) if scope.args.vararg is not None else ()),
+        *((scope.args.kwarg,) if scope.args.kwarg is not None else ()),
+    )
+    parameter = next((arg for arg in parameters if arg.arg == subject.id), None)
+    if parameter is None:
+        return None
+    enum_name = _simple_annotation_name(parameter.annotation)
+    if enum_name not in local_enums:
+        return None
+    bindings = _scope_bindings(scope.body)
+    if any(name == enum_name for name, _ in bindings) or any(
+        argument.arg == enum_name for argument in parameters
+    ):
+        return None
+    if any(name == subject.id and line < anchor.lineno for name, line in bindings):
+        return None
+    return enum_name
+
+
+def _scope_bindings(statements: list[ast.stmt]) -> list[_Binding]:
+    bindings: list[_Binding] = []
+
+    def visit(node: ast.AST) -> None:
         match node:
-            case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=attr)) if attr in _DICT_GROWING_METHODS:
-                grown.add(name)
-            case ast.Assign(targets=targets):
-                grown.update(
-                    val.id
-                    for subscript in targets
-                    if isinstance(subscript, ast.Subscript) and isinstance(val := subscript.value, ast.Name)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                bindings.append(_Binding(node.name, node.lineno))
+                return
+            case ast.Import() | ast.ImportFrom():
+                bindings.extend(
+                    _Binding(alias.asname or alias.name.partition(".")[0], node.lineno)
+                    for alias in node.names
+                    if alias.name != "*"
                 )
+                return
+            case ast.Name(id=name, ctx=(ast.Store() | ast.Del())):
+                bindings.append(_Binding(name, node.lineno))
             case _:
                 pass
-    return frozenset(grown)
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    for statement in statements:
+        visit(statement)
+    return bindings
 
 
-def _incomplete_dispatch_map(
-    node: ast.Assign | ast.AnnAssign,
-    enum_members: dict[str, frozenset[str]],
-    map_usage: tuple[frozenset[str], frozenset[str]],
-) -> _DispatchShortfall | None:
-    target = _single_name_target(node)
-    grown_maps, called_maps = map_usage
-    if target is None or target in grown_maps or target not in called_maps or not isinstance(node.value, ast.Dict):
-        return None
-    mapping = node.value
-    if any(key is None for key in mapping.keys):
-        # `**other` — the real key set is not visible here.
-        return None
-    if len(mapping.keys) < _MIN_ARMS:
-        return None
-    if not all(_is_handler_value(value) for value in mapping.values):
-        return None
-    owners = {_member_owner(key) for key in mapping.keys}
-    if len(owners) != 1:
-        return None
-    owner = next(iter(owners))
-    if owner is None or owner not in enum_members:
-        return None
-    declared = enum_members[owner]
-    covered = {attr for key in mapping.keys if isinstance(key, ast.Attribute) and (attr := key.attr) in declared}
-    if len(covered) != len(mapping.keys) or not covered < declared:
-        return None
-    missing = ", ".join(f"{owner}.{name}" for name in sorted(declared - covered))
-    return _DispatchShortfall(owner, len(covered), len(declared), missing)
-
-
-def _single_name_target(node: ast.Assign | ast.AnnAssign) -> str | None:
-    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-    if len(targets) != 1:
-        return None
-    target = targets[0]
-    return target.id if isinstance(target, ast.Name) else None
-
-
-def _is_handler_value(value: ast.expr | None) -> bool:
-    return isinstance(value, (ast.Name, ast.Attribute, ast.Lambda))
-
-
-def _called_mapping_names(tree: ast.Module) -> frozenset[str]:
-    return frozenset(
-        name
-        for node in nodes(tree, ast.Call)
-        if isinstance(node.func, ast.Subscript)
-        and isinstance(mapping := node.func.value, ast.Name)
-        and (name := mapping.id)
-    )
-
-
-def _member_owner(key: ast.expr | None) -> str | None:
-    match key:
-        case ast.Attribute(value=ast.Name(id=owner)):
-            return owner
+def _simple_annotation_name(annotation: ast.expr | None) -> str | None:
+    match annotation:
+        case ast.Name(id=name) | ast.Constant(value=str(name)):
+            return name
         case _:
             return None
 
 
-def _importfrom_bound_names(tree: ast.Module) -> frozenset[str]:
-    return frozenset(
-        bound
-        for node in nodes(tree, ast.ImportFrom)
-        for alias in node.names
-        if alias.name != "*"
-        and _looks_like_class_name(alias.name)
-        and _looks_like_class_name(bound := alias.asname or alias.name)
-        and not _OPEN_MEMBER_OWNER_RE.search(bound)
-    )
-
-
-def _looks_like_class_name(name: str) -> bool:
-    return bool(name[:1].isupper() and not name.isupper())
-
-
-def _silent_closed_set_wildcard(
-    node: ast.Match, local_classes: frozenset[str], member_owners: frozenset[str]
+def _silent_enum_wildcard(
+    node: ast.Match,
+    enum_name: str | None,
+    enum_members: dict[str, frozenset[str]],
 ) -> ast.match_case | None:
-    if len(node.cases) < _MIN_ARMS + 1:
+    if enum_name is None or len(node.cases) < _MIN_ARMS + 1:
         return None
     last = node.cases[-1]
-    pattern = last.pattern
-    if not (isinstance(pattern, ast.MatchAs) and pattern.pattern is None and pattern.name is None):
+    if not _is_catch_all(last.pattern):
         return None
     if last.guard is not None or not _is_silent_body(last.body):
         return None
     real_arms = node.cases[:-1]
     if any(case.guard is not None for case in real_arms):
-        # A guarded arm deliberately lets its own pattern fall through.
         return None
     if all(_is_assignment_only(case.body) for case in real_arms):
-        # Default-then-refine: the wildcard keeps pre-set defaults, by design.
         return None
-    all_local_class_arms = bool(local_classes) and all(
-        _is_local_class_pattern(case.pattern, local_classes) for case in real_arms
-    )
-    if _all_one_owner_member_arms(real_arms, member_owners) or all_local_class_arms:
-        return last
-    return None
+    declared = enum_members.get(enum_name, frozenset())
+    members = [_enum_pattern_members(case.pattern, enum_name, declared) for case in real_arms]
+    if any(member_set is None for member_set in members):
+        return None
+    covered = frozenset(member for member_set in members if member_set is not None for member in member_set)
+    return last if len(covered) >= _MIN_ARMS else None
+
+
+def _is_catch_all(pattern: ast.pattern) -> bool:
+    match pattern:
+        case ast.MatchAs(pattern=None) | ast.MatchAs(pattern=ast.MatchAs(pattern=None, name=None)):
+            return True
+        case _:
+            return False
 
 
 def _is_assignment_only(body: list[ast.stmt]) -> bool:
@@ -333,55 +301,52 @@ def _is_assignment_only(body: list[ast.stmt]) -> bool:
 def _is_silent_body(body: list[ast.stmt]) -> bool:
     if len(body) != 1:
         return False
-    match body[0]:
-        case ast.Pass() | ast.Return(value=None) | ast.Return(value=ast.Constant(value=None)):
-            return True
-        case _:
-            return False
+    statement = body[0]
+    if isinstance(statement, (ast.Pass, ast.Continue)):
+        return True
+    if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant):
+        return True
+    return isinstance(statement, ast.Return) and (
+        statement.value is None or (isinstance(statement.value, ast.Constant) and statement.value.value is None)
+    )
 
 
-def _all_one_owner_member_arms(cases: list[ast.match_case], member_owners: frozenset[str]) -> bool:
-    owners = {_member_pattern_owner(case.pattern) for case in cases}
-    if len(owners) != 1 or None in owners:
-        return False
-    (owner,) = owners
-    return owner in member_owners
-
-
-def _member_pattern_owner(pattern: ast.pattern) -> str | None:
+def _enum_pattern_members(
+    pattern: ast.pattern,
+    enum_name: str,
+    declared: frozenset[str],
+) -> frozenset[str] | None:
     match pattern:
-        case ast.MatchValue(value=ast.Attribute(value=ast.Name(id=owner))):
-            return owner
+        case ast.MatchValue(value=ast.Attribute(value=ast.Name(id=owner), attr=member)) if (
+            owner == enum_name and member in declared
+        ):
+            return frozenset({member})
         case ast.MatchOr(patterns=subpatterns):
-            owners = {_member_pattern_owner(sub) for sub in subpatterns}
-            if len(owners) == 1 and None not in owners:
-                return owners.pop()
-            return None
+            members = [_enum_pattern_members(subpattern, enum_name, declared) for subpattern in subpatterns]
+            if any(member_set is None for member_set in members):
+                return None
+            return frozenset(member for member_set in members if member_set is not None for member in member_set)
         case _:
             return None
 
 
-def _is_local_class_pattern(pattern: ast.pattern, local_classes: frozenset[str]) -> bool:
-    match pattern:
-        case ast.MatchClass(cls=ast.Name(id=name)):
-            return name in local_classes
-        case ast.MatchAs(pattern=ast.pattern() as inner):
-            return _is_local_class_pattern(inner, local_classes)
-        case ast.MatchOr(patterns=subpatterns):
-            return all(_is_local_class_pattern(sub, local_classes) for sub in subpatterns)
-        case _:
-            return False
-
-
-def _silent_enum_chain(head: ast.If, local_enums: frozenset[str], consumed_elifs: set[int]) -> str | None:
+def _silent_enum_chain(
+    tree: ast.Module,
+    head: ast.If,
+    enum_members: dict[str, frozenset[str]],
+    consumed_elifs: set[int],
+) -> str | None:
+    local_enums = frozenset(enum_members)
     if not local_enums:
         return None
     first_target: ast.expr | None = None
     enum_name: str | None = None
+    covered: set[str] = set()
     arm_bodies: list[list[ast.stmt]] = []
+    child_elifs: list[ast.If] = []
     current = head
     while True:
-        parsed = _enum_comparison(current.test, local_enums)
+        parsed = _enum_comparison(current.test, enum_members)
         if parsed is None:
             return None
         target = parsed.target
@@ -392,49 +357,80 @@ def _silent_enum_chain(head: ast.If, local_enums: frozenset[str], consumed_elifs
         elif ast.dump(target) != ast.dump(first_target) or cls_name != enum_name:
             return None
         if current is not head:
-            consumed_elifs.add(id(current))
+            child_elifs.append(current)
+        covered.update(parsed.members)
         arm_bodies.append(current.body)
         orelse = current.orelse
         if len(orelse) == 1 and isinstance(orelse[0], ast.If):
             current = orelse[0]
             continue
-        if len(arm_bodies) < _MIN_ARMS or not orelse or not _is_silent_body(orelse):
+        if len(covered) < _MIN_ARMS or not orelse or not _is_silent_body(orelse):
             return None
         if all(_is_assignment_only(body) for body in arm_bodies):
-            # Default-then-refine: the silent else keeps pre-set defaults, by design.
             return None
+        if enum_name is None or first_target is None:
+            return None
+        if _annotated_local_enum(tree, first_target, head, local_enums) != enum_name:
+            return None
+        consumed_elifs.update(map(id, child_elifs))
         return enum_name
 
 
-def _enum_comparison(test: ast.expr, local_enums: frozenset[str]) -> _EnumComparison | None:
+def _enum_comparison(
+    test: ast.expr, enum_members: dict[str, frozenset[str]]
+) -> _EnumComparison | None:
     if not (isinstance(test, ast.Compare) and len(test.ops) == 1):
         return None
-    target = test.left
-    comparator = test.comparators[0]
+    left = test.left
+    right = test.comparators[0]
     match test.ops[0]:
-        case ast.Eq():
-            cls_name = _enum_member_class(comparator, local_enums)
+        case ast.Eq() | ast.Is():
+            right_member = _enum_member(right, enum_members)
+            left_member = _enum_member(left, enum_members)
+            if right_member is not None and left_member is None:
+                cls_name, member = right_member
+                target = left
+            elif left_member is not None and right_member is None:
+                cls_name, member = left_member
+                target = right
+            else:
+                return None
+            members = frozenset({member})
         case ast.In():
-            cls_name = _enum_member_container_class(comparator, local_enums)
+            container = _enum_member_container(right, enum_members)
+            if container is None:
+                return None
+            cls_name, members = container
+            target = left
         case _:
             return None
-    if cls_name is None:
-        return None
-    return _EnumComparison(target, cls_name)
+    return _EnumComparison(target, cls_name, members)
 
 
-def _enum_member_class(expr: ast.expr, local_enums: frozenset[str]) -> str | None:
+def _enum_member(
+    expr: ast.expr, enum_members: dict[str, frozenset[str]]
+) -> _EnumMember | None:
     match expr:
-        case ast.Attribute(value=ast.Name(id=cls_name)) if cls_name in local_enums:
-            return cls_name
+        case ast.Attribute(value=ast.Name(id=cls_name), attr=member) if (
+            member in enum_members.get(cls_name, frozenset())
+        ):
+            return _EnumMember(cls_name, member)
         case _:
             return None
 
 
-def _enum_member_container_class(expr: ast.expr, local_enums: frozenset[str]) -> str | None:
+def _enum_member_container(
+    expr: ast.expr, enum_members: dict[str, frozenset[str]]
+) -> _EnumMemberSet | None:
     if not isinstance(expr, (ast.Tuple, ast.List, ast.Set)) or not expr.elts:
         return None
-    names = {_enum_member_class(elt, local_enums) for elt in expr.elts}
-    if len(names) != 1:
+    resolved = [_enum_member(element, enum_members) for element in expr.elts]
+    if any(member is None for member in resolved):
         return None
-    return names.pop()
+    owners = {member[0] for member in resolved if member is not None}
+    if len(owners) != 1:
+        return None
+    return _EnumMemberSet(
+        owners.pop(),
+        frozenset(member.member for member in resolved if member is not None),
+    )

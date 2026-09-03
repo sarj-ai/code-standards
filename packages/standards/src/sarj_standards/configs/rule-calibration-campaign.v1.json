@@ -458,7 +458,9 @@
       "task": "rule-audit/python/prefer-match-assert-never",
       "family": "python",
       "ruleId": "prefer-match-assert-never",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 106 focused cases and scanned between 1,972 and 7,276 tracked Python files plus a normalized 462-file popular corpus. The only original fleet finding depended on an untyped imported owner and was judged at least intentionally tolerant; adversarial probes reproduced false positives for imported constants, ordinary classes, open class-pattern domains, flags, shadowed enum bases, handler maps, generated files, and rebound names. Post-change scans produced zero findings across 7,276 tracked files and 462 popular files, while 58 focused cases, Ruff, BasedPyright, catalog validation, and rule verification passed.",
+      "outcome": "Retained the compatible prefer-match-assert-never selector, rewrote the UI around typed local enums and real assert_never usage, and staged SARJ032 as a warning. The matcher now requires an unshadowed locally declared non-flag enum and an explicitly typed, lexically unmodified parameter; validates declared members; supports aliased enum imports, named catch-alls, ellipsis, reversed equality and identity comparisons; and excludes generated files. Removed arbitrary imported-owner and open class-pattern inference plus the contradictory incomplete handler-map detector, whose direct lookup already failed loudly with KeyError."
     },
     {
       "task": "rule-audit/python/prefer-match-type-dispatch",
