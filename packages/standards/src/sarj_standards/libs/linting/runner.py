@@ -140,7 +140,7 @@ _PYTHON_NOISE_RULES = frozenset(
         "duplicated-override-docstring",
         "no-comment-cruft",
         "no-restated-comment",
-        "no-typed-doc-sections",
+        "no-docstring-type-restatement",
         "no-unnecessary-docstring",
         "no-vague-suppression-description",
         "prefer-self-documenting-constant",

@@ -39,6 +39,7 @@
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
+      "no-docstring-type-restatement",
       "no-duplicate-dunder-all-entry",
       "no-fastapi-on-event",
       "no-file-level-escape-hatch-suppression",
@@ -58,7 +59,6 @@
       "no-select-star",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
-      "no-typed-doc-sections",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
       "no-vague-suppression-description",
@@ -1033,6 +1033,13 @@
       "status": "renamed",
       "replacement": "no-mocked-terraform-test-oracle",
       "note": "Replace sarj-no-terraform-test-file with sarj-no-mocked-terraform-test-oracle before upgrading."
+    },
+    {
+      "id": "no-typed-doc-sections",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-docstring-type-restatement",
+      "note": "Replace sarj-no-typed-doc-sections with sarj-no-docstring-type-restatement before upgrading."
     },
     {
       "id": "no-typing-cast",

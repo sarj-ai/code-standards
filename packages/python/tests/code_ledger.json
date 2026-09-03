@@ -128,7 +128,10 @@
   "SARJ089": "test-phase-label-comment",
   "SARJ090": "prefer-single-sentence-comment",
   "SARJ091": "no-long-comment",
-  "SARJ092": "no-typed-doc-sections",
+  "SARJ092": [
+    "no-typed-doc-sections",
+    "no-docstring-type-restatement"
+  ],
   "SARJ093": "prefer-nominal-id-types",
   "SARJ094": [
     "fastapi-openapi-contract",

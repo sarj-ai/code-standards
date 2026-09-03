@@ -39,7 +39,7 @@ def test_typed_section_precedence_uses_the_owning_docstring_across_lines(tmp_pat
         encoding="utf-8",
     )
 
-    diagnostics = analyze(["docstring-args-restate-signature", "no-typed-doc-sections"], [source])
+    diagnostics = analyze(["docstring-args-restate-signature", "no-docstring-type-restatement"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ092"]
     assert diagnostics[0].line == 5
@@ -57,7 +57,7 @@ def test_typed_return_precedence_uses_the_owning_docstring_across_lines(tmp_path
         encoding="utf-8",
     )
 
-    diagnostics = analyze(["docstring-returns-restate-signature", "no-typed-doc-sections"], [source])
+    diagnostics = analyze(["docstring-returns-restate-signature", "no-docstring-type-restatement"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ092"]
     assert diagnostics[0].line == 5
@@ -81,7 +81,7 @@ def test_owner_precedence_never_crosses_docstrings(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    diagnostics = analyze(["docstring-args-restate-signature", "no-typed-doc-sections"], [source])
+    diagnostics = analyze(["docstring-args-restate-signature", "no-docstring-type-restatement"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ086", "SARJ092"]
 
