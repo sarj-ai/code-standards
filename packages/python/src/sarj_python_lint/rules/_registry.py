@@ -55,7 +55,6 @@ from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
-from sarj_python_lint.rules.no_sentinel_return_on_except import NoSentinelReturnOnExcept
 from sarj_python_lint.rules.no_stdlib_logging import NoStdlibLogging
 from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
@@ -175,7 +174,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PydanticAtBoundaries.id: PydanticAtBoundaries,
         FastapiExplicitOpenapiContract.id: FastapiExplicitOpenapiContract,
         FakesInSharedLocation.id: FakesInSharedLocation,
-        NoSentinelReturnOnExcept.id: NoSentinelReturnOnExcept,
         PreferConstantTimeSecretCompare.id: PreferConstantTimeSecretCompare,
         NoSecretInLog.id: NoSecretInLog,
         PreferTimedeltaForDurations.id: PreferTimedeltaForDurations,

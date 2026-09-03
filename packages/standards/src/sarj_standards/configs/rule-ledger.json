@@ -56,7 +56,6 @@
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
-      "no-sentinel-return-on-except",
       "no-stdlib-logging",
       "no-string-concat-in-loop",
       "no-tautological-expect",
@@ -264,7 +263,6 @@
       "SARJ002",
       "SARJ006",
       "SARJ008",
-      "SARJ009",
       "SARJ011",
       "SARJ012",
       "SARJ013",
@@ -575,6 +573,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ007 suppressions and baseline keys; syntax cannot distinguish an accidental broad handler from a deliberate whole-operation fallback or terminal fault boundary."
+    },
+    {
+      "id": "SARJ009",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ009 suppressions and baseline keys. Syntax cannot distinguish an erased failure from an intentional parser, lookup, callback, protocol, or degraded-service sentinel contract; use typed result APIs and the upstream exception checks where their narrower contracts apply."
     },
     {
       "id": "SARJ010",
@@ -981,6 +986,13 @@
       "status": "renamed",
       "replacement": "no-repeated-structured-string-literal",
       "note": "Replace sarj-no-repeated-string-literal with sarj-no-repeated-structured-string-literal before upgrading."
+    },
+    {
+      "id": "no-sentinel-return-on-except",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. Sentinel returns are commonly intentional parser, lookup, callback, protocol, and degraded-service contracts; use Ruff E722/S110/BLE001 for their narrower exception patterns and type checking for incompatible return contracts."
     },
     {
       "id": "no-sequential-await",
