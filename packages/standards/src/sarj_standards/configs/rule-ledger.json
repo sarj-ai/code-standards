@@ -48,7 +48,6 @@
       "no-hidden-constructor-fallback",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
-      "no-optional-tenant-predicate",
       "no-query-with-many-joins",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
@@ -297,7 +296,6 @@
       "SARJ052",
       "SARJ053",
       "SARJ054",
-      "SARJ056",
       "SARJ057",
       "SARJ059",
       "SARJ062",
@@ -642,6 +640,13 @@
       "note": "renumbered to SARJ083 in sarj-python-lint 0.26.0, and SARJ083 was itself removed in 0.37.0 -- so there is nothing to renumber to. Delete the `sarj-noqa` comment and any suppression-baseline key."
     },
     {
+      "id": "SARJ056",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ056 suppressions and baseline keys. Optional tenant-shaped filters do not prove an authorization defect; enforce tenancy through authenticated repository contracts, authorization tests, or database policy."
+    },
+    {
       "id": "SARJ058",
       "kind": "code",
       "status": "removed",
@@ -927,6 +932,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this pre-commit hook. It inspected only selected docstrings, missed actual long comments, and could be defeated by a blank line or technical token; use narrower semantic comment and docstring rules."
+    },
+    {
+      "id": "no-optional-tenant-predicate",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. It cannot distinguish intentional global or admin filters from fail-open tenant isolation without caller authorization, connection scope, or row-security evidence."
     },
     {
       "id": "no-patching-system-under-test",

@@ -289,12 +289,6 @@
       "outcome": "Kept the accurate no-offset-pagination selector and made SARJ025 explicitly warning-only because bounded catalogs and intentional random page access require context. Restricted findings to credible SELECT queries with dynamic offset markers, exempted fixed ordinal offsets, generated and migration files, AST docstrings, dialect comments, and quoted identifiers, and added dynamic f-string, MySQL comma, and SQL-standard OFFSET/FETCH coverage. Reworked the UI to teach a directionally correct composite cursor with a unique tie-breaker; diagnostics and remediation now permit a reasoned bounded/static-data suppression. Thirty-eight focused cases pass, and post-change calibration preserves all seven findings across 3,769 first-party Python files."
     },
     {
-      "task": "rule-audit/python/no-optional-tenant-predicate",
-      "family": "python",
-      "ruleId": "no-optional-tenant-predicate",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/python/no-query-with-many-joins",
       "family": "python",
       "ruleId": "no-query-with-many-joins",

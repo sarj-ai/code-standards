@@ -47,9 +47,6 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 )
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
-from sarj_python_lint.rules.no_optional_tenant_predicate import (
-    NoOptionalTenantPredicate,
-)
 from sarj_python_lint.rules.no_query_with_many_joins import NoQueryWithManyJoins
 from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
@@ -214,7 +211,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoHiddenConstructorFallback.id: NoHiddenConstructorFallback,
         NoFileLevelEscapeHatchSuppression.id: NoFileLevelEscapeHatchSuppression,
         NoFastapiOnEvent.id: NoFastapiOnEvent,
-        NoOptionalTenantPredicate.id: NoOptionalTenantPredicate,
         NoTautologicalExpect.id: NoTautologicalExpect,
         PreferLibraryFake.id: PreferLibraryFake,
         OverMockedTest.id: OverMockedTest,
