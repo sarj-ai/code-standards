@@ -410,7 +410,9 @@
       "task": "rule-audit/python/prefer-class-row",
       "family": "python",
       "ruleId": "prefer-class-row",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 99 original focused cases and scanned up to 7,099 tracked first-party Python files plus a normalized 462-file installed-source corpus. The original blanket matcher emitted 107 findings across 28 files: five were already suppressed, 89 duplicated bank and Noura sites intentionally exposed dictionary contracts, and only a small AI subset immediately converted fetched rows to models. Reviewers also reproduced false positives for arbitrary call, decorator, and class keywords and false negatives caused by function-wide fetch-count and SQL-string heuristics. After narrowing, 45 focused cases passed and the same 7,099-file scan produced 15 mechanically actionable unchanged fetch-to-model conversions, with mixed-shape, dynamic, raw-dictionary, and transformed-row sites excluded.",
+      "outcome": "Kept SARJ013 and the accurate prefer-class-row name, changed its category to maintainability, and staged it as warning. Replaced the blanket row_factory keyword prohibition with scope- and import-aware dataflow from a locally bound Psycopg dict_row cursor through fetchone, fetchmany, or fetchall into exactly one Model(**row) or Model.model_validate(row) conversion. Excluded generated, test, and migration files; connection-level and arbitrary keyword consumers; shadowed imports; mutated rows; and cursors with raw or multiple result shapes. Reworked the UI to describe removal of a redundant intermediate mapping without claiming that Psycopg dict_row is invalid or inherently unvalidated. SARJ414 remains the separate owner for fetched non-dict cursors without class_row."
     },
     {
       "task": "rule-audit/python/prefer-collection-comprehension",
