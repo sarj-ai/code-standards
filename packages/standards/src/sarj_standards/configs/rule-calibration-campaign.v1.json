@@ -442,7 +442,9 @@
       "task": "rule-audit/python/prefer-immutable-module-constant",
       "family": "python",
       "ruleId": "prefer-immutable-module-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 91 focused rule cases and scanned 7,098 tracked Python files across 85 repositories, producing 436 warnings in 214 files with zero scanner errors. A deterministic 60-finding fleet sample had no observed bad false positives; a separate normalized 462-file Pygments, packaging, and pytest corpus produced 71 advisory findings. Compatibility-heavy public dict and concrete list contracts remain, so the rule stays advisory. The final detector also passed adversarial alias, positional and starred destructuring, bound-method, subscript, generated-source, test-support, and shadowed-builtin probes.",
+      "outcome": "Kept the compatible prefer-immutable-module-constant name and staged SARJ096 as a warning. Narrowed it to nonempty uppercase module collections with conservative mutation, alias, escape, and concrete-API analysis; excluded tests, shared test support, generated sources, empty containers, reassignment, and ambiguous consumers. The UI now says replacements prevent only top-level membership or key changes, explicitly documents shallow immutability and concrete API compatibility, and demonstrates a Mapping-typed read-only mapping."
     },
     {
       "task": "rule-audit/python/prefer-library-fake",
