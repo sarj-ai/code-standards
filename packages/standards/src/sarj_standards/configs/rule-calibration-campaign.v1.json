@@ -276,7 +276,9 @@
       "task": "rule-audit/python/no-nested-pydantic-field-validator",
       "family": "python",
       "ruleId": "no-nested-pydantic-field-validator",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three fresh independent reviews ran all nine original focused tests and scanned up to 13,930 Python files plus a 1,391-file installed-package sample, producing no live findings. A Pydantic 2.13.4 runtime probe confirmed the documented defect: a field_validator nested in a plain Config class is never registered on the outer model. Reviewers reproduced one false positive for ClassVar and safe misses for Pydantic v1 validator syntax, BaseSettings, direct multiple inheritance, wildcard validators, and unrelated function-local import shadows. Ruff and Pydantic plugins do not detect validator metadata stranded in a plain nested class.",
+      "outcome": "Kept the accurate no-nested-pydantic-field-validator selector and error severity because the narrowed shape proves silent validation loss. Updated the UI summary and rationale to explain Pydantic model-namespace ownership. Added provenance-resolved Pydantic v1 and v2 validator namespaces, BaseSettings, direct BaseModel with additional bases, wildcard field selection, module-scope import resolution, and lexical shadow protection. Excluded import-resolved ClassVar fields and explicit check_fields=False reusable-validator intent. Nineteen focused cases pass, and post-change calibration remains zero findings across 3,769 first-party Python files."
     },
     {
       "task": "rule-audit/python/no-offset-pagination",
