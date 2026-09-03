@@ -49,6 +49,12 @@ class ImportIndex:
         resolved = self._resolve(node)
         return resolved is not None and resolved.module in sources and resolved.symbol == symbol
 
+    def resolved_symbol(self, node: ast.expr, *, sources: frozenset[str]) -> str | None:
+        resolved = self._resolve(node)
+        if resolved is None or resolved.module not in sources:
+            return None
+        return resolved.symbol
+
     def builtin_is_unshadowed(self, name: str) -> bool:
         return name not in self.shadowed_names and name not in self.bindings
 

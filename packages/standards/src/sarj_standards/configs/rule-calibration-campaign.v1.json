@@ -175,8 +175,8 @@
       "family": "python",
       "ruleId": "negative-only-http-status-assertion",
       "state": "complete",
-      "evidence": "Three-repository AST calibration found 2/2 reviewed true positives: one endpoint-mount smoke test accepting every non-5xx response and one regression test asserting only that a prior crash did not recur. Broadened syntax retained the same corpus set.",
-      "outcome": "Kept the behavior-specific rule name and broadened detection from literal 500 to every literal, stdlib HTTPStatus, and framework HTTP_5xx constant, status-family arithmetic, negated comparisons, and negated 5xx ranges. Exact client-error and success contracts remain exempt."
+      "evidence": "Three fresh independent reviews ran 30 focused tests and scanned up to 13,930 Python files. Three paths represented two unique live findings: an endpoint-mount smoke test that accepts 404 and a named crash regression whose explicit contract is only avoiding HTTP 500. Reviewers reproduced false positives from terminal-name-only HTTPStatus/framework constants and nested or non-test-class test_* functions. Ruff and Pylint have no equivalent HTTP assertion-strength rule.",
+      "outcome": "Kept negative-only-http-status-assertion for compatibility and made SARJ408 warning-only because intentional crash, fuzz, chaos, gateway, and smoke contracts require judgment. Added provenance-aware stdlib and FastAPI, Starlette, and Django REST Framework status constants, including import aliases; required an unshadowed builtin range; and limited analysis to module tests plus direct Test* or TestCase methods. UI remediation now permits a reasoned suppression for an intentional no-server-error contract, and the accepted example asserts the relevant payload. Post-change calibration retained the same two reviewed warnings across 2,971 primary-checkout files; broader alias and Boolean dataflow remain excluded."
     },
     {
       "task": "rule-audit/python/no-analytical-aggregation-in-postgres-store",
