@@ -84,7 +84,6 @@
       "prefer-set-isdisjoint",
       "prefer-str-enum",
       "prefer-struct-over-namedtuple",
-      "prefer-timedelta-for-durations",
       "prefer-walrus-awaited-none-guard",
       "prefer-walrus-comprehension-filter",
       "prefer-walrus-regex-match",
@@ -265,7 +264,6 @@
       "SARJ011",
       "SARJ012",
       "SARJ013",
-      "SARJ014",
       "SARJ015",
       "SARJ016",
       "SARJ018",
@@ -585,6 +583,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ010 suppressions and baseline keys; strict BasedPyright `reportUnreachable` owns semantic unreachable-code detection."
+    },
+    {
+      "id": "SARJ014",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ014 suppressions and baseline keys; numeric durations are required by common SDK, protocol, serialization, timeout, TTL, and metrics boundaries, so syntax cannot require timedelta without widespread false positives. There is no replacement."
     },
     {
       "id": "SARJ017",
@@ -1096,6 +1101,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this pre-commit hook. Sentence count does not distinguish durable rationale from noise; use the narrower no-comment-cruft, no-restated-comment, and no-long-comment hooks."
+    },
+    {
+      "id": "prefer-timedelta-for-durations",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit; numeric durations are required by common SDK, protocol, serialization, timeout, TTL, and metrics boundaries, so syntax cannot require timedelta without widespread false positives. There is no replacement."
     },
     {
       "id": "single-public-export",

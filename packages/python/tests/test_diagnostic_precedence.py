@@ -98,43 +98,11 @@ def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: P
     assert [finding.code for finding in diagnostics] == ["SARJ093"]
 
 
-def test_typed_duration_rule_suppresses_comment_only_unit_warning(tmp_path: Path) -> None:
-    source = tmp_path / "service.py"
-    source.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")
-
-    diagnostics = analyze(["prefer-timedelta-for-durations", "prefer-self-documenting-constant"], [source])
-
-    assert [finding.code for finding in diagnostics] == ["SARJ014"]
-
-
 def test_comment_only_unit_warning_remains_when_selected_alone(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
     source.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")
 
     diagnostics = analyze(["prefer-self-documenting-constant"], [source])
-
-    assert [finding.code for finding in diagnostics] == ["SARJ097"]
-
-
-def test_comment_only_unit_warning_remains_in_tests(tmp_path: Path) -> None:
-    source = tmp_path / "test_service.py"
-    source.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")
-
-    diagnostics = analyze(["prefer-timedelta-for-durations", "prefer-self-documenting-constant"], [source])
-
-    assert [finding.code for finding in diagnostics] == ["SARJ097"]
-
-
-def test_suppressing_typed_duration_finding_preserves_unit_warning(
-    tmp_path: Path,
-) -> None:
-    source = tmp_path / "service.py"
-    source.write_text(
-        "# Timeout in seconds.\nTIMEOUT = 5  # sarj-noqa: SARJ014 — public integer API\n",
-        encoding="utf-8",
-    )
-
-    diagnostics = analyze(["prefer-timedelta-for-durations", "prefer-self-documenting-constant"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ097"]
 

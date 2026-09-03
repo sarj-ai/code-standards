@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5fc3fcb9e0910595cb5491f1396354536fb3e8ee9b3dbad34074d33d5a510ed6",
+  "catalogSha256": "b8844afc08a5f7292409fe4fb3ec3e5183416e6d1e6f788dc3f7b02123300657",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6296,41 +6296,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Typed tuple-compatible record"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:prefer-timedelta-for-durations": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "scheduler.py",
-              "source": "def schedule(timeout_seconds: int) -> None: ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "scheduler.py",
-          "id": "numeric-duration-parameter",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Seconds represented as an integer"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "scheduler.py",
-              "source": "from datetime import timedelta\n\n\ndef schedule(timeout: timedelta) -> None: ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "scheduler.py",
-          "id": "timedelta-duration-parameter",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Duration represented as timedelta"
         }
       ],
       "optionsSchemaSource": null

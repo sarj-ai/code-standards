@@ -371,7 +371,7 @@ class ToolReport:
     analyzer_id: AnalyzerId | None = None
     invocation_id: InvocationId | None = None
     version: str | None = None
-    duration_ms: int | None = None  # sarj-noqa: SARJ014 — protocol durations are integer milliseconds.
+    duration_ms: int | None = None
     file_count: int | None = None
     cache_status: CacheStatus = CacheStatus.DISABLED
 

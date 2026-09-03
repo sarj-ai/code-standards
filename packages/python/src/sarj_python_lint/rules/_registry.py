@@ -106,9 +106,6 @@ from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
     PreferStructOverNamedtuple,
 )
-from sarj_python_lint.rules.prefer_timedelta_for_durations import (
-    PreferTimedeltaForDurations,
-)
 from sarj_python_lint.rules.prefer_walrus_awaited_none_guard import PreferWalrusAwaitedNoneGuard
 from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
     PreferWalrusComprehensionFilter,
@@ -178,7 +175,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         FakesInSharedLocation.id: FakesInSharedLocation,
         PreferConstantTimeSecretCompare.id: PreferConstantTimeSecretCompare,
         NoSecretInLog.id: NoSecretInLog,
-        PreferTimedeltaForDurations.id: PreferTimedeltaForDurations,
         PreferStructOverNamedtuple.id: PreferStructOverNamedtuple,
         NoCommentCruft.id: NoCommentCruft,
         NoConftestTestModuleImport.id: NoConftestTestModuleImport,
