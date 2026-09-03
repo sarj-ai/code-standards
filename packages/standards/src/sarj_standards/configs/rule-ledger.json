@@ -78,7 +78,6 @@
       "prefer-namedtuple-over-tuple-return",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
-      "prefer-one-for-required-row",
       "prefer-or-pattern",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
@@ -340,7 +339,6 @@
       "SARJ419",
       "SARJ420",
       "SARJ421",
-      "SARJ422",
       "SARJ423",
       "SARJ424",
       "SARJ425",
@@ -750,6 +748,13 @@
       "note": "Delete SARJ405 suppressions and baseline keys. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
     },
     {
+      "id": "SARJ422",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ422 suppressions and baseline keys. Ruff S101 already owns removable production assertions; use an explicit missing-row exception or the database adapter's proven cardinality API."
+    },
+    {
       "id": "SARJ433",
       "kind": "code",
       "status": "removed",
@@ -1070,6 +1075,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; generic match destructuring changes failure, evaluation, and binding semantics."
+    },
+    {
+      "id": "prefer-one-for-required-row",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove prefer-one-for-required-row from custom rule configuration. Ruff S101 already reports the unsafe assertion, and no universal one(row) helper contract exists."
     },
     {
       "id": "prefer-real-store-in-tests",

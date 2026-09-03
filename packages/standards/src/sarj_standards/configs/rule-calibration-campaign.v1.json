@@ -503,12 +503,6 @@
       "outcome": "Retained the compatible prefer-non-nullable-collection selector while making its Python list-parameter scope explicit, reclassified SARJ082 as a maintainability warning, and rewrote the UI to describe an advisory caller-visible API migration. The matcher now requires provenance-resolved list, Optional, Union, Annotated, and list() syntax and only reports a direct one-read items-or-empty-list collapse or a first self-assignment with that shape. Decorated functions, constructors of non-object bases, tests, generated and support code, nested captures, multiple pre-normalization reads, guards, conditional expressions, shadowed bindings, and ambiguous imports are excluded."
     },
     {
-      "task": "rule-audit/python/prefer-one-for-required-row",
-      "family": "python",
-      "ruleId": "prefer-one-for-required-row",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/python/prefer-or-pattern",
       "family": "python",
       "ruleId": "prefer-or-pattern",

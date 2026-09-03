@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "931054ccd15e5f995b2a48becd403865f65a310218b68a50ee22e19211d9d06a",
-  "cliSha256": "03a003e18ad8ccd5fdbc94b83f32b43764ae9a01f2c9b8ae3e53710c7b401bbf",
+  "catalogSha256": "4041714f387aaa8bc74f72dcdfc16f43613c813c19091e6ad39842edbcdd403c",
+  "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3923,41 +3923,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:complex-postgres-query-requires-architecture-review": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/call_store.py",
-              "source": "import psycopg\n\ncursor.execute(\n    \"WITH ranked AS (SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rank FROM call), picked AS (SELECT id FROM ranked WHERE rank <= %s) SELECT due.id FROM call AS due JOIN picked ON picked.id = due.id FOR UPDATE OF due SKIP LOCKED\"\n)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/call_store.py",
-          "id": "named-queue-stages",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A queue claim exposes ranking as named stages"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/call_store.py",
-              "source": "import psycopg\n\ncursor.execute(\n    \"SELECT due.id FROM call AS due JOIN (SELECT * FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rank FROM call) ranked WHERE rank <= %s) picked ON picked.id = due.id FOR UPDATE OF due SKIP LOCKED\"\n)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/call_store.py",
-          "id": "ranked-queue-claim",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A queue claim hides ranking inside nested derived relations"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "python:defect-xfail-requires-explicit-strict": {
       "examples": [
         {
@@ -5467,7 +5432,7 @@
           "files": [
             {
               "path": "adapter.py",
-              "source": "value = vendor.value  # type: ignore[attr-defined] -- false positive\n"
+              "source": "value = vendor.value  # ruff: ignore[attr-defined] -- false positive\n"
             }
           ],
           "fixedFiles": [],
@@ -5522,7 +5487,7 @@
           "files": [
             {
               "path": "tests/test_handler.py",
-              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"payload\", [{\"a\": 1}, {\"a\": 2}], ids=[\"first\", \"second\"])\ndef test_handler(payload):\n    assert handle(payload)\n"
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\n    \"payload\",\n    [\n        pytest.param({}, id=\"empty-payload\"),\n        pytest.param({\"status\": \"invalid\"}, id=\"invalid-status\"),\n    ],\n)\ndef test_handler(payload):\n    assert handle(payload)\n"
             }
           ],
           "fixedFiles": [],
@@ -5537,7 +5502,7 @@
           "files": [
             {
               "path": "tests/test_handler.py",
-              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"payload\", [{\"a\": 1}, {\"a\": 2}])\ndef test_handler(payload):\n    assert handle(payload)\n"
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"payload\", [{}, {\"status\": \"invalid\"}])\ndef test_handler(payload):\n    assert handle(payload)\n"
             }
           ],
           "fixedFiles": [],
@@ -5557,7 +5522,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "from unittest.mock import patch\n\n\n@patch(\"app.payment_gateway\")\ndef test_run(gateway):\n    assert run() == 1\n"
+              "source": "from unittest.mock import patch\n\n\n@patch(\"shop.payment_gateway.charge\")\ndef test_checkout(gateway, test_database, inventory_service):\n    result = checkout(test_database, inventory_service)\n    assert result.status == \"confirmed\"\n"
             }
           ],
           "fixedFiles": [],
@@ -5565,14 +5530,14 @@
           "id": "external-boundary-only",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Test patches one external boundary"
+          "title": "Component test keeps one external boundary"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "from unittest.mock import patch\n\n\n@patch(\"app.mod0.collaborator\")\n@patch(\"app.mod1.collaborator\")\n@patch(\"app.mod2.collaborator\")\n@patch(\"app.mod3.collaborator\")\n@patch(\"app.mod4.collaborator\")\n@patch(\"app.mod5.collaborator\")\ndef test_run(a, b, c, d, e, f):\n    assert run() == 1\n"
+              "source": "from unittest.mock import patch\n\n\n@patch(\"shop.inventory.reserve\")\n@patch(\"shop.payments.charge\")\n@patch(\"shop.shipping.quote\")\n@patch(\"shop.tax.calculate\")\n@patch(\"shop.email.send_receipt\")\n@patch(\"shop.risk.approve\")\ndef test_checkout(risk, email, tax, shipping, payments, inventory):\n    assert checkout() == \"confirmed\"\n"
             }
           ],
           "fixedFiles": [],
@@ -5592,30 +5557,30 @@
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "from psycopg.rows import dict_row\n\ncursor = connection.cursor(row_factory=dict_row)\n"
+              "source": "from psycopg.rows import dict_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=dict_row) as cursor:\n        row = await cursor.fetchone()\n        return Task.model_validate(row)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/task_store.py",
-          "id": "dictionary-row-factory",
+          "id": "dict-row-then-model",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Cursor returns unvalidated dictionaries"
+          "title": "Fetched dictionary is immediately converted"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "from psycopg.rows import class_row\n\ncursor = connection.cursor(row_factory=class_row(Task))\n"
+              "source": "from psycopg.rows import class_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=class_row(Task)) as cursor:\n        return await cursor.fetchone()\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/task_store.py",
-          "id": "validated-class-row-factory",
+          "id": "model-row-factory",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Cursor validates rows into a model"
+          "title": "Cursor constructs the model directly"
         }
       ],
       "optionsSchemaSource": null
@@ -5662,30 +5627,30 @@
           "files": [
             {
               "path": "auth.py",
-              "source": "import hmac\n\n\ndef authenticated(token, expected):\n    return hmac.compare_digest(token, expected)\n"
+              "source": "import hmac\n\n\ndef authenticated(request, settings):\n    provided = request.headers[\"X-API-Key\"]\n    return hmac.compare_digest(\n        provided.encode(\"ascii\"), settings.api_key.encode(\"ascii\")\n    )\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "auth.py",
-          "id": "constant-time-token-comparison",
+          "id": "request-api-key-constant-time",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Token compared in constant time"
+          "title": "Request API key uses constant-time comparison"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "auth.py",
-              "source": "def authenticated(token, expected):\n    return token == expected\n"
+              "source": "def authenticated(request, settings):\n    return request.headers[\"X-API-Key\"] == settings.api_key\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "auth.py",
-          "id": "direct-token-comparison",
+          "id": "request-api-key-equality",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Token compared with equality"
+          "title": "Request API key uses ordinary equality"
         }
       ],
       "optionsSchemaSource": null
@@ -5747,7 +5712,7 @@
           "files": [
             {
               "path": "settings.py",
-              "source": "from types import MappingProxyType\n\nROLE_LABELS = MappingProxyType({\"admin\": \"Administrator\"})\n"
+              "source": "from collections.abc import Mapping\nfrom types import MappingProxyType\n\nROLE_LABELS: Mapping[str, str] = MappingProxyType({\"admin\": \"Administrator\"})\n"
             }
           ],
           "fixedFiles": [],
@@ -5812,7 +5777,7 @@
           "files": [
             {
               "path": "tests/test_upload.py",
-              "source": "from moto import mock_aws\n\n\n@mock_aws\ndef test_upload():\n    assert upload_with_real_client()\n"
+              "source": "import boto3\nfrom moto import mock_aws\n\n\n@mock_aws\ndef test_upload():\n    client = boto3.client(\"s3\", region_name=\"us-east-1\")\n    client.create_bucket(Bucket=\"uploads\")\n    upload(client, bucket=\"uploads\", key=\"avatar\", body=b\"image\")\n    result = client.get_object(Bucket=\"uploads\", Key=\"avatar\")\n    assert result[\"Body\"].read() == b\"image\"\n"
             }
           ],
           "fixedFiles": [],
@@ -5832,7 +5797,7 @@
           "files": [
             {
               "path": "dispatch.py",
-              "source": "from kinds import Kind\n\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            raise AssertionError(kind)\n"
+              "source": "from enum import StrEnum\nfrom typing import assert_never\n\n\nclass Kind(StrEnum):\n    A = \"a\"\n    B = \"b\"\n    C = \"c\"\n\n\ndef handle(kind: Kind) -> None:\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case Kind.C:\n            handle_c()\n        case _ as unreachable:\n            assert_never(unreachable)\n"
             }
           ],
           "fixedFiles": [],
@@ -5847,7 +5812,7 @@
           "files": [
             {
               "path": "dispatch.py",
-              "source": "from kinds import Kind\n\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            pass\n"
+              "source": "from enum import StrEnum\n\n\nclass Kind(StrEnum):\n    A = \"a\"\n    B = \"b\"\n    C = \"c\"\n\n\ndef handle(kind: Kind) -> None:\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            pass\n"
             }
           ],
           "fixedFiles": [],
@@ -5867,7 +5832,7 @@
           "files": [
             {
               "path": "app/parser.py",
-              "source": "def parse(value: object):\n    match value:\n        case Text():\n            return value\n        case Binary():\n            return value\n        case PathValue():\n            return value\n        case _:\n            return coerce(value)\n"
+              "source": "def parse(value: object):\n    match value:\n        case str():\n            return parse_text(value)\n        case bytes():\n            return parse_bytes(value)\n        case dict():\n            return parse_mapping(value)\n        case _:\n            raise TypeError(type(value))\n"
             }
           ],
           "fixedFiles": [],
@@ -5875,22 +5840,22 @@
           "id": "match-type-cases",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Parser names value shapes with match arms"
+          "title": "Class patterns make the type dispatch explicit"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "app/parser.py",
-              "source": "def parse(value: object):\n    if isinstance(value, Text):\n        return value\n    if isinstance(value, Binary):\n        return value\n    if isinstance(value, PathValue):\n        return value\n    return coerce(value)\n"
+              "source": "def parse(value: object):\n    if isinstance(value, str):\n        return parse_text(value)\n    elif isinstance(value, bytes):\n        return parse_bytes(value)\n    elif isinstance(value, dict):\n        return parse_mapping(value)\n    raise TypeError(type(value))\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/parser.py",
-          "id": "sequential-type-guards",
+          "id": "three-branch-type-dispatch",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Parser dispatches through sequential guards"
+          "title": "Repeated branches dispatch on runtime type"
         }
       ],
       "optionsSchemaSource": null
@@ -5898,34 +5863,34 @@
     "python:prefer-module-level-constant": {
       "examples": [
         {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "service.py",
-              "source": "def handle(value):\n    allowed = [\"a\", \"b\", \"c\"]\n    return value in allowed\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service.py",
-          "id": "list-built-per-call",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Static list rebuilt in a function"
-        },
-        {
           "expectedCount": 0,
           "files": [
             {
               "path": "service.py",
-              "source": "ALLOWED = [\"a\", \"b\", \"c\"]\n\n\ndef handle(value):\n    return value in ALLOWED\n"
+              "source": "ALLOWED = (\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\")\n\n\ndef handle(value):\n    return value in ALLOWED\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "service.py",
-          "id": "module-level-list",
+          "id": "immutable-module-membership",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Static list defined once"
+          "title": "Immutable membership table defined once"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def handle(value):\n    allowed = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\"]\n    return value in allowed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "static-membership-built-per-call",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Substantial static membership table rebuilt per call"
         }
       ],
       "optionsSchemaSource": null
@@ -5937,7 +5902,7 @@
           "files": [
             {
               "path": "app/profile.py",
-              "source": "from typing import NamedTuple\n\n\nclass Profile(NamedTuple):\n    name: str\n    age: int\n\n\ndef load_profile() -> Profile:\n    return Profile(\"Ada\", 42)\n"
+              "source": "from typing import NamedTuple\n\n\nclass Profile(NamedTuple):\n    name: str\n    age: int\n    active: bool\n\n\ndef load_profile() -> Profile:\n    return Profile(name=\"Ada\", age=42, active=True)\n"
             }
           ],
           "fixedFiles": [],
@@ -5945,14 +5910,14 @@
           "id": "named-public-return",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Public function returns a named record"
+          "title": "Public function returns a tuple-compatible named record"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "app/profile.py",
-              "source": "def load_profile() -> tuple[str, int]:\n    return \"Ada\", 42\n"
+              "source": "def load_profile() -> tuple[str, int, bool]:\n    return \"Ada\", 42, True\n"
             }
           ],
           "fixedFiles": [],
@@ -5960,7 +5925,7 @@
           "id": "positional-public-return",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Public function returns a positional pair"
+          "title": "Public function returns a positional record"
         }
       ],
       "optionsSchemaSource": null
@@ -5972,7 +5937,7 @@
           "files": [
             {
               "path": "app/services/files.py",
-              "source": "def move(file_id: FileId, parent_folder_id: FolderId) -> None: ...\n"
+              "source": "from typing import NewType\n\nFileId = NewType(\"FileId\", str)\nFolderId = NewType(\"FolderId\", str)\n\n\ndef move(file_id: FileId, parent_folder_id: FolderId) -> None: ...\n"
             }
           ],
           "fixedFiles": [],
@@ -5980,7 +5945,7 @@
           "id": "nominal-id-roles",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Distinct ID roles use nominal types"
+          "title": "NewType makes the two domain roles distinct"
         },
         {
           "expectedCount": 1,
@@ -5992,10 +5957,10 @@
           ],
           "fixedFiles": [],
           "focusPath": "app/services/files.py",
-          "id": "primitive-id-roles",
+          "id": "swappable-primitive-id-roles",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Distinct ID roles share a primitive type"
+          "title": "Two domain ID roles share the same primitive carrier"
         }
       ],
       "optionsSchemaSource": null
@@ -6012,60 +5977,25 @@
           ],
           "fixedFiles": [],
           "focusPath": "app/resolver.py",
-          "id": "equivalent-empty-list-states",
+          "id": "collapsed-nullable-list",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Nullable list is immediately normalized"
+          "title": "Nullable list is immediately collapsed to an empty list"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "app/resolver.py",
-              "source": "def resolve(candidates: list[str]) -> list[str]:\n    return candidates\n"
+              "source": "from collections.abc import Sequence\n\n\ndef resolve(candidates: Sequence[str] = ()) -> list[str]:\n    return list(candidates)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/resolver.py",
-          "id": "required-list-input",
+          "id": "immutable-empty-input",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Required list has one empty state"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:prefer-one-for-required-row": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/settings_store.py",
-              "source": "async def save(cursor):\n    row = await cursor.fetchone()\n    assert row is not None, \"RETURNING must yield a row\"\n    return row\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/settings_store.py",
-          "id": "required-returning-row",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Use the shared required-row contract"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/settings_store.py",
-              "source": "async def save(cursor):\n    return one(await cursor.fetchone())\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/settings_store.py",
-          "id": "required-row-helper",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Centralize the missing-row failure"
+          "title": "Immutable empty default keeps omission non-nullable"
         }
       ],
       "optionsSchemaSource": null

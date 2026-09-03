@@ -96,7 +96,6 @@ from sarj_python_lint.rules.prefer_nominal_id_types import PreferNominalIdTypes
 from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
-from sarj_python_lint.rules.prefer_one_for_required_row import PreferOneForRequiredRow
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
@@ -201,7 +200,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         PytestFixtureReturnsBareTuple.id: PytestFixtureReturnsBareTuple,
         StoreGetDelegatesToBulkRead.id: StoreGetDelegatesToBulkRead,
-        PreferOneForRequiredRow.id: PreferOneForRequiredRow,
         RepeatedKwargHeavyCallInTest.id: RepeatedKwargHeavyCallInTest,
         DefectXfailRequiresExplicitStrict.id: DefectXfailRequiresExplicitStrict,
         NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
