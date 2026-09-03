@@ -13,10 +13,12 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -37,8 +39,10 @@ _UNSPECCED_FACTORIES = frozenset({"Mock", "MagicMock", "AsyncMock", "NonCallable
 # `patch`/`patch.object` install a MagicMock unless told otherwise.
 _PATCHERS = frozenset({"patch"})
 
-# Any one of these gives the double a real contract to honour.
-_SPEC_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "new", "wraps"})
+# Constructor and patcher keyword contracts differ. Mock accepts arbitrary
+# keyword attributes, so patch-only controls such as autospec do not constrain it.
+_CONSTRUCTOR_CONTRACT_KEYWORDS = frozenset({"spec", "spec_set", "wraps"})
+_PATCH_CONTRACT_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "wraps"})
 
 
 # Positional arity reveals when each mock constructor already received its spec or replacement.
@@ -101,16 +105,34 @@ _PYTEST_MOCK_FIXTURES = frozenset({"mocker", "class_mocker", "module_mocker", "p
 type _ScopedName = tuple[int, str]
 
 
+def _diagnostic_message(label: str) -> str:
+    if label.startswith("patch"):
+        return (
+            f"`{label}` generates an unrestricted replacement. Use `autospec=True` or `spec=True`, or pass a "
+            "concrete `new=` replacement."
+        )
+    return (
+        f"`{label}` has no `spec=` or `spec_set=` and permits attributes outside the collaborator contract. "
+        "Pass `spec_set=<RealType>`, use `create_autospec` when signatures matter, or implement a concrete fake."
+    )
+
+
 class MockWithoutSpec(Rule):
     id: str = "mock-without-spec"
     code: str = "SARJ040"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Mock built without `spec=`/`autospec=` — it accepts any attribute and cannot rot loudly.",
-        rationale="An unrestricted mock keeps accepting calls after the real collaborator's interface changes.",
-        remediation="Pass `spec=`, `spec_set=`, or `autospec=True`, or use a small fake implementing the real contract.",
+        summary="Unrestricted mock permits attributes outside the collaborator contract.",
+        rationale=(
+            "A mock without a spec permits removed or misspelled attributes; a callable mock without autospec may "
+            "also accept stale call shapes."
+        ),
+        remediation=(
+            "Use `spec_set=RealType` or a concrete fake for collaborators, `autospec=True` for patched callables, "
+            "and `create_autospec` when direct-call signatures matter. Use `object()` or `mock.sentinel` for identity markers."
+        ),
         category=RuleCategory.TESTING,
         limitations=(
-            "Only test files and statically resolved `unittest.mock` or pytest-mock constructors are analyzed.",
+            "Only non-generated test files and statically resolved `unittest.mock` or pytest-mock constructors are analyzed.",
             "Mocks used only for their built-in assertion API, import-loader `sys.modules` stubs, and untouched constructor placeholders are excluded.",
             "Unknown `new_callable=` factories are treated as concrete replacements; known Mock subclasses still require a spec.",
         ),
@@ -128,20 +150,63 @@ class MockWithoutSpec(Rule):
                 focus_path=PurePosixPath("tests/test_service.py"),
                 expected_count=1,
                 public=True,
+                scenario="constructor",
             ),
             RuleExample(
                 example_id="mock-with-spec",
-                title="Mock follows the collaborator contract",
+                title="Autospecced mock follows attributes and signatures",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        "from unittest.mock import Mock\n\ndef test_service():\n    client = Mock(spec=Client)\n    client.send()\n",
+                        "from unittest.mock import create_autospec\n\n"
+                        "def test_service():\n"
+                        "    client = create_autospec(Client, instance=True, spec_set=True)\n"
+                        "    client.send()\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
                 expected_count=0,
                 public=True,
+                scenario="constructor",
+            ),
+            RuleExample(
+                example_id="patch-without-contract",
+                title="Patch generates an unrestricted replacement",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "from unittest.mock import patch\n\n"
+                        "def test_service():\n"
+                        '    with patch("app.client.Client.send") as send:\n'
+                        "        run_service()\n"
+                        "        send.assert_called_once()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+                public=True,
+                scenario="patch",
+            ),
+            RuleExample(
+                example_id="patch-with-autospec",
+                title="Patch preserves the callable contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "from unittest.mock import patch\n\n"
+                        "def test_service():\n"
+                        '    with patch("app.client.Client.send", autospec=True) as send:\n'
+                        "        run_service()\n"
+                        "        send.assert_called_once()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
+                public=True,
+                scenario="patch",
             ),
         ),
     )
@@ -149,7 +214,7 @@ class MockWithoutSpec(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path):
+        if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -166,11 +231,8 @@ class MockWithoutSpec(Rule):
                 line=node.lineno,
                 col=node.col_offset + 1,
                 code=self.code,
-                message=(
-                    f"`{label}` has no `spec=`/`autospec=` — it answers every attribute with a new "
-                    "mock, so this test keeps passing after the real collaborator changes. Pass "
-                    "`spec=<RealType>` (or `autospec=True`), or hand-roll a fake implementing the ABC."
-                ),
+                message=_diagnostic_message(label),
+                severity=Severity.WARNING,
             )
             for node, label in _unspecced_calls(tree, names, pytest_mocker, _FileFacts.from_tree(tree))
         ]
@@ -182,7 +244,10 @@ class _MockNames:
     def __init__(self) -> None:
         self.modules: set[str] = set()
         self.factories: dict[str, str] = {}
+        self.defaults: set[str] = set()
         self.shadowed: set[str] = set()
+        self.local_shadowed: dict[int, frozenset[str]] = {}
+        self.scopes: dict[int, int] = {}
 
     @property
     def any_import(self) -> bool:
@@ -197,7 +262,21 @@ class _MockNames:
                 found._add_plain_import(node)
             else:
                 found._add_from_import(node)
-        found.shadowed = _shadowed_mock_bindings(tree, found.modules | set(found.factories))
+        imported = found.modules | set(found.factories) | found.defaults
+        found.shadowed = _module_shadowed_bindings(tree, imported)
+        found.scopes = _top_function_scopes(tree)
+        local_shadowed: dict[int, set[str]] = {}
+        for node in nodes(tree, ast.Name, ast.arg):
+            if isinstance(node, ast.arg):
+                name = node.arg
+            elif isinstance(node.ctx, (ast.Store, ast.Del)):
+                name = node.id
+            else:
+                continue
+            scope = found.scopes[id(node)]
+            if scope != id(tree) and name in imported:
+                local_shadowed.setdefault(scope, set()).add(name)
+        found.local_shadowed = {scope: frozenset(names) for scope, names in local_shadowed.items()}
         return found
 
     def _add_plain_import(self, node: ast.Import) -> None:
@@ -217,10 +296,12 @@ class _MockNames:
             for alias in node.names:
                 if alias.name in _UNSPECCED_FACTORIES or alias.name in _PATCHERS:
                     self.factories[alias.asname or alias.name] = alias.name
+                elif alias.name == "DEFAULT":
+                    self.defaults.add(alias.asname or alias.name)
 
     def resolve(self, func: ast.expr) -> str | None:
         if isinstance(func, ast.Name):
-            if func.id in self.shadowed:
+            if self._is_shadowed(func.id, func):
                 return None
             return self.factories.get(func.id)
         if not isinstance(func, ast.Attribute):
@@ -235,15 +316,26 @@ class _MockNames:
 
     def _is_mock_module(self, node: ast.expr) -> bool:
         if isinstance(node, ast.Name):
-            return node.id in self.modules and node.id not in self.shadowed
+            return node.id in self.modules and not self._is_shadowed(node.id, node)
         # `unittest.mock.Mock(...)` — the receiver is itself an attribute chain.
         if isinstance(node, ast.Attribute) and node.attr == "mock":
             return (
                 isinstance(node.value, ast.Name)
                 and node.value.id in self.modules
-                and node.value.id not in self.shadowed
+                and not self._is_shadowed(node.value.id, node.value)
             )
         return False
+
+    def is_default(self, node: ast.expr) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id in self.defaults and not self._is_shadowed(node.id, node)
+        return isinstance(node, ast.Attribute) and node.attr == "DEFAULT" and self._is_mock_module(node.value)
+
+    def _is_shadowed(self, name: str, node: ast.AST) -> bool:
+        scope = self.scopes.get(id(node))
+        return name in self.shadowed or (
+            scope is not None and name in self.local_shadowed.get(scope, frozenset())
+        )
 
 
 class _FileFacts:
@@ -259,6 +351,9 @@ class _FileFacts:
         self.path_calls: set[_ScopedName] = set()
         self.name_loads: dict[_ScopedName, list[ast.Name]] = {}
         self.constructor_argument_uses: dict[_ScopedName, list[ast.Name]] = {}
+        self.spec_addition_lines: dict[_ScopedName, list[int]] = {}
+        self.unsafe_use_lines: dict[_ScopedName, list[int]] = {}
+        self.escape_lines: dict[_ScopedName, list[int]] = {}
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _FileFacts:
@@ -277,13 +372,20 @@ class _FileFacts:
                 found._record_constructor_arguments(scope, node.target, node.value, constructors)
             elif isinstance(node, ast.Attribute):
                 if isinstance(node.value, ast.Name):
-                    found.reads.setdefault((scope, node.value.id), set()).add(node.attr)
+                    name = (scope, node.value.id)
+                    found.reads.setdefault(name, set()).add(node.attr)
+                    if node.attr not in _MOCK_API_ATTRS:
+                        found.unsafe_use_lines.setdefault(name, []).append(node.lineno)
                 found._record_path_read(scope, node)
             elif isinstance(node, ast.Call):
+                found._record_spec_addition(scope, node)
                 if isinstance(node.func, ast.Name):
                     found.called.add((scope, node.func.id))
                 for argument in [*node.args, *(kw.value for kw in node.keywords)]:
-                    found.escaped.update((scope, name) for name in _escaped_names(argument))
+                    for name in _escaped_names(argument):
+                        scoped = (scope, name)
+                        found.escaped.add(scoped)
+                        found.escape_lines.setdefault(scoped, []).append(argument.lineno)
                 found._record_path_call(scope, node)
             elif _catches_import_failure(node):
                 found.import_fallbacks.update(child for child in walk(node) if isinstance(child, ast.Call))
@@ -342,6 +444,17 @@ class _FileFacts:
         if path is not None:
             self.path_calls.add((scope, path))
 
+    def _record_spec_addition(self, scope: int, node: ast.Call) -> None:
+        if not (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "mock_add_spec"
+            and isinstance(node.func.value, ast.Name)
+            and _mock_add_spec_has_contract(node)
+        ):
+            return
+        name = (scope, node.func.value.id)
+        self.spec_addition_lines.setdefault(name, []).append(node.lineno)
+
     def is_call_recorder(self, node: ast.Call) -> bool:
         name = self.bound_name.get(node)
         if name is None or name not in self.called or name in self.escaped:
@@ -365,6 +478,28 @@ class _FileFacts:
         loads = self.name_loads.get(name, [])
         constructor_uses = self.constructor_argument_uses.get(name, [])
         return len(loads) == 1 and len(constructor_uses) == 1 and loads[0] is constructor_uses[0]
+
+    def is_specced_before_use(self, node: ast.Call) -> bool:
+        name = self.bound_name.get(node)
+        if name is None:
+            return False
+        first_contract_use = min((*self.unsafe_use_lines.get(name, []), *self.escape_lines.get(name, [])), default=None)
+        return any(
+            line > node.lineno and (first_contract_use is None or line < first_contract_use)
+            for line in self.spec_addition_lines.get(name, [])
+        )
+
+    def is_exempt(self, node: ast.Call) -> bool:
+        return any(
+            (
+                node in self.import_fallbacks,
+                node in self.sys_module_stubs,
+                self.is_call_recorder(node),
+                self.is_method_stub(node),
+                self.is_inert_constructor_placeholder(node),
+                self.is_specced_before_use(node),
+            )
+        )
 
 
 class _ImportedConstructors(NamedTuple):
@@ -422,6 +557,20 @@ def _escaped_names(argument: ast.expr) -> set[str]:
     return escaped
 
 
+def _mock_add_spec_has_contract(node: ast.Call) -> bool:
+    if any(
+        not isinstance(argument, ast.Starred)
+        and not (isinstance(argument, ast.Constant) and argument.value is None)
+        for argument in node.args
+    ):
+        return True
+    return any(
+        keyword.arg == "spec"
+        and not (isinstance(keyword.value, ast.Constant) and keyword.value.value is None)
+        for keyword in node.keywords
+    )
+
+
 def _dotted_path(expr: ast.expr) -> str | None:
     parts: list[str] = []
     while isinstance(expr, ast.Attribute):
@@ -431,6 +580,41 @@ def _dotted_path(expr: ast.expr) -> str | None:
         return None
     parts.append(expr.id)
     return ".".join(reversed(parts))
+
+
+def _module_shadowed_bindings(tree: ast.Module, imported: set[str]) -> set[str]:
+    rebound: set[str] = set()
+
+    class _Visitor(ast.NodeVisitor):
+        @override
+        def visit_Import(self, node: ast.Import) -> None:
+            pass
+
+        @override
+        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+            pass
+
+        @override
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            rebound.add(node.name)
+
+        @override
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            rebound.add(node.name)
+
+        @override
+        def visit_ClassDef(self, node: ast.ClassDef) -> None:
+            rebound.add(node.name)
+
+        @override
+        def visit_Name(self, node: ast.Name) -> None:
+            if isinstance(node.ctx, (ast.Store, ast.Del)):
+                rebound.add(node.id)
+
+    visitor = _Visitor()
+    for statement in tree.body:
+        visitor.visit(statement)
+    return rebound & imported
 
 
 def _shadowed_mock_bindings(tree: ast.Module, imported: set[str]) -> set[str]:
@@ -465,12 +649,18 @@ def _top_function_scopes(tree: ast.Module) -> dict[int, int]:
 
 def _pytest_mocker_calls(tree: ast.Module) -> dict[ast.Call, str]:
     found: dict[ast.Call, str] = {}
+    imports = ImportIndex.from_tree(tree)
 
     class _Visitor(ast.NodeVisitor):
         def __init__(self) -> None:
             self.fixtures: list[frozenset[str]] = []
 
         def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+            if not _is_pytest_collected_or_fixture(node, imports):
+                self.fixtures.append(self.fixtures[-1] if self.fixtures else frozenset())
+                self.generic_visit(node)
+                self.fixtures.pop()
+                return
             positional = node.args.posonlyargs + node.args.args + node.args.kwonlyargs
             own = frozenset(arg.arg for arg in positional if arg.arg in _PYTEST_MOCK_FIXTURES)
             inherited: frozenset[str] = self.fixtures[-1] if self.fixtures else frozenset()
@@ -493,6 +683,23 @@ def _pytest_mocker_calls(tree: ast.Module) -> dict[ast.Call, str]:
 
     _Visitor().visit(tree)
     return found
+
+
+def _is_pytest_collected_or_fixture(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: ImportIndex,
+) -> bool:
+    if node.name.startswith("test_"):
+        return True
+    pytest_sources = frozenset({"pytest"})
+    return any(
+        imports.resolves(
+            decorator.func if isinstance(decorator, ast.Call) else decorator,
+            sources=pytest_sources,
+            symbol="fixture",
+        )
+        for decorator in node.decorator_list
+    )
 
 
 def _resolve_pytest_mocker(func: ast.expr, fixtures: frozenset[str]) -> str | None:
@@ -526,29 +733,36 @@ def _unspecced_calls(
         if symbol is None:
             continue
         label = _render_callee(node.func, symbol)
-        if _has_spec_argument(node, names) or _has_positional_replacement(node, label):
+        if _has_contract_argument(node, names, symbol) or _has_positional_replacement(node, label, names):
             continue
-        if (
-            node in facts.import_fallbacks
-            or node in facts.sys_module_stubs
-            or facts.is_call_recorder(node)
-            or facts.is_method_stub(node)
-            or facts.is_inert_constructor_placeholder(node)
-        ):
+        if facts.is_exempt(node):
             continue
         hits.append(_UnspeccedCall(node, label))
     return hits
 
 
-def _has_spec_argument(node: ast.Call, names: _MockNames) -> bool:
+def _has_contract_argument(node: ast.Call, names: _MockNames, symbol: str) -> bool:
     # `**kwargs` forwarding could smuggle a spec in; treat it as specced rather
     # than guess, since the call site no longer states its own contract.
     for keyword in node.keywords:
         if keyword.arg is None:
             return True
+        if symbol in _UNSPECCED_FACTORIES:
+            if keyword.arg in _CONSTRUCTOR_CONTRACT_KEYWORDS and not (
+                isinstance(keyword.value, ast.Constant) and keyword.value.value is None
+            ):
+                return True
+            continue
+        if keyword.arg == "create":
+            if not isinstance(keyword.value, ast.Constant) or keyword.value.value is True:
+                return True
+            continue
         if keyword.arg == "new":
-            # `patch(..., new=None)` deliberately installs `None` rather than a mock.
-            return True
+            # DEFAULT requests the patcher's normal generated mock; every other
+            # value, including None, is a concrete replacement.
+            if not names.is_default(keyword.value):
+                return True
+            continue
         if keyword.arg == "autospec":
             if not (isinstance(keyword.value, ast.Constant) and keyword.value.value in {None, False}):
                 return True
@@ -557,24 +771,30 @@ def _has_spec_argument(node: ast.Call, names: _MockNames) -> bool:
             # Choosing another unrestricted Mock subclass changes callability or
             # awaitability, not the collaborator contract. Unknown factories may
             # create a concrete non-mock replacement, so decline to guess.
+            if isinstance(keyword.value, ast.Constant) and keyword.value.value is None:
+                continue
             if names.resolve(keyword.value) in _UNSPECCED_FACTORIES:
                 continue
             return True
-        if keyword.arg in _SPEC_KEYWORDS and not (
+        if keyword.arg in _PATCH_CONTRACT_KEYWORDS and not (
             isinstance(keyword.value, ast.Constant) and keyword.value.value is None
         ):
             return True
     return False
 
 
-def _has_positional_replacement(node: ast.Call, label: str) -> bool:
+def _has_positional_replacement(node: ast.Call, label: str, names: _MockNames) -> bool:
     # `spec` / `new` are positional parameters of these signatures, and that is
     # how they are nearly always spelled — `patch("mod.fn", replacement)` is
     # `new=replacement`, `Mock(Process)` is `spec=Process`.
     if any(isinstance(arg, ast.Starred) for arg in node.args):
         # `*args` forwarding: the arity is unknown, so decline to guess.
         return True
-    return len(node.args) >= _REPLACEMENT_ARITY[label]
+    arity = _REPLACEMENT_ARITY[label]
+    if len(node.args) < arity:
+        return False
+    replacement = node.args[arity - 1]
+    return not (label.startswith("patch") and names.is_default(replacement))
 
 
 def _render_callee(func: ast.expr, symbol: str) -> str:
