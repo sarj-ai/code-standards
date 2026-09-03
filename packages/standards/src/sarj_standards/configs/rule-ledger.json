@@ -50,9 +50,9 @@
       "no-offset-pagination",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
-      "no-redundant-literal-description",
       "no-repeated-string-literal",
       "no-repeated-test-body",
+      "no-restated-closed-domain-description",
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
@@ -965,6 +965,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; syntax cannot prove whether a production write API can represent the fixture state."
+    },
+    {
+      "id": "no-redundant-literal-description",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-restated-closed-domain-description",
+      "note": "Replace sarj-no-redundant-literal-description with sarj-no-restated-closed-domain-description before upgrading."
     },
     {
       "id": "no-sequential-await",

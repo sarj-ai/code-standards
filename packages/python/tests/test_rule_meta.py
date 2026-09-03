@@ -39,6 +39,7 @@ _RENAMED_RULES = {
     "no-analytical-aggregation-in-postgres-store": ("SARJ020", ("no-aggregation-in-store-query",)),
     "no-copied-inherited-docstring": ("SARJ084", ("duplicated-override-docstring",)),
     "no-repeated-test-body": ("SARJ066", ("duplicate-test-body",)),
+    "no-restated-closed-domain-description": ("SARJ423", ("no-redundant-literal-description",)),
     "no-string-concat-in-loop": ("SARJ002", ("inefficient-string-concat-in-loop",)),
     "opaque-parametrize-case-needs-id": ("SARJ042", ("parametrize-case-needs-id",)),
     "pytest-fixture-returns-bare-tuple": ("SARJ044", ("fixture-returns-bare-tuple",)),

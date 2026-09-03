@@ -160,7 +160,10 @@
     "store-get-delegates-to-bulk-read"
   ],
   "SARJ422": "prefer-one-for-required-row",
-  "SARJ423": "no-redundant-literal-description",
+  "SARJ423": [
+    "no-redundant-literal-description",
+    "no-restated-closed-domain-description"
+  ],
   "SARJ424": "require-nodecode-for-splitting-settings-field",
   "SARJ425": "no-nested-pydantic-field-validator",
   "SARJ426": "no-conftest-test-module-import",

@@ -297,10 +297,12 @@
       "outcome": "Kept provenance-aware SARJ429 at warning level with lexical function scoping, explicit pool-type proof, shared test-support and conftest exemptions, and fixture-internal setup/cleanup handling. Fixtures that expose a raw connection and ordinary tests/helpers remain reportable; promotion requires a clean adoption window."
     },
     {
-      "task": "rule-audit/python/no-redundant-literal-description",
+      "task": "rule-audit/python/no-restated-closed-domain-description",
       "family": "python",
-      "ruleId": "no-redundant-literal-description",
-      "state": "pending"
+      "ruleId": "no-restated-closed-domain-description",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 12 original focused tests and scanned up to 8,868 Python files with zero emitted findings. Pydantic 2.13 runtime probes confirmed that Literal and string Enum values are emitted in JSON Schema alongside Field descriptions. Adversarial review found binding-order and schema-override hazards, while a missed-pattern search found one repeated first-party design across nine tracked files: three field roles used a local Literal alias and repeated its complete five-value domain in a narrow should-only-be clause. Ruff, Pylint, and pydoclint do not compare Pydantic descriptions with generated schema domains.",
+      "outcome": "Renamed the rule to the accurate no-restated-closed-domain-description selector with the old selector retained as an alias, and staged SARJ423 as a warning because this is documentation maintainability guidance. Added exact static local Literal aliases, closed Literal unions, direct BaseModel-plus-mixin classes, Pydantic v1 provenance, and tightly bounded allowed/valid/either/one-of clause forms including the observed identifier list. Matching still requires complete domain-set equality and abstains for partial, extra, mapped, rationale-bearing, dynamic, custom-schema, test, and generated cases. Reworked the UI around a realistic two-value domain and value-specific behavioral guidance; 25 focused cases pass."
     },
     {
       "task": "rule-audit/python/no-repeated-string-literal",
