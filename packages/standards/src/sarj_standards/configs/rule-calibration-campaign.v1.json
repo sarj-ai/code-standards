@@ -340,7 +340,9 @@
       "task": "rule-audit/python/no-select-star",
       "family": "python",
       "ruleId": "no-select-star",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 83 original focused tests and scanned 2,928 to 7,097 tracked Python files. They manually classified 21 to 27 findings: physical-table wildcard projections were actionable, while a generated TypeScript training example and several deliberately bounded CTE projections demonstrated that the existing error-level contract was too strong. Reviewers reproduced false positives for docstrings/prose, COUNT(t.*), aggregate row arguments, non-projection clauses, and f-string multiplication; false negatives included an outer wildcard after an EXISTS subquery and BigQuery/Snowflake/DuckDB wildcard modifiers. SQLFluff AM04 owns parsed standalone SQL, while Ruff S608 covers injection rather than result-shape wildcards.",
+      "outcome": "Kept the established no-select-star selector and staged SARJ021 as a warning. Replaced the latest-SELECT regex heuristic with a parenthesis-depth projection scanner, limited analysis to credible query bindings and SQL execution/composition calls, excluded docstrings and migration/fixture/example paths, preserved COUNT and EXISTS exemptions, added dialect EXCEPT/EXCLUDE/REPLACE/RENAME/INTO coverage, protected dynamic multiplication, and taught shared SQL noise stripping about MySQL hash comments. Rewrote the UI around source-dependent result contracts and real cursor consumption rather than universal class_row behavior. One hundred three focused rule cases pass; a post-change scan reports 26 executable or review-worthy projections and removes the known training-prose false positive. Retain bounded CTE findings as advisory review leads with documented suppression guidance."
     },
     {
       "task": "rule-audit/python/no-sentinel-return-on-except",

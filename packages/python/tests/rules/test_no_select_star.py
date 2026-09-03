@@ -65,6 +65,7 @@ ALLOWS = {
     "bytes_literal": 'q = b"SELECT * FROM call"\n',
     "block_comment_only": 'q = "/* SELECT * FROM call */ SELECT id FROM call"\n',
     "line_comment_only": 'q = "SELECT id FROM call -- SELECT * FROM x"\n',
+    "mysql_hash_comment_only": 'q = "SELECT id FROM call # SELECT * FROM x"\n',
     "empty_string": 'q = ""\n',
     "unicode_columns": 'q = "SELECT naïve, café FROM call"\n',
     "prose_no_query_shape": 'msg = "This report is distinct from the last one."\n',
@@ -94,8 +95,8 @@ def test_message_and_code_fields():
     diags = _check('q = "SELECT * FROM call"\n')
     assert len(diags) == 1
     assert diags[0].code == "SARJ021"
-    assert "SELECT *" in diags[0].message
-    assert "class_row" in diags[0].message
+    assert "SELECT projection uses a wildcard" in diags[0].message
+    assert "result shape" in diags[0].message
     assert "sarj-noqa: SARJ021" in diags[0].message
 
 
@@ -114,21 +115,21 @@ def test_line_and_col_of_qualified_star():
 
 
 def test_two_violations_sorted_by_line():
-    diags = _check('a = "SELECT * FROM call"\nb = "SELECT c.* FROM call c"\n')
-    assert [(d.line, d.col) for d in diags] == [(1, 5), (2, 5)]
+    diags = _check('query_a = "SELECT * FROM call"\nquery_b = "SELECT c.* FROM call c"\n')
+    assert [(d.line, d.col) for d in diags] == [(1, 11), (2, 11)]
 
 
 def test_two_violations_same_line_sorted_by_col():
-    diags = _check('t = ("SELECT * FROM a", "SELECT * FROM b")\n')
-    assert [(d.line, d.col) for d in diags] == [(1, 6), (1, 25)]
+    diags = _check('QUERIES = ("SELECT * FROM a", "SELECT * FROM b")\n')
+    assert [(d.line, d.col) for d in diags] == [(1, 12), (1, 31)]
 
 
 def test_reports_all_violations_in_file():
     src = (
-        'a = "SELECT * FROM call"\n'
-        'b = "SELECT id FROM call"\n'
-        'c = "SELECT x.* FROM call x"\n'
-        'd = "SELECT COUNT(*) FROM call"\n'
+        'query_a = "SELECT * FROM call"\n'
+        'query_b = "SELECT id FROM call"\n'
+        'query_c = "SELECT x.* FROM call x"\n'
+        'query_d = "SELECT COUNT(*) FROM call"\n'
     )
     diags = _check(src)
     assert [d.line for d in diags] == [1, 3]
@@ -247,3 +248,63 @@ def test_fstring_interp_between_star_and_from_should_fire():
 
 def test_interpolation_cannot_manufacture_select_star_tokens():
     assert _check('q = f"{select_clause} {projection} FROM call"\n') == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'q = "SELECT COUNT(t.*) FROM t"\n',
+        'q = "SELECT COUNT(DISTINCT t.*) FROM t"\n',
+        'q = "SELECT json_agg(t.*) FROM t"\n',
+        'q = "SELECT id FROM t ORDER BY t.*"\n',
+        'q = "SELECT id FROM t GROUP BY t.*"\n',
+        'q = "UPDATE t SET id = 1 RETURNING t.*"\n',
+        'q = f"SELECT price * {quantity_column} FROM orders"\n',
+    ],
+    ids=[
+        "count-qualified-row",
+        "count-distinct-qualified-row",
+        "json-aggregate-qualified-row",
+        "order-by-qualified-row",
+        "group-by-qualified-row",
+        "returning-qualified-row",
+        "interpolated-arithmetic-rhs",
+    ],
+)
+def test_non_projection_stars_are_ignored(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'q = "SELECT * EXCEPT(secret) FROM users"\n',
+        'q = "SELECT * EXCLUDE(secret) FROM users"\n',
+        'q = "SELECT * REPLACE(masked AS secret) FROM users"\n',
+        'q = "SELECT * RENAME(old_name AS new_name) FROM users"\n',
+        'q = "SELECT * INTO archived_users FROM users"\n',
+        'q = "SELECT EXISTS(SELECT 1 FROM audit), * FROM users"\n',
+    ],
+    ids=["except", "exclude", "replace", "rename", "into", "outer-star-after-exists"],
+)
+def test_dialect_and_nested_projection_stars_are_flagged(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "path"),
+    [
+        ('"""Run SELECT * FROM users to inspect rows."""\n', "service.py"),
+        ('message = "Never run SELECT * FROM users"\n', "service.py"),
+        ('q = "SELECT * FROM users"\n', "migrations/001.py"),
+        ('q = "SELECT * FROM users"\n', "fixtures/query.py"),
+        ('q = "SELECT * FROM users"\n', "examples/query.py"),
+    ],
+    ids=["docstring", "prose", "migration", "fixture", "example"],
+)
+def test_non_executable_or_historical_sql_is_ignored(source: str, path: str) -> None:
+    assert _check(source, path) == []
+
+
+def test_direct_execute_literal_is_flagged() -> None:
+    assert len(_check('cursor.execute("SELECT * FROM users")\n')) == 1
