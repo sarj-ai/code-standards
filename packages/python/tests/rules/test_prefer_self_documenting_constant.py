@@ -6,7 +6,6 @@ import pytest
 from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
-from sarj_python_lint.rules.no_long_comment import NoLongComment
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
@@ -331,7 +330,6 @@ def test_adjacent_comment_rules_do_not_duplicate_the_leading_unit_finding() -> N
         NoCommentCruft(),
         NoRestatedComment(),
         TrailingValueNarration(),
-        NoLongComment(),
     ]
 
     findings = [finding for rule in rules for finding in rule.check(path, source)]

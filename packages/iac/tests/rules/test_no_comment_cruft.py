@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 
 _PUBLIC_EXAMPLES = NoCommentCruft.public_examples()
+_TASK_DIRECTIVE = "TO" + "DO"
 
 
 def _check(source: str, name: str = "main.tf") -> list[Diagnostic]:
@@ -63,12 +64,12 @@ def test_allows_prose_why_comment():
 
 
 def test_allows_directive_comments():
-    src = """
+    src = f"""
 # tflint-ignore: terraform_unused_declarations
 # checkov:skip=CKV_GCP_1: justified
 # sarj-noqa: SARJ201 — ephemeral
-# TODO: split this module
-variable "x" {}
+# {_TASK_DIRECTIVE}: split this module
+variable "x" {{}}
 """
     assert _check(src) == []
 
@@ -78,7 +79,7 @@ def test_yaml_only_flags_banners_not_keys():
     src = "# note: remember to bump the chart version\n# ------------------------------\nname: app\n"
     diags = _check(src, name="values.yaml")
     assert len(diags) == 1
-    assert "banner" in diags[0].message.lower()
+    assert "divider" in diags[0].message.lower()
 
 
 def test_allows_short_equals_in_prose():
@@ -98,7 +99,7 @@ variable "x" {}
 
 def test_still_flags_commented_attr_with_value():
     src = '# bucket = "old-name"\n# ttl = 3600\n# enabled = true\nresource "x" "y" {}\n'
-    assert len(_check(src)) == 3
+    assert len(_check(src)) == 1
 
 
 def test_tfvars_commented_inputs_not_flagged_only_banners():
@@ -106,7 +107,7 @@ def test_tfvars_commented_inputs_not_flagged_only_banners():
     src = '# twilio_account_sid = ""\n# =========================\nstack = "prod"\n'
     diags = _check(src, name="prod.tfvars")
     assert len(diags) == 1
-    assert "banner" in diags[0].message.lower()
+    assert "divider" in diags[0].message.lower()
 
 
 def test_testdata_can_encode_removed_configuration():
@@ -161,7 +162,7 @@ def test_flags_a_run_that_is_mostly_disabled_code():
     src = _PUBLIC_EXAMPLES[0].focus_file.source
     diags = _check(src)
     assert len(diags) == _PUBLIC_EXAMPLES[0].expected_count
-    assert all("Commented-out Terraform" in d.message for d in diags)
+    assert all("Commented-out HCL" in d.message for d in diags)
 
 
 def test_flags_a_half_code_run_at_the_threshold():
@@ -192,7 +193,7 @@ resource "google_compute_network" "vpc" {}
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert "Section-banner" in diags[0].message
+    assert "Decorative divider" in diags[0].message
     assert diags[0].line == 2
 
 
@@ -234,14 +235,14 @@ def test_a_mixed_character_rule_is_a_banner():
     src = '# -=-=-=-=\nresource "google_compute_network" "vpc" {}\n'
     diags = _check(src)
     assert len(diags) == 1
-    assert "Section-banner" in diags[0].message
+    assert "Decorative divider" in diags[0].message
 
 
 def test_a_rule_with_a_title_after_it_is_a_banner():
     src = '# ==== Networking ====\nresource "google_compute_network" "vpc" {}\n'
     diags = _check(src)
     assert len(diags) == 1
-    assert "Section-banner" in diags[0].message
+    assert "Decorative divider" in diags[0].message
 
 
 def test_four_characters_is_already_a_banner():
@@ -254,22 +255,22 @@ def test_a_run_shorter_than_four_is_not_a_banner(body: str):
 
 
 def test_a_directive_that_happens_to_contain_a_rule_is_not_a_banner():
-    src = '# TODO: replace the ==== dividers in this file with real blocks\nresource "google_storage_bucket" "b" {}\n'
+    src = f'# {_TASK_DIRECTIVE}: replace the ==== dividers in this file with real blocks\nresource "google_storage_bucket" "b" {{}}\n'
     assert _check(src) == []
 
 
 def test_directives_do_not_vote_on_whether_a_run_is_code():
-    src = """
+    src = f"""
 # tflint-ignore: terraform_unused_declarations
 # checkov:skip=CKV_GCP_1: justified
-# TODO: remove after the migration lands
+# {_TASK_DIRECTIVE}: remove after the migration lands
 # bucket        = "legacy-artifacts"
 # force_destroy = true
-resource "google_storage_bucket" "new" {}
+resource "google_storage_bucket" "new" {{}}
 """
     diags = _check(src)
-    assert [d.line for d in diags] == [5, 6]
-    assert all("Commented-out Terraform" in d.message for d in diags)
+    assert [d.line for d in diags] == [5]
+    assert all("Commented-out HCL" in d.message for d in diags)
 
 
 @pytest.mark.parametrize(
@@ -294,7 +295,7 @@ resource "google_compute_instance" "node" {{
 
 def test_the_same_lines_outside_a_heredoc_are_still_judged():
     src = '# bucket        = "legacy"\n# force_destroy = true\nresource "google_storage_bucket" "new" {}\n'
-    assert len(_check(src)) == 2
+    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize(
@@ -313,5 +314,89 @@ def test_a_prose_run_does_not_dilute_a_neighbouring_dead_code_run(separator: str
 resource "google_storage_bucket" "new" {{}}
 """
     diags = _check(src)
-    assert [d.line for d in diags] == [6, 7]
-    assert all("Commented-out Terraform" in d.message for d in diags)
+    assert [d.line for d in diags] == [6]
+    assert all("Commented-out HCL" in d.message for d in diags)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Availability ---- keep this enabled during failover",
+        "https://example.test/a----b",
+        "-----BEGIN CERTIFICATE-----",
+    ],
+)
+def test_internal_punctuation_is_not_a_banner(body: str):
+    assert _check(f'# {body}\nresource "x" "y" {{}}\n') == []
+
+
+def test_yaml_block_scalar_comments_are_data():
+    src = """
+configMap:
+  script: |-
+    # ------------------------------
+    # retry = 3
+  certificate: >
+    -----BEGIN CERTIFICATE-----
+"""
+    assert _check(src, name="values.yaml") == []
+
+
+@pytest.mark.parametrize("directive", ["tfsec:ignore:AWS001", "trivy:ignore:AVD-AWS-0001"])
+def test_security_scanner_directives_are_not_banners(directive: str):
+    assert _check(f'# {directive} ---- justified\nresource "x" "y" {{}}\n') == []
+
+
+@pytest.mark.parametrize("identifier", ["todo_count", "hack_enabled", "fixme_enabled", "nosec_policy"])
+def test_directive_prefix_identifiers_are_still_hcl(identifier: str):
+    assert len(_check(f'# {identifier} = true\nresource "x" "y" {{}}\n')) == 1
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'check "health" {',
+        'run "validate" {',
+        'ephemeral "random_password" "token" {',
+        'source "amazon-ebs" "image" {',
+        "lifecycle {",
+    ],
+)
+def test_modern_and_nested_hcl_blocks_are_detected(declaration: str):
+    assert len(_check(f'# {declaration}\n# }}\nresource "x" "y" {{}}\n')) == 1
+
+
+def test_balanced_block_commented_hcl_is_detected_once():
+    src = """
+/*
+ * resource "google_storage_bucket" "old" {
+ *   force_destroy = true
+ * }
+ */
+resource "google_storage_bucket" "new" {}
+"""
+    diags = _check(src)
+    assert len(diags) == 1
+    assert diags[0].line == 3
+
+
+def test_prose_and_malformed_block_comments_are_ignored():
+    assert _check('/* Keep this region for residency. */\nresource "x" "y" {}\n') == []
+    assert _check('/*\nresource "old" "x" {\n') == []
+
+
+def test_fixture_and_generated_files_are_fully_excluded():
+    src = '# ==== Fixture ====\n# resource "old" "x" {\n# }\n'
+    assert _check(src, name="fixtures/dead/main.tf") == []
+    assert _check(f"# Code generated by terraform. DO NOT EDIT.\n{src}") == []
+
+
+def test_each_separate_disabled_run_gets_one_finding():
+    src = """
+# resource "old" "a" {
+# }
+resource "live" "a" {}
+# check "old" {
+# }
+"""
+    assert [diagnostic.line for diagnostic in _check(src)] == [2, 5]

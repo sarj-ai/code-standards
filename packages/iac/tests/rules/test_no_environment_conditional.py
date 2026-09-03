@@ -113,13 +113,13 @@ locals {
     assert len(_check(src)) == 1
 
 
-def test_a_function_result_compared_to_a_literal_is_not_flagged():
+def test_flags_a_normalized_environment_compared_to_a_literal():
     src = """
 locals {
   on = upper(var.environment) == "PROD"
 }
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_flags_a_parenthesized_operand_inside_a_list_for_expression():
@@ -140,42 +140,40 @@ locals {
     assert len(_check(src)) == 1
 
 
-def test_a_call_result_inside_a_for_expression_stays_exempt():
+def test_flags_a_normalized_identity_inside_a_for_expression():
     src = """
 locals {
   subnets = [for e in var.subnets : e if upper(var.environment) == "PROD"]
 }
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
-def test_flags_an_index_keyed_by_the_environment():
+def test_environment_keyed_map_index_is_data_selection():
     src = """
 locals {
   tier = local.tiers[var.environment]
 }
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "...[var.environment]" in diags[0].message
+    assert _check(src) == []
 
 
-def test_flags_an_environment_index_on_a_chained_subject():
+def test_environment_index_on_a_chained_subject_is_data_selection():
     src = """
 locals {
   tier = local.cfg["tiers"][var.environment]
 }
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_flags_an_environment_index_inside_a_call_argument():
+def test_environment_index_inside_a_call_is_data_selection():
     src = """
 locals {
   on = tobool(local.flags[var.environment])
 }
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_a_list_literal_holding_the_identity_is_not_an_index():
@@ -216,24 +214,22 @@ locals {
     assert "contains([...], var.environment)" in diags[0].message
 
 
-def test_contains_with_a_parenthesized_call_needle_is_not_flagged():
+def test_contains_with_a_normalized_environment_needle_is_flagged():
     src = """
 locals {
   on = contains(["preview", "prod"], (upper(var.environment)))
 }
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
-def test_flags_lookup_keyed_by_the_environment():
+def test_lookup_keyed_by_the_environment_is_data_selection():
     src = """
 resource "google_privileged_access_manager_entitlement" "access" {
   max_request_duration = lookup(local.durations, var.environment, "3600s")
 }
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "lookup(..., var.environment, ...)" in diags[0].message
+    assert _check(src) == []
 
 
 def test_flags_a_local_that_branches_on_the_environment():
@@ -439,7 +435,7 @@ locals {
   on = contains(var.environments, var.environment)
 }
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_contains_with_a_non_identity_needle_is_not_flagged():
@@ -530,13 +526,15 @@ locals {
 }
 """
     diags = _check(src)
-    assert len(diags) == 1
+    assert len(diags) == 2
     assert diags[0].line == 3
 
 
 def test_the_segment_sets_are_exactly_these():
-    assert {"environment", "env", "stage", "workspace", "deployment"} == ENVIRONMENT_SEGMENTS
-    assert {"project", "slug", "branch", "account", "tenant"} == QUALIFIED_SEGMENTS
+    assert {"environment", "env"} == ENVIRONMENT_SEGMENTS
+    assert {"project", "slug", "branch", "account", "tenant", "stage", "workspace", "deployment"} == (
+        QUALIFIED_SEGMENTS
+    )
 
 
 def test_flags_a_module_input_computed_from_the_environment():
@@ -550,9 +548,9 @@ module "iam" {
     diags = _check(src)
     assert len(diags) == 2
     assert [d.line for d in diags] == [4, 5]
-    assert "typed variable set per environment in tfvars" in diags[0].message
-    assert "passed through child-module calls from the root" in diags[0].message
-    assert "`enable_<thing>` bool" in diags[0].message
+    assert "selected typed value" in diags[0].message
+    assert "named capability" in diags[0].message
+    assert "root configuration" in diags[0].message
 
 
 def test_does_not_flag_a_module_input_passed_straight_through():
@@ -694,6 +692,66 @@ locals {
 
 def test_ignores_tfvars():
     assert _check('environment = "prod"\n', name="prod.tfvars") == []
+
+
+@pytest.mark.parametrize(
+    ("identity", "literal"),
+    [("var.workspace", "finance"), ("var.stage", "build"), ("var.deployment", "api")],
+)
+def test_ambiguous_deployment_terms_need_environment_literal_evidence(identity: str, literal: str):
+    assert _check(f'locals {{\n  selected = {identity} == "{literal}" ? 1 : 0\n}}\n') == []
+
+
+@pytest.mark.parametrize("identity", ["var.workspace", "var.stage", "var.deployment"])
+def test_ambiguous_deployment_terms_match_with_environment_evidence(identity: str):
+    assert len(_check(f'locals {{\n  selected = {identity} == "prod" ? 1 : 0\n}}\n')) == 1
+
+
+def test_hyphenated_environment_identity_is_detected():
+    assert len(_check('locals {\n  selected = var.deployment-stage == "prod" ? 1 : 0\n}\n')) == 1
+
+
+def test_normalizer_on_the_right_side_is_detected():
+    assert len(_check('locals {\n  selected = "PROD" == upper(var.environment) ? 1 : 0\n}\n')) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'contains(["prod"], var.environment, "extra")',
+        'contains(["prod"])',
+    ],
+)
+def test_malformed_contains_calls_are_left_to_terraform(expression: str):
+    assert _check(f"locals {{\n  selected = {expression}\n}}\n") == []
+
+
+@pytest.mark.parametrize("name", ["image.pkr.hcl", "job.nomad.hcl", "generic.hcl"])
+def test_non_terraform_hcl_dialects_are_not_reported(name: str):
+    source = 'locals {\n  selected = var.environment == "prod" ? 1 : 0\n}\n'
+    assert _check(source, name=name) == []
+
+
+def test_an_unrelated_validation_block_does_not_hide_application_logic():
+    source = """
+validation {
+  selected = var.environment == "prod" ? 1 : 0
+}
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("directory", ["fixture", "fixtures", "testdata"])
+def test_fixture_inputs_are_excluded(directory: str):
+    source = 'locals {\n  selected = var.environment == "prod" ? 1 : 0\n}\n'
+    assert _check(source, name=f"{directory}/main.tf") == []
+
+
+def test_generated_terraform_is_excluded():
+    source = (
+        '# Code generated by a provider. DO NOT EDIT.\nlocals {\n  selected = var.environment == "prod" ? 1 : 0\n}\n'
+    )
+    assert _check(source) == []
 
 
 def test_ignores_a_commented_out_conditional():

@@ -198,7 +198,7 @@ def _docstring_groups(tree: ast.Module) -> list[ProseGroup]:
         ):
             continue
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
-            decorator_markers(node) & PROMPT_DECORATOR_MARKERS
+            _decorator_terminal_names(node) & PROMPT_DECORATOR_MARKERS
         ):
             continue
         if isinstance(node, ast.ClassDef) and _is_schema_class(node):
@@ -244,6 +244,17 @@ def _is_schema_class(node: ast.ClassDef) -> bool:
     return bool(bases & _SCHEMA_BASES or decorator_markers(node) & _SCHEMA_DECORATORS)
 
 
+def _decorator_terminal_names(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> frozenset[str]:
+    names: set[str] = set()
+    for decorator in node.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if isinstance(target, ast.Name):
+            names.add(target.id.casefold())
+        elif isinstance(target, ast.Attribute):
+            names.add(target.attr.casefold())
+    return frozenset(names)
+
+
 def _fully_typed(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     args = node.args
     parameters = (*args.posonlyargs, *args.args, *args.kwonlyargs)
@@ -270,21 +281,23 @@ def _typed_restatement_lines(
     docstring_line: int,
 ) -> tuple[int, ...]:
     annotations = {
-        arg.arg: _normalise_type(ast.unparse(arg.annotation))
+        arg.arg: _annotation_type(arg.annotation)
         for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
         if arg.annotation is not None
     }
     if node.args.vararg is not None and node.args.vararg.annotation is not None:
-        annotations[f"*{node.args.vararg.arg}"] = _normalise_type(ast.unparse(node.args.vararg.annotation))
+        annotations[f"*{node.args.vararg.arg}"] = _annotation_type(node.args.vararg.annotation)
     if node.args.kwarg is not None and node.args.kwarg.annotation is not None:
-        annotations[f"**{node.args.kwarg.arg}"] = _normalise_type(ast.unparse(node.args.kwarg.annotation))
-    return_type = _normalise_type(ast.unparse(node.returns)) if node.returns is not None else ""
-    body_line_counts = _section_body_line_counts(doc)
+        annotations[f"**{node.args.kwarg.arg}"] = _annotation_type(node.args.kwarg.annotation)
+    return_type = _annotation_type(node.returns) if node.returns is not None else None
+    yield_type = _yielded_type(node.returns) if node.returns is not None else None
+    visible_doc = _without_literal_examples(doc)
+    body_line_counts = _section_body_line_counts(visible_doc)
 
     active: str | None = None
     active_header: int | None = None
     result: list[int] = []
-    for index, raw in enumerate(doc.splitlines()):
+    for index, raw in enumerate(visible_doc.splitlines()):
         if heading := _SECTION_HEADING_RE.match(raw):
             active = heading.group(1)
             active_header = index
@@ -297,18 +310,61 @@ def _typed_restatement_lines(
             continue
         if active in {"Args", "Arguments", "Parameters", "Params", "Keyword Args", "Keyword Arguments"}:
             match = _ARG_TYPE_ENTRY_RE.match(raw) or _NUMPY_ARG_TYPE_ENTRY_RE.match(raw)
-            if match is not None and _normalise_type(match.group(2)) == annotations.get(match.group(1)):
+            if match is not None and _documented_type(match.group(2)) == annotations.get(match.group(1)):
                 result.append(docstring_line + index)
         elif match := _RETURN_TYPE_ENTRY_RE.match(raw):
-            if _normalise_type(match.group(1)) == return_type:
+            expected = yield_type if active in {"Yields", "Yield"} else return_type
+            if expected is not None and _documented_type(match.group(1)) == expected:
                 result.append(docstring_line + index)
         elif (
             active_header is not None
             and body_line_counts.get(active_header) == 1
-            and _normalise_type(raw.strip()) == return_type
+            and (expected := yield_type if active in {"Yields", "Yield"} else return_type) is not None
+            and _documented_type(raw.strip()) == expected
         ):
             result.append(docstring_line + index)
     return tuple(result)
+
+
+def _without_literal_examples(doc: str) -> str:
+    visible: list[str] = []
+    fence: str | None = None
+    literal_indent: int | None = None
+    awaiting_literal_block = False
+    for raw in doc.splitlines():
+        stripped = raw.lstrip()
+        indent = len(raw) - len(stripped)
+        fence_marker = stripped[:3] if stripped.startswith(("```", "~~~")) else None
+        if fence is not None:
+            visible.append("")
+            if fence_marker == fence:
+                fence = None
+            continue
+        if fence_marker is not None:
+            fence = fence_marker
+            visible.append("")
+            continue
+        if stripped.startswith((">>>", "...")):
+            visible.append("")
+            continue
+        if literal_indent is not None:
+            if not stripped or indent > literal_indent:
+                visible.append("")
+                continue
+            literal_indent = None
+        if awaiting_literal_block:
+            if not stripped:
+                visible.append(raw)
+                continue
+            if indent > 0:
+                literal_indent = indent - 1
+                visible.append("")
+                awaiting_literal_block = False
+                continue
+            awaiting_literal_block = False
+        visible.append(raw)
+        awaiting_literal_block = stripped.endswith("::")
+    return "\n".join(visible)
 
 
 def _section_body_line_counts(doc: str) -> dict[int, int]:
@@ -325,5 +381,59 @@ def _section_body_line_counts(doc: str) -> dict[int, int]:
     return counts
 
 
+def _annotation_type(node: ast.expr) -> str:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        parsed = _parse_type_expression(node.value)
+        return _normalise_type(ast.unparse(parsed)) if parsed is not None else node.value
+    return _normalise_type(ast.unparse(node))
+
+
+def _documented_type(value: str) -> str | None:
+    parsed = _parse_type_expression(value)
+    return None if parsed is None else _normalise_type(ast.unparse(parsed))
+
+
+def _parse_type_expression(value: str) -> ast.expr | None:
+    try:
+        parsed = ast.parse(value.strip(), mode="eval").body
+    except SyntaxError:
+        return None
+    unsafe = (
+        ast.Await,
+        ast.BoolOp,
+        ast.Call,
+        ast.Compare,
+        ast.DictComp,
+        ast.GeneratorExp,
+        ast.IfExp,
+        ast.Lambda,
+        ast.ListComp,
+        ast.NamedExpr,
+        ast.SetComp,
+        ast.Yield,
+        ast.YieldFrom,
+    )
+    if any(isinstance(part, unsafe) for part in ast.walk(parsed)):
+        return None
+    if any(isinstance(part, ast.BinOp) and not isinstance(part.op, ast.BitOr) for part in ast.walk(parsed)):
+        return None
+    return parsed
+
+
+def _yielded_type(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        parsed = _parse_type_expression(node.value)
+        if parsed is None:
+            return None
+        node = parsed
+    if not isinstance(node, ast.Subscript):
+        return None
+    name = node.value.attr if isinstance(node.value, ast.Attribute) else node.value.id if isinstance(node.value, ast.Name) else ""
+    if name not in {"AsyncGenerator", "AsyncIterable", "AsyncIterator", "Generator", "Iterable", "Iterator"}:
+        return None
+    members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
+    return _annotation_type(members[0]) if members else None
+
+
 def _normalise_type(value: str) -> str:
-    return re.sub(r"\s+", "", value).removeprefix("typing.").removesuffix(",optional").casefold()
+    return re.sub(r"\s+", "", value).removeprefix("typing.").casefold()

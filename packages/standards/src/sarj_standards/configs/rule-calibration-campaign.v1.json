@@ -6,159 +6,185 @@
       "task": "rule-audit/iac/no-comment-cruft",
       "family": "iac",
       "ruleId": "no-comment-cruft",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews reproduced unanchored-banner and directive-prefix false positives, plus modern-HCL and block-comment false negatives. Fifty-eight focused cases and all 467 IaC tests pass. The repaired isolated corpus runner found zero diagnostics across 272 pinned tracked IaC/YAML files in Bulbul, Saqi, Automations, and Standards.",
+      "outcome": "Kept the established no-comment-cruft ID, replaced broad substring and prefix matching with bounded forms, excluded generated/fixture and YAML scalar data, added conservative modern and balanced block-comment HCL coverage, improved paired public examples and messages, and collapsed disabled runs to one actionable diagnostic. Retain at error level."
     },
     {
       "task": "rule-audit/iac/no-dead-environment-input",
       "family": "iac",
       "ruleId": "no-dead-environment-input",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed the combined rule was not safe at error severity and reproduced false positives from omitted or nested-any types, JSON-backed declarations, backend/fixture files, inferred environment topology, and path-only caches. Eighty-six focused cases pass. A 23-file local tfvars corpus produced 286 advisory findings; the reviewers' stratified samples confirmed that cross-environment redundancy remains judgment-heavy.",
+      "outcome": "Kept the shipped ID for selector and baseline compatibility, staged it as warning, rewrote certainty claims and public pairs, limited value comparison to fully declared scalar types, made unsupported or incomplete inputs abstain without tool-limitation diagnostics, excluded backend and fixture inputs, suppressed unsafe orphans when JSON declarations may exist, and removed stale path-only caches. A future major release should split provable orphan checks from advisory redundancy and explicit environment-inventory policy."
     },
     {
       "task": "rule-audit/iac/no-environment-conditional",
       "family": "iac",
       "ruleId": "no-environment-conditional",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed this is an organization-specific architecture preference rather than a universal Terraform error. They reproduced false positives for data-driven map selection, ambiguous workspace/stage/deployment names, malformed calls, and non-Terraform HCL, plus safe normalized-comparison misses. One hundred one focused cases pass. A 1,097-file local Terraform/Terragrunt scan produced 28 reviewed syntax matches, all within the intended advisory boundary, including security gates that still require human judgment.",
+      "outcome": "Kept the shipped ID for compatibility, staged it as warning, rewrote categorical UI claims, allowed environment-keyed map lookup/index selection, restricted dialect scope, required literal evidence for ambiguous identity names, recognized bounded pure normalizers, enforced contains arity, excluded generated/fixture inputs, and made assertion exemptions structural. A future major release may rename it to no-environment-name-branching with executable selector aliases."
     },
     {
       "task": "rule-audit/iac/no-restated-comment",
       "family": "iac",
       "ruleId": "no-restated-comment",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews kept the established name but found concrete false positives in YAML block scalars, fixture inputs, contiguous rationale comments, and plural headings over sibling declarations. Thirty-eight focused cases pass after repair. Local corpus reviews covered between 1,120 and 7,020 eligible files; the largest labeled review classified 40 of 43 matches as genuine and three grouping headings as false positives.",
+      "outcome": "Kept the compatible no-restated-comment ID, staged it as warning, limited it to Terraform and Terragrunt HCL, excluded generated and fixture inputs, evaluated contiguous comment groups atomically, preserved sibling headings, recognized generic HCL blocks and common inflections, removed a broad security-word exemption, avoided overlap with commented-out HCL, and made public examples and diagnostics describe the actual declaration-level signal."
     },
     {
       "task": "rule-audit/iac/no-mocked-terraform-test-oracle",
       "family": "iac",
       "ruleId": "no-mocked-terraform-test-oracle",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews rejected the categorical mock ban. HashiCorp documents empty mock providers as a supported credential-free configuration-testing mechanism, while the original matcher did not inspect assertions or data flow. The pinned local corpus contained one canonical match: an empty Google/PagerDuty mock used to assert configured plan values, a false positive under the rule's own rendered-plan allowance. Nineteen replacement cases pass.",
+      "outcome": "Kept SARJ206 and its established selector for compatibility, staged it as warning, and replaced block-presence matching with run-scoped flow matching that reports only an assertion directly equating an override_resource, override_data, or override_module literal to the same target attribute. Empty mock providers, transformed assertions, provider-scoped overrides, JSON syntax, dynamic values, malformed HCL, and cross-run flows now abstain; public examples and remediation teach layered unit and provider-backed testing."
     },
     {
       "task": "rule-audit/iac/require-deletion-protection",
       "family": "iac",
       "ruleId": "require-deletion-protection",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews found the safety objective useful but the error implementation provider-inaccurate: it accepted unsupported cross-provider attribute spellings, treated lifecycle.prevent_destroy as equivalent to provider protection, reported documented safe defaults as missing, and classified dynamic module inputs as proven unsafe. The pinned corpus had two actionable unguarded Cloud SQL child databases and one advisory variable-driven GKE guard. One hundred nineteen focused cases pass after repair.",
+      "outcome": "Kept the compatible require-deletion-protection ID, changed the category to correctness, staged it as warning, introduced exact resource-specific guard spellings, recognized documented protected-by-default Google resources and Cloud SQL API-side protection, rejected invalid quoted or case-incorrect booleans, limited parsing to maintained Terraform files, abstained on malformed inputs, and made each diagnostic recommend only valid controls while explaining that lifecycle protection disappears with the resource block."
     },
     {
       "task": "rule-audit/iac/require-prevent-destroy-on-irreplaceable",
       "family": "iac",
       "ruleId": "require-prevent-destroy-on-irreplaceable",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed resource type alone cannot prove irreplaceability and found a critical false negative: force_destroy = true silenced SARJ203 even though it enables contained-data deletion, including when the attribute was unsupported. The pinned corpus had eight useful but judgment-dependent unguarded Google Secret Manager leads and no force-destroy exemptions. Sixty-eight focused cases pass after repair.",
+      "outcome": "Kept the shipped selector for compatibility, changed the category to correctness, staged it as warning, replaced categorical irreplaceability claims with durable-data review language, made Google provider PREVENT the primary UI example, treated force_destroy/force_delete as destructive evidence instead of exemptions, required exact HCL booleans, restricted scope to maintained Terraform files, abstained on malformed inputs, and documented that lifecycle protection disappears when the resource block is removed."
     },
     {
       "task": "rule-audit/python/timestamp-order-requires-tiebreaker",
       "family": "python",
       "ruleId": "timestamp-order-requires-tiebreaker",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed the rule's name should remain stable but found that unlimited result sets, grouped and distinct queries, SQL in docstrings, and FETCH WITH TIES produced misleading findings, while volatile functions and constants were accepted as tie-break keys. Corpus review found 35 Bulbul and three AI findings with mixed impact, confirming this remains advisory without schema-level uniqueness evidence. Fifty-four focused cases pass after repair.",
+      "outcome": "Kept the established timestamp-order-requires-tiebreaker ID and alias, staged it as warning, limited findings to bounded row selection, excluded grouped, distinct, WITH TIES, generated, fixture, and docstring content, recognized static f-strings, rejected volatile or constant pseudo-keys, and rewrote examples and diagnostics to teach matching composite ORDER BY and keyset cursor predicates."
     },
     {
       "task": "rule-audit/python/defect-xfail-requires-explicit-strict",
       "family": "python",
       "ruleId": "defect-xfail-requires-explicit-strict",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed the local-explicitness policy is useful and has no Ruff or flake8-pytest-style equivalent. They reviewed 45 maintained local xfail calls: 38 literal-strict deterministic defect pins, six intentional nondeterministic or generated-case pins, and one non-defect environment marker. The rule emitted zero findings across a larger 83-repository, 6,634-file local Python sweep, so noise is low but live positive precision is not yet proven. One hundred focused cases pass after repair.",
+      "outcome": "Kept SARJ046, the established defect-xfail-requires-explicit-strict ID, and both aliases; staged it as warning; limited function findings to default-collected tests; excluded conftest, fixtures, generated code, nested helpers, and fully dynamic reasons; required literal strict=True; resolved Hypothesis and environment probes through imports; recognized statically false conditions and safe local xfail aliases; narrowed broad should prose to contrast statements; and rewrote UI copy to describe XPASS exit behavior and parameter-level remediation accurately."
     },
     {
       "task": "rule-audit/python/docstring-args-restate-signature",
       "family": "python",
       "ruleId": "docstring-args-restate-signature",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews found 20 local diagnostics representing about 10 unique contexts, all policy-consistent, plus two genuine redundancies in a 529-file dependency sample. A broader pydantic-focused sample produced 87 deliberate structured API-table findings, proving the convention is unsuitable as a universal error. Reviewers also reproduced wrong deletion advice for stale documented names, docstring-only or mismatched types, swapped sibling descriptions, and aliased runtime decorators. Forty-seven focused cases pass after repair.",
+      "outcome": "Kept SARJ086 and the established docstring-args-restate-signature ID, staged it as warning, retained Google-style whole-block scope, mapped every entry to its actual parameter, compared only callable and matching-parameter name/type facts, preserved semantic qualifiers and mismatched or docstring-only types, exempted known aliased runtime decorators and overloads, named the callable in diagnostics, and replaced the misleading accepted UI example with a real unit-and-sentinel contract."
     },
     {
       "task": "rule-audit/python/docstring-returns-restate-signature",
       "family": "python",
       "ruleId": "docstring-returns-restate-signature",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews classified 32 local findings clustered into 14 unique contexts: 13 were straightforward redundancies and one lost a boolean truth-condition contract. A 529-file dependency sample exposed two unannotated-function false positives, while a pydantic-heavy public API sample produced 91 intentional complete-table findings. Upstream tools own missing, extraneous, and mismatched result docs but not semantic restatement. Forty-six focused cases pass after repair.",
+      "outcome": "Kept SARJ087 and the established docstring-returns-restate-signature ID, staged it as warning, required one Google-style section and an informative explicit result annotation, compared only callable/class and the matching result slot, distinguished Generator yield and return slots, preserved input relationships, conditions, polarity, cardinality, ordering, identity, tuple roles, typed sections, overloads, and aliased runtime consumers, and rewrote UI guidance to remove only the redundant section."
     },
     {
       "task": "rule-audit/python/no-repeated-test-body",
       "family": "python",
       "ruleId": "no-repeated-test-body",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews scanned between 7,097 and 7,477 Python files and reviewed 52 to 68 raw findings, with duplicated worktrees collapsing the independent set substantially. Many were useful parameterization prompts, but distinct liveness/readiness, authentication, card-action, privacy, and failure contracts were also reported. Four representative installed-package findings were plausible. Reviewers reproduced terminal-route and aliased pytest.raises match false positives. One hundred twenty-two focused cases pass after repair.",
+      "outcome": "Kept SARJ066, no-repeated-test-body, and its alias; staged it as warning; preserved every differing route literal as contract identity; resolved pytest.raises through import aliases; excluded conftest and methods on non-collected classes; narrowed external unittest inference to TestCase evidence; retained strong structural, fixture, prose, decorator, signature, and verbatim-copy guards; and rewrote UI claims from mandatory one-behavior parameterization to conditional consolidation or correction advice."
     },
     {
       "task": "rule-audit/python/no-copied-inherited-docstring",
       "family": "python",
       "ruleId": "no-copied-inherited-docstring",
       "state": "complete",
-      "evidence": "Three-repository AST calibration produced 45 inherited-docstring copies, all mechanically confirmed against their resolved local base contract. Broadening retained the same corpus set while targeted cases exposed previously unreachable generic and alias inheritance forms.",
-      "outcome": "Kept the precise renamed ID, normalized wrapping and terminal punctuation before comparison, and added safe resolution for parameterized local bases and simple preceding class aliases. Imported and dynamically constructed bases remain excluded rather than guessed."
+      "evidence": "Three independent re-reviews found 48 to 54 local findings, all genuine cleaned-content copies on proven same-file bases, plus 14 representative dependency findings. Seven dependency findings were decorated methods whose direct runtime __doc__ could change. Reviewers reproduced a C3 diamond false positive, stale local bindings after imports or assignments, and meaningful formatting collapsed as equivalent. Thirty-two focused cases pass after repair.",
+      "outcome": "Kept SARJ084, no-copied-inherited-docstring, and its alias; staged it as warning; limited resolution to one fully resolved local base; invalidated local base and alias bindings on imports and reassignment; abstained on multiple inheritance instead of guessing C3; excluded decorated methods; compared exact cleaned content without erasing internal formatting or punctuation; and rewrote UI guidance to disclose direct __doc__ behavior and preserve override-specific public documentation."
     },
     {
       "task": "rule-audit/python/fakes-in-shared-location",
       "family": "python",
       "ruleId": "fakes-in-shared-location",
       "state": "complete",
-      "evidence": "Fleet calibration scanned 6,636 tracked Python files across 36 local projects and classified all 60 findings. Forty-eight doubles were reused by multiple tests; 12 were scenario-local or fixture-driven and require repository judgment rather than a blocking default.",
-      "outcome": "Kept path-aware SARJ428 at warning level with lexical class matching, generated-source guards, shared-support exemptions, executable examples, and an exact suppression for deliberately scenario-local doubles. Promotion requires a clean adoption window."
+      "evidence": "Three independent re-reviews classified 60 raw findings and 31 unique class ASTs across the local fleet: 21 had two or more direct test uses, two had one direct use, and eight were fixture- or helper-driven. Reviewers also found legitimate scenario-local doubles and confirmed that per-file analysis cannot prove cross-module reuse. A 772-file installed dependency sample produced zero findings.",
+      "outcome": "Kept SARJ428 for compatibility as an explicitly advisory warning, not an error candidate. Reworded the UI to avoid asserting reuse, added Scripted coverage and a public scenario-local example, excluded non-collected support modules and non-infrastructure roots, and made support-directory recognition relative to a test root. A future repository-aware replacement should require cross-file import or structural-duplication evidence."
     },
     {
       "task": "rule-audit/python/fastapi-explicit-openapi-contract",
       "family": "python",
       "ruleId": "fastapi-explicit-openapi-contract",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 91 focused tests and classified a local fleet scan of 1,459 findings across 149 files: 625 parameter, 526 metadata, 263 alternate-response, 43 return, one routing, and one status finding. Roughly 80 percent were stricter organizational explicitness rather than broken generated OpenAPI. Reviewers reproduced false positives for concrete typed mappings, self-documenting non-JSON response classes, caught HTTPException calls, responses[*].model, and statically inherited APIRouter defaults and response maps.",
+      "outcome": "Kept the compatible SARJ094 selector and alias but staged the composite rule as warning. Reworded its UI to distinguish FastAPI's valid inference from local explicitness policy, added a second public schema-integrity scenario, accepted concretely typed mappings and supported response models, inherited statically resolvable router response metadata, ignored caught exceptions and unverifiable custom response classes, and retained conservative direct-only analysis. Routing and other independently error-safe families remain candidates for future split rules after separate calibration."
     },
     {
       "task": "rule-audit/python/pytest-fixture-returns-bare-tuple",
       "family": "python",
       "ruleId": "pytest-fixture-returns-bare-tuple",
       "state": "complete",
-      "evidence": "Two-repository AST scan: 2 findings reviewed, 2 positional-record fixture APIs, 0 false positives; Ruff's complete pytest rule catalog has no equivalent fixture-result-shape rule.",
-      "outcome": "Renamed the rule to identify pytest explicitly, corrected its guidance to require attribute-based consumption, added multi-file consumer examples, and exempted PEP 646 variadic tuple annotations."
+      "evidence": "Three independent re-reviews ran 56 focused tests and scanned 7,097 or more local Python files, finding 20 diagnostics across 19 paths. Every fleet finding reviewed was a record-like role bundle, but adversarial probes reproduced false positives for generator teardown return values, nested non-discoverable fixtures, rebound pytest imports, later type-alias rebinding, and explicitly homogeneous tuple sequences. Ruff has no equivalent fixture-result-shape rule; B901 owns generator return values instead.",
+      "outcome": "Kept SARJ044, the accurate pytest-specific selector, and its compatibility alias; staged it as warning because a producer-only AST cannot distinguish every domain tuple protocol. Reworded the UI around unnamed positional records, upgraded the accepted UI flow to a frozen dataclass with typed consumers, made import and alias resolution lexical and rebinding-aware, limited fixtures to discoverable module or class scope, inspected only yielded values for generator fixtures, detected assigned yield expressions, unwrapped Annotated, exempted homogeneous and PEP 646 variadic tuple sequences, and aggregated branch results into one diagnostic per fixture."
     },
     {
       "task": "rule-audit/python/store-get-delegates-to-bulk-read",
       "family": "python",
       "ruleId": "store-get-delegates-to-bulk-read",
       "state": "complete",
-      "evidence": "Two-repository AST scan initially produced 0 findings; manual pair discovery found one duplicated singleton/bulk SQL path hidden by three over-narrow guards, and the broadened rule reports that one valid finding.",
-      "outcome": "Renamed the rule around its store boundary, supports matching context parameters and mapping-returning get_many methods, reports ordinary missing-row branches, and retains cache/lock divergence guards."
+      "evidence": "Three independent re-reviews ran 29 focused tests and found five unique local candidates: four Bulbul stores with parallel ID-based SQL paths and one stateful AI computation-cache store. Adversarial probes showed that compatible annotations do not prove matching authorization, locking, transaction, replica, cache, conversion, or missing-row semantics; one live Bulbul singleton alone used prepare=False. The matcher also misclassified shared private helpers and multi-statement NotImplementedError stubs. Ruff and Pylint have no equivalent cross-method store-contract rule.",
+      "outcome": "Kept SARJ421 and its compatibility alias, but staged the architectural inference as warning. Reworded the UI around equivalent observable semantics and concrete duplicated SQL, required Store-class and key-domain alignment, recognized shared private read helpers and multi-statement NotImplementedError stubs, and abstained on mismatched operational decorators, cache/authorization/transaction/replica signals, locking SQL, and behavior-affecting call keywords. Deliberately retained conservative method-name and type-shape boundaries."
     },
     {
       "task": "rule-audit/python/iac-source-coupled-test",
       "family": "python",
       "ruleId": "iac-source-coupled-test",
       "state": "complete",
-      "evidence": "Two-repository AST scan produced 1 finding; review identified 1 false positive where a Python module __file__ path was tainted as every source suffix. After source-kind refinement the corpora are clean while labeled IaC cases remain detected.",
-      "outcome": "Restricted runtime __file__/inspect.getfile taint to Python-source scans, preserved IaC paths derived from module directories, clarified the behavioral premise, and added regression coverage for direct and indirect runtime source paths."
+      "evidence": "Three independent re-reviews ran 30 focused tests and found three live diagnostics, all in Bulbul scripts/local_secrets/test_iac.py; each used Terraform substrings to infer project, IAM, conditional-binding, or deletion-protection behavior. Adversarial probes found ambiguity for golden and packaged representation contracts, false positives for tmp_path_factory outputs and suffix-changing Path calls, and misses for Path.open and decoded whole-file bytes. Ruff and Pylint have no equivalent oracle-dataflow rule.",
+      "outcome": "Kept the cross-engine-compatible iac-source-coupled-test selector, clarified that Python currently targets Terraform/HCL behavior oracles, and staged SARJ412 as warning because exact representation contracts require judgment. Replaced the opaque plan example with a rendered-plan data assertion, documented exact suppression for golden or compatibility contracts, recognized Path.open, io.open, readlines, and decoded read_bytes flows, recomputed with_suffix and with_name source kinds, and treated tmp_path_factory and tmpdir_factory outputs as ephemeral."
     },
     {
       "task": "rule-audit/python/invalid-pydantic-field-default",
       "family": "python",
       "ruleId": "invalid-pydantic-field-default",
       "state": "complete",
-      "evidence": "Two-repository AST scan initially produced 0 findings; targeted Annotated-alias discovery exposed one invalid direct default. The broadened scan reports that 1 reviewed true positive and 0 false positives.",
-      "outcome": "Added direct-default and Annotated Field-contract analysis, bounded unique local-module alias resolution, merged annotation/assignment bounds, modern public examples, and documentation of Pydantic's unvalidated-default behavior."
+      "evidence": "Three fresh independent reviews ran 41 focused tests and scanned up to 2,959 tracked Python files across eight local repositories. The broadest scan found one live diagnostic, ai/python/shared/export_models.py:38, and runtime validation confirmed it is a true invalid NonEmptyStr default. An installed-source sample found five additional genuine non-null defaults. Two reviewers independently reproduced false positives where Pydantic before validators transform defaults during default validation; Ruff has no equivalent constraint-aware rule.",
+      "outcome": "Kept invalid-pydantic-field-default and error severity after adding validator-aware abstention for exact field, model, root, and Annotated before/plain/wrap transformers. Clarified that direct assignments are covered, fixed the direct-None diagnostic, added a public nullability pair, recognized exact BaseModel plus Generic declarations, and expanded literal length checks to list, tuple, set, and dict defaults. Broader model inheritance, coercion inference, Pydantic v1, and dynamic constraints remain excluded to protect precision."
     },
     {
       "task": "rule-audit/python/repeated-kwarg-heavy-call-in-test",
       "family": "python",
       "ruleId": "repeated-kwarg-heavy-call-in-test",
       "state": "complete",
-      "evidence": "Two-repository AST calibration: the prior nine-keyword threshold found 3/3 valid cases; seven-or-more found 12/12 valid cases. Six-or-more added calls where every argument was the asserted contract, establishing the retained boundary.",
-      "outcome": "Renamed the rule around its actual call-level signal, lowered the threshold from nine to seven explicit keywords, removed the local-helper loophole, and added explicit suppression guidance for all-arguments-under-test cases."
+      "evidence": "Three fresh independent reviews ran 53 focused tests and scanned up to 7,097 Python files. A primary-checkout scan produced 53 diagnostics across 14 files: many were useful repeated-construction clusters, while explicit expected records and full-contract calls confirmed the signal remains judgment-heavy. All reviewers reproduced false positives for disjoint keyword sets and generated tests; targeted probes also exposed pytest fixtures named test_*, import-resolved SimpleNamespace records, and unittest.mock.call expectations.",
+      "outcome": "Kept repeated-kwarg-heavy-call-in-test and its compatibility alias, made SARJ045 explicitly warning-only, and required at least seven shared keyword names between calls to the same syntactic callee. Excluded generated files, exact pytest fixtures, import-resolved types.SimpleNamespace and unittest.mock.call data, and cross-class self/cls collisions. Reworked the public UI pair around incidental order setup, added parametrized-case remediation, and made diagnostics quantify keyword overlap and occurrences. Post-change calibration reported 47 warnings across 2,971 primary-checkout files, removing the demonstrated noise while preserving the reviewed high-value clusters."
     },
     {
       "task": "rule-audit/python/mock-without-spec",
       "family": "python",
       "ruleId": "mock-without-spec",
       "state": "complete",
-      "evidence": "Two-repository AST calibration found 132 mechanically confirmed unrestricted mock constructions across 14 files. Stratified review covered direct constructors, patch helpers, pytest-mock calls, import fallbacks, recorders, and placeholders; the retained findings all create an unrestricted test double.",
-      "outcome": "Kept the precise rule name, clarified the public contract-rot example, and closed a false-negative where patch(new_callable=Mock/MagicMock/AsyncMock) changed mock behavior without constraining the collaborator API. Unknown concrete replacement factories remain exempt."
+      "evidence": "Three fresh independent reviews ran 151 focused tests and scanned up to 7,097 Python files. Reviews found 360 to 638 diagnostics depending on tracked-primary versus all-checkout scope; stratified samples mixed genuine unrestricted collaborators with intentional leaf stubs and dynamic namespaces. All reviewers demonstrated that Mock(autospec=...), Mock(new=...), and Mock(new_callable=...) remain unrestricted despite being incorrectly accepted, and reproduced file-global shadowing, generated-source, patch DEFAULT/create, pytest-mocker inference, and post-construction mock_add_spec gaps. Ruff has no equivalent spec/autospec enforcement.",
+      "outcome": "Kept mock-without-spec and made SARJ040 explicitly warning-only. Split constructor contracts from patcher controls; constructor autospec/new/new_callable attributes now report, while exact concrete patch replacements still abstain. Added provenance-aware DEFAULT handling, create=True or dynamic-create abstention, new_callable=None handling, generated-source exclusion, top-function-local shadowing, exact pytest test/fixture mocker inference, and pre-use mock_add_spec recognition. Reworked UI guidance to distinguish attribute specs from signature autospec and added a public patch pair. Post-change primary-checkout calibration reports 491 warnings across 2,971 Python files; unknown replacement factories and harder subscript-rooted stub analysis remain conservative."
     },
     {
       "task": "rule-audit/python/negative-only-http-status-assertion",
       "family": "python",
       "ruleId": "negative-only-http-status-assertion",
       "state": "complete",
-      "evidence": "Three-repository AST calibration found 2/2 reviewed true positives: one endpoint-mount smoke test accepting every non-5xx response and one regression test asserting only that a prior crash did not recur. Broadened syntax retained the same corpus set.",
-      "outcome": "Kept the behavior-specific rule name and broadened detection from literal 500 to every literal, stdlib HTTPStatus, and framework HTTP_5xx constant, status-family arithmetic, negated comparisons, and negated 5xx ranges. Exact client-error and success contracts remain exempt."
+      "evidence": "Three fresh independent reviews ran 30 focused tests and scanned up to 13,930 Python files. Three paths represented two unique live findings: an endpoint-mount smoke test that accepts 404 and a named crash regression whose explicit contract is only avoiding HTTP 500. Reviewers reproduced false positives from terminal-name-only HTTPStatus/framework constants and nested or non-test-class test_* functions. Ruff and Pylint have no equivalent HTTP assertion-strength rule.",
+      "outcome": "Kept negative-only-http-status-assertion for compatibility and made SARJ408 warning-only because intentional crash, fuzz, chaos, gateway, and smoke contracts require judgment. Added provenance-aware stdlib and FastAPI, Starlette, and Django REST Framework status constants, including import aliases; required an unshadowed builtin range; and limited analysis to module tests plus direct Test* or TestCase methods. UI remediation now permits a reasoned suppression for an intentional no-server-error contract, and the accepted example asserts the relevant payload. Post-change calibration retained the same two reviewed warnings across 2,971 primary-checkout files; broader alias and Boolean dataflow remain excluded."
     },
     {
       "task": "rule-audit/python/no-analytical-aggregation-in-postgres-store",
       "family": "python",
       "ruleId": "no-analytical-aggregation-in-postgres-store",
       "state": "complete",
-      "evidence": "Three-repository SQL-literal calibration found one operational MIN query in a PostgreSQL queue store. Review confirmed the architecture exception should be explicit at the call site because the result requires transactional freshness; no additional findings appeared after broadening.",
-      "outcome": "Renamed the rule around its actual PostgreSQL analytical boundary, preserved the prior ID as an alias, added PostgreSQL statistical/boolean/range/XML aggregate families and FILTER aggregates, and exempted DISTINCT ON because it selects rows rather than computing an analytical aggregate."
+      "evidence": "Three fresh independent reviews ran 152 focused tests and scanned up to 13,930 Python files. They found 13 raw findings across eight files, including six already-suppressed bounded or transactional aggregates; only cache and task statistics were plausible analytics. All reviewers reproduced false positives for transactional SUM, scheduler MIN, version MAX, bounded DISTINCT and JSON aggregation, SQLite or MySQL stores, and executable-looking SQL in docstrings. File-wide ClickHouse and BigQuery exclusions also hid PostgreSQL queries in mixed-backend modules. Ruff, Pylint, and SQLFluff do not own this datastore-placement policy.",
+      "outcome": "Kept no-analytical-aggregation-in-postgres-store for selector compatibility and made SARJ020 explicitly warning-only. The rule now requires positive PostgreSQL ownership evidence and reports only statistical aggregates or time-bucketed grouped rollups; ordinary operational aggregates and mutations intentionally abstain. Added generated-source and AST-docstring exclusions, replaced provider-wide exemptions with per-query ClickHouse and BigQuery syntax classification, rewrote the UI pair around an unmistakable reporting rollup versus a bounded transactional invariant, and made the diagnostic request bounds and execution-plan review rather than unconditional offload. Post-change calibration produced zero warnings across 2,757 Bulbul and AI Python files while retaining focused synthetic coverage for newly introduced reporting scans."
     },
     {
       "task": "rule-audit/python/no-comment-cruft",
@@ -247,40 +273,20 @@
       "outcome": "Kept the precise rule name and its strong settings-provider plus first-party-construction gates. Expanded optional-parameter detection from keyword-only arguments to positional-only and positional-or-keyword defaults, and recognized `if option is None: self.option = settings.VALUE` without treating assignments to unrelated fields as the option's fallback."
     },
     {
-      "task": "rule-audit/python/no-isinstance-union-chain",
-      "family": "python",
-      "ruleId": "no-isinstance-union-chain",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/no-long-comment",
-      "family": "python",
-      "ruleId": "no-long-comment",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/python/no-nested-pydantic-field-validator",
       "family": "python",
       "ruleId": "no-nested-pydantic-field-validator",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three fresh independent reviews ran all nine original focused tests and scanned up to 13,930 Python files plus a 1,391-file installed-package sample, producing no live findings. A Pydantic 2.13.4 runtime probe confirmed the documented defect: a field_validator nested in a plain Config class is never registered on the outer model. Reviewers reproduced one false positive for ClassVar and safe misses for Pydantic v1 validator syntax, BaseSettings, direct multiple inheritance, wildcard validators, and unrelated function-local import shadows. Ruff and Pydantic plugins do not detect validator metadata stranded in a plain nested class.",
+      "outcome": "Kept the accurate no-nested-pydantic-field-validator selector and error severity because the narrowed shape proves silent validation loss. Updated the UI summary and rationale to explain Pydantic model-namespace ownership. Added provenance-resolved Pydantic v1 and v2 validator namespaces, BaseSettings, direct BaseModel with additional bases, wildcard field selection, module-scope import resolution, and lexical shadow protection. Excluded import-resolved ClassVar fields and explicit check_fields=False reusable-validator intent. Nineteen focused cases pass, and post-change calibration remains zero findings across 3,769 first-party Python files."
     },
     {
       "task": "rule-audit/python/no-offset-pagination",
       "family": "python",
       "ruleId": "no-offset-pagination",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/no-optional-tenant-predicate",
-      "family": "python",
-      "ruleId": "no-optional-tenant-predicate",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/no-query-with-many-joins",
-      "family": "python",
-      "ruleId": "no-query-with-many-joins",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three fresh independent reviews ran all 66 original focused tests and scanned up to 13,930 Python files. Eleven checkout findings represented eight distinct query sites: four likely high-growth or volatile lists and four bounded reference or admin datasets, so the syntax was precise but policy certainty was only about half. Reviewers reproduced false positives for prose, docstrings, generated or migration files, quoted identifiers, comments, and fixed OFFSET 1 ordinal selection; they also demonstrated missed dynamic f-string and MySQL comma pagination. Ruff and SQLFluff do not own embedded-SQL keyset policy.",
+      "outcome": "Kept the accurate no-offset-pagination selector and made SARJ025 explicitly warning-only because bounded catalogs and intentional random page access require context. Restricted findings to credible SELECT queries with dynamic offset markers, exempted fixed ordinal offsets, generated and migration files, AST docstrings, dialect comments, and quoted identifiers, and added dynamic f-string, MySQL comma, and SQL-standard OFFSET/FETCH coverage. Reworked the UI to teach a directionally correct composite cursor with a unique tie-breaker; diagnostics and remediation now permit a reasoned bounded/static-data suppression. Thirty-eight focused cases pass, and post-change calibration preserves all seven findings across 3,769 first-party Python files."
     },
     {
       "task": "rule-audit/python/no-raw-connection-in-tests",
@@ -291,70 +297,84 @@
       "outcome": "Kept provenance-aware SARJ429 at warning level with lexical function scoping, explicit pool-type proof, shared test-support and conftest exemptions, and fixture-internal setup/cleanup handling. Fixtures that expose a raw connection and ordinary tests/helpers remain reportable; promotion requires a clean adoption window."
     },
     {
-      "task": "rule-audit/python/no-redundant-literal-description",
+      "task": "rule-audit/python/no-restated-closed-domain-description",
       "family": "python",
-      "ruleId": "no-redundant-literal-description",
-      "state": "pending"
+      "ruleId": "no-restated-closed-domain-description",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 12 original focused tests and scanned up to 8,868 Python files with zero emitted findings. Pydantic 2.13 runtime probes confirmed that Literal and string Enum values are emitted in JSON Schema alongside Field descriptions. Adversarial review found binding-order and schema-override hazards, while a missed-pattern search found one repeated first-party design across nine tracked files: three field roles used a local Literal alias and repeated its complete five-value domain in a narrow should-only-be clause. Ruff, Pylint, and pydoclint do not compare Pydantic descriptions with generated schema domains.",
+      "outcome": "Renamed the rule to the accurate no-restated-closed-domain-description selector with the old selector retained as an alias, and staged SARJ423 as a warning because this is documentation maintainability guidance. Added exact static local Literal aliases, closed Literal unions, direct BaseModel-plus-mixin classes, Pydantic v1 provenance, and tightly bounded allowed/valid/either/one-of clause forms including the observed identifier list. Matching still requires complete domain-set equality and abstains for partial, extra, mapped, rationale-bearing, dynamic, custom-schema, test, and generated cases. Reworked the UI around a realistic two-value domain and value-specific behavioral guidance; 25 focused cases pass."
     },
     {
-      "task": "rule-audit/python/no-repeated-string-literal",
+      "task": "rule-audit/python/no-repeated-structured-string-literal",
       "family": "python",
-      "ruleId": "no-repeated-string-literal",
-      "state": "pending"
+      "ruleId": "no-repeated-structured-string-literal",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 62 original focused tests and scanned up to 8,868 Python files. They manually classified 35 to 38 diagnostics across 17 to 22 logical literal groups: repeated SQL and route contracts were useful review prompts, while 21 localization-key findings were non-defects or judgment-heavy catalog ownership. Reviewers reproduced false positives for arbitrary multiline prose, a single uppercase FROM in prose, test suffixes, migrations, and match patterns, plus unsafe canonical advice after rebinding or late declaration. Ruff has no equivalent isolated cross-scope literal rule, and Pylint duplicate-code owns larger similar blocks rather than one exact string.",
+      "outcome": "Renamed the rule to no-repeated-structured-string-literal with the old selector retained as an alias, and staged SARJ024 as a warning. Cross-callable findings now require exact credible case-insensitive SQL shapes or absolute routes; generic identifiers require an existing unique canonical module constant, eliminating localization-key noise and arbitrary multiline prose. Added shared test-path and migration/example/fixture exclusions, match-pattern safety, lambda scopes, private uppercase constants, binding-count and declaration-order guards, and explicit independent-ownership suppression guidance. Reworked the UI around real cursor execution and a descriptive private constant; 71 focused cases pass."
     },
     {
       "task": "rule-audit/python/no-restated-comment",
       "family": "python",
       "ruleId": "no-restated-comment",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 79 original focused tests and scanned up to 8,868 Python files. They manually classified 44 to 118 findings: roughly 83 to 91 percent were clear one-statement narrations, while the remainder were context-bearing section, ordering, cardinality, configuration, test-case, or payload labels. Reviewers reproduced false positives when stopword folding discarded all, each, only, then, or needs; when a comment matched only a logger string payload; and when raw brackets inside string literals distorted statement grouping. Ruff ERA001 owns commented-out code, not lexical comparison with live adjacent actions, and Pylint has no equivalent.",
+      "outcome": "Kept the accurate no-restated-comment selector and staged SARJ049 as a warning because lexical similarity and region ownership remain judgment-heavy. Softened the UI and diagnostic to conditional removal, protected cardinality, ordering, necessity, and numbered navigation context, excluded declarative Field assignments, required at least one structural-code token match rather than payload-only overlap, and replaced raw delimiter counting with tokenized logical-statement boundaries. Ninety-two focused cases pass. A post-change scan of six primary repositories produced 26 warnings, all visibly clear action narrations in the reviewed output, while the observed context-label clusters disappeared."
     },
     {
       "task": "rule-audit/python/no-secret-in-log",
       "family": "python",
       "ruleId": "no-secret-in-log",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 226 original focused tests and scanned up to 7,097 tracked Python files. Only four of 46 to 67 findings used credential-like references: three likely real leaks and one already-suppressed boolean feature flag. The remaining 43 to 63 came from generic request, response, body, payload, or JSON heuristics, including concrete input_json and truncated-response false positives. Reviewers reproduced missed positional percent formatting, literal format calls, extra mappings, structured-logger bindings, constant secret-key subscripts, and identity slices. Ruff and Bandit cover hardcoded credentials rather than runtime credential-to-log flow; CodeQL owns deeper taint-aware clear-text logging.",
+      "outcome": "Kept the accurate no-secret-in-log selector and error severity after removing advisory whole-payload inference into a separately named warning rule. Corrected the UI to describe direct credential-like references and safe non-sensitive metadata rather than arbitrary token prefixes. Added direct positional, percent, format, literal extra-map, immediate bind/contextualize, constant secret-key subscript, and identity-slice coverage while retaining conservative no-general-alias/no-arbitrary-call boundaries. Two hundred thirty-five focused SARJ012 cases pass; the split payload rule is tracked as its own pending three-review calibration task."
+    },
+    {
+      "task": "rule-audit/python/no-whole-request-response-payload-in-log",
+      "family": "python",
+      "ruleId": "no-whole-request-response-payload-in-log",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 16 original focused cases and scanned up to 7,097 tracked Python files. They agreed that separating this advisory payload review from SARJ012's direct credential error materially improved precision: 18 to 27 original findings were all useful review leads, with no observed corpus false positive. Reviewers reproduced false positives for unrelated bare json, email.body, document.body, and event.payload references, plus false negatives for structured field names, full attribute chains, no-argument serializers, await, percent/format/concatenation interpolation, literal extra maps, truncated payloads, and negated sanitizer names. Ruff and Bandit do not own runtime payload-to-log flow; Semgrep could cover deeper flow only with repository-specific taint configuration.",
+      "outcome": "Kept the exact no-whole-request-response-payload-in-log selector and warning severity. Required both request/response provenance and whole-payload evidence across the full reference chain or structured field label, so unrelated body/payload/json values remain quiet. Added direct body/content/data/text references, no-argument json/dict/model_dump serializers, await, percent/format/concatenation interpolation, and literal extra maps; removed truncation as a safety exemption, made negated sanitizer names unsafe, preserved explicit sanitizer and include/exclude transformations, and deferred secret-named expressions to SARJ012. Improved the public bad example to show a real response serializer. Thirty-five focused cases and a combined 270 SARJ012/SARJ436 cases pass; the final six-repository scan reports 38 review-worthy warnings, including newly recovered whole-payload serializer flows, without the reproduced adversarial false positives."
     },
     {
       "task": "rule-audit/python/no-select-star",
       "family": "python",
       "ruleId": "no-select-star",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/no-sentinel-return-on-except",
-      "family": "python",
-      "ruleId": "no-sentinel-return-on-except",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/no-stdlib-logging",
-      "family": "python",
-      "ruleId": "no-stdlib-logging",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 83 original focused tests and scanned 2,928 to 7,097 tracked Python files. They manually classified 21 to 27 findings: physical-table wildcard projections were actionable, while a generated TypeScript training example and several deliberately bounded CTE projections demonstrated that the existing error-level contract was too strong. Reviewers reproduced false positives for docstrings/prose, COUNT(t.*), aggregate row arguments, non-projection clauses, and f-string multiplication; false negatives included an outer wildcard after an EXISTS subquery and BigQuery/Snowflake/DuckDB wildcard modifiers. SQLFluff AM04 owns parsed standalone SQL, while Ruff S608 covers injection rather than result-shape wildcards.",
+      "outcome": "Kept the established no-select-star selector and staged SARJ021 as a warning. Replaced the latest-SELECT regex heuristic with a parenthesis-depth projection scanner, limited analysis to credible query bindings and SQL execution/composition calls, excluded docstrings and migration/fixture/example paths, preserved COUNT and EXISTS exemptions, added dialect EXCEPT/EXCLUDE/REPLACE/RENAME/INTO coverage, protected dynamic multiplication, and taught shared SQL noise stripping about MySQL hash comments. Rewrote the UI around source-dependent result contracts and real cursor consumption rather than universal class_row behavior. One hundred three focused rule cases pass; a post-change scan reports 26 executable or review-worthy projections and removes the known training-prose false positive. Retain bounded CTE findings as advisory review leads with documented suppression guidance."
     },
     {
       "task": "rule-audit/python/no-string-concat-in-loop",
       "family": "python",
       "ruleId": "no-string-concat-in-loop",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 121 original focused tests and scanned 2,929 to 7,099 tracked Python files. They manually classified 17 to 70 findings: every emitted shape was genuine repeated string growth, but only about 16 alignment/transcription paths were clearly hot or unbounded; report, UI, script, and test builders did not justify error severity. Popular-source samples produced 9 to 18 syntactic findings in pytest, Pygments, packaging, SQLFluff, detect-secrets, and codespell, again supporting advisory severity. Reviewers reproduced false positives from RHS-only type inference, stale future string definitions, custom attributes, loop else suites, one-pass loops, and unconditional backedge resets, plus false negatives for ordinary str/join/render calls, nested self-add trees, and conditional resets. Pylint R1713 owns the common pattern, but Ruff has no equivalent and Pylint is not a supported fleet dependency.",
+      "outcome": "Kept no-string-concat-in-loop and its compatibility alias, and staged SARJ002 as a warning. Changed the UI from categorical O(n-squared) language to a conditional immutable-copy cost and documented both join and StringIO remedies. Replaced RHS-driven guessing with reaching-definition evidence for proven string names and class attributes, killed stale evidence on rebinds, recognized arbitrary rendered fragments and nested self-reference, excluded definite non-string RHS values, loop else suites, statically zero/one-iteration loops, and unconditional direct-body resets while retaining conditional-reset findings. One hundred thirty focused cases pass. The final primary-fleet scan reports 18 genuine string-growth warnings, including a newly recovered rendered-fragment case, with no observed shape/type false positive."
     },
     {
-      "task": "rule-audit/python/no-tautological-expect",
+      "task": "rule-audit/python/no-statically-truthy-assertion",
       "family": "python",
-      "ruleId": "no-tautological-expect",
-      "state": "pending"
+      "ruleId": "no-statically-truthy-assertion",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 104 original focused cases and scanned 2,929 to 7,099 tracked Python files across 83 to 84 repositories. The broadest scan found three diagnostics: two redundant assert True branch no-ops and one placeholder test, all genuine. Available popular-source samples of 110 to 695 pytest, packaging, pluggy, and other installed Python files produced no findings. Adversarial review reproduced false diagnostics for custom and free assertEqual-like APIs, invalid unittest arity, container identity assertions that actually fail, and implementation-dependent literal identity. It also found that blanket benchmark, exception-handler, and match exemptions hid unrelated defects. Ruff already owns strings through PLW0129, tuples through F631, literal comparisons through PLR0133 and F632, and unittest style through PT009; SARJ064 owns cross-statement construction echoes.",
+      "outcome": "Renamed the canonical selector to no-statically-truthy-assertion, retained no-tautological-expect as a compatibility alias with a ledger migration, and staged SARJ057 as a warning. Narrowed the rule to Ruff's uncovered gap: truthy scalar constants and definitely non-empty list, set, and dict displays, including displays that remain non-empty after unpacking. Removed provenance-blind unittest calls and Ruff-owned string, tuple, comparison, and identity shapes; excluded generated Python; removed whole-function benchmark and blanket exception exemptions; and limited match success-marker exemptions to a sole scalar-constant assertion in that arm. Reworked the public pair around a real condition accidentally placed in the message slot and changed diagnostics to say that the condition is truthy if evaluation succeeds, preserving direct evaluation for intentional no-raise tests. One hundred thirteen focused cases pass. A final primary-fleet scan retains the placeholder-test finding while deliberately excluding the two sole match-arm success markers identified during review."
     },
     {
-      "task": "rule-audit/python/no-typed-doc-sections",
+      "task": "rule-audit/python/no-docstring-type-restatement",
       "family": "python",
-      "ruleId": "no-typed-doc-sections",
-      "state": "pending"
+      "ruleId": "no-docstring-type-restatement",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 47 original focused cases and scanned 2,928 to 7,099 tracked Python files across 83 to 84 repositories. They found 8 to 36 diagnostics: a small number of ordinary helper candidates, deliberate typed public-library documentation, generated OpenAPI clients, and a definite prose collision where Transfer detail result was whitespace-folded into TransferDetailResult. A 695-file popular-source sample produced 113 diagnostics in 53 SQLFluff functions, establishing that this is a documentation-convention warning rather than a correctness error. Adversarial review also reproduced false matches for str, optional, fenced examples, properties, abstract methods, and Protocol methods, plus misses for forward annotations and correct generator yield element types. Ruff D402 is narrower, while pydoclint can configure the underlying convention explicitly.",
+      "outcome": "Renamed the canonical selector to no-docstring-type-restatement, retained no-typed-doc-sections as a compatibility alias with code-ledger history, and staged SARJ092 as a warning. Replaced whitespace deletion with syntax-aware Python type parsing, preserved optional qualifiers, unwrapped string forward annotations, compared Yields sections with generator element types, ignored fenced Markdown, reStructuredText literal blocks, and doctest bodies, narrowed runtime decorator matching to terminal decorator names, and excluded property, cached-property, abstract, overload, and Protocol contract docstrings. Collapsed all repeated labels in one docstring to one diagnostic and rewrote the UI to remove only type labels while preserving behavioral prose. Sixty-six focused and precedence cases pass. The primary fleet now reports six exact convention findings instead of per-parameter noise; the SQLFluff sample reports 53 docstring-level warnings instead of 113 per-label diagnostics, with the rule explicitly remaining advisory because projects may select the opposite convention."
     },
     {
       "task": "rule-audit/python/no-unique-violation-message-match",
       "family": "python",
       "ruleId": "no-unique-violation-message-match",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews kept the established name and found no upstream Ruff or Pylint owner. They reviewed 2,928 to 7,099 local files and found exactly three true-positive psycopg handlers in Bulbul, while 462 to 695 popular-package files produced zero findings. Reviewers reproduced false positives from mixed exception tuples, nested or rebound handler variables, shadowed imports and builtins, reversed membership, sanitization-only uses, and branch-ambiguous aliases. Fifty-five focused cases pass after repair.",
+      "outcome": "Kept SARJ404 and no-unique-violation-message-match at error severity; limited it to import-proven psycopg, psycopg2, and asyncpg unique-violation types; required every exception-tuple member to qualify; recognized rendered message transformations, equality, prefix/suffix, import-proven regular expressions, and straight-line aliases; rejected rebinding, shadowing, branch ambiguity, reversed containment, generic IntegrityError wrappers, and non-translating message uses; and rewrote UI examples and remediation around driver-specific structured constraint fields."
     },
     {
       "task": "rule-audit/python/no-unnecessary-docstring",

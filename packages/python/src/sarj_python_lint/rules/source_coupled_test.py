@@ -42,11 +42,13 @@ class TestFunction(NamedTuple):
 
 
 _TEXT_TRANSFORMS = frozenset(
-    {"casefold", "lower", "lstrip", "removeprefix", "removesuffix", "replace", "rstrip", "strip", "upper"}
+    {"casefold", "decode", "lower", "lstrip", "removeprefix", "removesuffix", "replace", "rstrip", "strip", "upper"}
 )
 _TEXT_ASSERTIONS = frozenset({"count", "endswith", "find", "index", "startswith"})
 _REGEX_ASSERTIONS = frozenset({"findall", "finditer", "fullmatch", "match", "search"})
-_TEMP_PATH_NAMES = frozenset({"tmp_path", "tmpdir", "temp_dir", "temporary_directory"})
+_TEMP_PATH_NAMES = frozenset(
+    {"tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory", "temp_dir", "temporary_directory"}
+)
 _UNITTEST_ASSERTIONS = frozenset(
     {
         "assertEqual",
@@ -302,13 +304,19 @@ def _is_source_open(
     ephemeral_path_names: set[str],
     source_suffixes: tuple[str, ...],
 ) -> bool:
-    return (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "open"
-        and bool(node.args)
-        and _source_path_expression(node.args[0], path_names, source_suffixes)
-        and not _ephemeral_path_expression(node.args[0], ephemeral_path_names)
+    if not isinstance(node, ast.Call):
+        return False
+    if isinstance(node.func, ast.Name) and node.func.id == "open" and node.args:
+        path = node.args[0]
+    elif isinstance(node.func, ast.Attribute) and node.func.attr == "open" and ".tf" in source_suffixes:
+        if isinstance(node.func.value, ast.Name) and node.func.value.id == "io" and node.args:
+            path = node.args[0]
+        else:
+            path = node.func.value
+    else:
+        return False
+    return _source_path_expression(path, path_names, source_suffixes) and not _ephemeral_path_expression(
+        path, ephemeral_path_names
     )
 
 
@@ -324,6 +332,8 @@ def _source_path_expression(node: ast.AST, path_names: set[str], source_suffixes
             return ".py" in source_suffixes
         case ast.JoinedStr(values=values):
             return any(_source_path_expression(value, path_names, source_suffixes) for value in values)
+        case ast.Call(func=ast.Attribute(attr="with_suffix" | "with_name"), args=[ast.Constant(value=str(value)), *_]):
+            return value.lower().endswith(source_suffixes)
         case ast.BinOp() | ast.Call() | ast.Attribute() | ast.Subscript():
             return any(
                 _source_path_expression(child, path_names, source_suffixes) for child in ast.iter_child_nodes(node)
@@ -352,7 +362,10 @@ def _raw_source_read(
 ) -> bool:
     if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
         return False
-    if node.func.attr == "read_text":
+    supported_reads = {"read_text"}
+    if ".tf" in source_suffixes:
+        supported_reads.add("read_bytes")
+    if node.func.attr in supported_reads:
         return _source_path_expression(node.func.value, path_names, source_suffixes) and not _ephemeral_path_expression(
             node.func.value, ephemeral_path_names
         )
@@ -373,7 +386,10 @@ def _raw_text_expression(
     if _raw_source_read(node, path_names, ephemeral_path_names, source_suffixes):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-        if node.func.attr == "read" and isinstance(node.func.value, ast.Name):
+        handle_reads = {"read"}
+        if ".tf" in source_suffixes:
+            handle_reads.add("readlines")
+        if node.func.attr in handle_reads and isinstance(node.func.value, ast.Name):
             return node.func.value.id in raw_names
         return node.func.attr in _TEXT_TRANSFORMS and _raw_text_expression(
             node.func.value, raw_names, path_names, ephemeral_path_names, source_suffixes

@@ -44,25 +44,25 @@ def _write(tmp_path: Path, content: str) -> str:
 
 
 _SQL_PLAIN = """
-resource "google_sql_database_instance" "main" {
-  name = "prod"
+resource "aws_db_instance" "main" {
+  engine = "postgres"
 }
 """
 
 _SQL_NOQA_BARE = """
-resource "google_sql_database_instance" "main" {  # sarj-noqa
-  name = "prod"
+resource "aws_db_instance" "main" {  # sarj-noqa
+  engine = "postgres"
 }
 """
 
 _SQL_NOQA_CODE = """
-resource "google_sql_database_instance" "main" {  # sarj-noqa: SARJ201 — ephemeral
-  name = "prod"
+resource "aws_db_instance" "main" {  # sarj-noqa: SARJ201 — ephemeral
+  engine = "postgres"
 }
 """
 
 _SQL_NOQA_WRONG = """
-resource "google_sql_database_instance" "main" {  # sarj-noqa: SARJ999
-  name = "prod"
+resource "aws_db_instance" "main" {  # sarj-noqa: SARJ999
+  engine = "postgres"
 }
 """

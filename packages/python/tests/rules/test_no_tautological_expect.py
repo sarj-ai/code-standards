@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
 
 
@@ -42,9 +43,16 @@ def test_flags_bare_assert_true():
     assert len(diags) == 1
     assert diags[0].code == "SARJ057"
     assert diags[0].line == 2
+    assert diags[0].severity is Severity.WARNING
 
 
-@pytest.mark.parametrize("literal", ["True", "1", "-1", "0.5", '"text"', "b'bytes'", "..."])
+def test_selector_names_the_python_construct_and_preserves_compatibility():
+    assert NoTautologicalExpect.id == "no-statically-truthy-assertion"
+    assert NoTautologicalExpect.documentation is not None
+    assert NoTautologicalExpect.documentation.aliases == ("no-tautological-expect",)
+
+
+@pytest.mark.parametrize("literal", ["True", "1", "-1", "0.5", "..."])
 def test_flags_truthy_constants(literal: str):
     assert _count(f"def test_x():\n    assert {literal}\n") == 1, literal
 
@@ -71,7 +79,7 @@ def test_flags_list_display_that_lost_its_comparison():
 
 @pytest.mark.parametrize(
     ("display", "kind"),
-    [("[1]", "list"), ("{1}", "set"), ("{'a': 1}", "dict"), ("(1, 2)", "tuple")],
+    [("[1]", "list"), ("{1}", "set"), ("{'a': 1}", "dict")],
 )
 def test_flags_every_non_empty_container_display(display: str, kind: str):
     diags = _check(f"def test_x():\n    assert {display}\n")
@@ -87,15 +95,16 @@ def test_flags_value_that_slid_into_the_message_slot():
     src = 'def test_hue(cover_result_json):\n    assert True, cover_result_json[0]["success"]["on"]\n'
     diags = _check(src)
     assert len(diags) == 1
-    assert "assertion-message slot" in diags[0].message
+    assert "message is never displayed" in diags[0].message
+    assert diags[0].severity is Severity.WARNING
 
 
 @pytest.mark.parametrize("expr", ["1 == 1", '"a" == "a"', "None is None", "(1, 2) == (1, 2)", "-1 == -1"])
-def test_flags_identical_literal_comparison(expr: str):
-    assert _count(f"def test_x():\n    assert {expr}\n") == 1, expr
+def test_leaves_literal_comparisons_to_ruff(expr: str):
+    assert _count(f"def test_x():\n    assert {expr}\n") == 0, expr
 
 
-def test_flags_unittest_assertions():
+def test_leaves_unittest_assertions_to_ruff():
     src = (
         "class TestThing(TestCase):\n"
         "    def test_x(self):\n"
@@ -104,10 +113,10 @@ def test_flags_unittest_assertions():
         "        self.assertEqual(1, 1)\n"
         '        self.assertIs("a", "a")\n'
     )
-    assert _count(src) == 4
+    assert _count(src) == 0
 
 
-def test_flags_supported_unittest_literal_variants_and_legacy_alias():
+def test_leaves_unittest_literal_variants_and_legacy_alias_to_ruff():
     src = (
         "class TestThing(TestCase):\n"
         "    def test_x(self):\n"
@@ -116,13 +125,13 @@ def test_flags_supported_unittest_literal_variants_and_legacy_alias():
         "        self.assertFalse([])\n"
         "        self.assertEquals(-1, -1)\n"
     )
-    assert _count(src) == 4
+    assert _count(src) == 0
 
 
 def test_flags_each_assertion_separately_and_sorts_by_position():
     src = "def test_x():\n    assert True\n    assert [1]\n    assert 2 == 2\n"
     diags = _check(src)
-    assert [d.line for d in diags] == [2, 3, 4]
+    assert [d.line for d in diags] == [2, 3]
 
 
 def test_fires_outside_test_files_too():
@@ -134,7 +143,7 @@ def test_fires_outside_test_files_too():
 
 @pytest.mark.parametrize(
     "condition",
-    ["True", "1", "1.5", "...", "b'x'", "[1]", "[compute()]", "{1, 2}", "{'a': 1}", "(1, 2)"],
+    ["True", "1", "1.5", "...", "[1]", "[compute()]", "{1, 2}", "{'a': 1}"],
 )
 def test_flags_every_constant_condition_sarj064_ceded(condition: str):
     assert _count(f"def test_thing():\n    assert {condition}\n") == 1, condition
@@ -143,7 +152,7 @@ def test_flags_every_constant_condition_sarj064_ceded(condition: str):
 def test_flags_a_constant_condition_carrying_a_message():
     diags = _check('def test_thing():\n    assert True, "we got here"\n')
     assert len(diags) == 1
-    assert "assertion-message slot" in diags[0].message
+    assert "message is never displayed" in diags[0].message
 
 
 @pytest.mark.parametrize("condition", ["not False", "not 0", "not ''", "not None", "not 0.0", "not b''"])
@@ -168,7 +177,7 @@ def test_ignores_falsy_constant_conditions_sarj064_also_ignored(condition: str):
     assert _count(f"def test_thing():\n    assert {condition}\n") == 0, condition
 
 
-def test_the_moved_not_shape_obeys_the_sole_except_carve_out():
+def test_sole_except_body_does_not_hide_a_statically_truthy_assertion():
     src = (
         "def test_connect_failure(hass):\n"
         "    try:\n"
@@ -176,17 +185,17 @@ def test_the_moved_not_shape_obeys_the_sole_except_carve_out():
         "    except HomeAssistantError:\n"
         "        assert not False\n"
     )
-    assert _count(src) == 0
+    assert _count(src) == 1
 
 
-def test_the_moved_not_shape_obeys_the_benchmark_fixture_carve_out():
+def test_benchmark_fixture_does_not_hide_a_statically_truthy_assertion():
     src = "def test_speed(benchmark):\n    assert not False\n    benchmark(go)\n"
-    assert _count(src) == 0
+    assert _count(src) == 1
 
 
-def test_the_moved_not_shape_obeys_the_benchmark_marker_carve_out():
+def test_benchmark_marker_does_not_hide_a_statically_truthy_assertion():
     src = "@pytest.mark.benchmark\ndef test_speed():\n    assert not False\n"
-    assert _count(src) == 0
+    assert _count(src) == 1
 
 
 def test_the_moved_not_shape_obeys_the_failing_match_arm_carve_out():
@@ -244,7 +253,7 @@ def test_ignores_unittest_self_comparison_of_a_value():
 # Negative: the carve-outs.
 
 
-def test_ignores_assert_true_as_sole_except_body():
+def test_flags_assert_true_as_sole_except_body():
     src = (
         "def test_connect_failure(hass, entry):\n"
         "    try:\n"
@@ -253,7 +262,7 @@ def test_ignores_assert_true_as_sole_except_body():
         "        assert True\n"
         '    assert "Failed to connect" in caplog.text\n'
     )
-    assert _count(src) == 0
+    assert _count(src) == 1
 
 
 def test_flags_assert_true_that_is_not_the_whole_except_body():
@@ -261,7 +270,7 @@ def test_flags_assert_true_that_is_not_the_whole_except_body():
     assert _count(src) == 1
 
 
-def test_ignores_benchmark_fixture_body():
+def test_flags_statically_truthy_assertion_in_benchmark_callable():
     src = (
         "def test_core_validation_error(benchmark):\n"
         "    def validate_with_expected_error():\n"
@@ -273,17 +282,17 @@ def test_ignores_benchmark_fixture_body():
         "\n"
         "    benchmark(validate_with_expected_error)\n"
     )
-    assert _count(src) == 0
+    assert _count(src) == 1
 
 
-def test_ignores_benchmark_marker_body():
+def test_flags_statically_truthy_assertion_in_benchmark_marker_body():
     src = "@pytest.mark.benchmark\ndef test_speed():\n    assert True\n"
-    assert _count(src) == 0
+    assert _count(src) == 1
 
 
-def test_ignores_benchmark_marker_with_arguments():
+def test_flags_statically_truthy_assertion_in_benchmark_marker_with_arguments():
     src = '@pytest.mark.benchmark(group="parse")\ndef test_speed():\n    assert [1]\n'
-    assert _count(src) == 0
+    assert _count(src) == 1
 
 
 def test_does_not_treat_an_unrelated_mark_as_a_benchmark():
@@ -313,8 +322,25 @@ def test_ignores_splatted_container():
     assert _count("def test_x(extra):\n    assert {**extra}\n") == 0
 
 
+@pytest.mark.parametrize(
+    "display",
+    ["[*items, expected]", "{*items, expected}", '{**extra, "status": expected}'],
+)
+def test_flags_display_that_is_definitely_nonempty_despite_unpacking(display: str):
+    assert _count(f"def test_x(items, extra, expected):\n    assert {display}\n") == 1
+
+
+def test_leaves_nonempty_tuple_to_ruff():
+    assert _count("def test_x(value):\n    assert (*value, 1)\n") == 0
+
+
 def test_ignores_fstring():
     assert _count('def test_x(value):\n    assert f"{value}"\n') == 0
+
+
+@pytest.mark.parametrize("literal", ['"text"', "b'bytes'"])
+def test_leaves_string_literals_to_ruff(literal: str):
+    assert _count(f"def test_x():\n    assert {literal}\n") == 0
 
 
 def test_ignores_ordinary_assertions():
@@ -334,14 +360,39 @@ def test_ignores_non_assertion_literals():
     assert _count(src) == 0
 
 
-def test_flags_unittest_equality_carrying_only_a_msg_keyword():
+def test_leaves_unittest_equality_carrying_only_a_msg_keyword_to_ruff():
     src = "class T(TestCase):\n    def test_x(self):\n        self.assertEqual(1, 1, msg='x')\n"
-    assert _count(src) == 1
+    assert _count(src) == 0
 
 
 def test_ignores_a_look_alike_method_taking_other_keywords():
     src = "class T(TestCase):\n    def test_x(self):\n        self.assertEqual(1, 1, places=3)\n"
     assert _count(src) == 0
+
+
+def test_ignores_custom_and_free_assertion_apis():
+    src = (
+        "def test_x(recorder):\n"
+        "    recorder.assertEqual(1, 1)\n"
+        "    assertEqual(1, 1)\n"
+        "    recorder.assertTrue(True)\n"
+    )
+    assert _count(src) == 0
+
+
+def test_ignores_invalid_unittest_arity():
+    src = "class T:\n    def test_x(self):\n        self.assertEqual(1, 1, 'message', 'extra')\n"
+    assert _count(src) == 0
+
+
+@pytest.mark.parametrize("expr", ["[] is []", "(1,) is (1,)", "1000 is 1000"])
+def test_leaves_literal_identity_to_ruff(expr: str):
+    assert _count(f"def test_x():\n    assert {expr}\n") == 0
+
+
+def test_excludes_generated_python():
+    source = "# Generated by schema compiler. DO NOT EDIT.\ndef test_x():\n    assert True\n"
+    assert _check(source, "generated/test_models.py") == []
 
 
 def test_ignores_syntax_error():
@@ -399,6 +450,18 @@ def test_flags_a_match_arm_marker_when_no_arm_can_fail():
         "            assert True\n"
         "        case _:\n"
         "            pass\n"
+    )
+    assert _count(src) == 1
+
+
+def test_flags_a_container_condition_even_as_the_sole_success_arm_statement():
+    src = (
+        "def test_x():\n"
+        "    match go():\n"
+        "        case Ok(value):\n"
+        "            assert [value > 0]\n"
+        "        case _:\n"
+        "            raise AssertionError\n"
     )
     assert _count(src) == 1
 

@@ -22,6 +22,8 @@ from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 _PYDANTIC_BASE_MODEL_SOURCES = frozenset({"pydantic", "pydantic.main"})
 _PYDANTIC_FIELD_SOURCES = frozenset({"pydantic", "pydantic.fields"})
+_PYDANTIC_VALIDATOR_SOURCES = frozenset({"pydantic", "pydantic.functional_validators"})
+_PYDANTIC_LEGACY_VALIDATOR_SOURCES = frozenset({"pydantic"})
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _COLLECTION_SOURCES = frozenset({"collections.abc", "typing", "typing_extensions"})
 _KNOWN_NON_NULL_BUILTINS = frozenset(
@@ -95,6 +97,12 @@ class _AnnotationContract(NamedTuple):
     annotation: ast.expr
     imports: ImportIndex
     constraints: tuple[ast.Call, ...]
+    transforms_default: bool
+
+
+class _DefaultTransformers(NamedTuple):
+    fields: frozenset[str]
+    all_fields: bool
 
 
 class _ImportedSymbol(NamedTuple):
@@ -108,10 +116,10 @@ class InvalidPydanticFieldDefault(Rule):
     id = "invalid-pydantic-field-default"
     code = "SARJ400"
     documentation = RuleDocumentation(
-        summary="Require literal Pydantic `Field` defaults to satisfy their declared contract.",
+        summary="Require literal Pydantic model-field defaults to satisfy their resolved contract.",
         rationale=(
-            "Pydantic does not validate defaults by default, so an invalid literal can enter a model while "
-            "contradicting its annotation or field bounds."
+            "Pydantic does not validate defaults unless default validation is enabled. An invalid literal can "
+            "therefore enter a model while contradicting its annotation or field bounds."
         ),
         remediation=(
             "Choose a default allowed by the annotation and every literal `Field` bound, or widen the contract "
@@ -125,6 +133,7 @@ class InvalidPydanticFieldDefault(Rule):
                 "It reports only statically provable literal conflicts with nullability, `Literal` domains, and "
                 "numeric or string-length bounds from assignment or `Annotated` Field metadata."
             ),
+            "Fields with before, plain, or wrap validation that can transform a default are excluded.",
             "Imported annotation aliases are followed only to a unique local Python module within the same checkout.",
             "Test and generated files are excluded.",
         ),
@@ -145,6 +154,7 @@ class InvalidPydanticFieldDefault(Rule):
                 focus_path=PurePosixPath("app/models.py"),
                 expected_count=1,
                 public=True,
+                scenario="field-bound",
             ),
             RuleExample(
                 example_id="default-satisfies-lower-bound",
@@ -162,6 +172,41 @@ class InvalidPydanticFieldDefault(Rule):
                 focus_path=PurePosixPath("app/models.py"),
                 expected_count=0,
                 public=True,
+                scenario="field-bound",
+            ),
+            RuleExample(
+                example_id="non-null-field-has-null-default",
+                title="A non-null field cannot default to None",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel\n\n"
+                        "class User(BaseModel):\n"
+                        "    display_name: str = None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=1,
+                public=True,
+                scenario="nullability",
+            ),
+            RuleExample(
+                example_id="nullable-field-has-null-default",
+                title="Declare None when it is an allowed default",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel\n\n"
+                        "class User(BaseModel):\n"
+                        "    display_name: str | None = None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+                scenario="nullability",
             ),
         ),
     )
@@ -179,12 +224,19 @@ class InvalidPydanticFieldDefault(Rule):
         for class_node in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
             if not _is_direct_base_model(class_node, imports):
                 continue
+            transformers = _default_transformers(class_node, imports)
             for statement in class_node.body:
                 if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
                     continue
                 if statement.target.id.startswith("_"):
                     continue
                 contract = _annotation_contract(path, tree, statement.annotation)
+                if (
+                    contract.transforms_default
+                    or transformers.all_fields
+                    or statement.target.id in transformers.fields
+                ):
+                    continue
                 assignment_field = (
                     statement.value
                     if isinstance(statement.value, ast.Call)
@@ -217,9 +269,92 @@ class InvalidPydanticFieldDefault(Rule):
 
 
 def _is_direct_base_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
-    return len(node.bases) == 1 and imports.resolves(
-        node.bases[0], sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel"
+    pydantic_bases = sum(
+        imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel") for base in node.bases
     )
+    if pydantic_bases != 1:
+        return False
+    return all(
+        imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel")
+        or (
+            isinstance(base, ast.Subscript)
+            and imports.resolves(base.value, sources=_TYPING_SOURCES, symbol="Generic")
+        )
+        for base in node.bases
+    )
+
+
+def _default_transformers(node: ast.ClassDef, imports: ImportIndex) -> _DefaultTransformers:
+    fields: set[str] = set()
+    transforms_all_fields = False
+    for statement in node.body:
+        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in statement.decorator_list:
+            if not isinstance(decorator, ast.Call):
+                continue
+            if imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol="field_validator"):
+                mode = _literal_keyword_string(decorator, "mode", default="after")
+                dynamic_mode = mode is None and any(keyword.arg == "mode" for keyword in decorator.keywords)
+                if mode not in {"before", "plain", "wrap"} and not dynamic_mode:
+                    continue
+                targets = _literal_string_arguments(decorator)
+                if not targets or "*" in targets:
+                    transforms_all_fields = True
+                fields.update(targets)
+                continue
+            if imports.resolves(
+                decorator.func,
+                sources=_PYDANTIC_LEGACY_VALIDATOR_SOURCES,
+                symbol="validator",
+            ):
+                pre = _literal_keyword_bool(decorator, "pre", default=False)
+                always = _literal_keyword_bool(decorator, "always", default=False)
+                if pre is False and always is False:
+                    continue
+                targets = _literal_string_arguments(decorator)
+                if not targets or "*" in targets:
+                    transforms_all_fields = True
+                fields.update(targets)
+                continue
+            if imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol="model_validator"):
+                mode = _literal_keyword_string(decorator, "mode", default=None)
+                transforms_all_fields |= mode in {None, "before", "wrap"}
+                continue
+            if imports.resolves(
+                decorator.func,
+                sources=_PYDANTIC_LEGACY_VALIDATOR_SOURCES,
+                symbol="root_validator",
+            ):
+                pre = _literal_keyword_bool(decorator, "pre", default=False)
+                transforms_all_fields |= pre is not False
+    return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
+
+
+def _literal_string_arguments(call: ast.Call) -> frozenset[str]:
+    return frozenset(
+        argument.value
+        for argument in call.args
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+    )
+
+
+def _literal_keyword_string(call: ast.Call, name: str, *, default: str | None) -> str | None:
+    values = [keyword.value for keyword in call.keywords if keyword.arg == name]
+    if not values:
+        return default
+    if len(values) != 1 or not isinstance(values[0], ast.Constant) or not isinstance(values[0].value, str):
+        return None
+    return values[0].value
+
+
+def _literal_keyword_bool(call: ast.Call, name: str, *, default: bool) -> bool | None:
+    values = [keyword.value for keyword in call.keywords if keyword.arg == name]
+    if not values:
+        return default
+    if len(values) != 1 or not isinstance(values[0], ast.Constant) or not isinstance(values[0].value, bool):
+        return None
+    return values[0].value
 
 
 def _declared_default(
@@ -261,7 +396,12 @@ def _resolve_annotation_contract(
     imports = ImportIndex.from_tree(tree)
     annotation = _parse_forward_annotation(annotation)
     if depth >= _MAX_ALIAS_HOPS:
-        return _AnnotationContract(annotation, imports, ())
+        return _AnnotationContract(
+            annotation=annotation,
+            imports=imports,
+            constraints=(),
+            transforms_default=False,
+        )
     if isinstance(annotation, ast.Name):
         local = _module_alias_expression(tree, annotation.id)
         if local is not None:
@@ -292,8 +432,26 @@ def _resolve_annotation_contract(
                 if isinstance(member, ast.Call)
                 and imports.resolves(member.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
             )
-            return _AnnotationContract(base.annotation, base.imports, (*base.constraints, *fields))
-    return _AnnotationContract(annotation, imports, ())
+            transforms_default = any(
+                isinstance(member, ast.Call)
+                and any(
+                    imports.resolves(member.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol=symbol)
+                    for symbol in ("BeforeValidator", "PlainValidator", "WrapValidator")
+                )
+                for member in members[1:]
+            )
+            return _AnnotationContract(
+                annotation=base.annotation,
+                imports=base.imports,
+                constraints=(*base.constraints, *fields),
+                transforms_default=base.transforms_default or transforms_default,
+            )
+    return _AnnotationContract(
+        annotation=annotation,
+        imports=imports,
+        constraints=(),
+        transforms_default=False,
+    )
 
 
 def _module_alias_expression(tree: ast.Module, symbol: str) -> ast.expr | None:
@@ -384,28 +542,35 @@ def _invalid_default_message(
     imports: ImportIndex,
 ) -> str | None:
     literal = _literal_value(default)
-    if literal is _MISSING:
+    container_length = _literal_container_length(default)
+    if literal is _MISSING and container_length is None:
         return None
     if literal is None and _provably_non_null(annotation, imports):
         return (
-            f"`{field_name}` gives `Field` a `None` default, but its direct annotation excludes `None`; "
+            f"`{field_name}` has a `None` default, but its direct annotation excludes `None`; "
             "include `None` in the annotation or provide a non-null default."
         )
 
     domain = _literal_domain(annotation, imports)
-    if domain is not None and not isinstance(literal, float) and _literal_key(literal) not in domain.values:
+    if (
+        literal is not _MISSING
+        and domain is not None
+        and not isinstance(literal, float)
+        and _literal_key(literal) not in domain.values
+    ):
         allowed = ", ".join(sorted(repr(item.value) for item in domain.values))
         return (
             f"`{field_name}` defaults to {literal!r}, outside its direct `Literal` domain ({allowed}); "
             "use one of the declared literal values."
         )
 
-    violation = _bound_violation(literal, constraints)
+    violation = _bound_violation(literal, container_length, constraints)
     if violation is not None:
         bound_name = violation.bound_name
         bound = violation.bound
+        rendered_default = repr(literal) if literal is not _MISSING else ast.unparse(default)
         return (
-            f"`{field_name}` defaults to {literal!r}, which violates `Field({bound_name}={bound!r})`; "
+            f"`{field_name}` defaults to {rendered_default}, which violates `Field({bound_name}={bound!r})`; "
             "choose a default inside the declared bounds."
         )
     return None
@@ -421,6 +586,32 @@ def _literal_value(node: ast.expr) -> object:
             return -value if isinstance(operator, ast.USub) else value
         case _:
             return _MISSING
+
+
+def _literal_container_length(node: ast.expr) -> int | None:
+    match node:
+        case ast.List() | ast.Tuple():
+            elements = node.elts
+            return None if any(isinstance(element, ast.Starred) for element in elements) else len(elements)
+        case ast.Set(elts=elements):
+            keys = tuple(_constant_key(element) for element in elements)
+            return len(set(keys)) if all(key is not None for key in keys) else None
+        case ast.Dict(keys=raw_keys):
+            keys = tuple(_constant_key(key) for key in raw_keys if key is not None)
+            return len(set(keys)) if len(keys) == len(raw_keys) and all(key is not None for key in keys) else None
+        case _:
+            return None
+
+
+def _constant_key(node: ast.expr) -> _LiteralKey | None:
+    value = _literal_value(node)
+    if value is _MISSING:
+        return None
+    try:
+        hash(value)
+    except TypeError:
+        return None
+    return _literal_key(value)
 
 
 def _literal_key(value: object) -> _LiteralKey:
@@ -492,7 +683,11 @@ def _provably_non_null(node: ast.expr, imports: ImportIndex) -> bool:
     )
 
 
-def _bound_violation(default: object, constraints: tuple[ast.Call, ...]) -> _BoundViolation | None:
+def _bound_violation(
+    default: object,
+    container_length: int | None,
+    constraints: tuple[ast.Call, ...],
+) -> _BoundViolation | None:
     bounds = {
         keyword.arg: _literal_value(keyword.value)
         for call in constraints
@@ -513,6 +708,16 @@ def _bound_violation(default: object, constraints: tuple[ast.Call, ...]) -> _Bou
             if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
                 continue
             if (name == "min_length" and len(default) < bound) or (name == "max_length" and len(default) > bound):
+                return _BoundViolation(name, bound)
+        return None
+    if container_length is not None:
+        for name in ("min_length", "max_length"):
+            bound = bounds.get(name, _MISSING)
+            if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
+                continue
+            if (name == "min_length" and container_length < bound) or (
+                name == "max_length" and container_length > bound
+            ):
                 return _BoundViolation(name, bound)
     return None
 

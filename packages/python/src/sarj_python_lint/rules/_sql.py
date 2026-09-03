@@ -16,12 +16,12 @@ def is_store_module(path: Path) -> bool:
     return path.name == "store.py" or path.name.endswith("_store.py") or "stores" in path.parts
 
 
-def sql_string_value(node: ast.expr) -> str | None:
+def sql_string_value(node: ast.expr, *, interpolation_placeholder: str = " ") -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = sql_string_value(node.left)
-        right = sql_string_value(node.right)
+        left = sql_string_value(node.left, interpolation_placeholder=interpolation_placeholder)
+        right = sql_string_value(node.right, interpolation_placeholder=interpolation_placeholder)
         if left is not None and right is not None:
             return left + right
     if isinstance(node, ast.JoinedStr):
@@ -32,7 +32,7 @@ def sql_string_value(node: ast.expr) -> str | None:
             elif isinstance(value, ast.FormattedValue):
                 # Keep static SQL tokens on either side adjacent while ensuring
                 # an interpolation can never manufacture SELECT/FROM/* itself.
-                pieces.append(" ")
+                pieces.append(interpolation_placeholder)
             else:  # pragma: no cover - the parser emits only these two forms
                 return None
         return "".join(pieces)
@@ -63,6 +63,11 @@ def strip_sql_noise(text: str, *, mask_dollar_quotes: bool = True) -> str:
                 i += 1
             continue
         if ch == "-" and i + 1 < n and text[i + 1] == "-":
+            while i < n and text[i] != "\n":
+                out[i] = " "
+                i += 1
+            continue
+        if ch == "#" and (i == 0 or text[i - 1].isspace()):
             while i < n and text[i] != "\n":
                 out[i] = " "
                 i += 1

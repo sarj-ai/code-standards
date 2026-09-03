@@ -39,7 +39,7 @@ def test_typed_section_precedence_uses_the_owning_docstring_across_lines(tmp_pat
         encoding="utf-8",
     )
 
-    diagnostics = analyze(["docstring-args-restate-signature", "no-typed-doc-sections"], [source])
+    diagnostics = analyze(["docstring-args-restate-signature", "no-docstring-type-restatement"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ092"]
     assert diagnostics[0].line == 5
@@ -57,7 +57,7 @@ def test_typed_return_precedence_uses_the_owning_docstring_across_lines(tmp_path
         encoding="utf-8",
     )
 
-    diagnostics = analyze(["docstring-returns-restate-signature", "no-typed-doc-sections"], [source])
+    diagnostics = analyze(["docstring-returns-restate-signature", "no-docstring-type-restatement"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ092"]
     assert diagnostics[0].line == 5
@@ -81,15 +81,9 @@ def test_owner_precedence_never_crosses_docstrings(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    diagnostics = analyze(["docstring-args-restate-signature", "no-typed-doc-sections"], [source])
+    diagnostics = analyze(["docstring-args-restate-signature", "no-docstring-type-restatement"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ086", "SARJ092"]
-
-
-def test_closed_local_union_finding_suppresses_generic_type_dispatch() -> None:
-    diagnostics = [_diagnostic("SARJ080"), _diagnostic("SARJ003")]
-
-    assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ003"]
 
 
 def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: Path) -> None:
@@ -102,12 +96,6 @@ def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: P
     diagnostics = analyze(["require-keyword-only-swap-prone-params", "prefer-nominal-id-types"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ093"]
-
-
-def test_specific_redundant_docstring_suppresses_generic_length_finding() -> None:
-    diagnostics = [_diagnostic("SARJ091"), _diagnostic("SARJ084")]
-
-    assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ084"]
 
 
 def test_precedence_never_crosses_source_locations() -> None:

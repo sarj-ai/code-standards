@@ -33,7 +33,12 @@ def _adopt(root: Path, *, verify_paths: tuple[str, ...] = (".",), auxiliary_poli
 def test_mocked_terraform_test_can_be_excluded_by_path_rule_or_override(tmp_path: Path) -> None:
     source = tmp_path / "vendor" / "routing.tftest.hcl"
     source.parent.mkdir()
-    source.write_text('mock_provider "aws" {}\n', encoding="utf-8")
+    source.write_text(
+        'override_resource {\n  target = aws_s3_bucket.main\n  values = { arn = "fixture-arn" }\n}\n'
+        'run "routing" {\n  assert {\n    condition = aws_s3_bucket.main.arn == "fixture-arn"\n'
+        '    error_message = "ARN mismatch"\n  }\n}\n',
+        encoding="utf-8",
+    )
     adopted = manifest.Manifest(
         version=api.__version__,
         configs=(),
@@ -60,9 +65,14 @@ def test_mocked_terraform_test_can_be_excluded_by_path_rule_or_override(tmp_path
 
 
 def test_tracked_terraform_test_is_checked_outside_verify_paths(tmp_path: Path) -> None:
-    source = tmp_path / "outside" / "ROUTING.TFTEST.JSON"
+    source = tmp_path / "outside" / "ROUTING.TFTEST.HCL"
     source.parent.mkdir()
-    source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
+    source.write_text(
+        'override_resource {\n  target = aws_s3_bucket.main\n  values = { arn = "fixture-arn" }\n}\n'
+        'run "routing" {\n  assert {\n    condition = aws_s3_bucket.main.arn == "fixture-arn"\n'
+        '    error_message = "ARN mismatch"\n  }\n}\n',
+        encoding="utf-8",
+    )
     selected = tmp_path / "src"
     selected.mkdir()
     adopted = manifest.Manifest(
@@ -75,7 +85,7 @@ def test_tracked_terraform_test_is_checked_outside_verify_paths(tmp_path: Path) 
     )
     manifest.manifest_path(tmp_path).write_text(adopted.render(), encoding="utf-8")
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "add", "outside/ROUTING.TFTEST.JSON"), cwd=tmp_path, check=True)
+    subprocess.run(("git", "add", "outside/ROUTING.TFTEST.HCL"), cwd=tmp_path, check=True)
 
     report = api.Standards(tmp_path).analyze()
 

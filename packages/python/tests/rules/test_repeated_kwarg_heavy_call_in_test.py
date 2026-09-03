@@ -65,7 +65,9 @@ def test_thing():
 
 
 def test_message_reports_the_keyword_count():
-    assert "with 9 explicit keywords" in _check(_WIDE_IN_TEST)[0].message
+    message = _check(_WIDE_IN_TEST)[0].message
+    assert "9-keyword call" in message
+    assert "shares 9 keyword names across 2 calls" in message
 
 
 def test_flags_construction_nested_in_control_flow():
@@ -305,6 +307,126 @@ def test_two():
     assert Call({_NINE_KWARGS})
 """
     assert _check(src) == []
+
+
+def test_disjoint_wide_keyword_sets_do_not_arm_the_rule():
+    src = """
+def test_one():
+    assert Batch(a0=0, a1=1, a2=2, a3=3, a4=4, a5=5, a6=6)
+
+def test_two():
+    assert Batch(b0=0, b1=1, b2=2, b3=3, b4=4, b5=5, b6=6)
+"""
+    assert _check(src) == []
+
+
+def test_six_shared_keyword_names_do_not_arm_the_rule():
+    src = """
+def test_one():
+    assert Batch(a=0, b=1, c=2, d=3, e=4, f=5, first=6)
+
+def test_two():
+    assert Batch(a=0, b=1, c=2, d=3, e=4, f=5, second=6)
+"""
+    assert _check(src) == []
+
+
+def test_only_calls_participating_in_seven_keyword_overlap_are_reported():
+    src = """
+def test_one():
+    assert Batch(a=0, b=1, c=2, d=3, e=4, f=5, g=6)
+
+def test_two():
+    assert Batch(a=7, b=1, c=2, d=3, e=4, f=5, g=6, extra=True)
+
+def test_three():
+    assert Batch(a=0, b=1, c=2, d=3, e=4, f=5, other=True)
+"""
+    assert len(_check(src)) == 2
+
+
+def test_same_self_callee_in_unrelated_classes_does_not_form_a_repeat():
+    src = f"""
+class TestOne:
+    def test_one(self):
+        self.factory.build({_NINE_KWARGS})
+
+class TestTwo:
+    def test_two(self):
+        self.factory.build({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_generated_test_file_is_ignored():
+    assert _check(f"# @generated\n{_WIDE_IN_TEST}") == []
+
+
+def test_pytest_fixture_named_like_a_test_is_ignored():
+    src = f"""
+import pytest
+
+@pytest.fixture
+def test_data():
+    first = Batch({_NINE_KWARGS})
+    second = Batch({_NINE_KWARGS})
+    return first, second
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "import_line",
+    [
+        "from types import SimpleNamespace",
+        "from types import SimpleNamespace as Record",
+    ],
+)
+def test_imported_simple_namespace_is_data(import_line: str):
+    callee = "Record" if " as Record" in import_line else "SimpleNamespace"
+    src = f"""
+{import_line}
+
+def test_one():
+    assert {callee}({_NINE_KWARGS})
+
+def test_two():
+    assert {callee}({_NINE_KWARGS})
+"""
+    assert _check(src) == []
+
+
+def test_imported_mock_call_is_expected_data():
+    src = f"""
+from unittest.mock import call
+
+def test_one():
+    expected = [call({_NINE_KWARGS}), call({_NINE_KWARGS})]
+    assert expected
+"""
+    assert _check(src) == []
+
+
+def test_shadowed_data_callable_names_still_report():
+    src = f"""
+from types import SimpleNamespace
+from unittest.mock import call
+
+def SimpleNamespace(**values):
+    return Model(**values)
+
+def call(**values):
+    return Model(**values)
+
+def test_one():
+    assert SimpleNamespace({_NINE_KWARGS})
+    assert call({_NINE_KWARGS})
+
+def test_two():
+    assert SimpleNamespace({_NINE_KWARGS})
+    assert call({_NINE_KWARGS})
+"""
+    assert len(_check(src)) == 4
 
 
 @pytest.mark.parametrize(

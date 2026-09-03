@@ -125,14 +125,12 @@ def analyze(
 
 _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
-        "SARJ003": frozenset({"SARJ080"}),
         "SARJ050": frozenset({"SARJ420"}),
-        "SARJ084": frozenset({"SARJ050", "SARJ091", "SARJ420"}),
+        "SARJ084": frozenset({"SARJ050", "SARJ420"}),
         "SARJ085": frozenset({"SARJ420"}),
         "SARJ086": frozenset({"SARJ420"}),
         "SARJ087": frozenset({"SARJ420"}),
-        "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ091", "SARJ420"}),
-        "SARJ091": frozenset({"SARJ420"}),
+        "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ420"}),
         "SARJ092": frozenset({"SARJ086", "SARJ087", "SARJ420"}),
         "SARJ093": frozenset({"SARJ034"}),
         "SARJ099": frozenset({"SARJ420"}),
@@ -140,7 +138,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
 )
 
 _DOCSTRING_PRECEDENCE_CODES = frozenset(
-    {"SARJ050", "SARJ084", "SARJ085", "SARJ086", "SARJ087", "SARJ088", "SARJ091", "SARJ092", "SARJ099"}
+    {"SARJ050", "SARJ084", "SARJ085", "SARJ086", "SARJ087", "SARJ088", "SARJ092", "SARJ099"}
 )
 
 

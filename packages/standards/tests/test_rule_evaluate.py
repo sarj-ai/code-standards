@@ -85,6 +85,23 @@ def test_corpus_evaluation_runs_only_the_selected_rule(tmp_path: Path, capsys: p
     assert diagnostics[0]["ruleId"] == "no-string-concat-in-loop"
 
 
+def test_corpus_evaluation_ignores_an_incompatible_consumer_manifest(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _source(tmp_path)
+    (tmp_path / MANIFEST_NAME).write_text(
+        'schema = 3\nversion = "older-consumer"\nconfigs = []\n',
+        encoding="utf-8",
+    )
+
+    status, payload = _evaluate(tmp_path, "corpus", capsys)
+
+    assert status == 1
+    assert payload["completion"] == "complete"
+    assert payload["diagnostics"]
+
+
 def test_manifest_evaluation_isolatedly_merges_public_and_private_corpora(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

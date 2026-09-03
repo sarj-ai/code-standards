@@ -14,9 +14,10 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -24,7 +25,24 @@ if TYPE_CHECKING:
 
 
 _DOUBLE_NAME_RE = re.compile(r"^(?:Fake|Stub|Mock|InMemory|Recording|Scripted)[A-Z0-9]")
-_SHARED_SUPPORT_NAMES = frozenset({"helpers", "support", "test_support", "test_utils"})
+_SHARED_SUPPORT_NAMES = frozenset(
+    {
+        "doubles",
+        "fakes",
+        "helpers",
+        "mocks",
+        "stubs",
+        "support",
+        "test_doubles",
+        "test_fakes",
+        "testing",
+        "test_support",
+        "test_utils",
+    }
+)
+_TEST_ROOT_NAMES = frozenset({"integration_tests", "test", "tests"})
+_NON_INFRA_ROOT_NAMES = frozenset({"benchmarks", "examples", "site-packages", "third_party", "vendor"})
+_SUPPORT_STEM_RE = re.compile(r"(?:^|_)(?:fakes?|mocks?|stubs?|doubles?|testing)(?:$|_)")
 
 
 @final
@@ -32,14 +50,14 @@ class FakesInSharedLocation(Rule):
     id = "fakes-in-shared-location"
     code = "SARJ428"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Define reusable test doubles in a shared testing-support module.",
+        summary="Review named top-level test doubles for shared-support ownership unless they are intentionally scenario-local.",
         rationale=(
-            "A fake embedded in one test module silently becomes a private second implementation of a contract. "
-            "A named support module makes the double discoverable, reusable, and reviewable as test infrastructure."
+            "Reusable doubles hidden in an individual test module are difficult to discover and are often recreated. "
+            "A per-file warning cannot prove cross-module reuse, so scenario-local doubles may remain with an exact rationale."
         ),
         remediation=(
-            "Move the class to a testing, fakes, stubs, mocks, doubles, or test_utils module and import it. "
-            "Use an exact SARJ428 suppression only when the double is intentionally coupled to one scenario."
+            "Move a reusable double to a testing, fakes, stubs, mocks, doubles, helpers, support, or test_utils module. "
+            "Keep a deliberately local double near its scenario with an exact SARJ428 suppression and rationale."
         ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
@@ -63,6 +81,24 @@ class FakesInSharedLocation(Rule):
                 public=True,
             ),
             RuleExample(
+                example_id="scenario-local-fake",
+                title="A nested double is visibly coupled to one scenario",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_checkout.py",
+                        "def test_decline_retries_once():\n"
+                        "    class FakePaymentGateway:\n"
+                        "        async def charge(self, amount: int) -> None:\n"
+                        "            raise Declined()\n"
+                        "    assert retries(FakePaymentGateway()) == 1\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_checkout.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="shared-fake-service",
                 title="A shared support module owns the fake",
                 outcome=ExampleOutcome.NO_MATCH,
@@ -74,7 +110,7 @@ class FakesInSharedLocation(Rule):
                 ),
                 focus_path=PurePosixPath("tests/fakes/payment.py"),
                 expected_count=0,
-                public=True,
+                public=False,
             ),
         ),
     )
@@ -94,9 +130,10 @@ class FakesInSharedLocation(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=(
-                    f"test double `{node.name}` is private to this test module; move it to shared testing support "
-                    "or add an exact SARJ428 suppression for a deliberately scenario-local double"
+                    f"named top-level test double `{node.name}` may need shared ownership; move it only when reused "
+                    "across modules, otherwise keep it local with an exact SARJ428 suppression and rationale"
                 ),
+                severity=Severity.WARNING,
             )
             for node in tree.body
             if isinstance(node, ast.ClassDef) and _DOUBLE_NAME_RE.match(node.name)
@@ -104,10 +141,24 @@ class FakesInSharedLocation(Rule):
 
 
 def _is_shared_support(path: Path) -> bool:
-    names = {part.lower() for part in path.parts}
+    parts = [part.lower() for part in path.parts]
     return (
         path.name == "conftest.py"
         or path.stem.lower() in _SHARED_SUPPORT_NAMES
-        or bool(names & _SHARED_SUPPORT_NAMES)
-        or is_test_support_path(path)
+        or bool(_SUPPORT_STEM_RE.search(path.stem.lower()))
+        or bool(set(parts) & _NON_INFRA_ROOT_NAMES)
+        or _support_below_test_root(parts)
+        or _non_collected_module_below_test_root(path, parts)
     )
+
+
+def _support_below_test_root(parts: list[str]) -> bool:
+    test_roots = [index for index, part in enumerate(parts) if part in _TEST_ROOT_NAMES]
+    if not test_roots:
+        return False
+    below_root = parts[test_roots[-1] + 1 : -1]
+    return bool(set(below_root) & _SHARED_SUPPORT_NAMES)
+
+
+def _non_collected_module_below_test_root(path: Path, parts: list[str]) -> bool:
+    return bool(set(parts) & _TEST_ROOT_NAMES) and not (path.name.startswith("test") or path.name.endswith("_test.py"))

@@ -14,9 +14,11 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
@@ -24,88 +26,58 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-# A real SQL query shape — not just the word "from", so prose/LLM-prompt strings
-# (e.g. "distinct from unexpected exceptions") are not mistaken for queries.
-_QUERY_SHAPE = re.compile(
-    r"\bSELECT\b[\s\S]*?\bFROM\b|\bUPDATE\b[\s\S]*?\bSET\b|\bDELETE\b\s+FROM\b",
+_QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
+_POSTGRES_OWNER = re.compile(
+    r"\b(?:psycopg|psycopg2|asyncpg|Postgres(?:ql)?|postgres_pool)\b"
+    r"|sqlalchemy\.dialects\.postgresql",
     re.IGNORECASE,
 )
-
-# ClickHouse IS the place for aggregation.
-_CLICKHOUSE_FILE = re.compile(
-    r"\bclickhouse_connect\b|\bclickhouse_driver\b|^\s*import\s+clickhouse\b",
-    re.MULTILINE,
-)
-# Belt-and-braces: a single query using ClickHouse-only functions is ClickHouse.
 _CLICKHOUSE_SQL = re.compile(
     r"\barg(?:Max|Min)\b|\b_peerdb|\bJSONExtract|\buniqExact\b|\bgroupArray\b"
     r"|\barrayJoin\b|\bquantile\w*\(",
 )
-
-# BigQuery IS also a place for aggregation.
-_BIGQUERY_FILE = re.compile(
-    r"\bfrom\s+google\.cloud\s+import\s+bigquery\b"
-    r"|\bfrom\s+google\.cloud\.bigquery\b"
-    r"|\bimport\s+google\.cloud\.bigquery\b",
-    re.MULTILINE,
-)
-# Belt-and-braces: a single query with a BigQuery-only signal is BigQuery.
 _BIGQUERY_SQL = re.compile(
-    r"\b(?:FROM|JOIN)\s+`"
-    r"|\bAPPROX_COUNT_DISTINCT\s*\(|\bGENERATE_ARRAY\s*\(|\b_PARTITIONTIME\b"
-    r"|\bSAFE_CAST\s*\(|\bPARSE_TIMESTAMP\s*\(|\bCOUNTIF\s*\(|\bSTRUCT\s*\(",
+    r"\b(?:FROM|JOIN)\s+`|\bAPPROX_COUNT_DISTINCT\s*\(|\bGENERATE_ARRAY\s*\("
+    r"|\b_PARTITIONTIME\b|\bSAFE_CAST\s*\(|\bPARSE_TIMESTAMP\s*\("
+    r"|\bCOUNTIF\s*\(|\bSTRUCT\s*\(",
     re.IGNORECASE,
 )
-# Psycopg placeholders are a Postgres signal that overrides otherwise ambiguous analytics syntax.
-_POSTGRES_SQL = re.compile(r"%\(\w+\)s|%s")
-
-# This null-safe comparison is a row predicate, not set deduplication.
-_NULL_SAFE_COMPARISON = re.compile(r"\bIS\s+(?:NOT\s+)?DISTINCT\s+FROM\b", re.IGNORECASE)
-_DISTINCT_ON = re.compile(r"\bDISTINCT\s+ON\s*\(", re.IGNORECASE)
-
-_ANALYTIC_COUNT_SIGNAL = re.compile(
-    r"\b(?:GROUP\s+BY|HAVING|FILTER)\b|\bOVER\s*\(|\bCOUNT\s*\(\s*DISTINCT\b",
+_MUTATION = re.compile(r"^\s*(?:UPDATE|DELETE|INSERT)\b", re.IGNORECASE)
+_TIME_BUCKET = re.compile(r"\b(?:DATE_TRUNC|TIME_BUCKET)\s*\(", re.IGNORECASE)
+_GROUP_BY = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
+_COMMON_AGGREGATE = re.compile(
+    r"\b(?:COUNT|SUM|AVG|MIN|MAX|ARRAY_AGG|STRING_AGG|JSONB?_AGG|BOOL_AND|BOOL_OR|EVERY)\s*\(",
     re.IGNORECASE,
 )
-
-_AGGREGATIONS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("COUNT(", re.compile(r"\bCOUNT[ \t]*\(", re.IGNORECASE)),
-    ("SUM(", re.compile(r"\bSUM[ \t]*\(", re.IGNORECASE)),
-    ("AVG(", re.compile(r"\bAVG[ \t]*\(", re.IGNORECASE)),
-    ("MIN(", re.compile(r"\bMIN[ \t]*\(", re.IGNORECASE)),
-    ("MAX(", re.compile(r"\bMAX[ \t]*\(", re.IGNORECASE)),
-    ("ARRAY_AGG(", re.compile(r"\bARRAY_AGG[ \t]*\(", re.IGNORECASE)),
-    ("STRING_AGG(", re.compile(r"\bSTRING_AGG[ \t]*\(", re.IGNORECASE)),
-    ("JSON_AGG(", re.compile(r"\bJSON_AGG[ \t]*\(", re.IGNORECASE)),
-    ("JSONB_AGG(", re.compile(r"\bJSONB_AGG[ \t]*\(", re.IGNORECASE)),
-    ("BOOL_AND(", re.compile(r"\bBOOL_AND[ \t]*\(", re.IGNORECASE)),
-    ("BOOL_OR(", re.compile(r"\bBOOL_OR[ \t]*\(", re.IGNORECASE)),
-    ("EVERY(", re.compile(r"\bEVERY[ \t]*\(", re.IGNORECASE)),
-    ("STDDEV(", re.compile(r"\bSTDDEV(?:_POP|_SAMP)?[ \t]*\(", re.IGNORECASE)),
-    ("VARIANCE(", re.compile(r"\b(?:VARIANCE|VAR_POP|VAR_SAMP)[ \t]*\(", re.IGNORECASE)),
-    ("CORR(", re.compile(r"\bCORR[ \t]*\(", re.IGNORECASE)),
-    ("COVAR(", re.compile(r"\bCOVAR_(?:POP|SAMP)[ \t]*\(", re.IGNORECASE)),
-    ("REGR_*(", re.compile(r"\bREGR_[A-Z_]+[ \t]*\(", re.IGNORECASE)),
-    ("PERCENTILE_*(", re.compile(r"\bPERCENTILE_(?:CONT|DISC)[ \t]*\(", re.IGNORECASE)),
-    ("RANGE_AGG(", re.compile(r"\bRANGE_AGG[ \t]*\(", re.IGNORECASE)),
-    ("XMLAGG(", re.compile(r"\bXMLAGG[ \t]*\(", re.IGNORECASE)),
-    ("GROUP BY", re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)),
-    ("DISTINCT", re.compile(r"\bDISTINCT\b", re.IGNORECASE)),
+_STRONG_ANALYTICAL: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("STDDEV", re.compile(r"\bSTDDEV(?:_POP|_SAMP)?\s*\(", re.IGNORECASE)),
+    ("VARIANCE", re.compile(r"\b(?:VARIANCE|VAR_POP|VAR_SAMP)\s*\(", re.IGNORECASE)),
+    ("CORR", re.compile(r"\bCORR\s*\(", re.IGNORECASE)),
+    ("COVAR", re.compile(r"\bCOVAR_(?:POP|SAMP)\s*\(", re.IGNORECASE)),
+    ("REGR", re.compile(r"\bREGR_[A-Z_]+\s*\(", re.IGNORECASE)),
+    ("PERCENTILE", re.compile(r"\bPERCENTILE_(?:CONT|DISC)\s*\(", re.IGNORECASE)),
 )
 
 
-def _blank_null_safe_comparisons(sql: str) -> str:
-    sql = _NULL_SAFE_COMPARISON.sub(lambda match: " " * len(match.group(0)), sql)
-    return _DISTINCT_ON.sub(lambda match: " " * len(match.group(0)), sql)
+def _docstring_node_ids(tree: ast.AST) -> set[int]:
+    result: set[int] = set()
+    for owner in nodes(tree, ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef):
+        body = owner.body
+        if not body or not isinstance(body[0], ast.Expr):
+            continue
+        value = body[0].value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            result.add(id(value))
+    return result
 
 
-# Require both a query verb and aggregation syntax to avoid flagging unrelated prose.
-_VERB_GATE = re.compile(r"select|update|delete", re.IGNORECASE)
-_AGG_GATE = re.compile(
-    r"count|sum|avg|min|max|array_agg|string_agg|jsonb?_agg|bool_|every|stddev|variance|var_"
-    r"|corr|covar_|regr_|percentile_|range_agg|xmlagg|group|distinct|filter",
-    re.IGNORECASE,
-)
+def _analytical_signal(sql: str) -> str | None:
+    for label, pattern in _STRONG_ANALYTICAL:
+        if pattern.search(sql):
+            return label
+    if _TIME_BUCKET.search(sql) and _GROUP_BY.search(sql) and _COMMON_AGGREGATE.search(sql):
+        return "time-bucketed GROUP BY"
+    return None
 
 
 @final
@@ -113,38 +85,53 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
     id: str = "no-analytical-aggregation-in-postgres-store"
     code: str = "SARJ020"
     documentation = RuleDocumentation(
-        summary="Postgres store queries should not perform analytical aggregation.",
-        rationale="Analytical aggregation competes with transactional reads and is better served by the columnar mirror.",
-        remediation="Run aggregation in ClickHouse or BigQuery and keep Postgres store queries focused on point or bounded reads.",
+        summary="Potentially analytical PostgreSQL store queries require review.",
+        rationale=(
+            "Unbounded reporting and statistical scans can compete with transactional reads. "
+            "Transactional invariants, queue coordination, bounded hydration, and other strongly "
+            "consistent operational aggregates remain valid PostgreSQL work."
+        ),
+        remediation=(
+            "Review the query bounds and execution plan. Move reporting scans to the repository's "
+            "columnar store, or document why the aggregate must remain transactional."
+        ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         aliases=("no-aggregation-in-store-query",),
         limitations=(
-            "Only SQL string literals in recognized store modules are analyzed.",
-            "Files and queries identified as ClickHouse or BigQuery are excluded.",
-            "Scalar COUNT and PostgreSQL DISTINCT ON row selection are excluded unless another analytical signal is present.",
+            "Only SQL string literals in recognized store modules with positive PostgreSQL ownership evidence are analyzed.",
+            "Only statistical aggregates and time-bucketed grouped rollups are reported; ordinary operational aggregates are intentionally excluded.",
+            "ClickHouse- and BigQuery-specific query syntax is excluded per query, including in mixed-backend modules.",
         ),
         examples=(
             RuleExample(
-                example_id="postgres-aggregate-query",
-                title="Postgres store query performs aggregation",
+                example_id="postgres-reporting-rollup",
+                title="PostgreSQL computes a time-series reporting rollup",
                 outcome=ExampleOutcome.MATCH,
-                files=(ExampleFile.python("app/call_store.py", 'QUERY = "SELECT SUM(amount) FROM call"\n'),),
-                focus_path=PurePosixPath("app/call_store.py"),
+                files=(
+                    ExampleFile.python(
+                        "app/event_store.py",
+                        "import psycopg\n\n"
+                        'QUERY = "SELECT DATE_TRUNC(\'day\', occurred_at), COUNT(*), AVG(latency_ms) '
+                        'FROM event GROUP BY 1"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/event_store.py"),
                 expected_count=1,
                 public=True,
             ),
             RuleExample(
-                example_id="bounded-postgres-query",
-                title="Postgres store query reads bounded rows",
+                example_id="bounded-transactional-aggregate",
+                title="PostgreSQL preserves a bounded transactional invariant",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
-                        "app/call_store.py",
-                        'QUERY = "SELECT id FROM call ORDER BY created_at LIMIT 50"\n',
+                        "app/account_store.py",
+                        "import psycopg\n\n"
+                        'QUERY = "SELECT SUM(amount) FROM ledger WHERE account_id = %s FOR UPDATE"\n',
                     ),
                 ),
-                focus_path=PurePosixPath("app/call_store.py"),
+                focus_path=PurePosixPath("app/account_store.py"),
                 expected_count=0,
                 public=True,
             ),
@@ -154,59 +141,47 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_store_module(path):
+        if not is_store_module(path) or is_generated(path, source) or _POSTGRES_OWNER.search(source) is None:
             return []
-        # Skip files whose literals cannot contain both required syntax classes.
-        if _AGG_GATE.search(source) is None or _VERB_GATE.search(source) is None:
-            return []
-        if _CLICKHOUSE_FILE.search(source):
-            return []
-        bigquery_file = _BIGQUERY_FILE.search(source) is not None
         tree = parse_or_none(path, source)
         if tree is None:
             return []
 
-        diags: list[Diagnostic] = []
+        docstrings = _docstring_node_ids(tree)
+        diagnostics: list[Diagnostic] = []
         consumed: set[int] = set()
         for node in nodes(tree, ast.Constant, ast.BinOp):
-            if id(node) in consumed:
+            if id(node) in consumed or id(node) in docstrings:
                 continue
-            text = sql_string_value(node)
-            if text is None:
+            text_value = sql_string_value(node)
+            if text_value is None:
                 continue
-            # Mark concatenated children consumed so the walk cannot report the same query twice.
             if isinstance(node, ast.BinOp):
-                consumed.update(id(sub) for sub in walk(node))
+                consumed.update(id(child) for child in walk(node))
 
-            if _AGG_GATE.search(text) is None or _VERB_GATE.search(text) is None:
+            sql = strip_sql_noise(text_value)
+            if (
+                _QUERY_SHAPE.search(sql) is None
+                or _MUTATION.search(sql)
+                or _CLICKHOUSE_SQL.search(sql)
+                or _BIGQUERY_SQL.search(sql)
+            ):
                 continue
-
-            sql = _blank_null_safe_comparisons(strip_sql_noise(text))
-            if _QUERY_SHAPE.search(sql) is None or _CLICKHOUSE_SQL.search(sql) or _BIGQUERY_SQL.search(sql):
+            signal = _analytical_signal(sql)
+            if signal is None:
                 continue
-            if bigquery_file and _POSTGRES_SQL.search(sql) is None:
-                continue
-            found = [label for label, pat in _AGGREGATIONS if pat.search(sql)]
-            if not found:
-                continue
-            # A scalar COUNT is commonly a strongly consistent pagination total
-            # or transactional invariant. Only COUNT with an independently
-            # provable analytical shape belongs to this rule.
-            if found == ["COUNT("] and _ANALYTIC_COUNT_SIGNAL.search(sql) is None:
-                continue
-
-            diags.append(
+            diagnostics.append(
                 Diagnostic(
                     path=path,
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
+                    severity=Severity.WARNING,
                     message=(
-                        f"Store query uses {', '.join(found)} — push heavy "
-                        "aggregation to ClickHouse / BigQuery, keep Postgres to "
-                        "point/bounded reads. Suppress with `# sarj-noqa: SARJ020`."
+                        f"Possible analytical PostgreSQL query ({signal}); review its bounds and execution plan. "
+                        "Move reporting scans to the columnar store, or document why this aggregate must remain transactional."
                     ),
                 )
             )
-        diags.sort(key=lambda d: (d.line, d.col))
-        return diags
+        diagnostics.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+        return diagnostics

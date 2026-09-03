@@ -32,7 +32,10 @@
     "no-generic-single-export-module"
   ],
   "SARJ023": "stepdown",
-  "SARJ024": "no-repeated-string-literal",
+  "SARJ024": [
+    "no-repeated-string-literal",
+    "no-repeated-structured-string-literal"
+  ],
   "SARJ025": "no-offset-pagination",
   "SARJ026": "prefer-namedtuple-over-tuple-return",
   "SARJ027": "len-as-truthiness",
@@ -81,7 +84,10 @@
   "SARJ054": "no-file-level-escape-hatch-suppression",
   "SARJ055": null,
   "SARJ056": "no-optional-tenant-predicate",
-  "SARJ057": "no-tautological-expect",
+  "SARJ057": [
+    "no-tautological-expect",
+    "no-statically-truthy-assertion"
+  ],
   "SARJ058": null,
   "SARJ059": "prefer-library-fake",
   "SARJ060": "tautological-mock-assertion",
@@ -122,7 +128,10 @@
   "SARJ089": "test-phase-label-comment",
   "SARJ090": "prefer-single-sentence-comment",
   "SARJ091": "no-long-comment",
-  "SARJ092": "no-typed-doc-sections",
+  "SARJ092": [
+    "no-typed-doc-sections",
+    "no-docstring-type-restatement"
+  ],
   "SARJ093": "prefer-nominal-id-types",
   "SARJ094": [
     "fastapi-openapi-contract",
@@ -160,7 +169,10 @@
     "store-get-delegates-to-bulk-read"
   ],
   "SARJ422": "prefer-one-for-required-row",
-  "SARJ423": "no-redundant-literal-description",
+  "SARJ423": [
+    "no-redundant-literal-description",
+    "no-restated-closed-domain-description"
+  ],
   "SARJ424": "require-nodecode-for-splitting-settings-field",
   "SARJ425": "no-nested-pydantic-field-validator",
   "SARJ426": "no-conftest-test-module-import",
@@ -171,5 +183,6 @@
   "SARJ431": "prefer-set-isdisjoint",
   "SARJ432": "prefer-walrus-awaited-none-guard",
   "SARJ434": "excessive-commentary",
-  "SARJ435": "typed-error-reasons"
+  "SARJ435": "typed-error-reasons",
+  "SARJ436": "no-whole-request-response-payload-in-log"
 }

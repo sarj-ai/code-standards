@@ -340,7 +340,7 @@ def test_is_suppressed_recognizes_code_on_reported_line():
 
 
 def test_is_suppressed_false_for_unrelated_code():
-    src = "from collections import namedtuple  # sarj-noqa: SARJ052 — other\n"
+    src = "from collections import namedtuple  # sarj-noqa: SARJ999 — other\n"
     diags = _check(src)
     assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 

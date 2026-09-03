@@ -56,9 +56,9 @@ def _policy_baseline(diagnostics: tuple[Diagnostic, ...]) -> str:
 
 def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) -> None:
     selected = tmp_path / "selected.py"
-    selected.write_text("import logging\n", encoding="utf-8")
+    selected.write_text("logger.info('request', token=token)\n", encoding="utf-8")
     other = tmp_path / "other.py"
-    other.write_text("import logging\n", encoding="utf-8")
+    other.write_text("logger.info('request', token=token)\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(selected)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
@@ -67,23 +67,34 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
     policy = api.Standards(tmp_path).analyze([str(selected), str(other)])
     raw_again = api.Standards(tmp_path).analyze([str(selected)], mode=api.AnalysisMode.RAW)
 
-    assert [item.location.path for item in policy.diagnostics if item.code == "SARJ052"] == ["other.py"]
-    assert [item.code for item in raw_again.diagnostics] == ["SARJ052"]
+    assert [item.location.path for item in policy.diagnostics if item.code == "SARJ012"] == ["other.py"]
+    assert [item.code for item in raw_again.diagnostics] == ["SARJ012"]
 
 
 def test_mocked_terraform_test_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
-    source = tmp_path / "routing.tftest.json"
-    source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
+    test_source = """override_resource {
+  target = aws_s3_bucket.main
+  values = { arn = "fixture-arn" }
+}
+run "routing" {
+  assert {
+    condition = aws_s3_bucket.main.arn == "fixture-arn"
+    error_message = "ARN mismatch"
+  }
+}
+"""
+    source = tmp_path / "routing.tftest.hcl"
+    source.write_text(test_source, encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
 
-    new_source = tmp_path / "new-routing.tftest.json"
-    new_source.write_text('{"mock_provider":{"aws":[{}]}}\n', encoding="utf-8")
+    new_source = tmp_path / "new-routing.tftest.hcl"
+    new_source.write_text(test_source, encoding="utf-8")
     policy = api.Standards(tmp_path).analyze([str(source), str(new_source)])
 
-    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.json"]
+    assert [item.location.path for item in policy.diagnostics] == ["new-routing.tftest.hcl"]
 
 
 def test_missing_diagnostic_baseline_is_an_execution_failure(tmp_path: Path) -> None:
@@ -97,16 +108,19 @@ def test_missing_diagnostic_baseline_is_an_execution_failure(tmp_path: Path) -> 
 
 def test_diagnostic_baseline_exposes_fingerprint_count_growth(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
-    source.write_text("import logging\n", encoding="utf-8")
+    source.write_text("logger.info('request', token=token)\n", encoding="utf-8")
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
     baseline_path = tmp_path / "diagnostic-baseline.json"
     baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
     (tmp_path / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
-    source.write_text("import logging\nimport logging\n", encoding="utf-8")
+    source.write_text(
+        "logger.info('request', token=token)\nlogger.info('request', password=password)\n",
+        encoding="utf-8",
+    )
 
     policy = api.Standards(tmp_path).analyze([str(source)])
 
-    assert [item.code for item in policy.diagnostics] == ["SARJ052"]
+    assert [item.code for item in policy.diagnostics] == ["SARJ012"]
 
 
 def test_manifest_round_trips_diagnostic_baseline(tmp_path: Path) -> None:
@@ -283,7 +297,7 @@ def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp
 
 
 def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) -> None:
-    (tmp_path / "service.py").write_text("import logging\n", encoding="utf-8")
+    (tmp_path / "service.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
     (tmp_path / "main.tf").write_text(
         'resource "google_storage_bucket" "a" {\n  count = var.environment == "prod" ? 1 : 0\n}\n',
         encoding="utf-8",
@@ -295,7 +309,7 @@ def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) 
     recorded = baseline.load(tmp_path / "diagnostic-baseline.json")
 
     # One command has to cover every engine, or a consumer needs one baseline per tool.
-    assert {"SARJ052", "SARJ204"} <= {item.code for item in raw.diagnostics}
+    assert {"SARJ012", "SARJ204"} <= {item.code for item in raw.diagnostics}
     assert sum(recorded.values()) == len(raw.diagnostics)
 
 

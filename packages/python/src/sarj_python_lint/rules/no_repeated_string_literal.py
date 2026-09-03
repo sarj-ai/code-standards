@@ -15,10 +15,11 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import children, walk
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -31,12 +32,14 @@ _PREVIEW_LENGTH = 40
 
 _SCAFFOLDING_KWARGS = frozenset({"examples", "description", "title", "summary"})
 
-_SQL_KEYWORD_RE = re.compile(
-    r"\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|VALUES|ON CONFLICT|RETURNING|GROUP BY|ORDER BY)\b"
+_SQL_SHAPE_RE = re.compile(
+    r"(?:\bSELECT\b[\s\S]*?\bFROM\b|\bINSERT\s+INTO\b|\bUPDATE\b[\s\S]*?\bSET\b|"
+    r"\bDELETE\s+FROM\b|\bMERGE\s+INTO\b|^\s*(?:GROUP\s+BY|ORDER\s+BY|ON\s+CONFLICT|RETURNING)\b)",
+    re.IGNORECASE,
 )
 _IDENTIFIER_RE = re.compile(r"^[a-z_][a-z0-9_.]*$")
 _URL_PATH_RE = re.compile(r"^/(?=[^\s]*[A-Za-z0-9])[A-Za-z0-9._~!$&'()*+,;=:@%/?#{}\[\]-]+$")
-_PUBLIC_CONSTANT_RE = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
+_CONSTANT_RE = re.compile(r"^_?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$")
 _MIN_CONSTANT_NAME_LENGTH = 3
 
 _MODULE_SCOPE = -1
@@ -44,17 +47,26 @@ _MODULE_SCOPE = -1
 
 @final
 class NoRepeatedStringLiteral(Rule):
-    id: str = "no-repeated-string-literal"
+    id: str = "no-repeated-structured-string-literal"
     code: str = "SARJ024"
     documentation = RuleDocumentation(
-        summary="Structured string literals repeated across functions should use a module constant.",
-        rationale="Independent copies of SQL, route templates, and identifier-like strings can drift while appearing equivalent.",
-        remediation="Extract the shared value to one named module-level constant and reference it from each function.",
+        summary="Exact SQL or route literals repeated across callable scopes should share one named binding.",
+        rationale=(
+            "When exact copies represent one SQL, route, or protocol contract, editing one copy can silently diverge "
+            "the others. Identical text can also represent independent concepts, so this rule is advisory."
+        ),
+        remediation=(
+            "If the occurrences are one maintained concept, reuse an existing constant or extract a descriptive "
+            "module-level constant within that ownership boundary. If equality is intentional but ownership is "
+            "independent, suppress with a rationale."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
+        aliases=("no-repeated-string-literal",),
         limitations=(
-            "Only structured literals of at least 40 characters repeated across distinct functions are reported.",
-            "Prose, documentation scaffolding, annotations, generated files, and repeated f-string fragments are excluded.",
+            "Only exact same-file literals of at least 40 characters repeated across distinct callable scopes are compared; near-duplicates are not detected.",
+            "Cross-scope findings require credible SQL or an absolute route; identifier-like strings require an existing unique module constant.",
+            "Prose, documentation scaffolding, annotations, tests, migrations, examples, generated files, match patterns, and f-string fragments are excluded.",
         ),
         examples=(
             RuleExample(
@@ -64,7 +76,7 @@ class NoRepeatedStringLiteral(Rule):
                 files=(
                     ExampleFile.python(
                         "queries.py",
-                        'def load():\n    return "SELECT id, name, created_at FROM organization"\n\ndef refresh():\n    return "SELECT id, name, created_at FROM organization"\n',
+                        'def load(cursor):\n    cursor.execute("SELECT id, name, created_at FROM organization")\n\ndef refresh(cursor):\n    cursor.execute("SELECT id, name, created_at FROM organization")\n',
                     ),
                 ),
                 focus_path=PurePosixPath("queries.py"),
@@ -78,7 +90,7 @@ class NoRepeatedStringLiteral(Rule):
                 files=(
                     ExampleFile.python(
                         "queries.py",
-                        'QUERY = "SELECT id, name, created_at FROM organization"\n\ndef load():\n    return QUERY\n\ndef refresh():\n    return QUERY\n',
+                        '_SELECT_ORGANIZATIONS = "SELECT id, name, created_at FROM organization"\n\ndef load(cursor):\n    cursor.execute(_SELECT_ORGANIZATIONS)\n\ndef refresh(cursor):\n    cursor.execute(_SELECT_ORGANIZATIONS)\n',
                     ),
                 ),
                 focus_path=PurePosixPath("queries.py"),
@@ -103,6 +115,7 @@ class NoRepeatedStringLiteral(Rule):
 
         occurrences: dict[str, list[ast.Constant]] = defaultdict(list)
         scope_of: dict[int, int] = {}
+        scope_line_of: dict[int, int] = {}
         excluded: set[int] = set()
 
         def visit(node: ast.AST, scope: int) -> None:
@@ -119,8 +132,14 @@ class NoRepeatedStringLiteral(Rule):
                     excluded.add(id(body[0].value))
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     scope = id(node)
+                    scope_line_of[scope] = node.lineno
+            elif isinstance(node, ast.Lambda):
+                scope = id(node)
+                scope_line_of[scope] = node.lineno
             elif isinstance(node, ast.JoinedStr):
                 excluded.update(id(value) for value in node.values)
+            elif isinstance(node, ast.MatchValue):
+                excluded.update(id(child) for child in walk(node) if isinstance(child, ast.Constant))
             elif isinstance(node, ast.Call):
                 for kw in node.keywords:
                     if kw.arg in _SCAFFOLDING_KWARGS:
@@ -130,7 +149,7 @@ class NoRepeatedStringLiteral(Rule):
                 and isinstance(node.value, str)
                 and len(node.value) >= _MIN_LENGTH
                 and id(node) not in excluded
-                and _is_structured(node.value)
+                and _is_candidate(node.value)
             ):
                 occurrences[node.value].append(node)
                 scope_of[id(node)] = scope
@@ -143,8 +162,13 @@ class NoRepeatedStringLiteral(Rule):
         for value, nodes in occurrences.items():
             function_scopes = {scope for n in nodes if (scope := scope_of.get(id(n), _MODULE_SCOPE)) != _MODULE_SCOPE}
             canonical = canonical_constants.get(value, ())
-            if len(canonical) == 1 and function_scopes:
-                (constant_name,) = canonical
+            eligible_canonical = tuple(
+                name
+                for name, line in canonical
+                if all(line < scope_line_of.get(scope, 0) for scope in function_scopes)
+            )
+            if len(eligible_canonical) == 1 and function_scopes:
+                (constant_name,) = eligible_canonical
                 function_nodes = [node for node in nodes if scope_of.get(id(node), _MODULE_SCOPE) != _MODULE_SCOPE]
                 diags.extend(
                     Diagnostic(
@@ -156,11 +180,14 @@ class NoRepeatedStringLiteral(Rule):
                             f"structured string literal {_preview(value)} duplicates module constant "
                             f"`{constant_name}` — reuse the canonical constant so the copies cannot drift."
                         ),
+                        severity=Severity.WARNING,
                     )
                     for node in function_nodes
                 )
                 continue
             if len(function_scopes) < _MIN_DISTINCT_SCOPES:
+                continue
+            if not _is_cross_scope_structured(value):
                 continue
             nodes.sort(key=lambda n: (n.lineno, n.col_offset))
             first, *repeats = nodes
@@ -172,9 +199,10 @@ class NoRepeatedStringLiteral(Rule):
                     code=self.code,
                     message=(
                         f"structured string literal {_preview(value)} is repeated across "
-                        f"functions (first use at line {first.lineno}) — extract a "
-                        f"module-level constant so the copies cannot drift."
+                        f"callable scopes (first use at line {first.lineno}) — reuse a named binding "
+                        "when they share ownership, or suppress with an independent-ownership rationale."
                     ),
+                    severity=Severity.WARNING,
                 )
                 for node in repeats
             )
@@ -182,24 +210,40 @@ class NoRepeatedStringLiteral(Rule):
         return diags
 
 
-def _canonical_constants(tree: ast.Module) -> dict[str, tuple[str, ...]]:
-    names: dict[str, list[str]] = defaultdict(list)
+def _canonical_constants(tree: ast.Module) -> dict[str, tuple[tuple[str, int], ...]]:
+    names: dict[str, list[tuple[str, int]]] = defaultdict(list)
+    binding_counts: dict[str, int] = defaultdict(int)
     for statement in tree.body:
         match statement:
-            case ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=str() as value)):
+            case ast.Assign(targets=[ast.Name(id=name)], value=value):
                 pass
-            case ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=str() as value)):
+            case ast.AnnAssign(target=ast.Name(id=name), value=value):
                 pass
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                binding_counts[statement.name] += 1
+                continue
             case _:
                 continue
-        if (
-            _PUBLIC_CONSTANT_RE.fullmatch(name) is not None
-            and len(name) >= _MIN_CONSTANT_NAME_LENGTH
-            and len(value) >= _MIN_LENGTH
-            and _is_structured(value)
-        ):
-            names[value].append(name)
-    return {value: tuple(bound_names) for value, bound_names in names.items()}
+        binding_counts[name] += 1
+        canonical_value = _canonical_value(name, value)
+        if canonical_value is not None:
+            names[canonical_value].append((name, statement.lineno))
+    return {
+        value: tuple((name, line) for name, line in bound_names if binding_counts[name] == 1)
+        for value, bound_names in names.items()
+    }
+
+
+def _canonical_value(name: str, value: ast.expr | None) -> str | None:
+    if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+        return None
+    is_canonical = (
+        _CONSTANT_RE.fullmatch(name) is not None
+        and len(name.lstrip("_")) >= _MIN_CONSTANT_NAME_LENGTH
+        and len(value.value) >= _MIN_LENGTH
+        and _is_candidate(value.value)
+    )
+    return value.value if is_canonical else None
 
 
 def _annotation_exprs(node: ast.AST) -> list[ast.expr]:
@@ -222,13 +266,12 @@ def _is_annotated(expr: ast.expr) -> bool:
     return isinstance(expr, ast.Attribute) and expr.attr == "Annotated"
 
 
-def _is_structured(value: str) -> bool:
-    return (
-        "\n" in value
-        or _SQL_KEYWORD_RE.search(value) is not None
-        or _IDENTIFIER_RE.fullmatch(value) is not None
-        or _URL_PATH_RE.fullmatch(value) is not None
-    )
+def _is_candidate(value: str) -> bool:
+    return _is_cross_scope_structured(value) or _IDENTIFIER_RE.fullmatch(value) is not None
+
+
+def _is_cross_scope_structured(value: str) -> bool:
+    return _SQL_SHAPE_RE.search(value) is not None or _URL_PATH_RE.fullmatch(value) is not None
 
 
 def _preview(value: str) -> str:
@@ -238,8 +281,7 @@ def _preview(value: str) -> str:
 
 
 def _is_skipped_path(path: Path) -> bool:
-    if path.name == "conftest.py":
-        return True
-    if path.name.startswith("test_"):
-        return True
-    return "tests" in path.parts
+    excluded_parts = frozenset(
+        {"benchmark", "benchmarks", "example", "examples", "fixture", "fixtures", "migration", "migrations", "snapshots"}
+    )
+    return is_test_path(path) or bool(excluded_parts.intersection(part.lower() for part in path.parts))

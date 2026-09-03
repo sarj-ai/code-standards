@@ -39,6 +39,7 @@
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
+      "no-docstring-type-restatement",
       "no-duplicate-dunder-all-entry",
       "no-fastapi-on-event",
       "no-file-level-escape-hatch-suppression",
@@ -46,28 +47,22 @@
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
-      "no-isinstance-union-chain",
-      "no-long-comment",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
-      "no-optional-tenant-predicate",
-      "no-query-with-many-joins",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
-      "no-redundant-literal-description",
-      "no-repeated-string-literal",
+      "no-repeated-structured-string-literal",
       "no-repeated-test-body",
+      "no-restated-closed-domain-description",
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
-      "no-sentinel-return-on-except",
-      "no-stdlib-logging",
+      "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
-      "no-tautological-expect",
-      "no-typed-doc-sections",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
       "no-vague-suppression-description",
+      "no-whole-request-response-payload-in-log",
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
       "prefer-class-row",
@@ -265,10 +260,8 @@
   "codes": {
     "python": [
       "SARJ002",
-      "SARJ003",
       "SARJ006",
       "SARJ008",
-      "SARJ009",
       "SARJ011",
       "SARJ012",
       "SARJ013",
@@ -276,7 +269,6 @@
       "SARJ015",
       "SARJ016",
       "SARJ018",
-      "SARJ019",
       "SARJ020",
       "SARJ021",
       "SARJ022",
@@ -297,10 +289,8 @@
       "SARJ049",
       "SARJ050",
       "SARJ051",
-      "SARJ052",
       "SARJ053",
       "SARJ054",
-      "SARJ056",
       "SARJ057",
       "SARJ059",
       "SARJ062",
@@ -322,7 +312,6 @@
       "SARJ087",
       "SARJ088",
       "SARJ089",
-      "SARJ091",
       "SARJ092",
       "SARJ093",
       "SARJ094",
@@ -362,7 +351,8 @@
       "SARJ431",
       "SARJ432",
       "SARJ434",
-      "SARJ435"
+      "SARJ435",
+      "SARJ436"
     ],
     "sql": [
       "SARJ101",
@@ -569,11 +559,25 @@
       "note": "Delete SARJ001 suppressions and baseline keys; syntax cannot prove that concurrent iterations preserve ordering, rate limits, resource safety, or transaction semantics."
     },
     {
+      "id": "SARJ003",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ003 suppressions and baseline keys. The rule incorrectly required match syntax even though type checkers prove exhaustive isinstance dispatch with assert_never; use SARJ080 only when optional match-style guidance is desired."
+    },
+    {
       "id": "SARJ007",
       "kind": "code",
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ007 suppressions and baseline keys; syntax cannot distinguish an accidental broad handler from a deliberate whole-operation fallback or terminal fault boundary."
+    },
+    {
+      "id": "SARJ009",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ009 suppressions and baseline keys. Syntax cannot distinguish an erased failure from an intentional parser, lookup, callback, protocol, or degraded-service sentinel contract; use typed result APIs and the upstream exception checks where their narrower contracts apply."
     },
     {
       "id": "SARJ010",
@@ -588,6 +592,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ017 suppressions and baseline keys; Ruff G004 owns f-string logging detection."
+    },
+    {
+      "id": "SARJ019",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ019 suppressions and baseline keys. Join count alone cannot establish query cost or architecture; review query plans, cardinality, and ownership for performance-sensitive reads."
     },
     {
       "id": "SARJ031",
@@ -632,11 +643,25 @@
       "note": "Delete SARJ047 suppressions and baseline keys; a computed real-clock delay can deliberately exercise timeout, TTL, or monotonic-clock behavior."
     },
     {
+      "id": "SARJ052",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ052 suppressions and baseline keys. A universal Loguru mandate is invalid for libraries, framework integrations, and packages without that dependency; application profiles that own this policy should configure Ruff TID251 banned-api with audited bridge exceptions."
+    },
+    {
       "id": "SARJ055",
       "kind": "code",
       "status": "removed",
       "replacement": null,
       "note": "renumbered to SARJ083 in sarj-python-lint 0.26.0, and SARJ083 was itself removed in 0.37.0 -- so there is nothing to renumber to. Delete the `sarj-noqa` comment and any suppression-baseline key."
+    },
+    {
+      "id": "SARJ056",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ056 suppressions and baseline keys. Optional tenant-shaped filters do not prove an authorization defect; enforce tenancy through authenticated repository contracts, authorization tests, or database policy."
     },
     {
       "id": "SARJ058",
@@ -693,6 +718,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ090 suppressions and baseline keys. Sentence count does not distinguish durable rationale from noise."
+    },
+    {
+      "id": "SARJ091",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ091 suppressions and baseline keys. Sentence count did not identify harmful documentation; retain semantic docstring rules and use Ruff W505 for physical line length."
     },
     {
       "id": "SARJ208",
@@ -898,11 +930,32 @@
       "note": "Removed in sarj-python-lint 0.37.0. Delete the `sarj-no-implicit-attribute-access` pre-commit hook; there is no replacement."
     },
     {
+      "id": "no-isinstance-union-chain",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. Local class declarations do not prove a closed union, and match is not required for type-checker exhaustiveness; use assert_never with either dispatch syntax."
+    },
+    {
       "id": "no-limit-offset",
       "kind": "sql",
       "status": "renamed",
       "replacement": "no-offset-pagination",
       "note": "Replace sarj-no-limit-offset with sarj-no-offset-pagination before upgrading."
+    },
+    {
+      "id": "no-long-comment",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. It inspected only selected docstrings, missed actual long comments, and could be defeated by a blank line or technical token; use narrower semantic comment and docstring rules."
+    },
+    {
+      "id": "no-optional-tenant-predicate",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. It cannot distinguish intentional global or admin filters from fail-open tenant isolation without caller authorization, connection scope, or row-security evidence."
     },
     {
       "id": "no-patching-system-under-test",
@@ -912,11 +965,39 @@
       "note": "Removed in sarj-python-lint 0.34.0 because syntax cannot reliably distinguish harmful patching from valid test seams. Delete the `sarj-no-patching-system-under-test` pre-commit hook."
     },
     {
+      "id": "no-query-with-many-joins",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. It misclassified bounded normalized lookups and independent CTE branches, while its split-read or denormalize remediation could worsen latency and consistency."
+    },
+    {
       "id": "no-raw-sql-in-tests",
       "kind": "python",
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; syntax cannot prove whether a production write API can represent the fixture state."
+    },
+    {
+      "id": "no-redundant-literal-description",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-restated-closed-domain-description",
+      "note": "Replace sarj-no-redundant-literal-description with sarj-no-restated-closed-domain-description before upgrading."
+    },
+    {
+      "id": "no-repeated-string-literal",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-repeated-structured-string-literal",
+      "note": "Replace sarj-no-repeated-string-literal with sarj-no-repeated-structured-string-literal before upgrading."
+    },
+    {
+      "id": "no-sentinel-return-on-except",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. Sentinel returns are commonly intentional parser, lookup, callback, protocol, and degraded-service contracts; use Ruff E722/S110/BLE001 for their narrower exception patterns and type checking for incompatible return contracts."
     },
     {
       "id": "no-sequential-await",
@@ -933,11 +1014,32 @@
       "note": "Remove this hook; fixed real-clock sleeps can deliberately exercise TTL and monotonic-clock behavior."
     },
     {
+      "id": "no-stdlib-logging",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. Reusable libraries should use standard logging, while Loguru-only applications can enforce their explicit policy with Ruff TID251 banned-api and scoped bridge exceptions."
+    },
+    {
+      "id": "no-tautological-expect",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-statically-truthy-assertion",
+      "note": "Replace sarj-no-tautological-expect with sarj-no-statically-truthy-assertion before upgrading."
+    },
+    {
       "id": "no-terraform-test-file",
       "kind": "iac",
       "status": "renamed",
       "replacement": "no-mocked-terraform-test-oracle",
       "note": "Replace sarj-no-terraform-test-file with sarj-no-mocked-terraform-test-oracle before upgrading."
+    },
+    {
+      "id": "no-typed-doc-sections",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-docstring-type-restatement",
+      "note": "Replace sarj-no-typed-doc-sections with sarj-no-docstring-type-restatement before upgrading."
     },
     {
       "id": "no-typing-cast",

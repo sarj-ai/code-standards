@@ -26,7 +26,25 @@ if TYPE_CHECKING:
 
 _BULK_NAMES = frozenset({"get_by_ids", "get_many"})
 _PAIR_SIZE = 2
-_DISTINCT_SINGLETON_MARKERS = frozenset({"cache", "cached", "lock", "locked", "mutex", "semaphore"})
+_DISTINCT_ACCESS_MARKERS = frozenset(
+    {
+        "authorization",
+        "authorize",
+        "cache",
+        "cached",
+        "consistency",
+        "lock",
+        "locked",
+        "mutex",
+        "permission",
+        "replica",
+        "semaphore",
+        "transaction",
+        "transactional",
+    }
+)
+_LOCKING_SQL = ("FOR UPDATE", "FOR SHARE", "SKIP LOCKED")
+_NEUTRAL_DECORATORS = frozenset({"override"})
 
 
 class _MethodPair(NamedTuple):
@@ -41,6 +59,7 @@ class _BulkResultTypes(NamedTuple):
 
 class _KeyContract(NamedTuple):
     shared: tuple[tuple[str, ast.expr], ...]
+    key_name: str
     key: ast.expr
 
 
@@ -49,14 +68,14 @@ class StoreGetDelegatesToBulkRead(Rule):
     id = "store-get-delegates-to-bulk-read"
     code = "SARJ421"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Compatible store `get` methods must delegate to the class's bulk read.",
+        summary="Store `get` should reuse an equivalent `get_many` or `get_by_ids` read path.",
         rationale=(
             "Independent singleton and bulk queries can drift in filtering, row conversion, authorization, "
             "and missing-row behavior while maintaining two database access paths."
         ),
         remediation=(
-            "Implement `get` through the compatible bulk method with a one-key collection and project its "
-            "documented zero-or-one result."
+            "Delegate only when tenant, authorization, consistency, cache, lock, transaction, conversion, and missing-row "
+            "semantics match. Otherwise add an exact SARJ421 suppression naming the concrete semantic difference."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
@@ -64,6 +83,7 @@ class StoreGetDelegatesToBulkRead(Rule):
             "Only concrete methods declared together in a production store module are inspected.",
             "The methods must have matching typed context parameters, compatible key/result types, and the same sync shape.",
             "Singleton implementations with explicit cache or lock identifiers are excluded because their access path differs intentionally.",
+            "Signature compatibility is advisory: dynamic helpers and behavior not visible in the two method bodies require review.",
         ),
         aliases=("get-delegates-to-get-many",),
         examples=(
@@ -76,9 +96,9 @@ class StoreGetDelegatesToBulkRead(Rule):
                         "app/user_store.py",
                         "class UserStore:\n"
                         "    async def get(self, user_id: UserId) -> User | None:\n"
-                        "        return await self.query_one(user_id)\n\n"
+                        "        return await self.fetchrow('SELECT * FROM users WHERE id = %s', user_id)\n\n"
                         "    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n"
-                        "        return await self.query_many(user_ids)\n",
+                        "        return await self.fetch('SELECT * FROM users WHERE id = ANY(%s)', user_ids)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/user_store.py"),
@@ -94,9 +114,9 @@ class StoreGetDelegatesToBulkRead(Rule):
                         "app/user_store.py",
                         "class UserStore:\n"
                         "    async def get(self, user_id: UserId) -> User | None:\n"
-                        "        rows = await self.get_many([user_id])\n"
-                        "        return rows[0] if rows else None\n\n"
-                        "    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n"
+                        "        rows = await self.get_by_ids([user_id])\n"
+                        "        return rows.get(user_id)\n\n"
+                        "    async def get_by_ids(self, user_ids: list[UserId]) -> dict[UserId, User]:\n"
                         "        return await self.query_many(user_ids)\n",
                     ),
                 ),
@@ -124,7 +144,8 @@ class StoreGetDelegatesToBulkRead(Rule):
                 continue
             singleton, bulk = pair
             if (
-                _has_distinct_singleton_access(singleton)
+                _has_distinct_access_semantics(singleton, bulk)
+                or _shares_private_read_helper(singleton, bulk)
                 or _calls_method(singleton, bulk.name)
                 or _calls_method(bulk, "get")
             ):
@@ -136,11 +157,11 @@ class StoreGetDelegatesToBulkRead(Rule):
                     col=singleton.col_offset + 1,
                     code=self.code,
                     message=(
-                        f"This store defines compatible `get` and `{bulk.name}` methods; call `{bulk.name}` with "
-                        "a one-key collection so singleton and bulk reads share one contract, or add an exact "
-                        "SARJ421 suppression explaining why their semantics differ."
+                        f"Annotated signatures suggest that `{statement.name}.get` and `{bulk.name}` expose the same "
+                        "keyed read through separate paths. Share one implementation only when their observable "
+                        "semantics match; otherwise suppress SARJ421 with the concrete difference."
                     ),
-                    severity=Severity.ERROR,
+                    severity=Severity.WARNING,
                 )
             )
         return diagnostics
@@ -149,6 +170,8 @@ class StoreGetDelegatesToBulkRead(Rule):
 def _compatible_pair(
     owner: ast.ClassDef,
 ) -> _MethodPair | None:
+    if not owner.name.endswith("Store"):
+        return None
     methods = [node for node in owner.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
     singletons = [node for node in methods if node.name == "get" and _is_concrete(node)]
     bulks = [node for node in methods if node.name in _BULK_NAMES and _is_concrete(node)]
@@ -166,6 +189,8 @@ def _compatible_pair(
     singleton_key = singleton_contract.key
     bulk_key = bulk_contract.key
     if not _same_shared_contract(singleton_contract.shared, bulk_contract.shared):
+        return None
+    if _normalized_key_name(singleton_contract.key_name) != _normalized_key_name(bulk_contract.key_name):
         return None
     result_key, result_value = bulk_types
     if ast.dump(singleton_key, include_attributes=False) != ast.dump(bulk_key, include_attributes=False):
@@ -185,7 +210,7 @@ def _is_concrete(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         for decorator in method.decorator_list
     ):
         return False
-    return not (
+    return not _raises_not_implemented(method) and not (
         len(method.body) == 1
         and (
             isinstance(method.body[0], ast.Pass)
@@ -197,6 +222,14 @@ def _is_concrete(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
             or isinstance(method.body[0], ast.Raise)
         )
     )
+
+
+def _raises_not_implemented(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    final_statement = method.body[-1]
+    if not isinstance(final_statement, ast.Raise) or final_statement.exc is None:
+        return False
+    exception = final_statement.exc.func if isinstance(final_statement.exc, ast.Call) else final_statement.exc
+    return _qualified_name(exception).split(".")[-1] == "NotImplementedError"
 
 
 def _positional_contract(method: ast.FunctionDef | ast.AsyncFunctionDef) -> _KeyContract | None:
@@ -215,7 +248,7 @@ def _positional_contract(method: ast.FunctionDef | ast.AsyncFunctionDef) -> _Key
         if parameter.annotation is None:
             return None
         shared_contract.append((parameter.arg, parameter.annotation))
-    return _KeyContract(tuple(shared_contract), key_arg.annotation)
+    return _KeyContract(tuple(shared_contract), key_arg.arg, key_arg.annotation)
 
 
 def _singleton_key_contract(method: ast.FunctionDef | ast.AsyncFunctionDef) -> _KeyContract | None:
@@ -234,8 +267,17 @@ def _bulk_key_contract(method: ast.FunctionDef | ast.AsyncFunctionDef) -> _KeyCo
         "typing.List",
         "typing.Sequence",
     }:
-        return _KeyContract(contract.shared, annotation.slice)
+        return _KeyContract(contract.shared, contract.key_name, annotation.slice)
     return None
+
+
+def _normalized_key_name(name: str) -> str:
+    normalized = name.rstrip("_")
+    if normalized.endswith("es"):
+        return normalized[:-2]
+    if normalized.endswith("s"):
+        return normalized[:-1]
+    return normalized
 
 
 def _same_shared_contract(singleton: tuple[tuple[str, ast.expr], ...], bulk: tuple[tuple[str, ast.expr], ...]) -> bool:
@@ -272,12 +314,51 @@ def _bulk_result_types(annotation: ast.expr | None) -> _BulkResultTypes | None:
     return None
 
 
-def _has_distinct_singleton_access(method: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return any(
-        part in _DISTINCT_SINGLETON_MARKERS
+def _has_distinct_access_semantics(
+    singleton: ast.FunctionDef | ast.AsyncFunctionDef,
+    bulk: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    return _behavior_signals(singleton) != _behavior_signals(bulk) or _decorators(singleton) != _decorators(bulk)
+
+
+def _behavior_signals(method: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    signals: set[str] = set()
+    for node in _method_nodes(method):
+        for name in _identifier_parts(node):
+            signals.update(part for part in name.lower().split("_") if part in _DISTINCT_ACCESS_MARKERS)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            signals.update(marker for marker in _LOCKING_SQL if marker in node.value.upper())
+        if isinstance(node, ast.keyword) and node.arg in {"for_update", "prepare", "read_only"}:
+            signals.add(f"{node.arg}={ast.dump(node.value, include_attributes=False)}")
+    return frozenset(signals)
+
+
+def _decorators(method: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    return frozenset(
+        name
+        for decorator in method.decorator_list
+        if (name := _qualified_name(decorator.func if isinstance(decorator, ast.Call) else decorator).split(".")[-1])
+        and name not in _NEUTRAL_DECORATORS
+    )
+
+
+def _shares_private_read_helper(
+    singleton: ast.FunctionDef | ast.AsyncFunctionDef,
+    bulk: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    return bool(_private_method_calls(singleton) & _private_method_calls(bulk))
+
+
+def _private_method_calls(method: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    return frozenset(
+        node.func.attr
         for node in _method_nodes(method)
-        for name in _identifier_parts(node)
-        for part in name.lower().split("_")
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in {"self", "cls"}
+        and node.func.attr.startswith("_")
+        and not node.func.attr.startswith("__")
     )
 
 

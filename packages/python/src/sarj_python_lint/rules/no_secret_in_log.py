@@ -29,14 +29,19 @@ if TYPE_CHECKING:
 _REDACTION_TOKENS = frozenset(
     {"prefix", "suffix", "redact", "redacted", "mask", "masked", "hash", "hint", "len", "length", "tag"}
 )
-_RAW_BLOB_TERMINALS = frozenset({"body", "bodies", "json", "payload", "payloads", "request", "response"})
-_WHOLE_OBJECT_SERIALIZERS = frozenset({"dict", "json", "model_dump"})
 
 
 def _is_raw_secret_reference(value: ast.expr) -> bool:
     match value:
         case ast.Name(id=name) | ast.Attribute(attr=name):
             return _is_secret_keyword(name)
+        case ast.Subscript(
+            value=receiver,
+            slice=ast.Slice(lower=None | ast.Constant(value=0), upper=None, step=None | ast.Constant(value=1)),
+        ):
+            return _is_raw_secret_reference(receiver)
+        case ast.Subscript(slice=ast.Constant(value=str() as key)):
+            return _is_secret_keyword(key)
         case _:
             return False
 
@@ -47,48 +52,35 @@ def _is_secret_keyword(name: str) -> bool:
     return is_secret_name(name)
 
 
-def _is_raw_blob_name(name: str) -> bool:
-    tokens = identifier_tokens(name)
-    return (
-        bool(tokens) and tokens[-1] in _RAW_BLOB_TERMINALS and not any(token in _REDACTION_TOKENS for token in tokens)
-    )
-
-
-def _is_raw_blob_reference(value: ast.expr) -> bool:
+def _unsafe_message_values(value: ast.expr) -> tuple[ast.expr, ...]:
     match value:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return _is_raw_blob_name(name)
-        case ast.Call(func=ast.Attribute(value=receiver, attr=method), args=[], keywords=[]):
-            return method in _WHOLE_OBJECT_SERIALIZERS and _is_raw_blob_reference(receiver)
+        case ast.JoinedStr(values=parts):
+            return tuple(
+                part.value
+                for part in parts
+                if isinstance(part, ast.FormattedValue) and _is_raw_secret_reference(part.value)
+            )
+        case ast.BinOp(op=ast.Mod(), right=right):
+            values = right.elts if isinstance(right, (ast.Tuple, ast.List)) else (right,)
+            return tuple(item for item in values if _is_raw_secret_reference(item))
+        case ast.Call(func=ast.Attribute(value=ast.Constant(value=str()), attr="format"), args=args, keywords=keywords):
+            values = (*args, *(keyword.value for keyword in keywords))
+            return tuple(item for item in values if _is_raw_secret_reference(item))
         case _:
-            return False
-
-
-def _unsafe_interpolation(value: ast.expr) -> ast.expr | None:
-    if not isinstance(value, ast.JoinedStr):
-        return None
-    return next(
-        (
-            part.value
-            for part in value.values
-            if isinstance(part, ast.FormattedValue)
-            and (_is_raw_secret_reference(part.value) or _is_raw_blob_reference(part.value))
-        ),
-        None,
-    )
+            return ()
 
 
 class NoSecretInLog(Rule):
     id: str = "no-secret-in-log"
     code: str = "SARJ012"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="A secret-named direct reference is passed to a logging call under a secret-like keyword.",
+        summary="A direct credential-like reference is passed to a recognized logging call.",
         rationale="Raw credentials in logs can spread to durable sinks and readers outside the request boundary.",
-        remediation="Omit the secret or log a deliberately redacted derivative under a redaction-specific name.",
+        remediation="Omit the credential or log only approved non-sensitive metadata through a centralized sanitizer.",
         category=RuleCategory.SECURITY,
         limitations=(
-            "Detection covers secret-named direct references passed by secret-named keyword to known logger calls.",
-            "Aliases, calls, subscripts, positional values, message interpolation, and values under non-secret keywords are not inspected.",
+            "Detection covers direct secret-named names, terminal attributes, constant secret-key subscripts, identity slices, f-string and literal format arguments, literal extra mappings, and immediate structured-logger bindings.",
+            "Logger recognition and secret classification are lexical; general aliases, arbitrary calls, dynamic containers, and interprocedural dataflow are not inspected.",
         ),
         examples=(
             RuleExample(
@@ -107,7 +99,7 @@ class NoSecretInLog(Rule):
                 files=(
                     ExampleFile.python(
                         "service.py",
-                        "token_prefix = token[:6]\nlogger.info('request', token_prefix=token_prefix)\n",
+                        "logger.info('request authenticated', auth_method='bearer', credential_present=token is not None)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -125,41 +117,61 @@ class NoSecretInLog(Rule):
             return []
         diags: list[Diagnostic] = []
         for node in nodes(tree, ast.Call):
-            if not _is_logging_call(node):
+            function = node.func
+            if not isinstance(function, ast.Attribute) or not _is_logging_call(node):
                 continue
+            message_index = 1 if function.attr == "log" else 0
             for arg in node.args:
-                unsafe = _unsafe_interpolation(arg)
-                if unsafe is not None:
-                    diags.append(
-                        Diagnostic(
-                            path=path,
-                            line=unsafe.lineno,
-                            col=unsafe.col_offset + 1,
-                            code=self.code,
-                            message="Raw secret or request/response payload interpolated into a log message — redact or omit it.",
-                        )
+                diags.extend(
+                    Diagnostic(
+                        path=path,
+                        line=unsafe.lineno,
+                        col=unsafe.col_offset + 1,
+                        code=self.code,
+                        message="Credential-like reference is interpolated into a log message and may expose sensitive data — omit it.",
                     )
+                    for unsafe in _unsafe_message_values(arg)
+                )
+            diags.extend(
+                _diagnostic(path, arg, self.code, "positional logging argument")
+                for arg in node.args[message_index + 1 :]
+                if _is_raw_secret_reference(arg)
+            )
             for kw in node.keywords:
                 # `**kwargs` has arg=None — nothing to inspect.
                 if kw.arg is None:
                     continue
-                leaks_secret = _is_raw_secret_reference(kw.value)
-                leaks_blob = _is_raw_blob_name(kw.arg) and _is_raw_blob_reference(kw.value)
-                if leaks_secret or leaks_blob:
-                    diags.append(
-                        Diagnostic(
-                            path=path,
-                            line=getattr(kw.value, "lineno", node.lineno),
-                            col=getattr(kw.value, "col_offset", node.col_offset) + 1,
-                            code=self.code,
-                            message=(
-                                f"Secret reference passed as `{kw.arg}` to a logging "
-                                "call leaks it to log sinks — redact "
-                                "(e.g. `token_prefix=token[:6]`) or omit it."
-                            ),
-                        )
+                if kw.arg == "extra" and isinstance(kw.value, ast.Dict):
+                    diags.extend(
+                        _diagnostic(path, value, self.code, "literal `extra` field")
+                        for value in kw.value.values
+                        if _is_raw_secret_reference(value)
                     )
+                elif _is_raw_secret_reference(kw.value):
+                    diags.append(_diagnostic(path, kw.value, self.code, f"`{kw.arg}` logging field"))
+            diags.extend(
+                _diagnostic(path, value, self.code, "structured logger binding")
+                for value in _bound_logger_values(function.value)
+            )
         return diags
+
+
+def _bound_logger_values(receiver: ast.expr) -> tuple[ast.expr, ...]:
+    if not isinstance(receiver, ast.Call) or not isinstance(receiver.func, ast.Attribute):
+        return ()
+    if receiver.func.attr not in {"bind", "contextualize"}:
+        return ()
+    return tuple(keyword.value for keyword in receiver.keywords if _is_raw_secret_reference(keyword.value))
+
+
+def _diagnostic(path: Path, value: ast.expr, code: str, context: str) -> Diagnostic:
+    return Diagnostic(
+        path=path,
+        line=value.lineno,
+        col=value.col_offset + 1,
+        code=code,
+        message=f"Credential-like reference in {context} may expose sensitive data to log sinks — omit it.",
+    )
 
 
 def _is_logging_call(node: ast.Call) -> bool:

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import ast
-from collections import Counter
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
@@ -13,9 +12,11 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
@@ -26,6 +27,7 @@ _MAX_KEYWORDS = 6
 
 # A builder only pays for itself once the same callee is built more than once.
 _MIN_CONSTRUCTIONS = 2
+_MIN_SHARED_KEYWORDS = 7
 
 # `dict(a=1, b=2, ...)` is a mapping literal, not a domain object.
 _DATA_CALLABLES = frozenset({"dict"})
@@ -37,47 +39,66 @@ _DATA_METHODS = frozenset({"update"})
 # `mock.assert_called_once_with(a=1, ...)` builds nothing: it pins the exact call
 # the code under test made, so defaulting its keywords away deletes the assertion.
 _MOCK_ASSERTION_PREFIX = "assert_"
+_PYTEST_SOURCES = frozenset({"pytest"})
+_SIMPLE_NAMESPACE_SOURCES = frozenset({"types"})
+_MOCK_CALL_SOURCES = frozenset({"unittest.mock"})
+
+
+class _CallHit(NamedTuple):
+    node: ast.Call
+    callee: str
+    keywords: frozenset[str]
+
+
+class _ReportableHit(NamedTuple):
+    node: ast.Call
+    keyword_count: int
+    shared_keyword_count: int
+    occurrence_count: int
 
 
 class RepeatedKwargHeavyCallInTest(Rule):
     id: str = "repeated-kwarg-heavy-call-in-test"
     code: str = "SARJ045"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Tests repeat calls with seven or more explicit keyword arguments.",
+        summary="Tests repeat at least seven explicit keyword names across calls to the same callee.",
         rationale=(
             "Large repeated argument lists duplicate incidental setup, bury scenario differences, and make signature "
-            "changes noisy across the suite."
+            "changes noisy within a test file."
         ),
         remediation=(
-            "Extract a scenario helper with sensible defaults and override only values relevant to each case; "
-            "suppress the finding when every argument is intentionally part of the assertion."
+            "Extract a scenario helper with sensible defaults, or use a parametrized case table, and override only "
+            "values relevant to each case. Suppress the finding when every argument intentionally specifies the "
+            "contract, an ordered state transition, or a retry."
         ),
         category=RuleCategory.TESTING,
         limitations=(
-            "Only repeated calls to the same stable callee with seven or more named arguments directly inside test functions are reported.",
-            "Mapping construction, mock assertions, fixtures, nested closures, and dynamic callees are allowed.",
+            "Only calls to the same syntactic callee that share at least seven named arguments directly inside test functions are reported.",
+            "Mapping construction, data-record helpers, mock assertions, fixtures, nested closures, generated files, and dynamic callees are allowed.",
         ),
         aliases=("kwarg-heavy-construction-in-test",),
         examples=(
             RuleExample(
                 example_id="repeated-wide-construction",
-                title="Tests repeat every constructor argument",
+                title="Tests repeat incidental order setup",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_call.py",
-                        "def test_style():\n"
-                        "    style = Style(\n"
-                        '        color="red", bgcolor="black", bold=True, dim=True, italic=True,\n'
-                        "        underline=True, blink=True, blink2=True, reverse=True,\n"
+                        "def test_pending_order():\n"
+                        "    request = CreateOrderRequest(\n"
+                        '        organization_id="org-1", actor_id="user-1", currency="SAR",\n'
+                        '        locale="ar-SA", channel="web", notify_customer=True, retry_limit=3,\n'
+                        '        status="pending",\n'
                         "    )\n"
-                        "    assert str(style)\n\n"
-                        "def test_style_again():\n"
-                        "    other = Style(\n"
-                        '        color="blue", bgcolor="white", bold=False, dim=True, italic=True,\n'
-                        "        underline=True, blink=True, blink2=True, reverse=True,\n"
+                        '    assert request.status == "pending"\n\n'
+                        "def test_completed_order():\n"
+                        "    request = CreateOrderRequest(\n"
+                        '        organization_id="org-1", actor_id="user-1", currency="SAR",\n'
+                        '        locale="ar-SA", channel="web", notify_customer=True, retry_limit=3,\n'
+                        '        status="completed",\n'
                         "    )\n"
-                        "    assert str(other)\n",
+                        '    assert request.status == "completed"\n',
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_call.py"),
@@ -86,24 +107,21 @@ class RepeatedKwargHeavyCallInTest(Rule):
             ),
             RuleExample(
                 example_id="construction-through-builder",
-                title="Tests override builder defaults",
+                title="Tests keep incidental order defaults in one helper",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_call.py",
-                        "def build_style(**overrides):\n"
-                        "    defaults = dict(\n"
-                        '        color="red", bgcolor="black", bold=True,\n'
-                        "        dim=True, italic=True, underline=True,\n"
-                        "        blink=True, blink2=True, reverse=True,\n"
-                        "    )\n"
-                        "    return Style(**(defaults | overrides))\n\n"
-                        "def test_style():\n"
-                        "    style = build_style()\n"
-                        "    assert str(style)\n\n"
-                        "def test_style_again():\n"
-                        '    other = build_style(color="blue", bgcolor="white", bold=False)\n'
-                        "    assert str(other)\n",
+                        "ORDER_DEFAULTS = {\n"
+                        '    "organization_id": "org-1", "actor_id": "user-1", "currency": "SAR",\n'
+                        '    "locale": "ar-SA", "channel": "web", "notify_customer": True, "retry_limit": 3,\n'
+                        "}\n\n"
+                        "def make_order(status):\n"
+                        "    return CreateOrderRequest(**ORDER_DEFAULTS, status=status)\n\n"
+                        "def test_pending_order():\n"
+                        '    assert make_order("pending").status == "pending"\n\n'
+                        "def test_completed_order():\n"
+                        '    assert make_order("completed").status == "completed"\n',
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_call.py"),
@@ -116,13 +134,13 @@ class RepeatedKwargHeavyCallInTest(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path):
+        if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
 
-        visitor = _KwargHeavyVisitor()
+        visitor = _KwargHeavyVisitor(ImportIndex.from_tree(tree))
         visitor.visit(tree)
         diags = [
             Diagnostic(
@@ -131,27 +149,36 @@ class RepeatedKwargHeavyCallInTest(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=(
-                    f"this test repeats a call with {count} explicit keywords, burying scenario differences "
-                    "in duplicated setup. Extract a helper with defaults and override only what this case changes; "
-                    "suppress SARJ045 when every argument is intentionally under test."
+                    f"this {count}-keyword call shares {shared_count} keyword names across {occurrence_count} calls, "
+                    "burying scenario differences in repeated setup. Extract a helper with defaults or a "
+                    "parametrized case table; suppress SARJ045 when every argument is intentionally under test."
                 ),
+                severity=Severity.WARNING,
             )
-            for node, count in visitor.reportable_hits()
+            for node, count, shared_count, occurrence_count in visitor.reportable_hits()
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
 
 class _KwargHeavyVisitor(ast.NodeVisitor):
-    def __init__(self) -> None:
+    def __init__(self, imports: ImportIndex) -> None:
         super().__init__()
+        self._imports: ImportIndex = imports
         self._func_names: list[str | None] = []
-        self.hits: list[tuple[ast.Call, int]] = []
+        self._class_names: list[str] = []
+        self.hits: list[_CallHit] = []
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-        self._func_names.append(node.name)
+        name = None if _is_pytest_fixture(node, self._imports) else node.name
+        self._func_names.append(name)
         self.generic_visit(node)
         self._func_names.pop()
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._class_names.append(node.name)
+        self.generic_visit(node)
+        self._class_names.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
@@ -165,31 +192,64 @@ class _KwargHeavyVisitor(ast.NodeVisitor):
         self._func_names.pop()
 
     def visit_Call(self, node: ast.Call) -> None:
-        if self._in_test_function() and not _is_data_callable(node.func) and not _is_mock_assertion(node.func):
-            named = [kw for kw in node.keywords if kw.arg is not None]
-            if len(named) > _MAX_KEYWORDS:
-                self.hits.append((node, len(named)))
+        if (
+            self._in_test_function()
+            and not _is_data_callable(node.func, self._imports)
+            and not _is_mock_assertion(node.func)
+        ):
+            keywords = frozenset(keyword.arg for keyword in node.keywords if keyword.arg is not None)
+            callee = _callee_identity(node.func, tuple(self._class_names))
+            if len(keywords) > _MAX_KEYWORDS and callee is not None:
+                self.hits.append(_CallHit(node=node, callee=callee, keywords=keywords))
         self.generic_visit(node)
 
-    def reportable_hits(self) -> list[tuple[ast.Call, int]]:
-        counts = Counter(name for node, _ in self.hits if (name := _callee_name(node.func)) is not None)
-        return [
-            (node, count)
-            for node, count in self.hits
-            # A callee with no stable name (a subscript, a call result) cannot be
-            # counted, so it can never clear the repetition bar.
-            if (name := _callee_name(node.func)) is not None and counts[name] >= _MIN_CONSTRUCTIONS
-        ]
+    def reportable_hits(self) -> list[_ReportableHit]:
+        reportable: list[_ReportableHit] = []
+        for hit in self.hits:
+            shared_counts = [
+                len(hit.keywords & other.keywords)
+                for other in self.hits
+                if other is not hit and other.callee == hit.callee
+            ]
+            repeated = [count for count in shared_counts if count >= _MIN_SHARED_KEYWORDS]
+            if len(repeated) + 1 < _MIN_CONSTRUCTIONS:
+                continue
+            reportable.append(
+                _ReportableHit(
+                    node=hit.node,
+                    keyword_count=len(hit.keywords),
+                    shared_keyword_count=max(repeated),
+                    occurrence_count=len(repeated) + 1,
+                )
+            )
+        return reportable
 
     def _in_test_function(self) -> bool:
         nearest = self._func_names[-1] if self._func_names else None
         return nearest is not None and nearest.startswith("test_")
 
 
-def _is_data_callable(func: ast.expr) -> bool:
-    if isinstance(func, ast.Name):
-        return func.id in _DATA_CALLABLES
-    return isinstance(func, ast.Attribute) and func.attr in _DATA_METHODS
+def _is_data_callable(func: ast.expr, imports: ImportIndex) -> bool:
+    if isinstance(func, ast.Name) and func.id in _DATA_CALLABLES and imports.builtin_is_unshadowed(func.id):
+        return True
+    if isinstance(func, ast.Attribute) and func.attr in _DATA_METHODS:
+        return True
+    return imports.resolves(func, sources=_SIMPLE_NAMESPACE_SOURCES, symbol="SimpleNamespace") or imports.resolves(
+        func,
+        sources=_MOCK_CALL_SOURCES,
+        symbol="call",
+    )
+
+
+def _is_pytest_fixture(node: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
+    return any(
+        imports.resolves(
+            decorator.func if isinstance(decorator, ast.Call) else decorator,
+            sources=_PYTEST_SOURCES,
+            symbol="fixture",
+        )
+        for decorator in node.decorator_list
+    )
 
 
 def _is_mock_assertion(func: ast.expr) -> bool:
@@ -204,3 +264,10 @@ def _callee_name(func: ast.expr) -> str | None:
         parent = _callee_name(func.value)
         return f"{parent}.{func.attr}" if parent is not None else None
     return None
+
+
+def _callee_identity(func: ast.expr, class_names: tuple[str, ...]) -> str | None:
+    name = _callee_name(func)
+    if name is None or not class_names or name.split(".", maxsplit=1)[0] not in {"self", "cls"}:
+        return name
+    return f"{'.'.join(class_names)}:{name}"

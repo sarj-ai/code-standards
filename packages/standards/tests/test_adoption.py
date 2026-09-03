@@ -433,7 +433,7 @@ def test_setup_losslessly_rerenders_schema_three_as_schema_four(tmp_path: Path) 
         '[dest]\npython = "."\ntypescript = "."\n'
         '[hooks]\nmanager = "none"\n'
         '[verify]\npaths = ["src"]\n'
-        '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ052"]\n'
+        '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ012"]\n'
         '[text]\nexclude = ["CHANGELOG.md"]\n'
         '[doctor]\nexclude = ["vendor/**"]\n'
         '[baseline]\ndiagnostics = "diagnostics.json"\n'
@@ -454,7 +454,7 @@ def test_setup_losslessly_rerenders_schema_three_as_schema_four(tmp_path: Path) 
     assert migrated.verify_paths == ("src",)
     assert migrated.hook_manager == "none"
     assert migrated.excluded_paths == ("generated/**",)
-    assert migrated.excluded_rules == ("python:SARJ052",)
+    assert migrated.excluded_rules == ("python:SARJ012",)
     assert migrated.text_excluded_paths == ("CHANGELOG.md",)
     assert migrated.doctor_excluded_paths == ("vendor/**",)
     assert migrated.diagnostic_baseline == "diagnostics.json"
@@ -513,8 +513,8 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
         '[dest]\npython = "."\ntypescript = "."\n\n'
         '[verify]\npaths = ["src"]\n\n'
         '[hooks]\nmanager = "none"\n\n'
-        '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ052"]\n\n'
-        '[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ052"]\nreason = "legacy fixtures"\n\n'
+        '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ012"]\n\n'
+        '[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012"]\nreason = "legacy fixtures"\n\n'
         "[consumer]\nkeep = true\n",
         encoding="utf-8",
     )
@@ -528,9 +528,9 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
     assert adopted.verify_paths == ("src",)
     assert adopted.hook_manager == "none"
     assert adopted.excluded_paths == ("generated/**",)
-    assert adopted.excluded_rules == ("python:SARJ052",)
+    assert adopted.excluded_rules == ("python:SARJ012",)
     assert adopted.exclusion_overrides == (
-        manifest.ExclusionOverride(("tests/**",), ("python:SARJ052",), "legacy fixtures"),
+        manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), "legacy fixtures"),
     )
     assert "[consumer]\nkeep = true" in manifest_path.read_text(encoding="utf-8")
     assert not (tmp_path / ".pre-commit-config.yaml").exists()
@@ -539,7 +539,7 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
 def test_setup_refuses_to_discard_a_schema_less_python_baseline(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     baseline = tmp_path / "python-baseline.json"
-    baseline.write_text('{"src/app.py":{"SARJ052":1}}\n', encoding="utf-8")
+    baseline.write_text('{"src/app.py":{"SARJ012":1}}\n', encoding="utf-8")
     manifest_path = tmp_path / manifest.MANIFEST_NAME
     manifest_path.write_text(
         'version = "0.42.0"\nconfigs = ["ruff"]\n\n'
@@ -554,7 +554,7 @@ def test_setup_refuses_to_discard_a_schema_less_python_baseline(tmp_path: Path) 
     assert proc.returncode == 2
     assert "cannot losslessly migrate legacy [gradual].python_baseline" in proc.stderr
     assert manifest_path.read_bytes() == before
-    assert baseline.read_text(encoding="utf-8") == '{"src/app.py":{"SARJ052":1}}\n'
+    assert baseline.read_text(encoding="utf-8") == '{"src/app.py":{"SARJ012":1}}\n'
 
 
 def test_doctor_repair_uses_the_same_one_way_manifest_migration(tmp_path: Path) -> None:

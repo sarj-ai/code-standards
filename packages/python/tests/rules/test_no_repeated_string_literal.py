@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
 
 
@@ -40,6 +41,7 @@ def upsert():
     diags = _check(src)
     assert len(diags) == 2
     assert diags[0].code == "SARJ024"
+    assert all(diagnostic.severity is Severity.WARNING for diagnostic in diags)
     assert "first use at line 3" in diags[0].message
 
 
@@ -76,7 +78,7 @@ def c():
     assert len(_check(three)) == 2
 
 
-def test_flags_constraint_name_across_methods():
+def test_does_not_couple_long_identifiers_without_canonical_owner():
     constraint = "custom_scenario_organization_id_name_key"
     assert len(constraint) >= 40
     src = f"""
@@ -88,7 +90,7 @@ class Store:
     def delete(self):
         return "{constraint}"
 """
-    assert len(_check(src)) == 2
+    assert _check(src) == []
 
 
 def test_allows_single_occurrence():
@@ -282,7 +284,7 @@ def test_syntax_error_returns_no_diagnostics():
 
 
 def test_message_previews_are_truncated():
-    long_value = "SELECT " + "x" * 120
+    long_value = "SELECT " + "x" * 120 + " FROM organization"
     src = f"""
 def a():
     return "{long_value}"
@@ -309,7 +311,7 @@ class Store:
     assert len(_check(src)) == 2
 
 
-def test_flags_dotted_identifier_across_functions():
+def test_does_not_couple_dotted_identifiers_across_functions():
     ident = "organization.custom_scenario.name_index.key_x"
     assert len(ident) >= 40
     src = f"""
@@ -320,7 +322,7 @@ def b():
 def c():
     return "{ident}"
 """
-    assert len(_check(src)) == 2
+    assert _check(src) == []
 
 
 def test_flags_long_route_template_across_functions():
@@ -391,12 +393,12 @@ def sibling():
     assert len(_check(src)) == 2
 
 
-def test_allows_two_module_level_lambdas():
+def test_flags_two_module_level_lambdas():
     src = f'''
 f = lambda: """{_LONG_SQL}"""
 g = lambda: """{_LONG_SQL}"""
 '''
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_scaffolding_exclusion_is_per_occurrence_not_per_value():
@@ -437,7 +439,7 @@ def b():
     assert _check(src) == []
 
 
-def test_identifier_at_length_floor_is_flagged():
+def test_identifier_at_length_floor_is_not_structured_by_itself():
     ident40 = "a" * 40
     src = f"""
 def a():
@@ -447,7 +449,7 @@ def b():
 def c():
     return "{ident40}"
 """
-    assert len(_check(src)) == 2
+    assert _check(src) == []
 
 
 def test_module_level_plus_single_function_should_not_flag():
@@ -543,26 +545,17 @@ def b(sql: Annotated[str, Doc("doc")] = """{_LONG_SQL}"""): ...
     assert len(_check(src)) == 1
 
 
-def test_annotation_guard_does_not_exempt_a_forward_ref_used_as_a_key():
+def test_runtime_forward_ref_string_does_not_imply_shared_ownership():
     src = f"""
 def a():
     return "{_FORWARD_REF}"
 def b():
     return "{_FORWARD_REF}"
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "WONTFIX (precision): a lone uppercase SQL keyword in prose ('...FROM the menu...') "
-        "reads as structural. Tightening to require SQL-ish adjacency would create real-SQL "
-        "false-negatives for bare 'GROUP BY col' / 'ORDER BY col' / single-clause fragments, "
-        "so the FP is kept over risking missed real drift."
-    ),
-)
-def test_uppercase_sql_keyword_in_prose_should_not_flag():
+def test_uppercase_sql_keyword_in_prose_does_not_flag():
     prose = "Please choose one option FROM the menu list below now"
     assert len(prose) >= 40
     src = f"""
@@ -625,14 +618,13 @@ def load():
     assert "`QUERY`" in diagnostic.message
 
 
-def test_canonical_constant_may_be_declared_after_the_function():
+def test_later_constant_is_not_recommended_to_an_earlier_function():
     src = f'''def load():
     return execute("""{_LONG_SQL}""")
 
 QUERY = """{_LONG_SQL}"""
 '''
-    [diagnostic] = _check(src)
-    assert diagnostic.line == 2
+    assert _check(src) == []
 
 
 def test_every_function_copy_reuses_the_canonical_constant():
@@ -649,13 +641,80 @@ def two():
     assert all("`QUERY`" in diagnostic.message for diagnostic in diagnostics)
 
 
-@pytest.mark.parametrize("name", ["_QUERY", "query", "Query", "QUERY_"])
+@pytest.mark.parametrize("name", ["query", "Query", "QUERY_"])
 def test_non_public_or_non_upper_snake_binding_is_not_canonical(name: str):
     src = f'''{name} = """{_LONG_SQL}"""
 
 def load():
     return execute("""{_LONG_SQL}""")
 '''
+    assert _check(src) == []
+
+
+def test_private_uppercase_module_constant_is_canonical():
+    src = f'''_QUERY = """{_LONG_SQL}"""
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    [diagnostic] = _check(src)
+    assert "`_QUERY`" in diagnostic.message
+
+
+def test_rebound_module_constant_is_not_recommended():
+    src = f'''QUERY = """{_LONG_SQL}"""  # noqa: S608 -- builds the analyzer fixture
+QUERY = object()
+
+def load():
+    return execute("""{_LONG_SQL}""")
+'''
+    assert _check(src) == []
+
+
+def test_lowercase_complete_sql_is_structured():
+    sql = "select id, name, created_at from organization where active = true"
+    src = f"""def first():
+    return "{sql}"
+
+def second():
+    return "{sql}"
+"""
+    assert len(_check(src)) == 1
+
+
+def test_multiline_prose_is_not_structured_by_newline_alone():
+    prose = "This is a deliberately long sentence.\nIt remains ordinary user-facing prose."
+    src = f"""def first():
+    return {prose!r}
+
+def second():
+    return {prose!r}
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("filename", ["thing_test.py", "test/queries.py", "fixtures/queries.py", "migrations/v1.py"])
+def test_skips_test_fixture_and_migration_paths(filename: str):
+    src = f'''def first():
+    return """{_LONG_SQL}"""
+def second():
+    return """{_LONG_SQL}"""
+'''
+    assert _check(src, filename=filename) == []
+
+
+def test_match_case_literals_do_not_receive_constant_advice():
+    value = "/api/v2/organizations/{organization_id}/memberships"
+    src = f"""def first(subject):
+    match subject:
+        case "{value}":
+            return 1
+
+def second(subject):
+    match subject:
+        case "{value}":
+            return 2
+"""
     assert _check(src) == []
 
 

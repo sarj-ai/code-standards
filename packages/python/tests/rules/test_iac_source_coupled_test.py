@@ -33,7 +33,7 @@ def test_follows_alias_normalization_regex_and_context_manager() -> None:
                 assert re.search("prevent_destroy", normalized)
     """)
     assert len(diagnostics) == 1
-    assert diagnostics[0].severity is Severity.ERROR
+    assert diagnostics[0].severity is Severity.WARNING
 
 
 @pytest.mark.parametrize(
@@ -133,6 +133,55 @@ def test_generated_tmp_output_is_not_repository_source() -> None:
             source = (tmp_path / "main.tf").read_text()
             assert "resource" in source
     """)
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "read",
+    [
+        "with Path('main.tf').open() as handle:\n        source = handle.read()",
+        "with io.open('main.tf') as handle:\n        source = handle.readlines()",
+        "source = Path('main.tf').read_bytes().decode()",
+    ],
+)
+def test_follows_path_open_io_open_and_decoded_bytes(read: str) -> None:
+    body = textwrap.indent(read, "    ")
+    diagnostics = check(f'def test_policy():\n{body}\n    assert "prevent_destroy" in source\n')
+    assert len(diagnostics) == 1
+
+
+def test_with_suffix_recomputes_the_source_kind() -> None:
+    assert (
+        check("""
+        def test_notes():
+            source = Path("main.tf").with_suffix(".txt").read_text()
+            assert "resource" in source
+        """)
+        == []
+    )
+    assert (
+        len(
+            check("""
+        def test_policy():
+            source = Path("notes.txt").with_name("main.tf").read_text()
+            assert "resource" in source
+        """)
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize("fixture", ["tmp_path_factory", "tmpdir_factory"])
+def test_factory_generated_output_is_not_repository_source(fixture: str) -> None:
+    assert (
+        check(f"""
+        def test_render({fixture}):
+            output = {fixture}.mktemp("terraform") / "main.tf"
+            output.write_text(render_terraform())
+            source = output.read_text()
+            assert "resource" in source
+        """)
         == []
     )
 

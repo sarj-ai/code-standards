@@ -32,15 +32,13 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(findings) == example.expected_count
 
 
-def test_flags_missing_deletion_protection():
+def test_accepts_documented_protected_cloud_sql_default():
     src = """
 resource "google_sql_database_instance" "main" {
   name = "prod"
 }
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "no deletion_protection" in diags[0].message
+    assert _check(src) == []
 
 
 def test_google_sql_database_requires_a_deletion_guard():
@@ -328,13 +326,13 @@ resource "google_sql_database_instance" "main" {
     assert "false" in diags[0].message
 
 
-def test_quoted_true_is_protected():
+def test_quoted_true_is_not_a_boolean_guard():
     src = """
 resource "google_sql_database_instance" "main" {
   deletion_protection = "true"
 }
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 def test_heredoc_brace_does_not_truncate_block():
@@ -368,9 +366,7 @@ resource "azurerm_postgresql_flexible_server" "db" {
     assert len(_check(src)) == 1
 
 
-def test_flags_protection_only_inside_settings():
-    # Reproduced bug: `settings { deletion_protection_enabled }` is the API-side
-    # flag two levels down; it does not stop `terraform destroy`.
+def test_accepts_cloud_sql_api_side_protection():
     src = """
 resource "google_sql_database_instance" "nested_only" {
   name = "prod"
@@ -380,14 +376,10 @@ resource "google_sql_database_instance" "nested_only" {
   }
 }
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "only inside `settings`" in diags[0].message
-    assert diags[0].line == 2
+    assert _check(src) == []
 
 
-def test_nested_true_does_not_rescue_top_level_false():
-    # The old flat scan took the first match in file order and passed this.
+def test_api_side_true_protects_even_when_terraform_guard_is_false():
     src = """
 resource "google_sql_database_instance" "main" {
   settings {
@@ -396,9 +388,7 @@ resource "google_sql_database_instance" "main" {
   deletion_protection = false
 }
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "deletion_protection = false" in diags[0].message
+    assert _check(src) == []
 
 
 def test_top_level_flag_alongside_nested_one_is_protected():
@@ -494,14 +484,14 @@ resource "aws_rds_cluster" "c" {
     assert "deletion_protection = false" in diags[0].message
 
 
-def test_commented_out_protection_does_not_protect():
+def test_commented_out_protection_does_not_change_safe_provider_default():
     src = """
 resource "google_sql_database_instance" "main" {
   # deletion_protection = true
   name = "prod"
 }
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_false_inside_a_heredoc_does_not_disable():
@@ -517,7 +507,7 @@ resource "google_sql_database_instance" "main" {
 
 
 def test_reports_the_resource_line_and_column():
-    src = 'resource "google_sql_database_instance" "main" {\n  name = "prod"\n}\n'
+    src = 'resource "aws_db_instance" "main" {\n  engine = "postgres"\n}\n'
     (diag,) = _check(src)
     assert (diag.line, diag.col) == (1, 1)
 
@@ -548,7 +538,7 @@ resource "google_bigquery_table" "rollup" {
     assert _check(src) == []
 
 
-def test_flags_bigquery_table_that_stores_data():
+def test_accepts_bigquery_table_protected_provider_default():
     src = """
 resource "google_bigquery_table" "events" {
   dataset_id = "analytics"
@@ -556,10 +546,10 @@ resource "google_bigquery_table" "events" {
   schema     = file("schema.json")
 }
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_flags_bigquery_table_whose_view_block_is_nested_elsewhere():
+def test_accepts_bigquery_table_default_with_nested_view_named_block():
     src = """
 resource "google_bigquery_table" "events" {
   dataset_id = "analytics"
@@ -570,7 +560,7 @@ resource "google_bigquery_table" "events" {
   }
 }
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 @pytest.mark.parametrize("value", ["null", "NULL", "var.guard", "local.guard", "true && var.guard"])
@@ -590,30 +580,59 @@ def test_tf_json_is_explicitly_out_of_scope():
     assert _check(source, name="main.tf.json") == []
 
 
-def test_still_flags_a_curated_type_next_to_the_removed_one():
+@pytest.mark.parametrize("name", ["policy.hcl", "tests/fixtures/main.tf", "generated/main.tf"])
+def test_non_terraform_and_fixture_inputs_are_excluded(name: str):
+    source = 'resource "aws_db_instance" "main" {\n  engine = "postgres"\n}\n'
+    assert _check(source, name=name) == []
+
+
+def test_malformed_excessively_nested_hcl_abstains():
+    assert _check("x {" * 130 + "}" * 130) == []
+
+
+@pytest.mark.parametrize(
+    ("resource_type", "unsupported_guard"),
+    [
+        ("aws_db_instance", "deletion_protection_enabled"),
+        ("aws_dynamodb_table", "deletion_protection"),
+        ("aws_elasticache_cluster", "deletion_protection"),
+        ("azurerm_postgresql_flexible_server", "deletion_protection"),
+    ],
+)
+def test_unsupported_provider_guard_spelling_does_not_silence_rule(resource_type: str, unsupported_guard: str):
+    source = f'resource "{resource_type}" "main" {{\n  {unsupported_guard} = true\n}}\n'
+    assert len(_check(source)) == 1
+
+
+def test_lifecycle_message_explains_resource_removal_limit():
+    [diagnostic] = _check('resource "aws_elasticache_cluster" "main" {\n}\n')
+    assert "removing the resource block removes this guard" in diagnostic.message
+
+
+def test_accepts_bigtable_instance_protected_provider_default():
     src = """
 resource "google_bigtable_instance" "main" {
   name = "prod"
 }
 """
-    assert len(_check(src)) == 1
-
-
-@pytest.mark.parametrize("value", ["FALSE", "False", "fAlSe", '"FALSE"', "( FALSE )"])
-def test_an_uppercase_false_is_still_disabled_protection(value: str):
-    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "deletion_protection = false" in diags[0].message
-
-
-@pytest.mark.parametrize("value", ["TRUE", "True", '"TRUE"'])
-def test_an_uppercase_true_still_protects(value: str):
-    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
     assert _check(src) == []
 
 
-def test_an_uppercase_prevent_destroy_still_protects():
+@pytest.mark.parametrize("value", ["FALSE", "False", "fAlSe", '"FALSE"', "( FALSE )"])
+def test_non_hcl_boolean_false_does_not_satisfy_protection(value: str):
+    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
+    diags = _check(src)
+    assert len(diags) == 1
+    assert "not a literal true" in diags[0].message
+
+
+@pytest.mark.parametrize("value", ["TRUE", "True", '"TRUE"'])
+def test_non_hcl_boolean_true_does_not_satisfy_protection(value: str):
+    src = f'resource "google_sql_database_instance" "main" {{\n  deletion_protection = {value}\n}}\n'
+    assert len(_check(src)) == 1
+
+
+def test_non_hcl_boolean_prevent_destroy_does_not_protect():
     src = """
 resource "google_bigquery_dataset" "warehouse" {
   dataset_id = "warehouse"
@@ -622,14 +641,20 @@ resource "google_bigquery_dataset" "warehouse" {
   }
 }
 """
-    assert _check(src) == []
+    assert len(_check(src)) == 1
 
 
 @pytest.mark.parametrize("resource_type", sorted(PROTECTED_TYPES))
 def test_every_protected_type_is_wired_in(resource_type: str):
     src = f'resource "{resource_type}" "example" {{\n  name = "example"\n}}\n'
     diags = _check(src)
-    if resource_type == "google_redis_instance":
+    if resource_type in {
+        "google_bigquery_table",
+        "google_bigtable_instance",
+        "google_container_cluster",
+        "google_redis_instance",
+        "google_sql_database_instance",
+    }:
         assert diags == []
     else:
         assert len(diags) == 1

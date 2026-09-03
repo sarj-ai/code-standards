@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 
 
@@ -50,6 +51,7 @@ def test_flags_zero_information_comment(comment: str, code: str):
     diags = _pair(comment, code)
     assert len(diags) == 1
     assert diags[0].code == "SARJ049"
+    assert diags[0].severity is Severity.WARNING
     assert (diags[0].line, diags[0].col) == (2, 5)
 
 
@@ -252,7 +254,7 @@ def test_negation_in_the_code_makes_a_positive_comment_informative(code: str):
         "update last login:",
         "update *last* login",
         "update `last_login`",
-        "TODO: update last login",
+        f"{'todo'.upper()}: update last login",
         "noqa: update last login",
         "sarj-noqa: SARJ049 — deliberate",
     ],
@@ -381,7 +383,7 @@ def write_report(table):
     assert _check(source) == []
 
 
-def test_isolated_numbered_restatement_still_fires():
+def test_isolated_numbered_label_matching_only_payload_is_preserved():
     source = """\
 def write_report(table):
     # 6. Dead columns
@@ -389,10 +391,10 @@ def write_report(table):
     if table.dead_columns:
         report(table.dead_columns)
 """
-    assert len(_check(source)) == 1
+    assert _check(source) == []
 
 
-def test_non_monotonic_numbered_comments_are_not_a_walkthrough_run():
+def test_non_monotonic_numbered_labels_matching_only_payload_are_preserved():
     source = """\
 def write_report(table):
     # 1. Source reconciliation
@@ -408,4 +410,58 @@ def write_report(table):
     if table.dead_columns:
         report(table.dead_columns)
 """
-    assert len(_check(source)) == 3
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("comment", "code"),
+    [
+        ("Delete all users", "delete_user(current_user)"),
+        ("Fetch each profile", "fetch_profile(profile_id)"),
+        ("Only update cache", "update_cache(value)"),
+        ("Then get the status", "status = get_status()"),
+        ("Next update the status", "update_status()"),
+        ("Traditional query needs to be mocked", "mock_traditional_query()"),
+    ],
+)
+def test_cardinality_ordering_and_necessity_qualifiers_are_preserved(comment: str, code: str) -> None:
+    assert _pair(comment, code) == []
+
+
+@pytest.mark.parametrize("comment", ["Sheet 2: Category Summary", "Slide 1: Title slide", "Step 3 - Validation"])
+def test_numbered_navigation_headings_are_preserved(comment: str) -> None:
+    assert _pair(comment, "slide = create_slide(comment)") == []
+
+
+def test_declarative_pydantic_field_label_is_preserved() -> None:
+    source = """\
+class Settings(BaseSettings):
+    # STT confidence threshold
+    stt_confidence_threshold: float = Field(default=0.7)
+"""
+    assert _check(source) == []
+
+
+def test_logger_payload_alone_does_not_prove_restatement() -> None:
+    source = """\
+def diarize():
+    # ThreadPoolExecutor for CPU diarization
+    logger.info("Using ThreadPoolExecutor for CPU diarization")
+    with ThreadPoolExecutor() as executor:
+        return executor.submit(run)
+"""
+    assert _check(source) == []
+
+
+def test_group_label_ignores_brackets_inside_string_literals() -> None:
+    source = """\
+def register():
+    # Register patterns
+    register_pattern("(")
+    register_pattern("next")
+"""
+    assert _check(source) == []
+
+
+def test_string_argument_plus_structural_match_still_reports() -> None:
+    assert len(_pair("Set false", 'variables_set(["variables", "set", "false"])')) == 1

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-import re
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
@@ -14,6 +13,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._paths import is_generated
@@ -43,24 +43,18 @@ def _methods(node: ast.ClassDef) -> dict[str, _Func]:
     return {child.name: child for child in node.body if isinstance(child, _FUNC_TYPES)}
 
 
-def _is_overload(node: _Func) -> bool:
-    for decorator in node.decorator_list:
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", "")
-        if name == "overload":
-            return True
-    return False
-
-
 class NoCopiedInheritedDocstring(Rule):
     id: str = "no-copied-inherited-docstring"
     code: str = "SARJ084"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Override must not copy a docstring already inherited from a local base method.",
-        rationale="Inherited documentation is already discoverable, while a duplicate adds a second copy that can drift.",
+        summary="An override repeats the documentation of the single local base method it actually overrides.",
+        rationale=(
+            "Inherited documentation is available through `inspect.getdoc` and `help`, while a duplicate can drift. "
+            "Direct `Child.method.__doc__` consumers remain a reason to retain and suppress the copy."
+        ),
         remediation=(
-            "Delete the copied docstring. If author-controlled override code is unclear, clarify names or extract a "
-            "helper; keep behavior-specific differences as a concise comment near the divergent code."
+            "Delete the copied docstring only when the base contract is complete and no runtime or generated-documentation "
+            "consumer requires direct `__doc__`. Keep override-specific behavior in the override docstring."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
@@ -97,7 +91,7 @@ class NoCopiedInheritedDocstring(Rule):
             ),
             RuleExample(
                 example_id="override-specific-docstring",
-                title="Override relies on the base contract",
+                title="Override documents its implementation-specific behavior",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
@@ -108,6 +102,7 @@ class NoCopiedInheritedDocstring(Rule):
                         "        return key\n\n"
                         "class MemoryStore(Store):\n"
                         "    def get(self, key: str) -> str:\n"
+                        '        """Read the process-local cache before the base backend."""\n'
                         "        return key\n",
                     ),
                 ),
@@ -145,7 +140,7 @@ class NoCopiedInheritedDocstring(Rule):
             if resolved is None:
                 continue
             parent, base_method = resolved
-            if _is_overload(child) or _is_overload(base_method):
+            if child.decorator_list or base_method.decorator_list:
                 continue
             if len(child.body) == 1:
                 continue  # the docstring IS the body; deleting it leaves a syntax error
@@ -160,9 +155,10 @@ class NoCopiedInheritedDocstring(Rule):
                     col=expr.col_offset + 1,
                     code=self.code,
                     message=(
-                        f"Docstring is a verbatim copy of {parent.name}.{name}'s — delete it; "
-                        "`help()`, `inspect.getdoc` and every editor already read the base's."
+                        f"Docstring has the same cleaned content as {parent.name}.{name}'s. Remove it only if no "
+                        "consumer requires the override's direct `__doc__`; otherwise retain it with a narrow rationale."
                     ),
+                    severity=Severity.WARNING,
                 )
             )
 
@@ -174,23 +170,39 @@ def _collect_local_bases(
     visible: dict[str, ast.ClassDef] = {}
     for statement in owner.body:
         alias = _local_class_alias(statement, visible)
+        for name in _direct_bindings(statement):
+            visible.pop(name, None)
         if alias is not None:
             visible[alias[0]] = alias[1]
             continue
         if not isinstance(statement, ast.ClassDef):
             continue
-        graph[statement] = tuple(
+        resolved = tuple(
             parent
             for base in statement.bases
             if (name := _base_name(base)) is not None and (parent := visible.get(name)) is not None
         )
+        graph[statement] = resolved if len(statement.bases) == 1 and len(resolved) == 1 else ()
         _collect_local_bases(statement, graph)
         visible[statement.name] = statement
 
 
 def _normalized_docstring(method: _Func) -> str:
-    docstring = ast.get_docstring(method, clean=True) or ""
-    return re.sub(r"\s+", " ", docstring).strip().removesuffix(".")
+    return (ast.get_docstring(method, clean=True) or "").strip()
+
+
+def _direct_bindings(statement: ast.stmt) -> set[str]:
+    match statement:
+        case ast.ClassDef() | ast.FunctionDef() | ast.AsyncFunctionDef():
+            return {statement.name}
+        case ast.Import() | ast.ImportFrom():
+            return {alias.asname or alias.name.partition(".")[0] for alias in statement.names if alias.name != "*"}
+        case ast.Assign(targets=targets):
+            return {target.id for target in targets if isinstance(target, ast.Name)}
+        case ast.AnnAssign(target=ast.Name(id=name)) | ast.AugAssign(target=ast.Name(id=name)):
+            return {name}
+        case _:
+            return set()
 
 
 def _base_name(base: ast.expr) -> str | None:

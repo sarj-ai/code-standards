@@ -89,17 +89,17 @@ def test_runner_exercises_committed_rule_in_isolated_repositories(tmp_path: Path
     unsafe.mkdir()
     clean.mkdir()
     (unsafe / "service.py").write_text(
-        "import logging\n",
+        "logger.info('request', token=token)\n",
         encoding="utf-8",
     )
     (clean / "service.py").write_text(
-        "from loguru import logger\n",
+        "logger.info('request', credential_present=token is not None)\n",
         encoding="utf-8",
     )
 
     report = run_isolated_corpora(
         (_source(unsafe, "unsafe"), _source(clean, "clean")),
-        (sys.executable, "-m", "sarj_python_lint", "check", "--rule", "no-stdlib-logging"),
+        (sys.executable, "-m", "sarj_python_lint", "check", "--rule", "no-secret-in-log"),
         batch_size=1,
         timeout=timedelta(seconds=30),
     )

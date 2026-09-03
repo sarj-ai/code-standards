@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
@@ -13,73 +12,59 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._pytest import has_benchmark_marker, uses_benchmark_fixture
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-_FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
-
-
 class _Tautology(NamedTuple):
-    node: ast.Assert | ast.Call
+    node: ast.Assert
     reason: str
 
 
 # `pytest.fail(...)` / `self.fail(...)` — an arm that calls it cannot pass.
 _FAIL = "fail"
 
-# unittest methods whose single argument fixes the outcome on its own.
-_TRUTHY_ARG_METHODS = frozenset({"assertTrue"})
-_FALSY_ARG_METHODS = frozenset({"assertFalse"})
-
-# unittest methods that compare two operands for sameness.
-_EQUALITY_METHODS = frozenset({"assertEqual", "assertEquals", "assertIs"})
-
-# unittest's failure-text parameter — present or not, the outcome is the same.
-_UNITTEST_MSG_KWARG = "msg"
-
-# `assertEqual(first, second)` and friends: the two operands compared.
-_EQUALITY_ARITY = 2
-
-# Comparison operators whose two-identical-literals form is a tautology.
-_SAMENESS_OPS = (ast.Eq, ast.Is)
-
 # Enough of the operand to identify it in the message without pasting a screenful.
 _OPERAND_PREVIEW_CHARS = 40
 
-_CONTAINER_KINDS = MappingProxyType(
-    {
-        ast.List: "list",
-        ast.Set: "set",
-        ast.Dict: "dict",
-        ast.Tuple: "tuple",
-    }
-)
-
 
 class NoTautologicalExpect(Rule):
-    id: str = "no-tautological-expect"
+    id: str = "no-statically-truthy-assertion"
     code: str = "SARJ057"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Assertion outcome is fixed entirely by literal values.",
-        rationale="An always-passing assertion cannot verify runtime behavior and can hide a missing comparison.",
-        remediation="Assert against a value produced by the code under test.",
+        summary="A bare assertion condition is statically truthy.",
+        rationale=(
+            "A condition that stays truthy whenever evaluation succeeds cannot reject an incorrect result and often "
+            "means the intended condition was wrapped in a container or placed in the message slot."
+        ),
+        remediation=(
+            "Assert an explicit runtime-derived condition. If the test only requires an operation not to raise, "
+            "evaluate it directly and retain any meaningful follow-up assertion."
+        ),
         category=RuleCategory.TESTING,
+        aliases=("no-tautological-expect",),
         limitations=(
-            "Detection covers truthy literal asserts and supported unittest methods with literal-only operands.",
-            "Always-failing markers, benchmark tests, deliberate match-arm markers, and runtime-value comparisons are excluded.",
+            "Detection covers truthy scalar constants and definitely non-empty list, set, and dict displays.",
+            "Ruff owns asserted strings and tuples, literal comparisons and identity, and unittest-style assertion methods.",
+            "Generated files, always-failing assertions, deliberate match-arm success markers, and runtime-value comparisons are excluded.",
         ),
         examples=(
             RuleExample(
-                example_id="literal-only-assertion",
-                title="Assertion always passes",
+                example_id="condition-in-message-slot",
+                title="The intended condition became an assertion message",
                 outcome=ExampleOutcome.MATCH,
-                files=(ExampleFile.python("tests/test_service.py", "def test_service():\n    assert True\n"),),
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "def test_service(response):\n    assert True, response.status_code == 200\n",
+                    ),
+                ),
                 focus_path=PurePosixPath("tests/test_service.py"),
                 expected_count=1,
                 public=True,
@@ -91,7 +76,7 @@ class NoTautologicalExpect(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        "def test_service(result):\n    assert result == 1\n",
+                        "def test_service(response):\n    assert response.status_code == 200\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
@@ -104,6 +89,8 @@ class NoTautologicalExpect(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if is_generated(path, source):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -115,6 +102,7 @@ class NoTautologicalExpect(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=_message(node, reason),
+                severity=Severity.WARNING,
             )
             for node, reason in _tautologies(tree, exempt)
         ]
@@ -125,11 +113,7 @@ class NoTautologicalExpect(Rule):
 def _exempt_nodes(tree: ast.Module) -> set[ast.AST]:
     exempt: set[ast.AST] = set()
     for node in ast.walk(tree):
-        if isinstance(node, _FUNC_NODES) and (uses_benchmark_fixture(node) or has_benchmark_marker(node)):
-            exempt.update(ast.walk(node))
-        elif isinstance(node, ast.ExceptHandler) and len(node.body) == 1 and isinstance(node.body[0], ast.Assert):
-            exempt.add(node.body[0])
-        elif isinstance(node, ast.Match):
+        if isinstance(node, ast.Match):
             exempt.update(_match_arm_markers(node))
     return exempt
 
@@ -138,7 +122,12 @@ def _match_arm_markers(node: ast.Match) -> set[ast.AST]:
     if not any(all(_always_fails(stmt) for stmt in case.body) for case in node.cases):
         return set()
     return {
-        stmt for case in node.cases for stmt in case.body if isinstance(stmt, ast.Assert) and not _always_fails(stmt)
+        case.body[0]
+        for case in node.cases
+        if len(case.body) == 1
+        and isinstance(case.body[0], ast.Assert)
+        and _constant_truth(case.body[0].test) is True
+        and not _ruff_owned_string(case.body[0].test)
     }
 
 
@@ -153,41 +142,25 @@ def _always_fails(stmt: ast.stmt) -> bool:
 def _tautologies(tree: ast.Module, exempt: set[ast.AST]) -> list[_Tautology]:
     found: list[_Tautology] = []
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.Assert, ast.Call)) or node in exempt:
+        if not isinstance(node, ast.Assert) or node in exempt:
             continue
-        reason = _fixed_truth_reason(node.test) if isinstance(node, ast.Assert) else _unittest_reason(node)
+        reason = _fixed_truth_reason(node.test)
         if reason is not None:
             found.append(_Tautology(node, reason))
     return found
 
 
-def _unittest_reason(node: ast.Call) -> str | None:
-    name = _called_method(node)
-    # `msg=` is unittest's failure text and changes nothing about the outcome;
-    # any other keyword means this is not the method we think it is.
-    if name is None or any(kw.arg != _UNITTEST_MSG_KWARG for kw in node.keywords):
-        return None
-    args = node.args
-    if name in _EQUALITY_METHODS and len(args) >= _EQUALITY_ARITY and _is_same_literal(args[0], args[1]):
-        return f"`{_preview(args[0])}` is compared with an identical literal"
-    if len(args) < 1:
-        return None
-    if name in _TRUTHY_ARG_METHODS:
-        return _fixed_truth_reason(args[0])
-    if name in _FALSY_ARG_METHODS and _is_always_falsy_literal(args[0]):
-        return f"`{_preview(args[0])}` is a literal that is always falsy"
-    return None
-
-
 def _fixed_truth_reason(test: ast.expr) -> str | None:
-    if _constant_truth(test) is True:
+    if _constant_truth(test) is True and not _ruff_owned_string(test):
         return f"`{_preview(test)}` is a constant truthy value"
     kind = _nonempty_container_kind(test)
     if kind is not None:
         return f"a non-empty {kind} display is truthy whatever it contains"
-    if _is_identical_literal_comparison(test):
-        return f"`{_preview(test)}` compares a literal with an identical literal"
     return None
+
+
+def _ruff_owned_string(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes))
 
 
 def _constant_truth(node: ast.expr) -> bool | None:
@@ -204,44 +177,10 @@ def _constant_truth(node: ast.expr) -> bool | None:
 
 def _nonempty_container_kind(node: ast.expr) -> str | None:
     if isinstance(node, ast.Dict):
-        if not node.keys or any(key is None for key in node.keys):
-            return None
-        return _CONTAINER_KINDS[ast.Dict]
-    if not isinstance(node, (ast.List, ast.Set, ast.Tuple)):
+        return "dict" if any(key is not None for key in node.keys) else None
+    if not isinstance(node, (ast.List, ast.Set)):
         return None
-    if not node.elts or any(isinstance(elt, ast.Starred) for elt in node.elts):
-        return None
-    return _CONTAINER_KINDS[type(node)]
-
-
-def _is_identical_literal_comparison(node: ast.expr) -> bool:
-    if not isinstance(node, ast.Compare) or len(node.ops) != 1:
-        return False
-    if not isinstance(node.ops[0], _SAMENESS_OPS):
-        return False
-    return _is_same_literal(node.left, node.comparators[0])
-
-
-def _is_same_literal(left: ast.expr, right: ast.expr) -> bool:
-    return _is_literal(left) and _is_literal(right) and ast.dump(left) == ast.dump(right)
-
-
-def _is_literal(node: ast.expr) -> bool:
-    match node:
-        case ast.Constant():
-            return True
-        case ast.UnaryOp(op=ast.USub() | ast.UAdd(), operand=operand):
-            # `-1` is a negation of a constant, not a constant; without this,
-            # `assertEqual(-1, -1)` would slip through.
-            return _is_literal(operand)
-        case ast.List() | ast.Set() | ast.Tuple():
-            return all(_is_literal(element) for element in node.elts)
-        case ast.Dict(keys=keys, values=values):
-            return all(key is not None and _is_literal(key) for key in keys) and all(
-                _is_literal(value) for value in values
-            )
-        case _:
-            return False
+    return type(node).__name__.lower() if any(not isinstance(elt, ast.Starred) for elt in node.elts) else None
 
 
 def _is_always_falsy_literal(node: ast.expr) -> bool:
@@ -269,11 +208,11 @@ def _preview(node: ast.expr) -> str:
     return text
 
 
-def _message(node: ast.Assert | ast.Call, reason: str) -> str:
-    slid_into_message_slot = isinstance(node, ast.Assert) and node.msg is not None
+def _message(node: ast.Assert, reason: str) -> str:
+    slid_into_message_slot = node.msg is not None
     hint = (
-        " The expression you meant to assert on is sitting in the assertion-message slot — move it into the condition."
+        " The message is never displayed; if it is the intended condition, move it before the comma."
         if slid_into_message_slot
-        else " Assert on a value the code produced, or delete the test."
+        else " Assert an explicit postcondition, or evaluate the expression directly for a no-raise test."
     )
-    return f"This assertion can never fail: {reason}.{hint}"
+    return f"This assertion condition is always truthy if evaluation succeeds: {reason}.{hint}"
