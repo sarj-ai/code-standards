@@ -16,14 +16,14 @@ export const PREFER_SERVER_ACTIONS_DOCUMENTATION = {
   rationale: "Server Actions preserve typed application calls and avoid an internal JSON request-response boundary.",
   remediation: "Move the mutation into a Server Action and invoke that action from the React client.",
   category: "architecture",
-  limitations: ["Only statically recognizable /api/ mutations, including explicitly configured literal deployment base paths, in modules with positive Next.js evidence are reported."],
+  limitations: ["Only statically recognizable /api/ mutations, including one explicitly configured literal deployment base path, in use-client modules are reported; server boundaries and route handlers are excluded."],
   examples: [
     { id: "server-action-call", title: "Call a Server Action", outcome: "no-match", files: [{ path: "app/tasks/page.tsx", source: "import { createTask } from './actions'; await createTask(input);" }], focusPath: "app/tasks/page.tsx", expectedCount: 0, public: true },
     { id: "api-mutation", title: "Do not mutate through an API route", outcome: "match", files: [{ path: "app/tasks/page.tsx", source: "'use client'; await fetch('/api/tasks', { method: 'POST', body });" }], focusPath: "app/tasks/page.tsx", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 export interface RuleOptions {
-  readonly basePaths?: readonly string[];
+  readonly basePath?: string;
 }
 type Options = readonly [RuleOptions?];
 
@@ -31,12 +31,11 @@ const MUTATION_METHODS: ReadonlySet<string> = new Set(["POST", "PUT", "DELETE", 
 const AXIOS_MUTATION_METHODS: ReadonlySet<string> = new Set(["post", "put", "delete", "patch"]);
 
 const SKIP_FILE_REGEX =
-  /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|\/app\/api\/.*\/route\.[jt]sx?$|\/pages\/api\/)/;
+  /(?:\.test\.[jt]sx?$|\.spec\.[jt]sx?$|-(?:test|spec)\.[jt]sx?$|\/tests?\/|\/__tests__\/|\/__testfixtures__\/|\/scripts?\/|(?:^|\/)app(?:\/.*)?\/route\.[jt]sx?$|(?:^|\/)middleware\.[jt]sx?$|\/pages\/api\/)/;
 
 const NON_REACT_FRAMEWORK_RE =
   /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
 
-const NEXT_MODULE_PATH_RE = /(?:^|[/\\])(?:app|pages)[/\\]/u;
 const BASE_PATH_RE = /^\/(?!$)(?!.*[?#])(?:[^/]+\/)*[^/]+$/u;
 
 type Ctx = Readonly<RuleContext<MessageIds, Options>>;
@@ -46,6 +45,19 @@ function getScope(
   node: TSESTree.Node,
 ): Scope.Scope {
   return context.sourceCode.getScope(node);
+}
+
+function resolvesToGlobalFetch(
+  context: Ctx,
+  identifier: TSESTree.Identifier,
+): boolean {
+  let scope: Scope.Scope | null = getScope(context, identifier);
+  while (scope) {
+    const variable = scope.set.get(identifier.name);
+    if (variable !== undefined) return variable.defs.length === 0;
+    scope = scope.upper;
+  }
+  return true;
 }
 
 function resolveNode(
@@ -84,12 +96,16 @@ function isApiUrl(
   if (!resolved) return false;
 
   if (resolved.type === "Literal" && typeof resolved.value === "string") {
-    return apiPrefixes.some((prefix) => resolved.value.startsWith(prefix));
+    return apiPrefixes.some(
+      (prefix) => resolved.value === prefix.slice(0, -1) || resolved.value.startsWith(prefix),
+    );
   }
   if (resolved.type === "TemplateLiteral") {
     const firstQuasi = resolved.quasis[0];
     const cooked = firstQuasi?.value.cooked;
-    return typeof cooked === "string" && apiPrefixes.some((prefix) => cooked.startsWith(prefix));
+    return typeof cooked === "string" && apiPrefixes.some(
+      (prefix) => cooked === prefix.slice(0, -1) || cooked.startsWith(prefix),
+    );
   }
   if (resolved.type === "BinaryExpression" && resolved.operator === "+") {
     return isApiUrl(resolved.left, context, apiPrefixes);
@@ -210,13 +226,9 @@ export default createRule<Options, MessageIds>({
         type: "object",
         additionalProperties: false,
         properties: {
-          basePaths: {
-            type: "array",
-            uniqueItems: true,
-            items: {
-              type: "string",
-              pattern: "^/(?!$)(?!.*[?#])(?:[^/]+/)*[^/]+$",
-            },
+          basePath: {
+            type: "string",
+            pattern: "^/(?!$)(?!.*[?#])(?!(?:.*/)?\\.\\.?(?:/|$))(?:[^/]+/)*[^/]+$",
           },
         },
       },
@@ -228,7 +240,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    const filename = context.filename;
+    const filename = context.filename.replaceAll("\\", "/");
     if (SKIP_FILE_REGEX.test(filename)) {
       return {};
     }
@@ -242,31 +254,28 @@ export default createRule<Options, MessageIds>({
     const hasUseClientDirective = context.sourceCode.ast.body.some(
       (node) =>
         node.type === "ExpressionStatement" &&
-        node.expression.type === "Literal" &&
-        node.expression.value === "use client",
+        node.directive === "use client",
     );
-    const hasNextImport = context.sourceCode.ast.body.some(
+    const hasUseServerDirective = context.sourceCode.ast.body.some(
         (node) =>
-          node.type === "ImportDeclaration" &&
-          typeof node.source.value === "string" &&
-          (node.source.value === "next" || node.source.value.startsWith("next/")),
+          node.type === "ExpressionStatement" &&
+          node.directive === "use server",
       );
-    const hasNextEvidence =
-      hasNextImport ||
-      (hasUseClientDirective && NEXT_MODULE_PATH_RE.test(filename));
+    const importsServerOnly = context.sourceCode.ast.body.some(
+      (node) =>
+        node.type === "ImportDeclaration" &&
+        typeof node.source.value === "string" &&
+        (node.source.value === "server-only" || node.source.value === "next/server"),
+    );
 
-    if (!hasNextEvidence) {
+    if (!hasUseClientDirective || hasUseServerDirective || importsServerOnly) {
       return {};
     }
 
-    const apiPrefixes = [
-      "/api/",
-      ...new Set(
-        (options?.basePaths ?? [])
-          .filter(isValidBasePath)
-          .map((basePath) => `${basePath}/api/`),
-      ),
-    ];
+    const apiPrefixes = ["/api/"];
+    if (options?.basePath !== undefined && isValidBasePath(options.basePath)) {
+      apiPrefixes.push(`${options.basePath}/api/`);
+    }
 
     return {
       CallExpression(node) {
@@ -276,7 +285,8 @@ export default createRule<Options, MessageIds>({
         // 1. Standard fetch('/api/orders', { method: 'POST' })
         if (
           node.callee.type === "Identifier" &&
-          node.callee.name === "fetch"
+          node.callee.name === "fetch" &&
+          resolvesToGlobalFetch(context, node.callee)
         ) {
           const urlArg = node.arguments[0];
           if (urlArg && urlArg.type !== "SpreadElement" && isApiUrl(urlArg, context, apiPrefixes)) {

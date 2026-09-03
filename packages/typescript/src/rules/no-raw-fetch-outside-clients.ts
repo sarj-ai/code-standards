@@ -14,6 +14,8 @@ type MessageIds = "rawFetch";
 export interface RuleOptions {
   /** Regular-expression sources matched against the filename. */
   readonly allow?: readonly string[];
+  /** Next.js basePath also configured for prefer-server-actions. */
+  readonly basePath?: string;
 }
 
 type Options = readonly [RuleOptions?];
@@ -23,7 +25,7 @@ export const NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION = {
   rationale: "Scattered fetch calls bypass shared transport policy and are harder to stub and observe consistently.",
   remediation: "Move the request into a client module and call that abstraction from application code.",
   category: "architecture",
-  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded."],
+  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded. Configure the same literal Next.js basePath here and on prefer-server-actions so one rule owns each internal mutation."],
   examples: [
     { id: "client-call", title: "Use a client abstraction", outcome: "no-match", files: [{ path: "src/routes/handler.ts", source: "const response = await billingClient.getInvoice(id);" }], focusPath: "src/routes/handler.ts", expectedCount: 0, public: true },
     { id: "raw-fetch", title: "Do not call global fetch here", outcome: "match", files: [{ path: "src/routes/handler.ts", source: "const response = await fetch('/api/invoices');" }], focusPath: "src/routes/handler.ts", expectedCount: 1, public: true },
@@ -83,7 +85,12 @@ const SERVER_ACTION_SKIP_FILE_RE =
 const NON_REACT_FRAMEWORK_RE =
   /^(?:@angular\/|@nestjs\/|vue$|vue\/|svelte$|svelte\/|solid-js$|solid-js\/|@ember\/|rxjs$|rxjs\/)/;
 
-const NEXT_MODULE_PATH_RE = /(?:^|[/\\])(?:app|pages)[/\\]/u;
+const BASE_PATH_RE = /^\/(?!$)(?!.*[?#])(?:[^/]+\/)*[^/]+$/u;
+
+function isValidBasePath(basePath: string): boolean {
+  return BASE_PATH_RE.test(basePath) &&
+    !basePath.split("/").some((segment) => segment === "." || segment === "..");
+}
 
 function isGlobalFetchCall(
   node: TSESTree.CallExpression,
@@ -253,6 +260,10 @@ export default createRule<Options, MessageIds>({
             description:
               "Regular-expression sources matched against the filename. Replaces the defaults.",
           },
+          basePath: {
+            type: "string",
+            pattern: "^/(?!$)(?!.*[?#])(?!(?:.*/)?\\.\\.?(?:/|$))(?:[^/]+/)*[^/]+$",
+          },
         },
         additionalProperties: false,
       },
@@ -286,20 +297,23 @@ export default createRule<Options, MessageIds>({
     const hasUseClientDirective = context.sourceCode.ast.body.some(
       (statement) =>
         statement.type === AST_NODE_TYPES.ExpressionStatement &&
-        statement.expression.type === AST_NODE_TYPES.Literal &&
-        statement.expression.value === "use client",
+        statement.directive === "use client",
     );
-    const hasNextImport = context.sourceCode.ast.body.some(
-        (statement) =>
-          statement.type === AST_NODE_TYPES.ImportDeclaration &&
-          typeof statement.source.value === "string" &&
-          (statement.source.value === "next" ||
-            statement.source.value.startsWith("next/")),
-      );
-    const hasNextEvidence =
-      hasNextImport ||
-      (hasUseClientDirective && NEXT_MODULE_PATH_RE.test(filename));
-
+    const hasUseServerDirective = context.sourceCode.ast.body.some(
+      (statement) =>
+        statement.type === AST_NODE_TYPES.ExpressionStatement &&
+        statement.directive === "use server",
+    );
+    const importsServerOnly = context.sourceCode.ast.body.some(
+      (statement) =>
+        statement.type === AST_NODE_TYPES.ImportDeclaration &&
+        typeof statement.source.value === "string" &&
+        (statement.source.value === "server-only" || statement.source.value === "next/server"),
+    );
+    const internalApiPrefixes = ["/api"];
+    if (options?.basePath !== undefined && isValidBasePath(options.basePath)) {
+      internalApiPrefixes.push(`${options.basePath}/api`);
+    }
     function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
       const variable = ASTUtils.findVariable(
         context.sourceCode.getScope(identifier),
@@ -351,22 +365,16 @@ export default createRule<Options, MessageIds>({
       if (resolved?.type === AST_NODE_TYPES.Literal) {
         return (
           typeof resolved.value === "string" &&
-          /^\/(?!\/)(?:[^/]+\/)*api(?:\/|$)/.test(resolved.value)
+          internalApiPrefixes.some(
+            (prefix) => resolved.value === prefix || resolved.value.startsWith(`${prefix}/`),
+          )
         );
       }
       if (resolved?.type === AST_NODE_TYPES.TemplateLiteral) {
         const prefix = resolved.quasis[0]?.value.cooked;
-        return typeof prefix === "string" && /^\/(?!\/)(?:[^/]+\/)*api(?:\/|$)/.test(prefix);
-      }
-      if (
-        resolved?.type === AST_NODE_TYPES.CallExpression &&
-        resolved.callee.type === AST_NODE_TYPES.Identifier &&
-        resolved.callee.name === "withBase"
-      ) {
-        const first = resolved.arguments[0];
-        return first !== undefined && first.type !== AST_NODE_TYPES.SpreadElement
-          ? isInternalApiUrl(first)
-          : false;
+        return typeof prefix === "string" && internalApiPrefixes.some(
+          (apiPrefix) => prefix === apiPrefix || prefix.startsWith(`${apiPrefix}/`),
+        );
       }
       return (
         resolved?.type === AST_NODE_TYPES.BinaryExpression &&
@@ -407,7 +415,9 @@ export default createRule<Options, MessageIds>({
     function serverActionOwns(node: TSESTree.CallExpression): boolean {
       if (
         node.callee.type !== AST_NODE_TYPES.Identifier ||
-        !hasNextEvidence ||
+        !hasUseClientDirective ||
+        hasUseServerDirective ||
+        importsServerOnly ||
         SERVER_ACTION_SKIP_FILE_RE.test(filename) ||
         nonReactFramework
       ) {

@@ -293,10 +293,14 @@ function project(files: Readonly<Record<string, string>>): string {
   return root;
 }
 
-function projectAwareMessages(root: string, relative: string): readonly string[] {
+function projectAwareMessages(
+  root: string,
+  relative: string,
+  source: string = RAW_BUTTON,
+): readonly string[] {
   const linter = new Linter({ cwd: root });
   const messages = linter.verify(
-    RAW_BUTTON,
+    source,
     {
       files: ["**/*.tsx"],
       plugins: { sarj: { rules: { "prefer-shadcn-primitives": rule as never } } },
@@ -360,6 +364,38 @@ describe("prefer-shadcn-primitives project detection", () => {
       "src/features/action.tsx": RAW_BUTTON,
     });
     expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
+  });
+
+  it.each([
+    ["a comment", "// export const Button = fake;\nexport const buttonVariants = {};"],
+    ["a type-only export", "type Button = unknown; export type { Button };"],
+    ["a renamed export", "const Control = () => null; export { Control as Buttonish };"],
+  ])("does not mistake %s for a runtime Button export", (_name, moduleSource) => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/button.tsx": moduleSource,
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
+  });
+
+  it("requires the exact specialized input primitive", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/input.tsx": "export const Input = () => null;",
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(
+      projectAwareMessages(
+        root,
+        "src/features/action.tsx",
+        '<input type="checkbox" />',
+      ),
+    ).toEqual([]);
   });
 
   it("fails closed for a malformed manifest", () => {

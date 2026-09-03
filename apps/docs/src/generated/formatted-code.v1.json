@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9b190786f898cac524bf2f9a83b26269d2f109594b3909c76cff02e57f963ba2",
+  "catalogSha256": "a577b2d5de42c6c942211ffd656cd5fe7e716a2ed009a78da8bf3425fa60b22c",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -1024,7 +1024,7 @@
           "title": "Do not call global fetch here"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-repeated-string-literal": {
       "examples": [
@@ -2509,7 +2509,7 @@
           "title": "Use a semantic color token"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"opaqueNeutrals\": {\n      \"enum\": [\"off\", \"surfaces-and-declared-pairs\"],\n      \"type\": \"string\"\n    },\n    \"requireSemanticTokens\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"opaqueForegroundPairs\": { \"type\": \"boolean\" },\n    \"requireSemanticTokens\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-server-actions": {
       "examples": [
@@ -2544,7 +2544,7 @@
           "title": "Call a Server Action"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePaths\": {\n      \"items\": { \"pattern\": \"^/(?!$)(?!.*[?#])(?:[^/]+/)*[^/]+$\", \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-shadcn-primitives": {
       "examples": [

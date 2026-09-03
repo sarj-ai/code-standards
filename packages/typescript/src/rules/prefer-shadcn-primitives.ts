@@ -5,7 +5,8 @@
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { existsSync, readFileSync } from "node:fs";
+import { parse as parseTypeScript } from "@typescript-eslint/typescript-estree";
+import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, parse as parsePath, relative, resolve, sep } from "node:path";
 import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 
@@ -27,7 +28,7 @@ export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
   limitations: [
     "Hidden and file inputs, unassociated labels, and non-control semantic elements are excluded.",
     "Tests and the shared components/ui primitive implementation tree are excluded.",
-    "Project detection is opt-in and fails closed unless components.json, one unambiguous tsconfig/jsconfig alias, the exact primitive module, and its expected export all exist.",
+    "Package-local project detection is opt-in and fails closed unless components.json, one unambiguous tsconfig/jsconfig alias, the exact primitive module, and its expected export all exist.",
   ],
   examples: [
     { id: "shared-button", title: "Use a shared button", outcome: "no-match", files: [{ path: "src/form.tsx", source: "import { Button } from '@/components/ui/button'; const action = <Button>Save</Button>;" }], focusPath: "src/form.tsx", expectedCount: 0, public: true },
@@ -35,29 +36,32 @@ export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-const SHADCN_PRIMITIVES = {
-  button: "Button",
-  dialog: "Dialog or AlertDialog family",
-  input: "Input",
-  label: "Label",
-  progress: "Progress",
-  select: "Select family",
-  table: "Table family",
-  textarea: "Textarea",
+const RAW_PRIMITIVES = {
+  button: { capability: "Button", replacement: "Button" },
+  dialog: { capability: "Dialog", replacement: "Dialog or AlertDialog family" },
+  input: { capability: "Input", replacement: "Input" },
+  label: { capability: "Label", replacement: "Label" },
+  progress: { capability: "Progress", replacement: "Progress" },
+  select: { capability: "Select", replacement: "Select family" },
+  table: { capability: "Table", replacement: "Table family" },
+  textarea: { capability: "Textarea", replacement: "Textarea" },
 } as const;
 
-const SHADCN_EXPORTS = {
-  button: "Button",
-  dialog: "Dialog",
-  input: "Input",
-  label: "Label",
-  progress: "Progress",
-  select: "Select",
-  table: "Table",
-  textarea: "Textarea",
+const CAPABILITIES = {
+  Button: "button",
+  Checkbox: "checkbox",
+  Dialog: "dialog",
+  Input: "input",
+  Label: "label",
+  Progress: "progress",
+  RadioGroup: "radio-group",
+  Select: "select",
+  Table: "table",
+  Textarea: "textarea",
 } as const;
 
-type RawPrimitive = keyof typeof SHADCN_PRIMITIVES;
+type RawPrimitive = keyof typeof RAW_PRIMITIVES;
+type PrimitiveCapability = keyof typeof CAPABILITIES;
 
 const LABELABLE_ELEMENTS: ReadonlySet<string> = new Set([
   "button",
@@ -71,8 +75,7 @@ const LABELABLE_ELEMENTS: ReadonlySet<string> = new Set([
 
 const SHARED_PRIMITIVE_IMPLEMENTATION_RE =
   /(?:^|\/)components\/ui(?:\/|$)/i;
-const SHARED_PRIMITIVE_IMPORT_RE =
-  /(?:^|\/)components\/ui\/[^/]+$/i;
+const SHARED_PRIMITIVE_IMPORT_RE = /(?:^|\/)components\/ui\/([^/]+)$/i;
 const AMBIGUOUS_INPUT_TYPES: ReadonlySet<string> = new Set([
   "button",
   "color",
@@ -83,50 +86,97 @@ const AMBIGUOUS_INPUT_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 interface ProjectPrimitives {
-  readonly available: ReadonlySet<RawPrimitive>;
+  readonly available: ReadonlySet<PrimitiveCapability>;
   readonly uiRoot: string | null;
 }
 
-const PROJECT_PRIMITIVES_CACHE = new Map<string, ProjectPrimitives>();
+interface Replacement {
+  readonly capability: PrimitiveCapability;
+  readonly replacement: string;
+}
 
-function detectProjectPrimitives(filename: string): ProjectPrimitives {
+interface CachedProjectPrimitives {
+  readonly fingerprint: string;
+  readonly value: ProjectPrimitives;
+}
+
+const MAX_PROJECT_FILE_BYTES = 1_048_576;
+const PROJECT_PRIMITIVES_CACHE = new Map<string, CachedProjectPrimitives>();
+
+function detectProjectPrimitives(
+  filename: string,
+  requested: ReadonlySet<PrimitiveCapability>,
+): ProjectPrimitives {
   const packageRoot = findPackageRoot(dirname(filename));
   if (packageRoot === null) return { available: new Set(), uiRoot: null };
-  const cached = PROJECT_PRIMITIVES_CACHE.get(packageRoot);
-  if (cached !== undefined) return cached;
 
   const manifest = readJsonc(join(packageRoot, "components.json"));
   const alias = stringProperty(manifest, "aliases", "ui");
-  const uiRoot = alias === null ? null : resolveAlias(packageRoot, alias);
-  if (uiRoot === null || !isWithin(packageRoot, uiRoot)) {
-    const missing = { available: new Set<RawPrimitive>(), uiRoot: null } as const;
-    PROJECT_PRIMITIVES_CACHE.set(packageRoot, missing);
-    return missing;
+  const unresolvedUiRoot = alias === null ? null : resolveAlias(packageRoot, alias);
+  if (unresolvedUiRoot === null) return { available: new Set(), uiRoot: null };
+  const uiRoot = safeContainedDirectory(packageRoot, unresolvedUiRoot);
+  if (uiRoot === null) {
+    return { available: new Set(), uiRoot: null };
   }
 
-  const available = new Set<RawPrimitive>();
-  for (const primitive of Object.keys(SHADCN_PRIMITIVES) as RawPrimitive[]) {
-    const exportName = SHADCN_EXPORTS[primitive];
-    const moduleCandidates = ["tsx", "ts", "jsx", "js"].flatMap((extension) => [
-      join(uiRoot, `${primitive}.${extension}`),
-      join(uiRoot, primitive, `index.${extension}`),
-    ]);
+  const moduleCandidates = new Map<PrimitiveCapability, readonly string[]>();
+  for (const [capability, moduleName] of Object.entries(CAPABILITIES) as Array<
+    [PrimitiveCapability, string]
+  >) {
+    if (!requested.has(capability)) continue;
+    moduleCandidates.set(capability, ["tsx", "ts", "jsx", "js"].flatMap((extension) => [
+      join(uiRoot, `${moduleName}.${extension}`),
+      join(uiRoot, moduleName, `index.${extension}`),
+    ]));
+  }
+  const fingerprint = [
+    join(packageRoot, "components.json"),
+    join(packageRoot, "tsconfig.json"),
+    join(packageRoot, "jsconfig.json"),
+    ...[...moduleCandidates.values()].flat(),
+  ].map(fileFingerprint).join("|");
+  const cacheKey = `${packageRoot}:${[...requested].sort().join(",")}`;
+  const cached = PROJECT_PRIMITIVES_CACHE.get(cacheKey);
+  if (cached?.fingerprint === fingerprint) return cached.value;
+
+  const available = new Set<PrimitiveCapability>();
+  for (const [capability, candidates] of moduleCandidates) {
     if (
-      moduleCandidates.some(
-        (candidate) => existsSync(candidate) && exportsPrimitive(candidate, exportName),
+      candidates.some(
+        (candidate) => exportsPrimitive(candidate, capability),
       )
     ) {
-      available.add(primitive);
+      available.add(capability);
     }
   }
-  const detected = { available, uiRoot } as const;
-  PROJECT_PRIMITIVES_CACHE.set(packageRoot, detected);
-  return detected;
+  const value = { available, uiRoot } as const;
+  PROJECT_PRIMITIVES_CACHE.set(cacheKey, { fingerprint, value });
+  return value;
+}
+
+function fileFingerprint(path: string): string {
+  try {
+    const stat = lstatSync(path);
+    return stat.isFile() ? `${path}:${stat.size}:${stat.mtimeMs}` : `${path}:excluded`;
+  } catch {
+    return `${path}:missing`;
+  }
 }
 
 function isWithin(root: string, candidate: string): boolean {
   const path = relative(root, candidate);
   return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
+}
+
+function safeContainedDirectory(root: string, candidate: string): string | null {
+  try {
+    if (!lstatSync(candidate).isDirectory()) return null;
+    const realRoot = realpathSync(root);
+    const realCandidate = realpathSync(candidate);
+    return isWithin(realRoot, realCandidate) ? realCandidate : null;
+  } catch {
+    return null;
+  }
 }
 
 function findPackageRoot(startDir: string): string | null {
@@ -142,12 +192,24 @@ function findPackageRoot(startDir: string): string | null {
 
 function readJsonc(path: string): unknown {
   try {
+    const source = readSmallRegularFile(path);
+    if (source === null) return null;
     const errors: ParseError[] = [];
-    const value: unknown = parseJsonc(readFileSync(path, "utf8"), errors, {
+    const value: unknown = parseJsonc(source, errors, {
       allowTrailingComma: true,
       disallowComments: false,
     });
     return errors.length === 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function readSmallRegularFile(path: string): string | null {
+  try {
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.size > MAX_PROJECT_FILE_BYTES) return null;
+    return readFileSync(path, "utf8");
   } catch {
     return null;
   }
@@ -202,14 +264,37 @@ function resolveAlias(packageRoot: string, alias: string): string | null {
   return resolve(packageRoot, baseUrl, match);
 }
 
-function exportsPrimitive(path: string, exportName: string): boolean {
+function exportsPrimitive(path: string, exportName: PrimitiveCapability): boolean {
   try {
-    const source = readFileSync(path, "utf8");
-    const escapedName = exportName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-    return (
-      new RegExp(`\\bexport\\s+(?:const|function|class)\\s+${escapedName}\\b`, "u").test(source) ||
-      new RegExp(`\\bexport\\s*\\{[^}]*\\b${escapedName}\\b[^}]*\\}`, "u").test(source)
-    );
+    const source = readSmallRegularFile(path);
+    if (source === null) return false;
+    const program = parseTypeScript(source, { jsx: true, sourceType: "module" });
+    return program.body.some((statement) => {
+      if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration) return false;
+      if (statement.exportKind === "type") return false;
+      if (
+        statement.specifiers.some(
+          (specifier) =>
+            specifier.type === AST_NODE_TYPES.ExportSpecifier &&
+            specifier.exportKind !== "type" &&
+            specifier.exported.type === AST_NODE_TYPES.Identifier &&
+            specifier.exported.name === exportName,
+        )
+      ) {
+        return true;
+      }
+      const declaration = statement.declaration;
+      if (declaration?.type === AST_NODE_TYPES.VariableDeclaration) {
+        return declaration.declarations.some(
+          (item) => item.id.type === AST_NODE_TYPES.Identifier && item.id.name === exportName,
+        );
+      }
+      return (
+        (declaration?.type === AST_NODE_TYPES.FunctionDeclaration ||
+          declaration?.type === AST_NODE_TYPES.ClassDeclaration) &&
+        declaration.id?.name === exportName
+      );
+    });
   } catch {
     return false;
   }
@@ -220,7 +305,7 @@ function rawElementName(
 ): RawPrimitive | null {
   if (node.name.type !== AST_NODE_TYPES.JSXIdentifier) return null;
   const name = node.name.name;
-  return Object.hasOwn(SHADCN_PRIMITIVES, name)
+  return Object.hasOwn(RAW_PRIMITIVES, name)
     ? (name as RawPrimitive)
     : null;
 }
@@ -328,17 +413,21 @@ function isStaticallyAssociatedLabel(node: TSESTree.JSXOpeningElement): boolean 
 function replacementFor(
   node: TSESTree.JSXOpeningElement,
   element: RawPrimitive,
-): string | null {
-  if (element !== "input") return SHADCN_PRIMITIVES[element];
+): Replacement | null {
+  if (element !== "input") return RAW_PRIMITIVES[element];
   const typeAttribute = effectiveAttribute(node, "type");
   if (typeAttribute.kind === "unknown") return null;
   const inputType =
     typeAttribute.kind === "known" ? typeAttribute.value.toLowerCase() : "text";
   if (inputType === "hidden" || inputType === "file") return null;
-  if (inputType === "checkbox") return "Checkbox";
-  if (inputType === "radio") return "RadioGroup family";
+  if (inputType === "checkbox") {
+    return { capability: "Checkbox", replacement: "Checkbox" };
+  }
+  if (inputType === "radio") {
+    return { capability: "RadioGroup", replacement: "RadioGroup family" };
+  }
   if (AMBIGUOUS_INPUT_TYPES.has(inputType)) return null;
-  return "Input";
+  return RAW_PRIMITIVES.input;
 }
 
 export default createRule<Options, MessageIds>({
@@ -368,34 +457,36 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [{}],
   create(context, [options]) {
     const filename = context.filename.replaceAll("\\", "/");
-    const projectPrimitives = options?.detectProjectPrimitives === true
-      ? detectProjectPrimitives(context.filename)
-      : { available: new Set<RawPrimitive>(), uiRoot: null };
     if (
       isTestFile(filename) ||
       isStoryFile(filename) ||
       isGeneratedFile(filename, context.sourceCode.text) ||
-      SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename) ||
-      (projectPrimitives.uiRoot !== null && isWithin(projectPrimitives.uiRoot, context.filename))
+      SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename)
     ) {
       return {};
     }
+    const detectsProject = options?.detectProjectPrimitives === true;
     // ESLint rules see one file at a time. Require local proof that the
     // repository actually owns a shadcn primitive tree before prescribing it;
     // otherwise every raw control in a non-shadcn project becomes noise.
-    let hasSharedPrimitiveImport = options?.assumeAvailable ?? false;
+    let hasSharedPrimitiveImport = false;
+    const importedCapabilities = new Set<PrimitiveCapability>();
     const candidates: Array<{
+      readonly capability: PrimitiveCapability;
       readonly element: RawPrimitive;
       readonly node: TSESTree.JSXOpeningElement;
       readonly replacement: string;
     }> = [];
     return {
       ImportDeclaration(node): void {
-        if (
-          typeof node.source.value === "string" &&
-          SHARED_PRIMITIVE_IMPORT_RE.test(node.source.value)
-        ) {
-          hasSharedPrimitiveImport = true;
+        if (typeof node.source.value !== "string") return;
+        const match = SHARED_PRIMITIVE_IMPORT_RE.exec(node.source.value);
+        if (match?.[1] === undefined) return;
+        hasSharedPrimitiveImport = true;
+        for (const [capability, moduleName] of Object.entries(CAPABILITIES) as Array<
+          [PrimitiveCapability, string]
+        >) {
+          if (match[1].toLowerCase() === moduleName) importedCapabilities.add(capability);
         }
       },
       JSXOpeningElement(node): void {
@@ -404,16 +495,24 @@ export default createRule<Options, MessageIds>({
         if (element === "label" && !isStaticallyAssociatedLabel(node)) return;
         const replacement = replacementFor(node, element);
         if (replacement === null) return;
-        candidates.push({ element, node, replacement });
+        candidates.push({ element, node, ...replacement });
       },
       "Program:exit"(): void {
-        for (const { element, node, replacement } of candidates) {
-          if (
-            !hasSharedPrimitiveImport &&
-            !projectPrimitives.available.has(element)
-          ) {
-            continue;
-          }
+        const requested = new Set(candidates.map(({ capability }) => capability));
+        const projectPrimitives = detectsProject && requested.size > 0
+          ? detectProjectPrimitives(context.filename, requested)
+          : { available: new Set<PrimitiveCapability>(), uiRoot: null };
+        if (
+          projectPrimitives.uiRoot !== null &&
+          isWithin(projectPrimitives.uiRoot, realpathOrOriginal(context.filename))
+        ) return;
+        for (const { capability, element, node, replacement } of candidates) {
+          const available =
+            options?.assumeAvailable === true ||
+            (detectsProject
+              ? projectPrimitives.available.has(capability) || importedCapabilities.has(capability)
+              : hasSharedPrimitiveImport);
+          if (!available) continue;
           context.report({
             node,
             messageId: "preferShadcnPrimitive",
@@ -424,3 +523,11 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function realpathOrOriginal(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}

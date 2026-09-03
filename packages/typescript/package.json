@@ -53,6 +53,7 @@
   "author": "sarj-ai",
   "license": "MIT",
   "dependencies": {
+    "@typescript-eslint/typescript-estree": "^8.68.0",
     "@typescript-eslint/utils": "^8.68.0",
     "jsonc-parser": "^3.3.1"
   },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classTokens, tailwindBase } from "../../src/rules/_tailwind.js";
+import { classTokens, tailwindBase, tailwindVariantPrefix } from "../../src/rules/_tailwind.js";
 
 describe("tailwindBase", () => {
   it("removes chained variants and a leading important marker", () => {
@@ -15,6 +15,13 @@ describe("tailwindBase", () => {
     expect(tailwindBase("hover:bg-[url(http://example.com/a:b)]")).toBe(
       "bg-[url(http://example.com/a:b)]",
     );
+  });
+
+  it("removes bracketed modern variants without splitting their colons", () => {
+    expect(tailwindBase("supports-[selector(:has(*))]:data-[state=open]:bg-white")).toBe(
+      "bg-white",
+    );
+    expect(tailwindVariantPrefix("[&>a:hover]:bg-white")).toBe("[&>a:hover]:");
   });
 });
 

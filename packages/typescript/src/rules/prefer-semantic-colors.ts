@@ -5,17 +5,16 @@
  */
 
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
-import { existsSync, readdirSync, readFileSync } from "fs";
+import { existsSync, lstatSync, readdirSync, readFileSync } from "fs";
 import { dirname, join, parse } from "path";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { classTokens, tailwindBase } from "./_tailwind.js";
+import { classTokens, tailwindBase, tailwindVariantPrefix } from "./_tailwind.js";
 
 type MessageIds =
   | "rawPalette"
   | "arbitraryColor"
   | "inlineColor"
-  | "opaqueSurface"
   | "opaqueForegroundPair";
 
 export const PREFER_SEMANTIC_COLORS_DOCUMENTATION = {
@@ -25,7 +24,7 @@ export const PREFER_SEMANTIC_COLORS_DOCUMENTATION = {
   category: "style",
   limitations: [
     "Email, PDF, video-rendering, print-only, icon artwork, masks, gradients, stories, and explicitly configured non-token projects have targeted exclusions.",
-    "Opaque-neutral checks are opt-in: surfaces are limited to fully opaque bg-white/bg-black, while foregrounds require a same-variant semantic background and a declared matching foreground token.",
+    "Opaque-foreground checks are opt-in and require both a same-variant semantic background class and its package-local declared foreground token.",
   ],
   examples: [
     { id: "semantic-text-color", title: "Use a semantic color token", outcome: "no-match", files: [{ path: "src/notice.tsx", source: "const notice = <div className=\"text-destructive\" />;" }], focusPath: "src/notice.tsx", expectedCount: 0, public: true },
@@ -34,7 +33,7 @@ export const PREFER_SEMANTIC_COLORS_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 type Options = readonly [
   {
-    opaqueNeutrals?: "off" | "surfaces-and-declared-pairs";
+    opaqueForegroundPairs?: boolean;
     requireSemanticTokens?: boolean;
   }?,
 ];
@@ -203,11 +202,18 @@ const SVG_SHAPE_PRIMITIVES: ReadonlySet<string> = new Set([
 /** Render targets that cannot safely inherit the application's semantic CSS variables. */
 const EXTERNAL_RENDERER_MODULE_RE = /^(?:@react-(?:email|pdf)\/|remotion$|@remotion\/)/;
 
-const OPAQUE_SURFACE_RE = /^bg-(?:white|black)(?:\/100)?$/;
 const OPAQUE_FOREGROUND_RE = /^text-(?:white|black)(?:\/100)?$/;
 const SEMANTIC_BACKGROUND_RE = /^bg-([a-z][a-z0-9-]*)$/;
-const DECLARED_FOREGROUND_RE = /--(?:color-)?([a-z][a-z0-9-]*)-foreground\b/giu;
-const DECLARED_FOREGROUND_CACHE = new Map<string, ReadonlySet<string>>();
+const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//gu;
+const DECLARED_FOREGROUND_RE = /--(?:color-)?([a-z][a-z0-9-]*)-foreground\s*:/giu;
+const MAX_TOKEN_STYLESHEET_BYTES = 1_048_576;
+
+interface CachedSemanticDeclarations {
+  readonly fingerprint: string;
+  readonly value: ReadonlySet<string>;
+}
+
+const SEMANTIC_DECLARATIONS_CACHE = new Map<string, CachedSemanticDeclarations>();
 
 function isSvgLikeElementName(name: string): boolean {
   return name === "svg" || SVG_DEFS_CONTAINERS.has(name) || /svg$/i.test(name);
@@ -392,9 +398,10 @@ const expandWorkspaceGlob = (root: string, glob: string): string[] => {
 
   const prefix = glob.slice(0, star).replace(/\/$/u, "");
   const parent = prefix === "" ? root : join(root, prefix);
-  if (!existsSync(parent)) return [];
+  if (!existsSync(parent) || !lstatSync(parent).isDirectory()) return [];
   return readdirSync(parent, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .sort((left, right) => left.name.localeCompare(right.name))
     .map((entry) => join(parent, entry.name));
 };
 
@@ -420,39 +427,58 @@ const staticallyImportsExternalRenderer = (program: TSESTree.Program): boolean =
     );
   });
 
-const variantPrefix = (token: string): string => {
-  const separator = token.lastIndexOf(":");
-  return separator === -1 ? "" : token.slice(0, separator + 1);
+/** Package-local declarations that make opaque-neutral replacements concrete. */
+const semanticForegroundRoles = (filename: string): ReadonlySet<string> => {
+  const packageRoot = nearestPackageRoot(dirname(filename));
+  if (packageRoot === null) return new Set<string>();
+  const candidates = CSS_DETECTION_FILES.map((relative) => join(packageRoot, relative));
+  const fingerprint = candidates.map(fileFingerprint).join("|");
+  const cached = SEMANTIC_DECLARATIONS_CACHE.get(packageRoot);
+  if (cached?.fingerprint === fingerprint) return cached.value;
+
+  const foregroundRoles = new Set<string>();
+  for (const candidate of candidates) {
+    const css = readTokenStylesheet(candidate);
+    if (css === null) continue;
+    const declarations = css.replace(CSS_COMMENT_RE, "");
+    for (const match of declarations.matchAll(DECLARED_FOREGROUND_RE)) {
+      if (match[1] !== undefined) foregroundRoles.add(match[1].toLowerCase());
+    }
+  }
+  SEMANTIC_DECLARATIONS_CACHE.set(packageRoot, { fingerprint, value: foregroundRoles });
+  return foregroundRoles;
 };
 
-/** Semantic foreground roles explicitly declared in stylesheets visible to this file. */
-const declaredForegroundRoles = (filename: string): ReadonlySet<string> => {
-  const startDir = dirname(filename);
-  const cached = DECLARED_FOREGROUND_CACHE.get(startDir);
-  if (cached !== undefined) return cached;
-
-  const roles = new Set<string>();
+const nearestPackageRoot = (startDir: string): string | null => {
   let dir = startDir;
   const root = parse(dir).root;
   for (;;) {
-    for (const rel of CSS_DETECTION_FILES) {
-      const candidate = join(dir, rel);
-      if (!existsSync(candidate)) continue;
-      try {
-        for (const match of readFileSync(candidate, "utf8").matchAll(DECLARED_FOREGROUND_RE)) {
-          if (match[1] !== undefined) roles.add(match[1].toLowerCase());
-        }
-      } catch {
-        // An unreadable stylesheet cannot safely prove that a token exists.
-      }
+    if (existsSync(join(dir, "package.json"))) {
+      return dir;
     }
     const parent = dirname(dir);
-    if (dir === root || parent === dir) break;
+    if (dir === root || parent === dir) return null;
     dir = parent;
   }
+};
 
-  DECLARED_FOREGROUND_CACHE.set(startDir, roles);
-  return roles;
+const fileFingerprint = (path: string): string => {
+  try {
+    const stat = lstatSync(path);
+    return stat.isFile() ? `${path}:${stat.size}:${stat.mtimeMs}` : `${path}:excluded`;
+  } catch {
+    return `${path}:missing`;
+  }
+};
+
+const readTokenStylesheet = (path: string): string | null => {
+  try {
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.size > MAX_TOKEN_STYLESHEET_BYTES) return null;
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
 };
 
 export default createRule<Options, MessageIds>({
@@ -470,10 +496,7 @@ export default createRule<Options, MessageIds>({
         additionalProperties: false,
         properties: {
           requireSemanticTokens: { type: "boolean" },
-          opaqueNeutrals: {
-            type: "string",
-            enum: ["off", "surfaces-and-declared-pairs"],
-          },
+          opaqueForegroundPairs: { type: "boolean" },
         },
       },
     ],
@@ -484,8 +507,6 @@ export default createRule<Options, MessageIds>({
         "Hardcoded color '{{class}}' — use a semantic token, or var(--…). For charts/brand add an eslint-disable with a reason.",
       inlineColor:
         "Hardcoded color '{{value}}' — use a semantic token / CSS variable. For charts/standalone pages add an eslint-disable with a reason.",
-      opaqueSurface:
-        "Opaque neutral surface '{{class}}' bypasses the semantic theme; use the appropriate background, card, or popover token.",
       opaqueForegroundPair:
         "'{{class}}' bypasses the declared '{{replacement}}' token paired with '{{background}}'.",
     },
@@ -494,29 +515,28 @@ export default createRule<Options, MessageIds>({
   create(context, [options]) {
     if (STORIES_FILE_RE.test(context.filename)) return {};
     if (staticallyImportsExternalRenderer(context.sourceCode.ast)) return {};
-    const checkOpaqueNeutrals = options?.opaqueNeutrals === "surfaces-and-declared-pairs";
     if (
-      (options?.requireSemanticTokens === true || checkOpaqueNeutrals) &&
+      options?.requireSemanticTokens === true &&
       !hasSemanticTokenSystem(context.filename)
-    ) {
-      return {};
-    }
+    ) return {};
+    const foregroundRoles = options?.opaqueForegroundPairs === true
+      ? semanticForegroundRoles(context.filename)
+      : new Set<string>();
+    const checkOpaqueForegroundPairs = foregroundRoles.size > 0;
 
     let importsExternalRenderer = false;
-    const foregroundRoles = checkOpaqueNeutrals
-      ? declaredForegroundRoles(context.filename)
-      : new Set<string>();
-    const pendingReports: Array<{
+    const pendingReports = new Map<string, {
       node: TSESTree.Node;
       messageId: MessageIds;
       data: Record<string, string>;
-    }> = [];
+    }>();
     const report = (
       node: TSESTree.Node,
       messageId: MessageIds,
       data: Record<string, string>,
     ): void => {
-      pendingReports.push({ node, messageId, data });
+      const key = `${node.range[0]}:${node.range[1]}:${messageId}:${JSON.stringify(data)}`;
+      pendingReports.set(key, { node, messageId, data });
     };
 
     const reportClasses = (value: string, node: TSESTree.Node): void => {
@@ -530,19 +550,15 @@ export default createRule<Options, MessageIds>({
         }
       }
 
-      if (!checkOpaqueNeutrals || isInsideSvg(node)) return;
+      if (!checkOpaqueForegroundPairs || isInsideSvg(node)) return;
       for (const token of tokens) {
-        if (variantPrefix(token).split(":").includes("print")) continue;
+        const prefix = tailwindVariantPrefix(token);
+        if (prefix.split(":").includes("print")) continue;
         const base = tailwindBase(token);
-        if (OPAQUE_SURFACE_RE.test(base)) {
-          report(node, "opaqueSurface", { class: token });
-          continue;
-        }
         if (!OPAQUE_FOREGROUND_RE.test(base)) continue;
 
-        const prefix = variantPrefix(token);
         const semanticBackground = tokens.find((candidate) => {
-          if (variantPrefix(candidate) !== prefix) return false;
+          if (tailwindVariantPrefix(candidate) !== prefix) return false;
           const match = SEMANTIC_BACKGROUND_RE.exec(tailwindBase(candidate));
           return match?.[1] !== undefined && foregroundRoles.has(match[1]);
         });
@@ -666,7 +682,7 @@ export default createRule<Options, MessageIds>({
       },
       "Program:exit"(): void {
         if (importsExternalRenderer) return;
-        for (const descriptor of pendingReports) context.report(descriptor);
+        for (const descriptor of pendingReports.values()) context.report(descriptor);
       },
     };
   },

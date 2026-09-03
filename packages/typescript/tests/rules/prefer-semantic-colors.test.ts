@@ -357,7 +357,7 @@ const RAW_PALETTE_COMPONENT = `export const Badge = () => <span className="text-
 
 interface Options {
   readonly requireSemanticTokens?: boolean;
-  readonly opaqueNeutrals?: "off" | "surfaces-and-declared-pairs";
+  readonly opaqueForegroundPairs?: boolean;
 }
 
 function lintFile(root: string, filename: string, options: Options = {}): string[] {
@@ -435,27 +435,24 @@ describe("requireSemanticTokens gates on a real design system", () => {
   });
 });
 
-describe("opaque neutral semantic-token enforcement", () => {
+describe("opaque foreground semantic-token enforcement", () => {
   const TOKENS = `:root {
     --background: 0 0% 100%;
     --primary: 222 47% 11%;
     --primary-foreground: 210 40% 98%;
   }`;
   const OPTIONS = {
-    opaqueNeutrals: "surfaces-and-declared-pairs",
+    opaqueForegroundPairs: true,
   } as const;
 
   function messages(source: string, css: string = TOKENS): readonly string[] {
-    const root = makeRepo({ "app/globals.css": css, "src/app/card.tsx": source });
+    const root = makeRepo({
+      "package.json": "{}",
+      "app/globals.css": css,
+      "src/app/card.tsx": source,
+    });
     return lintSource(root, join(root, "src/app/card.tsx"), source, OPTIONS);
   }
-
-  it("reports opaque white and black surfaces in a tokenized app", () => {
-    expect(messages(`<><div className="bg-white" /><div className="dark:bg-black/100" /></>`)).toEqual([
-      "opaqueSurface",
-      "opaqueSurface",
-    ]);
-  });
 
   it("reports a raw foreground only when its semantic pair is declared", () => {
     expect(messages(`<button className="bg-primary text-white">Save</button>`)).toEqual([
@@ -478,8 +475,10 @@ describe("opaque neutral semantic-token enforcement", () => {
     )).toEqual([]);
   });
 
-  it("stays silent when no semantic token system exists", () => {
-    expect(messages(`<div className="bg-white" />`, `body { margin: 0; }`)).toEqual([]);
+  it("keeps the existing raw-color diagnostics active without semantic tokens", () => {
+    expect(messages(`<div className="text-red-500" />`, `body { margin: 0; }`)).toEqual([
+      "rawPalette",
+    ]);
   });
 
   it("excludes opaque utility classes inside SVG artwork", () => {
