@@ -48,7 +48,6 @@
       "no-hidden-constructor-fallback",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
-      "no-query-with-many-joins",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
       "no-redundant-literal-description",
@@ -272,7 +271,6 @@
       "SARJ015",
       "SARJ016",
       "SARJ018",
-      "SARJ019",
       "SARJ020",
       "SARJ021",
       "SARJ022",
@@ -589,6 +587,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ017 suppressions and baseline keys; Ruff G004 owns f-string logging detection."
+    },
+    {
+      "id": "SARJ019",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ019 suppressions and baseline keys. Join count alone cannot establish query cost or architecture; review query plans, cardinality, and ownership for performance-sensitive reads."
     },
     {
       "id": "SARJ031",
@@ -946,6 +951,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Removed in sarj-python-lint 0.34.0 because syntax cannot reliably distinguish harmful patching from valid test seams. Delete the `sarj-no-patching-system-under-test` pre-commit hook."
+    },
+    {
+      "id": "no-query-with-many-joins",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. It misclassified bounded normalized lookups and independent CTE branches, while its split-read or denormalize remediation could worsen latency and consistency."
     },
     {
       "id": "no-raw-sql-in-tests",
