@@ -386,7 +386,9 @@
       "task": "rule-audit/python/no-vague-suppression-description",
       "family": "python",
       "ruleId": "no-vague-suppression-description",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 17 original focused cases and scanned between 1,740 and 7,099 tracked Python files plus 462 to 695 popular-package files, initially finding zero diagnostics. Suppression inventories exposed 970 modern ruff: ignore directives in the smaller first-party scan, all invisible to the original matcher, plus a standalone inert-comment false positive and closed generic phrase misses. Post-change calibration ran 40 focused cases, 2,928 first-party files, and the same normalized 462-file popular corpus: it produced one unambiguous generic pre-existing/out-of-scope warning, zero popular findings, and zero scanner failures after removing the context-dependent word same.",
+      "outcome": "Kept SARJ419 and the accurate no-vague-suppression-description selector, but staged the maintainability policy as warning because organic positive evidence remains limited. Added modern Ruff and BasedPyright directives, real Ruff and Flake8 file directives, en-dash separators, every suppression segment in a physical comment, and a bounded exact vocabulary of generic reasons. Ordinary directives must attach to code, each comment emits at most once, concrete descriptions containing generic words remain accepted, and Pylint, blanket or missing reasons, formatter and coverage pragmas, necessity, cross-line context such as same, and subjective substring scoring remain outside scope. The UI now uses current Ruff syntax, states the exact boundary, requests a removal condition, and quotes the rejected reason."
     },
     {
       "task": "rule-audit/python/opaque-parametrize-case-needs-id",

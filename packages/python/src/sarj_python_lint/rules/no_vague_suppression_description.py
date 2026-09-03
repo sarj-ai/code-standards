@@ -23,17 +23,31 @@ from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_python_lint.rules._suppression_comments import Comment
 
+
+_INLINE_DIRECTIVE = (
+    r"(?:noqa\s*:\s*[A-Z0-9_, -]+|sarj-noqa\s*:\s*[A-Z0-9_, -]+|"
+    r"type\s*:\s*ignore\s*\[[^\]]+\]|(?:based)?pyright\s*:\s*ignore\s*\[[^\]]+\]|"
+    r"ruff\s*:\s*ignore\s*\[[^\]]+\])"
+)
+_FILE_DIRECTIVE = (
+    r"(?:ruff\s*:\s*(?:file-ignore\s*\[[^\]]+\]|noqa(?:\s*:\s*[A-Z0-9_, -]+)?)|"
+    r"flake8\s*:\s*noqa(?:\s*:\s*[A-Z0-9_, -]+)?)"
+)
+_DIRECTIVE_START = rf"(?:{_INLINE_DIRECTIVE}|{_FILE_DIRECTIVE})"
 _DIRECTIVE_RE = re.compile(
-    r"^(?:noqa\s*:\s*[A-Z0-9_, -]+|sarj-noqa\s*:\s*[A-Z0-9_, -]+|"
-    r"type\s*:\s*ignore\s*\[[^\]]+\]|pyright\s*:\s*ignore\s*\[[^\]]+\])"
-    r"\s*(?:—|--)\s*(?P<description>.+?)\s*$",
+    rf"(?:^|#\s*)(?:(?P<inline>{_INLINE_DIRECTIVE})|(?P<file>{_FILE_DIRECTIVE}))"
+    rf"\s*(?:—|–|--)\s*(?P<description>.+?)(?=\s+#\s*{_DIRECTIVE_START}|\s*$)",
     re.IGNORECASE,
 )
 _VAGUE_RE = re.compile(
-    r"^(?:(?:needed|required|necessary|intentional(?:ly)?|ignore(?:d)?|false[- ]positive|type error|"
-    r"lint issue|python|mypy|pyright|ruff)(?:\s+(?:here|for now|workaround))?|"
-    r"to satisfy (?:the )?(?:linter|type checker|mypy|pyright|ruff))\.?$",
+    r"^(?:(?:(?:because|just)\s+)?(?:needed|required|necessary|intentional(?:ly)?|ignore(?:d)?|"
+    r"false[- ]positive|type error|typing issue|lint issue|known issue|expected|safe|harmless|todo|"
+    r"upstream bug|tool limitation)(?:\s+(?:here|for now|workaround))?|"
+    r"(?:temporary\s+)?workaround|by design|not an issue|fix later|pre-existing,? out of scope|"
+    r"(?:to satisfy|required by)\s+(?:the\s+)?(?:tool|linter|type checker|mypy|pyright|ruff)|"
+    r"python|mypy|pyright|ruff)[.!?]?$",
     re.IGNORECASE,
 )
 
@@ -43,14 +57,18 @@ class NoVagueSuppressionDescription(Rule):
     id = "no-vague-suppression-description"
     code = "SARJ419"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Suppression descriptions must name the concrete mismatch or safety invariant.",
+        summary="Generic suppression descriptions do not make the exception auditable.",
         rationale="Generic reasons satisfy review conventions without making the suppressed risk auditable or removable.",
-        remediation="Name the exact tool mismatch, external contract, or invariant that makes this suppression safe.",
+        remediation=(
+            "Name the concrete tool mismatch or safety invariant and the condition that would allow removal. Cite an "
+            "upstream issue or affected version when that is the durable boundary."
+        ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only scoped noqa, type-checker, and sarj-noqa directives with a present but closed generic reason are checked.",
-            "Missing descriptions and descriptions containing concrete context are owned by their native tools or remain unchanged.",
+            "Only supported scoped Python suppression directives whose description exactly matches a bounded generic phrase are checked.",
+            "Missing descriptions, blanket directives, formatter and coverage pragmas, Pylint directives, and whether a suppression is necessary remain outside this rule.",
+            "Ordinary scoped directives must be attached to code; recognized Ruff and Flake8 file directives may stand alone.",
         ),
         examples=(
             RuleExample(
@@ -59,7 +77,7 @@ class NoVagueSuppressionDescription(Rule):
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
-                        "adapter.py", "value = vendor.value  # type: ignore[attr-defined] -- false positive\n"
+                        "adapter.py", "value = vendor.value  # ruff: ignore[attr-defined] -- false positive\n"
                     ),
                 ),
                 focus_path=PurePosixPath("adapter.py"),
@@ -91,17 +109,30 @@ class NoVagueSuppressionDescription(Rule):
         comments = scan_comments_or_none(source)
         if comments is None:
             return []
-        return [
-            Diagnostic(
-                path=path,
-                line=comment.line,
-                col=comment.col,
-                code=self.code,
-                message=self.description,
-                severity=Severity.ERROR,
-                column_encoding=ColumnEncoding.CODEPOINTS,
+        diagnostics: list[Diagnostic] = []
+        for comment in comments:
+            vague_reason = _vague_reason(comment)
+            if vague_reason is None:
+                continue
+            diagnostics.append(
+                Diagnostic(
+                    path=path,
+                    line=comment.line,
+                    col=comment.col,
+                    code=self.code,
+                    message=(
+                        f'Suppression reason "{vague_reason}" is generic; name the concrete mismatch or safety invariant.'
+                    ),
+                    severity=Severity.WARNING,
+                    column_encoding=ColumnEncoding.CODEPOINTS,
+                )
             )
-            for comment in comments
-            if (match := _DIRECTIVE_RE.match(comment.body)) is not None
-            and _VAGUE_RE.fullmatch(match["description"].strip()) is not None
-        ]
+        return diagnostics
+
+
+def _vague_reason(comment: Comment) -> str | None:
+    for match in _DIRECTIVE_RE.finditer(comment.body):
+        reason = match["description"].strip()
+        if (not comment.standalone or match["file"] is not None) and _VAGUE_RE.fullmatch(reason) is not None:
+            return reason
+    return None
