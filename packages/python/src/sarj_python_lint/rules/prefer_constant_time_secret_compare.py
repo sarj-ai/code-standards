@@ -252,19 +252,22 @@ def _operand_role(
     position: tuple[int, int],
     dominant_roles: dict[str, _Role] | None = None,
 ) -> _Role:
-    if isinstance(node, ast.NamedExpr):
-        return _operand_role(node.value, roles, position, dominant_roles)
-    if isinstance(node, ast.Name):
-        if dominant_roles is not None and node.id in dominant_roles:
-            return dominant_roles[node.id]
-        known = roles.role(node.id, position)
-        return known if known is not None else _name_role(node.id)
-    if isinstance(node, ast.JoinedStr):
-        return _combined_roles(
-            _operand_role(value.value, roles, position, dominant_roles)
-            for value in node.values
-            if isinstance(value, ast.FormattedValue)
-        )
+    match node:
+        case ast.NamedExpr():
+            return _operand_role(node.value, roles, position, dominant_roles)
+        case ast.Name():
+            if dominant_roles is not None and node.id in dominant_roles:
+                return dominant_roles[node.id]
+            known = roles.role(node.id, position)
+            return known if known is not None else _name_role(node.id)
+        case ast.JoinedStr():
+            return _combined_roles(
+                _operand_role(value.value, roles, position, dominant_roles)
+                for value in node.values
+                if isinstance(value, ast.FormattedValue)
+            )
+        case _:
+            pass
     if _is_external_lookup(node):
         return _Role(external=True, expected=False, password=_external_lookup_is_password(node))
     if _is_expected_source(node, roles.environment_names):

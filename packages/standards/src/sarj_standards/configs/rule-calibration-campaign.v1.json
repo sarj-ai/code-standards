@@ -466,7 +466,9 @@
       "task": "rule-audit/python/prefer-match-type-dispatch",
       "family": "python",
       "ruleId": "prefer-match-type-dispatch",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 88 focused cases and scanned up to 7,120 tracked Python files across 85 repositories plus a normalized 462-file popular corpus. The original matcher produced 65 fleet findings, including 57 subjective two-arm conversions and six unrelated repeated-capture findings; a separate private scan found 232 findings, 219 in generated OpenAPI clients. Post-change validation ran 44 focused cases and produced one genuine finding and zero observed false positives across 7,120 tracked files, plus zero findings across the popular corpus.",
+      "outcome": "Retained the compatible prefer-match-type-dispatch selector, rewrote the UI around three-or-more-branch runtime type dispatch, and staged SARJ080 as a warning. The matcher now requires adjacent unguarded branches over one simple subject, at least three distinct proven types, and terminating sibling checks; recognizes unshadowed builtins, module-local classes, and stdlib ast classes; excludes generated files and ambiguous imports or bindings; and shares one AST traversal for better fleet performance. Removed unrelated exception-flow, sentinel-guard, repeated-capture, issubclass, and noisy two-arm guidance."
     },
     {
       "task": "rule-audit/python/prefer-module-level-constant",
