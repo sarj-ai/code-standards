@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
-from sarj_python_lint.rules.no_long_comment import NoLongComment
 
 
 if TYPE_CHECKING:
@@ -897,8 +896,7 @@ def test_dashed_prose_continuation_has_no_comment_wall_duplicate() -> None:
         "# preserves ---- the provider-specific suffix for diagnostics.\n"
         "value = 1\n"
     )
-    diagnostics = [*_check(source), *NoLongComment().check(Path("<t>.py"), source)]
-    assert diagnostics == []
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize("prev", ["we cache the parsed value here.", "see the note above:", "reuse it (cheaply)"])

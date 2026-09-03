@@ -46,7 +46,6 @@
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
-      "no-long-comment",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
       "no-optional-tenant-predicate",
@@ -320,7 +319,6 @@
       "SARJ087",
       "SARJ088",
       "SARJ089",
-      "SARJ091",
       "SARJ092",
       "SARJ093",
       "SARJ094",
@@ -700,6 +698,13 @@
       "note": "Delete SARJ090 suppressions and baseline keys. Sentence count does not distinguish durable rationale from noise."
     },
     {
+      "id": "SARJ091",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ091 suppressions and baseline keys. Sentence count did not identify harmful documentation; retain semantic docstring rules and use Ruff W505 for physical line length."
+    },
+    {
       "id": "SARJ208",
       "kind": "code",
       "status": "renamed",
@@ -915,6 +920,13 @@
       "status": "renamed",
       "replacement": "no-offset-pagination",
       "note": "Replace sarj-no-limit-offset with sarj-no-offset-pagination before upgrading."
+    },
+    {
+      "id": "no-long-comment",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. It inspected only selected docstrings, missed actual long comments, and could be defeated by a blank line or technical token; use narrower semantic comment and docstring rules."
     },
     {
       "id": "no-patching-system-under-test",

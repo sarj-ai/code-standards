@@ -6,7 +6,6 @@ import pytest
 from sarj_python_lint.__main__ import deduplicate_diagnostics
 from sarj_python_lint.rule_base import Rule, Severity
 from sarj_python_lint.rules._project_index import ProjectIndexSet
-from sarj_python_lint.rules.no_long_comment import NoLongComment
 from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstring
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
@@ -337,12 +336,3 @@ def test_specific_existing_docstring_diagnostic_wins_precedence(
     findings = deduplicate_diagnostics(raw, source=source)
 
     assert [finding.code for finding in findings] == [specific_code]
-
-
-def test_long_comment_diagnostic_wins_over_default_deny_warning() -> None:
-    source = '"""One fact. Two facts. Three facts. Four facts. Five facts. Six facts. Seven facts. Eight facts."""\n'
-    raw = [*_check(source), *NoLongComment().check(Path("app/service.py"), source)]
-
-    findings = deduplicate_diagnostics(raw, source=source)
-
-    assert [finding.code for finding in findings] == ["SARJ091"]

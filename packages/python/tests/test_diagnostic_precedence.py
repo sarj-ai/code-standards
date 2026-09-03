@@ -98,12 +98,6 @@ def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: P
     assert [finding.code for finding in diagnostics] == ["SARJ093"]
 
 
-def test_specific_redundant_docstring_suppresses_generic_length_finding() -> None:
-    diagnostics = [_diagnostic("SARJ091"), _diagnostic("SARJ084")]
-
-    assert [finding.code for finding in deduplicate_diagnostics(diagnostics)] == ["SARJ084"]
-
-
 def test_precedence_never_crosses_source_locations() -> None:
     diagnostics = [_diagnostic("SARJ050", line=2), _diagnostic("SARJ088", line=3)]
 
