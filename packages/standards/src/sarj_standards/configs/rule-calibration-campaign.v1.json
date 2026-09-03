@@ -490,7 +490,9 @@
       "task": "rule-audit/python/prefer-nominal-id-types",
       "family": "python",
       "ruleId": "prefer-nominal-id-types",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 73 focused cases plus precedence coverage and scanned up to 7,120 tracked Python files plus a 443-file Pygments, packaging, and pytest corpus. The original matcher produced 373 fleet findings and reproduced false positives for unlike carriers, scalar versus collection roles, shadowed primitives, unrelated UUID and wrapper types, raw TypedDict and Pydantic wire models, decorated overrides, private boundaries, SQLAlchemy Mapped fields, and operational logging payloads. Post-change validation ran 78 focused cases and 87 with precedence; the broad fleet scan fell to 199 warning candidates, the Bulbul/Automations/Saqi scan fell from 120 to 21 manually reviewed credible domain boundaries, and the popular corpus remained at zero findings.",
+      "outcome": "Retained the accurate prefer-nominal-id-types selector, rewrote the UI around genuinely swappable same-carrier identifier roles, and staged SARJ093 as a warning. Primitive, UUID, wrapper, NewType, TypeAliasType, SQLAlchemy, Pydantic, and TypedDict decisions now require import provenance; unlike carrier shapes do not report. The matcher excludes generated and non-domain paths, private or decorated boundaries, operational audit and logger contexts, plural tracing IDs, raw schemas, SQLAlchemy Mapped fields, and direct or Annotated Pydantic wire aliases; it also prevents duplicate class and constructor diagnostics. The executable remedy distinguishes low-cost typing.NewType from runtime nominal value objects."
     },
     {
       "task": "rule-audit/python/prefer-non-nullable-collection",
