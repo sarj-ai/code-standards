@@ -482,7 +482,9 @@
       "task": "rule-audit/python/prefer-namedtuple-over-tuple-return",
       "family": "python",
       "ruleId": "prefer-namedtuple-over-tuple-return",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 121 focused cases and scanned up to 7,120 tracked Python files plus normalized popular corpora of 443 and 462 Pygments, packaging, and pytest files. The original matcher produced 392 first-party findings, including 51 test-like helpers in a smaller 84-finding scan, and crashed on a cyclic opaque-use probe. Post-change validation ran 63 focused cases; first-party scans produced zero findings or one manually confirmed record-like API candidate, and both popular scans produced zero findings. Ruff, BasedPyright, catalog checks, warning metadata tests, and the full 7,304-test Python suite passed.",
+      "outcome": "Retained the compatible prefer-namedtuple-over-tuple-return selector, rewrote the UI around public record-like returns, and staged SARJ026 as a warning. The matcher now requires an undecorated public top-level function with an explicit provenance-resolved builtin or typing tuple annotation containing at least three fixed heterogeneous fields. It excludes inferred and aliased returns, private or nested functions, methods, generated and non-production paths, decorated framework handlers, overload declarations, key callbacks, homogeneous builtin spellings, variadic and wrapped tuples, and ambiguous imports. The remedy recommends typing.NamedTuple only for tuple-compatible migrations and reserves dataclasses or models for deliberate caller changes."
     },
     {
       "task": "rule-audit/python/prefer-nominal-id-types",
