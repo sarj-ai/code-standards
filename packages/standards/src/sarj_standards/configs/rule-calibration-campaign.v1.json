@@ -474,7 +474,9 @@
       "task": "rule-audit/python/prefer-module-level-constant",
       "family": "python",
       "ruleId": "prefer-module-level-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 194 focused cases and scanned up to 7,120 tracked Python files across 85 repositories plus a normalized 462-file popular corpus. The original matcher produced 96 fleet findings and exposed unsafe advice for a nested mutable accumulator, representation-sensitive equality, formatting, slices, copy and serialization, unproven re and builtin bindings, numeric re.DEBUG flags, lazy or identity-preserving consumers, module monkeypatches, and missed test-support paths. Post-change validation ran 215 focused cases and found 50 advisory candidates across 7,119 tracked files with no observed in-scope false positives, plus zero findings across the popular corpus.",
+      "outcome": "Retained the compatible prefer-module-level-constant selector, rewrote the UI around behavior-preserving immutable module values, and staged SARJ039 as a warning because syntax cannot prove hotness. Collections now require eight deeply immutable elements, or three inside a loop, and only representation-insensitive reads qualify; set iteration, escaping or lazy consumers, equality, formatting, slicing, copying, serialization, and nested mutable state are excluded. Regex candidates require proven unmodified stdlib re bindings, reject symbolic or numeric DEBUG flags, and abstain after module attribute mutation. Test-support and case-insensitive test directories are excluded, and the public tuple example is executable and clean under SARJ096."
     },
     {
       "task": "rule-audit/python/prefer-namedtuple-over-tuple-return",
