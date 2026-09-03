@@ -316,7 +316,9 @@
       "task": "rule-audit/python/no-restated-comment",
       "family": "python",
       "ruleId": "no-restated-comment",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 79 original focused tests and scanned up to 8,868 Python files. They manually classified 44 to 118 findings: roughly 83 to 91 percent were clear one-statement narrations, while the remainder were context-bearing section, ordering, cardinality, configuration, test-case, or payload labels. Reviewers reproduced false positives when stopword folding discarded all, each, only, then, or needs; when a comment matched only a logger string payload; and when raw brackets inside string literals distorted statement grouping. Ruff ERA001 owns commented-out code, not lexical comparison with live adjacent actions, and Pylint has no equivalent.",
+      "outcome": "Kept the accurate no-restated-comment selector and staged SARJ049 as a warning because lexical similarity and region ownership remain judgment-heavy. Softened the UI and diagnostic to conditional removal, protected cardinality, ordering, necessity, and numbered navigation context, excluded declarative Field assignments, required at least one structural-code token match rather than payload-only overlap, and replaced raw delimiter counting with tokenized logical-statement boundaries. Ninety-two focused cases pass. A post-change scan of six primary repositories produced 26 warnings, all visibly clear action narrations in the reviewed output, while the observed context-label clusters disappeared."
     },
     {
       "task": "rule-audit/python/no-secret-in-log",

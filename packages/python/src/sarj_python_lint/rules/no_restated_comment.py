@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ast
+from io import StringIO
 from pathlib import PurePosixPath
 import re
+from textwrap import dedent
 import tokenize
 from typing import TYPE_CHECKING, ClassVar, override
 
@@ -16,6 +18,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
@@ -66,6 +69,12 @@ _MODALITY_RE = re.compile(r"\b(?:can|could|should|shall|may|might|must|will|woul
 _LEAD_IN_RE = re.compile(r":$")
 _EMPHASIS_RE = re.compile(r"\*\w[^*]*\*|`[^`]+`")
 _NEGATION_WORD_RE = re.compile(r"\b(?:no|not|never|neither|nor|without|none|non)\b", re.IGNORECASE)
+_CONTEXT_QUALIFIER_RE = re.compile(
+    r"\b(?:all|any|both|each|every|some|only|need|needs|needed|require|requires|required)\b|"
+    r"^\s*(?:and|after|before|finally|given|next|then|when)\b",
+    re.IGNORECASE,
+)
+_NAVIGATION_HEADING_RE = re.compile(r"^\s*(?:sheet|slide|step)\s+\d+\s*(?:[:.\-]|$)", re.IGNORECASE)
 
 # A positive comment can usefully translate negatively expressed code.
 _CODE_NEGATION_RE = re.compile(r"\bnot\b|!=|\bis None\b|\.empty\(|assert(?:Not|False)")
@@ -102,16 +111,14 @@ def _indent_of(line: str) -> int:
 
 
 def _statement_end(lines: list[str], index: int) -> int:
-    balance = 0
-    cursor = index
-    while cursor < len(lines):
-        line = lines[cursor]
-        balance += line.count("(") + line.count("[") + line.count("{")
-        balance -= line.count(")") + line.count("]") + line.count("}")
-        if balance <= 0:
-            break
-        cursor += 1
-    return cursor
+    snippet = dedent("\n".join(lines[index:]))
+    try:
+        for token in tokenize.generate_tokens(StringIO(snippet).readline):
+            if token.type == tokenize.NEWLINE:
+                return index + token.end[0] - 1
+    except IndentationError, tokenize.TokenError:
+        pass
+    return index
 
 
 def _is_group_label(lines: list[str], index: int) -> bool:
@@ -184,6 +191,27 @@ def _is_action_assignment(node: ast.stmt | None) -> bool:
             return False
 
 
+def _is_declarative_field(node: ast.stmt | None) -> bool:
+    if not isinstance(node, ast.AnnAssign) or not isinstance(node.value, ast.Call):
+        return False
+    function = node.value.func
+    return (isinstance(function, ast.Name) and function.id == "Field") or (
+        isinstance(function, ast.Attribute) and function.attr == "Field"
+    )
+
+
+def _structural_code_tokens(code: str) -> set[str]:
+    structural: set[str] = set()
+    try:
+        tokens = tokenize.generate_tokens(StringIO(code).readline)
+        for token in tokens:
+            if token.type == tokenize.NAME:
+                structural.update(code_tokens(token.string))
+    except IndentationError, tokenize.TokenError:
+        return set()
+    return structural
+
+
 def _numbered_walkthrough_lines(
     tree: ast.Module,
     standalone: list[PositionedComment],
@@ -217,14 +245,14 @@ class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary=(
-            "Comment restates the next statement — delete it; clarify an author-controlled name or extract a named "
-            "helper if the code is unclear."
+        summary="Short standalone comment lexically restates the immediately following simple action.",
+        rationale=(
+            "When a comment adds no rationale, scope, ordering, or constraint, it duplicates code and can become stale. "
+            "Lexical similarity is advisory rather than proof of author intent."
         ),
-        rationale="Comments that repeat code add reading cost and can become stale without explaining intent.",
         remediation=(
-            "Delete the comment. If author-controlled code is unclear without it, clarify a name or extract a named "
-            "helper; keep comments only for context the statement cannot express."
+            "Delete it if it merely narrates one statement. Preserve or rewrite comments that explain a reason, "
+            "constraint, consequence, ordering requirement, or meaningful region label."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SUGGESTION,
@@ -314,7 +342,11 @@ class NoRestatedComment(Rule):
                         line=line,
                         col=col + 1,
                         code=self.code,
-                        message=self.description,
+                        message=(
+                            f"Comment {body!r} appears to repeat the next action; delete it if it adds no reason, "
+                            "constraint, consequence, ordering, or region label."
+                        ),
+                        severity=Severity.WARNING,
                         column_encoding=ColumnEncoding.CODEPOINTS,
                     )
                 )
@@ -337,6 +369,8 @@ class NoRestatedComment(Rule):
             return False
         if _NEGATION_WORD_RE.search(body):
             return False
+        if _CONTEXT_QUALIFIER_RE.search(body) or _NAVIGATION_HEADING_RE.search(body):
+            return False
         if len(body.split()) > _MAX_WORDS:
             return False
         tokens = content_tokens(body)
@@ -356,9 +390,13 @@ class NoRestatedComment(Rule):
             return False
         if not _ACTION_STMT_RE.search(code):
             return False
+        if _is_declarative_field(action_assignment):
+            return False
         if _is_group_label(lines, index):
             return False
         if _region_size(lines, index) >= _SECTION_REGION_LINES:
             return False
         compared_code = ast.unparse(action_assignment) if action_assignment is not None else code
-        return restates(tokens, code_tokens(compared_code))
+        full_tokens = code_tokens(compared_code)
+        structural_tokens = _structural_code_tokens(compared_code)
+        return restates(tokens, full_tokens) and any(restates((token,), structural_tokens) for token in tokens)
