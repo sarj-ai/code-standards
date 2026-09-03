@@ -84,7 +84,10 @@
   "SARJ054": "no-file-level-escape-hatch-suppression",
   "SARJ055": null,
   "SARJ056": "no-optional-tenant-predicate",
-  "SARJ057": "no-tautological-expect",
+  "SARJ057": [
+    "no-tautological-expect",
+    "no-statically-truthy-assertion"
+  ],
   "SARJ058": null,
   "SARJ059": "prefer-library-fake",
   "SARJ060": "tautological-mock-assertion",

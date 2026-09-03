@@ -56,8 +56,8 @@
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
+      "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
-      "no-tautological-expect",
       "no-typed-doc-sections",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
@@ -1019,6 +1019,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this pre-commit hook. Reusable libraries should use standard logging, while Loguru-only applications can enforce their explicit policy with Ruff TID251 banned-api and scoped bridge exceptions."
+    },
+    {
+      "id": "no-tautological-expect",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-statically-truthy-assertion",
+      "note": "Replace sarj-no-tautological-expect with sarj-no-statically-truthy-assertion before upgrading."
     },
     {
       "id": "no-terraform-test-file",
