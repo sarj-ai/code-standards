@@ -506,7 +506,9 @@
       "task": "rule-audit/python/prefer-or-pattern",
       "family": "python",
       "ruleId": "prefer-or-pattern",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 72 focused cases and scanned up to 7,325 tracked Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced six broad-fleet findings, two Bulbul/Automations/Saqi findings, and nine distinct findings in a separate 7,299-path scan; every finding was a valid merge and the popular corpus remained at zero. Reviewers reproduced generated-source findings, partial three-arm previews, false negatives when a pattern string contained #, ignored leading comments, irrefutable nested as-patterns, no-op constant bodies, and a 2.3x tokenization regression during the initial repair. Post-change validation ran 81 focused cases, retained the same high-precision fleet findings, and restored a no-tokenization fast path for files without a structurally mergeable candidate.",
+      "outcome": "Retained the accurate and compatible prefer-or-pattern selector, rewrote the public UI with self-contained literal patterns, and staged SARJ070 as a maintainability warning. The matcher now excludes generated source, tokenizes real comments only after a cheap structural prefilter proves adjacent arms could merge, preserves leading and intervening comment boundaries, rejects recursively irrefutable patterns and constant-only bodies, and renders every arm in a valid bounded preview or omits the preview entirely. Guards, adjacency, equal bound-name sets, structural body equality, and compilation of the proposed combined pattern remain required; no autofix is offered."
     },
     {
       "task": "rule-audit/python/prefer-self-documenting-constant",

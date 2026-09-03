@@ -13,9 +13,12 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._comments import all_comments
+from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
@@ -43,7 +46,7 @@ class PreferOrPattern(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only adjacent, unguarded, refutable arms with structurally identical non-empty bodies are compared.",
-            "Arms with different bound names, comments, or a combined pattern rejected by Python are excluded.",
+            "Arms with different bound names or comments, intervening or leading comments, and combined patterns rejected by Python are excluded.",
         ),
         examples=(
             RuleExample(
@@ -53,12 +56,12 @@ class PreferOrPattern(Rule):
                 files=(
                     ExampleFile.python(
                         "app/settings.py",
-                        "def configure(value):\n"
+                        "def status(value):\n"
                         "    match value:\n"
-                        "        case LocalSettings():\n"
-                        "            return build(value)\n"
-                        "        case RemoteSettings():\n"
-                        "            return build(value)\n",
+                        "        case 'queued':\n"
+                        "            return 'active'\n"
+                        "        case 'running':\n"
+                        "            return 'active'\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/settings.py"),
@@ -72,10 +75,10 @@ class PreferOrPattern(Rule):
                 files=(
                     ExampleFile.python(
                         "app/settings.py",
-                        "def configure(value):\n"
+                        "def status(value):\n"
                         "    match value:\n"
-                        "        case LocalSettings() | RemoteSettings():\n"
-                        "            return build(value)\n",
+                        "        case 'queued' | 'running':\n"
+                        "            return 'active'\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/settings.py"),
@@ -91,7 +94,13 @@ class PreferOrPattern(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        lines = source.splitlines()
+        match_nodes = [node for node in nodes(tree, ast.Match) if _has_structural_candidate(node)]
+        if not match_nodes:
+            return []
+        if is_generated(path, source):
+            return []
+        comment_scan, _first_code_line = all_comments(source)
+        comments = [(comment.line, comment.column, comment.body, comment.standalone) for comment in comment_scan]
         diags = [
             Diagnostic(
                 path=path,
@@ -99,23 +108,25 @@ class PreferOrPattern(Rule):
                 col=run[0].pattern.col_offset + 1,
                 code=self.code,
                 message=_message(run),
+                severity=Severity.WARNING,
             )
-            for node in nodes(tree, ast.Match)
-            for run in _mergeable_runs(node, lines)
+            for node in match_nodes
+            for run in _mergeable_runs(node, comments)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
 
-def _mergeable_runs(node: ast.Match, lines: list[str]) -> list[list[ast.match_case]]:
+def _mergeable_runs(node: ast.Match, comments: list[tuple[int, int, str, bool]]) -> list[list[ast.match_case]]:
     runs: list[list[ast.match_case]] = []
     current: list[ast.match_case] = []
-    for case in node.cases:
+    for index, case in enumerate(node.cases):
         candidate_patterns = [*(arm.pattern for arm in current), case.pattern]
         if (
             current
             and _is_mergeable_arm(case)
-            and _arms_merge(current[-1], case, lines)
+            and not (len(current) == 1 and _has_leading_comment(node, index - 1, comments))
+            and _arms_merge(current[-1], case, comments)
             and _render_valid_or_pattern(candidate_patterns) is not None
         ):
             current.append(case)
@@ -128,6 +139,14 @@ def _mergeable_runs(node: ast.Match, lines: list[str]) -> list[list[ast.match_ca
     return runs
 
 
+def _has_structural_candidate(node: ast.Match) -> bool:
+    return any(
+        _arms_structurally_merge(first, second)
+        and _render_valid_or_pattern([first.pattern, second.pattern]) is not None
+        for first, second in zip(node.cases, node.cases[1:], strict=False)
+    )
+
+
 def _is_mergeable_arm(case: ast.match_case) -> bool:
     if case.guard is not None:
         return False
@@ -137,7 +156,11 @@ def _is_mergeable_arm(case: ast.match_case) -> bool:
 
 
 def _is_irrefutable(pattern: ast.pattern) -> bool:
-    return isinstance(pattern, ast.MatchAs) and pattern.pattern is None
+    if isinstance(pattern, ast.MatchAs):
+        return pattern.pattern is None or _is_irrefutable(pattern.pattern)
+    if isinstance(pattern, ast.MatchOr):
+        return any(_is_irrefutable(member) for member in pattern.patterns)
+    return False
 
 
 def _is_empty_body(body: list[ast.stmt]) -> bool:
@@ -146,20 +169,40 @@ def _is_empty_body(body: list[ast.stmt]) -> bool:
     stmt = body[0]
     if isinstance(stmt, _EMPTY_BODY_NODES):
         return True
-    return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and stmt.value.value is Ellipsis
+    return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant)
 
 
-def _arms_merge(first: ast.match_case, second: ast.match_case, lines: list[str]) -> bool:
-    if _bound_names(first.pattern) != _bound_names(second.pattern):
+def _arms_merge(
+    first: ast.match_case,
+    second: ast.match_case,
+    comments: list[tuple[int, int, str, bool]],
+) -> bool:
+    if not _arms_structurally_merge(first, second):
         return False
-    if not _bodies_equal(first.body, second.body):
-        return False
-    if _comments_in(lines, first.pattern.lineno, _arm_end(first)) != _comments_in(
-        lines, second.pattern.lineno, _arm_end(second)
+    if _comments_in(comments, first.pattern.lineno, _arm_end(first)) != _comments_in(
+        comments, second.pattern.lineno, _arm_end(second)
     ):
         return False
     # A comment in the gap groups the arms deliberately.
-    return not _comments_in(lines, _arm_end(first) + 1, second.pattern.lineno - 1)
+    return not _comments_in(comments, _arm_end(first) + 1, second.pattern.lineno - 1)
+
+
+def _arms_structurally_merge(first: ast.match_case, second: ast.match_case) -> bool:
+    return (
+        _is_mergeable_arm(first)
+        and _is_mergeable_arm(second)
+        and _bound_names(first.pattern) == _bound_names(second.pattern)
+        and _bodies_equal(first.body, second.body)
+    )
+
+
+def _has_leading_comment(
+    node: ast.Match,
+    case_index: int,
+    comments: list[tuple[int, int, str, bool]],
+) -> bool:
+    start = node.lineno + 1 if case_index == 0 else _arm_end(node.cases[case_index - 1]) + 1
+    return bool(_comments_in(comments, start, node.cases[case_index].pattern.lineno - 1))
 
 
 def _arm_end(case: ast.match_case) -> int:
@@ -185,25 +228,20 @@ def _bound_names(pattern: ast.pattern) -> frozenset[str]:
     return frozenset(names)
 
 
-def _comments_in(lines: list[str], start: int, end: int) -> tuple[str, ...]:
-    found: list[str] = []
-    for index in range(max(start, 1), min(end, len(lines)) + 1):
-        _, sep, tail = lines[index - 1].partition("#")
-        if sep:
-            found.append(tail.strip())
-    return tuple(found)
+def _comments_in(comments: list[tuple[int, int, str, bool]], start: int, end: int) -> tuple[str, ...]:
+    return tuple(body for line, _column, body, _standalone in comments if start <= line <= end)
 
 
 def _message(run: list[ast.match_case]) -> str:
-    preview = _preview(run[0].pattern, run[1].pattern)
+    preview = _preview([case.pattern for case in run])
     prefix = f"{len(run)} consecutive `case` arms repeat an identical body — merge them "
     if preview is None:
         return f"{prefix}into one or-pattern so the shared handling is written once."
     return f"{prefix}into one or-pattern (`case {preview}:`) so the shared handling is written once."
 
 
-def _preview(first: ast.pattern, second: ast.pattern) -> str | None:
-    preview = _render_valid_or_pattern([first, second])
+def _preview(patterns: list[ast.pattern]) -> str | None:
+    preview = _render_valid_or_pattern(patterns)
     return preview if preview is not None and len(preview) <= _MAX_RENDERED_PREVIEW else None
 
 

@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules import prefer_or_pattern as prefer_or_pattern_module
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 
 
@@ -89,6 +91,22 @@ def test_flags_a_run_of_four_arms_once():
     )
     assert len(diags) == 1
     assert "4 consecutive" in diags[0].message
+
+
+def test_multi_arm_preview_includes_every_pattern():
+    (diag,) = _check(
+        """
+        def f(value):
+            match value:
+                case "a":
+                    return 1
+                case "b":
+                    return 1
+                case "c":
+                    return 1
+        """
+    )
+    assert "case 'a' | 'b' | 'c':" in diag.message
 
 
 def test_reports_two_separate_runs_in_one_match():
@@ -320,6 +338,22 @@ def test_as_pattern_with_a_subpattern_is_refutable_and_still_flagged():
     assert len(diags) == 1
 
 
+def test_skips_as_pattern_with_an_irrefutable_subpattern():
+    assert (
+        _check(
+            """
+            def f(v):
+                match v:
+                    case (_ as hit):
+                        return hit
+                    case B() as hit:
+                        return hit
+            """
+        )
+        == []
+    )
+
+
 # false-positive guards — differing bodies                                     #
 
 
@@ -535,6 +569,41 @@ def test_a_comment_after_the_run_does_not_suppress_it():
     assert len(diags) == 1
 
 
+def test_a_comment_immediately_before_the_first_arm_suppresses_the_merge():
+    assert (
+        _check(
+            """
+            def f(v):
+                match v:
+                    # These cases intentionally stay visually distinct.
+                    case A():
+                        return 1
+                    case B():
+                        return 1
+            """
+        )
+        == []
+    )
+
+
+def test_hash_inside_a_literal_pattern_is_not_a_comment():
+    assert (
+        len(
+            _check(
+                """
+                def f(v):
+                    match v:
+                        case "queued#manual":
+                            return 1
+                        case "queued#automatic":
+                            return 1
+                """
+            )
+        )
+        == 1
+    )
+
+
 # false-positive guards — illegal merges (different bound names)               #
 
 
@@ -635,7 +704,12 @@ def test_skips_when_mapping_rest_names_differ():
 
 @pytest.mark.parametrize(
     "body",
-    [pytest.param("pass", id="pass"), pytest.param("...", id="ellipsis")],
+    [
+        pytest.param("pass", id="pass"),
+        pytest.param("...", id="ellipsis"),
+        pytest.param("'documentation only'", id="string-expression"),
+        pytest.param("42", id="numeric-expression"),
+    ],
 )
 def test_skips_arms_whose_shared_body_is_empty(body: str):
     assert (
@@ -683,20 +757,6 @@ def test_empty_arm_breaks_a_run():
         )
         == []
     )
-
-
-def test_a_docstring_style_string_body_is_not_treated_as_empty():
-    diags = _check(
-        """
-        def f(v):
-            match v:
-                case A():
-                    "noted"
-                case B():
-                    "noted"
-        """
-    )
-    assert len(diags) == 1
 
 
 # false-positive guards — non-adjacent arms                                    #
@@ -777,6 +837,17 @@ def test_empty_source_yields_no_diagnostics():
     assert PreferOrPattern().check(Path(SRC_PATH), "") == []
 
 
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        pytest.param("src/generated/client.py", _TWO_CLASS_ARMS, id="generated-path"),
+        pytest.param("src/client.py", "# @generated\n" + _TWO_CLASS_ARMS, id="generated-header"),
+    ],
+)
+def test_generated_source_yields_no_diagnostics(path: str, source: str):
+    assert _check(source, path) == []
+
+
 def test_module_without_any_match_yields_no_diagnostics():
     assert (
         _check(
@@ -787,6 +858,36 @@ def test_module_without_any_match_yields_no_diagnostics():
                 if isinstance(v, B):
                     return 1
                 return 0
+            """
+        )
+        == []
+    )
+
+
+def test_match_free_module_skips_expensive_source_scans(monkeypatch: pytest.MonkeyPatch):
+    def fail_if_called(*_args: object):
+        pytest.fail("source scan should be skipped when there is no candidate match")
+
+    monkeypatch.setattr(prefer_or_pattern_module, "all_comments", fail_if_called)
+    monkeypatch.setattr(prefer_or_pattern_module, "is_generated", fail_if_called)
+    assert _check("def f(value):\n    return value\n") == []
+
+
+def test_nonmergeable_match_skips_expensive_source_scans(monkeypatch: pytest.MonkeyPatch):
+    def fail_if_called(*_args: object):
+        pytest.fail("source scan should be skipped when match arms cannot merge")
+
+    monkeypatch.setattr(prefer_or_pattern_module, "all_comments", fail_if_called)
+    monkeypatch.setattr(prefer_or_pattern_module, "is_generated", fail_if_called)
+    assert (
+        _check(
+            """
+            def f(value):
+                match value:
+                    case "a":
+                        return 1
+                    case "b":
+                        return 2
             """
         )
         == []
@@ -981,3 +1082,5 @@ def test_rule_metadata():
     assert rule.id == "prefer-or-pattern"
     assert rule.code == "SARJ070"
     assert len(rule.description) >= 10
+    (diag,) = _check(_TWO_CLASS_ARMS)
+    assert diag.severity is Severity.WARNING
