@@ -50,7 +50,7 @@
       "no-offset-pagination",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
-      "no-repeated-string-literal",
+      "no-repeated-structured-string-literal",
       "no-repeated-test-body",
       "no-restated-closed-domain-description",
       "no-restated-comment",
@@ -972,6 +972,13 @@
       "status": "renamed",
       "replacement": "no-restated-closed-domain-description",
       "note": "Replace sarj-no-redundant-literal-description with sarj-no-restated-closed-domain-description before upgrading."
+    },
+    {
+      "id": "no-repeated-string-literal",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-repeated-structured-string-literal",
+      "note": "Replace sarj-no-repeated-string-literal with sarj-no-repeated-structured-string-literal before upgrading."
     },
     {
       "id": "no-sequential-await",

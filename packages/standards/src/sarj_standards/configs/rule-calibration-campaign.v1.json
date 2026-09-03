@@ -305,10 +305,12 @@
       "outcome": "Renamed the rule to the accurate no-restated-closed-domain-description selector with the old selector retained as an alias, and staged SARJ423 as a warning because this is documentation maintainability guidance. Added exact static local Literal aliases, closed Literal unions, direct BaseModel-plus-mixin classes, Pydantic v1 provenance, and tightly bounded allowed/valid/either/one-of clause forms including the observed identifier list. Matching still requires complete domain-set equality and abstains for partial, extra, mapped, rationale-bearing, dynamic, custom-schema, test, and generated cases. Reworked the UI around a realistic two-value domain and value-specific behavioral guidance; 25 focused cases pass."
     },
     {
-      "task": "rule-audit/python/no-repeated-string-literal",
+      "task": "rule-audit/python/no-repeated-structured-string-literal",
       "family": "python",
-      "ruleId": "no-repeated-string-literal",
-      "state": "pending"
+      "ruleId": "no-repeated-structured-string-literal",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 62 original focused tests and scanned up to 8,868 Python files. They manually classified 35 to 38 diagnostics across 17 to 22 logical literal groups: repeated SQL and route contracts were useful review prompts, while 21 localization-key findings were non-defects or judgment-heavy catalog ownership. Reviewers reproduced false positives for arbitrary multiline prose, a single uppercase FROM in prose, test suffixes, migrations, and match patterns, plus unsafe canonical advice after rebinding or late declaration. Ruff has no equivalent isolated cross-scope literal rule, and Pylint duplicate-code owns larger similar blocks rather than one exact string.",
+      "outcome": "Renamed the rule to no-repeated-structured-string-literal with the old selector retained as an alias, and staged SARJ024 as a warning. Cross-callable findings now require exact credible case-insensitive SQL shapes or absolute routes; generic identifiers require an existing unique canonical module constant, eliminating localization-key noise and arbitrary multiline prose. Added shared test-path and migration/example/fixture exclusions, match-pattern safety, lambda scopes, private uppercase constants, binding-count and declaration-order guards, and explicit independent-ownership suppression guidance. Reworked the UI around real cursor execution and a descriptive private constant; 71 focused cases pass."
     },
     {
       "task": "rule-audit/python/no-restated-comment",

@@ -32,7 +32,10 @@
     "no-generic-single-export-module"
   ],
   "SARJ023": "stepdown",
-  "SARJ024": "no-repeated-string-literal",
+  "SARJ024": [
+    "no-repeated-string-literal",
+    "no-repeated-structured-string-literal"
+  ],
   "SARJ025": "no-offset-pagination",
   "SARJ026": "prefer-namedtuple-over-tuple-return",
   "SARJ027": "len-as-truthiness",
