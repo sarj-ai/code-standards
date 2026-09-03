@@ -442,7 +442,7 @@ def test_bare_sarj_noqa_suppresses():
 
 
 def test_sarj_noqa_for_other_code_does_not_suppress():
-    src = "cur = conn.cursor(row_factory=dict_row)  # sarj-noqa: SARJ052 — other\n"
+    src = "cur = conn.cursor(row_factory=dict_row)  # sarj-noqa: SARJ999 — other\n"
     diags = _check(src)
     assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
 

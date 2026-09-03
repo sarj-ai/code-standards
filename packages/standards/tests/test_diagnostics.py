@@ -707,27 +707,27 @@ def test_github_renderer_caps_annotations_and_prioritizes_errors(tmp_path: Path)
 
 def test_standards_analyze_returns_native_python_diagnostics(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
-    source.write_text("import logging\n", encoding="utf-8")
+    source.write_text("logger.info('request', token=token)\n", encoding="utf-8")
 
     report = api.Standards(tmp_path).analyze(["service.py"])
 
-    finding = next(item for item in report.diagnostics if item.code == "SARJ052")
+    finding = next(item for item in report.diagnostics if item.code == "SARJ012")
     assert report.completion is Completion.COMPLETE
     assert report.conclusion is Conclusion.FINDINGS
-    assert finding.rule_id == "no-stdlib-logging"
+    assert finding.rule_id == "no-secret-in-log"
     assert finding.source == "sarj-python-lint"
     assert finding.location.path == "service.py"
-    assert finding.location.position == Position(0, 0, 0)
+    assert finding.location.position == Position(0, 29, 29)
 
 
 def test_standards_analyze_converts_python_ast_byte_columns_to_utf16(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
-    source.write_text("value = '😀'; import logging\n", encoding="utf-8")
+    source.write_text("value = '😀'; logger.info('request', token=token)\n", encoding="utf-8")
 
     report = api.Standards(tmp_path).analyze(["service.py"])
 
-    finding = next(item for item in report.diagnostics if item.code == "SARJ052")
-    assert finding.location.position == Position(0, 14, 16)
+    finding = next(item for item in report.diagnostics if item.code == "SARJ012")
+    assert finding.location.position == Position(0, 43, 45)
 
 
 def test_standards_analyze_converts_python_token_columns_to_utf16(tmp_path: Path) -> None:
@@ -817,13 +817,13 @@ def test_public_native_analysis_rejects_paths_outside_root(tmp_path: Path) -> No
 
 
 def test_standards_analyze_preserves_native_findings_when_typescript_is_uncovered(tmp_path: Path) -> None:
-    (tmp_path / "service.py").write_text("import logging\n", encoding="utf-8")
+    (tmp_path / "service.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
     (tmp_path / "app.ts").write_text("export const value = 1;\n", encoding="utf-8")
 
     report = api.Standards(tmp_path).analyze(["service.py", "app.ts"])
 
     assert report.completion is Completion.PARTIAL
-    assert any(item.code == "SARJ052" for item in report.diagnostics)
+    assert any(item.code == "SARJ012" for item in report.diagnostics)
     assert report.coverage[0].source == "eslint"
     assert report.exit_code == 2
 
@@ -831,10 +831,10 @@ def test_standards_analyze_preserves_native_findings_when_typescript_is_uncovere
 def test_policy_analysis_applies_manifest_scope_and_baseline_while_raw_does_not(tmp_path: Path) -> None:
     selected = tmp_path / "selected"
     selected.mkdir()
-    (selected / "service.py").write_text("import logging\n", encoding="utf-8")
-    (tmp_path / "outside.py").write_text("import logging\n", encoding="utf-8")
+    (selected / "service.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
+    (tmp_path / "outside.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
     baseline = tmp_path / ".sarj-python-baseline.json"
-    baseline.write_text('{"selected/service.py":{"SARJ052":1}}\n', encoding="utf-8")
+    baseline.write_text('{"selected/service.py":{"SARJ012":1}}\n', encoding="utf-8")
     (tmp_path / ".sarj-standards.toml").write_text(
         f'version = "{api.__version__}"\nprofile = "standard"\nconfigs = []\n'
         '[dest]\npython = "."\ntypescript = "."\n'
@@ -847,8 +847,8 @@ def test_policy_analysis_applies_manifest_scope_and_baseline_while_raw_does_not(
     policy = api.Standards(tmp_path).analyze()
     raw = api.Standards(tmp_path).analyze(mode=api.AnalysisMode.RAW)
 
-    assert not [item for item in policy.diagnostics if item.code == "SARJ052"]
-    assert {item.location.path for item in raw.diagnostics if item.code == "SARJ052"} == {
+    assert not [item for item in policy.diagnostics if item.code == "SARJ012"]
+    assert {item.location.path for item in raw.diagnostics if item.code == "SARJ012"} == {
         "outside.py",
         "selected/service.py",
     }

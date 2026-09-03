@@ -56,7 +56,6 @@
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
-      "no-stdlib-logging",
       "no-string-concat-in-loop",
       "no-tautological-expect",
       "no-typed-doc-sections",
@@ -290,7 +289,6 @@
       "SARJ049",
       "SARJ050",
       "SARJ051",
-      "SARJ052",
       "SARJ053",
       "SARJ054",
       "SARJ057",
@@ -643,6 +641,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ047 suppressions and baseline keys; a computed real-clock delay can deliberately exercise timeout, TTL, or monotonic-clock behavior."
+    },
+    {
+      "id": "SARJ052",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ052 suppressions and baseline keys. A universal Loguru mandate is invalid for libraries, framework integrations, and packages without that dependency; application profiles that own this policy should configure Ruff TID251 banned-api with audited bridge exceptions."
     },
     {
       "id": "SARJ055",
@@ -1007,6 +1012,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; fixed real-clock sleeps can deliberately exercise TTL and monotonic-clock behavior."
+    },
+    {
+      "id": "no-stdlib-logging",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this pre-commit hook. Reusable libraries should use standard logging, while Loguru-only applications can enforce their explicit policy with Ruff TID251 banned-api and scoped bridge exceptions."
     },
     {
       "id": "no-terraform-test-file",

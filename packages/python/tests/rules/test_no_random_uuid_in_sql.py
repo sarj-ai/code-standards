@@ -220,7 +220,7 @@ def test_sarj053_noqa_suppresses_a_deliberate_legacy_default():
 
 
 def test_noqa_for_another_rule_does_not_suppress_sarj053():
-    src = 'SQL = "ALTER TABLE t ALTER id SET DEFAULT gen_random_uuid()"  # sarj-noqa: SARJ052\n'
+    src = 'SQL = "ALTER TABLE t ALTER id SET DEFAULT gen_random_uuid()"  # sarj-noqa: SARJ999\n'
     diags = _check(src)
     assert len(diags) == 1
     assert not is_suppressed(src.splitlines(), diags[0].line, diags[0].code)
