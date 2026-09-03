@@ -372,7 +372,9 @@
       "task": "rule-audit/python/no-unique-violation-message-match",
       "family": "python",
       "ruleId": "no-unique-violation-message-match",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews kept the established name and found no upstream Ruff or Pylint owner. They reviewed 2,928 to 7,099 local files and found exactly three true-positive psycopg handlers in Bulbul, while 462 to 695 popular-package files produced zero findings. Reviewers reproduced false positives from mixed exception tuples, nested or rebound handler variables, shadowed imports and builtins, reversed membership, sanitization-only uses, and branch-ambiguous aliases. Fifty-five focused cases pass after repair.",
+      "outcome": "Kept SARJ404 and no-unique-violation-message-match at error severity; limited it to import-proven psycopg, psycopg2, and asyncpg unique-violation types; required every exception-tuple member to qualify; recognized rendered message transformations, equality, prefix/suffix, import-proven regular expressions, and straight-line aliases; rejected rebinding, shadowing, branch ambiguity, reversed containment, generic IntegrityError wrappers, and non-translating message uses; and rewrote UI examples and remediation around driver-specific structured constraint fields."
     },
     {
       "task": "rule-audit/python/no-unnecessary-docstring",
