@@ -63,9 +63,9 @@ def test_above_the_threshold_fires(count: int):
 def test_the_message_is_the_one_the_rule_documents():
     [diag] = _check(_patches(6))
     assert diag.message == (
-        "`test_thing` substitutes 6 collaborators — at that ratio it exercises the mock wiring, "
-        "not the code. Prefer a real dependency (a test database, an in-process app, `respx` for "
-        "HTTP) and mock only the true external boundary."
+        "`test_thing` uses 6 independently rooted test doubles or substitutions. Consider real "
+        "in-process dependencies, a component harness, or purpose-built fakes, keeping mocks at "
+        "true external boundaries."
     )
     assert diag.code == "SARJ062"
 
@@ -172,6 +172,19 @@ def test_syntax_error_returns_no_diagnostics():
     assert _check("def test_x(:\n    thing()\n") == []
 
 
+@pytest.mark.parametrize(
+    ("path", "header"),
+    [
+        ("tests/generated/test_client.py", ""),
+        (TEST_PATH, "# This file is generated. Do not edit.\n"),
+    ],
+    ids=["generated-path", "generated-header"],
+)
+def test_generated_tests_are_excluded(path: str, header: str):
+    source = header + _IMPORT + _patches(6)
+    assert OverMockedTest().check(Path(path), source) == []
+
+
 # What counts: every substitution form contributes.                            #
 
 
@@ -197,6 +210,20 @@ def test_mock_constructions_bound_to_names_count():
             assert run(a, b, c, d, e, f) == 1
     """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "nested",
+    [
+        "def helper():\n" + "".join(f"    value_{i} = Mock()\n" for i in range(6)),
+        "class Helper:\n" + "".join(f"    value_{i} = Mock()\n" for i in range(6)),
+        "helper = lambda: (" + ", ".join("Mock()" for _ in range(6)) + ")\n",
+    ],
+    ids=["function", "class", "lambda"],
+)
+def test_nested_scope_mocks_do_not_count_toward_the_outer_test(nested: str):
+    source = "def test_thing():\n" + textwrap.indent(nested, "    ") + "    assert run() == 1\n"
+    assert _check(source) == []
 
 
 def test_annotated_mock_constructions_bound_to_names_count():
@@ -230,6 +257,20 @@ def test_mock_fixture_parameters_count():
             assert run() == 1
     """
     assert len(_check(src)) == 1
+
+
+def test_parametrized_arguments_named_like_mocks_are_not_fixtures():
+    src = textwrap.dedent("""\
+        import pytest
+
+        @pytest.mark.parametrize(
+            ("mock_a", "mock_b", "mock_c", "mock_d", "mock_e", "mock_f"),
+            [(1, 2, 3, 4, 5, 6)],
+        )
+        def test_thing(mock_a, mock_b, mock_c, mock_d, mock_e, mock_f):
+            assert sum((mock_a, mock_b, mock_c, mock_d, mock_e, mock_f)) == 21
+        """)
+    assert OverMockedTest().check(Path(TEST_PATH), src) == []
 
 
 def test_keyword_only_mock_fixture_parameters_count():
@@ -287,7 +328,7 @@ def test_the_replacement_in_a_two_argument_setattr_is_not_part_of_the_target():
 
 def test_mocker_patch_counts():
     src = """
-        def test_thing():
+        def test_thing(mocker):
             mocker.patch("a.one")
             mocker.patch("b.two")
             mocker.patch.object(thing_c, "three")
@@ -479,6 +520,22 @@ def test_patch_object_of_six_receivers_fires():
                 patch.object(delta, "go"),
                 patch.object(echo, "go"),
                 patch.object(foxtrot, "go"),
+            ):
+                assert run() == 1
+    """
+    assert len(_check(src)) == 1
+
+
+def test_patch_object_keyword_target_and_attribute_count():
+    src = """
+        def test_thing():
+            with (
+                patch.object(target=alpha, attribute="go"),
+                patch.object(target=bravo, attribute="go"),
+                patch.object(target=charlie, attribute="go"),
+                patch.object(target=delta, attribute="go"),
+                patch.object(target=echo, attribute="go"),
+                patch.object(target=foxtrot, attribute="go"),
             ):
                 assert run() == 1
     """
@@ -887,6 +944,40 @@ def test_a_local_patch_helper_is_not_unittest_mock():
     assert OverMockedTest().check(Path(TEST_PATH), src) == []
 
 
+@pytest.mark.parametrize("scope", ["module", "function"])
+def test_an_imported_patch_name_rebound_to_a_local_helper_is_not_mock(scope: str):
+    calls = "\n".join(f'    patch("mod{i}.collaborator")' for i in range(6))
+    if scope == "module":
+        source = f"from unittest.mock import patch\npatch = custom_patch\n\ndef test_thing():\n{calls}\n"
+    else:
+        source = f"from unittest.mock import patch\n\ndef test_thing():\n    patch = custom_patch\n{calls}\n"
+    assert OverMockedTest().check(Path(TEST_PATH), source) == []
+
+
+def test_mock_import_in_a_nested_scope_does_not_change_outer_provenance():
+    source = textwrap.dedent("""\
+        def helper():
+            from unittest.mock import patch
+            return patch
+
+        def test_thing():
+            patch("a.one")
+            patch("b.two")
+            patch("c.three")
+            patch("d.four")
+            patch("e.five")
+            patch("f.six")
+        """)
+    assert OverMockedTest().check(Path(TEST_PATH), source) == []
+
+
+def test_a_local_mocker_object_is_not_the_pytest_mock_fixture():
+    source = "def test_thing():\n    mocker = CustomPatcher()\n" + "".join(
+        f'    mocker.patch("mod{i}.collaborator")\n' for i in range(6)
+    )
+    assert OverMockedTest().check(Path(TEST_PATH), source) == []
+
+
 def test_a_locally_named_mock_class_is_not_a_double():
     src = textwrap.dedent("""
         class MockClient:
@@ -1241,7 +1332,7 @@ def test_celery_synloop_fires():
                     synloop(obj, connection, consumer, blueprint, hub, qos, heartbeat, clock)
     """
     [diag] = _check(src)
-    assert "8 collaborators" in diag.message
+    assert "8 independently rooted test doubles or substitutions" in diag.message
 
 
 def test_a_real_dependency_test_with_one_boundary_double_is_clean():

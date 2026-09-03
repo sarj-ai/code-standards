@@ -402,7 +402,9 @@
       "task": "rule-audit/python/over-mocked-test",
       "family": "python",
       "ruleId": "over-mocked-test",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 136 original focused cases. Read-only scans covered up to 7,099 tracked first-party Python files, a normalized 462-file installed-source corpus, and 236 files from detect-secrets and pre-commit-hooks; all scans produced zero findings. A 1,976-file subset contained 11,010 collected tests with inferred substitution counts of 10,587 at zero, 340 at one, 55 at two, 24 at three, two at four, two at five, and none above the threshold. Adversarial tests reproduced false positives from nested lexical scopes, rebound imports, arbitrary local mocker objects, and parametrized arguments named mock_*, plus a false negative for keyword-form patch.object. Post-change validation ran 147 focused cases with all demonstrated defects covered.",
+      "outcome": "Kept SARJ062 and the concise over-mocked-test name, but staged it as warning because the six-root threshold is a context-sensitive maintainability signal with no organic positive in the measured corpora. Excluded generated tests and nested lexical scopes; made module imports and function-local bindings shadow-aware; required mocker and monkeypatch to be actual test parameters; excluded import-proven pytest parametrized arguments from the mock-fixture heuristic; and supported positional or keyword patch targets and patch.object attributes. Reworked the public examples, summary, limitations, and diagnostic to describe independently rooted doubles and inferred substitutions without claiming the test cannot exercise production code. Deliberately retained conservative owner collapsing and infrastructure, class-level, and composition-root exclusions because broadening them lacked precision evidence."
     },
     {
       "task": "rule-audit/python/prefer-class-row",
