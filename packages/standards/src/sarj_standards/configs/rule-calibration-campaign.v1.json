@@ -546,7 +546,9 @@
       "task": "rule-audit/python/prefer-struct-over-namedtuple",
       "family": "python",
       "ruleId": "prefer-struct-over-namedtuple",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 90 focused cases and one expected failure, scanned up to 8,250 tracked local Python files, and evaluated a normalized 443-file Pygments, packaging, and pytest corpus. The original error-level rule reported imports rather than declarations, produced a compatibility-branch false positive, and had scope-insensitive false negatives plus provenance errors for rebinding, wildcard imports, pattern captures, and nested class namespaces. Post-change validation ran 121 focused cases, the 7,344-test Python suite, and strict BasedPyright. The final broad scan retained one manually confirmed six-field application record at its construction site with zero scan errors; Bulbul, Automations, Saqi, the popular corpus, and the standards source tree remained clean. A lexical candidate gate reduced the broad scan from 114 seconds to 2.5 seconds.",
+      "outcome": "Retained the shipped prefer-struct-over-namedtuple selector because Python rule aliases are documentation-only, but rewrote every public surface around the accurate typed-record objective and staged SARJ015 as a maintainability warning. The matcher now reports source-ordered factory calls only when scope- and position-aware provenance proves collections.namedtuple and a matching class-like declaration has a literal non-empty field set. It excludes unused imports, tests, generated or vendored code, compatibility branches, dynamic or renamed factories, ambiguous wildcard and duplicate aliases, invalid or duplicate fields, custom module identities, zero-field probes, suppressions, and records with complete field annotations. The remediation preserves tuple behavior with class-based typing.NamedTuple and presents frozen slotted dataclasses or existing validation models only as reviewed semantic changes; no autofix is offered."
     },
     {
       "task": "rule-audit/python/prefer-timedelta-for-durations",

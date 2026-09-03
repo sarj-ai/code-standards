@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ce44509f5bf0c94765e71d328a3e77d2347e49b9793b50fae27ebabe5abbae42",
+  "catalogSha256": "5fc3fcb9e0910595cb5491f1396354536fb3e8ee9b3dbad34074d33d5a510ed6",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6272,7 +6272,7 @@
           "files": [
             {
               "path": "models.py",
-              "source": "import collections\n\nRow = collections.namedtuple(\"Row\", [\"id\", \"name\"])\n"
+              "source": "from collections import namedtuple\n\nRow = namedtuple(\"Row\", [\"id\", \"name\"])\n"
             }
           ],
           "fixedFiles": [],
@@ -6280,14 +6280,14 @@
           "id": "collections-namedtuple",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Functional untyped namedtuple"
+          "title": "Static record omits field types"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "models.py",
-              "source": "from typing import NamedTuple\n\n\nclass Row(NamedTuple):\n    id: int\n    name: str\n"
+              "source": "from typing import NamedTuple\n\n\nclass Row(NamedTuple):\n    id: int\n    name: str\n\n\nrow = Row(1, \"Ada\")\nid, name = row\n"
             }
           ],
           "fixedFiles": [],
@@ -6295,7 +6295,7 @@
           "id": "typed-named-tuple",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Typed NamedTuple declaration"
+          "title": "Typed tuple-compatible record"
         }
       ],
       "optionsSchemaSource": null
