@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@astrojs/starlight": "0.41.10",
-    "@sarj/docs-ui": "0.4.4",
+    "@sarj/design": "0.5.0",
     "astro": "7.2.9"
   },
   "devDependencies": {

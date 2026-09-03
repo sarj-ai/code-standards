@@ -186,8 +186,8 @@ def test_typescript_release_verifies_its_own_registry_artifact() -> None:
     assert "needs.build-typescript.outputs.artifact_sha256" in publish
     assert "verify_registry_publication.py npm" in publish
     assert "--environment npm-typescript-release" in publish
-    assert "needs.build-docs-ui" not in publish
-    assert "@sarj/docs-ui" not in publish
+    assert "needs.build-design" not in publish
+    assert "@sarj/design" not in publish
 
 
 def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:
