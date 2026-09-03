@@ -498,7 +498,9 @@
       "task": "rule-audit/python/prefer-non-nullable-collection",
       "family": "python",
       "ruleId": "prefer-non-nullable-collection",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 68 focused cases and scanned up to 7,120 tracked Python files plus a 443-file Pygments, packaging, and pytest corpus. The original detector produced six fleet findings representing four unique implementations and two findings in Bulbul/Automations/Saqi, but also reproduced false positives for decorated framework callbacks, derived constructors, identity-preserving guards and conditionals, shadowed list and list(), unrelated Optional and List types, and ambiguous wildcard imports. Post-change validation ran 44 focused cases; both fleet scans retained only the same two high-signal immediate collapses and the popular corpus remained at zero findings.",
+      "outcome": "Retained the compatible prefer-non-nullable-collection selector while making its Python list-parameter scope explicit, reclassified SARJ082 as a maintainability warning, and rewrote the UI to describe an advisory caller-visible API migration. The matcher now requires provenance-resolved list, Optional, Union, Annotated, and list() syntax and only reports a direct one-read items-or-empty-list collapse or a first self-assignment with that shape. Decorated functions, constructors of non-object bases, tests, generated and support code, nested captures, multiple pre-normalization reads, guards, conditional expressions, shadowed bindings, and ambiguous imports are excluded."
     },
     {
       "task": "rule-audit/python/prefer-one-for-required-row",

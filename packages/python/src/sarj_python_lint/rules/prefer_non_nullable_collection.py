@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
@@ -24,7 +25,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_UNION_NAMES = frozenset({"Optional", "Union"})
+_TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
+_BUILTIN_SOURCES = frozenset({"builtins"})
 _NORMALIZATION_VALUE_COUNT = 2
 
 
@@ -33,28 +35,36 @@ class _ParameterDefault(NamedTuple):
     default: ast.expr | None
 
 
+@final
 class PreferNonNullableCollection(Rule):
     id: str = "prefer-non-nullable-collection"
     code: str = "SARJ082"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Avoid nullable list parameters when local use proves `None` and an empty list are equivalent.",
-        rationale="Exposing two equivalent empty states expands the function contract without preserving meaningful information.",
-        remediation="Require the list, or accept an immutable empty default such as `Sequence[T] = ()` and materialize a list internally.",
-        category=RuleCategory.CORRECTNESS,
+        summary="Avoid nullable list parameters that are immediately collapsed to an empty list.",
+        rationale=(
+            "When an implementation immediately replaces both `None` and an empty list with the same fresh empty list, "
+            "the callable contract exposes an extra input state that its body does not retain."
+        ),
+        remediation=(
+            "After reviewing callers and list identity or mutation behavior, either require the list or accept "
+            "`Sequence[T] = ()` and materialize a list internally. Removing explicit `None` acceptance is an API migration."
+        ),
+        category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only module functions and constructors with a nullable list defaulted to `None` are analyzed.",
-            "Overrides, tests, generated code, nested captures, multiple reads, and uses that preserve `None` as a distinct state are excluded.",
+            "Only undecorated module functions and constructors without a non-object base are checked for nullable list parameters defaulted to None.",
+            "The warning requires a syntax-proven `items or []` normalization, either as the only read or as the first assignment; tests, generated code, ambiguous imports, guards, and conditional expressions are excluded.",
         ),
         examples=(
             RuleExample(
-                example_id="equivalent-empty-list-states",
-                title="Nullable list is immediately normalized",
+                example_id="collapsed-nullable-list",
+                title="Nullable list is immediately collapsed to an empty list",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "app/resolver.py",
-                        "def resolve(candidates: list[str] | None = None) -> list[str]:\n    return candidates or []\n",
+                        "def resolve(candidates: list[str] | None = None) -> list[str]:\n"
+                        "    return candidates or []\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/resolver.py"),
@@ -62,13 +72,15 @@ class PreferNonNullableCollection(Rule):
                 public=True,
             ),
             RuleExample(
-                example_id="required-list-input",
-                title="Required list has one empty state",
+                example_id="immutable-empty-input",
+                title="Immutable empty default keeps omission non-nullable",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "app/resolver.py",
-                        "def resolve(candidates: list[str]) -> list[str]:\n    return candidates\n",
+                        "from collections.abc import Sequence\n\n"
+                        "def resolve(candidates: Sequence[str] = ()) -> list[str]:\n"
+                        "    return list(candidates)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/resolver.py"),
@@ -84,69 +96,79 @@ class PreferNonNullableCollection(Rule):
         if is_test_path(path) or is_test_support_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
-        if tree is None:
+        if tree is None or _has_wildcard_import(tree):
             return []
 
-        diags: list[Diagnostic] = []
-        constructor_owners = {
-            member: statement
-            for statement in tree.body
-            if isinstance(statement, ast.ClassDef)
-            for member in statement.body
-            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == "__init__"
-        }
-        for function in _eligible_functions(tree):
-            if _is_override(function):
+        imports = ImportIndex.from_tree(tree)
+        diagnostics: list[Diagnostic] = []
+        for function in _eligible_functions(tree, imports):
+            if function.decorator_list:
                 continue
-            owner = constructor_owners.get(function)
-            diags.extend(
+            diagnostics.extend(
                 Diagnostic(
                     path=path,
                     line=argument.lineno,
                     col=argument.col_offset + 1,
                     code=self.code,
                     message=(
-                        f"`{argument.arg}` accepts `None` but the function uses it only as an empty list; "
-                        "make the list required, or accept an immutable empty-default input such as "
-                        "`Sequence[T] = ()` and materialize a list internally."
+                        f"`{argument.arg}` accepts `None` but is immediately collapsed to an empty list; after "
+                        "reviewing callers and identity or mutation behavior, make it required or use an immutable "
+                        "empty-default input such as `Sequence[T] = ()`."
                     ),
-                    severity=Severity.ERROR,
+                    severity=Severity.WARNING,
                 )
-                for argument in _equivalent_empty_parameters(function)
-                if owner is None or not _forwards_inherited_constructor_parameter(owner, function, argument.arg)
+                for argument in _collapsed_empty_parameters(function, imports)
             )
-        diags.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
-        return diags
+        return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
 
 
-def _eligible_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+def _has_wildcard_import(tree: ast.Module) -> bool:
+    return any(
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
+        for node in ast.walk(tree)
+    )
+
+
+def _eligible_functions(tree: ast.Module, imports: ImportIndex) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
     for statement in tree.body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
             functions.append(statement)
-        elif isinstance(statement, ast.ClassDef):
-            functions.extend(
-                member
-                for member in statement.body
-                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == "__init__"
-            )
+            continue
+        if not isinstance(statement, ast.ClassDef) or _has_non_object_base(statement, imports):
+            continue
+        functions.extend(
+            member
+            for member in statement.body
+            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == "__init__"
+        )
     return functions
 
 
-def _equivalent_empty_parameters(
+def _has_non_object_base(node: ast.ClassDef, imports: ImportIndex) -> bool:
+    if not node.bases:
+        return False
+    return any(not _is_builtin_object(base, imports) for base in node.bases)
+
+
+def _is_builtin_object(node: ast.expr, imports: ImportIndex) -> bool:
+    if isinstance(node, ast.Name) and node.id == "object":
+        return imports.builtin_is_unshadowed("object")
+    return imports.resolves(node, sources=_BUILTIN_SOURCES, symbol="object")
+
+
+def _collapsed_empty_parameters(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: ImportIndex,
 ) -> list[ast.arg]:
-    matches: list[ast.arg] = []
-    for argument, default in _parameters_with_defaults(function.args):
-        if (
-            argument.annotation is None
-            or not _is_none(default)
-            or not _is_nullable_list(argument.annotation)
-            or not _is_only_empty_normalization(function, argument.arg)
-        ):
-            continue
-        matches.append(argument)
-    return matches
+    return [
+        argument
+        for argument, default in _parameters_with_defaults(function.args)
+        if argument.annotation is not None
+        and _is_none(default)
+        and _is_nullable_list(argument.annotation, imports)
+        and _has_single_empty_collapse(function, argument.arg, imports)
+    ]
 
 
 def _parameters_with_defaults(arguments: ast.arguments) -> list[_ParameterDefault]:
@@ -159,102 +181,53 @@ def _parameters_with_defaults(arguments: ast.arguments) -> list[_ParameterDefaul
     ]
 
 
-def _is_none(node: ast.expr | None) -> bool:
-    return isinstance(node, ast.Constant) and node.value is None
-
-
-def _is_only_empty_normalization(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
+def _has_single_empty_collapse(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    name: str,
+    imports: ImportIndex,
+) -> bool:
+    if _starts_with_self_collapse(function, name, imports):
+        return True
     if _captured_by_nested_scope(function, name):
         return False
-    loads: list[tuple[ast.Name, ast.AST | None]] = []
-    for node, parent in _body_nodes(function):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == name:
-            loads.append((node, parent))
-    if len(loads) == 1:
-        node, parent = loads[0]
-        if (
-            isinstance(parent, ast.BoolOp)
-            and isinstance(parent.op, ast.Or)
-            and len(parent.values) == _NORMALIZATION_VALUE_COUNT
-            and parent.values[0] is node
-            and _is_empty_list(parent.values[1])
-        ):
-            return True
-    return _starts_with_empty_normalization(function, name)
+    loads = [
+        (node, parent)
+        for node, parent in _body_nodes(function)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == name
+    ]
+    if len(loads) != 1:
+        return False
+    node, parent = loads[0]
+    return (
+        isinstance(parent, ast.BoolOp)
+        and isinstance(parent.op, ast.Or)
+        and len(parent.values) == _NORMALIZATION_VALUE_COUNT
+        and parent.values[0] is node
+        and _is_empty_list(parent.values[1], imports)
+    )
 
 
-def _captured_by_nested_scope(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
-    for node in ast.walk(function):
-        if node is function or not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
-            continue
-        if any(
-            isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name
-            for child in ast.walk(node)
-        ):
-            return True
-    return False
-
-
-def _starts_with_empty_normalization(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
+def _starts_with_self_collapse(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    name: str,
+    imports: ImportIndex,
+) -> bool:
     statements = [statement for statement in function.body if not _is_docstring(statement)]
     if not statements:
         return False
     first = statements[0]
-    match first:
-        case ast.If(
-            test=(
-                ast.Compare(
-                    left=ast.Name(id=subject),
-                    ops=[ast.Is()],
-                    comparators=[ast.Constant(value=None)],
-                ) as comparison
-            ),
-            body=[ast.Assign(targets=[ast.Name(id=target)], value=value)],
-            orelse=[],
-        ) if subject == name and target == name and _is_empty_list(value):
-            allowed_none_test: ast.Compare | None = comparison
-        case ast.Assign(
-            targets=[ast.Name(id=target)],
-            value=ast.BoolOp(op=ast.Or(), values=[ast.Name(id=subject), value]),
-        ) if target == name and subject == name and _is_empty_list(value):
-            allowed_none_test = None
-        case ast.Assign(targets=[ast.Name(id=target)], value=ast.IfExp() as conditional) if target == name:
-            if (comparison := _empty_normalizing_conditional(conditional, name)) is None:
-                return False
-            allowed_none_test = comparison
-        case _:
-            return False
-    return not _observes_none(function, name, allowed=allowed_none_test)
-
-
-def _empty_normalizing_conditional(conditional: ast.IfExp, name: str) -> ast.Compare | None:
-    match conditional:
-        case ast.IfExp(
-            test=(
-                ast.Compare(
-                    left=ast.Name(id=subject),
-                    ops=[ast.Is()],
-                    comparators=[ast.Constant(value=None)],
-                ) as comparison
-            ),
-            body=empty,
-            orelse=ast.Name(id=fallback),
-        ) if subject == name and fallback == name and _is_empty_list(empty):
-            return comparison
-        case ast.IfExp(
-            test=(
-                ast.Compare(
-                    left=ast.Name(id=subject),
-                    ops=[ast.IsNot()],
-                    comparators=[ast.Constant(value=None)],
-                ) as comparison
-            ),
-            body=ast.Name(id=present),
-            orelse=empty,
-        ) if subject == name and present == name and _is_empty_list(empty):
-            return comparison
-        case _:
-            return None
+    return (
+        isinstance(first, ast.Assign)
+        and len(first.targets) == 1
+        and isinstance(first.targets[0], ast.Name)
+        and first.targets[0].id == name
+        and isinstance(first.value, ast.BoolOp)
+        and isinstance(first.value.op, ast.Or)
+        and len(first.value.values) == _NORMALIZATION_VALUE_COUNT
+        and isinstance(first.value.values[0], ast.Name)
+        and first.value.values[0].id == name
+        and _is_empty_list(first.value.values[1], imports)
+    )
 
 
 def _is_docstring(statement: ast.stmt) -> bool:
@@ -265,20 +238,14 @@ def _is_docstring(statement: ast.stmt) -> bool:
     )
 
 
-def _observes_none(
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
-    name: str,
-    *,
-    allowed: ast.Compare | None,
-) -> bool:
-    for node, _parent in _body_nodes(function):
-        if node is allowed or not isinstance(node, ast.Compare):
+def _captured_by_nested_scope(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str) -> bool:
+    for node in ast.walk(function):
+        if node is function or not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             continue
-        if len(node.ops) != 1 or not isinstance(node.ops[0], (ast.Is, ast.IsNot)):
-            continue
-        if not isinstance(node.left, ast.Name) or node.left.id != name:
-            continue
-        if len(node.comparators) == 1 and _is_none(node.comparators[0]):
+        if any(
+            isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name
+            for child in ast.walk(node)
+        ):
             return True
     return False
 
@@ -295,89 +262,75 @@ def _body_nodes(
         stack.extend((child, node) for child in reversed(list(ast.iter_child_nodes(node))))
 
 
-def _is_empty_list(node: ast.expr) -> bool:
-    return (isinstance(node, ast.List) and not node.elts) or (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "list"
-        and not node.args
-        and not node.keywords
-    )
-
-
-def _is_override(function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    for decorator in function.decorator_list:
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        if isinstance(target, ast.Name) and target.id == "override":
-            return True
-        if isinstance(target, ast.Attribute) and target.attr == "override":
-            return True
-    return False
-
-
-def _forwards_inherited_constructor_parameter(
-    owner: ast.ClassDef,
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
-    name: str,
-) -> bool:
-    if not any(_qualified_name(base).split(".")[-1] != "object" for base in owner.bases):
+def _is_empty_list(node: ast.expr, imports: ImportIndex) -> bool:
+    if isinstance(node, ast.List):
+        return not node.elts
+    if not isinstance(node, ast.Call) or node.args or node.keywords:
         return False
-    for call in (node for node in ast.walk(function) if isinstance(node, ast.Call)):
-        match call.func:
-            case ast.Attribute(value=ast.Call(func=ast.Name(id="super")), attr="__init__"):
-                values = [*call.args, *(keyword.value for keyword in call.keywords)]
-                if any(
-                    isinstance(descendant, ast.Name) and isinstance(descendant.ctx, ast.Load) and descendant.id == name
-                    for value in values
-                    for descendant in ast.walk(value)
-                ):
-                    return True
-            case _:
-                continue
-    return False
+    if isinstance(node.func, ast.Name) and node.func.id == "list":
+        return imports.builtin_is_unshadowed("list")
+    return imports.resolves(node.func, sources=_BUILTIN_SOURCES, symbol="list")
 
 
-def _qualified_name(node: ast.expr) -> str:
-    match node:
-        case ast.Name(id=name):
-            return name
-        case ast.Attribute(value=value, attr=attr):
-            parent = _qualified_name(value)
-            return f"{parent}.{attr}" if parent else attr
-        case ast.Subscript(value=value):
-            return _qualified_name(value)
-        case _:
-            return ""
+def _is_none(node: ast.expr | None) -> bool:
+    return isinstance(node, ast.Constant) and node.value is None
 
 
-def _is_nullable_list(annotation: ast.expr) -> bool:
-    members = _union_members(annotation)
+def _is_nullable_list(annotation: ast.expr, imports: ImportIndex) -> bool:
+    if (parsed := _stringized_annotation(annotation)) is not None:
+        return _is_nullable_list(parsed, imports)
+    if isinstance(annotation, ast.Subscript) and imports.resolves(
+        annotation.value, sources=_TYPING_SOURCES, symbol="Annotated"
+    ):
+        if not isinstance(annotation.slice, ast.Tuple) or not annotation.slice.elts:
+            return False
+        return _is_nullable_list(annotation.slice.elts[0], imports)
+    members = _union_members(annotation, imports)
     if members is None:
         return False
     non_none = [member for member in members if not _is_none_type(member)]
-    return len(non_none) > 0 and len(non_none) < len(members) and all(_is_list_type(member) for member in non_none)
+    return bool(non_none) and len(non_none) < len(members) and all(
+        _is_list_type(member, imports) for member in non_none
+    )
 
 
-def _union_members(annotation: ast.expr) -> list[ast.expr] | None:
+def _union_members(annotation: ast.expr, imports: ImportIndex) -> list[ast.expr] | None:
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        left = _union_members(annotation.left) or [annotation.left]
-        right = _union_members(annotation.right) or [annotation.right]
+        left = _union_members(annotation.left, imports) or [annotation.left]
+        right = _union_members(annotation.right, imports) or [annotation.right]
         return [*left, *right]
-    if isinstance(annotation, ast.Subscript) and _qualified_name(annotation.value).split(".")[-1] in _UNION_NAMES:
-        if _qualified_name(annotation.value).endswith("Optional"):
-            return [annotation.slice, ast.Constant(value=None)]
-        if isinstance(annotation.slice, ast.Tuple):
-            return list(annotation.slice.elts)
-        return [annotation.slice]
-    return None
+    if not isinstance(annotation, ast.Subscript):
+        return None
+    if imports.resolves(annotation.value, sources=_TYPING_SOURCES, symbol="Optional"):
+        return [annotation.slice, ast.Constant(value=None)]
+    if not imports.resolves(annotation.value, sources=_TYPING_SOURCES, symbol="Union"):
+        return None
+    if isinstance(annotation.slice, ast.Tuple):
+        return list(annotation.slice.elts)
+    return [annotation.slice]
 
 
 def _is_none_type(node: ast.expr) -> bool:
-    return (isinstance(node, ast.Constant) and node.value is None) or (isinstance(node, ast.Name) and node.id == "None")
+    return (isinstance(node, ast.Constant) and node.value is None) or (
+        isinstance(node, ast.Name) and node.id == "None"
+    )
 
 
-def _is_list_type(node: ast.expr) -> bool:
-    return isinstance(node, ast.Subscript) and _qualified_name(node.value).split(".")[-1] in {
-        "List",
-        "list",
-    }
+def _is_list_type(node: ast.expr, imports: ImportIndex) -> bool:
+    if not isinstance(node, ast.Subscript):
+        return False
+    target = node.value
+    if isinstance(target, ast.Name) and target.id == "list":
+        return imports.builtin_is_unshadowed("list")
+    return imports.resolves(target, sources=_BUILTIN_SOURCES, symbol="list") or imports.resolves(
+        target, sources=_TYPING_SOURCES, symbol="List"
+    )
+
+
+def _stringized_annotation(annotation: ast.expr) -> ast.expr | None:
+    if not isinstance(annotation, ast.Constant) or not isinstance(annotation.value, str):
+        return None
+    try:
+        return ast.parse(annotation.value, mode="eval").body
+    except SyntaxError:
+        return None
