@@ -50,7 +50,7 @@ export default defineConfig({
         replacesTitle: true,
       },
       disable404Route: true,
-      customCss: ['@sarj/docs-ui/starlight.css', './src/styles/global.css'],
+      customCss: ['@sarj/design/starlight.css', './src/styles/global.css'],
       sidebar: [
         { label: 'About', link: '/' },
         { label: 'Rules', link: '/rules/' },
@@ -63,7 +63,7 @@ export default defineConfig({
       tableOfContents: false,
       credits: false,
       components: {
-        PageTitle: '@sarj/docs-ui/PageAnchor.astro',
+        PageTitle: '@sarj/design/PageAnchor.astro',
         Sidebar: './src/components/Sidebar.astro',
       },
     }),
