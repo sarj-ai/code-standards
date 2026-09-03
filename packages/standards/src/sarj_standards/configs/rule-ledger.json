@@ -64,6 +64,7 @@
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
       "no-vague-suppression-description",
+      "no-whole-request-response-payload-in-log",
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
       "prefer-class-row",
@@ -354,7 +355,8 @@
       "SARJ431",
       "SARJ432",
       "SARJ434",
-      "SARJ435"
+      "SARJ435",
+      "SARJ436"
     ],
     "sql": [
       "SARJ101",

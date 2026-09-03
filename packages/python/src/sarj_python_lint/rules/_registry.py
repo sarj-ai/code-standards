@@ -67,6 +67,9 @@ from sarj_python_lint.rules.no_unnecessary_docstring import NoUnnecessaryDocstri
 from sarj_python_lint.rules.no_vague_suppression_description import (
     NoVagueSuppressionDescription,
 )
+from sarj_python_lint.rules.no_whole_request_response_payload_in_log import (
+    NoWholeRequestResponsePayloadInLog,
+)
 from sarj_python_lint.rules.opaque_parametrize_case_needs_id import OpaqueParametrizeCaseNeedsId
 from sarj_python_lint.rules.over_mocked_test import OverMockedTest
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
@@ -253,6 +256,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
+        NoWholeRequestResponsePayloadInLog.id: NoWholeRequestResponsePayloadInLog,
         TypedErrorReasons.id: TypedErrorReasons,
     }
 )

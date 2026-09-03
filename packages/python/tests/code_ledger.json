@@ -177,5 +177,6 @@
   "SARJ431": "prefer-set-isdisjoint",
   "SARJ432": "prefer-walrus-awaited-none-guard",
   "SARJ434": "excessive-commentary",
-  "SARJ435": "typed-error-reasons"
+  "SARJ435": "typed-error-reasons",
+  "SARJ436": "no-whole-request-response-payload-in-log"
 }

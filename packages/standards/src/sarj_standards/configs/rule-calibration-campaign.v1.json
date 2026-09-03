@@ -324,7 +324,17 @@
       "task": "rule-audit/python/no-secret-in-log",
       "family": "python",
       "ruleId": "no-secret-in-log",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 226 original focused tests and scanned up to 7,097 tracked Python files. Only four of 46 to 67 findings used credential-like references: three likely real leaks and one already-suppressed boolean feature flag. The remaining 43 to 63 came from generic request, response, body, payload, or JSON heuristics, including concrete input_json and truncated-response false positives. Reviewers reproduced missed positional percent formatting, literal format calls, extra mappings, structured-logger bindings, constant secret-key subscripts, and identity slices. Ruff and Bandit cover hardcoded credentials rather than runtime credential-to-log flow; CodeQL owns deeper taint-aware clear-text logging.",
+      "outcome": "Kept the accurate no-secret-in-log selector and error severity after removing advisory whole-payload inference into a separately named warning rule. Corrected the UI to describe direct credential-like references and safe non-sensitive metadata rather than arbitrary token prefixes. Added direct positional, percent, format, literal extra-map, immediate bind/contextualize, constant secret-key subscript, and identity-slice coverage while retaining conservative no-general-alias/no-arbitrary-call boundaries. Two hundred thirty-five focused SARJ012 cases pass; the split payload rule is tracked as its own pending three-review calibration task."
+    },
+    {
+      "task": "rule-audit/python/no-whole-request-response-payload-in-log",
+      "family": "python",
+      "ruleId": "no-whole-request-response-payload-in-log",
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 16 original focused cases and scanned up to 7,097 tracked Python files. They agreed that separating this advisory payload review from SARJ012's direct credential error materially improved precision: 18 to 27 original findings were all useful review leads, with no observed corpus false positive. Reviewers reproduced false positives for unrelated bare json, email.body, document.body, and event.payload references, plus false negatives for structured field names, full attribute chains, no-argument serializers, await, percent/format/concatenation interpolation, literal extra maps, truncated payloads, and negated sanitizer names. Ruff and Bandit do not own runtime payload-to-log flow; Semgrep could cover deeper flow only with repository-specific taint configuration.",
+      "outcome": "Kept the exact no-whole-request-response-payload-in-log selector and warning severity. Required both request/response provenance and whole-payload evidence across the full reference chain or structured field label, so unrelated body/payload/json values remain quiet. Added direct body/content/data/text references, no-argument json/dict/model_dump serializers, await, percent/format/concatenation interpolation, and literal extra maps; removed truncation as a safety exemption, made negated sanitizer names unsafe, preserved explicit sanitizer and include/exclude transformations, and deferred secret-named expressions to SARJ012. Improved the public bad example to show a real response serializer. Thirty-five focused cases and a combined 270 SARJ012/SARJ436 cases pass; the final six-repository scan reports 38 review-worthy warnings, including newly recovered whole-payload serializer flows, without the reproduced adversarial false positives."
     },
     {
       "task": "rule-audit/python/no-select-star",

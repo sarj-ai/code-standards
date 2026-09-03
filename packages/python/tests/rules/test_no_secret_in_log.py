@@ -36,14 +36,11 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 @pytest.mark.parametrize(
     "source",
     [
-        "logger.info('order', payload=payload)",
-        "logger.info('order', payload=payload.model_dump())",
-        "logger.info(f'Request failed: {request_json}')",
-        "logger.info(f'Response failed: {response_body}')",
         "logger.info('auth', value=access_token)",
+        "logger.info(f'Authentication failed: {access_token}')",
     ],
 )
-def test_rejects_whole_payloads_and_direct_secrets(source: str) -> None:
+def test_rejects_direct_secrets(source: str) -> None:
     assert len(_check(source)) == 1
 
 
@@ -270,17 +267,17 @@ def test_flags_secret_attribute_even_under_generic_keyword():
     assert _codes(src) == ["SARJ012"]
 
 
-def test_allows_safe_name_with_secret_subscript_value():
+def test_flags_constant_secret_key_subscript_value():
     src = 'logger.info("m", value=d["token"])\n'
-    assert _check(src) == []
+    assert _codes(src) == ["SARJ012"]
 
 
 # Family 7: forms the rule intentionally does NOT flag                         #
 
 
-def test_skips_positional_secret_argument():
+def test_flags_positional_secret_argument():
     src = 'logger.info("token=%s", token)\n'
-    assert _check(src) == []
+    assert _codes(src) == ["SARJ012"]
 
 
 def test_flags_fstring_with_secret():
@@ -600,7 +597,7 @@ def authenticate(token, password, api_key, jwt, secret):
 def safely(token, api_key):
     logger.info("auth ok", token_prefix=token[:6], api_key_tag=tag(api_key))
     logger.info("usage", token_count=n, has_secret=True, api_key_id=row_id)
-    log.info("stdlib", extra={"token": token})
+    log.info("stdlib", extra={"token_present": token is not None})
     audit.record("stored", token=token)
 """
 
@@ -614,3 +611,33 @@ def test_liveness_every_leak_shape_still_fires():
 def test_liveness_no_safe_shape_fires():
     safe = _SERVICE_MODULE.split("def safely")[1]
     assert _check(f"def safely{safe}") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.info("token=%s" % token)',
+        'logger.info("token={}".format(token))',
+        'logger.log(logging.INFO, "token=%s", token)',
+        'logger.info("auth", extra={"token": token})',
+        'logger.bind(token=token).info("auth")',
+        'logger.contextualize(password=password).error("auth")',
+        'logger.info("auth", value=token[:])',
+        'logger.info("auth", value=token[0:])',
+        'logger.info("auth", value=token[::1])',
+    ],
+)
+def test_flags_direct_secret_formatting_context_and_identity_slices(source: str) -> None:
+    assert _codes(source) == ["SARJ012"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.info("auth", extra={"token_count": count})',
+        'logger.info("auth", value=token[:6])',
+        'logger.info("auth", credential_present=token is not None)',
+    ],
+)
+def test_allows_non_sensitive_derived_metadata(source: str) -> None:
+    assert _check(source) == []
