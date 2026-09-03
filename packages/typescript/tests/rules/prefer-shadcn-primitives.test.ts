@@ -1,6 +1,10 @@
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { Linter } from "eslint";
 
 import rule, { PREFER_SHADCN_PRIMITIVES_DOCUMENTATION } from "../../src/rules/prefer-shadcn-primitives.js";
 
@@ -274,4 +278,144 @@ RULE_TESTER.run("prefer-shadcn-primitives", rule, {
       ],
     },
   ],
+});
+
+const RULE_ID = "sarj/prefer-shadcn-primitives";
+const RAW_BUTTON = `export const Action = () => <button type="button">Save</button>;`;
+
+function project(files: Readonly<Record<string, string>>): string {
+  const root = mkdtempSync(join(tmpdir(), "sarj-shadcn-"));
+  for (const [relative, contents] of Object.entries(files)) {
+    const absolute = join(root, relative);
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, contents, "utf8");
+  }
+  return root;
+}
+
+function projectAwareMessages(
+  root: string,
+  relative: string,
+  source: string = RAW_BUTTON,
+): readonly string[] {
+  const linter = new Linter({ cwd: root });
+  const messages = linter.verify(
+    source,
+    {
+      files: ["**/*.tsx"],
+      plugins: { sarj: { rules: { "prefer-shadcn-primitives": rule as never } } },
+      languageOptions: {
+        parser: tsParser as never,
+        parserOptions: { ecmaFeatures: { jsx: true } },
+      },
+      rules: {
+        [RULE_ID]: ["error", { detectProjectPrimitives: true }],
+      },
+    } as never,
+    join(root, relative),
+  );
+  const noise = messages.filter((message) => message.ruleId !== RULE_ID);
+  expect(noise).toEqual([]);
+  return messages.map((message) => message.messageId ?? "?");
+}
+
+const SHADCN_MANIFEST = `{
+  // shadcn manifests are JSONC in real projects.
+  "aliases": { "ui": "@/components/ui", },
+}`;
+const TSCONFIG = `{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  }
+}`;
+
+describe("prefer-shadcn-primitives project detection", () => {
+  it("reports a raw button when the exact project Button primitive exists", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/button.tsx": "const Button = () => null; export { Button };",
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([
+      "preferShadcnPrimitive",
+    ]);
+  });
+
+  it("fails closed when the Button module is missing", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/card.tsx": "export const Card = () => null;",
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
+  });
+
+  it("fails closed when the exact module does not export Button", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/button.tsx": "export const buttonVariants = {};",
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
+  });
+
+  it.each([
+    ["a comment", "// export const Button = fake;\nexport const buttonVariants = {};"],
+    ["a type-only export", "type Button = unknown; export type { Button };"],
+    ["a renamed export", "const Control = () => null; export { Control as Buttonish };"],
+  ])("does not mistake %s for a runtime Button export", (_name, moduleSource) => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/button.tsx": moduleSource,
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
+  });
+
+  it("requires the exact specialized input primitive", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/input.tsx": "export const Input = () => null;",
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(
+      projectAwareMessages(
+        root,
+        "src/features/action.tsx",
+        '<input type="checkbox" />',
+      ),
+    ).toEqual([]);
+  });
+
+  it("fails closed for a malformed manifest", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": "{ aliases:",
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/button.tsx": "export const Button = () => null;",
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
+  });
+
+  it("excludes the resolved primitive implementation", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": TSCONFIG,
+      "src/components/ui/button.tsx": "export const Button = () => <button />;",
+    });
+    expect(projectAwareMessages(root, "src/components/ui/button.tsx")).toEqual([]);
+  });
 });

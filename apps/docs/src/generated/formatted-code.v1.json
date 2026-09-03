@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6ad3cca4f31ab721dec2e0bf003151f162e1bfbf8c6de0d1e9ca4d507aa1c259",
-  "cliSha256": "e5fbb7db75100a1f2d6fd4fbe83e20152dc5b588e0e651a5c26a13b2b9bfd9b3",
+  "catalogSha256": "a577b2d5de42c6c942211ffd656cd5fe7e716a2ed009a78da8bf3425fa60b22c",
+  "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1024,7 +1024,7 @@
           "title": "Do not call global fetch here"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-repeated-string-literal": {
       "examples": [
@@ -2509,7 +2509,7 @@
           "title": "Use a semantic color token"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"requireSemanticTokens\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"opaqueForegroundPairs\": { \"type\": \"boolean\" },\n    \"requireSemanticTokens\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-server-actions": {
       "examples": [
@@ -2544,7 +2544,7 @@
           "title": "Call a Server Action"
         }
       ],
-      "optionsSchemaSource": null
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-shadcn-primitives": {
       "examples": [
@@ -2579,7 +2579,7 @@
           "title": "Use a shared button"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"assumeAvailable\": { \"type\": \"boolean\" } },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"assumeAvailable\": { \"type\": \"boolean\" },\n    \"detectProjectPrimitives\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-shared-zod-enum": {
       "examples": [

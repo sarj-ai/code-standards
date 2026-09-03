@@ -11,6 +11,7 @@ RuleTester.itOnly = it.only;
 const RULE_TESTER = new RuleTester();
 const NEXT_CLIENT_MODULE = "/repo/app/ui/actions.tsx";
 const USE_CLIENT = '"use client"; ';
+const GATEWAY_BASE_PATH = [{ basePath: "/gateway" }] as const;
 
 RULE_TESTER.run("prefer-server-actions", rule, {
   valid: [
@@ -74,6 +75,38 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       filename: NEXT_CLIENT_MODULE,
     },
     {
+      name: "does not infer an unconfigured base path",
+      code: `${USE_CLIENT}fetch('/gateway/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "does not infer a client boundary from a Next import",
+      code: 'import { useRouter } from "next/navigation"; fetch("/api/items", { method: "POST" });',
+      filename: "/repo/src/components/actions.tsx",
+    },
+    {
+      name: "does not treat a misplaced string as a client directive",
+      code: `work(); "use client"; fetch('/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "ignores a locally shadowed fetch wrapper",
+      code: `${USE_CLIENT}const fetch = clientFetch; fetch('/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "requires an exact configured base path segment",
+      code: `${USE_CLIENT}fetch('/gateway-v2/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+    },
+    {
+      name: "does not reinterpret absolute URLs under a configured base path",
+      code: `${USE_CLIENT}fetch('https://example.com/gateway/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+    },
+    {
       name: "ignores codemod fixtures because they are not running code",
       code: "fetch('/api/todos', { method: 'POST' });",
       filename: "/repo/src/v5/__testfixtures__/bug-reports.input.tsx",
@@ -90,8 +123,28 @@ RULE_TESTER.run("prefer-server-actions", rule, {
     },
     {
       name: "ignores App Router route handlers",
-      code: "fetch('/api/todos', { method: 'POST' });",
-      filename: "/repo/app/api/todos/route.ts",
+      code: `${USE_CLIENT}fetch('/api/todos', { method: 'POST' });`,
+      filename: "/repo/app/(admin)/api/todos/route.ts",
+    },
+    {
+      name: "ignores middleware modules",
+      code: `${USE_CLIENT}fetch('/api/todos', { method: 'POST' });`,
+      filename: "/repo/src/middleware.ts",
+    },
+    {
+      name: "ignores use-server modules",
+      code: `'use server'; ${USE_CLIENT}fetch('/api/todos', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "ignores server-only modules",
+      code: `${USE_CLIENT}import 'server-only'; fetch('/api/todos', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+    },
+    {
+      name: "ignores next-server modules",
+      code: `${USE_CLIENT}import { NextResponse } from 'next/server'; fetch('/api/todos', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
     },
     {
       name: "ignores Pages Router API handlers",
@@ -150,6 +203,12 @@ RULE_TESTER.run("prefer-server-actions", rule, {
     },
     {
       code: `${USE_CLIENT}fetch('/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports a mutation against the exact API root",
+      code: `${USE_CLIENT}fetch('/api', { method: 'POST' });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
@@ -216,9 +275,31 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      name: "reports with an explicit Next import outside app and pages trees",
-      code: 'import { useRouter } from "next/navigation"; fetch("/api/items", { method: "POST" });',
-      filename: "/repo/src/components/actions.tsx",
+      name: "reports fetch mutations under a configured Next base path",
+      code: `${USE_CLIENT}fetch('/gateway/api/users', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports the exact API root under a configured Next base path",
+      code: `${USE_CLIENT}fetch('/gateway/api', { method: 'POST' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports dynamic templates under a configured Next base path",
+      code: `${USE_CLIENT}api.delete(\`/gateway/api/users/\${id}\`);`,
+      filename: NEXT_CLIENT_MODULE,
+      options: GATEWAY_BASE_PATH,
+      errors: [{ messageId: "preferServerAction" }],
+    },
+    {
+      name: "reports nested configured base paths",
+      code: `${USE_CLIENT}axios({ method: 'patch', url: '/global/show/api/tickets/1' });`,
+      filename: NEXT_CLIENT_MODULE,
+      options: [{ basePath: "/global/show" }],
       errors: [{ messageId: "preferServerAction" }],
     },
   ],

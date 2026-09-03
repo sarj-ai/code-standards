@@ -1,8 +1,10 @@
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { Linter } from "eslint";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION } from "../../src/rules/no-raw-fetch-outside-clients.js";
+import preferServerActions from "../../src/rules/prefer-server-actions.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -161,6 +163,17 @@ RULE_TESTER.run("no-raw-fetch-outside-clients", rule, {
       filename: "/repo/app/ui/items.tsx",
     },
     {
+      name: "defers an exact API-root mutation to prefer-server-actions",
+      code: "'use client'; fetch('/api', { method: 'POST' });",
+      filename: "/repo/app/ui/items.tsx",
+    },
+    {
+      name: "defers a configured base-path mutation to prefer-server-actions",
+      code: "'use client'; fetch('/demo/api/items', { method: 'DELETE' });",
+      filename: "/repo/app/ui/actions.tsx",
+      options: [{ basePath: "/demo" }],
+    },
+    {
       name: "defers a GET inside an effect to no-client-side-data-fetching",
       code: "useEffect(() => { fetch('/api/items'); }, []);",
       filename: "/repo/src/page.tsx",
@@ -194,16 +207,6 @@ RULE_TESTER.run("no-raw-fetch-outside-clients", rule, {
       name: "allows one-off scripts to exercise the real transport boundary",
       code: "await fetch('/api/seed', { method: 'POST' });",
       filename: "/repo/scripts/seed-scenario.ts",
-    },
-    {
-      name: "allows a same-origin mutation behind the conventional base-path helper",
-      code: "'use client'; await fetch(withBase('/api/items'), { method: 'POST' });",
-      filename: "/repo/app/ui/actions.tsx",
-    },
-    {
-      name: "allows a base-prefixed same-origin mutation",
-      code: "'use client'; await fetch('/demo/api/items', { method: 'DELETE' });",
-      filename: "/repo/app/ui/actions.tsx",
     },
     {
       name: "allows dotted test basenames",
@@ -318,6 +321,42 @@ RULE_TESTER.run("no-raw-fetch-outside-clients", rule, {
       errors: [{ messageId: "rawFetch" }],
     },
     {
+      name: "keeps Next-import mutations without a use-client directive",
+      code: "import { useRouter } from 'next/navigation'; fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/src/components/actions.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps mutations after a misplaced use-client string",
+      code: "work(); 'use client'; fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/app/ui/actions.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps base-prefixed mutations unless another rule certainly owns them",
+      code: "'use client'; fetch('/demo/api/items', { method: 'DELETE' });",
+      filename: "/repo/app/ui/actions.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps mutations behind a base-path helper",
+      code: "'use client'; fetch(withBase('/api/items'), { method: 'POST' });",
+      filename: "/repo/app/ui/actions.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps malformed mixed client-server boundary mutations",
+      code: "'use client'; 'use server'; fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/app/ui/actions.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
+      name: "keeps server-only import mutations",
+      code: "'use client'; import 'server-only'; fetch('/api/items', { method: 'POST' });",
+      filename: "/repo/app/ui/actions.tsx",
+      errors: [{ messageId: "rawFetch" }],
+    },
+    {
       name: "reports constructed URLs when fetch also has init options",
       code: "const r = await fetch(new URL('/api/x', base), { method: 'POST' });",
       filename: HANDLER,
@@ -386,4 +425,36 @@ RULE_TESTER.run("no-raw-fetch-outside-clients", rule, {
       errors: [{ messageId: "rawFetch" }],
     },
   ],
+});
+
+describe("ownership with prefer-server-actions", () => {
+  it.each([
+    ["/api/items", {}],
+    ["/demo/api/items", { basePath: "/demo" }],
+  ])("emits one diagnostic for %s", (url, options) => {
+    const linter = new Linter();
+    const messages = linter.verify(
+      `'use client'; fetch('${url}', { method: 'POST' });`,
+      {
+        files: ["**/*.tsx"],
+        languageOptions: { parser: tsParser },
+        plugins: {
+          sarj: {
+            rules: {
+              "no-raw-fetch-outside-clients": rule as never,
+              "prefer-server-actions": preferServerActions as never,
+            },
+          },
+        },
+        rules: {
+          "sarj/no-raw-fetch-outside-clients": ["error", options],
+          "sarj/prefer-server-actions": ["error", options],
+        },
+      } as never,
+      "app/ui/actions.tsx",
+    );
+    expect(messages.map(({ ruleId }) => ruleId)).toEqual([
+      "sarj/prefer-server-actions",
+    ]);
+  });
 });
