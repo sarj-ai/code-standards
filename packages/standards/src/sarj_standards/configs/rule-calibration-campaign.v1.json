@@ -284,7 +284,9 @@
       "task": "rule-audit/python/no-offset-pagination",
       "family": "python",
       "ruleId": "no-offset-pagination",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three fresh independent reviews ran all 66 original focused tests and scanned up to 13,930 Python files. Eleven checkout findings represented eight distinct query sites: four likely high-growth or volatile lists and four bounded reference or admin datasets, so the syntax was precise but policy certainty was only about half. Reviewers reproduced false positives for prose, docstrings, generated or migration files, quoted identifiers, comments, and fixed OFFSET 1 ordinal selection; they also demonstrated missed dynamic f-string and MySQL comma pagination. Ruff and SQLFluff do not own embedded-SQL keyset policy.",
+      "outcome": "Kept the accurate no-offset-pagination selector and made SARJ025 explicitly warning-only because bounded catalogs and intentional random page access require context. Restricted findings to credible SELECT queries with dynamic offset markers, exempted fixed ordinal offsets, generated and migration files, AST docstrings, dialect comments, and quoted identifiers, and added dynamic f-string, MySQL comma, and SQL-standard OFFSET/FETCH coverage. Reworked the UI to teach a directionally correct composite cursor with a unique tie-breaker; diagnostics and remediation now permit a reasoned bounded/static-data suppression. Thirty-eight focused cases pass, and post-change calibration preserves all seven findings across 3,769 first-party Python files."
     },
     {
       "task": "rule-audit/python/no-optional-tenant-predicate",

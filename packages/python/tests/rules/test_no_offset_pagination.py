@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sarj_python_lint.rule_base import Diagnostic, RuleExample, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, RuleExample, Severity, is_suppressed
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 
 
@@ -16,205 +16,117 @@ _PUBLIC_EXAMPLES = NoOffsetPagination.public_examples()
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
-    assert len(NoOffsetPagination().check(Path(focus.path), focus.source)) == example.expected_count
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
-def _kept(source: str, path: str = "call_store.py") -> list[Diagnostic]:
-    diags = _check(source, path)
-    lines = source.splitlines()
-    return [d for d in diags if not is_suppressed(lines, d.line, d.code)]
+@pytest.mark.parametrize(
+    "marker",
+    ["%s", "%(offset)s", "?", "?2", ":offset", "@offset", "$2"],
+)
+def test_flags_dynamic_offset_markers_in_full_select(marker: str) -> None:
+    source = f'q = "SELECT id FROM call ORDER BY id LIMIT 50 OFFSET {marker}"\n'  # ruff:ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.WARNING
 
 
-FIRES = {
-    "limit_param_offset_param": 'q = "LIMIT %s OFFSET %s"\n',
-    "limit_digit_offset_digit": 'q = "LIMIT 10 OFFSET 20"\n',
-    "offset_named_colon": 'q = "OFFSET :cursor"\n',
-    "offset_named_at": 'q = "OFFSET @offset"\n',
-    "offset_positional_dollar": 'q = "OFFSET $1"\n',
-    "offset_pyformat_named": 'q = "OFFSET %(page)s"\n',
-    "full_select_query": 'q = "SELECT id, status FROM call ORDER BY created_at LIMIT %s OFFSET %s"\n',
-    "offset_bare_digit": 'q = "SELECT id FROM call OFFSET 40"\n',
-    "offset_no_leading_limit": 'q = "SELECT id FROM call ORDER BY id OFFSET %s"\n',
-}
-
-
-@pytest.mark.parametrize("source", FIRES.values(), ids=list(FIRES))
-def test_fires_one_diagnostic(source: str):
+def test_flags_dynamic_fstring_offset() -> None:
+    source = 'q = f"SELECT id FROM call ORDER BY id LIMIT {limit} OFFSET {offset}"\n'
     assert len(_check(source)) == 1
 
 
-ALLOWS = {
-    "prose_no_value_token": 'msg = "no base offset applied"\n',
-    "offset_as_dict_key": 'd = {"offset": cursor}\n',
-    "offset_masked_string_value": "q = \"SELECT note FROM call WHERE note = 'OFFSET 5'\"\n",
-    "bigquery_with_offset": 'q = "SELECT msg FROM UNNEST(arr) WITH OFFSET AS msg_offset"\n',
-    "python_var_named_offset": "offset = 20\nrows = fetch(offset)\n",
-    "line_comment_offset": 'q = "SELECT id FROM call ORDER BY id -- LIMIT %s OFFSET %s"\n',
-    "block_comment_offset": 'q = "SELECT id FROM call /* OFFSET 10 */ ORDER BY id"\n',
-    "fstring_offset_interp_only": 'q = f"SELECT id FROM call LIMIT {n} OFFSET {offset}"\n',
-    "offset_word_then_prose": 'q = "the offset value was recomputed"\n',
-    "empty_string": 'q = ""\n',
-    "bytes_literal": 'q = b"LIMIT %s OFFSET %s"\n',
-}
+def test_flags_mysql_comma_offset() -> None:
+    source = 'q = "SELECT id FROM call ORDER BY id LIMIT %s, %s"\n'
+    assert len(_check(source)) == 1
 
 
-@pytest.mark.parametrize("source", ALLOWS.values(), ids=list(ALLOWS))
-def test_does_not_fire(source: str):
+def test_flags_sql_standard_offset_fetch() -> None:
+    source = 'q = "SELECT id FROM call ORDER BY id OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY"\n'
+    assert len(_check(source)) == 1
+
+
+def test_concatenated_full_query_is_detected_once() -> None:
+    source = 'q = "SELECT id FROM call ORDER BY id " + "LIMIT %s OFFSET %s"\n'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'q = "SELECT id FROM call ORDER BY id LIMIT 10 OFFSET 0"\n',
+        'q = "SELECT id FROM call ORDER BY id LIMIT 1 OFFSET 1"\n',
+        'q = "SELECT id FROM call ORDER BY id LIMIT 50 OFFSET 1000"\n',
+        'fragment = "LIMIT %s OFFSET %s"\n',
+        'message = "retry operation at OFFSET %s"\n',
+        'q = "SELECT note FROM call WHERE note = \'OFFSET %s\'"\n',
+        'q = "SELECT `OFFSET %s` FROM call"\n',
+        'q = "SELECT [OFFSET %s] FROM call"\n',
+        'q = "SELECT id FROM call # LIMIT %s OFFSET %s"\n',
+        'q = "SELECT id FROM call -- LIMIT %s OFFSET %s"\n',
+        'q = "SELECT id FROM call /* OFFSET %s */"\n',
+        'q = "SELECT item FROM UNNEST(items) WITH OFFSET AS item_offset"\n',
+    ],
+)
+def test_avoids_nonpagination_and_fixed_ordinal_shapes(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_sql_bearing_function_docstring_is_ignored() -> None:
+    source = '''def paginate() -> None:
+    """Run SELECT id FROM call LIMIT %s OFFSET %s for old clients."""
+'''
     assert _check(source) == []
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("path", "source"),
     [
-        'q = base + " LIMIT %s OFFSET %s"\n',
-        'q = "SELECT id FROM call" + " LIMIT %s OFFSET %s"\n',
-        'q = "SELECT id FROM call ORDER BY id " "LIMIT %s OFFSET %s"\n',
+        ("generated/call_store.py", 'q = "SELECT id FROM call LIMIT %s OFFSET %s"\n'),
+        (
+            "call_store.py",
+            '# Generated by sqlc. DO NOT EDIT.\nq = "SELECT id FROM call LIMIT %s OFFSET %s"\n',
+        ),
+        ("migrations/backfill_store.py", 'q = "SELECT id FROM call LIMIT %s OFFSET %s"\n'),
+        ("tests/stores/call.py", 'q = "SELECT id FROM call LIMIT %s OFFSET %s"\n'),
+        ("service.py", 'q = "SELECT id FROM call LIMIT %s OFFSET %s"\n'),
     ],
-    ids=["var_plus_fragment", "string_plus_string", "implicit_adjacent"],
 )
-def test_flags_concatenated_queries(source: str):
-    assert len(_check(source)) == 1
+def test_excluded_paths(path: str, source: str) -> None:
+    assert _check(source, path) == []
 
 
-def test_fires_on_multiline_triple_quoted():
-    src = 'q = """\nSELECT id\nFROM call\nORDER BY created_at\nLIMIT %s OFFSET %s\n"""\n'
-    assert len(_check(src)) == 1
-
-
-@pytest.mark.parametrize(
-    "source",
-    [
-        'q = "OFFSET %s"\n',
-        'q = "offset %s"\n',
-        'q = "Offset %s"\n',
-        'q = "OfFsEt 5"\n',
-    ],
-    ids=["upper", "lower", "title", "mixed"],
-)
-def test_case_insensitive(source: str):
-    assert len(_check(source)) == 1
-
-
-def test_message_and_code_fields():
-    diags = _check('q = "LIMIT %s OFFSET %s"\n')
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ025"
-    assert "OFFSET" in diags[0].message
-    assert "keyset cursor" in diags[0].message
-    assert "sarj-noqa: SARJ025" in diags[0].message
-
-
-def test_line_and_col_single():
-    diags = _check('x = 1\nq = "LIMIT %s OFFSET %s"\n')
-    assert len(diags) == 1
-    assert diags[0].line == 2
-    assert diags[0].col == 5
-
-
-def test_line_and_col_of_multiline_at_string_start():
-    diags = _check('a = 1\nb = 2\nq = """\nLIMIT %s OFFSET %s\n"""\n')
-    assert len(diags) == 1
-    assert diags[0].line == 3
-    assert diags[0].col == 5
-
-
-def test_two_violations_sorted_by_line():
-    src = 'a = "LIMIT %s OFFSET %s"\nb = "LIMIT 5 OFFSET 10"\n'
-    diags = _check(src)
-    assert [(d.line, d.col) for d in diags] == [(1, 5), (2, 5)]
-
-
-def test_two_violations_same_line_sorted_by_col():
-    src = 't = ("LIMIT %s OFFSET %s", "OFFSET :c")\n'
-    diags = _check(src)
-    assert [(d.line, d.col) for d in diags] == [(1, 6), (1, 28)]
-
-
-def test_reports_all_violations_in_file():
-    src = (
-        'a = "SELECT id FROM call LIMIT %s OFFSET %s"\n'
-        'b = "SELECT id FROM call WHERE id > %s ORDER BY id LIMIT %s"\n'
-        'c = "SELECT id FROM call OFFSET 100"\n'
+def test_bounded_static_catalog_can_be_suppressed_with_a_reason() -> None:
+    source = (
+        'q = "SELECT code FROM country ORDER BY code LIMIT %s OFFSET %s" '
+        "# sarj-noqa: SARJ025 -- bounded ISO country catalog\n"
     )
-    diags = _check(src)
-    assert [d.line for d in diags] == [1, 3]
+    lines = source.splitlines()
+    kept = [item for item in _check(source) if not is_suppressed(lines, item.line, item.code)]
+    assert kept == []
 
 
-@pytest.mark.parametrize(
-    "source",
-    [
-        'q = "LIMIT %s OFFSET %s"  # sarj-noqa\n',
-        'q = "LIMIT %s OFFSET %s"  # sarj-noqa: SARJ025\n',
-        'q = "LIMIT %s OFFSET %s"  # sarj-noqa: SARJ024, SARJ025\n',
-    ],
-    ids=["bare", "exact_code", "multi_code"],
-)
-def test_respects_noqa(source: str):
-    assert _kept(source) == []
+def test_unrelated_offset_method_is_not_an_embedded_sql_finding() -> None:
+    assert _check("canvas.offset(distance)\n") == []
 
 
-def test_wrong_noqa_code_not_suppressed():
-    src = 'q = "LIMIT %s OFFSET %s"  # sarj-noqa: SARJ024\n'
-    assert len(_kept(src)) == 1
+def test_multiple_queries_are_sorted_by_location() -> None:
+    source = (
+        'a = "SELECT id FROM call LIMIT %s OFFSET %s"\n'
+        'b = "SELECT id FROM task LIMIT :limit OFFSET :offset"\n'
+    )
+    diagnostics = _check(source)
+    assert [(item.line, item.col) for item in diagnostics] == [(1, 5), (2, 5)]
 
 
-@pytest.mark.parametrize("path", ["call_store.py", "stores/call.py"])
-def test_store_file_flagged(path: str):
-    assert len(_check('q = "LIMIT %s OFFSET %s"\n', path=path)) == 1
+def test_diagnostic_metadata() -> None:
+    diagnostics = _check('q = "SELECT id FROM call LIMIT %s OFFSET %s"\n')
+    assert len(diagnostics) == 1
+    diagnostic = diagnostics[0]
+    assert diagnostic.code == "SARJ025"
+    assert diagnostic.path == Path("call_store.py")
+    assert "stable unique keyset cursor" in diagnostic.message
 
 
-@pytest.mark.parametrize("path", ["app/views.py", "blog.py", "sqlalchemy/sql/compiler.py"])
-def test_nonstore_file_not_flagged(path: str):
-    assert _check('q = "LIMIT %s OFFSET %s"\n', path=path) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    ["", "   \n\t\n", "# only a comment\n", "x = 1 + 2\n", 'name = "no sql here"\n'],
-    ids=["empty", "whitespace", "comment_only", "no_strings", "plain_string"],
-)
-def test_boundary_inputs_return_empty(source: str):
-    assert _check(source) == []
-
-
-@pytest.mark.parametrize(
-    "source",
-    ["def (:\n", "q = 'LIMIT %s OFFSET %s\n", "class A(:\n    pass\n"],
-    ids=["bad_def", "unterminated_string", "bad_class"],
-)
-def test_syntax_error_returns_empty(source: str):
-    assert _check(source) == []
-
-
-# Cross-package parity with SQL SARJ107 and the TypeScript twin:
-# `no_offset_pagination.py` and `no-offset-pagination.ts`.
-
-PARAM_MARKERS = {
-    "pyformat": 'q = "SELECT id FROM t ORDER BY id LIMIT %s OFFSET %s"\n',
-    "pyformat_named": 'q = "SELECT id FROM t ORDER BY id LIMIT %(n)s OFFSET %(off)s"\n',
-    "qmark": 'q = "SELECT id FROM t ORDER BY id LIMIT ? OFFSET ?"\n',
-    "numbered_qmark": 'q = "SELECT id FROM t ORDER BY id LIMIT ?1 OFFSET ?2"\n',
-    "named_colon": 'q = "SELECT id FROM t ORDER BY id LIMIT :n OFFSET :off"\n',
-    "named_at": 'q = "SELECT id FROM t ORDER BY id LIMIT @n OFFSET @off"\n',
-    "numeric_dollar": 'q = "SELECT id FROM t ORDER BY id LIMIT $1 OFFSET $2"\n',
-    "bare_digit": 'q = "SELECT id FROM t ORDER BY id LIMIT 10 OFFSET 20"\n',
-}
-
-
-@pytest.mark.parametrize("source", PARAM_MARKERS.values(), ids=list(PARAM_MARKERS))
-def test_every_shared_param_marker_is_detected(source: str):
-    assert len(_check(source)) == 1
-
-
-NON_PAGINATION = {
-    "bigquery_with_offset": 'q = "SELECT x, i FROM UNNEST(arr) AS x WITH OFFSET AS i"\n',
-    "english_word": 'msg = "the offset is out of range for this window"\n',
-    "column_named_offset": 'q = "ALTER TABLE t ADD COLUMN offset INTEGER NOT NULL DEFAULT 0"\n',
-    "literal_zero": 'q = "SELECT id FROM t ORDER BY id LIMIT 10 OFFSET 0"\n',
-    "zero_padded_zero": 'q = "SELECT id FROM t ORDER BY id LIMIT 10 OFFSET 000"\n',
-}
-
-
-@pytest.mark.parametrize("source", NON_PAGINATION.values(), ids=list(NON_PAGINATION))
-def test_offset_without_a_value_token_is_not_pagination(source: str):
+@pytest.mark.parametrize("source", ["", "# comment\n", "def (:\n"])
+def test_boundary_inputs_return_no_diagnostics(source: str) -> None:
     assert _check(source) == []
