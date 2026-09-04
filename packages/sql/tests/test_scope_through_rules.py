@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 # SARJ112 unindexed cascading `REFERENCES`, SARJ104 `VARCHAR(n)`, SARJ106 `JSON`,
 # SARJ101 `TIMESTAMP`, SARJ102 + SARJ108 + SARJ110 the bare `CREATE INDEX` on a
 # table this file does not create, SARJ111 a validating `ADD CONSTRAINT`,
-# SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ107 `LIMIT ... OFFSET`, and
-# SARJ113 the commented-out `DROP TABLE`, SARJ114 `CREATE TRIGGER`, SARJ115 a
+# SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ113 the commented-out
+# `DROP TABLE`, SARJ114 `CREATE TRIGGER`, SARJ115 a
 # long implementation narrative, SARJ116 the fourth child-table index, and
 # SARJ117 one duplicate child-table index shape.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
@@ -58,7 +58,8 @@ ALL_RULES = _ALL_RULES_TEMPLATE.replace("__LEGACY_UUID_DEFAULT__", _LEGACY_UUID_
 
 HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 
-DUMP_EXEMPT = tuple(REGISTRY.values())
+MIGRATION_RULES = tuple(rule_cls for rule_cls in REGISTRY.values() if rule_cls.code != "SARJ107")
+DUMP_EXEMPT = MIGRATION_RULES
 
 MODEL_REDIRECTING = (
     EnforceTimestamptz,
@@ -79,10 +80,10 @@ def _total(path: Path, source: str) -> int:
     return sum(len(cls().check(path, source)) for cls in REGISTRY.values())
 
 
-def test_the_shared_source_fires_every_rule_exactly_once() -> None:
-    fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in REGISTRY.values()}
+def test_the_shared_source_fires_every_migration_rule_exactly_once() -> None:
+    fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in MIGRATION_RULES}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 17
+    assert len(fired) == 16
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -91,8 +92,8 @@ def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
     assert rule_cls().check(Path("db/structure.sql"), ALL_RULES) == []
 
 
-def test_the_dump_exemption_suppresses_all_seventeen_findings() -> None:
-    assert _total(HAND_WRITTEN, ALL_RULES) == 17
+def test_the_dump_exemption_suppresses_all_migration_findings() -> None:
+    assert _total(HAND_WRITTEN, ALL_RULES) == 16
     assert _total(Path("db/structure.sql"), ALL_RULES) == 0
 
 
@@ -110,7 +111,7 @@ def test_a_restore_directory_is_a_dump_signal() -> None:
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 17
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 16
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_RULES}"

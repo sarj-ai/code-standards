@@ -632,6 +632,10 @@ def dollar_quoted_lines(source: str) -> frozenset[int]:
     return frozenset(inside)
 
 
+def dollar_quoted_spans(source: str) -> tuple[tuple[int, int], ...]:
+    return tuple(_scan(source).executable_spans)
+
+
 def split_statements(masked: str) -> list[Statement]:
     statements: list[Statement] = []
     current: Statement = []
