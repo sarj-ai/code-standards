@@ -562,7 +562,9 @@
       "task": "rule-audit/python/prefer-walrus-comprehension-filter",
       "family": "python",
       "ruleId": "prefer-walrus-comprehension-filter",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 22 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule reported 46 broad-fleet findings across 33 files, dominated by string normalization and mapping access, and three popular-corpus findings, but adversarial probes reproduced behavior-changing advice for random and consuming calls, unsafe short-circuit and conditional paths, intervening mutation, nested calls and comprehensions, outer-target shadowing, test/generated code, and duplicate filters. Post-change validation ran 33 focused cases and strict BasedPyright. Bulbul, Automations, and Saqi retained five manually reviewed application findings; the popular corpus retained two useful string-normalization findings with zero false positives or scan errors.",
+      "outcome": "Retained the compatible prefer-walrus-comprehension-filter selector because Python aliases are documentation-only, but rewrote the UI around the accurate repeated-call signal and staged SARJ076 as a performance warning. The matcher now excludes test, generated, nested, deferred, awaited, nested-call, recognized type-inspection, consuming or nondeterministic, unsafe short-circuit, and intervening-call cases; it also emits once per repeated signature. Remediation explicitly requires that reevaluation be unintended and the containing-scope name be fresh, otherwise it recommends preserving separate evaluations or using an explicit loop. A lexical candidate gate avoids parsing files that cannot contain the pattern."
     },
     {
       "task": "rule-audit/python/prefer-walrus-regex-match",

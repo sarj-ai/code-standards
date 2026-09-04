@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b8844afc08a5f7292409fe4fb3ec3e5183416e6d1e6f788dc3f7b02123300657",
+  "catalogSha256": "2ba3051379f8398261b2607de6496d974681f3db2a30ca8ba4ea6c57ce47cf22",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6342,7 +6342,7 @@
           "files": [
             {
               "path": "app/values.py",
-              "source": "def collect(values):\n    return [result for value in values if (result := compute(value))]\n"
+              "source": "def normalized(values):\n    return [clean for value in values if (clean := value.strip())]\n"
             }
           ],
           "fixedFiles": [],
@@ -6357,7 +6357,7 @@
           "files": [
             {
               "path": "app/values.py",
-              "source": "def collect(values):\n    return [compute(value) for value in values if compute(value)]\n"
+              "source": "def normalized(values):\n    return [value.strip() for value in values if value.strip()]\n"
             }
           ],
           "fixedFiles": [],

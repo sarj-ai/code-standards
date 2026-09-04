@@ -32,7 +32,7 @@ def test_flags_repeated_function_call_in_comprehension() -> None:
     diags = _check(source)
     assert len(diags) == 1
     assert diags[0].code == "SARJ076"
-    assert "Repeated function call in comprehension filter" in diags[0].message
+    assert "same call runs in this comprehension filter" in diags[0].message
 
 
 def test_leaves_repeated_attribute_lookup_alone() -> None:
@@ -183,3 +183,66 @@ def test_leaves_calls_outside_callable_bodies_alone(source: str) -> None:
 )
 def test_flags_calls_inside_callable_bodies(source: str) -> None:
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "def collect(xs):\n    return [[compute(x) for x in ys] for x in xs if compute(x)]\n",
+            id="nested-comprehension-shadow",
+        ),
+        pytest.param(
+            "def collect(xs, ys):\n    return [compute(x) for x in xs if any(compute(x) for _ in ys)]\n",
+            id="nested-generator-filter",
+        ),
+        pytest.param(
+            "def collect(xs, flag):\n    return [compute(x) for x in xs if flag or compute(x)]\n",
+            id="short-circuit-or",
+        ),
+        pytest.param(
+            "def collect(xs, mutate):\n    return [compute(x) for x in xs if compute(x) and mutate(x)]\n",
+            id="intervening-call",
+        ),
+        pytest.param(
+            "def collect(items):\n    return [next(items) for _ in range(3) if next(items)]\n",
+            id="consuming-builtin",
+        ),
+        pytest.param(
+            "def collect(items):\n    return [items.pop() for _ in range(3) if items.pop()]\n",
+            id="mutating-method",
+        ),
+        pytest.param(
+            "def collect(xs, parse, items):\n    return [parse(next(items)) for x in xs if parse(next(items))]\n",
+            id="nested-effect",
+        ),
+        pytest.param(
+            "async def collect(xs, fetch):\n    return [await fetch(x) for x in xs if await fetch(x)]\n",
+            id="awaited-call",
+        ),
+    ],
+)
+def test_leaves_semantically_unsafe_repeated_calls_alone(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_reports_one_diagnostic_for_repetition_across_multiple_filters() -> None:
+    source = """
+    def collect(xs):
+        return [normalize(x) for x in xs if normalize(x) if normalize(x)]
+    """
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "source"),
+    [
+        (Path("test_values.py"), "def collect(xs):\n    return [f(x) for x in xs if f(x)]\n"),
+        (
+            Path("generated_values.py"),
+            "# @generated\ndef collect(xs):\n    return [f(x) for x in xs if f(x)]\n",
+        ),
+    ],
+)
+def test_excludes_test_and_generated_files(path: Path, source: str) -> None:
+    assert PreferWalrusComprehensionFilter().check(path, source) == []
