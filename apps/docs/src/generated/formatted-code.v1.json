@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "989a1dba4d12fed45c6170ee6e84c9122d4063438d06a67bd31462abb85bd779",
-  "cliSha256": "1b125033fdd1000f8958a168c954e3ab6488ff5d7996ed43bd0e5a7483836713",
+  "catalogSha256": "91907faa15464fbe1c2cff70c9cd9e865054b6ea4d058063fc7070e620e96d1d",
+  "cliSha256": "d0eeb533cd3d911c093adcf70a97c4c1d6efa4e0ddbf9c43d6df171ee3605a2c",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7457,41 +7457,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "sql:add-constraint-requires-not-valid": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "supabase/migrations/001_age.sql",
-              "source": "ALTER TABLE users\nADD CONSTRAINT check_age CHECK (age >= 18) NOT VALID;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_age.sql",
-          "id": "deferred-check-validation",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Constraint added without scanning existing rows"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "supabase/migrations/001_age.sql",
-              "source": "ALTER TABLE users\nADD CONSTRAINT check_age CHECK (age >= 18);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_age.sql",
-          "id": "validating-check-constraint",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Constraint validated while it is added"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "sql:enforce-timestamptz": {
       "examples": [
         {
@@ -7558,6 +7523,45 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Rollback and locking guidance remains local"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:existing-table-check-or-foreign-key-requires-not-valid": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_age.sql",
+              "source": "ALTER TABLE public.users\nADD CONSTRAINT check_age CHECK (age >= 18) NOT VALID;\n"
+            },
+            {
+              "path": "supabase/migrations/002_validate_age.sql",
+              "source": "ALTER TABLE public.users VALIDATE CONSTRAINT check_age;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_age.sql",
+          "id": "deferred-check-validation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Constraint validation is deferred to a later migration"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_age.sql",
+              "source": "ALTER TABLE public.users\nADD CONSTRAINT check_age CHECK (age >= 18);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_age.sql",
+          "id": "validating-check-constraint",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Constraint validated while it is added"
         }
       ],
       "optionsSchemaSource": null

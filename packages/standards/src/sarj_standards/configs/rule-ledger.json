@@ -116,9 +116,9 @@
       "typed-error-reasons"
     ],
     "sql": [
-      "add-constraint-requires-not-valid",
       "enforce-timestamptz",
       "excessive-commentary",
+      "existing-table-check-or-foreign-key-requires-not-valid",
       "idempotent-ddl",
       "index-budget",
       "index-concurrently",
@@ -785,8 +785,15 @@
       "id": "add-constraint-not-valid",
       "kind": "sql",
       "status": "renamed",
-      "replacement": "add-constraint-requires-not-valid",
-      "note": "Replace sarj-add-constraint-not-valid with sarj-add-constraint-requires-not-valid before upgrading."
+      "replacement": "existing-table-check-or-foreign-key-requires-not-valid",
+      "note": "Replace sarj-add-constraint-not-valid with sarj-existing-table-check-or-foreign-key-requires-not-valid before upgrading."
+    },
+    {
+      "id": "add-constraint-requires-not-valid",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "existing-table-check-or-foreign-key-requires-not-valid",
+      "note": "Replace sarj-add-constraint-requires-not-valid with sarj-existing-table-check-or-foreign-key-requires-not-valid before upgrading."
     },
     {
       "id": "class-docstring-restates-name",
@@ -836,6 +843,13 @@
       "status": "renamed",
       "replacement": "ephemeral-execution-artifact",
       "note": "Replace sarj-ephemeral-ai-artifact with sarj-ephemeral-execution-artifact before upgrading."
+    },
+    {
+      "id": "existing-table-check-or-fk-requires-not-valid",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "existing-table-check-or-foreign-key-requires-not-valid",
+      "note": "Replace sarj-existing-table-check-or-fk-requires-not-valid with sarj-existing-table-check-or-foreign-key-requires-not-valid before upgrading."
     },
     {
       "id": "fastapi-openapi-contract",

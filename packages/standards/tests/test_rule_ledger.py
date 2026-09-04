@@ -101,7 +101,8 @@ def test_cross_engine_renames_are_shipped_as_migration_guidance(shipped: ledger.
     recorded = {entry.id: entry.replacement for entry in shipped.retired if entry.status is ledger.Status.RENAMED}
 
     assert recorded["@sarj/require-interface-for-injected-service"] == "@sarj/require-port-for-service"
-    assert recorded["add-constraint-not-valid"] == "add-constraint-requires-not-valid"
+    assert recorded["add-constraint-not-valid"] == "existing-table-check-or-foreign-key-requires-not-valid"
+    assert recorded["add-constraint-requires-not-valid"] == "existing-table-check-or-foreign-key-requires-not-valid"
     assert recorded["no-limit-offset"] == "no-offset-pagination"
     assert recorded["ephemeral-ai-artifact"] == "ephemeral-execution-artifact"
 
