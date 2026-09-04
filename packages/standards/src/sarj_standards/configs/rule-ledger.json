@@ -1162,6 +1162,13 @@
       "note": "Remove this hook from pre-commit. Converting an enum to str is commonly required at rendering, logging, JSON, header, and exception boundaries; the rule never proved a receiving enum contract and produced no findings across 5,323 tracked files. There is no replacement."
     },
     {
+      "id": "repeated-static-call-assertions",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "repeated-static-call-cases",
+      "note": "Replace sarj-repeated-static-call-assertions with sarj-repeated-static-call-cases before upgrading."
+    },
+    {
       "id": "single-public-export",
       "kind": "python",
       "status": "renamed",

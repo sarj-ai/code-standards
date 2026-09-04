@@ -626,7 +626,9 @@
       "task": "rule-audit/python/repeated-static-call-cases",
       "family": "python",
       "ruleId": "repeated-static-call-cases",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews reproduced the original rule's stateful-call, fixture-lifecycle, collection-ownership, alias-provenance, assertion-message, symbolic-input, and suppression false positives. The original broad scan produced 11 raw findings across 10,336 tracked Python paths, including a stateful database case. Post-change validation ran 72 focused cases, 200 focused and adjacent cases, 56 standards lifecycle cases, and the full 7,213-test Python suite with three expected xfails. A final broad scan produced zero findings across 10,334 readable tracked files (96.31 MB; two unrelated paths were unreadable), with a 6.37-second median over three loaded-source runs compared with 24.70 seconds before the early gates.",
+      "outcome": "Retained repeated-static-call-cases for compatibility, added repeated-static-call-assertions as its precise alias, and staged SARJ413 as a warning with no autofix. The rule now limits itself to whole-body groups of at least three same-shape direct-name calls with literal inputs and expectations in undecorated zero-parameter pytest tests. It abstains for setup, comments, assertion messages, fixtures, decorators, inherited or uncollected classes, statically falsey __test__ values, direct and aliased collection exclusions, symbolic or attribute calls, likely stateful mutators and their aliases, mocks, snapshots, spies, mapping accessors, and SARJ066 duplicate-test ownership. Exact sarj-noqa codes are honored without treating unrelated suppression directives as prose. Remediation explicitly requires judgment that order, shared state, fixture lifecycle, and identity are irrelevant before parameterizing."
     },
     {
       "task": "rule-audit/python/require-keyword-only-swap-prone-params",

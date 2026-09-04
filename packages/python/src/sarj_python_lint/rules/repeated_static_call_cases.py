@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from io import StringIO
 from pathlib import PurePosixPath
+import re
 import tokenize
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
@@ -16,8 +17,10 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
     parse_or_none,
 )
+from sarj_python_lint.rules._comments import split_identifier
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 from sarj_python_lint.rules.no_repeated_test_body import duplicate_test_owner_ids
 
@@ -31,7 +34,35 @@ _MIN_CASES = 3
 _MIN_DISTINCT_CASES = 2
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _ACCESSOR_CALLEES = frozenset({"get"})
+_ASSERTION_LINE_RE = re.compile(r"(?m)^\s*assert\b")
+_SUPPRESSION_COMMENT_RE = re.compile(r"^#\s*sarj-noqa\b", re.IGNORECASE)
 _UNSAFE_CALLEE_PARTS = frozenset({"mock", "snapshot", "spy"})
+_MUTATING_CALLEE_WORDS = frozenset(
+    {
+        "add",
+        "advance",
+        "append",
+        "commit",
+        "consume",
+        "create",
+        "decrement",
+        "delete",
+        "execute",
+        "increment",
+        "insert",
+        "next",
+        "pop",
+        "push",
+        "put",
+        "register",
+        "remove",
+        "send",
+        "set",
+        "transition",
+        "update",
+        "write",
+    }
+)
 
 
 class _AssertionShape(NamedTuple):
@@ -49,17 +80,23 @@ class RepeatedStaticCallCases(Rule):
     id = "repeated-static-call-cases"
     code = "SARJ413"
     documentation = RuleDocumentation(
-        summary="Repeated static call assertions are hidden inside one coarse test case.",
+        summary="Three same-shape literal call assertions may be independent parameter cases.",
         rationale=(
-            "When several independent static inputs share one test callback, the first failure hides later cases "
-            "and the runner cannot name the input that failed."
+            "When the calls are independent, named parameters isolate failures and identify the input that failed. "
+            "Literal syntax alone cannot prove independence."
         ),
-        remediation="Move the inputs and expectations into a named pytest parameter table.",
+        remediation=(
+            "Consider a named pytest parameter table only when call order, shared state, fixture lifecycle, and object "
+            "identity are not part of the contract; otherwise keep the assertions together or suppress the warning."
+        ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
+        aliases=("repeated-static-call-assertions",),
         limitations=(
-            "Only runs of at least three consecutive top-level assertions in collected pytest-style tests are checked.",
-            "Calls, inputs, and expectations must be statically representable; unittest classes, zero-argument calls, mocks, snapshots, and intervening prose or setup are excluded.",
+            "Only undecorated, zero-parameter pytest functions and methods on undecorated, base-free Test* classes are checked.",
+            "The entire executable test body must be at least three top-level assertions of the same direct-name call with literal inputs and expectations.",
+            "Assertion messages, zero-argument calls, likely mutators, mocks, snapshots, spies, comments, and intervening setup are excluded.",
+            "Exception and pytest.raises case tables are intentionally outside this assertion-only signal.",
             "Common mapping accessors are excluded because repeated field assertions usually describe one cohesive object contract, not independent input cases.",
             "Tests participating in a no-repeated-test-body group are left to SARJ066, which has the broader finding.",
             "Case names and parameter boundaries require judgment, so the rule has no autofix.",
@@ -99,28 +136,45 @@ class RepeatedStaticCallCases(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path) or is_generated(path, source):
+        if not is_test_path(path) or is_generated(path, source) or len(_ASSERTION_LINE_RE.findall(source)) < _MIN_CASES:
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
+        unsafe_callees = _mutating_aliases(tree)
+        tests = list(_test_functions(tree))
+        rough_candidates = [
+            test
+            for test in tests
+            if any(_is_whole_executable_body(test, run) for run in _runs(test, frozenset(), unsafe_callees))
+        ]
+        if not rough_candidates:
+            return []
         comments = _comment_lines(source)
+        candidate_runs = [
+            (test, run)
+            for test in rough_candidates
+            for run in _runs(test, comments, unsafe_callees)
+            if _is_whole_executable_body(test, run)
+        ]
+        if not candidate_runs:
+            return []
         duplicate_owners = duplicate_test_owner_ids(tree, source)
+        source_lines = source.splitlines()
         findings = [
             Diagnostic(
                 path=path,
                 line=run[0].lineno,
                 col=run[0].col_offset + 1,
                 code=self.code,
-                severity=Severity.ERROR,
+                severity=Severity.WARNING,
                 message=(
-                    f"these {len(run)} static call assertions run as one coarse test; move the inputs and "
-                    "expectations into named pytest parameters."
+                    f"these {len(run)} same-shape literal call assertions may be independent cases; consider named "
+                    "pytest parameters only if order, shared state, fixture lifecycle, and identity are irrelevant."
                 ),
             )
-            for test in _test_functions(tree)
-            if id(test) not in duplicate_owners
-            for run in _runs(test, comments)
+            for test, run in candidate_runs
+            if id(test) not in duplicate_owners and not is_suppressed(source_lines, run[0].lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
 
@@ -139,41 +193,177 @@ def _comment_lines(source: str) -> frozenset[int]:
         return frozenset(
             token.start[0]
             for token in tokenize.generate_tokens(StringIO(source).readline)
-            if token.type == tokenize.COMMENT
+            if token.type == tokenize.COMMENT and not _SUPPRESSION_COMMENT_RE.match(token.string)
         )
     except IndentationError, tokenize.TokenError:
         return frozenset()
 
 
 def _test_functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
-    local_classes = {node.name: node for node in tree.body if isinstance(node, ast.ClassDef)}
-
-    def is_test_case(node: ast.ClassDef, seen: frozenset[str] = frozenset()) -> bool:
-        if node.name in seen:
-            return False
-        for base in node.bases:
-            name = _base_name(base)
-            if name is not None and name.endswith("TestCase"):
-                return True
-            if name in local_classes and is_test_case(local_classes[name], seen | {node.name}):
-                return True
-        return False
-
+    if any(
+        isinstance(statement, (ast.Assign, ast.AnnAssign)) and _disables_named_collection(statement, "__test__")
+        for statement in tree.body
+    ):
+        return
+    disabled_objects = _disabled_test_object_ids(tree.body)
     for statement in tree.body:
-        if isinstance(statement, _FUNC_NODES) and statement.name.startswith("test_"):
+        if (
+            isinstance(statement, _FUNC_NODES)
+            and (statement.name,) not in disabled_objects
+            and _eligible_test_function(statement, method=False)
+        ):
             yield statement
-        elif isinstance(statement, ast.ClassDef) and not is_test_case(statement):
+        elif (
+            isinstance(statement, ast.ClassDef)
+            and (statement.name,) not in disabled_objects
+            and _eligible_test_class(statement)
+        ):
+            disabled_methods = _disabled_test_object_ids(statement.body)
             yield from (
-                child for child in statement.body if isinstance(child, _FUNC_NODES) and child.name.startswith("test_")
+                child
+                for child in statement.body
+                if isinstance(child, _FUNC_NODES)
+                and (child.name,) not in disabled_methods
+                and (statement.name, child.name) not in disabled_objects
+                and _eligible_test_function(child, method=True)
             )
 
 
-def _base_name(node: ast.expr) -> str | None:
-    dotted = _dotted_name(node)
-    return None if dotted is None else dotted[-1]
+def _eligible_test_function(node: ast.FunctionDef | ast.AsyncFunctionDef, *, method: bool) -> bool:
+    if not node.name.startswith("test_") or node.decorator_list:
+        return False
+    parameters = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs, node.args.vararg, node.args.kwarg]
+    allowed: frozenset[str] = frozenset({"self", "cls"}) if method else frozenset()
+    return all(parameter is None or parameter.arg in allowed for parameter in parameters)
 
 
-def _runs(test: ast.FunctionDef | ast.AsyncFunctionDef, comments: frozenset[int]) -> Iterator[list[ast.Assert]]:
+def _eligible_test_class(node: ast.ClassDef) -> bool:
+    if not node.name.startswith("Test") or node.bases or node.keywords or node.decorator_list:
+        return False
+    return not any(
+        (isinstance(statement, _FUNC_NODES) and statement.name in {"__init__", "__new__"})
+        or (isinstance(statement, (ast.Assign, ast.AnnAssign)) and _disables_pytest_collection(statement))
+        for statement in node.body
+    )
+
+
+def _disables_pytest_collection(node: ast.Assign | ast.AnnAssign) -> bool:
+    return _disables_named_collection(node, "__test__")
+
+
+def _disables_named_collection(node: ast.Assign | ast.AnnAssign, name: str) -> bool:
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+    value = node.value
+    return (
+        any(isinstance(target, ast.Name) and target.id == name for target in targets)
+        and value is not None
+        and _is_statically_falsy(value)
+    )
+
+
+def _disabled_test_object_ids(body: list[ast.stmt]) -> frozenset[tuple[str, ...]]:
+    aliases = _object_aliases(body)
+    identities: set[tuple[str, ...]] = set()
+    for statement in body:
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        if statement.value is None or not _is_statically_falsy(statement.value):
+            continue
+        for target in targets:
+            dotted = _dotted_name(target)
+            if dotted is None or not dotted[:-1] or dotted[-1] != "__test__":
+                continue
+            identities.update(_resolve_aliases(dotted[:-1], aliases))
+    return frozenset(identities)
+
+
+def _object_aliases(body: list[ast.stmt]) -> dict[tuple[str, ...], frozenset[tuple[str, ...]]]:
+    mutable_aliases: dict[tuple[str, ...], set[tuple[str, ...]]] = {}
+    for statement in body:
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign)) or statement.value is None:
+            continue
+        source = _dotted_name(statement.value)
+        if source is None:
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and (target.id,) != source:
+                mutable_aliases.setdefault((target.id,), set()).add(source)
+    return {name: frozenset(sources) for name, sources in mutable_aliases.items()}
+
+
+def _resolve_aliases(
+    identity: tuple[str, ...],
+    aliases: dict[tuple[str, ...], frozenset[tuple[str, ...]]],
+) -> frozenset[tuple[str, ...]]:
+    pending = [identity]
+    seen: set[tuple[str, ...]] = set()
+    roots: set[tuple[str, ...]] = set()
+    while pending:
+        current = pending.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        sources = aliases.get(current)
+        if sources:
+            pending.extend(sources)
+        elif len(current) > 1 and (prefix_sources := aliases.get(current[:1])):
+            pending.extend((*source, *current[1:]) for source in prefix_sources)
+        else:
+            roots.add(current)
+    return frozenset(roots or seen)
+
+
+def _is_statically_falsy(node: ast.expr) -> bool:
+    match node:
+        case ast.Constant(value=value):
+            return not bool(value)
+        case ast.Tuple(elts=elts) | ast.List(elts=elts) | ast.Set(elts=elts):
+            return not elts
+        case ast.Dict(keys=keys):
+            return not keys
+        case ast.Call(func=ast.Name(id="set"), args=[], keywords=[]):
+            return True
+        case _:
+            return False
+
+
+def _mutating_aliases(tree: ast.Module) -> frozenset[str]:
+    aliases: set[str] = set()
+    for statement in tree.body:
+        if not isinstance(statement, ast.ImportFrom):
+            continue
+        aliases.update(
+            alias.asname or alias.name
+            for alias in statement.names
+            if not frozenset(split_identifier(alias.name)).isdisjoint(_MUTATING_CALLEE_WORDS)
+        )
+
+    changed = True
+    while changed:
+        changed = False
+        for statement in tree.body:
+            if not isinstance(statement, (ast.Assign, ast.AnnAssign)) or statement.value is None:
+                continue
+            source = _dotted_name(statement.value)
+            if source is None or (
+                source[-1] not in aliases and frozenset(split_identifier(source[-1])).isdisjoint(_MUTATING_CALLEE_WORDS)
+            ):
+                continue
+            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+            for target in targets:
+                if isinstance(target, ast.Name) and target.id not in aliases:
+                    aliases.add(target.id)
+                    changed = True
+    return frozenset(aliases)
+
+
+def _runs(
+    test: ast.FunctionDef | ast.AsyncFunctionDef,
+    comments: frozenset[int],
+    unsafe_callees: frozenset[str],
+) -> Iterator[list[ast.Assert]]:
     current: list[ast.Assert] = []
     current_shape: object | None = None
     current_values: set[str] = set()
@@ -183,7 +373,7 @@ def _runs(test: ast.FunctionDef | ast.AsyncFunctionDef, comments: frozenset[int]
                 yield current
             current, current_shape, current_values = [], None, set()
             continue
-        parsed = _assertion_shape(statement)
+        parsed = _assertion_shape(statement, unsafe_callees)
         if parsed is None:
             if len(current) >= _MIN_CASES and len(current_values) >= _MIN_DISTINCT_CASES:
                 yield current
@@ -200,7 +390,17 @@ def _runs(test: ast.FunctionDef | ast.AsyncFunctionDef, comments: frozenset[int]
         yield current
 
 
-def _assertion_shape(node: ast.Assert) -> _AssertionShape | None:
+def _is_whole_executable_body(
+    test: ast.FunctionDef | ast.AsyncFunctionDef,
+    run: list[ast.Assert],
+) -> bool:
+    body = test.body[1:] if ast.get_docstring(test, clean=False) is not None else test.body
+    return len(body) == len(run) and all(statement is assertion for statement, assertion in zip(body, run, strict=True))
+
+
+def _assertion_shape(node: ast.Assert, unsafe_callees: frozenset[str]) -> _AssertionShape | None:
+    if node.msg is not None:
+        return None
     expression = node.test
     polarity = "truthy"
     expectation: ast.expr | None = None
@@ -220,10 +420,9 @@ def _assertion_shape(node: ast.Assert) -> _AssertionShape | None:
     callee = _dotted_name(parsed.call.func)
     if (
         callee is None
-        or not _eligible_callee(callee)
-        or not parsed.call.args
-        or any(isinstance(arg, ast.Starred) or not _static(arg) for arg in parsed.call.args)
-        or any(keyword.arg is None or not _static(keyword.value) for keyword in parsed.call.keywords)
+        or len(callee) != 1
+        or not _eligible_callee(callee, unsafe_callees)
+        or not _has_static_call_inputs(parsed.call)
     ):
         return None
     skeleton = (
@@ -243,9 +442,21 @@ def _assertion_shape(node: ast.Assert) -> _AssertionShape | None:
     return _AssertionShape(skeleton, values)
 
 
-def _eligible_callee(callee: tuple[str, ...]) -> bool:
-    return callee[-1] not in _ACCESSOR_CALLEES and not any(
-        any(part in segment.lower() for part in _UNSAFE_CALLEE_PARTS) for segment in callee
+def _has_static_call_inputs(call: ast.Call) -> bool:
+    return (
+        bool(call.args or call.keywords)
+        and all(not isinstance(argument, ast.Starred) and _static(argument) for argument in call.args)
+        and all(keyword.arg is not None and _static(keyword.value) for keyword in call.keywords)
+    )
+
+
+def _eligible_callee(callee: tuple[str, ...], unsafe_callees: frozenset[str]) -> bool:
+    words = frozenset(split_identifier(callee[-1]))
+    return (
+        callee[-1] not in _ACCESSOR_CALLEES
+        and callee[-1] not in unsafe_callees
+        and words.isdisjoint(_MUTATING_CALLEE_WORDS)
+        and not any(any(part in segment.lower() for part in _UNSAFE_CALLEE_PARTS) for segment in callee)
     )
 
 
@@ -267,8 +478,6 @@ def _static(node: ast.expr) -> bool:
     match node:
         case ast.Constant():
             return True
-        case ast.Attribute():
-            return _dotted_name(node) is not None
         case ast.UnaryOp(op=ast.UAdd() | ast.USub() | ast.Invert(), operand=operand):
             return _static(operand)
         case ast.Tuple() | ast.List() | ast.Set():
@@ -283,8 +492,6 @@ def _static_shape(node: ast.expr) -> object:
     match node:
         case ast.Constant(value=value):
             return ("constant", type(value).__name__)
-        case ast.Attribute():
-            return ("symbol", len(_dotted_name(node) or ()))
         case ast.UnaryOp(op=op, operand=operand):
             return (type(op).__name__, _static_shape(operand))
         case ast.Tuple() | ast.List() | ast.Set():
