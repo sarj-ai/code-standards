@@ -1122,7 +1122,8 @@ async def health() -> dict[str, Any]:
     assert FastapiExplicitOpenapiContract().check(Path("api.py"), source)
 
 
-def test_sarj008_keeps_hidden_and_unannotated_route_ownership():
+@pytest.mark.parametrize("response_model", ["", ", response_model=None"])
+def test_sarj094_owns_visible_unannotated_record_routes(response_model: str):
     hidden = """
 from fastapi import APIRouter
 from typing import Any
@@ -1135,8 +1136,54 @@ async def health() -> dict[str, Any]:
     assert FastapiExplicitOpenapiContract().check(Path("api.py"), hidden) == []
     assert len(PydanticAtBoundaries().check(Path("api.py"), hidden)) == 1
 
-    unannotated = _PRELUDE + "\n@router.get('/health')\nasync def health():\n    return {'status': 'ok'}\n"
-    assert len(PydanticAtBoundaries().check(Path("api.py"), unannotated)) == 1
+    unannotated = _source(f"""
+@router.get("/health", status_code=200{response_model})
+async def health():
+    return {{"status": "ok"}}
+""")
+    assert PydanticAtBoundaries().check(Path("api.py"), unannotated) == []
+    diagnostics = _check(unannotated)
+    assert any("fixed-shape dictionary" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_unannotated_record_route_accepts_concrete_response_model():
+    source = _source("""
+@router.get("/health", status_code=200, response_model=HealthResponse)
+async def health():
+    return {"status": "ok"}
+""")
+    assert _check(source) == []
+
+
+def test_concrete_response_model_overrides_erased_return_annotation():
+    source = _source("""
+@router.get("/health", status_code=200, response_model=HealthResponse)
+async def health() -> dict[str, Any]:
+    return {"status": "ok"}
+""")
+    assert _check(source) == []
+    assert PydanticAtBoundaries().check(Path("api.py"), source) == []
+
+
+def test_error_only_response_does_not_document_default_success_body():
+    source = _source("""
+@router.get("/health", responses={404: {"model": ErrorResponse}})
+async def health():
+    return {"status": "ok"}
+""")
+    diagnostics = _check(source)
+    assert any("explicit status_code" in diagnostic.message for diagnostic in diagnostics)
+    assert any("fixed-shape dictionary" in diagnostic.message for diagnostic in diagnostics)
+
+
+def test_hidden_route_with_concrete_response_model_is_not_reopened_by_sarj008():
+    source = _source("""
+@router.get("/health", include_in_schema=False, response_model=HealthResponse)
+async def health() -> dict[str, Any]:
+    return {"status": "ok"}
+""")
+    assert _check(source) == []
+    assert PydanticAtBoundaries().check(Path("api.py"), source) == []
 
 
 def test_concretely_typed_mapping_preserves_schema_but_erased_members_do_not():

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "907b16b59b9e800b4c65bbb765643b11d4f67dfbf7f051c639c0871750d15935",
+  "catalogSha256": "8a001a8216d1ece06b50931b5d6cc239bc0d60dcc123075a9ffe79711e53b75b",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -4131,6 +4131,21 @@
           "title": "Visible operation without an explicit success status"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\nfrom pydantic import BaseModel\n\n\nclass HealthResponse(BaseModel):\n    status: str\n\n\nrouter = APIRouter()\n\n\n@router.get(\"/health\", status_code=200)\nasync def health() -> HealthResponse:\n    return HealthResponse(status=\"ok\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "named-record-response",
+          "outcome": "accept",
+          "scenarioId": "unannotated-record",
+          "title": "Named response type documents the record"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -4159,6 +4174,21 @@
           "outcome": "accept",
           "scenarioId": "schema-integrity",
           "title": "A named response type preserves a concrete schema"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/health\", status_code=200)\nasync def health():\n    return {\"status\": \"ok\"}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "unannotated-record-response",
+          "outcome": "reject",
+          "scenarioId": "unannotated-record",
+          "title": "Unnamed record leaves the response schema implicit"
         }
       ],
       "optionsSchemaSource": null
@@ -6512,7 +6542,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "def build_payload(call) -> CallPayload:\n    return CallPayload(id=call.id)\n"
+              "source": "from typing import TypedDict\n\n\nclass CallPayload(TypedDict):\n    id: str\n\n\ndef build_payload(call) -> CallPayload:\n    return {\"id\": call.id}\n"
             }
           ],
           "fixedFiles": [],
@@ -6520,7 +6550,7 @@
           "id": "typed-boundary-model",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Named model returned from a public function"
+          "title": "TypedDict names the returned record"
         },
         {
           "expectedCount": 1,
@@ -6535,7 +6565,7 @@
           "id": "untyped-dictionary-boundary",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Untyped dictionary returned from a public function"
+          "title": "Public API returns an unnamed record"
         }
       ],
       "optionsSchemaSource": null

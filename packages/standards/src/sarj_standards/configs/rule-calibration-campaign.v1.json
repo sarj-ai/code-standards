@@ -594,7 +594,9 @@
       "task": "rule-audit/python/pydantic-at-boundaries",
       "family": "python",
       "ruleId": "pydantic-at-boundaries",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 368 focused cases and scanned 9,410 tracked Python files. The original matcher produced 113 raw findings and failed 12 of 24 adversarial provenance and protocol cases; reviewed findings mixed useful unnamed-record boundaries with framework serializers, overrides, private classes, shadowed annotations, generated code, and guessed FastAPI routes. The repaired warning produced 91 candidates across the broad fleet, 55 after clone normalization, and no findings in the 1,277-file Bulbul source corpus. The full Python suite passed 7,079 tests with three expected xfails.",
+      "outcome": "Kept the legacy pydantic-at-boundaries selector for compatibility, added named-fixed-record-return as its precise alias, and staged SARJ008 as warning because whether an ordinary Python API needs a named record remains architectural judgment. TypedDict-first UI now describes the actual fixed-record signal. The rule proves typing and framework imports, respects lexical module scope, suppressions, generated code, private classes, serializers, validators, fixtures, overrides, conversion protocols, open or escaped mappings, and mutation through aliases. SARJ094 now exclusively owns visible FastAPI response contracts, including unannotated fixed records and response_model=None, while respecting concrete response models and status-matched response schemas; hidden routes retain consistent SARJ008 coverage."
     },
     {
       "task": "rule-audit/python/redundant-class-docstring",
