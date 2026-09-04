@@ -8,7 +8,7 @@ exclude-newer-span = "PT0S"
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.80.10"
+version = "0.80.11"
 source = { editable = "." }
 dependencies = [
     { name = "sqlglot" },

@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
 
 
@@ -44,6 +45,8 @@ def test_flags_value_narration(line: str):
     diags = _check(f"{line}\n")
     assert len(diags) == 1
     assert diags[0].code == "SARJ051"
+    assert diags[0].severity is Severity.WARNING
+    assert "remove the comment" in diags[0].message
 
 
 KEPT = [
@@ -91,6 +94,10 @@ def test_unparseable_source_returns_nothing():
     assert _check("def (:\n") == []
 
 
+def test_tokenizable_invalid_source_returns_nothing():
+    assert _check("x = (1 2)  # 2 items\n") == []
+
+
 def test_identifier_words_do_not_rescue_the_comment():
     # `stale`/`time` are on the line, `5` and `minutes` are the unit narration.
     assert len(_check("stale_time = 5 * 60 * 1000  # stale time: 5 minutes\n")) == 1
@@ -128,3 +135,37 @@ def test_comment_without_a_unit_word_is_kept(line: str):
 def test_a_name_that_already_carries_the_unit_still_drifts():
     # The unit-bearing name does not keep the arithmetic and comment in sync.
     assert len(_check("_ANNOUNCEMENT_TIMEOUT_SEC = 5 * 60  # 5 minutes\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "sleep(5)  # 5 seconds\n",
+        "for x in range(10):  # 10 times\n    use(x)\n",
+        "assert rows == 0  # 0 rows\n",
+        "def value():\n    return 5  # 5 seconds\n",
+        "a = b = 5  # 5 seconds\n",
+        "a, b = 5, 6  # 5 seconds\n",
+        "a = 5; b = 6  # 5 seconds\n",
+    ],
+)
+def test_only_one_simple_numeric_assignment_is_in_scope(source: str):
+    assert _check(source) == []
+
+
+def test_multiple_comment_numbers_explain_a_mapping():
+    source = "encoded = 1 + 2 + 150 + 3  # 1 + 1 + 2 + 1 bytes\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "TIMEOUT_MS = 1_000  # 1000ms\n",
+        "BUFFER_BYTES = 0x400  # 1024 bytes\n",
+        "RATE_PCT = 1e2  # 100 percent\n",
+        "CACHE_SIZE = 512  # 512 MiB\n",
+    ],
+)
+def test_python_numeric_spellings_and_compact_units_are_normalized(source: str):
+    assert len(_check(source)) == 1
