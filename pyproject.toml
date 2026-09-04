@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.80.6"
+version = "0.80.7"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "packages/python/README.md"
 authors = [{ name = "sarj-ai" }]
