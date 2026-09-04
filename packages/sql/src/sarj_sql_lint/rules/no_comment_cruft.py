@@ -31,6 +31,10 @@ _SQL_HEAD_RE = re.compile(
     re.IGNORECASE,
 )
 _IDENT = r'(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:[^"]|"")+")(?:\s*\.\s*(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:[^"]|"")+"))*'
+_SCALAR = rf"(?:\*|{_IDENT}(?:\s*\.\s*\*)?|[-+]?\d+(?:\.\d+)?|NULL|TRUE|FALSE|'(?:[^']|'')*'|[$:@?][A-Za-z0-9_$]*|{_IDENT}\s*\([^)]*\))"
+_SELECT_LIST = (
+    rf"{_SCALAR}(?:\s+AS\s+[A-Za-z_][A-Za-z0-9_$]*)?(?:\s*,\s*{_SCALAR}(?:\s+AS\s+[A-Za-z_][A-Za-z0-9_$]*)?)*"
+)
 _DROP_RE = re.compile(
     rf"^DROP\s+(?:TABLE|TYPE|INDEX|VIEW|MATERIALIZED\s+VIEW|SCHEMA|SEQUENCE|FUNCTION|PROCEDURE|"
     rf"POLICY|TRIGGER|EXTENSION|DOMAIN)\s+(?:IF\s+EXISTS\s+)?{_IDENT}(?:\s+(?:CASCADE|RESTRICT))?$",
@@ -38,8 +42,11 @@ _DROP_RE = re.compile(
 )
 _ALTER_RE = re.compile(
     rf"^ALTER\s+(?:TABLE|TYPE|INDEX|VIEW|MATERIALIZED\s+VIEW|SCHEMA|SEQUENCE|FUNCTION|PROCEDURE|"
-    rf"POLICY)\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?{_IDENT}\s+"
-    r"(?:ADD|ALTER|ATTACH|DETACH|DISABLE|DROP|ENABLE|NO\s+FORCE|OWNER|RENAME|RESET|SET|VALIDATE)\b.+$",
+    rf"POLICY)\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?{_IDENT}\s+(?:"
+    rf"(?:ADD|ALTER|DROP)\s+(?:COLUMN|CONSTRAINT)\s+{_IDENT}\b.+|"
+    rf"RENAME\s+(?:(?:COLUMN|CONSTRAINT)\s+{_IDENT}\s+TO\s+{_IDENT}|TO\s+{_IDENT})|"
+    rf"VALIDATE\s+CONSTRAINT\s+{_IDENT}|OWNER\s+TO\s+{_IDENT}|"
+    rf"SET\s+(?:SCHEMA|TABLESPACE)\s+{_IDENT}|REPLICA\s+IDENTITY\s+.+)$",
     re.IGNORECASE | re.DOTALL,
 )
 _CREATE_TABLE_RE = re.compile(
@@ -47,14 +54,37 @@ _CREATE_TABLE_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 _CREATE_INDEX_RE = re.compile(
-    rf"^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}\s+ON\s+{_IDENT}\s*\(.+\)$",
+    rf"^CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}\s+ON\s+{_IDENT}"
+    rf"(?:\s+USING\s+{_IDENT})?\s*\(.+\)(?:\s+WHERE\s+.+)?$",
     re.IGNORECASE | re.DOTALL,
 )
-_CREATE_OTHER_RE = re.compile(
-    rf"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:VIEW|MATERIALIZED\s+VIEW)\s+{_IDENT}\s+AS\s+.+$|"
+_CREATE_TRIGGER_RE = re.compile(
     rf"^CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+{_IDENT}\s+.+\s+ON\s+{_IDENT}\s+.+\s+EXECUTE\s+"
-    rf"(?:FUNCTION|PROCEDURE)\s+{_IDENT}\s*\(.+\)$|"
-    rf"^CREATE\s+(?:SCHEMA|SEQUENCE|EXTENSION|DOMAIN|TYPE)\s+(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}(?:\s+.+)?$",
+    rf"(?:FUNCTION|PROCEDURE)\s+{_IDENT}\s*\(.+\)$",
+    re.IGNORECASE | re.DOTALL,
+)
+_CREATE_SCHEMA_RE = re.compile(
+    rf"^CREATE\s+SCHEMA\s+(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}(?:\s+AUTHORIZATION\s+{_IDENT})?$",
+    re.IGNORECASE | re.DOTALL,
+)
+_CREATE_SEQUENCE_RE = re.compile(
+    rf"^CREATE\s+SEQUENCE\s+(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}"
+    r"(?:\s+(?:AS|INCREMENT(?:\s+BY)?|MINVALUE|MAXVALUE|START(?:\s+WITH)?|CACHE|OWNED\s+BY)\s+\S+|"
+    r"\s+NO\s+(?:MINVALUE|MAXVALUE|CYCLE)|\s+CYCLE)+$|"
+    rf"^CREATE\s+SEQUENCE\s+(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}$",
+    re.IGNORECASE | re.DOTALL,
+)
+_CREATE_EXTENSION_RE = re.compile(
+    rf"^CREATE\s+EXTENSION\s+(?:IF\s+NOT\s+EXISTS\s+)?{_IDENT}"
+    rf"(?:\s+(?:WITH\s+)?(?:SCHEMA\s+{_IDENT}|VERSION\s+'[^']+'|CASCADE))*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_CREATE_DOMAIN_RE = re.compile(
+    rf"^CREATE\s+DOMAIN\s+{_IDENT}\s+AS\s+{_IDENT}$",
+    re.IGNORECASE | re.DOTALL,
+)
+_CREATE_TYPE_RE = re.compile(
+    rf"^CREATE\s+TYPE\s+{_IDENT}\s+AS\s+(?:ENUM\s*\(.+\)|\(.+\)|RANGE\s*\(.+\))$",
     re.IGNORECASE | re.DOTALL,
 )
 _COMMENT_ON_RE = re.compile(
@@ -72,10 +102,6 @@ _BANNER_HEADING_RE = re.compile(r"^[-=#*~_.+]{4,}\s*\S.*?\s*[-=#*~_.+]{4,}$")
 _DEBT_MARKERS = ("TO" + "DO", "FIX" + "ME", "HACK", "X" + "XX")
 _DEBT_RE = re.compile(r"^(?:" + "|".join(_DEBT_MARKERS) + r")\b", re.IGNORECASE)
 _REFERENCE_RE = re.compile(r"https?://|\b(?:RFC|CVE)[- ]?\d+\b|\b[A-Z][A-Z0-9]{1,9}-\d+\b|#\d{2,6}\b")
-_TRAILING_REFERENCE_RE = re.compile(
-    r"(?:https?://\S+|(?:RFC|CVE)[- ]?\d+|[A-Z][A-Z0-9]{1,9}-\d+|#\d{2,6})",
-    re.IGNORECASE,
-)
 _DIRECTIVE_RE = re.compile(
     r"^(?:sarj-noqa(?:\s*:|$)|sqlfluff(?:\s*:|\s+(?:disable|enable)\b)|squawk-ignore(?:\s*:|$)|"
     r"noqa(?:\s*:|$)|dialect\s*:|sql-dialect\s*:|migrate\s*:|\+goose\b|\+migrate\b|liquibase\b|"
@@ -83,6 +109,7 @@ _DIRECTIVE_RE = re.compile(
     re.IGNORECASE,
 )
 _ROLLBACK_CONTEXT_RE = re.compile(r"\b(?:roll\s*back|revert|undo)\b", re.IGNORECASE)
+_TEST_PATH_PARTS = frozenset({"test", "tests"})
 
 
 class _CommentLine(NamedTuple):
@@ -148,7 +175,13 @@ class NoCommentCruft(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path) or not is_migration_source(path, source) or is_generated_migration(path, source):
+        path_parts = frozenset(part.lower() for part in path.parts)
+        if (
+            path_parts & _TEST_PATH_PARTS
+            or is_dump_file(source, path)
+            or not is_migration_source(path, source)
+            or is_generated_migration(path, source)
+        ):
             return []
         findings: list[Diagnostic] = []
         for comments in _comment_groups(source):
@@ -189,8 +222,9 @@ def _finding(comments: list[SourceComment]) -> _Finding | None:
         )
 
     statement = "\n".join(line.text for line in effective)
-    if not any(_ROLLBACK_CONTEXT_RE.search(line.text) for line in lines) and _is_complete_commented_sql(statement):
-        first = effective[0]
+    statement_line = _first_commented_sql_line(statement)
+    if not any(_ROLLBACK_CONTEXT_RE.search(line.text) for line in lines) and statement_line is not None:
+        first = effective[statement_line]
         return _Finding(
             first.line,
             first.column,
@@ -218,9 +252,17 @@ def _is_banner(line: str) -> bool:
     return _BANNER_ONLY_RE.fullmatch(line) is not None or _BANNER_HEADING_RE.fullmatch(line) is not None
 
 
-def _is_complete_commented_sql(text: str) -> bool:
+def _first_commented_sql_line(text: str) -> int | None:
     statements = _split_commented_statements(text)
-    return bool(statements) and all(_is_supported_statement(statement) for statement in statements)
+    search_start = 0
+    for statement in statements:
+        statement_start = text.find(statement, search_start)
+        if statement_start < 0:
+            continue
+        search_start = statement_start + len(statement)
+        if _is_supported_statement(statement):
+            return text.count("\n", 0, statement_start)
+    return None
 
 
 def _split_commented_statements(text: str) -> list[str]:
@@ -268,13 +310,7 @@ def _split_commented_statements(text: str) -> list[str]:
             statements.append(statement)
             start = cursor + 1
         cursor += 1
-    trailing = text[start:].strip()
-    if (
-        quote is not None
-        or dollar_quote is not None
-        or depth != 0
-        or (trailing and _TRAILING_REFERENCE_RE.fullmatch(trailing) is None)
-    ):
+    if not statements and (quote is not None or dollar_quote is not None or depth != 0):
         return []
     return statements
 
@@ -289,26 +325,99 @@ def _is_supported_statement(statement: str) -> bool:
         return True
     if _CREATE_TABLE_RE.fullmatch(compact) or _CREATE_INDEX_RE.fullmatch(compact):
         return True
-    if _CREATE_OTHER_RE.fullmatch(compact) or _COMMENT_ON_RE.fullmatch(compact) or _DO_RE.fullmatch(compact):
+    create_patterns = (
+        _CREATE_TRIGGER_RE,
+        _CREATE_SCHEMA_RE,
+        _CREATE_SEQUENCE_RE,
+        _CREATE_EXTENSION_RE,
+        _CREATE_DOMAIN_RE,
+        _CREATE_TYPE_RE,
+    )
+    if (
+        _is_supported_create_view(compact)
+        or any(pattern.fullmatch(compact) for pattern in create_patterns)
+        or _COMMENT_ON_RE.fullmatch(compact)
+        or _DO_RE.fullmatch(compact)
+    ):
         return True
     return _is_supported_dml(compact)
 
 
 def _is_supported_dml(statement: str) -> bool:
+    if _is_supported_select(statement) or _is_supported_insert(statement) or _is_supported_with(statement):
+        return True
     patterns = (
-        r"^SELECT\s+(?!FROM\b).+$",
-        rf"^INSERT\s+INTO\s+{_IDENT}(?:\s*\([^)]*\))?\s+(?:DEFAULT\s+VALUES|VALUES\b.+|SELECT\b.+|WITH\b.+)$",
-        rf"^UPDATE\s+{_IDENT}\s+SET\s+.+$",
-        rf"^DELETE\s+FROM\s+{_IDENT}(?:\s+(?:USING|WHERE|RETURNING)\b.+)?$",
+        rf"^UPDATE\s+{_IDENT}\s+SET\s+{_IDENT}\s*=\s*.+$",
+        rf"^DELETE\s+FROM\s+{_IDENT}\s+(?:USING|WHERE|RETURNING)\b.+$",
         rf"^MERGE\s+INTO\s+{_IDENT}\s+USING\s+.+\s+ON\s+.+$",
-        r"^(?:GRANT|REVOKE)\s+.+\s+ON\s+.+\s+(?:TO|FROM)\s+.+$",
-        rf"^TRUNCATE(?:\s+TABLE)?\s+{_IDENT}(?:\s+.+)?$",
-        rf"^COPY\s+{_IDENT}(?:\s*\([^)]*\))?\s+(?:FROM|TO)\s+.+$",
-        r"^WITH\s+.+\s+(?:SELECT|INSERT|UPDATE|DELETE|MERGE)\b.+$",
-        rf"^(?:CALL|REFRESH\s+MATERIALIZED\s+VIEW|REINDEX(?:\s+\w+)?|VACUUM(?:\s+\([^)]*\))?)\s+{_IDENT}(?:\s*\(.*\)|\s+.*)?$",
-        r"^SET\s+[A-Za-z_][A-Za-z0-9_.]*\s*(?:=|TO)\s+.+$",
+        rf"^(?:GRANT|REVOKE)\s+(?:ALL(?:\s+PRIVILEGES)?|SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|USAGE|CREATE|CONNECT|TEMP|EXECUTE)(?:\s*,\s*(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|REFERENCES|TRIGGER|USAGE|CREATE|CONNECT|TEMP|EXECUTE))*\s+ON\s+(?:(?:TABLE|SEQUENCE|SCHEMA|DATABASE|FUNCTION|PROCEDURE)\s+)?{_IDENT}\s+(?:TO|FROM)\s+{_IDENT}$",
+        rf"^TRUNCATE(?:\s+TABLE)?\s+{_IDENT}(?:\s*,\s*{_IDENT})*(?:\s+(?:RESTART|CONTINUE)\s+IDENTITY)?(?:\s+(?:CASCADE|RESTRICT))?$",
+        rf"^COPY\s+{_IDENT}(?:\s*\([^)]*\))?\s+(?:FROM|TO)\s+(?:STDIN|STDOUT|'[^']+'|PROGRAM\s+'[^']+')$",
+        rf"^CALL\s+{_IDENT}\s*\(.*\)$",
+        rf"^REFRESH\s+MATERIALIZED\s+VIEW\s+(?:CONCURRENTLY\s+)?{_IDENT}$",
+        rf"^REINDEX(?:\s+(?:INDEX|TABLE|SCHEMA|DATABASE|SYSTEM))?\s+{_IDENT}$",
+        rf"^VACUUM\s+\([^)]*\)(?:\s+{_IDENT}(?:\s*\([^)]*\))?)?$",
+        rf"^VACUUM\s+(?:FULL|FREEZE|ANALYZE|VERBOSE)(?:\s+(?:FULL|FREEZE|ANALYZE|VERBOSE))*\s+{_IDENT}$",
+        rf"^SET\s+[A-Za-z_][A-Za-z0-9_.]*\s*(?:=|TO)\s+(?:DEFAULT|{_SCALAR})$",
     )
     return any(re.fullmatch(pattern, statement, re.IGNORECASE | re.DOTALL) is not None for pattern in patterns)
+
+
+def _is_supported_select(statement: str) -> bool:
+    if re.fullmatch(
+        rf"SELECT\s+(?:DISTINCT\s+)?{_SELECT_LIST}",
+        statement,
+        re.IGNORECASE | re.DOTALL,
+    ):
+        return True
+    return (
+        re.fullmatch(
+            rf"SELECT\s+(?:DISTINCT\s+)?{_SELECT_LIST}\s+FROM\s+{_IDENT}"
+            rf"(?:\s+(?:AS\s+)?[A-Za-z_][A-Za-z0-9_$]*)?"
+            r"(?:\s+(?:WHERE|GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|OFFSET|FOR)\b.+)?",
+            statement,
+            re.IGNORECASE | re.DOTALL,
+        )
+        is not None
+    )
+
+
+def _is_supported_with(statement: str) -> bool:
+    return (
+        re.fullmatch(
+            rf"WITH\s+(?:RECURSIVE\s+)?{_IDENT}(?:\s*\([^)]*\))?\s+AS\s*\(.+\)\s+"
+            r"(?:SELECT|INSERT|UPDATE|DELETE|MERGE)\b.+",
+            statement,
+            re.IGNORECASE | re.DOTALL,
+        )
+        is not None
+    )
+
+
+def _is_supported_insert(statement: str) -> bool:
+    match = re.fullmatch(
+        rf"INSERT\s+INTO\s+{_IDENT}(?:\s*\([^)]*\))?\s+(?P<body>.+)",
+        statement,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        return False
+    body = match.group("body")
+    return (
+        re.fullmatch(r"DEFAULT\s+VALUES", body, re.IGNORECASE) is not None
+        or re.fullmatch(r"VALUES\s*\(.+\)(?:\s*,\s*\(.+\))*", body, re.IGNORECASE | re.DOTALL) is not None
+        or _is_supported_select(body)
+        or _is_supported_with(body)
+    )
+
+
+def _is_supported_create_view(statement: str) -> bool:
+    match = re.fullmatch(
+        rf"CREATE\s+(?:OR\s+REPLACE\s+)?(?:VIEW|MATERIALIZED\s+VIEW)\s+{_IDENT}\s+AS\s+(?P<body>.+)",
+        statement,
+        re.IGNORECASE | re.DOTALL,
+    )
+    return match is not None and (_is_supported_select(match.group("body")) or _is_supported_with(match.group("body")))
 
 
 def _comment_groups(source: str) -> list[list[SourceComment]]:

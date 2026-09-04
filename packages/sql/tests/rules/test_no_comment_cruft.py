@@ -59,9 +59,11 @@ def test_skips_dump_files() -> None:
         ),
         ("-- DROP TABLE legacy;\nSELECT 1;", "queries/report.sql"),
         ("-- DROP TABLE legacy;\nSELECT 1;", "tests/fixtures/report.sql"),
+        ("-- DROP TABLE legacy;\nSELECT 1;", "tests/migrations/001.sql"),
+        ("-- DROP TABLE legacy;\nSELECT 1;", "test/V1__legacy.sql"),
         ("-- DROP TABLE legacy;\nSELECT 1;", "scripts/maintenance.sql"),
     ],
-    ids=("generated-migration", "query", "fixture", "script"),
+    ids=("generated-migration", "query", "fixture", "tests-migration", "test-flyway", "script"),
 )
 def test_skips_generated_and_nonmigration_sources(source: str, name: str) -> None:
     assert _check(source, name) == []
@@ -176,6 +178,18 @@ def test_preserves_tooling_and_migration_directives(source: str) -> None:
         "COMMENT ON TABLE legacy IS 'legacy';",
         "DO $$ BEGIN RAISE NOTICE 'legacy'; END $$;",
         'DROP TABLE IF EXISTS "legacy.schema"."old-table";',
+        "CREATE TYPE integration_state AS ENUM ('active', 'disabled');",
+        "INSERT INTO legacy (id) VALUES (1);",
+        "UPDATE legacy SET active = false WHERE id = 1;",
+        "VACUUM (ANALYZE) legacy;",
+        "ALTER TABLE legacy ADD COLUMN archived boolean;",
+        "CREATE VIEW active_legacy AS SELECT id FROM legacy;",
+        "CREATE DOMAIN event_id AS bigint;",
+        "CREATE INDEX active_legacy_idx ON legacy USING btree (id) WHERE active;",
+        "SET lock_timeout TO '5s';",
+        "TRUNCATE TABLE legacy RESTART IDENTITY CASCADE;",
+        "INSERT INTO archive SELECT id FROM legacy;",
+        "DELETE FROM legacy WHERE archived;",
     ],
     ids=(
         "create-if-not-exists",
@@ -190,6 +204,18 @@ def test_preserves_tooling_and_migration_directives(source: str) -> None:
         "comment-on",
         "do-block",
         "quoted-drop-if-exists",
+        "create-enum-type",
+        "insert-values-row",
+        "update-assignment",
+        "vacuum-options",
+        "alter-add-column",
+        "create-view-select",
+        "create-domain",
+        "create-partial-index",
+        "set-scalar",
+        "truncate-options",
+        "insert-select",
+        "delete-where",
     ),
 )
 def test_flags_complete_commented_out_sql_heads(commented_statement: str) -> None:
@@ -206,6 +232,22 @@ def test_flags_complete_commented_out_sql_heads(commented_statement: str) -> Non
         "-- SELECT FROM legacy;\nSELECT 1;",
         "-- GRANT ON legacy;\nSELECT 1;",
         "-- DROP;\nSELECT 1;",
+        "-- SELECT a better name before launch;\nSELECT 1;",
+        "-- CALL support before deploying;\nSELECT 1;",
+        "-- CREATE TYPE later after review;\nSELECT 1;",
+        "-- VACUUM maybe after launch;\nSELECT 1;",
+        "-- UPDATE this SET later;\nSELECT 1;",
+        "-- INSERT INTO docs VALUES eventually;\nSELECT 1;",
+        "-- SELECT a better name FROM the API;\nSELECT 1;",
+        "-- CREATE DOMAIN later AS a better type;\nSELECT 1;",
+        "-- ALTER TABLE users SET expectations carefully;\nSELECT 1;",
+        "-- CREATE VIEW records AS needed for support;\nSELECT 1;",
+        "-- GRANT access ON approval TO operators;\nSELECT 1;",
+        "-- COPY data TO the archive;\nSELECT 1;",
+        "-- SET expectations TO realistic levels;\nSELECT 1;",
+        "-- TRUNCATE discussion after the key point;\nSELECT 1;",
+        "-- INSERT INTO docs SELECT the right examples;\nSELECT 1;",
+        "-- DELETE FROM memory;\nSELECT 1;",
     ],
     ids=(
         "create-missing-name",
@@ -215,6 +257,22 @@ def test_flags_complete_commented_out_sql_heads(commented_statement: str) -> Non
         "select-missing-list",
         "grant-missing-privilege",
         "drop-missing-kind",
+        "select-prose",
+        "call-prose",
+        "create-type-prose",
+        "vacuum-prose",
+        "update-prose",
+        "insert-prose",
+        "select-from-prose",
+        "create-domain-prose",
+        "alter-prose",
+        "create-view-prose",
+        "grant-prose",
+        "copy-prose",
+        "set-prose",
+        "truncate-prose",
+        "insert-select-prose",
+        "delete-prose",
     ),
 )
 def test_abstains_on_sql_like_but_malformed_comments(source: str) -> None:
@@ -234,6 +292,20 @@ def test_reports_one_diagnostic_for_a_commented_statement_group(source: str) -> 
 
     assert len(findings) == 1
     assert findings[0].line == 1
+
+
+def test_adjacent_prose_does_not_hide_a_complete_commented_statement() -> None:
+    findings = _check("-- DROP TABLE old;\n-- This note describes the next statement.\nSELECT 1;\n")
+
+    assert len(findings) == 1
+    assert findings[0].line == 1
+
+
+def test_diagnostic_points_to_supported_statement_after_adjacent_prose() -> None:
+    findings = _check("-- This prose ends here;\n-- DROP TABLE old;\nSELECT 1;\n")
+
+    assert len(findings) == 1
+    assert findings[0].line == 2
 
 
 def test_issue_reference_does_not_bless_disabled_sql() -> None:
