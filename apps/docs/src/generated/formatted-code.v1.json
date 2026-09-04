@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d65e65f11eff38063e4e0f72b1522d43aae2415549803f5f62b61018bcfbf206",
-  "cliSha256": "4ac8585cef34207d71999d95cc8c196088680a966ce1af4e3e5c7fb2ceb0a03c",
+  "catalogSha256": "34abf1076f2a03b0d715601a148a7728a67548afd2fce7bcc58222f076339ba7",
+  "cliSha256": "597b1f9eafba7e85e523393386349db09f762eba02fa803e7b13cd0d712107b3",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6932,6 +6932,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:replay-contract-insert-requires-duplicate-policy": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "def ensure_task(cursor, task_id):\n    cursor.execute(\n        \"INSERT INTO task (id) VALUES (%s) ON CONFLICT DO NOTHING\", (task_id,)\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "insert-with-duplicate-policy",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Replay-named store callable declares duplicate behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "def ensure_task(cursor, task_id):\n    cursor.execute(\"INSERT INTO task (id) VALUES (%s)\", (task_id,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "insert-without-duplicate-policy",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Replay-named store callable omits duplicate behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:require-keyword-only-swap-prone-params": {
       "examples": [
         {
@@ -7208,41 +7243,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Delegate the singleton read to the bulk implementation"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:store-insert-requires-on-conflict": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/task_store.py",
-              "source": "QUERY = \"INSERT INTO task (id) VALUES (%s) ON CONFLICT DO NOTHING\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/task_store.py",
-          "id": "insert-with-conflict-handler",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Store insert with conflict handling"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/task_store.py",
-              "source": "QUERY = \"INSERT INTO task (id) VALUES (%s)\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/task_store.py",
-          "id": "insert-without-conflict-handler",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Store insert without conflict handling"
         }
       ],
       "optionsSchemaSource": null
