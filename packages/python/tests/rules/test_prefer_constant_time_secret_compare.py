@@ -267,7 +267,12 @@ def test_nested_auth_function_inside_equality_dunder_still_fires() -> None:
 
 
 def test_chained_equality_is_conservatively_ignored() -> None:
-    assert _check("def auth(provided_token, expected_token, other):\n    return provided_token == expected_token == other\n") == []
+    assert (
+        _check(
+            "def auth(provided_token, expected_token, other):\n    return provided_token == expected_token == other\n"
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize(

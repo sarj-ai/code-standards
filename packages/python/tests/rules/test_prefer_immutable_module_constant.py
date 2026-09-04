@@ -181,12 +181,7 @@ def test_starred_destructuring_tracks_fixed_whole_collection_alias(source: str) 
 
 
 def test_starred_capture_conservatively_exempts_nested_whole_collection() -> None:
-    source = (
-        "VALUES = [1]\n"
-        "def mutate():\n"
-        "    first, *rest = (object(), VALUES)\n"
-        "    rest[0].append(2)"
-    )
+    source = "VALUES = [1]\ndef mutate():\n    first, *rest = (object(), VALUES)\n    rest[0].append(2)"
     assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
 
 

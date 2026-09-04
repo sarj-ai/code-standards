@@ -142,8 +142,7 @@ def _is_documentation_path(path: Path) -> bool:
 
 def _has_wildcard_import(tree: ast.Module) -> bool:
     return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-        for node in ast.walk(tree)
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
     )
 
 
@@ -162,11 +161,9 @@ def _is_public_record_tuple(annotation: ast.expr, imports: ImportIndex) -> bool:
         return False
     target = annotation.value
     is_tuple = (
-        isinstance(target, ast.Name)
-        and target.id == "tuple"
-        and imports.builtin_is_unshadowed("tuple")
-    ) or imports.resolves(target, sources=_TUPLE_SOURCES, symbol="tuple") or imports.resolves(
-        target, sources=_TYPING_SOURCES, symbol="Tuple"
+        (isinstance(target, ast.Name) and target.id == "tuple" and imports.builtin_is_unshadowed("tuple"))
+        or imports.resolves(target, sources=_TUPLE_SOURCES, symbol="tuple")
+        or imports.resolves(target, sources=_TYPING_SOURCES, symbol="Tuple")
     )
     if not is_tuple:
         return False

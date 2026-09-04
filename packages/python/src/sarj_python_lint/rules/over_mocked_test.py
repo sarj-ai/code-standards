@@ -762,9 +762,7 @@ def _parametrized_arguments(
             continue
         argnames = _call_argument(decorator, 0, "argnames")
         if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
-            parametrized.update(
-                stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip())
-            )
+            parametrized.update(stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip()))
         elif isinstance(argnames, (ast.List, ast.Tuple)):
             parametrized.update(
                 element.value

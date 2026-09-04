@@ -123,19 +123,14 @@ class PydanticAtBoundaries(Rule):
             # APIs here unless FastAPI already has a concrete named model.
             routes = fastapi.routes(node)
             if any(not route.is_hidden for route in routes) or any(
-                _has_named_response_model(route.keywords.get("response_model"), imports)
-                for route in routes
+                _has_named_response_model(route.keywords.get("response_model"), imports) for route in routes
             ):
                 continue
             returns = _resolve_annotation(node.returns)
             if returns is None:
                 continue
             kind = _classify_return(returns, imports)
-            if (
-                kind is None
-                or not builds_fixed_record(node)
-                or is_suppressed(source_lines, node.lineno, self.code)
-            ):
+            if kind is None or not builds_fixed_record(node) or is_suppressed(source_lines, node.lineno, self.code):
                 continue
             ann_text = ast.unparse(returns)
             diags.append(
@@ -191,10 +186,7 @@ def _is_framework_hook(node: ast.FunctionDef | ast.AsyncFunctionDef, imports: Im
         target = dec.func if isinstance(dec, ast.Call) else dec
         if not isinstance(target, (ast.Name, ast.Attribute)):
             continue
-        if any(
-            imports.resolves(target, sources=frozenset({"pydantic"}), symbol=symbol)
-            for symbol in _PYDANTIC_HOOKS
-        ):
+        if any(imports.resolves(target, sources=frozenset({"pydantic"}), symbol=symbol) for symbol in _PYDANTIC_HOOKS):
             return True
         if imports.resolves(target, sources=frozenset({"pytest"}), symbol="fixture"):
             return True
@@ -277,9 +269,7 @@ def _is_untyped_dict_args(slice_node: ast.expr, imports: ImportIndex) -> bool:
     if key is None or not _is_builtin(key, imports, "str"):
         return False
     value = _resolve_annotation(slice_node.elts[1])
-    return value is not None and (
-        _is_builtin(value, imports, "object") or _is_typing_type(value, imports, "Any")
-    )
+    return value is not None and (_is_builtin(value, imports, "object") or _is_typing_type(value, imports, "Any"))
 
 
 def _is_type(node: ast.expr, imports: ImportIndex, *, builtin: str, typing_symbol: str) -> bool:
@@ -287,11 +277,9 @@ def _is_type(node: ast.expr, imports: ImportIndex, *, builtin: str, typing_symbo
 
 
 def _is_builtin(node: ast.expr, imports: ImportIndex, name: str) -> bool:
-    return (
-        isinstance(node, ast.Name)
-        and node.id == name
-        and imports.builtin_is_unshadowed(name)
-    ) or imports.resolves(node, sources=frozenset({"builtins"}), symbol=name)
+    return (isinstance(node, ast.Name) and node.id == name and imports.builtin_is_unshadowed(name)) or imports.resolves(
+        node, sources=frozenset({"builtins"}), symbol=name
+    )
 
 
 def _is_typing_type(node: ast.expr, imports: ImportIndex, symbol: str) -> bool:
@@ -308,6 +296,4 @@ def _has_named_response_model(node: ast.expr | None, imports: ImportIndex) -> bo
         return False
     if _classify_return(resolved, imports) is not None:
         return False
-    return not (
-        _is_builtin(resolved, imports, "object") or _is_typing_type(resolved, imports, "Any")
-    )
+    return not (_is_builtin(resolved, imports, "object") or _is_typing_type(resolved, imports, "Any"))

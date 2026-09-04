@@ -23,9 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_PYDANTIC_BASE_MODEL_SOURCES = frozenset(
-    {"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"}
-)
+_PYDANTIC_BASE_MODEL_SOURCES = frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"})
 _PYDANTIC_SETTINGS_SOURCES = frozenset({"pydantic", "pydantic.v1", "pydantic_settings"})
 _FIELD_VALIDATOR_SOURCES = frozenset({"pydantic", "pydantic.functional_validators"})
 _LEGACY_VALIDATOR_SOURCES = frozenset(
@@ -199,9 +197,7 @@ def _is_class_var(annotation: ast.expr, imports: ImportIndex) -> bool:
 
 def _literal_check_fields_false(decorator: ast.Call) -> bool:
     return any(
-        keyword.arg == "check_fields"
-        and isinstance(keyword.value, ast.Constant)
-        and keyword.value.value is False
+        keyword.arg == "check_fields" and isinstance(keyword.value, ast.Constant) and keyword.value.value is False
         for keyword in decorator.keywords
     )
 
@@ -235,9 +231,7 @@ def _shadowed_in_enclosing_function(
         return False
     current = parents.get(owner)
     while current is not None:
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and _function_binds(
-            current, root
-        ):
+        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) and _function_binds(current, root):
             return True
         current = parents.get(current)
     return False
@@ -251,11 +245,10 @@ def _root_name(node: ast.expr) -> str | None:
 
 def _function_binds(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, name: str) -> bool:
     arguments = node.args
-    if any(
-        argument.arg == name
-        for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
-    ) or (arguments.vararg is not None and arguments.vararg.arg == name) or (
-        arguments.kwarg is not None and arguments.kwarg.arg == name
+    if (
+        any(argument.arg == name for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs))
+        or (arguments.vararg is not None and arguments.vararg.arg == name)
+        or (arguments.kwarg is not None and arguments.kwarg.arg == name)
     ):
         return True
     body = node.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else [node.body]

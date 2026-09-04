@@ -387,9 +387,7 @@ def test_thing():
     ["mock.DEFAULT", "DEFAULT", "DEFAULT_ALIAS"],
 )
 def test_patch_default_sentinel_still_generates_an_unrestricted_mock(replacement: str) -> None:
-    imports = (
-        "from unittest import mock\nfrom unittest.mock import DEFAULT, DEFAULT as DEFAULT_ALIAS"
-    )
+    imports = "from unittest import mock\nfrom unittest.mock import DEFAULT, DEFAULT as DEFAULT_ALIAS"
     src = f"""
 {imports}
 

@@ -164,11 +164,7 @@ def test_import_aliases_preserve_provenance() -> None:
 
 
 def test_rebound_import_abstains() -> None:
-    source = (
-        "from uuid import UUID\n"
-        "UUID = vendor.UUID\n"
-        "def load(file_id: UUID, folder_id: UUID) -> None: ...\n"
-    )
+    source = "from uuid import UUID\nUUID = vendor.UUID\ndef load(file_id: UUID, folder_id: UUID) -> None: ...\n"
 
     assert _check(source) == []
 
@@ -199,10 +195,7 @@ def test_class_fields_and_constructor_superset_report_once() -> None:
     ("source", "path"),
     [
         (
-            (
-                "class VoiceEventLogger:\n"
-                "    def __init__(self, session_id: str, room_id: str) -> None: ...\n"
-            ),
+            ("class VoiceEventLogger:\n    def __init__(self, session_id: str, room_id: str) -> None: ...\n"),
             Path("app/events.py"),
         ),
         (

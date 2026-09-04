@@ -30,7 +30,23 @@ _COLLECTION_WRAPPERS = frozenset({"frozenset", "list", "set", "sorted", "tuple"}
 _MEMBERSHIP_TOKENS = frozenset({"allowed", "eligible", "required", "supported"})
 _PARAMETRIZE_CASES_INDEX = 1
 _TEST_MODULE_PARTS = frozenset({"conftest", "fixture", "fixtures", "test", "testdata", "testing", "tests"})
-_TEST_SUPPORT_TOKENS = frozenset({"double", "doubles", "fake", "fakes", "fixture", "fixtures", "mock", "mocks", "stub", "stubs", "test", "testing", "tests"})
+_TEST_SUPPORT_TOKENS = frozenset(
+    {
+        "double",
+        "doubles",
+        "fake",
+        "fakes",
+        "fixture",
+        "fixtures",
+        "mock",
+        "mocks",
+        "stub",
+        "stubs",
+        "test",
+        "testing",
+        "tests",
+    }
+)
 
 
 class _PytestBindings(NamedTuple):
@@ -164,9 +180,7 @@ def _direct_imported_collection(
         candidate = node.args[0]
         return (
             candidate
-            if isinstance(candidate, ast.Name)
-            and candidate.id not in blocked
-            and not _is_registry(candidate.id)
+            if isinstance(candidate, ast.Name) and candidate.id not in blocked and not _is_registry(candidate.id)
             else None
         )
     if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Sub, ast.BitOr, ast.BitAnd)):
@@ -245,10 +259,7 @@ def _independently_asserted_collections(
     asserted: set[str] = set()
     assertions = [node for node in tree.body if isinstance(node, ast.Assert)]
     assertions.extend(
-        statement
-        for test in tests
-        for statement in test.function.body
-        if isinstance(statement, ast.Assert)
+        statement for test in tests for statement in test.function.body if isinstance(statement, ast.Assert)
     )
     for node in assertions:
         if not isinstance(node.test, ast.Compare):

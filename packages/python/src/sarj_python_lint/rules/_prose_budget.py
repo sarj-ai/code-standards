@@ -428,7 +428,13 @@ def _yielded_type(node: ast.expr) -> str | None:
         node = parsed
     if not isinstance(node, ast.Subscript):
         return None
-    name = node.value.attr if isinstance(node.value, ast.Attribute) else node.value.id if isinstance(node.value, ast.Name) else ""
+    name = (
+        node.value.attr
+        if isinstance(node.value, ast.Attribute)
+        else node.value.id
+        if isinstance(node.value, ast.Name)
+        else ""
+    )
     if name not in {"AsyncGenerator", "AsyncIterable", "AsyncIterator", "Generator", "Iterable", "Iterator"}:
         return None
     members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)

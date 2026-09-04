@@ -58,7 +58,7 @@ def test_concatenated_full_query_is_detected_once() -> None:
         'q = "SELECT id FROM call ORDER BY id LIMIT 50 OFFSET 1000"\n',
         'fragment = "LIMIT %s OFFSET %s"\n',
         'message = "retry operation at OFFSET %s"\n',
-        'q = "SELECT note FROM call WHERE note = \'OFFSET %s\'"\n',
+        "q = \"SELECT note FROM call WHERE note = 'OFFSET %s'\"\n",
         'q = "SELECT `OFFSET %s` FROM call"\n',
         'q = "SELECT [OFFSET %s] FROM call"\n',
         'q = "SELECT id FROM call # LIMIT %s OFFSET %s"\n',
@@ -110,10 +110,7 @@ def test_unrelated_offset_method_is_not_an_embedded_sql_finding() -> None:
 
 
 def test_multiple_queries_are_sorted_by_location() -> None:
-    source = (
-        'a = "SELECT id FROM call LIMIT %s OFFSET %s"\n'
-        'b = "SELECT id FROM task LIMIT :limit OFFSET :offset"\n'
-    )
+    source = 'a = "SELECT id FROM call LIMIT %s OFFSET %s"\nb = "SELECT id FROM task LIMIT :limit OFFSET :offset"\n'
     diagnostics = _check(source)
     assert [(item.line, item.col) for item in diagnostics] == [(1, 5), (2, 5)]
 

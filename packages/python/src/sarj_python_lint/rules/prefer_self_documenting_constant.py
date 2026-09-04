@@ -55,9 +55,7 @@ _POLICY_SENTINEL_RE = re.compile(
 )
 _STANDARD_HTTP_STATUSES = frozenset(status.value for status in HTTPStatus)
 _GENERIC_VALUE_TOKENS = frozenset({"constant", "value"})
-_CLAUSE_BOUNDARY_RE = re.compile(
-    r"(?:[.,;:]|[–—]|\n+|\s-{1,2}\s|\b(?:and|but|while)\b)\s*", re.IGNORECASE
-)
+_CLAUSE_BOUNDARY_RE = re.compile(r"(?:[.,;:]|[–—]|\n+|\s-{1,2}\s|\b(?:and|but|while)\b)\s*", re.IGNORECASE)
 _IDENTIFIER_WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 _SMALL_NUMBER_WORDS = MappingProxyType(
@@ -358,7 +356,9 @@ class PreferSelfDocumentingConstant(Rule):
             if unit is None:
                 continue
             alternative = " or use a unit-bearing type such as `timedelta`" if unit.duration else ""
-            compatibility = " If this exported name is public API, migrate compatibly." if not name.startswith("_") else ""
+            compatibility = (
+                " If this exported name is public API, migrate compatibly." if not name.startswith("_") else ""
+            )
             findings.append(
                 Diagnostic(
                     path,
@@ -427,9 +427,7 @@ def _missing_unit(statement: ast.Assign | ast.AnnAssign, name: str, comment: str
     declaration_tokens = set(split_identifier(name))
     if isinstance(statement, ast.AnnAssign):
         declaration_tokens.update(_annotation_tokens(statement.annotation))
-    mentioned = tuple(
-        unit for unit in _UNITS if _comment_assigns_unit(comment, unit, value, declaration_tokens)
-    )
+    mentioned = tuple(unit for unit in _UNITS if _comment_assigns_unit(comment, unit, value, declaration_tokens))
     # A name carrying a different unit is contradictory, but appending a second
     # suffix would worsen it; leave the conflict to a dedicated future rule.
     mentioned_name_tokens = frozenset(token for unit in mentioned for token in unit.name_tokens)
@@ -442,9 +440,7 @@ def _missing_unit(statement: ast.Assign | ast.AnnAssign, name: str, comment: str
     return mentioned[0] if len(mentioned) == 1 else None
 
 
-def _comment_assigns_unit(
-    comment: str, unit: _Unit, value: float, declaration_tokens: set[str]
-) -> bool:
+def _comment_assigns_unit(comment: str, unit: _Unit, value: float, declaration_tokens: set[str]) -> bool:
     for match in unit.comment.finditer(comment):
         prefix = comment[: match.start()]
         number_match = _TRAILING_NUMBER_RE.search(prefix)
@@ -546,9 +542,8 @@ def _comment_http_statuses(comment: str) -> frozenset[int]:
 def _has_http_context(name: str, comment: str) -> bool:
     combined = f"{name} {comment}"
     return (
-        ("http" in split_identifier(name) or _HTTP_CONTEXT_RE.search(comment) is not None)
-        and _OTHER_STATUS_PROTOCOL_RE.search(combined) is None
-    )
+        "http" in split_identifier(name) or _HTTP_CONTEXT_RE.search(comment) is not None
+    ) and _OTHER_STATUS_PROTOCOL_RE.search(combined) is None
 
 
 def _annotation_tokens(annotation: ast.expr) -> set[str]:
@@ -630,8 +625,10 @@ def _enum_aliases(tree: ast.Module, imports: ImportIndex) -> frozenset[str]:
 
 def _is_enum_base(node: ast.expr, imports: ImportIndex, local_names: set[str] | frozenset[str]) -> bool:
     trailing = _trailing_name(node)
-    if trailing in local_names or trailing in _ENUM_BASE_NAMES or (
-        trailing is not None and trailing.endswith(("Enum", "Flag"))
+    if (
+        trailing in local_names
+        or trailing in _ENUM_BASE_NAMES
+        or (trailing is not None and trailing.endswith(("Enum", "Flag")))
     ):
         return True
     return any(imports.resolves(node, sources=frozenset({"enum"}), symbol=name) for name in _ENUM_BASE_NAMES)

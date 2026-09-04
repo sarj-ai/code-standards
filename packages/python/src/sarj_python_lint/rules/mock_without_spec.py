@@ -333,9 +333,7 @@ class _MockNames:
 
     def _is_shadowed(self, name: str, node: ast.AST) -> bool:
         scope = self.scopes.get(id(node))
-        return name in self.shadowed or (
-            scope is not None and name in self.local_shadowed.get(scope, frozenset())
-        )
+        return name in self.shadowed or (scope is not None and name in self.local_shadowed.get(scope, frozenset()))
 
 
 class _FileFacts:
@@ -559,14 +557,12 @@ def _escaped_names(argument: ast.expr) -> set[str]:
 
 def _mock_add_spec_has_contract(node: ast.Call) -> bool:
     if any(
-        not isinstance(argument, ast.Starred)
-        and not (isinstance(argument, ast.Constant) and argument.value is None)
+        not isinstance(argument, ast.Starred) and not (isinstance(argument, ast.Constant) and argument.value is None)
         for argument in node.args
     ):
         return True
     return any(
-        keyword.arg == "spec"
-        and not (isinstance(keyword.value, ast.Constant) and keyword.value.value is None)
+        keyword.arg == "spec" and not (isinstance(keyword.value, ast.Constant) and keyword.value.value is None)
         for keyword in node.keywords
     )
 

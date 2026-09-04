@@ -50,7 +50,9 @@ _CATEGORY_WORDS = frozenset({"kind", "kinds", "type", "types"})
 _DESCRIPTOR_WORDS = frozenset(
     {"id", "ids", "kind", "kinds", "name", "names", "permission", "permissions", "scope", "scopes", "type", "types"}
 )
-_EXTERNAL_PREFIXES = frozenset({"given", "incoming", "presented", "provided", "received", "request", "submitted", "supplied"})
+_EXTERNAL_PREFIXES = frozenset(
+    {"given", "incoming", "presented", "provided", "received", "request", "submitted", "supplied"}
+)
 _EXPECTED_PREFIXES = frozenset({"configured", "current", "expected", "known", "stored"})
 _AUTH_MAPPING_WORDS = frozenset({"authorization", "cookies", "headers", "path_params", "query_params"})
 _STORED_OWNER_WORDS = frozenset({"config", "configuration", "self", "session", "settings"})
@@ -340,8 +342,10 @@ def _is_auth_mapping(node: ast.expr) -> bool:
 
 
 def _is_auth_key(node: ast.expr) -> bool:
-    return isinstance(node, ast.Constant) and isinstance(node.value, str) and (
-        node.value.lower() == "token" or _is_authenticator_name(node.value)
+    return (
+        isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and (node.value.lower() == "token" or _is_authenticator_name(node.value))
     )
 
 
@@ -409,10 +413,7 @@ def _environment_names(module: ast.Module) -> frozenset[str]:
 
 
 def _bound_names(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-    names = {
-        argument.arg
-        for argument in (*scope.args.posonlyargs, *scope.args.args, *scope.args.kwonlyargs)
-    }
+    names = {argument.arg for argument in (*scope.args.posonlyargs, *scope.args.args, *scope.args.kwonlyargs)}
     for assignment in _assignments(scope.body):
         target, _ = _assignment_parts(assignment)
         if target is not None:

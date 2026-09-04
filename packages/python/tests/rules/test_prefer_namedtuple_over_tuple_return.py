@@ -61,11 +61,7 @@ def test_flags_proven_public_heterogeneous_record(source: str) -> None:
 
 
 def test_reports_source_location_and_sort_order() -> None:
-    source = (
-        "\n"
-        "def first() -> tuple[str, int, bool]: ...\n"
-        "def second() -> tuple[bytes, float, None]: ...\n"
-    )
+    source = "\ndef first() -> tuple[str, int, bool]: ...\ndef second() -> tuple[bytes, float, None]: ...\n"
 
     diagnostics = _check(source)
     assert [(diagnostic.line, diagnostic.col) for diagnostic in diagnostics] == [(2, 1), (3, 1)]
@@ -188,11 +184,7 @@ def test_documentation_named_directory_does_not_hide_production_source() -> None
 
 
 def test_opaque_key_alias_cycle_does_not_crash() -> None:
-    source = (
-        "def _key() -> tuple[int, str]: ...\n"
-        "value = _key()\n"
-        "value = value\n"
-    )
+    source = "def _key() -> tuple[int, str]: ...\nvalue = _key()\nvalue = value\n"
 
     assert _check(source) == []
 

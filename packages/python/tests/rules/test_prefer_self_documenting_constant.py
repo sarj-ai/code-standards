@@ -325,9 +325,7 @@ def test_warns_for_bare_integers_in_status_code_collections(value: str) -> None:
 
 def test_proven_builtins_frozenset_is_supported() -> None:
     findings = _check(
-        "import builtins\n\n"
-        "# HTTP responses include 401 and 403.\n"
-        "STATUS_CODES = builtins.frozenset((401, 403))\n"
+        "import builtins\n\n# HTTP responses include 401 and 403.\nSTATUS_CODES = builtins.frozenset((401, 403))\n"
     )
 
     assert len(findings) == 1

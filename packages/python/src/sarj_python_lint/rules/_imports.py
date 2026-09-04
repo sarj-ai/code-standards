@@ -39,9 +39,7 @@ class ImportIndex:
                     pass
 
         imported_names = frozenset(candidates)
-        non_import_bindings = (
-            _module_non_import_bindings(tree) if module_scope_only else _non_import_bindings(tree)
-        )
+        non_import_bindings = _module_non_import_bindings(tree) if module_scope_only else _non_import_bindings(tree)
         rebound = non_import_bindings & imported_names
         bindings = {
             local: next(iter(targets))
@@ -166,9 +164,7 @@ def _module_import_statements(tree: ast.Module) -> list[ast.stmt]:
     for statement in tree.body:
         if not isinstance(statement, ast.If) or not _is_type_checking_guard(statement.test):
             continue
-        statements.extend(
-            child for child in statement.body if isinstance(child, (ast.Import, ast.ImportFrom))
-        )
+        statements.extend(child for child in statement.body if isinstance(child, (ast.Import, ast.ImportFrom)))
     return statements
 
 

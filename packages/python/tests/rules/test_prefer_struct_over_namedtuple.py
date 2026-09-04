@@ -311,8 +311,7 @@ def test_findings_are_in_source_order():
 
 def test_check_applies_exact_sarj_noqa():
     src = (
-        "from collections import namedtuple\n"
-        "Row = namedtuple('Row', ['id'])  # sarj-noqa: SARJ015 — legacy tuple ABI\n"
+        "from collections import namedtuple\nRow = namedtuple('Row', ['id'])  # sarj-noqa: SARJ015 — legacy tuple ABI\n"
     )
     assert _check(src) == []
 

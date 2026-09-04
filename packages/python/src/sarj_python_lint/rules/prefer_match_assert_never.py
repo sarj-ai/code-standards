@@ -170,9 +170,7 @@ def _is_enum_base(base: ast.expr, imports: ImportIndex) -> bool:
     return any(imports.resolves(base, sources=frozenset({"enum"}), symbol=symbol) for symbol in _ENUM_BASES)
 
 
-def _enum_members(
-    classdefs: list[ast.ClassDef], local_enums: frozenset[str]
-) -> dict[str, frozenset[str]]:
+def _enum_members(classdefs: list[ast.ClassDef], local_enums: frozenset[str]) -> dict[str, frozenset[str]]:
     return {
         classdef.name: frozenset(
             target.id
@@ -217,9 +215,7 @@ def _annotated_local_enum(
     if enum_name not in local_enums:
         return None
     bindings = _scope_bindings(scope.body)
-    if any(name == enum_name for name, _ in bindings) or any(
-        argument.arg == enum_name for argument in parameters
-    ):
+    if any(name == enum_name for name, _ in bindings) or any(argument.arg == enum_name for argument in parameters):
         return None
     if any(name == subject.id and line < anchor.lineno for name, line in bindings):
         return None
@@ -376,9 +372,7 @@ def _silent_enum_chain(
         return enum_name
 
 
-def _enum_comparison(
-    test: ast.expr, enum_members: dict[str, frozenset[str]]
-) -> _EnumComparison | None:
+def _enum_comparison(test: ast.expr, enum_members: dict[str, frozenset[str]]) -> _EnumComparison | None:
     if not (isinstance(test, ast.Compare) and len(test.ops) == 1):
         return None
     left = test.left
@@ -407,21 +401,17 @@ def _enum_comparison(
     return _EnumComparison(target, cls_name, members)
 
 
-def _enum_member(
-    expr: ast.expr, enum_members: dict[str, frozenset[str]]
-) -> _EnumMember | None:
+def _enum_member(expr: ast.expr, enum_members: dict[str, frozenset[str]]) -> _EnumMember | None:
     match expr:
-        case ast.Attribute(value=ast.Name(id=cls_name), attr=member) if (
-            member in enum_members.get(cls_name, frozenset())
+        case ast.Attribute(value=ast.Name(id=cls_name), attr=member) if member in enum_members.get(
+            cls_name, frozenset()
         ):
             return _EnumMember(cls_name, member)
         case _:
             return None
 
 
-def _enum_member_container(
-    expr: ast.expr, enum_members: dict[str, frozenset[str]]
-) -> _EnumMemberSet | None:
+def _enum_member_container(expr: ast.expr, enum_members: dict[str, frozenset[str]]) -> _EnumMemberSet | None:
     if not isinstance(expr, (ast.Tuple, ast.List, ast.Set)) or not expr.elts:
         return None
     resolved = [_enum_member(element, enum_members) for element in expr.elts]

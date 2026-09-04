@@ -242,7 +242,9 @@ def _diagnostic_for_pair(
         annotated_names=state.annotated_names,
     ):
         return None
-    if _is_name_used_after(body, index + 2, name) or is_suppressed(context.source_lines, assignment.lineno, context.code):
+    if _is_name_used_after(body, index + 2, name) or is_suppressed(
+        context.source_lines, assignment.lineno, context.code
+    ):
         return None
     return Diagnostic(
         path=context.path,

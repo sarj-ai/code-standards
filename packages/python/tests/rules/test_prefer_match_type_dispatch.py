@@ -565,9 +565,7 @@ def second(value: object):
     diagnostics = _check(source)
 
     assert len(diagnostics) == 2
-    assert [(item.line, item.col) for item in diagnostics] == sorted(
-        (item.line, item.col) for item in diagnostics
-    )
+    assert [(item.line, item.col) for item in diagnostics] == sorted((item.line, item.col) for item in diagnostics)
 
 
 def test_finds_valid_child_ladder_under_unrelated_outer_if() -> None:

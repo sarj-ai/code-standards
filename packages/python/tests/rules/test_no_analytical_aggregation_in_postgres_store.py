@@ -73,7 +73,7 @@ def test_allows_operational_or_ambiguous_aggregates(source: str) -> None:
     [
         'import sqlite3\nq = "SELECT PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY x) FROM event"\n',
         'import mysql.connector\nq = "SELECT STDDEV(x) FROM event"\n',
-        'q = "SELECT DATE_TRUNC(\'day\', ts), COUNT(*) FROM event GROUP BY 1"\n',
+        "q = \"SELECT DATE_TRUNC('day', ts), COUNT(*) FROM event GROUP BY 1\"\n",
     ],
 )
 def test_requires_positive_postgres_ownership(source: str) -> None:

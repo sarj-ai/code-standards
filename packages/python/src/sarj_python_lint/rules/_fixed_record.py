@@ -48,9 +48,7 @@ def builds_fixed_record(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
                     else:
                         aliases[target.id] = current.value.id
             else:
-                invalidated_names.update(
-                    target.id for target in current.targets if isinstance(target, ast.Name)
-                )
+                invalidated_names.update(target.id for target in current.targets if isinstance(target, ast.Name))
             for target in current.targets:
                 if isinstance(target, ast.Subscript):
                     invalidated_names.update(_mutated_record_roots(target))
@@ -115,8 +113,7 @@ def builds_fixed_record(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     ):
         return False
     return any(
-        _is_record_literal(value)
-        or (isinstance(value, ast.Name) and original_name(value.id) in intact_record_names)
+        _is_record_literal(value) or (isinstance(value, ast.Name) and original_name(value.id) in intact_record_names)
         for value in returned
     )
 
@@ -140,9 +137,7 @@ def _is_record_literal(node: ast.expr) -> bool:
         return _is_record_literal(node.elt)
     if not isinstance(node, ast.Dict):
         return False
-    return bool(node.keys) and all(
-        isinstance(key, ast.Constant) and isinstance(key.value, str) for key in node.keys
-    )
+    return bool(node.keys) and all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in node.keys)
 
 
 def _mutated_record_roots(target: ast.AST) -> set[str]:

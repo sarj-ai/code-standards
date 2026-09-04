@@ -537,12 +537,16 @@ def _has_str_enum_signal(source: str) -> bool:
     if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
         return True
     has_rejection = "raise" in source or "assert_never" in source
-    return has_string_literal and has_rejection and (
-        "==" in source
-        or "!=" in source
-        or _STRING_MEMBERSHIP_RE.search(source) is not None
-        or "case " in source
-        or "match " in source
+    return (
+        has_string_literal
+        and has_rejection
+        and (
+            "==" in source
+            or "!=" in source
+            or _STRING_MEMBERSHIP_RE.search(source) is not None
+            or "case " in source
+            or "match " in source
+        )
     )
 
 
@@ -720,9 +724,7 @@ def _module_proven_raw_string_aliases(tree: ast.Module, imports: ImportIndex) ->
             case _:
                 pass
     unique = {
-        name: values[0]
-        for name, values in assignments.items()
-        if len(values) == 1 and binding_counts.get(name) == 1
+        name: values[0] for name, values in assignments.items() if len(values) == 1 and binding_counts.get(name) == 1
     }
     aliases: set[str] = set()
     for _round in range(len(unique)):
@@ -739,11 +741,8 @@ def _module_proven_raw_string_aliases(tree: ast.Module, imports: ImportIndex) ->
 
 
 def _is_builtin_str(node: ast.expr, imports: ImportIndex) -> bool:
-    return (
-        isinstance(node, ast.Name) and node.id == "str" and imports.builtin_is_unshadowed("str")
-    ) or (
-        isinstance(node, ast.Name)
-        and imports.resolves(node, sources=frozenset({"builtins"}), symbol="str")
+    return (isinstance(node, ast.Name) and node.id == "str" and imports.builtin_is_unshadowed("str")) or (
+        isinstance(node, ast.Name) and imports.resolves(node, sources=frozenset({"builtins"}), symbol="str")
     )
 
 
@@ -1318,8 +1317,10 @@ def _is_choice_string_annotation(
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         members = _flatten_annotation_union(annotation)
         non_none = [member for member in members if not _is_none_annotation(member)]
-        return len(non_none) == 1 and len(non_none) < len(members) and _is_choice_string_annotation(
-            non_none[0], raw_string_aliases, imports
+        return (
+            len(non_none) == 1
+            and len(non_none) < len(members)
+            and _is_choice_string_annotation(non_none[0], raw_string_aliases, imports)
         )
     if isinstance(annotation, ast.Subscript) and imports.resolves(
         annotation.value,
@@ -1453,11 +1454,7 @@ def _record_exhaustive_if_chain(node: ast.If, imports: ImportIndex | None, close
     current = node
     while True:
         branch = _positive_domain_comparisons(current.test)
-        branch_keys = {
-            extracted.key
-            for compare in branch
-            if (extracted := _extract_compare(compare)) is not None
-        }
+        branch_keys = {extracted.key for compare in branch if (extracted := _extract_compare(compare)) is not None}
         if not branch or len(branch_keys) != 1:
             return
         branch_key = next(iter(branch_keys))

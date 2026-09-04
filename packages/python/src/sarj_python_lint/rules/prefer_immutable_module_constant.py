@@ -49,7 +49,23 @@ _MUTATING_METHODS = frozenset(
 )
 _CONCRETE_COLLECTION_METHODS = _MUTATING_METHODS | {"copy"}
 _NON_ESCAPING_CALLS = frozenset(
-    {"all", "any", "dict", "enumerate", "frozenset", "iter", "len", "list", "max", "min", "reversed", "set", "sorted", "sum", "tuple"}
+    {
+        "all",
+        "any",
+        "dict",
+        "enumerate",
+        "frozenset",
+        "iter",
+        "len",
+        "list",
+        "max",
+        "min",
+        "reversed",
+        "set",
+        "sorted",
+        "sum",
+        "tuple",
+    }
 )
 
 
@@ -57,9 +73,7 @@ class PreferImmutableModuleConstant(Rule):
     id: str = "prefer-immutable-module-constant"
     code: str = "SARJ096"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary=(
-            "Nonempty uppercase module collections allow top-level membership or keys to change at runtime."
-        ),
+        summary=("Nonempty uppercase module collections allow top-level membership or keys to change at runtime."),
         rationale=(
             "A constant-looking collection can expose process-wide top-level mutation even when callers intend it as a "
             "read-only lookup table."
@@ -259,7 +273,9 @@ class _MutationVisitor(ast.NodeVisitor):
             self.visit(node.value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
-        self._record_name(_mutated_target(node.target) or (node.target.id if isinstance(node.target, ast.Name) else None))
+        self._record_name(
+            _mutated_target(node.target) or (node.target.id if isinstance(node.target, ast.Name) else None)
+        )
         self.visit(node.value)
 
     def visit_Delete(self, node: ast.Delete) -> None:

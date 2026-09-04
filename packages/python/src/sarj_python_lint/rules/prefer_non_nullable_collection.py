@@ -63,8 +63,7 @@ class PreferNonNullableCollection(Rule):
                 files=(
                     ExampleFile.python(
                         "app/resolver.py",
-                        "def resolve(candidates: list[str] | None = None) -> list[str]:\n"
-                        "    return candidates or []\n",
+                        "def resolve(candidates: list[str] | None = None) -> list[str]:\n    return candidates or []\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/resolver.py"),
@@ -124,8 +123,7 @@ class PreferNonNullableCollection(Rule):
 
 def _has_wildcard_import(tree: ast.Module) -> bool:
     return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-        for node in ast.walk(tree)
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
     )
 
 
@@ -289,8 +287,8 @@ def _is_nullable_list(annotation: ast.expr, imports: ImportIndex) -> bool:
     if members is None:
         return False
     non_none = [member for member in members if not _is_none_type(member)]
-    return bool(non_none) and len(non_none) < len(members) and all(
-        _is_list_type(member, imports) for member in non_none
+    return (
+        bool(non_none) and len(non_none) < len(members) and all(_is_list_type(member, imports) for member in non_none)
     )
 
 
@@ -311,9 +309,7 @@ def _union_members(annotation: ast.expr, imports: ImportIndex) -> list[ast.expr]
 
 
 def _is_none_type(node: ast.expr) -> bool:
-    return (isinstance(node, ast.Constant) and node.value is None) or (
-        isinstance(node, ast.Name) and node.id == "None"
-    )
+    return (isinstance(node, ast.Constant) and node.value is None) or (isinstance(node, ast.Name) and node.id == "None")
 
 
 def _is_list_type(node: ast.expr, imports: ImportIndex) -> bool:

@@ -186,8 +186,9 @@ def _annotation_aliases(tree: ast.Module) -> dict[str, ast.expr]:
     candidates: dict[str, list[ast.expr]] = {}
     for statement in tree.body:
         match statement:
-            case ast.Assign(targets=[ast.Name(id=name)], value=value) | ast.TypeAlias(
-                name=ast.Name(id=name), value=value
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=value)
+                | ast.TypeAlias(name=ast.Name(id=name), value=value)
             ):
                 candidates.setdefault(name, []).append(value)
             case _:

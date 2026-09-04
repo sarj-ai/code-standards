@@ -162,14 +162,9 @@ class PreferMatchTypeDispatch(Rule):
         all_nodes = tuple(ast.walk(tree))
         unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes)
         has_wildcard_import = any(
-            isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-            for node in all_nodes
+            isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in all_nodes
         )
-        if (
-            not imports.builtin_is_unshadowed("isinstance")
-            or "isinstance" in unsafe_bindings
-            or has_wildcard_import
-        ):
+        if not imports.builtin_is_unshadowed("isinstance") or "isinstance" in unsafe_bindings or has_wildcard_import:
             return []
         local_classes = _unshadowed_module_classes(tree, all_nodes)
         findings = _ladder_findings(
@@ -194,9 +189,7 @@ class PreferMatchTypeDispatch(Rule):
         return findings
 
 
-def _unshadowed_module_classes(
-    tree: ast.Module, all_nodes: tuple[ast.AST, ...]
-) -> frozenset[str]:
+def _unshadowed_module_classes(tree: ast.Module, all_nodes: tuple[ast.AST, ...]) -> frozenset[str]:
     classes = [statement.name for statement in tree.body if isinstance(statement, ast.ClassDef)]
     rebound = {
         candidate.id
@@ -220,9 +213,7 @@ def _unshadowed_module_classes(
     return frozenset(name for name in classes if classes.count(name) == 1 and name not in rebound)
 
 
-def _unsafe_local_bound_names(
-    tree: ast.Module, all_nodes: tuple[ast.AST, ...]
-) -> frozenset[str]:
+def _unsafe_local_bound_names(tree: ast.Module, all_nodes: tuple[ast.AST, ...]) -> frozenset[str]:
     module_imports = {id(statement) for statement in tree.body if isinstance(statement, (ast.Import, ast.ImportFrom))}
     names = {
         alias.asname or alias.name.partition(".")[0]
@@ -233,8 +224,7 @@ def _unsafe_local_bound_names(
     names.update(
         candidate.name
         for candidate in all_nodes
-        if isinstance(candidate, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar))
-        and candidate.name is not None
+        if isinstance(candidate, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and candidate.name is not None
     )
     names.update(
         candidate.rest

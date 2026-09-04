@@ -500,9 +500,12 @@ def _direct_bound_names(statement: ast.stmt) -> set[str]:
             return {alias.asname or alias.name.partition(".")[0] for alias in names}
         case ast.Assign(targets=targets):
             return {name for target in targets for name in _target_names(target)}
-        case ast.AnnAssign(target=target) | ast.AugAssign(target=target) | ast.For(
-            target=target
-        ) | ast.AsyncFor(target=target):
+        case (
+            ast.AnnAssign(target=target)
+            | ast.AugAssign(target=target)
+            | ast.For(target=target)
+            | ast.AsyncFor(target=target)
+        ):
             return _target_names(target)
         case ast.With(items=items) | ast.AsyncWith(items=items):
             return {
