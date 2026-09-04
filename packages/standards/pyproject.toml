@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "7.9.15"
+version = "7.9.16"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"

@@ -26,6 +26,8 @@ EXPECTED_RULES = {
         "prefer-screen-queries",
     },
     "vitest": {
+        "prefer-called-once",
+        "prefer-expect-resolves",
         "prefer-to-be",
     },
 }
