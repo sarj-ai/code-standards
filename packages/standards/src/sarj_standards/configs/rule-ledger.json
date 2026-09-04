@@ -36,6 +36,7 @@
       "mock-without-spec",
       "negative-only-http-status-assertion",
       "no-analytical-aggregation-in-postgres-store",
+      "no-bare-test-phase-comments",
       "no-comment-cruft",
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
@@ -108,7 +109,6 @@
       "restated-test-docstring",
       "stepdown",
       "store-get-delegates-to-bulk-read",
-      "test-phase-label-comment",
       "timestamp-order-requires-tiebreaker",
       "trailing-value-narration",
       "trivially-true-assertion",
@@ -1230,6 +1230,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; a literal test loop may encode one shared scenario, completeness contract, or state evolution that parametrization would change."
+    },
+    {
+      "id": "test-phase-label-comment",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-bare-test-phase-comments",
+      "note": "Replace sarj-test-phase-label-comment with sarj-no-bare-test-phase-comments before upgrading."
     },
     {
       "id": "unpinned-github-action",
