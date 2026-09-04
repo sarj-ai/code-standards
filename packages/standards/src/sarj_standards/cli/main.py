@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Final, NoReturn, TypeIs
 
 from packaging.version import InvalidVersion, Version
 from pydantic import TypeAdapter, ValidationError
+from repo_standards.core.commit_message import check_local_commit_message_file
 
 from sarj_standards import __version__
 from sarj_standards._meta import CONFIGS_DIR
@@ -54,6 +55,13 @@ _INVALID_DOCTOR_IDS = frozenset(
         "doctor.manifest.destination",
         "doctor.config.unknown",
         "doctor.package-json.invalid",
+    }
+)
+_HOOK_INSTALL_IDS: Final = frozenset(
+    {
+        "doctor.hooks.precommit-install",
+        "doctor.hooks.lefthook-install",
+        "doctor.hooks.commit-message-install",
     }
 )
 _REACT_DOCTOR_METADATA = frozenset(
@@ -119,7 +127,9 @@ class _Args(argparse.Namespace):
     docs_cmd: str = ""
     hooks_cmd: str = ""
     no_install: bool = False
+    commit_policy_only: bool = False
     repair: bool = False
+    message_file: Path | None = None
     profile: manifest.Profile | None = None
     output_format: str = "text"
     offline: bool = False
@@ -317,12 +327,13 @@ def cmd_peers(args: _Args) -> int:
 
 
 def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command renders repair and diagnosis state.
-    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, hooks, service, upgrade  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
     repair = args.repair
     no_install: bool = args.no_install
     repair_status = 0
+    commit_policy_only = doctor.is_commit_policy_only(root)
     if repair:
         try:
             adopted = manifest.load(root)
@@ -336,31 +347,52 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
                     details = f"{details}; {migration_details}"
                 print(f"error: cannot repair invalid adoption manifest: {details}", file=sys.stderr)
                 return 2
-        if adopted is None:
+        if adopted is None and not commit_policy_only:
             print("error: repository is not adopted; run `code-standards setup`", file=sys.stderr)
             return 2
-        plan = upgrade.build_plan(root)
-        blockers = upgrade.unsafe_retired_findings(plan)
-        if blockers:
-            print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
-            for finding in blockers:
-                print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
-        current_drift = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
-        repair_status = (
-            0
-            if not plan.changes and not current_drift
-            else upgrade.apply(
-                plan,
-                install=not no_install,
-                allow_retired_debt=bool(blockers),
+        if commit_policy_only:
+            init_plan = service.plan_commit_policy(root, hook_manager=hooks.detect_manager(root))
+            if init_plan.scaffold.errors:
+                for error in init_plan.scaffold.errors:
+                    print(f"error: {error}", file=sys.stderr)
+                return 2
+            current_findings = doctor.diagnose_commit_policy(root)
+            current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
+            missing_hooks = not no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
+            needs_repair = bool(
+                init_plan.scaffold.writes
+                or init_plan.scaffold.edits
+                or init_plan.scaffold.deletes
+                or current_drift
+                or missing_hooks
             )
-        )
+            if needs_repair:
+                repair_status = service.apply_init(init_plan, install=not no_install).status
+        else:
+            plan = upgrade.build_plan(root)
+            blockers = upgrade.unsafe_retired_findings(plan)
+            if blockers:
+                print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
+                for finding in blockers:
+                    print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
+            current_findings = doctor.diagnose(root)
+            current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
+            missing_hooks = not no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
+            repair_status = (
+                0
+                if not plan.changes and not current_drift and not missing_hooks
+                else upgrade.apply(
+                    plan,
+                    install=not no_install,
+                    allow_retired_debt=bool(blockers),
+                )
+            )
         if repair_status > 1:
             print(
                 "error: automatic repair did not converge; tracked configuration changes were restored",
                 file=sys.stderr,
             )
-    findings = doctor.diagnose(root)
+    findings = doctor.diagnose_commit_policy(root) if commit_policy_only else doctor.diagnose(root)
     if repair and no_install:
         findings = [
             doctor.Finding(
@@ -370,7 +402,10 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
                 finding.id,
                 finding.remediation,
             )
-            if finding.level is doctor.Level.DRIFT and upgrade.is_install_remediable(finding)
+            if (
+                (finding.level is doctor.Level.DRIFT and upgrade.is_install_remediable(finding))
+                or finding.id in _HOOK_INSTALL_IDS
+            )
             else finding
             for finding in findings
         ]
@@ -407,7 +442,7 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
                 dict.fromkeys(
                     finding.remediation
                     for finding in findings
-                    if finding.level is doctor.Level.DRIFT and finding.remediation
+                    if (finding.level is doctor.Level.DRIFT or finding.id in _HOOK_INSTALL_IDS) and finding.remediation
                 )
             )
         )
@@ -415,7 +450,8 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             print(f"fix: {remediation}")
     if invalid:
         return max(repair_status, 2)
-    return max(repair_status, 1 if drifted or unadopted else 0)
+    unresolved_install = repair and not no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in findings)
+    return max(repair_status, 1 if drifted or unadopted or unresolved_install else 0)
 
 
 def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
@@ -599,12 +635,13 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             print(f"fix: {remediation}")
         return 1 if plan.changes or drifted else 0
     current_drift = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
+    missing_hooks = not args.no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in preflight_findings)
     skipped_commands = (
         lifecycle.install_commands(root, plan.ecosystems, hook_manager=plan.adopted.hook_manager)
         if args.no_install
         else []
     )
-    if not preview and not current_drift and not skipped_commands and not migrated_legacy:
+    if not preview and not current_drift and not missing_hooks and not skipped_commands and not migrated_legacy:
         print(f"current: {root} already matches standards {__version__}")
         return 0
     print(preview or f"current: {root} already matches standards {__version__}")
@@ -623,6 +660,11 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         for finding in invalid:
             print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
         return 2
+    unresolved_hooks = [finding for finding in postflight_findings if finding.id in _HOOK_INSTALL_IDS]
+    if not args.no_install and unresolved_hooks:
+        for finding in unresolved_hooks:
+            print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
+        return 1
     pending = (
         [
             finding
@@ -650,22 +692,16 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
 
 
 def cmd_setup(args: _Args) -> int:
-    from sarj_standards.libs.adoption import scaffold, service  # ruff: ignore[import-outside-top-level] -- lazy route
+    from sarj_standards.libs.adoption import (  # ruff: ignore[import-outside-top-level] -- lazy route
+        doctor,
+        scaffold,
+        service,
+    )
 
     root = _resolve_dest(args.dest)
     selected_configs = tuple(dict.fromkeys((*args.configs, *args.only)))
     try:
-        init_plan = service.plan_init(
-            root,
-            force=args.force,
-            configs=selected_configs or None,
-            python_dest=args.python_dest,
-            typescript_dest=args.typescript_dest,
-            swift_dest=args.swift_dest,
-            kotlin_dest=args.kotlin_dest,
-            profile=args.profile,
-            hook_manager=args.hooks,
-        )
+        init_plan = _setup_plan(args, root, selected_configs)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -689,13 +725,11 @@ def cmd_setup(args: _Args) -> int:
         )
         if present
     ]
-    print(f"detected: {', '.join(detected) or 'nothing'}")
-    if not plan.ecosystems.any and not selected_configs:
-        for note in plan.notes:
-            print(f"note:  {note}")
-        return 1
-
-    print(f"configs: {', '.join(plan.configs)}")
+    if args.commit_policy_only:
+        print("scope: commit policy only (language tooling is untouched)")
+    else:
+        print(f"detected: {', '.join(detected) or 'nothing'}")
+        print(f"configs: {', '.join(plan.configs)}")
     if args.dry_run:
         print("\n-- dry run; nothing is written --")
         if init_plan.sync is not None:
@@ -722,6 +756,15 @@ def cmd_setup(args: _Args) -> int:
             return result.status
         if result.sync is not None:
             _render_sync(result.sync)
+        if not args.no_install:
+            unresolved_hooks = [finding for finding in doctor.diagnose(root) if finding.id in _HOOK_INSTALL_IDS]
+            if unresolved_hooks:
+                for finding in unresolved_hooks:
+                    print(
+                        f"error: {finding.id} {finding.where} -- {finding.detail}",
+                        file=sys.stderr,
+                    )
+                return 1
 
     verb_write = "would write" if args.dry_run else "wrote"
     verb_edit = "would append to" if args.dry_run else "appended to"
@@ -741,13 +784,47 @@ def cmd_setup(args: _Args) -> int:
         print("\nnext:  dependency and hook installation was skipped; run:")
         for command in init_plan.install_commands:
             print(f"       {shlex.join(command.argv)}  (in {command.cwd})")
-    workflows = scaffold.standards_check_workflows(root)
-    if workflows:
-        rendered = ", ".join(path.relative_to(root).as_posix() for path in workflows)
-        print(f"\nCI:    {rendered} runs the pinned quality gate")
+    if args.commit_policy_only:
+        print("\nCI:    .github/workflows/commit-policy.yml runs the exact-base commit policy")
     else:
-        print("\nCI:    would write .github/workflows/standards.yml")
+        workflows = scaffold.standards_check_workflows(root)
+        if workflows:
+            rendered = ", ".join(path.relative_to(root).as_posix() for path in workflows)
+            print(f"\nCI:    {rendered} runs the pinned quality gate")
+        else:
+            print("\nCI:    would write .github/workflows/standards.yml")
     return 0
+
+
+def _setup_plan(args: _Args, root: Path, selected_configs: tuple[str, ...]) -> service.InitPlan:
+    from sarj_standards.libs.adoption import service  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    if args.commit_policy_only:
+        incompatible = any(
+            (
+                selected_configs,
+                args.python_dest,
+                args.typescript_dest,
+                args.swift_dest,
+                args.kotlin_dest,
+                args.profile,
+            )
+        )
+        if incompatible:
+            msg = "--commit-policy-only cannot be combined with config, destination, or profile options"
+            raise ValueError(msg)
+        return service.plan_commit_policy(root, force=args.force, hook_manager=args.hooks)
+    return service.plan_init(
+        root,
+        force=args.force,
+        configs=selected_configs or None,
+        python_dest=args.python_dest,
+        typescript_dest=args.typescript_dest,
+        swift_dest=args.swift_dest,
+        kotlin_dest=args.kotlin_dest,
+        profile=args.profile,
+        hook_manager=args.hooks,
+    )
 
 
 def cmd_verify(args: _Args) -> int:
@@ -2140,6 +2217,32 @@ def _diagnostic_matches(item: Diagnostic, selectors: frozenset[str]) -> bool:
     )
 
 
+def cmd_commit_message(args: _Args) -> int:
+    if args.message_file is None:
+        msg = "commit-message requires one message file"
+        raise ValueError(msg)
+    result = check_local_commit_message_file(
+        args.message_file,
+        root=_resolve_dest(args.dest),
+        fix_safe=True,
+    )
+    if result.fix_applied:
+        print("Commit message: safely normalized; validation passed.")
+        return 0
+    if result.satisfied:
+        return 0
+    finding = result.findings[0]
+    print(f"Commit message: {finding.code}", file=sys.stderr)
+    print(finding.message, file=sys.stderr)
+    print(f"Fix: {finding.remediation}", file=sys.stderr)
+    print(
+        "Agent: preserve the body and trailers, rewrite only the subject after reviewing staged changes, "
+        "then retry the original commit.",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv, namespace=_Args())
@@ -2182,6 +2285,8 @@ def _dispatch(args: _Args) -> int:
             return cmd_format(args)
         case "check":
             return cmd_check(args)
+        case "commit-message":
+            return cmd_commit_message(args)
         case "validate-slack-automations":
             return cmd_validate_slack_automations(args)
         case "observe":
@@ -2216,8 +2321,26 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     sub = parser.add_subparsers(
         dest="cmd",
         required=True,
-        metavar=("{setup,check,validate-slack-automations,observe,fix,doctor,update,ratchet,exclude,show,maintain}"),
+        metavar=(
+            "{setup,check,commit-message,validate-slack-automations,observe,fix,doctor,"
+            "update,ratchet,exclude,show,maintain}"
+        ),
         title="commands",
+    )
+
+    commit_message = sub.add_parser(
+        "commit-message",
+        help="enforce [(i/N) ][TICKET] type(scope)!: description with safe mechanical fixes",
+        description=(
+            "Validate one Git commit message as [(i/N) ][TICKET] type(scope)!: description. "
+            "Example: feat(api): add retry budget. Safe fixes change only header case and spacing."
+        ),
+    )
+    commit_message.add_argument(
+        "message_file",
+        type=Path,
+        metavar="COMMIT_MSG_FILE",
+        help="Git commit-message file supplied by the commit-msg hook",
     )
 
     p_doctor = sub.add_parser(
@@ -2277,6 +2400,11 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     )
     setup.add_argument(
         "--no-install", action="store_true", help="write wiring without installing dependencies or hooks"
+    )
+    setup.add_argument(
+        "--commit-policy-only",
+        action="store_true",
+        help="adopt only commit-message and PR-history policy without changing language tooling",
     )
     setup.add_argument(
         "--config",

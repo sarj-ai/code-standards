@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "4bf0b47f8ad72d18dcac5b34cf642a05e6c170af8535c2d05bffb2054a618463",
-  "cliSha256": "0e590e6773fb50c6f451a3f438703250897e6512d67b82287a06b376d990868a",
+  "cliSha256": "93d300258c4a32691acfa5dfb2e5942ef63f78e7741c4f0a3511f22c5840b333",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8542,8 +8542,9 @@
     "runOnce": "uvx --no-config --isolated --python 3.14 --from code-standards code-standards setup\n",
     "bootstrap": "[ci]\nbootstrap = [\"yarn generate\", \"uv run --project python generate-api\"]\n",
     "usage": {
+      "commit-message": "code-standards commit-message [-h] COMMIT_MSG_FILE\n",
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
-      "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--profile PROFILE] [--no-install] [--config ONLY ...]\n",
+      "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--profile PROFILE] [--no-install] [--commit-policy-only] [--config ONLY ...]\n",
       "check": "code-standards check [-h] [--trust-repository-code] [--staged] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [files ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] --rule SELECTED_RULES ... [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [files ...]\n",

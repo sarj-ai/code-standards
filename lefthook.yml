@@ -1,5 +1,5 @@
 ---
-min_version: 2.1.10
+min_version: 2.1.12
 assert_lefthook_installed: true
 
 pre-commit:
@@ -26,7 +26,7 @@ pre-commit:
         drifted from its packaged source. Fix the reported path and retry.
 
     standards:
-      run: uv run --project packages/standards --frozen code-standards check --staged --trust-repository-code -- {staged_files}
+      run: uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code -- {staged_files}
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:
@@ -37,6 +37,14 @@ pre-commit:
     typecheck:
       run: make typecheck
       fail_text: "Standards typecheck failed. Fix the reported error and retry."
+
+commit-msg:
+  commands:
+    repo-standards-commit-message:
+      run: uv run --no-config --project packages/standards --frozen code-standards commit-message {1}
+      fail_text: >-
+        The managed commit-message check failed. Read its diagnostic and retry;
+        infrastructure failures are not message-policy findings.
 
 pre-push:
   commands:

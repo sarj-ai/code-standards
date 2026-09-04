@@ -988,7 +988,101 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     durable = hook.parent / ".sarj-lefthook"
     assert durable.read_text(encoding="utf-8") == "native binary"
     assert stat.S_IMODE(durable.stat().st_mode) == 0o755
+    assert hooks.is_durable_binary(durable)
     assert hook.read_text(encoding="utf-8").count(f"export LEFTHOOK_BIN={durable.as_posix()}") == 1
+    assert hook.read_text(encoding="utf-8").count(
+        'export PATH=/bin:"$PATH" # sarj-standards: uvx-path'
+    ) == 1
+
+
+def test_managed_hook_environment_requires_one_executable_uvx_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    durable = hooks_dir / ".sarj-lefthook"
+    durable.write_text("native", encoding="utf-8")
+    durable.chmod(0o755)
+    uvx_directory = tmp_path / "managed tools"
+    uvx_directory.mkdir()
+    uvx = uvx_directory / "uvx"
+    uvx.write_text("#!/bin/sh\n", encoding="utf-8")
+    uvx.chmod(0o755)
+    hook = hooks_dir / "commit-msg"
+    hook.write_text(
+        "#!/bin/sh\n"
+        f"export LEFTHOOK_BIN={durable.as_posix()}\n"
+        f"export PATH='{uvx_directory.as_posix()}':\"$PATH\" # sarj-standards: uvx-path\n",
+        encoding="utf-8",
+    )
+
+    def durable_binary(path: Path) -> bool:
+        return path == durable
+
+    monkeypatch.setattr(hooks, "is_durable_binary", durable_binary)
+
+    assert hooks.has_durable_environment(hook)
+
+    hook.write_text(
+        f"#!/bin/sh\nexport LEFTHOOK_BIN={durable.as_posix()}\n",
+        encoding="utf-8",
+    )
+    assert not hooks.has_durable_environment(hook)
+
+
+def test_hook_install_rolls_back_every_hook_when_validation_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    original = hooks_dir / "pre-commit"
+    original.write_text("#!/bin/sh\noriginal\n", encoding="utf-8")
+    original.chmod(0o744)
+    native = tmp_path / "installed" / "lefthook"
+    native.parent.mkdir()
+    native.write_text("native binary", encoding="utf-8")
+    native.chmod(0o755)
+    (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
+
+    def which(name: str, *, path: str | None = None) -> str:
+        assert path is not None
+        return f"/bin/{name}"
+
+    calls = 0
+
+    def run(argv: list[str], **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            original.write_text("#!/bin/sh\nchanged\n", encoding="utf-8")
+            (hooks_dir / "commit-msg").write_text("#!/bin/sh\nnew\n", encoding="utf-8")
+            return
+        raise subprocess.CalledProcessError(1, argv)
+
+    def binary(_name: str) -> Path:
+        return Path("/bin/true")
+
+    def native_binary() -> Path:
+        return native
+
+    def git(_root: Path, *_args: str) -> str:
+        return ".git/hooks/pre-commit\n"
+
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.shutil.which", which)
+    monkeypatch.setattr(hooks, "_binary", binary)
+    monkeypatch.setattr(hooks, "_native_binary", native_binary)
+    monkeypatch.setattr(hooks, "_git", git)
+    monkeypatch.setattr("sarj_standards.libs.repository.hooks.subprocess.run", run)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        hooks.install(tmp_path)
+
+    assert original.read_text(encoding="utf-8") == "#!/bin/sh\noriginal\n"
+    assert stat.S_IMODE(original.stat().st_mode) == 0o744
+    assert not (hooks_dir / "commit-msg").exists()
+    assert not (hooks_dir / ".sarj-lefthook").exists()
 
 
 @pytest.mark.parametrize(

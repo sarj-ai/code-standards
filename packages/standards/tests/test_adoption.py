@@ -23,6 +23,7 @@ from sarj_standards._meta import (
 import sarj_standards.cli.main as cli
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption import doctor, hooks as adoption_hooks, lifecycle, manifest, scaffold, service
+from sarj_standards.libs.repository import hooks as repository_hooks
 
 
 if TYPE_CHECKING:
@@ -1183,10 +1184,91 @@ def test_init_dry_run_writes_nothing(tmp_path: Path) -> None:
     assert not (tmp_path / manifest.MANIFEST_NAME).exists()
 
 
-def test_init_on_an_empty_directory_says_so(tmp_path: Path) -> None:
+def test_init_on_an_empty_directory_adopts_repository_wide_policy(tmp_path: Path) -> None:
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
-    assert proc.returncode == 1
-    assert "no pyproject.toml and no package.json" in proc.stdout
+    assert proc.returncode == 0, proc.stderr
+    assert "adopting repository-wide policy" in proc.stdout
+    assert (tmp_path / ".repo-standards" / "repository.toml").is_file()
+    assert (tmp_path / ".pre-commit-config.yaml").is_file()
+    assert (tmp_path / ".github" / "workflows" / "commit-policy.yml").is_file()
+
+
+def test_commit_policy_only_preserves_existing_language_tooling_and_lefthook_jobs(tmp_path: Path) -> None:
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text("[tool.pyright]\nextends = 'custom.json'\n", encoding="utf-8")
+    package = tmp_path / "package.json"
+    package.write_text('{"devDependencies":{"eslint":"1.0.0"}}\n', encoding="utf-8")
+    lefthook = tmp_path / "lefthook.yml"
+    original_lefthook = (
+        "pre-commit:\n  commands:\n    consumer:\n      run: custom-check\n"
+        "pre-push:\n  commands:\n    consumer:\n      run: custom-push\n"
+    )
+    lefthook.write_text(original_lefthook, encoding="utf-8")
+
+    first = _cli(
+        "--root",
+        str(tmp_path),
+        "setup",
+        "--commit-policy-only",
+        "--hooks",
+        "lefthook",
+        "--no-install",
+    )
+    converged = lefthook.read_text(encoding="utf-8")
+    second = _cli(
+        "--root",
+        str(tmp_path),
+        "setup",
+        "--commit-policy-only",
+        "--hooks",
+        "lefthook",
+        "--no-install",
+    )
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert "scope: commit policy only" in first.stdout
+    assert pyproject.read_text(encoding="utf-8") == "[tool.pyright]\nextends = 'custom.json'\n"
+    assert package.read_text(encoding="utf-8") == '{"devDependencies":{"eslint":"1.0.0"}}\n'
+    assert original_lefthook in converged
+    assert converged.count("repo-standards-commit-message") == 1
+    assert lefthook.read_text(encoding="utf-8") == converged
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+    assert (tmp_path / ".repo-standards" / "repository.toml").is_file()
+    assert (tmp_path / ".github" / "workflows" / "commit-policy.yml").is_file()
+
+
+def test_commit_policy_only_rejects_language_configuration_options(tmp_path: Path) -> None:
+    result = _cli(
+        "--root",
+        str(tmp_path),
+        "setup",
+        "--commit-policy-only",
+        "--config",
+        "ruff",
+        "--no-install",
+    )
+
+    assert result.returncode == 2
+    assert "cannot be combined" in result.stderr
+    assert not (tmp_path / ".repo-standards").exists()
+
+
+def test_doctor_repairs_commit_policy_only_without_full_adoption_manifest(
+    tmp_path: Path,
+) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    setup = _cli("--root", str(tmp_path), "setup", "--commit-policy-only", "--no-install")
+    assert setup.returncode == 0, setup.stderr
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.unlink()
+
+    repaired = _cli("--root", str(tmp_path), "doctor", "--repair", "--no-install")
+
+    assert repaired.returncode == 0, repaired.stdout + repaired.stderr
+    assert "doctor.manifest.absent" not in repaired.stdout
+    assert "stages: [commit-msg]" in config.read_text(encoding="utf-8")
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
 
 
 def test_init_adopts_shared_configs_without_an_ecosystem(tmp_path: Path) -> None:
@@ -1245,6 +1327,14 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     assert "always_run: true" in generated
     assert "package\\.json|pyrightconfig\\.json" in generated
     assert generated.count("id: sarj-standards-check") == 1
+    assert generated.count("id: repo-standards-commit-message") == 1
+    assert (
+        "entry: uvx --no-config --isolated --python 3.14 "
+        f"--from code-standards=={__version__} code-standards commit-message"
+    ) in generated
+    assert "stages: [commit-msg]" in generated
+    repository_manifest = (tmp_path / ".repo-standards" / "repository.toml").read_text()
+    assert "schema_version = 6" in repository_manifest
 
 
 @pytest.mark.parametrize("heading", ["repos: []\n", "repos: [] # keep this comment\n"])
@@ -1276,6 +1366,29 @@ def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
     adopted = manifest.load(tmp_path)
     assert adopted is not None
     assert adopted.hook_manager == "lefthook"
+    assert adoption_hooks.lefthook_runs_commit_message_check(tmp_path)
+
+
+@pytest.mark.parametrize("layout", ["commands", "jobs"])
+def test_init_preserves_existing_lefthook_commit_message_commands(tmp_path: Path, layout: str) -> None:
+    _ = _python_repo(tmp_path)
+    existing = (
+        "  commands:\n    consumer:\n      run: consumer-lint {1}\n"
+        if layout == "commands"
+        else "  jobs:\n    - name: consumer\n      run: consumer-lint {1}\n"
+    )
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    consumer:\n      run: true\ncommit-msg:\n" + existing,
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+    assert "consumer-lint {1}" in updated
+    assert updated.count("code-standards commit-message {1}") == 1
+    assert adoption_hooks.lefthook_runs_commit_message_check(tmp_path)
 
 
 def test_switching_to_lefthook_retires_only_the_generated_precommit_hook(tmp_path: Path) -> None:
@@ -1306,7 +1419,9 @@ def test_switching_to_lefthook_retires_only_the_generated_precommit_hook(tmp_pat
     assert "id: keep-consumer-hook" in updated
     assert "id: sarj-standards-check" not in updated
     assert "id: sarj-standards-drift" not in updated
+    assert "id: repo-standards-commit-message" not in updated
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
+    assert adoption_hooks.lefthook_runs_commit_message_check(tmp_path)
     adopted = manifest.load(tmp_path)
     assert adopted is not None
     assert adopted.hook_manager == "lefthook"
@@ -1646,15 +1761,19 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
     }
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env=environment)
     subprocess.run(("git", "add", "src/app.py"), cwd=tmp_path, check=True, env=environment)
+    message = tmp_path / "COMMIT_EDITMSG"
+    _ = message.write_text("feat: add typed value\n", encoding="utf-8")
 
     entries = _precommit_entries((tmp_path / ".pre-commit-config.yaml").read_text())
-    assert len(entries) == 1, "one orchestrator avoids duplicate uv startup and whole-repo scans"
+    assert len(entries) == 2, "one hook per Git stage avoids duplicate work within either stage"
     for entry, pass_filenames_false in entries:
         # Run the CLI the hook names, through the interpreter the tests already
         # use, so this exercises the generated command shape without needing a
         # network fetch or a uv-managed virtualenv inside tmp_path.
         subcommand = entry.rsplit(" code-standards ", 1)[1].split()
-        if not pass_filenames_false:
+        if subcommand == ["commit-message"]:
+            subcommand.append(str(message))
+        elif not pass_filenames_false:
             subcommand.append("src/app.py")
         proc = _cli(*subcommand, cwd=tmp_path)
         assert proc.returncode == 0, f"{entry!r} failed: {proc.stdout}{proc.stderr}"
@@ -1732,7 +1851,10 @@ def test_lefthook_refuses_duplicate_semantic_staged_commands_even_with_stale_pin
         adoption_hooks.wire_lefthook_staged_check(tmp_path)
 
 
-def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(tmp_path: Path) -> None:
+def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
@@ -1741,6 +1863,18 @@ def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(tmp_pat
     hook.with_name("pre-commit.legacy").write_text(
         "#!/bin/sh\nexport LEFTHOOK_BIN=.git/hooks/.sarj-lefthook\n",
         encoding="utf-8",
+    )
+    durable = tmp_path / ".git" / "hooks" / ".sarj-lefthook"
+    durable.write_text("#!/bin/sh\n", encoding="utf-8")
+    durable.chmod(0o755)
+
+    def durable_environment(path: Path) -> bool:
+        return path == durable.parent / "pre-commit.legacy"
+
+    monkeypatch.setattr(
+        repository_hooks,
+        "has_durable_environment",
+        durable_environment,
     )
 
     conflicts = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.manager-conflict"]
@@ -1764,6 +1898,22 @@ def test_doctor_warns_when_selected_lefthook_is_not_installed(tmp_path: Path) ->
     assert len(warnings) == 1
     assert warnings[0].level is doctor.Level.WARN
     assert warnings[0].remediation == "run `code-standards maintain hooks install`"
+
+
+def test_doctor_rejects_a_nondurable_lefthook_launcher(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  jobs:\n    - name: consumer\n      run: true\n",
+        encoding="utf-8",
+    )
+    assert _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install").returncode == 0
+    hook = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook.write_text("#!/bin/sh\nexec lefthook run pre-commit\n", encoding="utf-8")
+
+    warnings = [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.hooks.lefthook-install"]
+
+    assert len(warnings) == 1
 
 
 @pytest.mark.parametrize(
@@ -1818,8 +1968,123 @@ def test_doctor_warns_when_the_checkout_hook_is_not_installed(monkeypatch: pytes
     if not hook.is_absolute():
         hook = consumer / hook
     hook.parent.mkdir(parents=True, exist_ok=True)
-    hook.write_text("#!/bin/sh\n# pre_commit hook-type=pre-commit\n", encoding="utf-8")
+    uvx_directory = consumer / "managed-bin"
+    uvx_directory.mkdir()
+    uvx = uvx_directory / "uvx"
+    uvx.write_text("#!/bin/sh\n", encoding="utf-8")
+    uvx.chmod(0o755)
+    hook.write_text(
+        "#!/bin/sh\n"
+        f'export PATH={uvx_directory.as_posix()}:"$PATH" # sarj-standards: uvx-path\n'
+        "# pre_commit hook-type=pre-commit\n",
+        encoding="utf-8",
+    )
     assert not [finding for finding in doctor.diagnose(consumer) if finding.id == "doctor.hooks.precommit-install"]
+
+
+def test_doctor_repair_installs_missing_precommit_and_commit_message_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    consumer = _python_repo(tmp_path / "consumer")
+    subprocess.run(("git", "init", "-q"), cwd=consumer, check=True, env={})
+    assert _cli("--root", str(consumer), "setup", "--no-install").returncode == 0
+
+    def install(_commands: Iterable[lifecycle.Command]) -> int:
+        hooks_dir = consumer / ".git" / "hooks"
+        uvx_directory = consumer / "managed-bin"
+        uvx_directory.mkdir()
+        uvx = uvx_directory / "uvx"
+        uvx.write_text("#!/bin/sh\n", encoding="utf-8")
+        uvx.chmod(0o755)
+        for hook_type in ("pre-commit", "commit-msg"):
+            (hooks_dir / hook_type).write_text(
+                "#!/bin/sh\n"
+                f'export PATH={uvx_directory.as_posix()}:"$PATH" # sarj-standards: uvx-path\n'
+                f"# pre_commit hook-type={hook_type}\n",
+                encoding="utf-8",
+            )
+        return 0
+
+    monkeypatch.setattr(lifecycle, "execute", install)
+
+    repaired = main(["--root", str(consumer), "doctor", "--repair"])
+
+    assert repaired == 0
+    findings = doctor.diagnose(consumer)
+    assert not [
+        finding
+        for finding in findings
+        if finding.id in {"doctor.hooks.precommit-install", "doctor.hooks.commit-message-install"}
+    ]
+
+
+@pytest.mark.parametrize("operation", ["setup", "update", "doctor"])
+def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    consumer:\n      run: true\n"
+        "pre-push:\n  commands:\n    consumer:\n      run: true\n",
+        encoding="utf-8",
+    )
+    if operation != "setup":
+        assert main(["--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install"]) == 0
+    calls = 0
+    hooks_dir = tmp_path / ".git" / "hooks"
+    durable = hooks_dir / ".sarj-lefthook"
+    uvx_directory = tmp_path / "managed-bin"
+    uvx_directory.mkdir()
+    uvx = uvx_directory / "uvx"
+    uvx.write_text("#!/bin/sh\n", encoding="utf-8")
+    uvx.chmod(0o755)
+
+    def install(commands: Iterable[lifecycle.Command]) -> int:
+        nonlocal calls
+        planned = tuple(commands)
+        assert [command.label for command in planned] == ["Lefthook repository hooks"]
+        calls += 1
+        durable.write_text("pinned lefthook", encoding="utf-8")
+        durable.chmod(0o755)
+        for hook_type in ("pre-commit", "commit-msg", "pre-push"):
+            hook = hooks_dir / hook_type
+            hook.write_text(
+                f"#!/bin/sh\nexport LEFTHOOK_BIN={durable.as_posix()}\n"
+                f'export PATH={uvx_directory.as_posix()}:"$PATH" # sarj-standards: uvx-path\n',
+                encoding="utf-8",
+            )
+            hook.chmod(0o755)
+        return 0
+
+    monkeypatch.setattr(lifecycle, "execute", install)
+
+    def durable_binary(path: Path) -> bool:
+        return path == durable
+
+    monkeypatch.setattr(repository_hooks, "is_durable_binary", durable_binary)
+    monkeypatch.setenv("SARJ_STANDARDS_BOOTSTRAPPED", "1")
+    argv = {
+        "setup": ["--root", str(tmp_path), "setup", "--hooks", "lefthook"],
+        "update": ["--root", str(tmp_path), "update"],
+        "doctor": ["--root", str(tmp_path), "doctor", "--repair"],
+    }[operation]
+
+    assert main(argv) == 0
+    assert calls == 1
+    assert all((hooks_dir / hook_type).is_file() for hook_type in ("pre-commit", "commit-msg", "pre-push"))
+    assert all(
+        (hooks_dir / hook_type).read_text(encoding="utf-8").count("# sarj-standards: uvx-path") == 1
+        for hook_type in ("pre-commit", "commit-msg", "pre-push")
+    )
+    install_ids = {
+        "doctor.hooks.precommit-install",
+        "doctor.hooks.lefthook-install",
+        "doctor.hooks.commit-message-install",
+    }
+    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id in install_ids]
 
 
 def test_doctor_repair_converges_configuration_without_installing(tmp_path: Path) -> None:
@@ -1963,6 +2228,116 @@ def test_init_refuses_to_discard_custom_local_hook_scope(tmp_path: Path) -> None
     assert result.returncode == 2
     assert "customized local Sarj hook (exclude)" in result.stderr
     assert config.read_bytes() == before
+
+
+def test_init_preserves_custom_legacy_hook_and_adds_commit_message_policy(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    legacy = (
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: sarj-standards\n"
+        "        entry: custom-standards --changed\n"
+        "        language: system\n"
+        "        exclude: ^generated/\n"
+        "default_stages: [pre-commit]\n"
+    )
+    config.write_text(legacy, encoding="utf-8")
+
+    first = _cli("--root", str(tmp_path), "setup", "--no-install")
+    updated = config.read_text(encoding="utf-8")
+    second = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert first.returncode == 0, first.stderr
+    assert second.returncode == 0, second.stderr
+    assert "custom-standards --changed" in updated
+    assert updated.count("id: repo-standards-commit-message") == 1
+    assert yaml.safe_load(updated)["default_stages"] == ["pre-commit"]
+    assert config.read_text(encoding="utf-8") == updated
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "repos:\n  - [\n",
+        "repos:\n  - repo: local\n    hooks: []\nrepos:\n",
+        'repos: []\n"repos": []\n',
+        'repos: []\n"re\\u0070os": []\n',
+        "repos: []\n!!str repos: []\n",
+        "repos:\n  - repo: local\n    hooks: []\n    hooks: []\n",
+    ],
+    ids=[
+        "malformed",
+        "duplicate-top-level-repos",
+        "quoted-duplicate-top-level-repos",
+        "escaped-duplicate-top-level-repos",
+        "tagged-duplicate-top-level-repos",
+        "nested-duplicate-hooks",
+    ],
+)
+def test_init_rejects_ambiguous_precommit_yaml_without_partial_adoption(
+    tmp_path: Path,
+    contents: str,
+) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(contents, encoding="utf-8")
+
+    result = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert result.returncode == 2
+    assert config.read_text(encoding="utf-8") == contents
+    assert not (tmp_path / ".repo-standards" / "repository.toml").exists()
+
+
+def test_init_preserves_crlf_when_adding_commit_messages_to_a_legacy_hook(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    original = (
+        b"repos:\r\n"
+        b"  - repo: local\r\n"
+        b"    hooks:\r\n"
+        b"      - id: sarj-standards\r\n"
+        b"        entry: custom-standards --changed\r\n"
+        b"default_stages: [pre-commit]\r\n"
+    )
+    config.write_bytes(original)
+
+    result = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert result.returncode == 0, result.stderr
+    updated = config.read_bytes()
+    assert updated.startswith(original.split(b"default_stages", maxsplit=1)[0])
+    assert b"\n" not in updated.replace(b"\r\n", b"")
+    assert updated.count(b"id: repo-standards-commit-message") == 1
+
+
+@pytest.mark.parametrize("scalar_key", ["entry", "description"])
+def test_init_never_treats_managed_hook_text_inside_a_block_scalar_as_owned(
+    tmp_path: Path,
+    scalar_key: str,
+) -> None:
+    _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    consumer_scalar = (
+        "repos:\n"
+        "  - repo: local\n"
+        "    hooks:\n"
+        "      - id: consumer-hook\n"
+        f"        {scalar_key}: |\n"
+        "          first line\n"
+        "          - id: sarj-standards-drift\n"
+    )
+    config.write_text(consumer_scalar, encoding="utf-8")
+
+    result = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert result.returncode == 0, result.stderr
+    updated = config.read_text(encoding="utf-8")
+    assert consumer_scalar in updated
+    assert updated.count("id: consumer-hook") == 1
+    assert updated.count("id: repo-standards-commit-message") == 1
 
 
 def test_init_preserves_zero_indented_precommit_repository_style(tmp_path: Path) -> None:
@@ -2538,7 +2913,7 @@ def test_setup_adopts_mobile_configs_and_staged_hook_only_for_configured_project
         assert "java-version: '21'" in workflow
 
 
-def test_setup_does_not_adopt_generic_kotlin_project(tmp_path: Path) -> None:
+def test_setup_adopts_repository_policy_without_treating_generic_kotlin_as_mobile(tmp_path: Path) -> None:
     (tmp_path / "build.gradle.kts").write_text(
         'plugins { id("org.jetbrains.kotlin.jvm") }\n',
         encoding="utf-8",
@@ -2548,9 +2923,11 @@ def test_setup_does_not_adopt_generic_kotlin_project(tmp_path: Path) -> None:
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
-    assert proc.returncode == 1
+    assert proc.returncode == 0
     assert "detected: nothing" in proc.stdout
-    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+    assert (tmp_path / manifest.MANIFEST_NAME).is_file()
+    assert (tmp_path / ".repo-standards" / "repository.toml").is_file()
+    assert not (tmp_path / ".swiftlint.yml").exists()
 
 
 def test_init_fails_loudly_on_independent_project_roots(tmp_path: Path) -> None:
@@ -3444,6 +3821,7 @@ def test_init_preserves_an_existing_baselined_sarj_hook_without_adding_a_bypass(
     updated = config.read_text(encoding="utf-8")
     assert "--baseline python/baseline.json" in updated
     assert "id: sarj-standards-check" not in updated
+    assert updated.count("id: repo-standards-commit-message") == 1
 
 
 def test_a_repo_with_its_own_ruff_table_is_wired_without_losing_settings(tmp_path: Path) -> None:

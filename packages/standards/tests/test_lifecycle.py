@@ -151,13 +151,52 @@ def test_setup_does_not_install_standards_into_a_consumer_project(tmp_path: Path
 
 
 @pytest.mark.parametrize("python", [True, False])
-def test_precommit_install_is_explicitly_scoped_to_commit_stage(tmp_path: Path, python: bool) -> None:
+def test_precommit_install_includes_staged_and_message_hooks(tmp_path: Path, python: bool) -> None:
     (tmp_path / ".git").mkdir()
     ecosystems = scaffold.Ecosystems(python, not python, python_root=tmp_path if python else None)
 
     command = lifecycle.install_commands(tmp_path, ecosystems)[-1]
 
-    assert command.argv[-4:] == ("pre-commit", "install", "--hook-type", "pre-commit")
+    assert command.argv[-6:] == (
+        "install",
+        "--hook-type",
+        "pre-commit",
+        "--hook-type",
+        "commit-msg",
+        "--install-hooks",
+    )
+    assert command.argv[:2] == ("uvx", "--no-config")
+
+
+def test_lefthook_install_uses_the_managed_durable_installer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
+    executable = tmp_path / "code-standards"
+    executable.write_text("", encoding="utf-8")
+
+    def environment_binary(_name: str) -> str:
+        return str(executable)
+
+    monkeypatch.setattr(lifecycle, "_environment_binary", environment_binary)
+
+    [command] = lifecycle.install_commands(
+        tmp_path,
+        scaffold.Ecosystems(False, False),
+        hook_manager="lefthook",
+    )
+
+    assert command.label == "Lefthook repository hooks"
+    assert command.argv == (
+        str(executable),
+        "--root",
+        str(tmp_path),
+        "maintain",
+        "hooks",
+        "install",
+    )
 
 
 def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
@@ -181,7 +220,8 @@ def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
     )
     hook.chmod(0o755)
 
-    def installed_hook(_root: Path) -> Path:
+    def installed_hook(_root: Path, *, hook_type: str = "pre-commit") -> Path:
+        assert hook_type == "pre-commit"
         return hook
 
     monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle._precommit_hook_path", installed_hook)
@@ -191,7 +231,13 @@ def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
     uvx = binaries / "uvx"
     uvx.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\n', encoding="utf-8")
     uvx.chmod(0o755)
-    bash = shutil.which("bash")
+    original_which = shutil.which
+
+    def select_binary(name: str, mode: int = os.F_OK | os.X_OK, path: str | None = None) -> str | None:
+        return str(uvx) if name == "uvx" else original_which(name, mode=mode, path=path)
+
+    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle.shutil.which", select_binary)
+    bash = original_which("bash")
     assert bash is not None
 
     lifecycle.harden_precommit_hook(tmp_path)
@@ -211,8 +257,9 @@ def test_precommit_installer_hardens_the_generated_hook(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     hardened: list[Path] = []
-    monkeypatch.setattr(lifecycle, "harden_precommit_hook", hardened.append)
+    monkeypatch.setattr(lifecycle, "harden_precommit_hooks", hardened.append)
 
     status = lifecycle.execute(
         [lifecycle.Command("pre-commit hooks", (sys.executable, "-c", "raise SystemExit(0)"), tmp_path)]
@@ -231,7 +278,10 @@ def test_precommit_install_includes_linked_worktree_gitfile(tmp_path: Path) -> N
     assert command.label == "pre-commit hooks"
 
 
-def test_linked_worktree_hook_survives_its_install_cache_deletion(tmp_path: Path) -> None:
+def test_linked_worktree_hook_survives_its_install_cache_deletion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     primary = tmp_path / "primary"
     linked = tmp_path / "linked checkout"
     primary.mkdir()
@@ -271,15 +321,21 @@ def test_linked_worktree_hook_survives_its_install_cache_deletion(tmp_path: Path
     cache_python.parent.rmdir()
     cache_python.parent.parent.rmdir()
 
-    lifecycle.harden_precommit_hook(linked)
-
     binaries = tmp_path / "bin"
     binaries.mkdir()
     capture = tmp_path / "uvx-args"
     uvx = binaries / "uvx"
     uvx.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\n', encoding="utf-8")
     uvx.chmod(0o755)
-    bash = shutil.which("bash")
+    original_which = shutil.which
+
+    def select_binary(name: str, mode: int = os.F_OK | os.X_OK, path: str | None = None) -> str | None:
+        return str(uvx) if name == "uvx" else original_which(name, mode=mode, path=path)
+
+    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle.shutil.which", select_binary)
+    lifecycle.harden_precommit_hook(linked)
+
+    bash = original_which("bash")
     assert bash is not None
     completed = subprocess.run(
         (bash, str(hook)),

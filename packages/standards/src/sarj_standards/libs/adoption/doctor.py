@@ -16,10 +16,11 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from pydantic import TypeAdapter, ValidationError
+from repo_standards.core.parser import load_manifest as load_repository_manifest
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.filesystem import is_link_like
-from sarj_standards.libs.repository import ledger
+from sarj_standards.libs.repository import hooks as repository_hooks, ledger
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
 from .configs import PYTHON_COMPANION_CONFIGS
@@ -251,8 +252,104 @@ def diagnose(root: Path) -> list[Finding]:
     findings.extend(_check_eslint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
+    findings.extend(_check_commit_policy_ci(root))
     unique = dict.fromkeys(findings)
     return sorted(unique, key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def is_commit_policy_only(root: Path) -> bool:
+    if manifest.manifest_path(root).exists():
+        return False
+    return any(
+        (
+            (root / ".repo-standards" / "repository.toml").is_file(),
+            (root / ".github" / "workflows" / "commit-policy.yml").is_file(),
+            hooks.precommit_runs_commit_message_check(root),
+            hooks.lefthook_runs_commit_message_check(root),
+        )
+    )
+
+
+def diagnose_commit_policy(root: Path) -> list[Finding]:
+    findings = [*_check_commit_policy_manifest(root)]
+    findings.extend(_check_commit_policy_hooks(root))
+    findings.extend(_check_commit_policy_ci(root))
+    return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))
+
+
+def _check_commit_policy_manifest(root: Path) -> Iterator[Finding]:
+    path = root / ".repo-standards" / "repository.toml"
+    try:
+        configured = load_repository_manifest(path)
+    except (OSError, TypeError, ValueError) as exc:
+        yield Finding(
+            Level.DRIFT,
+            ".repo-standards/repository.toml",
+            str(exc),
+            "doctor.commit-policy.manifest",
+            "run `code-standards doctor --repair`",
+        )
+        return
+    if configured.commit_message is None:
+        yield Finding(
+            Level.DRIFT,
+            ".repo-standards/repository.toml",
+            "managed commit-message policy is not enabled",
+            "doctor.commit-policy.manifest",
+            "run `code-standards doctor --repair`",
+        )
+        return
+    yield Finding(
+        Level.OK,
+        ".repo-standards/repository.toml",
+        f"commit-message enforcement is {configured.commit_message.enforcement}",
+        "doctor.commit-policy.manifest",
+    )
+
+
+def _check_commit_policy_hooks(root: Path) -> Iterator[Finding]:
+    manager = hooks.detect_manager(root)
+    configured = {
+        name
+        for name, active in (
+            ("pre-commit", hooks.precommit_runs_commit_message_check(root)),
+            ("lefthook", hooks.lefthook_runs_commit_message_check(root)),
+        )
+        if active
+    }
+    if configured != {manager}:
+        detail = (
+            "no canonical managed commit-message hook is configured"
+            if not configured
+            else f"expected only {manager}, found {', '.join(sorted(configured))}"
+        )
+        yield Finding(
+            Level.DRIFT,
+            ".pre-commit-config.yaml" if manager == "pre-commit" else "lefthook.yml",
+            detail,
+            "doctor.hooks.commit-message",
+            "run `code-standards doctor --repair`",
+        )
+        return
+    yield Finding(
+        Level.OK,
+        ".pre-commit-config.yaml" if manager == "pre-commit" else "lefthook.yml",
+        "runs the canonical managed commit-message check",
+        "doctor.hooks.commit-message",
+    )
+    installed: frozenset[str] = (
+        _installed_hook_managers(root, hook_type="commit-msg")
+        if _git_worktree(root)
+        else frozenset()
+    )
+    if _git_worktree(root) and manager not in installed:
+        yield Finding(
+            Level.WARN,
+            ".git/hooks/commit-msg",
+            "the configuration is healthy, but commit-msg is not installed",
+            "doctor.hooks.commit-message-install",
+            "run `code-standards doctor --repair`",
+        )
 
 
 def authored_files(root: Path) -> tuple[Path, ...]:
@@ -283,6 +380,7 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     findings.extend(_check_eslint_warning_exit_semantics(root))
     findings.extend(_check_shellcheck(root, files))
     findings.extend(_check_ci_gate(root))
+    findings.extend(_check_commit_policy_ci(root))
     return sorted(dict.fromkeys(findings), key=lambda finding: (finding.where, finding.id, finding.detail))
 
 
@@ -370,6 +468,7 @@ def _adoption_health_files(root: Path, selected: Sequence[Path]) -> tuple[Path, 
     candidates = [
         *(path if path.is_absolute() else root / path for path in selected),
         manifest.manifest_path(root),
+        root / ".repo-standards" / "repository.toml",
     ]
     candidates.extend(
         root / name for name in (*hooks.PRECOMMIT_NAMES, "pyproject.toml", "package.json", "pyrightconfig.json")
@@ -426,6 +525,9 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
             f"rerun `code-standards setup --hooks {adopted.hook_manager}` to keep one hook owner",
         )
     installed = _installed_hook_managers(root) if _git_worktree(root) else frozenset[str]()
+    commit_message_installed = (
+        _installed_hook_managers(root, hook_type="commit-msg") if _git_worktree(root) else frozenset[str]()
+    )
     unexpected_installed = installed - {adopted.hook_manager}
     if unexpected_installed:
         names = ", ".join(sorted(unexpected_installed))
@@ -456,14 +558,37 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
                     "doctor.hooks.precommit-install",
                     "run `code-standards doctor --repair`",
                 )
-            return
-        yield Finding(
-            Level.DRIFT,
-            ".pre-commit-config.yaml",
-            "pre-commit does not run exactly one canonical `code-standards check --staged` hook",
-            "doctor.hooks.precommit",
-            "run `code-standards update --offline`",
-        )
+        else:
+            yield Finding(
+                Level.DRIFT,
+                ".pre-commit-config.yaml",
+                "pre-commit does not run exactly one canonical `code-standards check --staged` hook",
+                "doctor.hooks.precommit",
+                "run `code-standards update --offline`",
+            )
+        if hooks.precommit_runs_commit_message_check(root):
+            yield Finding(
+                Level.OK,
+                ".pre-commit-config.yaml",
+                "runs the canonical managed commit-message check",
+                "doctor.hooks.commit-message",
+            )
+            if _git_worktree(root) and "pre-commit" not in commit_message_installed:
+                yield Finding(
+                    Level.WARN,
+                    ".git/hooks/commit-msg",
+                    "the configuration is healthy, but commit-msg is not installed",
+                    "doctor.hooks.commit-message-install",
+                    "run `code-standards doctor --repair`",
+                )
+        else:
+            yield Finding(
+                Level.DRIFT,
+                ".pre-commit-config.yaml",
+                "pre-commit does not run the canonical managed commit-message check",
+                "doctor.hooks.commit-message",
+                "run `code-standards update --offline`",
+            )
         return
     path = hooks.lefthook_config(root)
     if path is not None and hooks.lefthook_runs_staged_check(root):
@@ -476,13 +601,67 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
                 "doctor.hooks.lefthook-install",
                 "run `code-standards maintain hooks install`",
             )
+    else:
+        yield Finding(
+            Level.DRIFT,
+            "lefthook.yml",
+            "Lefthook does not run `code-standards check --staged` during pre-commit",
+            "doctor.hooks.lefthook",
+            "run `code-standards update --offline`",
+        )
+    if path is not None and hooks.lefthook_runs_commit_message_check(root):
+        yield Finding(
+            Level.OK,
+            path.name,
+            "runs the canonical managed commit-message check",
+            "doctor.hooks.commit-message",
+        )
+        if _git_worktree(root) and "lefthook" not in commit_message_installed:
+            yield Finding(
+                Level.WARN,
+                ".git/hooks/commit-msg",
+                "the configuration is healthy, but commit-msg is not installed",
+                "doctor.hooks.commit-message-install",
+                "run `code-standards doctor --repair`",
+            )
+    else:
+        yield Finding(
+            Level.DRIFT,
+            "lefthook.yml",
+            "Lefthook does not run the canonical managed commit-message check",
+            "doctor.hooks.commit-message",
+            "run `code-standards update --offline`",
+        )
+
+
+def _check_commit_policy_ci(root: Path) -> Iterator[Finding]:
+    repository_manifest = root / ".repo-standards" / "repository.toml"
+    try:
+        configured = load_repository_manifest(repository_manifest)
+    except OSError, TypeError, ValueError:
+        return
+    if configured.commit_message is None:
+        return
+    path = root / ".github" / "workflows" / "commit-policy.yml"
+    expected = scaffold.commit_policy_github_workflow()
+    try:
+        actual = path.read_text(encoding="utf-8")
+    except OSError:
+        actual = ""
+    if actual == expected:
+        yield Finding(
+            Level.OK,
+            ".github/workflows/commit-policy.yml",
+            "runs the exact-base commit policy for pull requests and merge queues",
+            "doctor.ci.commit-policy",
+        )
         return
     yield Finding(
         Level.DRIFT,
-        "lefthook.yml",
-        "Lefthook does not run `code-standards check --staged` during pre-commit",
-        "doctor.hooks.lefthook",
-        "add a Lefthook pre-commit command that runs `code-standards check --staged`",
+        ".github/workflows/commit-policy.yml",
+        "the canonical exact-base commit-policy workflow is missing or stale",
+        "doctor.ci.commit-policy",
+        "run `code-standards doctor --repair`",
     )
 
 
@@ -505,13 +684,13 @@ def _git_worktree(root: Path) -> bool:
     return completed.returncode == 0 and completed.stdout.strip() == "true"
 
 
-def _installed_hook_managers(root: Path) -> frozenset[str]:
+def _installed_hook_managers(root: Path, *, hook_type: str = "pre-commit") -> frozenset[str]:
     git = shutil.which("git")
     if git is None:
         return frozenset()
     try:
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv.
-            (git, "rev-parse", "--git-path", "hooks/pre-commit"),
+            (git, "rev-parse", "--git-path", f"hooks/{hook_type}"),
             cwd=root,
             check=False,
             capture_output=True,
@@ -533,9 +712,11 @@ def _installed_hook_managers(root: Path) -> frozenset[str]:
             contents = candidate.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if "LEFTHOOK_BIN=" in contents or "lefthook" in contents.lower():
+        if repository_hooks.has_durable_environment(candidate):
             managers.add("lefthook")
-        if "hook-type=pre-commit" in contents or "pre_commit" in contents:
+        if (
+            "hook-type=pre-commit" in contents or "pre_commit" in contents
+        ) and repository_hooks.has_managed_uvx_environment(candidate):
             managers.add("pre-commit")
     return frozenset(managers)
 

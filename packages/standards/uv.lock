@@ -7,6 +7,15 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "PT0S"
 
 [[package]]
+name = "annotated-doc"
+version = "0.0.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/8e/38aa427ed5402449e226975b649c5dc73ccadfefeb95e6aecb8f8ea4b6b6/annotated_doc-0.0.5.tar.gz", hash = "sha256:c7e58ce09192557605d8bbd92836d7e1d520ac9580096042c0bfd197efacf1bb", size = 10758, upload-time = "2026-07-28T13:50:58.129Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3e/30/e900b21425a860e195f32e37657aa1f7c7f2b1bfb26f03ca209b90933c06/annotated_doc-0.0.5-py3-none-any.whl", hash = "sha256:117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101", size = 5302, upload-time = "2026-07-28T13:50:57.239Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -263,7 +272,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "7.9.25"
+version = "7.10.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -273,6 +282,7 @@ dependencies = [
     { name = "pre-commit" },
     { name = "pydantic" },
     { name = "pyyaml" },
+    { name = "repo-standards" },
     { name = "ruff" },
     { name = "sarj-iac-lint" },
     { name = "sarj-python-lint" },
@@ -296,6 +306,7 @@ requires-dist = [
     { name = "pre-commit", specifier = "==4.6.2" },
     { name = "pydantic", specifier = "==2.13.5" },
     { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "repo-standards", specifier = "==5.11.4" },
     { name = "ruff", specifier = "==0.16.5" },
     { name = "sarj-iac-lint", editable = "../iac" },
     { name = "sarj-python-lint", editable = "../python" },
@@ -317,6 +328,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
+]
+
+[[package]]
+name = "conventional-pre-commit"
+version = "4.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/eb/6a/c4c902f9526c026b8f5d59ac099028bea7acb2415d5f6603668e92dfa22c/conventional_pre_commit-4.4.0.tar.gz", hash = "sha256:5426bef9039a162c3203cc7de3624954dea7120af8dec6f878d8f1c83c58af7b", size = 27161, upload-time = "2026-02-18T19:14:53.042Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/26/affaaa8928f04729d0e69b33b4643a9713eaa270e9712892347f3c683ce5/conventional_pre_commit-4.4.0-py3-none-any.whl", hash = "sha256:5d266cb32a857344e1c4d87660c290cca1646d1ae480dcef6388e27bbc7f022f", size = 16825, upload-time = "2026-02-18T19:14:51.485Z" },
 ]
 
 [[package]]
@@ -1039,6 +1059,22 @@ wheels = [
 ]
 
 [[package]]
+name = "repo-standards"
+version = "5.11.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "conventional-pre-commit" },
+    { name = "markdown-it-py" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b5/60/5e63e3e994616220dd7a507823eecd9afb2a5dcfa77e2db0bc30c13c8548/repo_standards-5.11.4.tar.gz", hash = "sha256:e213918c94ca0ef8a91c3b99b13ab2832e4b954e5c464c456a47b312d8bfa865", size = 115360, upload-time = "2026-09-04T18:59:47.34Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/8f/8ca0e4638063f0f420eb6e379ea171c2940ffababfcdbc5faaade1feec6f/repo_standards-5.11.4-py3-none-any.whl", hash = "sha256:8db732122432d2bba9331a6d7ffa5104835dd9808250333323f688c5c21a4fb9", size = 133995, upload-time = "2026-09-04T18:59:46.106Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1301,6 +1337,15 @@ wheels = [
 ]
 
 [[package]]
+name = "shellingham"
+version = "1.5.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/15/8b3609fd3830ef7b27b655beb4b4e9c62313a4e8da8c676e142cc210d58e/shellingham-1.5.4.tar.gz", hash = "sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de", size = 10310, upload-time = "2023-10-24T04:13:40.426Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl", hash = "sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686", size = 9755, upload-time = "2023-10-24T04:13:38.866Z" },
+]
+
+[[package]]
 name = "sqlglot"
 version = "30.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1359,6 +1404,21 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/12/64/da524626d3b9cc40c168a13da8335fe1c51be12c0a63685cc6db7308daae/tomli-2.4.1-cp314-cp314t-win_amd64.whl", hash = "sha256:2c1c351919aca02858f740c6d33adea0c5deea37f9ecca1cc1ef9e884a619d26", size = 121196, upload-time = "2026-03-25T20:22:01.169Z" },
     { url = "https://files.pythonhosted.org/packages/5a/cd/e80b62269fc78fc36c9af5a6b89c835baa8af28ff5ad28c7028d60860320/tomli-2.4.1-cp314-cp314t-win_arm64.whl", hash = "sha256:eab21f45c7f66c13f2a9e0e1535309cee140182a9cdae1e041d02e47291e8396", size = 100393, upload-time = "2026-03-25T20:22:02.137Z" },
     { url = "https://files.pythonhosted.org/packages/7b/61/cceae43728b7de99d9b847560c262873a1f6c98202171fd5ed62640b494b/tomli-2.4.1-py3-none-any.whl", hash = "sha256:0d85819802132122da43cb86656f8d1f8c6587d54ae7dcaf30e90533028b49fe", size = 14583, upload-time = "2026-03-25T20:22:03.012Z" },
+]
+
+[[package]]
+name = "typer"
+version = "0.27.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "rich" },
+    { name = "shellingham" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/16/f7/57713ba479fd405eb76de31404b2c744c289e336b2d999511ebf51e496f7/typer-0.27.2.tar.gz", hash = "sha256:269b7eb9d3c202ca84b4bc9618cb04ebb43d3d4d1e567e4c768607232c05f945", size = 204045, upload-time = "2026-08-28T10:26:55.046Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dc/bf/205d0004930ede8f542fb58f601526fccf4ae7626075ca1e6c4de5d3d652/typer-0.27.2-py3-none-any.whl", hash = "sha256:b3a5fc4342d5fc8fda8fc3010b1cf117e9249aab7fae800c2eff62fd3842d97d", size = 123130, upload-time = "2026-08-28T10:26:53.752Z" },
 ]
 
 [[package]]

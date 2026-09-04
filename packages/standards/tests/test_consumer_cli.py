@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 PUBLIC_COMMANDS = (
     "setup",
     "check",
+    "commit-message",
     "validate-slack-automations",
     "fix",
     "doctor",
@@ -55,7 +56,7 @@ def test_top_level_help_exposes_only_the_clean_public_verbs() -> None:
     assert result.returncode == 0
     assert all(command in result.stdout for command in PUBLIC_COMMANDS)
     assert (
-        "{setup,check,validate-slack-automations,observe,fix,doctor,update,ratchet,exclude,show,maintain}"
+        "{setup,check,commit-message,validate-slack-automations,observe,fix,doctor,update,ratchet,exclude,show,maintain}"
         in result.stdout
     )
 
