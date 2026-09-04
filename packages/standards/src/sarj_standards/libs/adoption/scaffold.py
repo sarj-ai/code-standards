@@ -1516,6 +1516,14 @@ def _eslint_entrypoint() -> str:
 // exemption, or scope one to a directory without forking the canonical file.
 import strict from "./eslint.strict.mjs";
 
+// Bun, Testing Library, and Playwright are opt-in because their global test
+// syntax overlaps other runners. To enable them, replace the import above with:
+//   import { createConfig } from "./eslint.strict.mjs";
+//   const strict = createConfig({
+//     testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"],
+//     playwrightTestFiles: ["tests/browser/**/*.spec.ts"],
+//   });
+
 export default [
   ...strict,
 
