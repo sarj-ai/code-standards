@@ -106,7 +106,10 @@
     "duplicate-test-body",
     "no-repeated-test-body"
   ],
-  "SARJ067": "unused-mock-setup",
+  "SARJ067": [
+    "unused-mock-setup",
+    "no-provably-dead-mock-configuration"
+  ],
   "SARJ068": "prefer-fstring-over-concat",
   "SARJ069": "prefer-match-pattern-destructuring",
   "SARJ070": "prefer-or-pattern",

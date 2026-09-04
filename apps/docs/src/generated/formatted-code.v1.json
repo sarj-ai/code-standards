@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2662e3496996aa68af8bc01ab8609266563fcb9e7968b3494e3cb080abaa7b48",
-  "cliSha256": "bb4b7b11713df5def770067c8d5a9bf3fbe931fe6a42d5a16cebc873b1de59db",
+  "catalogSha256": "989a1dba4d12fed45c6170ee6e84c9122d4063438d06a67bd31462abb85bd779",
+  "cliSha256": "1b125033fdd1000f8958a168c954e3ab6488ff5d7996ed43bd0e5a7483836713",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5095,6 +5095,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-provably-dead-mock-configuration": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_billing.py",
+              "source": "from unittest.mock import Mock\n\n\ndef test_charge():\n    charge = Mock()\n    charge.return_value = 1\n    assert charge() == 1\n    charge.return_value = 2\n    assert charge() == 2\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_billing.py",
+          "id": "mock-used-before-reset",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Test uses each configured value"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_billing.py",
+              "source": "from unittest.mock import Mock\n\n\ndef test_charge():\n    charge = Mock()\n    charge.return_value = 1\n    charge.return_value = 2\n    assert charge() == 2\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_billing.py",
+          "id": "overwritten-mock-setup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Mock return value is overwritten before use"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-psycopg-execution-outside-injected-owner": {
       "examples": [
         {
@@ -7418,41 +7453,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "An exception carries nominal reason records"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:unused-mock-setup": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_billing.py",
-              "source": "def test_charge():\n    gateway.charge.return_value = 1\n    assert billing.charge(gateway) == 1\n    gateway.charge.return_value = 2\n    assert billing.charge(gateway) == 2\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_billing.py",
-          "id": "mock-used-before-reset",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Test uses each configured value"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_billing.py",
-              "source": "def test_charge():\n    gateway.charge.return_value = 1\n    gateway.charge.return_value = 2\n    assert billing.charge(gateway) == 2\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_billing.py",
-          "id": "overwritten-mock-setup",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Mock return value is overwritten before use"
         }
       ],
       "optionsSchemaSource": null
