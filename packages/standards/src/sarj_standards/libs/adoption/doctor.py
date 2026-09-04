@@ -338,9 +338,7 @@ def _check_commit_policy_hooks(root: Path) -> Iterator[Finding]:
         "doctor.hooks.commit-message",
     )
     installed: frozenset[str] = (
-        _installed_hook_managers(root, hook_type="commit-msg")
-        if _git_worktree(root)
-        else frozenset()
+        _installed_hook_managers(root, hook_type="commit-msg") if _git_worktree(root) else frozenset()
     )
     if _git_worktree(root) and manager not in installed:
         yield Finding(

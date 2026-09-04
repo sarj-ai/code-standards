@@ -155,9 +155,7 @@ def has_managed_uvx_environment(path: Path) -> bool:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return False
-    markers = tuple(
-        line for line in lines if line.startswith("export PATH=") and line.endswith(f" {_UVX_PATH_MARKER}")
-    )
+    markers = tuple(line for line in lines if line.startswith("export PATH=") and line.endswith(f" {_UVX_PATH_MARKER}"))
     if len(markers) != 1:
         return False
     try:

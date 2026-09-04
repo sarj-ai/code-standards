@@ -442,10 +442,7 @@ def harden_precommit_hook(root: Path, *, hook_type: str = "pre-commit") -> None:
         msg = "uvx is required to harden managed pre-commit hooks"
         raise OSError(msg)
     lines = [line for line in text.splitlines() if _MANAGED_UVX_PATH_MARKER not in line]
-    uvx_path = (
-        f'export PATH={shlex.quote(Path(uvx).parent.as_posix())}:"$PATH" '
-        f"{_MANAGED_UVX_PATH_MARKER}"
-    )
+    uvx_path = f'export PATH={shlex.quote(Path(uvx).parent.as_posix())}:"$PATH" {_MANAGED_UVX_PATH_MARKER}'
     lines.insert(1, uvx_path)
     hardened = "\n".join(lines) + "\n"
     if _PRECOMMIT_UVX_MARKER not in hardened:
