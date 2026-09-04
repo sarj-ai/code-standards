@@ -593,11 +593,11 @@ def build_plan(
         _report_independent_roots(root, ecosystems.typescript_root, candidates, "TypeScript", plan)
     if not ecosystems.any:
         if configs is None:
-            plan.notes.append(
-                "no language project marker found; adopting repository-wide policy and shared configs"
-            )
+            plan.notes.append("no language project marker found; adopting repository-wide policy and shared configs")
         else:
-            plan.notes.append("no Python, TypeScript, Swift, or mobile Kotlin project found; adopting shared configs only")
+            plan.notes.append(
+                "no Python, TypeScript, Swift, or mobile Kotlin project found; adopting shared configs only"
+            )
 
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
     _plan_repo_commit_message_policy(root, plan)
@@ -1892,12 +1892,7 @@ def _has_owned_hook_in_block(text: str) -> bool:
 
 
 def _owned_hook_custom_keys(text: str) -> frozenset[str]:
-    return frozenset(
-        key
-        for hook in _owned_hook_mappings(text)
-        for key in hook
-        if key in _CUSTOM_HOOK_SCOPE_KEYS
-    )
+    return frozenset(key for hook in _owned_hook_mappings(text) for key in hook if key in _CUSTOM_HOOK_SCOPE_KEYS)
 
 
 def _owned_hook_mappings(text: str) -> tuple[dict[str, object], ...]:
@@ -1928,9 +1923,7 @@ def _all_local_hook_mappings(text: str) -> tuple[dict[str, object], ...]:
         repositories = manifest.list_field(manifest.as_table(parsed), "repos")
         repository = manifest.as_table(repositories[0]) if len(repositories) == 1 else {}
         found.extend(
-            hook
-            for raw_hook in manifest.list_field(repository, "hooks")
-            if (hook := manifest.as_table(raw_hook))
+            hook for raw_hook in manifest.list_field(repository, "hooks") if (hook := manifest.as_table(raw_hook))
         )
     return tuple(found)
 

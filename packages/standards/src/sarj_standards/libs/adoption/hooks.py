@@ -394,7 +394,9 @@ def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- pars
         else:
             msg = f"cannot safely wire {path.name}: expected block-style commit-msg commands or jobs"
             raise ValueError(msg)
-        values = tuple(value for value in _lefthook_run_values_from_entries(entries) if _runs_commit_message_check(value))
+        values = tuple(
+            value for value in _lefthook_run_values_from_entries(entries) if _runs_commit_message_check(value)
+        )
         if len(values) > 1:
             msg = f"cannot safely wire {path.name}: multiple commit-message Standards commands are active"
             raise ValueError(msg)

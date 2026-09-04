@@ -39,6 +39,14 @@ def _code(rule: object) -> str:
     return rule.code
 
 
+def _is_live(shipped: ledger.Ledger, kind: str, identifier: str) -> bool:
+    if kind == ledger.CODE:
+        return any(identifier in codes for codes in shipped.codes.values())
+    if kind == ledger.ESLINT:
+        return identifier.removeprefix("@sarj/") in shipped.rules.get(kind, ())
+    return identifier in shipped.rules.get(kind, ())
+
+
 @pytest.fixture(name="shipped", scope="module")
 def _shipped() -> ledger.Ledger:
     return ledger.load()
@@ -62,8 +70,7 @@ def test_every_live_code_is_in_the_ledger(shipped: ledger.Ledger, family: str) -
 
 
 def test_no_retired_identifier_is_live_again(shipped: ledger.Ledger) -> None:
-    live = shipped.active_ids()
-    resurrected = sorted(retired for entry in shipped.retired if (retired := entry.id) in live)
+    resurrected = sorted(entry.id for entry in shipped.retired if _is_live(shipped, entry.kind, entry.id))
     assert not resurrected, (
         f"{resurrected} are recorded as retired but exist again. Recycling an identifier"
         " makes `doctor` tell consumers to delete a reference that is now correct;"
@@ -72,10 +79,13 @@ def test_no_retired_identifier_is_live_again(shipped: ledger.Ledger) -> None:
 
 
 def test_every_rename_points_somewhere_live(shipped: ledger.Ledger) -> None:
-    live = shipped.active_ids()
     renames = [entry for entry in shipped.retired if entry.status is ledger.Status.RENAMED]
     assert renames, "four ESLint rules have been renamed; a ledger with no rename has lost them"
-    broken = [entry.id for entry in renames if entry.replacement is None or entry.replacement not in live]
+    broken = [
+        entry.id
+        for entry in renames
+        if entry.replacement is None or not _is_live(shipped, entry.kind, entry.replacement)
+    ]
     assert not broken, (
         f"{broken} say they were renamed to something that does not exist, so `doctor`"
         " would send a consumer to a rule they cannot enable."

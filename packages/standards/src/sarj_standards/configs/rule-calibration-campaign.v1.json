@@ -789,10 +789,12 @@
       "state": "complete"
     },
     {
-      "task": "rule-audit/sql/no-comment-cruft",
+      "task": "rule-audit/sql/no-migration-comment-cruft",
       "family": "sql",
-      "ruleId": "no-comment-cruft",
-      "state": "pending"
+      "ruleId": "no-migration-comment-cruft",
+      "state": "complete",
+      "evidence": "The focused suite covers 73 comment, scope, directive, location, and conservative SQL-shape cases. An exact scan of 1,572 SQL files across 141 repositories and worktrees produced 55 content-distinct actionable migration-banner findings, zero false positives or uncertain findings, and zero errors in 0.493 seconds.",
+      "outcome": "Renamed SARJ113 to no-migration-comment-cruft with its prior selector retained as an alias, scoped it to authored non-generated migrations, and staged it as warning. Detection now reports exact offending comments, keeps ticket ownership line-local, recognizes migration directives and rollback instructions, narrows banners to structural dividers, and validates only conservative complete commented SQL statements."
     },
     {
       "task": "rule-audit/sql/no-database-triggers",
