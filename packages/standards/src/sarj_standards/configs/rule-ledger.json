@@ -784,6 +784,13 @@
       "note": "Replace sarj-add-constraint-not-valid with sarj-add-constraint-requires-not-valid before upgrading."
     },
     {
+      "id": "class-docstring-restates-name",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "redundant-class-docstring",
+      "note": "Replace sarj-class-docstring-restates-name with sarj-redundant-class-docstring before upgrading."
+    },
+    {
       "id": "conditional-assertion-in-test",
       "kind": "python",
       "status": "removed",
@@ -880,6 +887,13 @@
       "status": "renamed",
       "replacement": "require-keyword-only-swap-prone-params",
       "note": "Replace sarj-kwonly-same-type-params with sarj-require-keyword-only-swap-prone-params before upgrading."
+    },
+    {
+      "id": "named-fixed-record-return",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "pydantic-at-boundaries",
+      "note": "Replace sarj-named-fixed-record-return with sarj-pydantic-at-boundaries before upgrading."
     },
     {
       "id": "no-aggregation-in-store-query",

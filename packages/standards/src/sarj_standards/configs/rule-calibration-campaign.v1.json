@@ -602,7 +602,9 @@
       "task": "rule-audit/python/redundant-class-docstring",
       "family": "python",
       "ruleId": "redundant-class-docstring",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews adversarially tested framework provenance, inheritance, decorators, runtime docstring readers, alias rebinding, relational wording, semantic qualifiers, numbers, and non-Latin prose. The final matcher passed 102 focused cases before the Unicode additions, 308 combined focused and metadata cases in the final reviewer gate, and the full 7,129-test Python suite with three expected xfails. A fresh scan of 10,334 tracked Python paths produced one credible finding in Tahded and no rule exceptions; two unrelated tracked paths were unreadable.",
+      "outcome": "Retained the compatible redundant-class-docstring selector, added class-docstring-restates-name as its precise alias, and staged SARJ085 as a warning. The rule now targets only undecorated, base-free classes and abstains for recognized in-file runtime docstring reads, generated files, and docstring-only bodies. It accepts only articles and the word class as grammatical filler, tokenizes Unicode letters and numbers, and requires every remaining stem to be carried by the class name. This deliberately narrow boundary avoids guessing whether inheritance, decorators, relational wording, qualifiers, numbers, or multilingual prose carry runtime or semantic meaning. Public examples and catalog text now describe that exact scope."
     },
     {
       "task": "rule-audit/python/redundant-docstring",
