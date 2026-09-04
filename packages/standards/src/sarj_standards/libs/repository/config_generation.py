@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING, Final, TypeGuard
+from typing import TYPE_CHECKING, Final
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.linting import library_policy
+from sarj_standards.libs.rules import RuleEngine, warning_levels
 
 
 if TYPE_CHECKING:
@@ -146,19 +147,9 @@ def generated_configs() -> Mapping[Path, str]:
 
 def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
     warning_path = repository / _WARNING_LEVELS
-    payload: object = json.loads(warning_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
-    if not _is_object(payload) or set(payload) != {"schemaVersion", "rules"}:
-        msg = "rule warning lifecycle must contain exactly schemaVersion and rules"
-        raise ValueError(msg)
-    raw_rules = payload.get("rules")
-    if payload.get("schemaVersion") != 1 or not _is_array(raw_rules):
-        msg = "rule warning lifecycle must use schemaVersion 1 and a rules array"
-        raise ValueError(msg)
-    rules = tuple(item for item in raw_rules if isinstance(item, str))
-    if len(rules) != len(raw_rules):
-        msg = "rule warning lifecycle must use schemaVersion 1 and a rules array"
-        raise ValueError(msg)
-    warnings: frozenset[str] = frozenset(item.removeprefix("eslint:") for item in rules if item.startswith("eslint:"))
+    warnings = frozenset(
+        str(selector.rule_id) for selector in warning_levels.load(warning_path) if selector.engine is RuleEngine.ESLINT
+    )
 
     preset_path = repository / _TYPESCRIPT_PRESET
     strict_path = repository / _ESLINT_STRICT
@@ -206,14 +197,6 @@ def _render_rule_levels(source: str, warnings: frozenset[str], *, label: str) ->
         return f'{match.group("prefix")}{match.group("array")}"{level}"'
 
     return _RULE_LEVEL.sub(replace, source)
-
-
-def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return isinstance(value, dict)
-
-
-def _is_array(value: object) -> TypeGuard[list[object]]:
-    return isinstance(value, list)
 
 
 def sync(*, check: bool) -> bool:

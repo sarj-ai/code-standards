@@ -127,7 +127,18 @@ def _root_readme(
             "```bash\n"
             "code-standards --root . maintain rules changes --before origin/main --after HEAD\n"
             "```\n\n"
-            "Fleet calibration and downstream PR creation run automatically after review and release."
+            "Fleet calibration and downstream PR creation run automatically after review and release.\n\n"
+            "### Rule artifact provenance\n\n"
+            "- `rule-warning-levels.v1.json` is authored lifecycle policy. Severity is a reviewed decision, "
+            "not something inferred from current findings.\n"
+            "- `rule-inventory.v1.json` and `rule-catalog.v1.json` are committed package/runtime projections "
+            "of live registries and source-owned documentation. Check or regenerate them with "
+            "`maintain rules check|sync` and `maintain catalog check|sync`.\n"
+            "- `rule-ledger.json` combines generated live identifiers with curated rename and retirement "
+            "history; synchronize it with `maintain sync-ledger`.\n"
+            "- `rule-calibration-campaign.v1.json` is curated review evidence, not generated configuration.\n"
+            "- `cli-reference.v1.json` is generated from the parser graph with "
+            "`maintain cli-reference check|sync`."
         ),
         f"[Documentation]({_DOCUMENTATION_URL}) · [Source]({_source_url(standards)})",
     ]

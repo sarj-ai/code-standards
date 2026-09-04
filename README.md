@@ -39,4 +39,12 @@ code-standards --root . maintain rules changes --before origin/main --after HEAD
 
 Fleet calibration and downstream PR creation run automatically after review and release.
 
+### Rule artifact provenance
+
+- `rule-warning-levels.v1.json` is authored lifecycle policy. Severity is a reviewed decision, not something inferred from current findings.
+- `rule-inventory.v1.json` and `rule-catalog.v1.json` are committed package/runtime projections of live registries and source-owned documentation. Check or regenerate them with `maintain rules check|sync` and `maintain catalog check|sync`.
+- `rule-ledger.json` combines generated live identifiers with curated rename and retirement history; synchronize it with `maintain sync-ledger`.
+- `rule-calibration-campaign.v1.json` is curated review evidence, not generated configuration.
+- `cli-reference.v1.json` is generated from the parser graph with `maintain cli-reference check|sync`.
+
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/code-standards)

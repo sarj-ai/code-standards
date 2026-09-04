@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from difflib import get_close_matches
-import json
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final, TypeGuard
+from typing import Final
 
 from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.repository import (
@@ -14,7 +13,7 @@ from sarj_standards.libs.repository import (
     rule_inventory_artifact,
     rule_maintenance,
 )
-from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
+from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector, warning_levels
 
 
 _WARNING_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-warning-levels.v1.json")
@@ -58,10 +57,10 @@ def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) ->
     # Building before mutation proves source-owned metadata/examples are complete.
     _ = rule_catalog_artifact.build(repository)
     warning_path = repository / _WARNING_PATH
-    selected = set(_load(warning_path))
+    selected = set(warning_levels.load(warning_path))
     already_staged = selector in selected
     selected.add(selector)
-    rendered = _render(selected)
+    rendered = warning_levels.render(selected)
     warning_current = warning_path.read_text(encoding="utf-8") == rendered
     derived_current = _derived_current(repository) if already_staged and warning_current else False
     if already_staged and warning_current and derived_current:
@@ -102,18 +101,6 @@ def stage_warning(root: Path, selector: RuleSelector, *, check: bool = False) ->
     )
 
 
-def _render(selectors: set[RuleSelector]) -> str:
-    return (
-        json.dumps(
-            {"schemaVersion": 1, "rules": sorted(str(item) for item in selectors)},
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        + "\n"
-    )
-
-
 def _unknown_selector_message(selector: RuleSelector, known: set[RuleSelector]) -> str:
     requested = str(selector)
     suggestion = get_close_matches(requested, (str(item) for item in known), n=1, cutoff=0.6)
@@ -150,35 +137,3 @@ def _synchronize(repository: Path, mutation: transaction.FileTransaction) -> Non
         if result.status != 0:
             msg = f"could not synchronize derived rule artifact: {path}"
             raise RuntimeError(msg)
-
-
-def _load(path: Path) -> tuple[RuleSelector, ...]:
-    payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
-    if not _is_object(payload):
-        msg = "rule warning lifecycle must contain exactly schemaVersion and rules"
-        raise TypeError(msg)
-    if set(payload) != {"schemaVersion", "rules"}:
-        msg = "rule warning lifecycle must contain exactly schemaVersion and rules"
-        raise ValueError(msg)
-    rules = payload.get("rules")
-    if payload.get("schemaVersion") != 1 or not _is_array(rules):
-        msg = "rule warning lifecycle must use schemaVersion 1 and a rules array"
-        raise ValueError(msg)
-    values = rules
-    if any(not isinstance(value, str) or not value for value in values):
-        msg = "rule warning lifecycle must contain unique non-empty selectors"
-        raise ValueError(msg)
-    selectors = tuple(RuleSelector.parse(value) for value in values if isinstance(value, str))
-    if len(set(selectors)) != len(selectors):
-        msg = "rule warning lifecycle must contain unique non-empty selectors"
-        raise ValueError(msg)
-    return selectors
-
-
-def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    # JSON object keys are strings by definition.
-    return isinstance(value, dict)
-
-
-def _is_array(value: object) -> TypeGuard[list[object]]:
-    return isinstance(value, list)
