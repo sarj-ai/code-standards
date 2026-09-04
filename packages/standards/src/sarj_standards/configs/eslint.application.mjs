@@ -13,7 +13,12 @@ import perfectionist from "eslint-plugin-perfectionist";
 import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
+import jest from "eslint-plugin-jest";
+import nodeTest from "eslint-node-test";
+import playwright from "eslint-plugin-playwright";
 import sarj from "@sarj/eslint-plugin";
+import testingLibrary from "eslint-plugin-testing-library";
+import vitest from "@vitest/eslint-plugin";
 import zod from "eslint-plugin-zod";
 
 const CONFIG_DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -81,6 +86,21 @@ const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
   "**/.dependency-cruiser.{js,cjs,mjs,ts,cts,mts}",
   "**/eslint.config*.{js,cjs,mjs,ts,cts,mts}",
 ];
+const TEST_FILES = [
+  "**/*.{test,spec,e2e}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/test/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/tests/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/__tests__/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+];
+const DEFAULT_PLAYWRIGHT_TEST_FILES = [
+  "**/*.{playwright,pw}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/playwright/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+];
+const DEFAULT_BUN_TEST_FILES = [
+  "**/*.bun.{test,spec}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+  "**/bun/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
+];
+const SUPPORTED_TEST_FRAMEWORKS = new Set(["vitest", "bun", "node", "testing-library", "playwright"]);
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
 // evaluating each non-deprecated rule for correctness, runtime compatibility,
@@ -436,7 +456,7 @@ const BUILD_OUTPUT_IGNORES = [
  * Build the config at call time, so an import cached from another working
  * directory cannot freeze type-aware linting off for the real project.
  *
- * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object, syntaxOnlyConfigFiles?: string[] }} [options]
+ * @param {{ tsconfigRootDir?: string | URL, projectService?: boolean | object, syntaxOnlyConfigFiles?: string[], testFrameworks?: string[], playwrightTestFiles?: string[], bunTestFiles?: string[] }} [options]
  * @returns {import("eslint").Linter.Config[]}
  */
 export function createConfig(options = {}) {
@@ -451,6 +471,21 @@ export function createConfig(options = {}) {
   const PROJECT_SERVICE = options.projectService ?? detectedRoot !== undefined;
   const HAS_TYPE_PROJECT = PROJECT_SERVICE !== false;
   const SYNTAX_ONLY_CONFIG_FILES = options.syntaxOnlyConfigFiles ?? DEFAULT_SYNTAX_ONLY_CONFIG_FILES;
+  // Vitest is the default Sarj test runner. Other runners are explicit because
+  // global `expect` syntax cannot identify its owning framework in mixed repos.
+  const TEST_FRAMEWORKS = new Set(options.testFrameworks ?? ["vitest", "node"]);
+  for (const framework of TEST_FRAMEWORKS) {
+    if (!SUPPORTED_TEST_FRAMEWORKS.has(framework)) {
+      throw new Error(`Unsupported test framework ${JSON.stringify(framework)}`);
+    }
+  }
+  const HAS_VITEST = TEST_FRAMEWORKS.has("vitest");
+  const HAS_BUN = TEST_FRAMEWORKS.has("bun");
+  const HAS_NODE = TEST_FRAMEWORKS.has("node");
+  const HAS_TESTING_LIBRARY = TEST_FRAMEWORKS.has("testing-library");
+  const HAS_PLAYWRIGHT = TEST_FRAMEWORKS.has("playwright");
+  const PLAYWRIGHT_TEST_FILES = options.playwrightTestFiles ?? DEFAULT_PLAYWRIGHT_TEST_FILES;
+  const BUN_TEST_FILES = options.bunTestFiles ?? DEFAULT_BUN_TEST_FILES;
 
   return [
   // A config entry carrying ONLY `ignores` is a global ignore — it must stay
@@ -478,6 +513,11 @@ export function createConfig(options = {}) {
       promise,
       "simple-import-sort": simpleImportSort,
       "@sarj": sarj,
+      vitest,
+      "node-test": nodeTest,
+      jest,
+      "testing-library": testingLibrary,
+      playwright,
       zod,
     },
     languageOptions: {
@@ -1103,13 +1143,15 @@ export function createConfig(options = {}) {
     }]),
 
   {
-    files: [
-      "**/*.test.ts",
-      "**/*.test.tsx",
-      "**/test/**/*",
-      "**/tests/**/*",
-      "**/__tests__/**/*",
-    ],
+    files: TEST_FILES,
+    settings: {
+      ...(HAS_BUN && !HAS_VITEST ? { jest: { globalPackage: "bun:test" } } : {}),
+      ...(HAS_TESTING_LIBRARY ? {
+        "testing-library/custom-queries": "off",
+        "testing-library/custom-renders": "off",
+        "testing-library/utils-module": "off",
+      } : {}),
+    },
     rules: {
       // Test doubles and partial external payload fixtures intentionally cross
       // type boundaries. Production keeps every rule below at error; tests use
@@ -1124,8 +1166,48 @@ export function createConfig(options = {}) {
       "@typescript-eslint/require-await": "off",
       "no-await-in-loop": "off",
       "unicorn/consistent-function-scoping": "off",
+
+      // Dense assertions preserve the tested invariant while deleting ceremony.
+      // Keep this curated: broad `all` presets also impose suite structure,
+      // assertion counts, snapshots, padding, and other non-semantic policy.
+      "vitest/prefer-to-be": HAS_VITEST ? "error" : "off",
+
+      // eslint-plugin-jest can parse Bun's Jest-compatible `bun:test` API when
+      // globalPackage is set above. These rules intentionally mirror only the
+      // matcher/shorthand subset whose semantics Bun implements.
+      "jest/prefer-to-be": HAS_BUN && !HAS_VITEST ? "error" : "off",
+
+      "node-test/no-assert-throws-multiple-statements": HAS_NODE ? "error" : "off",
+      "node-test/no-unneeded-async-rejects-callback": HAS_NODE ? "error" : "off",
+      "node-test/no-useless-assertion": HAS_NODE ? "error" : "off",
+
+      "testing-library/no-unnecessary-act": HAS_TESTING_LIBRARY
+        ? ["error", { isStrict: false }]
+        : "off",
+      "testing-library/prefer-screen-queries": HAS_TESTING_LIBRARY ? "error" : "off",
+
     },
   },
+
+  ...(HAS_BUN ? [{
+    files: BUN_TEST_FILES,
+    settings: { jest: { globalPackage: "bun:test" } },
+    rules: {
+      ...Object.fromEntries(Object.keys(vitest.rules).map((name) => [`vitest/${name}`, "off"])),
+      "jest/prefer-to-be": "error",
+    },
+  }] : []),
+
+  ...(HAS_PLAYWRIGHT ? [{
+    // Playwright's rules intentionally recognize a global `expect`, so applying
+    // them to every test would emit duplicate or invalid advice in Vitest/Bun.
+    files: PLAYWRIGHT_TEST_FILES,
+    rules: {
+      ...Object.fromEntries(Object.keys(vitest.rules).map((name) => [`vitest/${name}`, "off"])),
+      ...Object.fromEntries(Object.keys(jest.rules).map((name) => [`jest/${name}`, "off"])),
+      "playwright/no-unnecessary-assertions": "error",
+    },
+  }] : []),
 
   {
     files: ["**/components/ui/**", "**/components/design-system/**"],

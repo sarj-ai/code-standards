@@ -965,6 +965,7 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
 
     entrypoint = (tmp_path / "eslint.config.mjs").read_text()
     assert 'import strict from "./eslint.strict.mjs"' in entrypoint
+    assert 'testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"]' in entrypoint
     assert "repo-specific overrides" in entrypoint
     assert "unicorn/filename-case" in entrypoint
     assert (tmp_path / "eslint.strict.mjs").is_file()

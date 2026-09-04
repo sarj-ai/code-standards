@@ -199,7 +199,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.3",
+  version: "15.17.4",
 } as const;
 
 /** Rules registered for application-profile configs but intentionally absent from general presets. */

@@ -15,6 +15,8 @@ const CONTEXTS = [
   ["source-js", "JavaScript source", "src/example.js"],
   ["source-jsx", "React JavaScript source", "src/example.jsx"],
   ["test-ts", "TypeScript tests", "tests/example.test.ts"],
+  ["test-bun-ts", "Bun tests", "tests/example.bun.test.ts"],
+  ["test-playwright-ts", "Playwright end-to-end tests", "tests/example.playwright.ts"],
   ["config-ts", "Syntax-only tool configuration", "vite.config.ts"],
   ["design-system-tsx", "Design-system React source", "src/components/ui/example.tsx"],
 ];
@@ -31,6 +33,11 @@ const PROVIDERS = {
   promise: ["Promise", "eslint-plugin-promise", "https://github.com/eslint-community/eslint-plugin-promise"],
   "simple-import-sort": ["Simple Import Sort", "eslint-plugin-simple-import-sort", "https://github.com/lydell/eslint-plugin-simple-import-sort"],
   "better-tailwindcss": ["Better Tailwind CSS", "eslint-plugin-better-tailwindcss", "https://github.com/schoero/eslint-plugin-better-tailwindcss"],
+  vitest: ["Vitest", "@vitest/eslint-plugin", "https://github.com/vitest-dev/eslint-plugin-vitest"],
+  "node-test": ["Node Test", "eslint-node-test", "https://github.com/sindresorhus/eslint-node-test"],
+  jest: ["Jest / Bun Test", "eslint-plugin-jest", "https://github.com/jest-community/eslint-plugin-jest"],
+  "testing-library": ["Testing Library", "eslint-plugin-testing-library", "https://github.com/testing-library/eslint-plugin-testing-library"],
+  playwright: ["Playwright", "eslint-plugin-playwright", "https://github.com/mskelton/eslint-plugin-playwright"],
   zod: ["ESLint Zod", "eslint-plugin-zod", "https://github.com/marcalexiei/eslint-zod"],
 };
 
@@ -75,6 +82,7 @@ async function loadProfiles() {
       profiles[name === "strict" ? "standard" : name] = module.createConfig({
         projectService: true,
         tsconfigRootDir: REPOSITORY_ROOT,
+        testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"],
       });
     }
     return profiles;
@@ -110,10 +118,13 @@ async function project() {
         const rule = provider === "eslint" ? registries.eslint.get(id) : registries[provider]?.[id];
         if (rule === undefined) throw new Error(`missing installed metadata for ${displayId}`);
         const rawSummary = rule.meta?.docs?.description;
-        const docsUrl = rule.meta?.docs?.url;
+        const rawDocsUrl = rule.meta?.docs?.url;
         if (typeof rawSummary !== "string" || rawSummary.length === 0) throw new Error(`missing summary for ${displayId}`);
         const summary = plainTextSummary(rawSummary);
-        if (typeof docsUrl !== "string" || !docsUrl.startsWith("https://")) throw new Error(`missing HTTPS docs URL for ${displayId}`);
+        const docsUrl = typeof rawDocsUrl === "string" && rawDocsUrl.startsWith("https://")
+          ? rawDocsUrl
+          : undefined;
+        if (docsUrl === undefined) throw new Error(`missing HTTPS docs URL for ${displayId}`);
         const key = `${provider}:${id}`;
         let record = records.get(key);
         if (record === undefined) {

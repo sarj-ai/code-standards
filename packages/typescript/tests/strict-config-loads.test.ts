@@ -63,6 +63,9 @@ type ConfigFactory = (options?: {
   tsconfigRootDir?: string | URL;
   projectService?: boolean | object;
   syntaxOnlyConfigFiles?: string[];
+  testFrameworks?: string[];
+  playwrightTestFiles?: string[];
+  bunTestFiles?: string[];
 }) => Linter.Config[];
 const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["strict", createStrictConfig],
@@ -92,6 +95,177 @@ function severityOf(setting: unknown): unknown {
 }
 
 describe("the shipped eslint.strict.mjs actually loads", () => {
+  it.each(CONFIG_FACTORIES)("%s rejects unknown test runners", (_name, createConfig) => {
+    expect(() => createConfig({ testFrameworks: ["vittest"] })).toThrow(
+      'Unsupported test framework "vittest"',
+    );
+  });
+
+  it.each(CONFIG_FACTORIES)(
+    "%s isolates Vitest, Bun, and Playwright rules by explicit ownership",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        overrideConfigFile: true,
+        overrideConfig: createConfig({
+          projectService: false,
+          testFrameworks: ["vitest", "bun", "playwright"],
+          playwrightTestFiles: ["**/*.browser.spec.ts"],
+        }),
+      });
+      const unitConfig: unknown = await eslint.calculateConfigForFile("src/unit.test.ts");
+      const bunConfig: unknown = await eslint.calculateConfigForFile("src/bun/unit.ts");
+      const playwrightConfig: unknown = await eslint.calculateConfigForFile(
+        "src/unit.browser.spec.ts",
+      );
+      const unit = (unitConfig as Linter.Config).rules ?? {};
+      const bun = (bunConfig as Linter.Config).rules ?? {};
+      const playwright = (playwrightConfig as Linter.Config).rules ?? {};
+
+      expect(severityOf(unit["vitest/prefer-to-be"])).toBe(2);
+      expect(severityOf(unit["jest/prefer-to-be"])).toBe(0);
+      expect(unit["playwright/no-unnecessary-assertions"]).toBeUndefined();
+      expect(severityOf(bun["vitest/prefer-to-be"])).toBe(0);
+      expect(severityOf(bun["jest/prefer-to-be"])).toBe(2);
+      expect((bunConfig as Linter.Config).settings?.jest).toEqual({ globalPackage: "bun:test" });
+      expect(severityOf(playwright["vitest/prefer-to-be"])).toBe(0);
+      expect(severityOf(playwright["jest/prefer-to-be"])).toBe(0);
+      expect(severityOf(playwright["playwright/no-unnecessary-assertions"])).toBe(2);
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)("%s defaults to Vitest and node:test only", async (_name, createConfig) => {
+    const eslint = new ESLint({
+      overrideConfigFile: true,
+      overrideConfig: createConfig({ projectService: false }),
+    });
+    const configured: unknown = await eslint.calculateConfigForFile("src/unit.test.ts");
+    const rules = (configured as Linter.Config).rules ?? {};
+
+    expect(severityOf(rules["vitest/prefer-to-be"])).toBe(2);
+    expect(severityOf(rules["node-test/no-useless-assertion"])).toBe(2);
+    expect(severityOf(rules["jest/prefer-to-be"])).toBe(0);
+    expect(severityOf(rules["testing-library/prefer-screen-queries"])).toBe(0);
+  });
+
+  it.each(CONFIG_FACTORIES)("%s runs the retained upstream rules", async (_name, createConfig) => {
+    const cases = [
+      {
+        frameworks: ["vitest"],
+        path: "src/unit.test.ts",
+        source: 'import { expect } from "vitest"; expect(1).toEqual(1);',
+        nearMiss: 'import { expect } from "vitest"; expect({ value: 1 }).toEqual({ value: 1 });',
+        expected: ["vitest/prefer-to-be"],
+      },
+      {
+        frameworks: ["bun"],
+        path: "src/unit.bun.test.ts",
+        source: 'import { expect } from "bun:test"; expect(1).toEqual(1);',
+        nearMiss: 'import { expect } from "bun:test"; expect({ value: 1 }).toEqual({ value: 1 });',
+        expected: ["jest/prefer-to-be"],
+      },
+      {
+        frameworks: ["node"],
+        path: "src/unit.test.ts",
+        source: [
+          'import assert from "node:assert/strict";',
+          'async function promise() { throw new Error("expected"); }',
+          "assert.doesNotThrow(() => work());",
+          "assert.rejects(async () => await promise());",
+          "assert.throws(() => { first(); second(); });",
+        ].join("\n"),
+        nearMiss: [
+          'import assert from "node:assert/strict";',
+          "work();",
+          "assert.rejects(promise());",
+          "assert.throws(() => first());",
+        ].join("\n"),
+        expected: [
+          "node-test/no-assert-throws-multiple-statements",
+          "node-test/no-unneeded-async-rejects-callback",
+          "node-test/no-useless-assertion",
+        ],
+      },
+      {
+        frameworks: ["testing-library"],
+        path: "src/view.test.tsx",
+        source: [
+          'import { act, render } from "@testing-library/react";',
+          "const { getByText } = render(<main />);",
+          'getByText("ready");',
+          "act(() => render(<main />));",
+        ].join("\n"),
+        nearMiss: [
+          "const render = () => ({ getByText: () => undefined });",
+          "const { getByText } = render();",
+          "getByText();",
+        ].join("\n"),
+        expected: [
+          "testing-library/no-unnecessary-act",
+          "testing-library/prefer-screen-queries",
+        ],
+      },
+      {
+        frameworks: ["playwright"],
+        path: "src/view.playwright.ts",
+        source: 'expect(page.locator("main")).toBeTruthy();',
+        nearMiss: "expect(value).toBeTruthy();",
+        expected: ["playwright/no-unnecessary-assertions"],
+      },
+    ] as const;
+    const testRulePrefixes = ["vitest/", "jest/", "node-test/", "testing-library/", "playwright/"];
+
+    for (const testCase of cases) {
+      const focusedConfig = createConfig({
+        projectService: false,
+        testFrameworks: [...testCase.frameworks],
+      }).map((entry) => ({
+        ...entry,
+        rules: Object.fromEntries(
+          Object.entries(entry.rules ?? {}).filter(([ruleId]) =>
+            testRulePrefixes.some((prefix) => ruleId.startsWith(prefix))
+          ),
+        ),
+      }));
+      const eslint = new ESLint({
+        overrideConfigFile: true,
+        overrideConfig: focusedConfig,
+      });
+      const [result] = await eslint.lintText(testCase.source, { filePath: testCase.path });
+      const actual = (result?.messages ?? [])
+        .map((message) => message.ruleId)
+        .filter((ruleId): ruleId is string => ruleId !== null && testCase.expected.includes(ruleId as never))
+        .toSorted();
+      expect(actual).toEqual([...testCase.expected].toSorted());
+      const [nearMiss] = await eslint.lintText(testCase.nearMiss, { filePath: testCase.path });
+      expect(
+        (nearMiss?.messages ?? []).filter((message) =>
+          testCase.expected.includes(message.ruleId as never)
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  it.each(CONFIG_FACTORIES)("%s applies retained matcher fixes idempotently", async (_name, createConfig) => {
+    for (const runner of [
+      { framework: "vitest", importSource: "vitest", rule: "vitest/prefer-to-be" },
+      { framework: "bun", importSource: "bun:test", rule: "jest/prefer-to-be" },
+    ]) {
+      const eslint = new ESLint({
+        fix: true,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ projectService: false, testFrameworks: [runner.framework] }),
+      });
+      const source = `import { expect } from "${runner.importSource}"; expect(1).toEqual(1);`;
+      const [first] = await eslint.lintText(source, { filePath: `src/unit.${runner.framework}.test.ts` });
+      const fixed = first?.output ?? source;
+      const [second] = await eslint.lintText(fixed, { filePath: `src/unit.${runner.framework}.test.ts` });
+
+      expect(fixed).toContain("toBe(1)");
+      expect(second?.output).toBeUndefined();
+      expect(second?.messages.some((message) => message.ruleId === runner.rule)).toBe(false);
+    }
+  });
+
   it.each(CONFIG_FACTORIES)("%s discovers nested workspace type projects", (_name, createConfig) => {
     const config = createConfig({ tsconfigRootDir: NESTED_MONOREPO_ROOT });
     const parserOptions = parserOptionsOf(config);
