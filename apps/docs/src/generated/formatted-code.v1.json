@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4bf0b47f8ad72d18dcac5b34cf642a05e6c170af8535c2d05bffb2054a618463",
-  "cliSha256": "93d300258c4a32691acfa5dfb2e5942ef63f78e7741c4f0a3511f22c5840b333",
+  "catalogSha256": "dd71ff821e94d8b1ae86d807038d28efae58734d09801c121ffb1a36e44c6151",
+  "cliSha256": "cdfe9d22b40ddcc732a2931d3b26bc35af7487dabca563f850367b89aa5df1ca",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7741,41 +7741,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "sql:no-comment-cruft": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "-- DROP TABLE legacy_events;\nSELECT\n  1;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/001.sql",
-          "id": "commented-statement",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Disabled SQL statement"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "-- Roll back by restoring snapshot OPS-812.\nSELECT\n  1;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/001.sql",
-          "id": "rollback-instruction",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Rollback instruction records an operational constraint"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "sql:no-database-triggers": {
       "examples": [
         {
@@ -7842,6 +7807,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Two differently named indexes have the same structure"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-migration-comment-cruft": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- DROP TABLE legacy_events;\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "commented-statement",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Disabled SQL statement"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Roll back by restoring snapshot OPS-812.\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "rollback-instruction",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Owned rollback instruction records an operational constraint"
         }
       ],
       "optionsSchemaSource": null

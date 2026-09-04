@@ -124,9 +124,9 @@
       "index-budget",
       "index-concurrently",
       "insert-requires-replay-policy",
-      "no-comment-cruft",
       "no-database-triggers",
       "no-duplicate-index",
+      "no-migration-comment-cruft",
       "no-offset-pagination",
       "no-pg-enum",
       "prefer-jsonb",
@@ -943,6 +943,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete no-apirouter-root-trailing-slash configuration. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
+    },
+    {
+      "id": "no-comment-cruft",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "no-migration-comment-cruft",
+      "note": "Replace sarj-no-comment-cruft with sarj-no-migration-comment-cruft before upgrading."
     },
     {
       "id": "no-create-trigger",
