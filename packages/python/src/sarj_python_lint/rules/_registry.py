@@ -51,6 +51,9 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_positional_psycopg_row_escape import NoPositionalPsycopgRowEscape
+from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import (
+    NoPsycopgExecutionOutsideInjectedOwner,
+)
 from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
 from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
@@ -136,7 +139,6 @@ from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
-from sarj_python_lint.rules.sql_requires_injected_pool_owner import SqlRequiresInjectedPoolOwner
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
@@ -242,7 +244,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         UncontrolledRandomnessInTest.id: UncontrolledRandomnessInTest,
         RepeatedStaticCallCases.id: RepeatedStaticCallCases,
         NoPositionalPsycopgRowEscape.id: NoPositionalPsycopgRowEscape,
-        SqlRequiresInjectedPoolOwner.id: SqlRequiresInjectedPoolOwner,
+        NoPsycopgExecutionOutsideInjectedOwner.id: NoPsycopgExecutionOutsideInjectedOwner,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,

@@ -164,7 +164,10 @@
     "require-validated-row-factory",
     "no-positional-psycopg-row-escape"
   ],
-  "SARJ415": "sql-requires-injected-pool-owner",
+  "SARJ415": [
+    "sql-requires-injected-pool-owner",
+    "no-psycopg-execution-outside-injected-owner"
+  ],
   "SARJ416": "preserve-declared-nominal-id",
   "SARJ417": "preserve-enum-types",
   "SARJ418": "require-pydantic-ordinal-lower-bound",

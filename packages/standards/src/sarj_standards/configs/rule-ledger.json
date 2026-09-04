@@ -51,6 +51,7 @@
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
       "no-positional-psycopg-row-escape",
+      "no-psycopg-execution-outside-injected-owner",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
       "no-raw-source-text-test-oracle",
@@ -104,7 +105,6 @@
       "require-pydantic-for-external-json",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
-      "sql-requires-injected-pool-owner",
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "store-insert-requires-on-conflict",
@@ -1195,6 +1195,13 @@
       "status": "renamed",
       "replacement": "no-raw-source-text-test-oracle",
       "note": "Replace sarj-source-coupled-test with sarj-no-raw-source-text-test-oracle before upgrading."
+    },
+    {
+      "id": "sql-requires-injected-pool-owner",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-psycopg-execution-outside-injected-owner",
+      "note": "Replace sarj-sql-requires-injected-pool-owner with sarj-no-psycopg-execution-outside-injected-owner before upgrading."
     },
     {
       "id": "tautological-mock-assertion",
