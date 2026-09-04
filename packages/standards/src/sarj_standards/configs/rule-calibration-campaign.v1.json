@@ -733,12 +733,6 @@
       "outcome": "Renamed SARJ051 to no-trailing-numeric-unit-assignment-comment and retained trailing-value-narration as a migration alias. The no-autofix rule is explicitly warning-only. It now parses valid Python, limits detection to one-line assignments with exactly one simple name or attribute target and a simple numeric expression, normalizes decimal, underscored, hexadecimal, and scientific notation, and requires exactly one matching number plus a recognized unit in the trailing comment. Calls, returns, loops, assertions, chained or destructured assignments, multi-statement lines, multi-number comments, bracketed values, references, directives, approximate conversions, generated files, and invalid syntax are excluded. The UI now distinguishes machine-visible names from type-enforced units and provides an executable typed-duration example and concrete remediation."
     },
     {
-      "task": "rule-audit/python/trivially-true-assertion",
-      "family": "python",
-      "ruleId": "trivially-true-assertion",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/python/uncontrolled-randomness-in-test",
       "family": "python",
       "ruleId": "uncontrolled-randomness-in-test",

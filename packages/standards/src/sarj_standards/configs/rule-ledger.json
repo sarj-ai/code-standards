@@ -111,7 +111,6 @@
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "timestamp-order-requires-tiebreaker",
-      "trivially-true-assertion",
       "typed-error-reasons",
       "uncontrolled-randomness-in-test",
       "unused-mock-setup"
@@ -290,7 +289,6 @@
       "SARJ057",
       "SARJ059",
       "SARJ062",
-      "SARJ064",
       "SARJ066",
       "SARJ067",
       "SARJ068",
@@ -691,6 +689,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Removed in sarj-python-lint 0.61.0. Delete every `# sarj-noqa: SARJ063` comment and SARJ063 baseline key; interaction assertions can be the externally observable contract."
+    },
+    {
+      "id": "SARJ064",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ064 suppressions and baseline keys. Constructor calls can normalize values, invoke descriptors, or return another type, so neither a keyword echo nor a same-spelling isinstance assertion is provably trivial. SARJ057 and Ruff retain ownership of statically provable tautologies."
     },
     {
       "id": "SARJ065",
@@ -1237,6 +1242,13 @@
       "status": "renamed",
       "replacement": "no-bare-test-phase-comments",
       "note": "Replace sarj-test-phase-label-comment with sarj-no-bare-test-phase-comments before upgrading."
+    },
+    {
+      "id": "trivially-true-assertion",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit. Constructor calls can normalize values, invoke descriptors, or return another type, so neither a keyword echo nor a same-spelling isinstance assertion is provably trivial. SARJ057 and Ruff retain ownership of statically provable tautologies."
     },
     {
       "id": "trailing-value-narration",
