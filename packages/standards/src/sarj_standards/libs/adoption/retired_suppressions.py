@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 import tokenize
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypeGuard
 
 from sarj_standards.libs.repository import ledger
 
@@ -25,12 +25,13 @@ _ESLINT_DIRECTIVE: Final = re.compile(
     r"(?P<intro>(?://|/\*)\s*eslint-(?:disable(?:-next-line|-line)?|enable)\s+)"
     r"(?P<body>.*?)(?P<close>\s*\*/)?$"
 )
-_CODE_DIRECTIVE: Final = re.compile(r"(?P<intro>(?:#|//)\s*sarj-noqa:\s*)(?P<body>.*?)$")
+_CODE_DIRECTIVE: Final = re.compile(r"(?P<prefix>.*?)(?P<intro>(?:#|//)\s*sarj-noqa:\s*)(?P<body>.*?)$")
 _REASON: Final = re.compile(r"(?P<rules>.*?)(?P<reason>\s+(?:--|[–—])\s+.*)?$")
 _ESLINT_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9_-]*"
 _ESLINT_ID: Final = re.compile(rf"^(?:{_ESLINT_SEGMENT}|@?{_ESLINT_SEGMENT}(?:/{_ESLINT_SEGMENT})+)$")
 _SARJ_CODE: Final = re.compile(r"^SARJ\d+$")
 _ESLINT_SUPPRESSIONS: Final = "eslint-suppressions.json"
+_RATCHET_SUPPRESSIONS: Final = "suppression-baseline.json"
 _ESLINT_CONFIG_NAMES: Final = re.compile(r"^eslint\.config\.(?:[cm]?[jt]s)$")
 _PROPERTY_KEY_OFFSET: Final = 2
 _JAVASCRIPT_CLOSING: Final = MappingProxyType({"(": ")", "[": "]", "{": "}"})
@@ -89,7 +90,7 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
     codes = {entry.id: _replacement(entry, active) for entry in retired if entry.kind == ledger.CODE}
     rewrites: list[Rewrite] = []
     for path in files:
-        if not supports(path) and path.name != _ESLINT_SUPPRESSIONS:
+        if not supports(path) and path.name not in {_ESLINT_SUPPRESSIONS, _RATCHET_SUPPRESSIONS}:
             continue
         try:
             original = path.read_bytes().decode("utf-8")
@@ -97,11 +98,12 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
             continue
         if "sarj-doctor-ignore-retired-rules" in original:
             continue
-        migrated = (
-            _rewrite_eslint_suppressions(original, eslint)
-            if path.name == _ESLINT_SUPPRESSIONS
-            else _rewrite(path, original, eslint, codes)
-        )
+        if path.name == _ESLINT_SUPPRESSIONS:
+            migrated = _rewrite_eslint_suppressions(original, eslint)
+        elif path.name == _RATCHET_SUPPRESSIONS:
+            migrated = _rewrite_ratchet_suppressions(original, codes)
+        else:
+            migrated = _rewrite(path, original, eslint, codes)
         if migrated != original:
             rewrites.append(Rewrite(path, migrated))
     return tuple(rewrites)
@@ -189,6 +191,59 @@ def _rewrite_eslint_suppressions(text: str, retired: dict[str, str | None]) -> s
     trailing = line_ending if payload.endswith(("\n", "\r")) else ""
     rendered = json.dumps(document, ensure_ascii=False, indent=2).replace("\n", line_ending)
     return f"{bom}{rendered}{trailing}"
+
+
+def _rewrite_ratchet_suppressions(text: str, retired: dict[str, str | None]) -> str:
+    bom = "\ufeff" if text.startswith("\ufeff") else ""
+    payload = text.removeprefix("\ufeff")
+    try:
+        parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
+            payload,
+            object_pairs_hook=_unique_object,
+        )
+    except _DuplicateKeyError, json.JSONDecodeError:
+        return text
+    if not isinstance(parsed, _JsonObject):
+        return text
+    raw_codes = parsed.values.get("codes")
+    if not isinstance(raw_codes, _JsonObject):
+        return text
+
+    codes: dict[str, object] = {}
+    changed = False
+    for key, count in raw_codes.values.items():
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            return text
+        prefix, separator, rule_id = key.partition(":")
+        target = retired.get(rule_id, rule_id) if separator and prefix == "sarj-noqa" else rule_id
+        changed |= target != rule_id
+        if target is None:
+            continue
+        target_key = f"sarj-noqa:{target}" if separator and prefix == "sarj-noqa" else key
+        existing = codes.get(target_key)
+        if existing is not None and (not isinstance(existing, int) or isinstance(existing, bool)):
+            return text
+        codes[target_key] = count if existing is None else max(count, existing)
+    if not changed:
+        return text
+
+    parsed.values["codes"] = _JsonObject(codes)
+    line_ending = "\r\n" if "\r\n" in payload else "\n"
+    trailing = line_ending if payload.endswith(("\n", "\r")) else ""
+    rendered = json.dumps(_plain_json(parsed), ensure_ascii=False, indent=2).replace("\n", line_ending)
+    return f"{bom}{rendered}{trailing}"
+
+
+def _plain_json(value: object) -> object:
+    if isinstance(value, _JsonObject):
+        return {key: _plain_json(item) for key, item in value.values.items()}
+    if _is_object_list(value):
+        return [_plain_json(item) for item in value]
+    return value
+
+
+def _is_object_list(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
 
 
 class _DuplicateKeyError(ValueError):
@@ -548,7 +603,8 @@ def _rewrite_valid_directive(directive: _Directive, retired: dict[str, str | Non
             replacement for token in directive.tokens if (replacement := retired.get(token, token)) is not None
         )
     )
+    prefix = match.groupdict().get("prefix") or ""
     if migrated:
         close = match.groupdict().get("close") or ""
-        return f"{match.group('intro')}{', '.join(migrated)}{directive.reason}{close}"
-    return ""
+        return f"{prefix}{match.group('intro')}{', '.join(migrated)}{directive.reason}{close}"
+    return prefix.rstrip()
