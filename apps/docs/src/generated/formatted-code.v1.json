@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0b9ac12cb4adced01495c9c2e618d2d242bef0b60d460ac4faf8bcb210d05dd5",
+  "catalogSha256": "931054ccd15e5f995b2a48becd403865f65a310218b68a50ee22e19211d9d06a",
   "cliSha256": "ed6d47a3d9c64230f0ad1daa855dc412addda3c51916071a99798fa0becfb3ef",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -3919,6 +3919,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Durable-data bucket without a deletion guard"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:complex-postgres-query-requires-architecture-review": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "import psycopg\n\ncursor.execute(\n    \"WITH ranked AS (SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rank FROM call), picked AS (SELECT id FROM ranked WHERE rank <= %s) SELECT due.id FROM call AS due JOIN picked ON picked.id = due.id FOR UPDATE OF due SKIP LOCKED\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "named-queue-stages",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A queue claim exposes ranking as named stages"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "import psycopg\n\ncursor.execute(\n    \"SELECT due.id FROM call AS due JOIN (SELECT * FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rank FROM call) ranked WHERE rank <= %s) picked ON picked.id = due.id FOR UPDATE OF due SKIP LOCKED\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "ranked-queue-claim",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A queue claim hides ranking inside nested derived relations"
         }
       ],
       "optionsSchemaSource": null

@@ -1405,6 +1405,12 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/python/complex-postgres-query-requires-architecture-review",
+      "family": "python",
+      "ruleId": "complex-postgres-query-requires-architecture-review",
+      "state": "complete"
+    },
+    {
       "task": "rule-audit/python/excessive-commentary",
       "family": "python",
       "ruleId": "excessive-commentary",
