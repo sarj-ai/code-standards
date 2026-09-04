@@ -105,6 +105,7 @@
       "require-pydantic-for-external-json",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
+      "stepdown",
       "store-get-delegates-to-bulk-read",
       "store-insert-requires-on-conflict",
       "test-phase-label-comment",
@@ -267,6 +268,7 @@
       "SARJ020",
       "SARJ021",
       "SARJ022",
+      "SARJ023",
       "SARJ024",
       "SARJ025",
       "SARJ026",
@@ -598,13 +600,6 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ019 suppressions and baseline keys. Join count alone cannot establish query cost or architecture; review query plans, cardinality, and ownership for performance-sensitive reads."
-    },
-    {
-      "id": "SARJ023",
-      "kind": "code",
-      "status": "removed",
-      "replacement": null,
-      "note": "Delete SARJ023 suppressions and baseline keys. Definition order is a readability preference, and static syntax cannot prove a sole runtime consumer in the presence of decorators, dynamic lookup, module exports, or references outside a class. There is no replacement."
     },
     {
       "id": "SARJ031",
@@ -1207,13 +1202,6 @@
       "status": "renamed",
       "replacement": "no-psycopg-execution-outside-injected-owner",
       "note": "Replace sarj-sql-requires-injected-pool-owner with sarj-no-psycopg-execution-outside-injected-owner before upgrading."
-    },
-    {
-      "id": "stepdown",
-      "kind": "python",
-      "status": "removed",
-      "replacement": null,
-      "note": "Remove this hook from pre-commit. Definition order is a readability preference, and static syntax cannot prove a sole runtime consumer in the presence of decorators, dynamic lookup, module exports, or references outside a class. There is no replacement."
     },
     {
       "id": "tautological-mock-assertion",
