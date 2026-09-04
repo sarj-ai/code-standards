@@ -322,6 +322,3 @@ def render_text(result: RuleChangeSetV1) -> str:
     if not result["changes"]:
         lines.append("no rule changes")
     return "\n".join(lines)
-
-
-__all__ = ["RuleChangeSetV1", "RuleChangeV1", "RuleDescriptorV1", "compare", "render_text"]

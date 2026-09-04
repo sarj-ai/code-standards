@@ -67,6 +67,3 @@ def _is_object(value: object) -> TypeGuard[dict[str, object]]:
 
 def _is_array(value: object) -> TypeGuard[list[object]]:
     return isinstance(value, list)
-
-
-__all__ = ["SCHEMA_VERSION", "load", "render", "validate"]

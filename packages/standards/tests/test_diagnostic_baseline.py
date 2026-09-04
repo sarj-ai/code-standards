@@ -9,8 +9,7 @@ import pytest
 
 from sarj_standards import api
 from sarj_standards.cli.main import main as cli_main
-from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest, as_table
-from sarj_standards.libs.adoption.manifest import load as load_manifest
+from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest, as_table, load as load_manifest
 from sarj_standards.libs.diagnostics import (
     AnalysisReport,
     Completion,

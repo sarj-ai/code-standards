@@ -1,4 +1,1 @@
-from .repository import SetupPlan, apply_setup, plan_setup
-
-
-__all__ = ["SetupPlan", "apply_setup", "plan_setup"]
+from .repository import SetupPlan as SetupPlan, apply_setup as apply_setup, plan_setup as plan_setup

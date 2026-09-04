@@ -1,9 +1,6 @@
-from sarj_standards.libs.catalogs.slack_automations import (
-    CONVENTIONAL_PATH,
-    CatalogFinding,
-    render_schema,
-    validate_catalog,
+from .slack_automations import (
+    CONVENTIONAL_PATH as CONVENTIONAL_PATH,
+    CatalogFinding as CatalogFinding,
+    render_schema as render_schema,
+    validate_catalog as validate_catalog,
 )
-
-
-__all__ = ("CONVENTIONAL_PATH", "CatalogFinding", "render_schema", "validate_catalog")

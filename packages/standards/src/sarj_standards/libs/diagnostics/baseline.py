@@ -410,17 +410,3 @@ def _is_object_dict(value: object) -> TypeIs[dict[object, object]]:
 
 def _is_object_list(value: object) -> TypeIs[list[object]]:
     return isinstance(value, list)
-
-
-__all__ = [
-    "SCHEMA_VERSION",
-    "bundled_catalog_digest",
-    "changed_line_scope",
-    "is_baselineable",
-    "load",
-    "merge_scoped",
-    "render",
-    "repository_base_sha",
-    "touches_changed_lines",
-    "tracked_terraform_test_paths",
-]

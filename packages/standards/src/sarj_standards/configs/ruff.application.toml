@@ -227,6 +227,7 @@ ignore = [
 # explanation.
 
 [lint.isort]
+combine-as-imports        = true
 force-single-line          = false
 lines-after-imports        = 2
 force-sort-within-sections = true

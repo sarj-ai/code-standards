@@ -33,6 +33,7 @@ from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInherit
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
+from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 from sarj_python_lint.rules.no_fastapi_on_event import NoFastapiOnEvent
 from sarj_python_lint.rules.no_file_level_escape_hatch_suppression import (
@@ -224,6 +225,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferSetIsdisjoint.id: PreferSetIsdisjoint,
         PreferSelfDocumentingConstant.id: PreferSelfDocumentingConstant,
         NoDuplicateDunderAllEntry.id: NoDuplicateDunderAllEntry,
+        NoDunderAll.id: NoDunderAll,
         NoCopiedInheritedDocstring.id: NoCopiedInheritedDocstring,
         RedundantClassDocstring.id: RedundantClassDocstring,
         RedundantModuleDocstring.id: RedundantModuleDocstring,
@@ -250,5 +252,3 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         TypedErrorReasons.id: TypedErrorReasons,
     }
 )
-
-__all__ = ["REGISTRY"]

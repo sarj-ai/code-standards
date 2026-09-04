@@ -22,8 +22,7 @@ from sarj_standards._meta import (
 )
 import sarj_standards.cli.main as cli
 from sarj_standards.cli.main import main
-from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold, service
-from sarj_standards.libs.adoption import hooks as adoption_hooks
+from sarj_standards.libs.adoption import doctor, hooks as adoption_hooks, lifecycle, manifest, scaffold, service
 
 
 if TYPE_CHECKING:
@@ -31,7 +30,7 @@ if TYPE_CHECKING:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.2 code-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.3 code-standards"
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -1703,7 +1702,7 @@ def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> Non
 
 def test_lefthook_replaces_one_semantic_staged_command_with_a_stale_bootstrap_pin(tmp_path: Path) -> None:
     config = tmp_path / "lefthook.yml"
-    stale = BOOTSTRAP_COMMAND.replace("==2.0.2", "==1.9.0")
+    stale = BOOTSTRAP_COMMAND.replace("==2.0.3", "==1.9.0")
     config.write_text(
         "pre-commit:\n  jobs:\n    - name: standards\n"
         f"      run: {stale} check --staged --trust-repository-code -- {{staged_files}}\n",
@@ -1720,8 +1719,8 @@ def test_lefthook_replaces_one_semantic_staged_command_with_a_stale_bootstrap_pi
 
 def test_lefthook_refuses_duplicate_semantic_staged_commands_even_with_stale_pins(tmp_path: Path) -> None:
     config = tmp_path / "lefthook.yml"
-    first = BOOTSTRAP_COMMAND.replace("==2.0.2", "==1.8.0")
-    second = BOOTSTRAP_COMMAND.replace("==2.0.2", "==1.9.0")
+    first = BOOTSTRAP_COMMAND.replace("==2.0.3", "==1.8.0")
+    second = BOOTSTRAP_COMMAND.replace("==2.0.3", "==1.9.0")
     config.write_text(
         "pre-commit:\n  jobs:\n"
         f"    - name: first\n      run: {first} check --staged --trust-repository-code -- {{staged_files}}\n"

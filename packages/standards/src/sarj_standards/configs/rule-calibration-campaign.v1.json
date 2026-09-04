@@ -217,6 +217,14 @@
       "outcome": "Kept the exact rule name and extended the static contract through literal __all__.append, extend, and insert operations, reporting the later duplicate at its mutation argument and preserving the original declaration line in the diagnostic."
     },
     {
+      "task": "rule-audit/python/no-dunder-all",
+      "family": "python",
+      "ruleId": "no-dunder-all",
+      "state": "complete",
+      "evidence": "Twenty independent review passes and 78 labeled adversarial tests covered module bindings, control-flow targets, match captures, assignment expressions, exact import locations, provable mutations, lexical scope exclusions, generated and malformed input, suppressions, deterministic diagnostics, and performance. The local 454-file Python corpus produced 20 inspected policy hits and zero false positives; three non-Python manifest entries were outside analyzer coverage.",
+      "outcome": "Added SARJ438 as a warning without retiring the narrower SARJ098 error or disabling Ruff checks. The rule reports module-owned bindings and provable mutations, excludes reads and generated source, offers no unsafe autofix, and documents wildcard-import and stub-file limitations."
+    },
+    {
       "task": "rule-audit/python/no-fastapi-on-event",
       "family": "python",
       "ruleId": "no-fastapi-on-event",

@@ -20,13 +20,15 @@ from urllib.parse import quote
 
 import yaml
 
-from sarj_standards.libs.adoption import doctor as adoption_doctor
-from sarj_standards.libs.adoption import hooks as adoption_hooks
-from sarj_standards.libs.adoption import launcher
-from sarj_standards.libs.adoption import manifest as adoption_manifest
-from sarj_standards.libs.adoption import packagemanager as adoption_packagemanager
-from sarj_standards.libs.adoption import scaffold as adoption_scaffold
-from sarj_standards.libs.adoption import uvtool as adoption_uvtool
+from sarj_standards.libs.adoption import (
+    doctor as adoption_doctor,
+    hooks as adoption_hooks,
+    launcher,
+    manifest as adoption_manifest,
+    packagemanager as adoption_packagemanager,
+    scaffold as adoption_scaffold,
+    uvtool as adoption_uvtool,
+)
 from sarj_standards.libs.repository import rule_catalog_artifact
 
 
