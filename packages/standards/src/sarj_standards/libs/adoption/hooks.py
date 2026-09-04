@@ -194,6 +194,40 @@ def precommit_runs_staged_check(root: Path) -> bool:
     )
 
 
+def precommit_runs_commit_message_check(root: Path) -> bool:
+    paths = [root / name for name in PRECOMMIT_NAMES if (root / name).is_file()]
+    if len(paths) != 1:
+        return False
+    try:
+        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrowed below.
+            paths[0].read_text(encoding="utf-8")
+        )
+    except OSError, UnicodeError, yaml.YAMLError:
+        return False
+    candidates: list[dict[str, object]] = []
+    for raw_repository in manifest.list_field(manifest.as_table(parsed), "repos"):
+        repository = manifest.as_table(raw_repository)
+        if repository.get("repo") != "local":
+            continue
+        candidates.extend(
+            hook
+            for raw_hook in manifest.list_field(repository, "hooks")
+            if (hook := manifest.as_table(raw_hook)).get("id") == "repo-standards-commit-message"
+        )
+    if len(candidates) != 1:
+        return False
+    candidate = candidates[0]
+    return (
+        _runs_commit_message_check(candidate.get("entry"))
+        and candidate.get("language") == "system"
+        and candidate.get("always_run") is True
+        and candidate.get("pass_filenames") is True
+        and candidate.get("require_serial") is True
+        and "files" not in candidate
+        and candidate.get("stages") == ["commit-msg"]
+    )
+
+
 def lefthook_runs_staged_check(root: Path) -> bool:
     path = lefthook_config(root)
     if path is None:
@@ -208,6 +242,71 @@ def lefthook_runs_staged_check(root: Path) -> bool:
     pre_commit = manifest.as_table(document.get("pre-commit"))
     values = tuple(_lefthook_run_values(pre_commit))
     return values.count(_canonical_lefthook_command(root)) == 1
+
+
+def lefthook_runs_commit_message_check(root: Path) -> bool:
+    path = lefthook_config(root)
+    if path is None:
+        return False
+    try:
+        parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrowed below.
+            path.read_text(encoding="utf-8")
+        )
+    except OSError, UnicodeError, yaml.YAMLError:
+        return False
+    commit_message = manifest.as_table(manifest.as_table(parsed).get("commit-msg"))
+    values = tuple(_lefthook_run_values(commit_message))
+    return values.count(_canonical_commit_message_command(path.parent)) == 1
+
+
+def wire_lefthook_commit_message_check(root: Path, *, contents: str | None = None) -> LefthookWrite:
+    path = lefthook_config(root)
+    if path is None:
+        msg = "--hooks lefthook requires lefthook.yml or lefthook.yaml"
+        raise ValueError(msg)
+    text = path.read_text(encoding="utf-8") if contents is None else contents
+    try:
+        parsed: object = yaml.safe_load(text)  # pyright: ignore[reportAny] -- narrowed below.
+        document = manifest.as_table(parsed)
+    except (OSError, UnicodeError, TypeError, yaml.YAMLError) as exc:
+        msg = f"cannot safely wire {path.name}: expected valid YAML"
+        raise ValueError(msg) from exc
+    if "commit-msg" in document:
+        commit_message = manifest.as_table(document.get("commit-msg"))
+        if "commands" in commit_message:
+            layout = "commands"
+            entries = manifest.as_table(commit_message.get("commands"))
+        elif "jobs" in commit_message:
+            layout = "jobs"
+            entries = {
+                str(job.get("name")): job
+                for raw_job in manifest.list_field(commit_message, "jobs")
+                if (job := manifest.as_table(raw_job)).get("name") is not None
+            }
+        else:
+            msg = f"cannot safely wire {path.name}: expected block-style commit-msg commands or jobs"
+            raise ValueError(msg)
+        block_match, section_end = _locate_block(path, text, layout, hook_name="commit-msg")
+        name = (
+            "repo-standards-commit-message"
+            if "repo-standards-commit-message" not in entries
+            else "repo-standards-commit-message-check"
+        )
+        command = _canonical_commit_message_command(root)
+        updated = (
+            _insert_staged_command(path, text, block_match, section_end, name, run=command)
+            if layout == "commands"
+            else _insert_staged_job(path, text, block_match, section_end, name, run=command)
+        )
+        return LefthookWrite(path, updated)
+    separator = "" if not text or text.endswith("\n") else "\n"
+    addition = (
+        "\ncommit-msg:\n"
+        "  commands:\n"
+        "    repo-standards-commit-message:\n"
+        f"      run: {_canonical_commit_message_command(root)}\n"
+    )
+    return LefthookWrite(path, f"{text}{separator}{addition}")
 
 
 def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
@@ -260,10 +359,10 @@ def _load_lefthook_entries(path: Path) -> _LefthookEntries:
     raise ValueError(msg)
 
 
-def _locate_block(path: Path, text: str, layout: str) -> _LocatedBlock:
-    pre_commit_match = re.search(r"(?m)^pre-commit:\s*(?:#.*)?$", text)
+def _locate_block(path: Path, text: str, layout: str, *, hook_name: str = "pre-commit") -> _LocatedBlock:
+    pre_commit_match = re.search(rf"(?m)^{re.escape(hook_name)}:\s*(?:#.*)?$", text)
     if pre_commit_match is None:
-        msg = f"cannot safely wire {path.name}: expected a block-style pre-commit.commands mapping"
+        msg = f"cannot safely wire {path.name}: expected a block-style {hook_name}.{layout} value"
         raise ValueError(msg)
     section_end_match = re.search(r"(?m)^[^\s#][^:]*:\s*", text[pre_commit_match.end() :])
     section_end = len(text) if section_end_match is None else pre_commit_match.end() + section_end_match.start()
@@ -281,10 +380,13 @@ def _insert_staged_job(
     jobs_match: re.Match[str],
     section_end: int,
     name: str,
+    *,
+    run: str | None = None,
 ) -> str:
     block_indent = len(jobs_match.group("indent"))
     child_indent = " " * (block_indent + 2)
-    rendered = f"{child_indent}- name: {name}\n{child_indent}  run: {_canonical_lefthook_command(path.parent)}\n"
+    command = _canonical_lefthook_command(path.parent) if run is None else run
+    rendered = f"{child_indent}- name: {name}\n{child_indent}  run: {command}\n"
     tail = jobs_match.group("tail")
     if tail.strip():
         msg = f"cannot safely wire {path.name}: expected block-style pre-commit jobs"
@@ -305,10 +407,13 @@ def _insert_staged_command(
     commands_match: re.Match[str],
     section_end: int,
     name: str,
+    *,
+    run: str | None = None,
 ) -> str:
     command_indent = len(commands_match.group("indent"))
     child_indent = " " * (command_indent + 2)
-    rendered = f"{child_indent}{name}:\n{child_indent}  run: {_canonical_lefthook_command(path.parent)}\n"
+    command = _canonical_lefthook_command(path.parent) if run is None else run
+    rendered = f"{child_indent}{name}:\n{child_indent}  run: {command}\n"
     absolute_start = commands_match.start()
     absolute_end = commands_match.end()
     tail = commands_match.group("tail")
@@ -348,6 +453,17 @@ def _runs_staged_check(value: object) -> bool:
     return tuple(tokens[: len(prefix)]) == prefix and tokens[len(prefix) : len(prefix) + 2] == ["check", "--staged"]
 
 
+def _runs_commit_message_check(value: object) -> bool:
+    if not isinstance(value, str) or re.search(r"(?:&&|\|\||[;|`]|\$\()", value):
+        return False
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        return False
+    prefix = launcher.repository_argv()
+    return tuple(tokens[: len(prefix)]) == prefix and tokens[len(prefix) :] == ["commit-message"]
+
+
 def _is_standards_bootstrap_argv(tokens: list[str]) -> bool:
     prefix = launcher.repository_argv()
     if len(tokens) < len(prefix):
@@ -367,6 +483,12 @@ def _canonical_lefthook_command(root: Path | None = None) -> str:
             "--trust-repository-code -- {staged_files}"
         )
     return f"{launcher.repository_command()} check --staged --trust-repository-code -- {{staged_files}}"
+
+
+def _canonical_commit_message_command(root: Path | None = None) -> str:
+    if root is not None and (root / "packages" / "standards" / "pyproject.toml").is_file():
+        return "uv run --project packages/standards --frozen code-standards commit-message {1}"
+    return f"{launcher.repository_command()} commit-message {{1}}"
 
 
 def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None = None) -> list[str]:

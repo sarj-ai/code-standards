@@ -151,13 +151,20 @@ def test_setup_does_not_install_standards_into_a_consumer_project(tmp_path: Path
 
 
 @pytest.mark.parametrize("python", [True, False])
-def test_precommit_install_is_explicitly_scoped_to_commit_stage(tmp_path: Path, python: bool) -> None:
+def test_precommit_install_includes_staged_and_message_hooks(tmp_path: Path, python: bool) -> None:
     (tmp_path / ".git").mkdir()
     ecosystems = scaffold.Ecosystems(python, not python, python_root=tmp_path if python else None)
 
     command = lifecycle.install_commands(tmp_path, ecosystems)[-1]
 
-    assert command.argv[-4:] == ("pre-commit", "install", "--hook-type", "pre-commit")
+    assert command.argv[-6:] == (
+        "install",
+        "--hook-type",
+        "pre-commit",
+        "--hook-type",
+        "commit-msg",
+        "--install-hooks",
+    )
 
 
 def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
@@ -181,7 +188,8 @@ def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
     )
     hook.chmod(0o755)
 
-    def installed_hook(_root: Path) -> Path:
+    def installed_hook(_root: Path, *, hook_type: str = "pre-commit") -> Path:
+        assert hook_type == "pre-commit"
         return hook
 
     monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle._precommit_hook_path", installed_hook)
@@ -212,7 +220,7 @@ def test_precommit_installer_hardens_the_generated_hook(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     hardened: list[Path] = []
-    monkeypatch.setattr(lifecycle, "harden_precommit_hook", hardened.append)
+    monkeypatch.setattr(lifecycle, "harden_precommit_hooks", hardened.append)
 
     status = lifecycle.execute(
         [lifecycle.Command("pre-commit hooks", (sys.executable, "-c", "raise SystemExit(0)"), tmp_path)]

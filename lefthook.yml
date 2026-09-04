@@ -1,5 +1,5 @@
 ---
-min_version: 2.1.10
+min_version: 2.1.12
 assert_lefthook_installed: true
 
 pre-commit:
@@ -37,6 +37,14 @@ pre-commit:
     typecheck:
       run: make typecheck
       fail_text: "Standards typecheck failed. Fix the reported error and retry."
+
+commit-msg:
+  commands:
+    repo-standards-commit-message:
+      run: uv run --project packages/standards --frozen code-standards commit-message {1}
+      fail_text: >-
+        Commit messages must use the managed Conventional Commit format.
+        Correct the reported subject and retry.
 
 pre-push:
   commands:

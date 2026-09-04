@@ -100,6 +100,9 @@ def install_commands(
             "install",
             "--hook-type",
             "pre-commit",
+            "--hook-type",
+            "commit-msg",
+            "--install-hooks",
         )
         commands.append(Command(_PRECOMMIT_HOOK_LABEL, hook_argv, root))
     return commands
@@ -367,15 +370,20 @@ def execute(commands: Iterable[Command]) -> int:
             return completed.returncode
         if command.label == _PRECOMMIT_HOOK_LABEL:
             try:
-                harden_precommit_hook(command.cwd)
+                harden_precommit_hooks(command.cwd)
             except (OSError, subprocess.SubprocessError) as exc:
                 sys.stderr.write(f"error: installed pre-commit hook is not durable: {exc}\n")
                 return 2
     return 0
 
 
-def harden_precommit_hook(root: Path) -> None:
-    hook = _precommit_hook_path(root)
+def harden_precommit_hooks(root: Path) -> None:
+    for hook_type in ("pre-commit", "commit-msg"):
+        harden_precommit_hook(root, hook_type=hook_type)
+
+
+def harden_precommit_hook(root: Path, *, hook_type: str = "pre-commit") -> None:
+    hook = _precommit_hook_path(root, hook_type=hook_type)
     text = hook.read_text(encoding="utf-8")
     if _PRECOMMIT_UVX_MARKER in text:
         return
@@ -392,13 +400,13 @@ def harden_precommit_hook(root: Path) -> None:
     transaction.atomic_write_text(hook.parent, hook, text.replace(fallback_point, fallback + fallback_point, 1))
 
 
-def _precommit_hook_path(root: Path) -> Path:
+def _precommit_hook_path(root: Path, *, hook_type: str = "pre-commit") -> Path:
     git = shutil.which("git")
     if git is None:
         msg = "git is required to resolve the installed pre-commit hook"
         raise OSError(msg)
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git query.
-        (git, "rev-parse", "--git-path", "hooks/pre-commit"),
+        (git, "rev-parse", "--git-path", f"hooks/{hook_type}"),
         cwd=root,
         check=True,
         capture_output=True,

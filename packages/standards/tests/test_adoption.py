@@ -1245,6 +1245,11 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     assert "always_run: true" in generated
     assert "package\\.json|pyrightconfig\\.json" in generated
     assert generated.count("id: sarj-standards-check") == 1
+    assert generated.count("id: repo-standards-commit-message") == 1
+    assert "entry: " + BOOTSTRAP_COMMAND + " commit-message" in generated
+    assert "stages: [commit-msg]" in generated
+    repository_manifest = (tmp_path / ".repo-standards" / "repository.toml").read_text()
+    assert "schema_version = 6" in repository_manifest
 
 
 @pytest.mark.parametrize("heading", ["repos: []\n", "repos: [] # keep this comment\n"])
@@ -1276,6 +1281,29 @@ def test_init_preserves_an_existing_lefthook_manager(tmp_path: Path) -> None:
     adopted = manifest.load(tmp_path)
     assert adopted is not None
     assert adopted.hook_manager == "lefthook"
+    assert adoption_hooks.lefthook_runs_commit_message_check(tmp_path)
+
+
+@pytest.mark.parametrize("layout", ["commands", "jobs"])
+def test_init_preserves_existing_lefthook_commit_message_commands(tmp_path: Path, layout: str) -> None:
+    _ = _python_repo(tmp_path)
+    existing = (
+        "  commands:\n    consumer:\n      run: consumer-lint {1}\n"
+        if layout == "commands"
+        else "  jobs:\n    - name: consumer\n      run: consumer-lint {1}\n"
+    )
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    consumer:\n      run: true\ncommit-msg:\n" + existing,
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
+    assert "consumer-lint {1}" in updated
+    assert updated.count("code-standards commit-message {1}") == 1
+    assert adoption_hooks.lefthook_runs_commit_message_check(tmp_path)
 
 
 def test_switching_to_lefthook_retires_only_the_generated_precommit_hook(tmp_path: Path) -> None:
@@ -1306,7 +1334,9 @@ def test_switching_to_lefthook_retires_only_the_generated_precommit_hook(tmp_pat
     assert "id: keep-consumer-hook" in updated
     assert "id: sarj-standards-check" not in updated
     assert "id: sarj-standards-drift" not in updated
+    assert "id: repo-standards-commit-message" not in updated
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
+    assert adoption_hooks.lefthook_runs_commit_message_check(tmp_path)
     adopted = manifest.load(tmp_path)
     assert adopted is not None
     assert adopted.hook_manager == "lefthook"
@@ -1646,15 +1676,19 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
     }
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env=environment)
     subprocess.run(("git", "add", "src/app.py"), cwd=tmp_path, check=True, env=environment)
+    message = tmp_path / "COMMIT_EDITMSG"
+    _ = message.write_text("feat: add typed value\n", encoding="utf-8")
 
     entries = _precommit_entries((tmp_path / ".pre-commit-config.yaml").read_text())
-    assert len(entries) == 1, "one orchestrator avoids duplicate uv startup and whole-repo scans"
+    assert len(entries) == 2, "one hook per Git stage avoids duplicate work within either stage"
     for entry, pass_filenames_false in entries:
         # Run the CLI the hook names, through the interpreter the tests already
         # use, so this exercises the generated command shape without needing a
         # network fetch or a uv-managed virtualenv inside tmp_path.
         subcommand = entry.rsplit(" code-standards ", 1)[1].split()
-        if not pass_filenames_false:
+        if subcommand == ["commit-message"]:
+            subcommand.append(str(message))
+        elif not pass_filenames_false:
             subcommand.append("src/app.py")
         proc = _cli(*subcommand, cwd=tmp_path)
         assert proc.returncode == 0, f"{entry!r} failed: {proc.stdout}{proc.stderr}"

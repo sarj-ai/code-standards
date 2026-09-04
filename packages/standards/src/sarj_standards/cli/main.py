@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Final, NoReturn, TypeIs
 
 from packaging.version import InvalidVersion, Version
 from pydantic import TypeAdapter, ValidationError
+from repo_standards.core.commit_message import check_commit_message_file
 
 from sarj_standards import __version__
 from sarj_standards._meta import CONFIGS_DIR
@@ -120,6 +121,7 @@ class _Args(argparse.Namespace):
     hooks_cmd: str = ""
     no_install: bool = False
     repair: bool = False
+    message_file: Path | None = None
     profile: manifest.Profile | None = None
     output_format: str = "text"
     offline: bool = False
@@ -2140,6 +2142,23 @@ def _diagnostic_matches(item: Diagnostic, selectors: frozenset[str]) -> bool:
     )
 
 
+def cmd_commit_message(args: _Args) -> int:
+    if args.message_file is None:
+        msg = "commit-message requires one message file"
+        raise ValueError(msg)
+    result = check_commit_message_file(args.message_file, fix_safe=True)
+    if result.fix_applied:
+        print("Commit message: safely normalized; validation passed.")
+        return 0
+    if result.satisfied:
+        return 0
+    finding = result.findings[0]
+    print(f"Commit message: {finding.code}", file=sys.stderr)
+    print(finding.message, file=sys.stderr)
+    print(f"Fix: {finding.remediation}", file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv, namespace=_Args())
@@ -2182,6 +2201,8 @@ def _dispatch(args: _Args) -> int:
             return cmd_format(args)
         case "check":
             return cmd_check(args)
+        case "commit-message":
+            return cmd_commit_message(args)
         case "validate-slack-automations":
             return cmd_validate_slack_automations(args)
         case "observe":
@@ -2216,9 +2237,18 @@ def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] 
     sub = parser.add_subparsers(
         dest="cmd",
         required=True,
-        metavar=("{setup,check,validate-slack-automations,observe,fix,doctor,update,ratchet,exclude,show,maintain}"),
+        metavar=(
+            "{setup,check,commit-message,validate-slack-automations,observe,fix,doctor,"
+            "update,ratchet,exclude,show,maintain}"
+        ),
         title="commands",
     )
+
+    commit_message = sub.add_parser(
+        "commit-message",
+        help="validate and safely normalize one Git commit-message file",
+    )
+    commit_message.add_argument("message_file", type=Path)
 
     p_doctor = sub.add_parser(
         "doctor",

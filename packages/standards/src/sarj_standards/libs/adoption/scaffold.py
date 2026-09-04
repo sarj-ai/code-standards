@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
+from repo_standards.core.parser import enable_commit_message_policy_bytes
 import yaml
 
 from sarj_standards.libs.filesystem import is_link_like
@@ -596,6 +597,7 @@ def build_plan(
         plan.notes.append("no Python, TypeScript, Swift, or mobile Kotlin project found; adopting shared configs only")
 
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
+    _plan_repo_commit_message_policy(root, plan)
     _plan_retired_repository_launcher(root, plan)
     if (
         ecosystems.python
@@ -618,17 +620,7 @@ def build_plan(
         _plan_precommit(root, plan, force=force)
     elif plan.hook_manager == "lefthook":
         _plan_retire_precommit_staged_check(root, plan)
-        if hooks.lefthook_config(root) is None:
-            plan.errors.append("--hooks lefthook requires lefthook.yml or lefthook.yaml")
-        elif not hooks.lefthook_runs_staged_check(root):
-            try:
-                plan.writes.append(hooks.wire_lefthook_staged_check(root))
-            except ValueError as exc:
-                plan.errors.append(str(exc))
-            else:
-                plan.notes.append("added the canonical staged check to the existing Lefthook configuration")
-        else:
-            plan.notes.append("preserving validated Lefthook management; no pre-commit config was generated")
+        _plan_lefthook(root, plan)
     else:
         plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
     workflow = root / ".github" / "workflows" / "standards.yml"
@@ -671,6 +663,7 @@ def build_plan(
                 "`code-standards show ci --output .github/workflows/standards.yml`"
             ),
         )
+    _plan_commit_policy_workflow(root, plan, force=force)
     _note_subproject_destinations(root, plan)
     return plan
 
@@ -687,6 +680,68 @@ def _is_managed_workflow(path: Path) -> bool:
             first_line,
         )
         is not None
+    )
+
+
+def _plan_repo_commit_message_policy(root: Path, plan: Plan) -> None:
+    path = root / ".repo-standards" / "repository.toml"
+    if path.is_file():
+        try:
+            original = path.read_bytes()
+            migrated = enable_commit_message_policy_bytes(original)
+        except (OSError, TypeError, ValueError) as exc:
+            plan.errors.append(f"cannot enable Repo Standards commit-message policy: {exc}")
+            return
+        if migrated == original:
+            plan.skips.append((path, "commit-message policy is already enabled"))
+        else:
+            plan.writes.append((path, migrated.decode("utf-8")))
+        return
+    repository_id = re.sub(r"[^a-z0-9]+", "-", root.name.casefold()).strip("-")
+    if not repository_id or not repository_id[0].isalpha():
+        repository_id = f"repository-{repository_id}" if repository_id else "local-repository"
+    contents = f'schema_version = 6\nrepository_id = "{repository_id}"\ncomponents = []\n'
+    plan.writes.append((path, contents))
+
+
+def _plan_lefthook(root: Path, plan: Plan) -> None:
+    if hooks.lefthook_config(root) is None:
+        plan.errors.append("--hooks lefthook requires lefthook.yml or lefthook.yaml")
+        return
+    lefthook_write: hooks.LefthookWrite | None = None
+    try:
+        if not hooks.lefthook_runs_staged_check(root):
+            lefthook_write = hooks.wire_lefthook_staged_check(root)
+        if not hooks.lefthook_runs_commit_message_check(root):
+            lefthook_write = hooks.wire_lefthook_commit_message_check(
+                root,
+                contents=None if lefthook_write is None else lefthook_write.contents,
+            )
+    except ValueError as exc:
+        plan.errors.append(str(exc))
+        return
+    if lefthook_write is not None:
+        plan.writes.append(lefthook_write)
+        plan.notes.append("converged the canonical staged and commit-message checks")
+        return
+    plan.notes.append("preserving validated Lefthook management; no pre-commit config was generated")
+
+
+def _plan_commit_policy_workflow(root: Path, plan: Plan, *, force: bool) -> None:
+    path = root / ".github" / "workflows" / "commit-policy.yml"
+    contents = commit_policy_github_workflow()
+    if path.is_file() and path.read_text(encoding="utf-8").startswith("# Managed by code-standards commit policy;"):
+        if path.read_text(encoding="utf-8") == contents:
+            plan.skips.append((path, "already runs the canonical commit policy"))
+        else:
+            plan.writes.append((path, contents))
+        return
+    _record(
+        plan,
+        path,
+        contents,
+        force=force,
+        reason="exists; preserve repository-specific commit-policy CI",
     )
 
 
@@ -1737,7 +1792,9 @@ def _has_owned_hooks(text: str) -> bool:
 def _has_owned_hook_in_block(text: str) -> bool:
     return (
         re.search(
-            r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards-(?:check|drift)['\"]?\s*(?:#.*)?$",
+            r"(?m)^\s*-\s+id:\s+['\"]?"
+            r"(?:sarj-standards-(?:check|drift)|repo-standards-commit-message)"
+            r"['\"]?\s*(?:#.*)?$",
             text,
         )
         is not None
@@ -1746,7 +1803,7 @@ def _has_owned_hook_in_block(text: str) -> bool:
 
 def _owned_hook_custom_keys(text: str) -> frozenset[str]:
     lines = text.splitlines(keepends=True)
-    owned = {"sarj-standards-check", "sarj-standards-drift"}
+    owned = {"repo-standards-commit-message", "sarj-standards-check", "sarj-standards-drift"}
     found: set[str] = set()
     for index, line in enumerate(lines):
         match = re.match(
@@ -1772,7 +1829,7 @@ def _canonicalize_local_hook_block(
     insert_canonical: bool,
 ) -> str:
     lines = text.splitlines(keepends=True)
-    owned = {"sarj-standards-check", "sarj-standards-drift"}
+    owned = {"repo-standards-commit-message", "sarj-standards-check", "sarj-standards-drift"}
     spans: list[tuple[int, int]] = []
     for index, line in enumerate(lines):
         match = re.match(
@@ -1823,6 +1880,14 @@ def _precommit_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
         f"{field}require_serial: true\n"
         f"{field}files: '{hooks.PRECOMMIT_FILES_PATTERN}'\n"
         f"{field}stages: [pre-commit]\n"
+        f"{item}- id: repo-standards-commit-message\n"
+        f"{field}name: repo standards -- managed commit message\n"
+        f"{field}entry: {runner_prefix} commit-message\n"
+        f"{field}language: system\n"
+        f"{field}always_run: true\n"
+        f"{field}pass_filenames: true\n"
+        f"{field}require_serial: true\n"
+        f"{field}stages: [commit-msg]\n"
     )
 
 
@@ -2118,6 +2183,41 @@ def _launcher_options_are_valid(
             continue
         return False
     return True
+
+
+def commit_policy_github_workflow() -> str:
+    return """\
+# Managed by code-standards commit policy; regenerate with `code-standards setup`.
+name: Commit policy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commit-policy-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commit-policy-v1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: sarj-ai/repo-standards/pull-request-commits@bb839628f620be1a6e6c67eea6b5b12ba750e13e # v5.11.1
+"""
 
 
 def _migrate_legacy_workflow_gate(path: Path) -> str | None:

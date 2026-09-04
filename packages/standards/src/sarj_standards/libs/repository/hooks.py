@@ -14,7 +14,7 @@ from typing import Final
 from sarj_standards.libs.adoption import transaction
 
 
-_VERSION: Final = "2.1.10"
+_VERSION: Final = "2.1.12"
 _ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"})
 
 
@@ -91,7 +91,11 @@ def _native_binary() -> Path:
 
 
 def _hook_paths(root: Path) -> list[Path]:
-    return [path for hook_name in ("pre-commit", "pre-push") if (path := _hook_path(root, hook_name)).is_file()]
+    return [
+        path
+        for hook_name in ("pre-commit", "pre-push", "commit-msg")
+        if (path := _hook_path(root, hook_name)).is_file()
+    ]
 
 
 def _hook_path(root: Path, hook_name: str) -> Path:
