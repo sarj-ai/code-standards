@@ -808,7 +808,9 @@
       "task": "rule-audit/sql/no-offset-pagination",
       "family": "sql",
       "ruleId": "no-offset-pagination",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews agreed the existing rule was too broad and too shallow, then adversarially reviewed the replacement. The focused suite has 76 parameter, multiline, expression, malformed-input, dialect, location, scope, and cursor cases. A final exact scan of 2,087 tracked SQL files (10,964,109 bytes) across 142 repositories and worktrees produced zero raw or content-distinct findings and zero read errors in 32.611 seconds, so the rule remains warning-only.",
+      "outcome": "Kept the stable no-offset-pagination selector and aligned SARJ107 with the calibrated Python policy: only complete dynamic driver-offset expressions in credible SELECT queries are reported, while fixed ordinals, migrations, generated paths, tests, fixtures, snapshots, quoted identifiers, comments, data strings, stored bodies, bare variables, malformed clauses, and ambiguous templates are preserved. Added absolute source mapping, precise dollar-quote masking, closed parenthesized, arithmetic, CAST, COALESCE, SQL-standard, and MySQL comma-form detection, and rewrote the UI around a direction-matched stable composite cursor with a unique tie-breaker and an explicit bounded or random-access suppression path."
     },
     {
       "task": "rule-audit/sql/no-pg-enum",
