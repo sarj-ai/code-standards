@@ -38,6 +38,10 @@ if TYPE_CHECKING:
         ),
         ("value = 1  # sarj-noqa: SARJ061, SARJ096\n", "value = 1  # sarj-noqa: SARJ096\n"),
         ("# sarj-noqa: SARJ061\nvalue = 1\n", "value = 1\n"),
+        (
+            "timeout: float  # ruff: ignore[async-function-with-timeout]  # sarj-noqa: SARJ061 -- protocol\n",
+            "timeout: float  # ruff: ignore[async-function-with-timeout]\n",
+        ),
     ],
 )
 def test_plans_unambiguous_retired_suppression_migrations(tmp_path: Path, source: str, expected: str) -> None:
@@ -372,6 +376,29 @@ def test_duplicate_bulk_suppression_keys_are_not_lossily_migrated(tmp_path: Path
 
     assert retired_suppressions.plan((target,)) == ()
     assert retired_suppressions.reference_counts(target, source) == {"@sarj/jsdoc-restates-signature": 2}
+
+
+def test_migrates_retired_ratchet_suppression_budgets(tmp_path: Path) -> None:
+    target = tmp_path / "suppression-baseline.json"
+    target.write_text(
+        "{\n"
+        '  "schema_version": 1,\n'
+        '  "codes": {\n'
+        '    "sarj-noqa:SARJ061": 84,\n'
+        '    "sarj-noqa:SARJ208": 2,\n'
+        '    "sarj-noqa:SARJ204": 5,\n'
+        '    "noqa:ARG001": 3\n'
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    rewrites = retired_suppressions.plan((target,))
+
+    assert len(rewrites) == 1
+    assert rewrites[0].contents == (
+        '{\n  "schema_version": 1,\n  "codes": {\n    "sarj-noqa:SARJ204": 5,\n    "noqa:ARG001": 3\n  }\n}\n'
+    )
 
 
 @pytest.mark.parametrize(
