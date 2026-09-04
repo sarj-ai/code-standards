@@ -578,7 +578,9 @@
       "task": "rule-audit/python/prefer-walrus-stream-loop",
       "family": "python",
       "ruleId": "prefer-walrus-stream-loop",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 12 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule produced 26 broad-fleet findings, all plausible style opportunities, and zero popular-corpus findings, but adversarial probes found behavior-changing None-sentinel guidance, invalid empty-body rewrites, guard-else loss, arbitrary non-call and yield producers, type-comment loss, generated and test noise, and unreadable multiline or overlong rewrites. Post-change validation ran 28 focused cases. The broad fleet retained 22 of 22 valid findings across 17 files with zero scan errors, while the popular corpus remained clean; the scan fell from 31.499 to 3.886 seconds. Bulbul retained one compact fetchmany finding and intentionally dropped one multiline batch-fetch suggestion.",
+      "outcome": "Retained the compatible prefer-walrus-stream-loop selector because Python aliases do not resolve at runtime, but rewrote the UI around the accurate compact producer-and-sentinel shape and staged SARJ077 as a style warning. The matcher now requires a call or awaited call, a nonempty rewritten body, no loop or guard else, physical single-line adjacency, no attached or intervening comments, and a rewrite within 100 columns; tests, generated files, type comments, multiline producers, and non-call expressions are excluded. None and reversed-None guards receive exact is-not-None guidance so falsy non-None values remain valid. A lexical candidate gate reduced broad-scan time by 87.7 percent. Ruff has no owner; Pylint R6103 is adjacent but does not own while-sentinel loops."
     },
     {
       "task": "rule-audit/python/preserve-declared-nominal-id",

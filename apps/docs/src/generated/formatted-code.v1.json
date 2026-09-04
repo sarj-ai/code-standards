@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "04f55686bf50736b0a66f21478c32e95f2bc8ca3a58221c699541aa24967c6c4",
+  "catalogSha256": "81444152bbc17f04e6dda29838424e5763082aa1b1d4c2b3bbc5da023ba00b9a",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6411,6 +6411,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/messages.py",
+              "source": "while (message := receive()) is not None:\n    consume(message)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/messages.py",
+          "id": "conditional-none-sentinel-binding",
+          "outcome": "accept",
+          "scenarioId": "none-sentinel",
+          "title": "Named-expression loop keeps accepting falsy messages"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/stream.py",
               "source": "while chunk := stream.read(8192):\n    process(chunk)\n"
             }
@@ -6421,6 +6436,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Stream loop binds in its condition"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/messages.py",
+              "source": "while True:\n    message = receive()\n    if message is None:\n        break\n    consume(message)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/messages.py",
+          "id": "explicit-none-sentinel-break",
+          "outcome": "reject",
+          "scenarioId": "none-sentinel",
+          "title": "Producer loop preserves a None sentinel"
         },
         {
           "expectedCount": 1,

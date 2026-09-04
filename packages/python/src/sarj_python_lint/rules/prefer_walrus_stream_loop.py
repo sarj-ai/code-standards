@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import ast
-from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, override
+from pathlib import Path, PurePosixPath
+import re
+from typing import ClassVar, Literal, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -17,51 +18,30 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
-_MIN_BODY_LEN = 2
-
-
-def _is_constant_true(node: ast.AST) -> bool:
-    return (isinstance(node, ast.Constant) and node.value is True) or (isinstance(node, ast.Name) and node.id == "True")
-
-
-def _is_falsy_break_check(test_node: ast.AST, var_name: str) -> bool:
-    if (
-        isinstance(test_node, ast.UnaryOp)
-        and isinstance(test_node.op, ast.Not)
-        and isinstance(test_node.operand, ast.Name)
-        and test_node.operand.id == var_name
-    ):
-        return True
-    if (
-        isinstance(test_node, ast.Compare)
-        and isinstance(test_node.left, ast.Name)
-        and test_node.left.id == var_name
-        and len(test_node.ops) == 1
-        and isinstance(test_node.ops[0], ast.Is)
-    ):
-        right = test_node.comparators[0]
-        if isinstance(right, ast.Constant) and right.value is None:
-            return True
-    return False
+_LOOP_CANDIDATE_RE = re.compile(r"\bwhile\b[^\n:]*\bTrue\b[^\n:]*:")
+_MIN_BODY_LEN = 3
+_MAX_REWRITE_COLUMNS = 100
 
 
 class PreferWalrusStreamLoop(Rule):
     id: str = "prefer-walrus-stream-loop"
     code: str = "SARJ077"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Bind each stream value in the `while` condition instead of using an explicit break.",
-        rationale="A named-expression loop states the read, sentinel check, and iteration condition in one place.",
-        remediation="Replace the leading assignment and immediate sentinel break with `while (value := read()):`.",
-        category=RuleCategory.MAINTAINABILITY,
+        summary="Collapse a compact producer assignment and immediate sentinel break into a named-expression loop.",
+        rationale="A named-expression loop can state a repeated producer call and its termination condition together.",
+        remediation=(
+            "For `if not value: break`, use `while (value := read()):`. "
+            "For `if value is None: break`, preserve the sentinel with `while (value := read()) is not None:`."
+        ),
+        category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only `while True` loops beginning with a simple assignment and an immediate falsy or `None` break are analyzed.",
-            "Loops with an `else`, complex assignment targets, or additional work before the sentinel check are excluded.",
+            "Only `while True` loops beginning with a single-line call assignment and a physically adjacent falsy or `None` break are analyzed.",
+            "Tests, generated files, comments attached to or separating the matched statements, blank lines, type comments, rewrites over 100 columns, loop or guard `else` clauses, and empty rewritten bodies are excluded.",
+            "The producer receiver is not resolved; calls and awaited calls are accepted when the surrounding loop shape is otherwise exact.",
         ),
         examples=(
             RuleExample(
@@ -89,11 +69,45 @@ class PreferWalrusStreamLoop(Rule):
                 files=(
                     ExampleFile.python(
                         "app/stream.py",
-                        "while chunk := stream.read(8192):\n    process(chunk)\n",
+                        "while (chunk := stream.read(8192)):\n    process(chunk)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/stream.py"),
                 expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-none-sentinel-break",
+                title="Producer loop preserves a None sentinel",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/messages.py",
+                        "while True:\n"
+                        "    message = receive()\n"
+                        "    if message is None:\n"
+                        "        break\n"
+                        "    consume(message)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/messages.py"),
+                expected_count=1,
+                scenario="none-sentinel",
+                public=True,
+            ),
+            RuleExample(
+                example_id="conditional-none-sentinel-binding",
+                title="Named-expression loop keeps accepting falsy messages",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/messages.py",
+                        "while (message := receive()) is not None:\n    consume(message)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/messages.py"),
+                expected_count=0,
+                scenario="none-sentinel",
                 public=True,
             ),
         ),
@@ -102,6 +116,13 @@ class PreferWalrusStreamLoop(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        if (
+            _LOOP_CANDIDATE_RE.search(source) is None
+            or "break" not in source
+            or is_test_path(path)
+            or is_generated(path, source)
+        ):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -110,7 +131,7 @@ class PreferWalrusStreamLoop(Rule):
         diags: list[Diagnostic] = []
 
         for node in nodes(tree, ast.While):
-            if not _is_constant_true(node.test) or node.orelse or len(node.body) < _MIN_BODY_LEN:
+            if not (isinstance(node.test, ast.Constant) and node.test.value is True) or node.orelse or len(node.body) < _MIN_BODY_LEN:
                 continue
 
             first_stmt = node.body[0]
@@ -120,19 +141,30 @@ class PreferWalrusStreamLoop(Rule):
                 not isinstance(first_stmt, ast.Assign)
                 or len(first_stmt.targets) != 1
                 or not isinstance(first_stmt.targets[0], ast.Name)
+                or first_stmt.type_comment is not None
+                or not _is_producer_call(first_stmt.value)
             ):
                 continue
             var_name = first_stmt.targets[0].id
 
-            if (
-                isinstance(second_stmt, ast.If)
-                and len(second_stmt.body) == 1
-                and isinstance(second_stmt.body[0], ast.Break)
-                and _is_falsy_break_check(second_stmt.test, var_name)
+            if not isinstance(second_stmt, ast.If):
+                continue
+            sentinel = _sentinel_kind(second_stmt, var_name)
+            if sentinel is not None and _is_compact_physical_pair(
+                first_stmt,
+                second_stmt,
+                var_name,
+                source=source,
+                source_lines=source_lines,
+                sentinel=sentinel,
             ):
                 line = first_stmt.lineno
                 col = first_stmt.col_offset + 1
                 if not is_suppressed(source_lines, line, self.code):
+                    value = ast.get_source_segment(source, first_stmt.value)
+                    if value is None:  # pragma: no cover - compact source-backed assignment.
+                        continue
+                    suffix = " is not None" if sentinel == "none" else ""
                     diags.append(
                         Diagnostic(
                             path=path,
@@ -140,10 +172,78 @@ class PreferWalrusStreamLoop(Rule):
                             col=col,
                             code=self.code,
                             message=(
-                                f"Use `while ({var_name} := ...)` loop condition instead of `while True:` "
-                                f"with an explicit `break`."
+                                f"Collapse the leading assignment and sentinel break into "
+                                f"`while ({var_name} := {value}){suffix}:`."
                             ),
                         )
                     )
 
         return sorted(diags, key=lambda d: (d.line, d.col))
+
+
+def _is_producer_call(value: ast.expr) -> bool:
+    return isinstance(value, ast.Call) or (isinstance(value, ast.Await) and isinstance(value.value, ast.Call))
+
+
+def _sentinel_kind(statement: ast.stmt, var_name: str) -> Literal["falsy", "none"] | None:
+    if not (
+        isinstance(statement, ast.If)
+        and not statement.orelse
+        and len(statement.body) == 1
+        and isinstance(statement.body[0], ast.Break)
+    ):
+        return None
+    test = statement.test
+    if (
+        isinstance(test, ast.UnaryOp)
+        and isinstance(test.op, ast.Not)
+        and isinstance(test.operand, ast.Name)
+        and test.operand.id == var_name
+    ):
+        return "falsy"
+    if not (isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Is)):
+        return None
+    left, right = test.left, test.comparators[0]
+    match left, right:
+        case ast.Name(id=name), ast.Constant(value=None) if name == var_name:
+            return "none"
+        case ast.Constant(value=None), ast.Name(id=name) if name == var_name:
+            return "none"
+        case _:
+            pass
+    return None
+
+
+def _is_compact_physical_pair(
+    assignment: ast.Assign,
+    guard: ast.If,
+    var_name: str,
+    *,
+    source: str,
+    source_lines: list[str],
+    sentinel: Literal["falsy", "none"],
+) -> bool:
+    break_statement = guard.body[0]
+    if not isinstance(break_statement, ast.Break):  # pragma: no cover - established by _sentinel_kind.
+        return False
+    if (
+        assignment.end_lineno != assignment.lineno
+        or guard.test.end_lineno != guard.lineno
+        or guard.lineno != assignment.lineno + 1
+        or break_statement.lineno != guard.lineno + 1
+    ):
+        return False
+    if any(_has_trailing_comment(node, source_lines) for node in (assignment, guard.test, break_statement)):
+        return False
+    value = ast.get_source_segment(source, assignment.value)
+    if value is None:
+        return False
+    suffix = " is not None" if sentinel == "none" else ""
+    proposed = f"{' ' * guard.col_offset}while ({var_name} := {value}){suffix}:"
+    return len(proposed) <= _MAX_REWRITE_COLUMNS
+
+
+def _has_trailing_comment(node: ast.stmt | ast.expr, source_lines: list[str]) -> bool:
+    if node.end_lineno is None or node.end_col_offset is None:
+        return True
+    return "#" in source_lines[node.end_lineno - 1][node.end_col_offset :]
