@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e2d79581469e0ee5da478b8f6e6092a6502f72d7b5e1b9279c226ed54834d15d",
+  "catalogSha256": "25873d455abe7604482f16388e18b3c7aa85eb85e99e6c200148cf0f3e73e220",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -7024,7 +7024,7 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def test_widget_renders():\n    assert render(widget)\n"
+              "source": "def test_widget_renders():\n    \"\"\"Without the stable key, retries would render the widget twice.\"\"\"\n    assert render(widget)\n"
             }
           ],
           "fixedFiles": [],
@@ -7032,7 +7032,7 @@
           "id": "test-regression-context",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Redundant docstring removed"
+          "title": "Docstring records a hidden failure mode"
         }
       ],
       "optionsSchemaSource": null
