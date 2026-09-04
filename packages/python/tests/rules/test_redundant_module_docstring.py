@@ -28,18 +28,18 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 @pytest.mark.parametrize(
     ("path", "docstring"),
     [
-        ("browser/element.py", "Element class for element operations."),
-        ("input/mouse.py", "Mouse class for mouse operations."),
-        ("pydantic/warnings.py", "Pydantic-specific warnings."),
-        ("pydantic/errors.py", "Pydantic-specific errors."),
-        ("pydantic/validate_call_decorator.py", "Decorator for validating function calls."),
-        ("browser/actor/page.py", "Page class for page-level operations."),
-        ("browser/actor/utils.py", "Utility functions for actor operations."),
-        ("_pytest/cacheprovider.py", "Implementation of the cache provider."),
+        ("browser/element.py", "Element module."),
+        ("input/mouse.py", "Mouse module."),
+        ("pydantic/warnings.py", "Warnings module."),
+        ("pydantic/errors.py", "Errors module."),
+        ("pydantic/validate_call_decorator.py", "Validate call decorator module."),
+        ("browser/actor/page.py", "Page actor module."),
+        ("browser/actor/utils.py", "Actor utilities."),
+        ("_pytest/cacheprovider.py", "Cache provider implementation."),
         ("celery/utils/log.py", "Logging utilities."),
-        ("scrapy/utils/signal.py", "Helper functions for working with signals."),
-        ("scrapy/utils/template.py", "Helper functions for working with templates."),
-        ("prefect/client/utilities.py", "Utilities for working with clients."),
+        ("scrapy/utils/signal.py", "Signal utilities."),
+        ("scrapy/utils/template.py", "Template utilities."),
+        ("prefect/client/utilities.py", "Client utilities."),
     ],
 )
 def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
@@ -47,9 +47,9 @@ def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ099"
-    assert findings[0].severity is Severity.ERROR
+    assert findings[0].severity is Severity.WARNING
     assert (findings[0].line, findings[0].col) == (1, 1)
-    assert "file path" in findings[0].message
+    assert "filename" in findings[0].message
 
 
 @pytest.mark.parametrize(
@@ -155,20 +155,128 @@ def test_class_docstrings_are_out_of_scope() -> None:
     assert _check(source) == []
 
 
-def test_cli_reports_blocking_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_reports_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "element.py"
-    target.write_text('"""Element class for element operations."""\n\nVALUE = 1\n', encoding="utf-8")
+    target.write_text('"""Element module."""\n\nVALUE = 1\n', encoding="utf-8")
 
-    assert main(["check", "--rule", "redundant-module-docstring", str(target)]) == 1
-    assert "SARJ099 warning:" not in capsys.readouterr().out
+    assert main(["check", "--rule", "redundant-module-docstring", str(target)]) == 0
+    assert "SARJ099 warning:" in capsys.readouterr().out
 
 
 def test_exact_suppression_is_honored(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "element.py"
     target.write_text(
-        '"""Element class for element operations."""  # sarj-noqa: SARJ099 — public docs\n\nVALUE = 1\n',
+        '"""Element module."""  # sarj-noqa: SARJ099 — public docs\n\nVALUE = 1\n',
         encoding="utf-8",
     )
 
     assert main(["check", "--rule", "redundant-module-docstring", str(target)]) == 0
     assert not capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "DESCRIPTION = __doc__",
+        "PARSER = argparse.ArgumentParser(description=__doc__)",
+        "RESULT = docopt.docopt(__doc__)",
+        '__all__ = ["__doc__"]',
+        'DESCRIPTION = globals()["__doc__"]',
+        'DESCRIPTION = vars()["__doc__"]',
+        "DESCRIPTION = sys.modules[__name__].__doc__",
+        'DESCRIPTION = getattr(sys.modules[__name__], "__doc__")',
+    ],
+)
+def test_visible_module_docstring_consumer_is_exempt(consumer: str) -> None:
+    source = f'"""Logging utilities."""\n\n{consumer}\n'
+
+    assert _check(source, "celery/utils/log.py") == []
+
+
+def test_shebang_script_is_exempt() -> None:
+    source = '#!/usr/bin/env python3\n"""Logging utilities."""\n\nVALUE = 1\n'
+
+    assert _check(source, "scripts/log.py") == []
+
+
+@pytest.mark.parametrize(
+    "guard",
+    ['__name__ == "__main__"', '__name__ == "__main__" and ENABLED', '__name__ == "__main__" or FORCED'],
+)
+def test_main_guard_module_is_exempt(guard: str) -> None:
+    source = f'''\
+"""Logging utilities."""
+
+if {guard}:
+    run()
+'''
+
+    assert _check(source, "scripts/log.py") == []
+
+
+@pytest.mark.parametrize(
+    ("path", "docstring"),
+    [
+        ("input/output.py", "Output from input."),
+        ("input/output.py", "Input from output."),
+        ("source/target.py", "Source to target."),
+        ("source/target.py", "Target to source."),
+        ("primary/fallback.py", "Fallback when primary."),
+        ("client/server.py", "Server with client."),
+        ("server/client.py", "Client for server."),
+    ],
+)
+def test_relational_prose_is_preserved(path: str, docstring: str) -> None:
+    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
+
+
+@pytest.mark.parametrize("docstring", ["Current logging utilities.", "Default logging utilities."])
+def test_semantic_qualifier_is_preserved(docstring: str) -> None:
+    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', "celery/utils/log.py") == []
+
+
+@pytest.mark.parametrize("term", ["3", "سريع", "例外"])
+def test_numeric_or_non_latin_detail_is_preserved(term: str) -> None:
+    source = f'"""Logging utilities {term}."""\n\nVALUE = 1\n'
+
+    assert _check(source, "celery/utils/log.py") == []
+
+
+def test_number_present_in_filename_can_be_redundant() -> None:
+    assert len(_check('"""Protocol version 3."""\n\nVALUE = 1\n', "protocol_version_3.py")) == 1
+
+
+def test_compound_path_order_is_significant() -> None:
+    assert len(_check('"""Parent child module."""\n\nVALUE = 1\n', "parent_child.py")) == 1
+    assert _check('"""Child parent module."""\n\nVALUE = 1\n', "parent_child.py") == []
+
+
+@pytest.mark.parametrize(
+    ("path", "docstring"),
+    [
+        ("parent/parent_child.py", "Parent module."),
+        ("parent_pkg/child.py", "Child parent module."),
+        ("primary_fallback/selector.py", "Selector primary module."),
+    ],
+)
+def test_partial_path_component_is_preserved(path: str, docstring: str) -> None:
+    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
+
+
+def test_lowercase_compound_parent_is_reconstructed() -> None:
+    source = '"""Logging cache provider utilities."""\n\nVALUE = 1\n'
+
+    assert len(_check(source, "cacheprovider/log.py")) == 1
+
+
+@pytest.mark.parametrize("path", ["retry_سريع.py", "retry_例外.py", "سريع_retry.py"])
+def test_partial_mixed_script_filename_is_preserved(path: str) -> None:
+    assert _check('"""Retry module."""\n\nVALUE = 1\n', path) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "docstring"),
+    [("retry_سريع.py", "Retry سريع module."), ("retry_例外.py", "Retry 例外 module.")],
+)
+def test_complete_mixed_script_filename_can_be_redundant(path: str, docstring: str) -> None:
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n', path)) == 1

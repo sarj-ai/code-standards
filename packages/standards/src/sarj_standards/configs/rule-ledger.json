@@ -896,6 +896,13 @@
       "note": "Replace sarj-kwonly-same-type-params with sarj-require-keyword-only-swap-prone-params before upgrading."
     },
     {
+      "id": "module-docstring-restates-path",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "redundant-module-docstring",
+      "note": "Replace sarj-module-docstring-restates-path with sarj-redundant-module-docstring before upgrading."
+    },
+    {
       "id": "named-fixed-record-return",
       "kind": "python",
       "status": "renamed",

@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     is_suppressed,
     parse_or_none,
 )
@@ -158,6 +159,7 @@ class RedundantDocstring(Rule):
                 col=expr.col_offset + 1,
                 code=self.code,
                 message=self.description,
+                severity=Severity.WARNING,
             )
         )
 

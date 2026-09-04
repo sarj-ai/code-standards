@@ -334,5 +334,11 @@ def test_specific_existing_docstring_diagnostic_wins_precedence(
     raw = [*_check(source, path), *specific_rule.check(Path(path), source)]
 
     findings = deduplicate_diagnostics(raw, source=source)
+    specific = [finding for finding in raw if finding.code == specific_code]
+    expected = (
+        [specific_code]
+        if any(finding.severity is Severity.ERROR for finding in specific)
+        else ["SARJ420", specific_code]
+    )
 
-    assert [finding.code for finding in findings] == [specific_code]
+    assert [finding.code for finding in findings] == expected

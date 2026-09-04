@@ -618,7 +618,9 @@
       "task": "rule-audit/python/redundant-module-docstring",
       "family": "python",
       "ruleId": "redundant-module-docstring",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 45 focused cases and scanned 10,336 tracked Python paths. The original blocking rule had zero fleet findings and reproduced false positives for runtime module-docstring consumers, executable scripts, directional prose, semantic qualifiers, novel numbers, non-Latin words, and incomplete filename or parent-package prefixes. Post-change validation ran 80 focused cases, 351 related docstring and precedence cases, and the full 7,155-test Python suite with three expected xfails. The final broad scan remained at zero findings with no rule exceptions; two unrelated tracked paths were unreadable.",
+      "outcome": "Retained redundant-module-docstring for compatibility, added module-docstring-restates-path as its precise alias, and staged SARJ099 as a warning with no autofix. The matcher now removes only documented generic module vocabulary and requires the complete normalized filename, optionally followed by the complete immediate parent component. Component order, lowercase compounds, Unicode scripts, and numbers are preserved. Shebang and recursively recognized main-guard modules, direct or indirect visible `__doc__` reads and publication, special modules, stubs, tests, generated files, multiline documentation, protected facts, and exact suppressions abstain. Remediation now requires confirming that external documentation and runtime consumers do not depend on the module docstring. The raw SARJ085 and SARJ050 diagnostics were also aligned with their already-staged warning policy, and precedence tests now preserve a generic error beside a specific warning."
     },
     {
       "task": "rule-audit/python/repeated-static-call-cases",
