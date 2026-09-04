@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 
 _SELECTOR = "python:no-string-concat-in-loop"
+_ERROR_SELECTOR = "python:no-cors-wildcard-with-credentials"
 
 
 class _EvaluationResult(NamedTuple):
@@ -271,7 +272,7 @@ def test_observe_rejects_a_rule_that_is_not_warning_stage(
             str(tmp_path),
             "observe",
             "--rule",
-            _SELECTOR,
+            _ERROR_SELECTOR,
             "--format",
             "json",
             "app/render.py",
@@ -281,7 +282,7 @@ def test_observe_rejects_a_rule_that_is_not_warning_stage(
 
     assert status == 2
     assert "warning-stage rules only" in captured.err
-    assert f"next: code-standards maintain rules stage-warning {_SELECTOR}" in captured.err
+    assert f"next: code-standards maintain rules stage-warning {_ERROR_SELECTOR}" in captured.err
 
 
 @pytest.mark.parametrize(
