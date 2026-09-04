@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "25873d455abe7604482f16388e18b3c7aa85eb85e99e6c200148cf0f3e73e220",
-  "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
+  "catalogSha256": "d65e65f11eff38063e4e0f72b1522d43aae2415549803f5f62b61018bcfbf206",
+  "cliSha256": "03a003e18ad8ccd5fdbc94b83f32b43764ae9a01f2c9b8ae3e53710c7b401bbf",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3923,6 +3923,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:complex-postgres-query-requires-architecture-review": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "import psycopg\n\ncursor.execute(\n    \"WITH ranked AS (SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rank FROM call), picked AS (SELECT id FROM ranked WHERE rank <= %s) SELECT due.id FROM call AS due JOIN picked ON picked.id = due.id FOR UPDATE OF due SKIP LOCKED\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "named-queue-stages",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A queue claim exposes ranking as named stages"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "import psycopg\n\ncursor.execute(\n    \"SELECT due.id FROM call AS due JOIN (SELECT * FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY id) AS rank FROM call) ranked WHERE rank <= %s) picked ON picked.id = due.id FOR UPDATE OF due SKIP LOCKED\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "ranked-queue-claim",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A queue claim hides ranking inside nested derived relations"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:defect-xfail-requires-explicit-strict": {
       "examples": [
         {
@@ -4215,7 +4250,7 @@
           "files": [
             {
               "path": "tests/test_policy.py",
-              "source": "def test_policy():\n    source = Path(\"main.tf\").read_text()\n    assert \"prevent_destroy = true\" in source\n"
+              "source": "from pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"main.tf\").read_text()\n    assert \"prevent_destroy = true\" in source\n"
             }
           ],
           "fixedFiles": [],
@@ -5025,6 +5060,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-psycopg-execution-outside-injected-owner": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/retry_rows.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def mark(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await conn.execute(\"UPDATE call SET retry = true\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry_rows.py",
+          "id": "free-psycopg-helper",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not execute persistence operations in a free helper"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nclass Store:\n    def __init__(self, pool: AsyncConnectionPool):\n        self.pool = pool\n\n    async def save(self):\n        async with self.pool.connection() as conn:\n            await conn.execute(\"UPDATE call SET retry = true\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "injected-store-psycopg",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Execute through an injected persistence owner"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-random-uuid-in-sql": {
       "examples": [
         {
@@ -5091,6 +5161,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A test reads through the owning store API"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-raw-source-text-test-oracle": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "from pathlib import Path\n\nimport yaml\n\n\ndef test_policy():\n    workflow = yaml.safe_load(Path(\"workflow.yml\").read_text())\n    assert workflow[\"permissions\"][\"contents\"] == \"read\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "parsed-workflow-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Assert on parsed workflow behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "from pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "workflow-substring-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not prove workflow behavior with a substring"
         }
       ],
       "optionsSchemaSource": null
@@ -7033,76 +7138,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Docstring records a hidden failure mode"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:source-coupled-test": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_policy.py",
-              "source": "def test_policy():\n    workflow = yaml.safe_load(Path(\"workflow.yml\").read_text())\n    assert verify(workflow) == []\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_policy.py",
-          "id": "parsed-workflow-contract",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Assert on parsed workflow behavior"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_policy.py",
-              "source": "def test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_policy.py",
-          "id": "workflow-substring-contract",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not prove workflow behavior with a substring"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:sql-requires-injected-pool-owner": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/fixtures/retry_rows.py",
-              "source": "async def seed(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await conn.execute(\"UPDATE call SET retry = true\")\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/fixtures/retry_rows.py",
-          "id": "fixture-pool-sql",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A free fixture helper executes through a pool"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "class Store:\n    def __init__(self, pool: AsyncConnectionPool):\n        self.pool = pool\n\n    async def save(self):\n        async with self.pool.connection() as conn:\n            await conn.execute(\"UPDATE call SET retry = true\")\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "injected-store-sql",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A store executes through its injected pool"
         }
       ],
       "optionsSchemaSource": null
