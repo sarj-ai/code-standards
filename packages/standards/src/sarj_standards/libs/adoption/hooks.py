@@ -7,11 +7,15 @@ import shlex
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 import yaml
+from yaml.constructor import ConstructorError
+from yaml.resolver import BaseResolver
 
 from . import launcher, manifest
 
 
 if TYPE_CHECKING:
+    from yaml.nodes import MappingNode
+
     from .manifest import HookManager
 
 
@@ -36,6 +40,55 @@ _OFFICIAL_STANDARDS_REPO: Final = re.compile(
 class LefthookWrite(NamedTuple):
     path: Path
     contents: str
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Safe YAML loader that rejects duplicate resolved keys at every depth."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeyLoader,
+    node: MappingNode,
+    deep: bool = False,  # ruff: ignore[boolean-type-hint-positional-argument,boolean-default-value-positional-argument] -- PyYAML callback signature.
+) -> dict[object, object]:
+    loader.flatten_mapping(node)
+    mapping: dict[object, object] = {}
+    for key_node, value_node in node.value:  # pyright: ignore[reportAny]
+        key: object = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            key_node,  # pyright: ignore[reportAny]
+            deep=deep,
+        )
+        try:
+            duplicate = key in mapping
+        except TypeError as exc:
+            context = "while constructing a mapping"
+            problem = "found an unhashable mapping key"
+            raise ConstructorError(
+                context,
+                node.start_mark,
+                problem,
+                key_node.start_mark,  # pyright: ignore[reportAny]
+            ) from exc
+        if duplicate:
+            context = "while constructing a mapping"
+            problem = f"found duplicate key {key!r}"
+            raise ConstructorError(
+                context,
+                node.start_mark,
+                problem,
+                key_node.start_mark,  # pyright: ignore[reportAny]
+            )
+        mapping[key] = loader.construct_object(  # pyright: ignore[reportUnknownMemberType]
+            value_node,  # pyright: ignore[reportAny]
+            deep=deep,
+        )
+    return mapping
+
+
+_UniqueKeyLoader.add_constructor(
+    BaseResolver.DEFAULT_MAPPING_TAG,  # pyright: ignore[reportAny]
+    _construct_unique_mapping,
+)
 
 
 class PrecommitRepoBlock(NamedTuple):
@@ -82,6 +135,57 @@ def precommit_repo_blocks(text: str) -> tuple[PrecommitRepoBlock, ...]:
         repository = _repository_scalar(match.group("value"))
         blocks.append(PrecommitRepoBlock(start, end, item_indent, repository, text[start:end]))
     return tuple(blocks)
+
+
+def insert_precommit_repository(text: str, block: str) -> str:
+    newline = "\r\n" if "\r\n" in text else "\n"
+    rendered = block.replace("\n", newline)
+    inline = re.search(
+        r"(?m)^repos:\s*\[\s*\]\s*(?P<comment>#.*)?(?P<newline>\r?\n|$)",
+        text,
+    )
+    if inline is not None:
+        comment = inline.group("comment")
+        header = "repos:" if comment is None else f"repos: {comment}"
+        updated = text[: inline.start()] + header + newline + rendered + text[inline.end() :]
+        validate_precommit_configuration(updated)
+        return updated
+    lines = text.splitlines(keepends=True)
+    section = _precommit_repo_section(lines)
+    if section is None:
+        header = re.search(r"(?m)^repos:\s*(?:#.*)?(?P<newline>\r?\n|$)", text)
+        if header is None:
+            msg = "pre-commit configuration has no block-style top-level repos sequence"
+            raise ValueError(msg)
+        updated = text[: header.end()] + rendered + text[header.end() :]
+        validate_precommit_configuration(updated)
+        return updated
+    offsets = _line_offsets(lines)
+    insertion = offsets[section.section_end] if section.section_end < len(offsets) else len(text)
+    prefix = text[:insertion]
+    separator = "" if not prefix or prefix.endswith(("\n", "\r")) else newline
+    updated = prefix + separator + rendered + text[insertion:]
+    validate_precommit_configuration(updated)
+    return updated
+
+
+def validate_precommit_configuration(text: str) -> None:
+    loader = _UniqueKeyLoader(text)
+    try:
+        parsed: object = loader.get_single_data()  # pyright: ignore[reportAny] -- parser boundary
+    except yaml.YAMLError as exc:
+        msg = f"pre-commit configuration is not valid YAML: {exc}"
+        raise ValueError(msg) from exc
+    finally:
+        loader.dispose()  # pyright: ignore[reportUnknownMemberType]
+    document = manifest.as_table(parsed)
+    if not document and text.strip():
+        msg = "pre-commit configuration must be a YAML mapping"
+        raise ValueError(msg)
+    repositories = document.get("repos")
+    if repositories is not None and not isinstance(repositories, list):
+        msg = "pre-commit configuration top-level repos must be a list"
+        raise ValueError(msg)
 
 
 def _line_offsets(lines: list[str]) -> list[int]:
@@ -218,7 +322,7 @@ def precommit_runs_commit_message_check(root: Path) -> bool:
         return False
     candidate = candidates[0]
     return (
-        _runs_commit_message_check(candidate.get("entry"))
+        _is_canonical_precommit_commit_message(candidate.get("entry"))
         and candidate.get("language") == "system"
         and candidate.get("always_run") is True
         and candidate.get("pass_filenames") is True
@@ -259,7 +363,11 @@ def lefthook_runs_commit_message_check(root: Path) -> bool:
     return values.count(_canonical_commit_message_command(path.parent)) == 1
 
 
-def wire_lefthook_commit_message_check(root: Path, *, contents: str | None = None) -> LefthookWrite:
+def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- parser-safe migration keeps semantic and textual state explicit.
+    root: Path,
+    *,
+    contents: str | None = None,
+) -> LefthookWrite:
     path = lefthook_config(root)
     if path is None:
         msg = "--hooks lefthook requires lefthook.yml or lefthook.yaml"
@@ -286,6 +394,20 @@ def wire_lefthook_commit_message_check(root: Path, *, contents: str | None = Non
         else:
             msg = f"cannot safely wire {path.name}: expected block-style commit-msg commands or jobs"
             raise ValueError(msg)
+        values = tuple(value for value in _lefthook_run_values_from_entries(entries) if _runs_commit_message_check(value))
+        if len(values) > 1:
+            msg = f"cannot safely wire {path.name}: multiple commit-message Standards commands are active"
+            raise ValueError(msg)
+        if values:
+            replacement = _replace_lefthook_run(
+                text,
+                old=values[0],
+                new=_canonical_commit_message_command(root),
+            )
+            if replacement is None:
+                msg = f"cannot safely wire {path.name}: commit-message Standards command is not a scalar run value"
+                raise ValueError(msg)
+            return LefthookWrite(path, replacement)
         block_match, section_end = _locate_block(path, text, layout, hook_name="commit-msg")
         name = (
             "repo-standards-commit-message"
@@ -460,8 +582,25 @@ def _runs_commit_message_check(value: object) -> bool:
         tokens = shlex.split(value)
     except ValueError:
         return False
-    prefix = launcher.repository_argv()
-    return tuple(tokens[: len(prefix)]) == prefix and tokens[len(prefix) :] == ["commit-message"]
+    prefixes = (
+        launcher.repository_argv(),
+        launcher.argv(version=manifest.adopted_version()),
+    )
+    return any(
+        tuple(tokens[: len(prefix)]) == prefix
+        and tokens[len(prefix) :] in (["commit-message"], ["commit-message", "{1}"])
+        for prefix in prefixes
+    )
+
+
+def _is_canonical_precommit_commit_message(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        return False
+    return tuple(tokens) == (*launcher.argv(version=manifest.adopted_version()), "commit-message")
 
 
 def _is_standards_bootstrap_argv(tokens: list[str]) -> bool:
@@ -479,7 +618,7 @@ def _is_standards_bootstrap_argv(tokens: list[str]) -> bool:
 def _canonical_lefthook_command(root: Path | None = None) -> str:
     if root is not None and (root / "packages" / "standards" / "pyproject.toml").is_file():
         return (
-            "uv run --project packages/standards --frozen code-standards check --staged "
+            "uv run --no-config --project packages/standards --frozen code-standards check --staged "
             "--trust-repository-code -- {staged_files}"
         )
     return f"{launcher.repository_command()} check --staged --trust-repository-code -- {{staged_files}}"
@@ -487,8 +626,9 @@ def _canonical_lefthook_command(root: Path | None = None) -> str:
 
 def _canonical_commit_message_command(root: Path | None = None) -> str:
     if root is not None and (root / "packages" / "standards" / "pyproject.toml").is_file():
-        return "uv run --project packages/standards --frozen code-standards commit-message {1}"
-    return f"{launcher.repository_command()} commit-message {{1}}"
+        return "uv run --no-config --project packages/standards --frozen code-standards commit-message {1}"
+    prefix = shlex.join(launcher.argv(version=manifest.adopted_version()))
+    return f"{prefix} commit-message {{1}}"
 
 
 def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None = None) -> list[str]:

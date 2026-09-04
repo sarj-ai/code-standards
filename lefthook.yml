@@ -26,7 +26,7 @@ pre-commit:
         drifted from its packaged source. Fix the reported path and retry.
 
     standards:
-      run: uv run --project packages/standards --frozen code-standards check --staged --trust-repository-code -- {staged_files}
+      run: uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code -- {staged_files}
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:
@@ -41,10 +41,10 @@ pre-commit:
 commit-msg:
   commands:
     repo-standards-commit-message:
-      run: uv run --project packages/standards --frozen code-standards commit-message {1}
+      run: uv run --no-config --project packages/standards --frozen code-standards commit-message {1}
       fail_text: >-
-        Commit messages must use the managed Conventional Commit format.
-        Correct the reported subject and retry.
+        The managed commit-message check failed. Read its diagnostic and retry;
+        infrastructure failures are not message-policy findings.
 
 pre-push:
   commands:

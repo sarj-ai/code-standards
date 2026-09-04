@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- commands are fixed argv assembled from detected ecosystems.
 import sys
@@ -33,7 +34,9 @@ _GIT_SAFE_ENV = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
 _PRECOMMIT_HOOK_LABEL = "pre-commit hooks"
+_LEFTHOOK_HOOK_LABEL = "Lefthook repository hooks"
 _PRECOMMIT_UVX_MARKER = "# sarj-standards: cache-independent pinned pre-commit fallback"
+_MANAGED_UVX_PATH_MARKER = "# sarj-standards: uvx-path"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +97,7 @@ def install_commands(
     if (git_metadata.is_dir() or git_metadata.is_file()) and hook_manager == "pre-commit":
         hook_argv = (
             "uvx",
+            "--no-config",
             "--from",
             f"pre-commit=={distribution_version('pre-commit')}",
             "pre-commit",
@@ -105,6 +109,21 @@ def install_commands(
             "--install-hooks",
         )
         commands.append(Command(_PRECOMMIT_HOOK_LABEL, hook_argv, root))
+    elif (git_metadata.is_dir() or git_metadata.is_file()) and hook_manager == "lefthook":
+        commands.append(
+            Command(
+                "Lefthook repository hooks",
+                (
+                    _environment_binary("code-standards"),
+                    "--root",
+                    str(root),
+                    "maintain",
+                    "hooks",
+                    "install",
+                ),
+                root,
+            )
+        )
     return commands
 
 
@@ -355,7 +374,10 @@ def execute(commands: Iterable[Command]) -> int:
         if executable is None:
             sys.stderr.write(f"error: {command.argv[0]} is required for {command.label}\n")
             return 2
+        hook_transaction: transaction.FileTransaction | None = None
         try:
+            if command.label in {_PRECOMMIT_HOOK_LABEL, _LEFTHOOK_HOOK_LABEL}:
+                hook_transaction = _capture_hook_transaction(command.cwd)
             completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
                 [executable, *command.argv[1:]],
                 cwd=command.cwd,
@@ -364,17 +386,47 @@ def execute(commands: Iterable[Command]) -> int:
                 timeout=_COMMAND_TIMEOUT.total_seconds(),
             )
         except subprocess.TimeoutExpired:
+            _report_hook_rollback(hook_transaction)
             sys.stderr.write(f"error: {command.label} exceeded {_COMMAND_TIMEOUT.total_seconds():g}s and was stopped\n")
             return 2
+        except BaseException:
+            _report_hook_rollback(hook_transaction)
+            raise
         if completed.returncode:
+            _report_hook_rollback(hook_transaction)
             return completed.returncode
         if command.label == _PRECOMMIT_HOOK_LABEL:
             try:
                 harden_precommit_hooks(command.cwd)
             except (OSError, subprocess.SubprocessError) as exc:
+                _report_hook_rollback(hook_transaction)
                 sys.stderr.write(f"error: installed pre-commit hook is not durable: {exc}\n")
                 return 2
     return 0
+
+
+def _capture_hook_transaction(root: Path) -> transaction.FileTransaction:
+    hooks_dir = _precommit_hook_path(root).parent
+    names = (
+        "pre-commit",
+        "pre-commit.legacy",
+        "commit-msg",
+        "commit-msg.legacy",
+        "pre-push",
+        "pre-push.legacy",
+        ".sarj-lefthook",
+        ".sarj-lefthook.exe",
+    )
+    paths = tuple(hooks_dir / name for name in names)
+    transaction.validate_targets(hooks_dir, paths)
+    return transaction.FileTransaction.capture(hooks_dir, paths)
+
+
+def _report_hook_rollback(hook_transaction: transaction.FileTransaction | None) -> None:
+    if hook_transaction is None:
+        return
+    if detail := hook_transaction.rollback().render():
+        sys.stderr.write(f"error: {detail}\n")
 
 
 def harden_precommit_hooks(root: Path) -> None:
@@ -385,19 +437,30 @@ def harden_precommit_hooks(root: Path) -> None:
 def harden_precommit_hook(root: Path, *, hook_type: str = "pre-commit") -> None:
     hook = _precommit_hook_path(root, hook_type=hook_type)
     text = hook.read_text(encoding="utf-8")
-    if _PRECOMMIT_UVX_MARKER in text:
-        return
-    fallback_point = "elif command -v pre-commit > /dev/null; then"
-    if fallback_point not in text:
-        msg = f"{hook} does not contain pre-commit's expected launcher fallback"
+    uvx = shutil.which("uvx", path=os.environ.get("PATH", ""))  # ruff: ignore[banned-api] -- persist setup-time path for GUI Git clients.
+    if uvx is None:
+        msg = "uvx is required to harden managed pre-commit hooks"
         raise OSError(msg)
-    version = distribution_version("pre-commit")
-    fallback = (
-        f"{_PRECOMMIT_UVX_MARKER}\n"
-        "elif command -v uvx > /dev/null; then\n"
-        f'    exec uvx --isolated --python 3.14 --from pre-commit=={version} pre-commit "${{ARGS[@]}}"\n'
+    lines = [line for line in text.splitlines() if _MANAGED_UVX_PATH_MARKER not in line]
+    uvx_path = (
+        f'export PATH={shlex.quote(Path(uvx).parent.as_posix())}:"$PATH" '
+        f"{_MANAGED_UVX_PATH_MARKER}"
     )
-    transaction.atomic_write_text(hook.parent, hook, text.replace(fallback_point, fallback + fallback_point, 1))
+    lines.insert(1, uvx_path)
+    hardened = "\n".join(lines) + "\n"
+    if _PRECOMMIT_UVX_MARKER not in hardened:
+        fallback_point = "elif command -v pre-commit > /dev/null; then"
+        if fallback_point not in hardened:
+            msg = f"{hook} does not contain pre-commit's expected launcher fallback"
+            raise OSError(msg)
+        version = distribution_version("pre-commit")
+        fallback = (
+            f"{_PRECOMMIT_UVX_MARKER}\n"
+            "elif command -v uvx > /dev/null; then\n"
+            f'    exec uvx --no-config --isolated --python 3.14 --from pre-commit=={version} pre-commit "${{ARGS[@]}}"\n'
+        )
+        hardened = hardened.replace(fallback_point, fallback + fallback_point, 1)
+    transaction.atomic_write_text(hook.parent, hook, hardened)
 
 
 def _precommit_hook_path(root: Path, *, hook_type: str = "pre-commit") -> Path:

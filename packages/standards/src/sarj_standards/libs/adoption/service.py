@@ -272,7 +272,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         hook_manager=selected_hook_manager,
         allow_existing_nested_eslint=allow_existing_nested_eslint,
     )
-    if scaffold_plan.errors or (not scaffold_plan.ecosystems.any and configs is None):
+    if scaffold_plan.errors:
         return InitPlan(scaffold_plan, None, ())
     python_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.python_root)
     typescript_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.typescript_root)
@@ -304,6 +304,36 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         tuple(path for path, _contents in (*scaffold_plan.writes, *scaffold_plan.edits))
         + tuple(scaffold_plan.deletes)
         + tuple(target.destination for target in sync_plan.targets)
+    )
+    transaction.validate_targets(resolved, mutations)
+    commands = tuple(
+        lifecycle.install_commands(
+            resolved,
+            scaffold_plan.ecosystems,
+            hook_manager=scaffold_plan.hook_manager,
+        )
+    )
+    preconditions = {path: path.read_bytes() if path.is_file() else None for path in mutations}
+    return InitPlan(scaffold_plan, sync_plan, commands, preconditions)
+
+
+def plan_commit_policy(
+    root: Path,
+    *,
+    force: bool = False,
+    hook_manager: manifest.HookManager | None = None,
+) -> InitPlan:
+    resolved = root.resolve()
+    scaffold_plan = scaffold.build_commit_policy_plan(
+        resolved,
+        force=force,
+        hook_manager=hook_manager,
+    )
+    if scaffold_plan.errors:
+        return InitPlan(scaffold_plan, None, ())
+    sync_plan = SyncPlan(resolved, "standard", ())
+    mutations = tuple(path for path, _contents in (*scaffold_plan.writes, *scaffold_plan.edits)) + tuple(
+        scaffold_plan.deletes
     )
     transaction.validate_targets(resolved, mutations)
     commands = tuple(
