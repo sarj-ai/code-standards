@@ -128,7 +128,10 @@
   "SARJ086": "docstring-args-restate-signature",
   "SARJ087": "docstring-returns-restate-signature",
   "SARJ088": "restated-test-docstring",
-  "SARJ089": "test-phase-label-comment",
+  "SARJ089": [
+    "test-phase-label-comment",
+    "no-bare-test-phase-comments"
+  ],
   "SARJ090": "prefer-single-sentence-comment",
   "SARJ091": "no-long-comment",
   "SARJ092": [

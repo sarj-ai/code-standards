@@ -717,10 +717,12 @@
       "outcome": "Renamed SARJ018 to replay-contract-insert-requires-duplicate-policy and retained store-insert-requires-on-conflict plus the longer replay-named spelling as migration aliases. The rule remains warning-only with no autofix. It now analyzes only literal or partly dynamic INSERT templates that flow directly or through a stable local binding to a recognized query argument inside a narrowly replay-named store callable. Conflict behavior is checked per statement and requires an explicit PostgreSQL or MySQL action, a safe SQLite form, or a same-target NOT EXISTS guard. Generated files, module constants, prose, non-query arguments, dead or rebound locals, nested-scope consumers, ambiguous method names, and recognizable dynamic policy composition are excluded. The UI now describes duplicate behavior accurately and provides executable callable-level examples."
     },
     {
-      "task": "rule-audit/python/test-phase-label-comment",
+      "task": "rule-audit/python/no-bare-test-phase-comments",
       "family": "python",
-      "ruleId": "test-phase-label-comment",
-      "state": "pending"
+      "ruleId": "no-bare-test-phase-comments",
+      "state": "complete",
+      "evidence": "Three independent reviewers ran 61 focused cases and reproduced ambiguity in the old selector, error-level rollout for a stylistic preference, diagnostics on tokenizable invalid Python, overbroad matches for generic Execute, Verify, Cleanup, Prepare, Exercise, and Sanity comments, and unclear whole-test-file scope. The final exact scan covered 139 repositories or worktrees, 14,274 tracked Python files, and 137,296,696 bytes in 21.1511 seconds: nine raw and content-distinct findings, all nine manually classified actionable redundant Arrange, Act, or Assert labels, with zero false positives, zero uncertain cases, and zero read or detector errors. Combined phase-label, rule-metadata, and performance validation passed 257 tests. Ruff and Pylint do not own this exact AAA or BDD phase-comment policy.",
+      "outcome": "Renamed SARJ089 to no-bare-test-phase-comments and retained test-phase-label-comment as a migration alias. The rule remains no-autofix and is staged as a warning. It now parses the file before scanning, limits its grammar to standard Arrange, Act, Assert, Given, When, and Then labels with bounded decoration, optional phase suffixes, numbering, and explicit joins, and reports the matched label with concrete remediation. Generic lifecycle and domain words are preserved. The UI now states that the entire recognized test or test-support file is scanned, names trailing and bracketed-comment exclusions, shows a complete executable AAA rejection, and preserves a genuinely explanatory causal comment."
     },
     {
       "task": "rule-audit/python/trailing-value-narration",

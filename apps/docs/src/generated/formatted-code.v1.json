@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "34abf1076f2a03b0d715601a148a7728a67548afd2fce7bcc58222f076339ba7",
-  "cliSha256": "597b1f9eafba7e85e523393386349db09f762eba02fa803e7b13cd0d712107b3",
+  "catalogSha256": "a5781e41c0e10b1ba1180f7cd907a4ddef930bbb8f1597ebcd2386e45b81c6ed",
+  "cliSha256": "48331330d26d6928cea28120bcf7301de234876cc80a45ac771a024588053a2a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4463,6 +4463,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-bare-test-phase-comments": {
+      "examples": [
+        {
+          "expectedCount": 3,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def test_widget():\n    # Arrange\n    widget = make_widget()\n    # Act\n    result = widget.run()\n    # Assert\n    assert result.ok\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "bare-test-phase-comments",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Bare Arrange, Act, and Assert labels"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def test_widget():\n    # A stale token here would authorize the wrong tenant.\n    assert request_is_rejected()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "explanatory-comment",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Comment explains a consequence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-comment-cruft": {
       "examples": [
         {
@@ -7243,41 +7278,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Delegate the singleton read to the bulk implementation"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:test-phase-label-comment": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def test_widget():\n    # Arrange\n    widget = make_widget()\n    assert widget\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "bare-phase-label",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Bare phase label"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def test_widget():\n    # Then the retry loop would spin forever.\n    assert works()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "explanatory-comment",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Comment explains a consequence"
         }
       ],
       "optionsSchemaSource": null

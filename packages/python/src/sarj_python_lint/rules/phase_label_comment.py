@@ -15,6 +15,8 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
+    parse_or_none,
 )
 from sarj_python_lint.rules._comments import nested_comment_lines, standalone_comments
 from sarj_python_lint.rules._paths import is_generated, is_test_path
@@ -26,44 +28,49 @@ if TYPE_CHECKING:
 
 # A bounded whole-body grammar: decoration and joins are ceremony only when
 # every substantive token is itself a phase label.
-_PHASE_WORD = (
-    r"arrange|act|assert(?:ion)?s?|given|when|then|exercise|execute|"
-    r"verif(?:y|ication)|cleanup|prepare|sanity(?:\s+check)?"
-)
+_PHASE_WORD = r"(?:arrange|act|assert(?:ion)?s?|given|when|then)(?:\s+phase)?"
 _PHASE_RE = re.compile(
-    rf"^[-=~*_#.\s]{{0,40}}(?:{_PHASE_WORD})"
-    rf"(?:\s*(?:[/&+,|]|->|and)\s*(?:{_PHASE_WORD}))*"
+    rf"^(?:\d+[.)]\s*)?[-=~*_#.\s]{{0,40}}(?:{_PHASE_WORD})"
+    rf"(?:\s*(?:[/&+,|]|-|->|→|and)\s*(?:{_PHASE_WORD}))*"
     rf"[-=~*_#.\s:;!–—]{{0,40}}$",
     re.IGNORECASE,
 )
 
 
 class TestPhaseLabelComment(Rule):
-    id: str = "test-phase-label-comment"
+    id: str = "no-bare-test-phase-comments"
     code: str = "SARJ089"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Tests must not use bare Arrange, Act, Assert, Given, When, or Then phase comments.",
+        summary="Test files must not use bare phase comments such as Arrange, Act, Assert, Given, When, or Then.",
         rationale="Phase labels narrate test structure without explaining behavior and often indicate that a test needs clearer names or smaller units.",
         remediation="Delete the label; if the phases remain hard to follow, extract a named helper or split the test.",
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
+        aliases=("test-phase-label-comment",),
         limitations=(
-            "Only standalone comments in recognized test files are checked; nested literal comments and trailing comments are excluded.",
+            "Standalone comments across recognized test and test-support files are checked, including fixtures, helpers, and module sections.",
+            "Trailing comments and comments inside bracketed expressions are excluded.",
             "Comments containing words beyond the bounded phase-label grammar are preserved.",
         ),
         examples=(
             RuleExample(
-                example_id="bare-phase-label",
-                title="Bare phase label",
+                example_id="bare-test-phase-comments",
+                title="Bare Arrange, Act, and Assert labels",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_widget.py",
-                        "def test_widget():\n    # Arrange\n    widget = make_widget()\n    assert widget\n",
+                        "def test_widget():\n"
+                        "    # Arrange\n"
+                        "    widget = make_widget()\n"
+                        "    # Act\n"
+                        "    result = widget.run()\n"
+                        "    # Assert\n"
+                        "    assert result.ok\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
-                expected_count=1,
+                expected_count=3,
                 public=True,
             ),
             RuleExample(
@@ -73,7 +80,9 @@ class TestPhaseLabelComment(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_widget.py",
-                        "def test_widget():\n    # Then the retry loop would spin forever.\n    assert works()\n",
+                        "def test_widget():\n"
+                        "    # A stale token here would authorize the wrong tenant.\n"
+                        "    assert request_is_rejected()\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
@@ -86,7 +95,7 @@ class TestPhaseLabelComment(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_generated(path, source) or not is_test_path(path):
+        if is_generated(path, source) or not is_test_path(path) or parse_or_none(path, source) is None:
             return []
         try:
             standalone, _ = standalone_comments(source)
@@ -99,7 +108,11 @@ class TestPhaseLabelComment(Rule):
                 line=line,
                 col=col + 1,
                 code=self.code,
-                message=self.description,
+                message=(
+                    f"Bare test phase comment {body.strip()!r} narrates structure; delete it or replace it "
+                    "with non-obvious rationale."
+                ),
+                severity=Severity.WARNING,
                 column_encoding=ColumnEncoding.CODEPOINTS,
             )
             for line, col, body in standalone

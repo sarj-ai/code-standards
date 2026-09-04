@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.phase_label_comment import TestPhaseLabelComment
 
 
@@ -25,14 +26,9 @@ LABELS = [
     "Asserts",
     "Assertions",
     "ASSERTION",
-    "Verify",
-    "Verification",
-    "Exercise",
-    "Execute",
-    "Cleanup",
-    "Prepare",
-    "Sanity",
-    "Sanity check",
+    "Arrange phase",
+    "Act phase",
+    "Assert phase",
     "Arrange / Act",
     "Arrange & Act",
     "Act/Assert",
@@ -44,19 +40,17 @@ LABELS = [
     "Then:",
     "act.",
     "Assert -",
-    "verify;",
-    "cleanup!",
-    "prepare–",
-    "exercise—",
     "---- Arrange ----",
     "=== given ===",
     "****Assert****",
-    "~~~ Verification ~~~",
     "Arrange / Act / Assert",
     "Given / When / Then",
-    "Prepare, Execute, Verify, Cleanup",
     "Arrange and Act and Assert",
     "Act -> Assert",
+    "Given - When - Then",
+    "Given → When → Then",
+    "1. Arrange",
+    "2) Act",
 ]
 
 _PUBLIC_EXAMPLES = TestPhaseLabelComment.public_examples()
@@ -77,6 +71,8 @@ def test_flags_a_bare_phase_label(label: str) -> None:
         """)
     assert len(diags) == 1
     assert diags[0].code == "SARJ089"
+    assert diags[0].severity is Severity.WARNING
+    assert label in diags[0].message
 
 
 def test_a_phase_word_carrying_a_sentence_is_left_alone() -> None:
@@ -95,6 +91,18 @@ def test_setup_and_teardown_belong_to_sarj016() -> None:
             client = make()
             # Teardown
             client.close()
+        """)
+    assert diags == []
+
+
+@pytest.mark.parametrize(
+    "comment", ["Execute", "Exercise", "Verify", "Verification", "Cleanup", "Prepare", "Sanity check"]
+)
+def test_generic_domain_or_lifecycle_words_are_left_alone(comment: str) -> None:
+    diags = _check(f"""
+        def test_it():
+            # {comment}
+            assert works()
         """)
     assert diags == []
 
@@ -189,3 +197,8 @@ def test_reports_every_label_in_source_order() -> None:
 
 def test_an_unparseable_file_reports_nothing() -> None:
     assert _check("def test_it(:\n    # given\n") == []
+
+
+@pytest.mark.parametrize("source", ["def test_it()\n    # Arrange\n    pass\n", "x = (1 2)\n# Arrange\n"])
+def test_tokenizable_but_invalid_python_reports_nothing(source: str) -> None:
+    assert _check(source) == []
