@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "81444152bbc17f04e6dda29838424e5763082aa1b1d4c2b3bbc5da023ba00b9a",
+  "catalogSha256": "3e05c77e3ab2b90dee8b305768215b17c8e9caaa1f06ac08ca4bbda7b332fa43",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6466,41 +6466,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Stream loop assigns and then breaks"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:preserve-declared-nominal-id": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/fake.py",
-              "source": "from typing import NewType, override\n\nSipTrunkId = NewType(\"SipTrunkId\", str)\n\n\nclass Fake:\n    @override\n    def route(self, sip_trunk_id: str): ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/fake.py",
-          "id": "declared-id-erased",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A declared nominal ID is widened to string"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/fake.py",
-              "source": "from typing import NewType, override\n\nSipTrunkId = NewType(\"SipTrunkId\", str)\n\n\nclass Fake:\n    @override\n    def route(self, sip_trunk_id: SipTrunkId): ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/fake.py",
-          "id": "declared-id-preserved",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A declared nominal ID remains nominal"
         }
       ],
       "optionsSchemaSource": null

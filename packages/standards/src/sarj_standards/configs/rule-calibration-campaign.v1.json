@@ -583,12 +583,6 @@
       "outcome": "Retained the compatible prefer-walrus-stream-loop selector because Python aliases do not resolve at runtime, but rewrote the UI around the accurate compact producer-and-sentinel shape and staged SARJ077 as a style warning. The matcher now requires a call or awaited call, a nonempty rewritten body, no loop or guard else, physical single-line adjacency, no attached or intervening comments, and a rewrite within 100 columns; tests, generated files, type comments, multiline producers, and non-call expressions are excluded. None and reversed-None guards receive exact is-not-None guidance so falsy non-None values remain valid. A lexical candidate gate reduced broad-scan time by 87.7 percent. Ruff has no owner; Pylint R6103 is adjacent but does not own while-sentinel loops."
     },
     {
-      "task": "rule-audit/python/preserve-declared-nominal-id",
-      "family": "python",
-      "ruleId": "preserve-declared-nominal-id",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/python/preserve-enum-types",
       "family": "python",
       "ruleId": "preserve-enum-types",

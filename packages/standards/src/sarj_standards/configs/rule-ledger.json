@@ -88,7 +88,6 @@
       "prefer-walrus-comprehension-filter",
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
-      "preserve-declared-nominal-id",
       "preserve-enum-types",
       "production-derived-test-cases",
       "pydantic-at-boundaries",
@@ -331,7 +330,6 @@
       "SARJ413",
       "SARJ414",
       "SARJ415",
-      "SARJ416",
       "SARJ417",
       "SARJ418",
       "SARJ419",
@@ -753,6 +751,13 @@
       "note": "Delete SARJ405 suppressions and baseline keys. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
     },
     {
+      "id": "SARJ416",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ416 suppressions and baseline keys. The rule inferred a nominal override contract from any project NewType with the same normalized parameter name without resolving the base method or carrier, and its only finding in 5,323 tracked files contradicted the actual base signature. There is no replacement."
+    },
+    {
       "id": "SARJ422",
       "kind": "code",
       "status": "removed",
@@ -1108,6 +1113,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit; numeric durations are required by common SDK, protocol, serialization, timeout, TTL, and metrics boundaries, so syntax cannot require timedelta without widespread false positives. There is no replacement."
+    },
+    {
+      "id": "preserve-declared-nominal-id",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit. The rule inferred a nominal override contract from any project NewType with the same normalized parameter name without resolving the base method or carrier, and its only finding in 5,323 tracked files contradicted the actual base signature. There is no replacement."
     },
     {
       "id": "single-public-export",
