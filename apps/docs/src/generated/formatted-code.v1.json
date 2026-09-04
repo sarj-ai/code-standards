@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "087d244ef2990c6cd11ea8d404c73673546c4fb542546bcda4fcf82930804c48",
+  "catalogSha256": "907b16b59b9e800b4c65bbb765643b11d4f67dfbf7f051c639c0871750d15935",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6476,12 +6476,12 @@
           "expectedCount": 0,
           "files": [
             {
-              "path": "tests/test_models.py",
-              "source": "import pytest\n\nEXPECTED_MODELS = (\"a\", \"b\")\n\n\n@pytest.mark.parametrize(\"model\", EXPECTED_MODELS)\ndef test_model(model):\n    assert build(model).tier == \"priority\"\n"
+              "path": "app/tests/test_models.py",
+              "source": "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\nEXPECTED_MODELS = (\"a\", \"b\")\n\n\ndef test_model_membership():\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n\n\n@pytest.mark.parametrize(\"model\", EXPECTED_MODELS)\ndef test_model(model):\n    assert build(model).tier == \"priority\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_models.py",
+          "focusPath": "app/tests/test_models.py",
           "id": "independent-model-cases",
           "outcome": "accept",
           "scenarioId": "primary",
@@ -6491,12 +6491,12 @@
           "expectedCount": 1,
           "files": [
             {
-              "path": "tests/test_models.py",
+              "path": "app/tests/test_models.py",
               "source": "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\n\n@pytest.mark.parametrize(\"model\", ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model).tier == \"priority\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_models.py",
+          "focusPath": "app/tests/test_models.py",
           "id": "production-derived-model-cases",
           "outcome": "reject",
           "scenarioId": "primary",

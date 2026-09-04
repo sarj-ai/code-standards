@@ -586,7 +586,9 @@
       "task": "rule-audit/python/production-derived-test-cases",
       "family": "python",
       "ruleId": "production-derived-test-cases",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 21 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule produced two broad-fleet findings: one genuine Bulbul eligibility-oracle defect and one false positive from a qualified shared-test module. Adversarial probes reproduced stdlib, relative, test-support, third-party, generic smoke-sweep, class-shadow, and shadowed-wrapper false positives; tautological or dead assertions suppressed findings, keyword argvalues and suppressions were missed, and the UI omitted the promised equality oracle. Post-change validation ran 33 focused cases. The broad fleet retained the one valid Bulbul finding with zero errors in 7.164 seconds versus 8.859 originally, and the popular corpus remained clean.",
+      "outcome": "Retained the compatible production-derived-test-cases selector and staged SARJ409 as a testing warning scoped to contractual eligibility, support, allow, or required membership. Imports must resolve to first-party non-test source; relative, stdlib, third-party, test-support, generic collection, class-shadowed, and shadowed-wrapper cases abstain. Positional and keyword argvalues plus simple builtin wrappers are recognized. Only a direct reachable equality against a distinct literal table bound exactly once provides the independent-oracle exemption, and exact suppressions are honored. Public guidance now defines the literal table, asserts production equality, and parametrizes from the independent table. A lexical membership gate improves scan time."
     },
     {
       "task": "rule-audit/python/pydantic-at-boundaries",
