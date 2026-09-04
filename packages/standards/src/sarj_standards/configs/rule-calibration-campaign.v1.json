@@ -733,10 +733,12 @@
       "outcome": "Renamed SARJ051 to no-trailing-numeric-unit-assignment-comment and retained trailing-value-narration as a migration alias. The no-autofix rule is explicitly warning-only. It now parses valid Python, limits detection to one-line assignments with exactly one simple name or attribute target and a simple numeric expression, normalizes decimal, underscored, hexadecimal, and scientific notation, and requires exactly one matching number plus a recognized unit in the trailing comment. Calls, returns, loops, assertions, chained or destructured assignments, multi-statement lines, multi-number comments, bracketed values, references, directives, approximate conversions, generated files, and invalid syntax are excluded. The UI now distinguishes machine-visible names from type-enforced units and provides an executable typed-duration example and concrete remediation."
     },
     {
-      "task": "rule-audit/python/uncontrolled-randomness-in-test",
+      "task": "rule-audit/python/no-repeated-unseeded-stdlib-random-in-test",
       "family": "python",
-      "ruleId": "uncontrolled-randomness-in-test",
-      "state": "pending"
+      "ruleId": "no-repeated-unseeded-stdlib-random-in-test",
+      "state": "complete",
+      "evidence": "Three independent reviewers found that the old name and error severity overstated a syntax-only reproducibility signal, while its implementation missed local imports, local Random instances, and several standard-library sampling APIs and could report one-time iterable evaluation, loop else blocks, nested scopes, fixtures, disabled tests, and uncollected support modules. The final exact scan covered 140 repositories or worktrees, 14,347 tracked UTF-8 Python files, and 138,158,235 bytes in 12.9325 seconds with zero findings and zero detector or read errors. Focused validation passed 39 tests, and static typing passed without findings. Ruff S311 owns cryptographic suitability, not deterministic test sampling.",
+      "outcome": "Renamed SARJ410 to no-repeated-unseeded-stdlib-random-in-test and retained uncontrolled-randomness-in-test as a migration alias. The no-autofix rule is now warning-only. It checks default-collected pytest-style test functions and methods for standard-library random draws that execute in genuinely repeatable loop or comprehension regions, recognizes module and local aliases plus unseeded local Random instances, accepts only an earlier unconditional constant seed as suppression, and emits at most one diagnostic per test. One-time iterable evaluation, range calls with at most one iteration, loop else blocks, nested scopes, fixtures, __test__-disabled objects, generated files, support modules, injected RNGs, and property-framework tests are excluded. The UI now recommends isolated seeded generators and accurately describes reproducibility rather than guaranteed flaky outcomes."
     },
     {
       "task": "rule-audit/python/unused-mock-setup",

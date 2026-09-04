@@ -355,7 +355,7 @@ def test_random_sampling_has_one_owner_in_tests_and_production(tmp_path: Path) -
             "sarj_python_lint",
             "check",
             "--rule",
-            "uncontrolled-randomness-in-test",
+            "no-repeated-unseeded-stdlib-random-in-test",
             str(test_file),
             str(production_file),
         ],
@@ -368,8 +368,9 @@ def test_random_sampling_has_one_owner_in_tests_and_production(tmp_path: Path) -
     assert ruff.stdout.count('"code": "S311"') == 1
     assert str(production_file) in ruff.stdout
     assert str(test_file) not in ruff.stdout
-    assert sarj.returncode == 1, sarj.stdout + sarj.stderr
+    assert sarj.returncode == 0, sarj.stdout + sarj.stderr
     assert sarj.stdout.count("SARJ410") == 1
+    assert " warning:" in sarj.stdout
     assert str(test_file) in sarj.stdout
     assert str(production_file) not in sarj.stdout
 

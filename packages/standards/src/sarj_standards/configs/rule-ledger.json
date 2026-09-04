@@ -58,6 +58,7 @@
       "no-raw-source-text-test-oracle",
       "no-repeated-structured-string-literal",
       "no-repeated-test-body",
+      "no-repeated-unseeded-stdlib-random-in-test",
       "no-restated-closed-domain-description",
       "no-restated-comment",
       "no-secret-in-log",
@@ -112,7 +113,6 @@
       "store-get-delegates-to-bulk-read",
       "timestamp-order-requires-tiebreaker",
       "typed-error-reasons",
-      "uncontrolled-randomness-in-test",
       "unused-mock-setup"
     ],
     "sql": [
@@ -1244,6 +1244,13 @@
       "note": "Replace sarj-test-phase-label-comment with sarj-no-bare-test-phase-comments before upgrading."
     },
     {
+      "id": "trailing-value-narration",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-trailing-numeric-unit-assignment-comment",
+      "note": "Replace sarj-trailing-value-narration with sarj-no-trailing-numeric-unit-assignment-comment before upgrading."
+    },
+    {
       "id": "trivially-true-assertion",
       "kind": "python",
       "status": "removed",
@@ -1251,11 +1258,11 @@
       "note": "Remove this hook from pre-commit. Constructor calls can normalize values, invoke descriptors, or return another type, so neither a keyword echo nor a same-spelling isinstance assertion is provably trivial. SARJ057 and Ruff retain ownership of statically provable tautologies."
     },
     {
-      "id": "trailing-value-narration",
+      "id": "uncontrolled-randomness-in-test",
       "kind": "python",
       "status": "renamed",
-      "replacement": "no-trailing-numeric-unit-assignment-comment",
-      "note": "Replace sarj-trailing-value-narration with sarj-no-trailing-numeric-unit-assignment-comment before upgrading."
+      "replacement": "no-repeated-unseeded-stdlib-random-in-test",
+      "note": "Replace sarj-uncontrolled-randomness-in-test with sarj-no-repeated-unseeded-stdlib-random-in-test before upgrading."
     },
     {
       "id": "unpinned-github-action",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c1e01575f6412f6a719d97e63b31553fa9c109dfd28c0e9526670f1b7ce7d569",
-  "cliSha256": "6a45b8fc16f56aaae9bbba48ccb8ee8eb216444799a97c4d3083b81eb0e87905",
+  "catalogSha256": "2662e3496996aa68af8bc01ab8609266563fcb9e7968b3494e3cb080abaa7b48",
+  "cliSha256": "bb4b7b11713df5def770067c8d5a9bf3fbe931fe6a42d5a16cebc873b1de59db",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5335,6 +5335,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-repeated-unseeded-stdlib-random-in-test": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_selector.py",
+              "source": "import random\n\n\ndef test_distribution():\n    rng = random.Random(17)\n    values = [rng.random() for _ in range(50)]\n    assert min(values) < 0.5\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_selector.py",
+          "id": "seeded-random-sampling",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Make repeated random sampling reproducible"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_selector.py",
+              "source": "import random\n\n\ndef test_distribution():\n    values = [random.random() for _ in range(50)]\n    assert min(values) < 0.5\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_selector.py",
+          "id": "unseeded-random-sampling",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not repeat probabilistic trials without reproducibility"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-restated-closed-domain-description": {
       "examples": [
         {
@@ -7383,41 +7418,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "An exception carries nominal reason records"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:uncontrolled-randomness-in-test": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_selector.py",
-              "source": "import random\n\n\ndef test_distribution():\n    random.seed(17)\n    values = [random.random() for _ in range(50)]\n    assert values\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_selector.py",
-          "id": "seeded-random-sampling",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Make repeated random sampling reproducible"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_selector.py",
-              "source": "import random\n\n\ndef test_distribution():\n    values = [random.random() for _ in range(50)]\n    assert values\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_selector.py",
-          "id": "unseeded-random-sampling",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not repeat probabilistic trials without reproducibility"
         }
       ],
       "optionsSchemaSource": null
