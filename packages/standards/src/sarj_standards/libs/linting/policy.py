@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
-import json
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Self
@@ -12,7 +11,7 @@ from pathspec.pattern import Pattern
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, ExclusionOverride, Manifest
-from sarj_standards.libs.rules import RuleSelector
+from sarj_standards.libs.rules import RuleSelector, warning_levels
 
 
 if TYPE_CHECKING:
@@ -122,25 +121,7 @@ def _compile_override(value: ExclusionOverride) -> _Override:
 
 @lru_cache(maxsize=1)
 def warning_selectors() -> frozenset[RuleSelector]:
-    payload: object = json.loads(  # pyright: ignore[reportAny]
-        (CONFIGS_DIR / "rule-warning-levels.v1.json").read_text(encoding="utf-8")
-    )
-    if not isinstance(payload, dict):
-        msg = "invalid bundled warning-rule lifecycle"
-        raise TypeError(msg)
-    document: dict[str, object] = payload  # pyright: ignore[reportUnknownVariableType]
-    if document.get("schemaVersion") != 1:
-        msg = "invalid bundled warning-rule lifecycle"
-        raise ValueError(msg)
-    rules_value = document.get("rules")
-    if not isinstance(rules_value, list):
-        msg = "invalid bundled warning-rule selectors"
-        raise TypeError(msg)
-    rules: list[object] = rules_value  # pyright: ignore[reportUnknownVariableType]
-    if any(not isinstance(value, str) for value in rules):
-        msg = "invalid bundled warning-rule selectors"
-        raise TypeError(msg)
-    return frozenset(RuleSelector.parse(value) for value in rules if isinstance(value, str))
+    return frozenset(warning_levels.load(CONFIGS_DIR / "rule-warning-levels.v1.json"))
 
 
 __all__ = ["Policy"]

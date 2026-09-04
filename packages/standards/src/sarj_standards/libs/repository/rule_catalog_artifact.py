@@ -25,6 +25,7 @@ from sarj_standards.libs.rules import (
     RuleExample,
     RuleId,
     RuleSpec,
+    warning_levels,
 )
 from sarj_standards.schemas import RULE_CATALOG
 
@@ -451,23 +452,7 @@ def build(  # ruff: ignore[too-many-locals] -- joins five engine registries with
 
 
 def _warning_rules(root: Path) -> frozenset[str]:
-    path = root / _WARNING_LEVELS_PATH
-    payload: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
-    if not _is_object(payload) or set(payload) != {"rules", "schemaVersion"}:
-        msg = "rule warning lifecycle must contain exactly rules and schemaVersion"
-        raise ValueError(msg)
-    if payload["schemaVersion"] != 1 or not _is_array(payload["rules"]):
-        msg = "rule warning lifecycle must use schemaVersion 1 and an array of rules"
-        raise TypeError(msg)
-    rules = payload["rules"]
-    if any(not isinstance(value, str) for value in rules):
-        msg = "rule warning lifecycle selectors must be strings"
-        raise TypeError(msg)
-    selected = frozenset(value for value in rules if isinstance(value, str))
-    if len(selected) != len(rules):
-        msg = "rule warning lifecycle repeats a selector"
-        raise ValueError(msg)
-    return selected
+    return frozenset(str(selector) for selector in warning_levels.load(root / _WARNING_LEVELS_PATH))
 
 
 def _python_specs() -> tuple[RuleSpec, ...]:
