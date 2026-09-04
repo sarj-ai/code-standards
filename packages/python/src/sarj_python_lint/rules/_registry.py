@@ -139,7 +139,6 @@ from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
-from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
     StoreInsertRequiresOnConflict,
@@ -185,7 +184,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoAnalyticalAggregationInPostgresStore.id: NoAnalyticalAggregationInPostgresStore,
         NoSelectStar.id: NoSelectStar,
         NoGenericSingleExportModule.id: NoGenericSingleExportModule,
-        Stepdown.id: Stepdown,
         NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,
         PreferMatchAssertNever.id: PreferMatchAssertNever,
         RequireKeywordOnlySwapProneParams.id: RequireKeywordOnlySwapProneParams,

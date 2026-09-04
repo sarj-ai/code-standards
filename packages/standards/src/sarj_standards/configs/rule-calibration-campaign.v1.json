@@ -703,12 +703,6 @@
       "outcome": "Renamed SARJ415 to no-psycopg-execution-outside-injected-owner, retained sql-requires-injected-pool-owner as a migration alias, and staged the rule as a warning with no autofix. The UI now describes import-proven Psycopg execution in a free helper and shows a constructor-injected persistence owner with complete imports. The detector follows proven Connection, AsyncConnection, ConnectionPool, and AsyncConnectionPool annotations and constructors through stable aliases, supported wrappers and generics, assignments, walruses, connection and cursor contexts, module globals, constructor-local aliases, and conservative control-flow joins. It proves constructor storage in source order, revokes ownership after direct or reflective mutation, models non-fallthrough branches, honors exact suppressions, and avoids duplicate nested-scope diagnostics. It abstains on ambiguous unions and aliases, local import or binding shadowing, unknown and interprocedural flows, tests and support code, migrations, generated files, conventional operational-script roots, and literal SELECT 1 probes. Ruff, Pylint, Bandit, and type checkers do not own this persistence-boundary policy."
     },
     {
-      "task": "rule-audit/python/stepdown",
-      "family": "python",
-      "ruleId": "stepdown",
-      "state": "pending"
-    },
-    {
       "task": "rule-audit/python/store-insert-requires-on-conflict",
       "family": "python",
       "ruleId": "store-insert-requires-on-conflict",

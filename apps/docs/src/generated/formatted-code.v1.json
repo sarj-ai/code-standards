@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d65e65f11eff38063e4e0f72b1522d43aae2415549803f5f62b61018bcfbf206",
-  "cliSha256": "03a003e18ad8ccd5fdbc94b83f32b43764ae9a01f2c9b8ae3e53710c7b401bbf",
+  "catalogSha256": "fa34726fad5b28f44bbfd449952730da0f6203dc9ad8372a71c59bb048898c74",
+  "cliSha256": "4ac8585cef34207d71999d95cc8c196088680a966ce1af4e3e5c7fb2ceb0a03c",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7138,41 +7138,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Docstring records a hidden failure mode"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:stepdown": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "service.py",
-              "source": "def handle(payload: dict) -> dict:\n    return _parse(payload)\n\n\ndef _parse(payload: dict) -> dict:\n    return payload\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service.py",
-          "id": "helper-after-sole-caller",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Private helper appears after its sole caller"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "service.py",
-              "source": "def _parse(payload: dict) -> dict:\n    return payload\n\n\ndef handle(payload: dict) -> dict:\n    return _parse(payload)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service.py",
-          "id": "helper-before-sole-caller",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Private helper appears before its sole caller"
         }
       ],
       "optionsSchemaSource": null
