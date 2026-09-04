@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8a001a8216d1ece06b50931b5d6cc239bc0d60dcc123075a9ffe79711e53b75b",
+  "catalogSha256": "e2d79581469e0ee5da478b8f6e6092a6502f72d7b5e1b9279c226ed54834d15d",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -4990,6 +4990,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-positional-psycopg-row-escape": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "import psycopg\n\n\nasync def load(dsn: str):\n    async with await psycopg.AsyncConnection.connect(dsn) as conn:\n        async with conn.cursor() as cursor:\n            await cursor.execute(\"SELECT id, state FROM task\")\n            return await cursor.fetchone()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "escaping-positional-record",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A positional database record escapes unchanged"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "from psycopg import AsyncConnection\nfrom psycopg.rows import class_row\nfrom pydantic import BaseModel\n\n\nclass TaskRow(BaseModel):\n    id: str\n    state: str\n\n\nasync def load(conn: AsyncConnection[tuple[object, ...]]):\n    async with conn.cursor(row_factory=class_row(TaskRow)) as cursor:\n        await cursor.execute(\"SELECT id, state FROM task\")\n        return await cursor.fetchone()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "named-record-factory",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A returned record has a named row contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-random-uuid-in-sql": {
       "examples": [
         {
@@ -6632,7 +6667,7 @@
           "id": "class-invariant",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Docstring records an invariant"
+          "title": "Docstring adds a concrete constraint"
         },
         {
           "expectedCount": 1,
@@ -6647,7 +6682,7 @@
           "id": "class-name-restatement",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Docstring repeats the class name"
+          "title": "Docstring only repeats the class name"
         }
       ],
       "optionsSchemaSource": null
@@ -6667,7 +6702,7 @@
           "id": "behavioral-docstring",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Docstring documents behavior"
+          "title": "Function docstring adds an atomicity guarantee"
         },
         {
           "expectedCount": 1,
@@ -6682,7 +6717,7 @@
           "id": "signature-restatement",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Docstring repeats the function name"
+          "title": "Function docstring only repeats its declaration"
         }
       ],
       "optionsSchemaSource": null
@@ -6799,7 +6834,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "def move(*, source_id: str, target_id: str) -> None: ...\n"
+              "source": "def move(*, source_id: str, target_id: str) -> None: ...\n\n\nmove(source_id=\"inbox\", target_id=\"archive\")\n"
             }
           ],
           "fixedFiles": [],
@@ -6814,7 +6849,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "def move(source_id: str, target_id: str) -> None: ...\n"
+              "source": "def move(source_id: str, target_id: str) -> None: ...\n\n\nmove(\"inbox\", \"archive\")\n"
             }
           ],
           "fixedFiles": [],
@@ -6834,7 +6869,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "from typing import Annotated\nfrom pydantic import field_validator\nfrom pydantic_settings import BaseSettings, NoDecode\n\n\nclass Settings(BaseSettings):\n    emails: Annotated[list[str], NoDecode]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n"
+              "source": "import os\nfrom typing import Annotated\nfrom pydantic import field_validator\nfrom pydantic_settings import BaseSettings, NoDecode\n\n\nclass Settings(BaseSettings):\n    emails: Annotated[list[str], NoDecode]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n\n\nos.environ[\"EMAILS\"] = \"one@example.com,two@example.com\"\nSettings()\n"
             }
           ],
           "fixedFiles": [],
@@ -6849,7 +6884,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "from pydantic import field_validator\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    emails: list[str]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n"
+              "source": "import os\nfrom pydantic import field_validator\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    emails: list[str]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n\n\nos.environ[\"EMAILS\"] = \"one@example.com,two@example.com\"\nSettings()\n"
             }
           ],
           "fixedFiles": [],
@@ -6869,7 +6904,7 @@
           "files": [
             {
               "path": "app/services/thing_service.py",
-              "source": "class ThingService:\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n"
+              "source": "class ThingService:\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n\n\ndef sync(service: ThingService) -> None:\n    service.write(\"inbox\", service.read(\"outbox\"))\n"
             }
           ],
           "fixedFiles": [],
@@ -6884,7 +6919,7 @@
           "files": [
             {
               "path": "app/services/thing_service.py",
-              "source": "class ThingService(ThingServicePort):\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n"
+              "source": "from typing import Protocol\n\n\nclass ThingServicePort(Protocol):\n    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n\n\nclass ThingService:\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n\n\ndef sync(service: ThingServicePort) -> None:\n    service.write(\"inbox\", service.read(\"outbox\"))\n"
             }
           ],
           "fixedFiles": [],
@@ -6892,7 +6927,7 @@
           "id": "declared-service-port",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Service implements a declared port"
+          "title": "A visible structural port already describes the service boundary"
         }
       ],
       "optionsSchemaSource": null
@@ -6904,7 +6939,7 @@
           "files": [
             {
               "path": "protocol.py",
-              "source": "import json\n\n\ndef parse(payload: str) -> object:\n    report = json.loads(payload)\n    return report.get(\"version\")\n"
+              "source": "import httpx\n\n\ndef fetch() -> object:\n    report = httpx.get(\"https://api.example/report\").json()\n    return report.get(\"version\")\n"
             }
           ],
           "fixedFiles": [],
@@ -6919,7 +6954,7 @@
           "files": [
             {
               "path": "protocol.py",
-              "source": "def parse(payload: str) -> Report:\n    return Report.model_validate_json(payload)\n"
+              "source": "import httpx\nfrom pydantic import BaseModel\n\n\nclass Report(BaseModel):\n    version: int\n\n\ndef fetch() -> Report:\n    raw = httpx.get(\"https://api.example/report\").json()\n    report = Report.model_validate(raw)\n    return report\n"
             }
           ],
           "fixedFiles": [],
@@ -6939,7 +6974,7 @@
           "files": [
             {
               "path": "api.py",
-              "source": "class Detail(BaseModel):\n    retry_attempt_number: int = Field(\n        default=1, ge=1, description=\"1 for the first attempt\"\n    )\n"
+              "source": "from pydantic import BaseModel, Field, PositiveInt\n\n\nclass CallDetail(BaseModel):\n    retry_attempt_number: PositiveInt = Field(\n        default=1,\n        description=\"Which dial this call is within its retry group (1 for the first attempt).\",\n    )\n"
             }
           ],
           "fixedFiles": [],
@@ -6954,7 +6989,7 @@
           "files": [
             {
               "path": "api.py",
-              "source": "class Detail(BaseModel):\n    retry_attempt_number: int = Field(default=1, description=\"1 for the first attempt\")\n"
+              "source": "from pydantic import BaseModel, Field\n\n\nclass CallDetail(BaseModel):\n    retry_attempt_number: int = Field(\n        default=1,\n        description=\"Which dial this call is within its retry group (1 for the first attempt).\",\n    )\n"
             }
           ],
           "fixedFiles": [],
@@ -6962,42 +6997,7 @@
           "id": "ordinal-prose-only",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "An ordinal minimum exists only in prose"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:require-validated-row-factory": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "store.py",
-              "source": "def load(conn):\n    with conn.cursor() as cur:\n        return cur.fetchone()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "store.py",
-          "id": "bare-fetched-cursor",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A fetched cursor returns positional rows"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "store.py",
-              "source": "def load(conn):\n    with conn.cursor(row_factory=class_row(PendingTimeRow)) as cur:\n        return cur.fetchone()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "store.py",
-          "id": "validated-fetched-cursor",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A fetched cursor validates a row model"
+          "title": "An unqualified ordinal origin lacks a lower bound"
         }
       ],
       "optionsSchemaSource": null

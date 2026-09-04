@@ -50,6 +50,7 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 )
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
+from sarj_python_lint.rules.no_positional_psycopg_row_escape import NoPositionalPsycopgRowEscape
 from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
 from sarj_python_lint.rules.no_redundant_literal_description import NoRedundantLiteralDescription
@@ -133,7 +134,6 @@ from sarj_python_lint.rules.require_pydantic_for_external_json import (
 from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
-from sarj_python_lint.rules.require_validated_row_factory import RequireValidatedRowFactory
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
 from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
 from sarj_python_lint.rules.sql_requires_injected_pool_owner import SqlRequiresInjectedPoolOwner
@@ -241,7 +241,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         ProductionDerivedTestCases.id: ProductionDerivedTestCases,
         UncontrolledRandomnessInTest.id: UncontrolledRandomnessInTest,
         RepeatedStaticCallCases.id: RepeatedStaticCallCases,
-        RequireValidatedRowFactory.id: RequireValidatedRowFactory,
+        NoPositionalPsycopgRowEscape.id: NoPositionalPsycopgRowEscape,
         SqlRequiresInjectedPoolOwner.id: SqlRequiresInjectedPoolOwner,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,

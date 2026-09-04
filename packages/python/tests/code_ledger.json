@@ -157,7 +157,10 @@
   "SARJ411": "require-pydantic-for-external-json",
   "SARJ412": "iac-source-coupled-test",
   "SARJ413": "repeated-static-call-cases",
-  "SARJ414": "require-validated-row-factory",
+  "SARJ414": [
+    "require-validated-row-factory",
+    "no-positional-psycopg-row-escape"
+  ],
   "SARJ415": "sql-requires-injected-pool-owner",
   "SARJ416": "preserve-declared-nominal-id",
   "SARJ417": "preserve-enum-types",

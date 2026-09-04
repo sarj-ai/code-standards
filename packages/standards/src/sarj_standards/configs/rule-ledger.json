@@ -50,6 +50,7 @@
       "no-hidden-constructor-fallback",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
+      "no-positional-psycopg-row-escape",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
       "no-repeated-structured-string-literal",
@@ -101,7 +102,6 @@
       "require-port-for-service",
       "require-pydantic-for-external-json",
       "require-pydantic-ordinal-lower-bound",
-      "require-validated-row-factory",
       "restated-test-docstring",
       "source-coupled-test",
       "sql-requires-injected-pool-owner",
@@ -1167,6 +1167,13 @@
       "status": "renamed",
       "replacement": "repeated-static-call-cases",
       "note": "Replace sarj-repeated-static-call-assertions with sarj-repeated-static-call-cases before upgrading."
+    },
+    {
+      "id": "require-validated-row-factory",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-positional-psycopg-row-escape",
+      "note": "Replace sarj-require-validated-row-factory with sarj-no-positional-psycopg-row-escape before upgrading."
     },
     {
       "id": "single-public-export",
