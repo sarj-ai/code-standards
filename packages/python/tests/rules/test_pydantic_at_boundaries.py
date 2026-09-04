@@ -16,7 +16,8 @@ _PUBLIC_EXAMPLES = PydanticAtBoundaries.public_examples()
 
 
 def _check(source: str, path: str = "svc.py") -> list[Diagnostic]:
-    return PydanticAtBoundaries().check(Path(path), source)
+    typed_source = f"{source}\nfrom typing import Annotated, Any, Dict, List, Optional, Union, overload\nimport typing\n"
+    return PydanticAtBoundaries().check(Path(path), typed_source)
 
 
 @pytest.mark.parametrize(
@@ -180,24 +181,22 @@ def test_allows_private_function_returning_tuple():
     assert _check(src) == []
 
 
-def test_flags_router_get_without_return_annotation():
+def test_does_not_guess_fastapi_route_from_decorator_name():
     src = """
 @router.get("/calls/{call_id}")
 async def get_call(call_id: str):
     return {"id": call_id}
 """
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "no return annotation" in diags[0].message
+    assert _check(src) == []
 
 
-def test_flags_app_post_without_return_annotation():
+def test_unannotated_decorator_like_function_is_out_of_scope():
     src = """
 @app.post("/calls")
 def create_call(body: CreateCallRequest):
     return {"ok": True}
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_flags_route_returning_untyped_dict():
@@ -240,13 +239,13 @@ def push():
     assert _check(src) == []
 
 
-def test_flags_named_router_receiver():
+def test_named_router_receiver_is_not_inferred_without_provenance():
     src = """
 @admin_router.delete("/orgs/{org_id}")
 async def delete_org(org_id: str):
     return {"ok": True}
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_skips_test_files():
@@ -313,10 +312,10 @@ _FLAGGED_DICT_ANNOTATIONS = [
 
 @pytest.mark.parametrize("ann", _FLAGGED_DICT_ANNOTATIONS)
 def test_flagged_dict_annotations(ann: str):
-    diags = _check(f"def f() -> {ann}:\n    return {{'id': 1}}\n")
+    diags = _check(f"import typing\ndef f() -> {ann}:\n    return {{'id': 1}}\n")
     assert len(diags) == 1, ann
     assert diags[0].code == "SARJ008"
-    assert "pydantic model" in diags[0].message
+    assert "Pydantic model" in diags[0].message
 
 
 _ALLOWED_ANNOTATIONS = [
@@ -397,7 +396,11 @@ _VALIDATOR_DECORATORS = [
 
 @pytest.mark.parametrize("dec", _VALIDATOR_DECORATORS)
 def test_validator_hooks_never_flagged(dec: str):
-    src = f"class M:\n    {dec}\n    def v(cls, value) -> dict[str, Any]:\n        return {{'id': 1}}\n"
+    src = (
+        "import pydantic\n"
+        "from pydantic import field_validator, model_validator, root_validator, validator\n"
+        f"class M:\n    {dec}\n    def v(cls, value) -> dict[str, Any]:\n        return {{'id': 1}}\n"
+    )
     assert _check(src) == [], dec
 
 
@@ -409,11 +412,9 @@ def test_overload_variants_never_flagged(dec: str):
 
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete"])
 @pytest.mark.parametrize("receiver", ["app", "router", "admin_router", "v1_router"])
-def test_route_methods_and_receivers_flagged_without_annotation(method: str, receiver: str):
+def test_decorator_names_do_not_create_route_ownership(method: str, receiver: str):
     src = f'@{receiver}.{method}("/x")\ndef handler():\n    return {{"id": 1}}\n'
-    diags = _check(src)
-    assert len(diags) == 1, (method, receiver)
-    assert "no return annotation" in diags[0].message
+    assert _check(src) == [], (method, receiver)
 
 
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete"])
@@ -430,7 +431,7 @@ def f() -> dict[str, Any]:
 """
     diags = _check(src)
     assert len(diags) == 1
-    assert "pydantic model" in diags[0].message
+    assert "Pydantic model" in diags[0].message
 
 
 def test_route_websocket_method_not_flagged():
@@ -499,8 +500,8 @@ def test_reports_line_and_col_for_indented_method():
     assert diags[0].col == 5
 
 
-def test_route_reports_decorated_function_line():
-    src = '\n@router.get("/x")\ndef handler():\n    return {"id": 1}\n'
+def test_reports_decorated_function_line():
+    src = '\n@cache\ndef handler() -> dict[str, Any]:\n    return {"id": 1}\n'
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 3
@@ -544,7 +545,7 @@ def _outer():
     assert _check(src) == []
 
 
-def test_walk_order_is_breadth_first_not_line_sorted():
+def test_findings_are_sorted_by_source_location():
     src = """
 class C:
     def a(self) -> dict[str, Any]:
@@ -554,7 +555,7 @@ def b() -> dict[str, Any]:
     return {'id': 1}
 """
     diags = _check(src)
-    assert [d.line for d in diags] == [6, 3]
+    assert [d.line for d in diags] == [3, 6]
 
 
 def test_dict_message_includes_function_name_and_annotation():
@@ -563,15 +564,15 @@ def test_dict_message_includes_function_name_and_annotation():
     msg = diags[0].message
     assert "build_payload" in msg
     assert "dict[str, Any]" in msg
-    assert "pydantic model" in msg
+    assert "Pydantic model" in msg
 
 
-def test_route_message_includes_route_name():
-    diags = _check('@router.get("/x")\ndef get_call():\n    return {"id": 1}\n')
+def test_message_leads_with_typed_dict_remediation():
+    diags = _check('def get_call() -> dict[str, Any]:\n    return {"id": 1}\n')
     assert len(diags) == 1
     msg = diags[0].message
     assert "get_call" in msg
-    assert "response_model" in msg
+    assert "TypedDict" in msg
 
 
 @pytest.mark.parametrize(
@@ -880,16 +881,14 @@ def test_route_without_annotation_and_without_ad_hoc_dict_not_flagged(body: str)
     assert _check(src) == [], body
 
 
-def test_route_without_annotation_returning_ad_hoc_dict_still_flagged():
+def test_unannotated_route_like_function_is_owned_elsewhere():
     src = '@router.get("/items/{item_id}")\ndef read_item(item_id: str):\n    return {"item_id": item_id}\n'
-    diags = _check(src)
-    assert len(diags) == 1
-    assert "ad-hoc dict" in diags[0].message
+    assert _check(src) == []
 
 
-def test_route_without_annotation_returning_list_of_records_flagged():
+def test_unannotated_route_like_list_is_owned_elsewhere():
     src = '@router.get("/items")\ndef read_items():\n    return [{"item_name": "Foo"}]\n'
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_payload_builder_under_test_support_directory_is_exempt() -> None:
@@ -927,5 +926,172 @@ def test_mapping_unpack_is_not_a_fixed_shape() -> None:
 )
 def test_mapping_crossing_opaque_call_is_not_a_fixed_shape(body: str) -> None:
     source = f"def payload() -> dict[str, object]:\n    payload = {{'id': 1}}\n    {body}\n    return payload\n"
+
+    assert not _check(source)
+
+
+def test_private_class_method_is_not_a_public_api() -> None:
+    source = "class _Internal:\n    def payload(self) -> dict[str, Any]:\n        return {'id': 1}\n"
+
+    assert not _check(source)
+
+
+@pytest.mark.parametrize("decorator", ["model_serializer", "field_serializer"])
+def test_pydantic_serializer_protocol_is_exempt(decorator: str) -> None:
+    source = (
+        f"from pydantic import {decorator}\n"
+        f"class Model:\n    @{decorator}\n    def serialize(self) -> dict[str, Any]:\n        return {{'id': 1}}\n"
+    )
+
+    assert not _check(source)
+
+
+def test_foreign_any_annotation_is_not_treated_as_typing_any() -> None:
+    source = "from vendor import Any\ndef payload() -> dict[str, Any]:\n    return {'id': 1}\n"
+
+    assert not _check(source)
+
+
+def test_shadowed_dict_annotation_is_not_treated_as_builtin_dict() -> None:
+    source = "class dict: pass\ndef payload() -> dict[str, Any]:\n    return {'id': 1}\n"
+
+    assert not _check(source)
+
+
+def test_generated_source_is_exempt() -> None:
+    source = "# Code generated by api-tool. DO NOT EDIT.\ndef payload() -> dict[str, Any]:\n    return {'id': 1}\n"
+
+    assert not _check(source)
+
+
+def test_inline_suppression_is_honored() -> None:
+    source = "def payload() -> dict[str, Any]:  # sarj-noqa: SARJ008\n    return {'id': 1}\n"
+
+    assert not _check(source)
+
+
+def test_mutation_through_alias_makes_shape_open() -> None:
+    source = (
+        "def payload() -> dict[str, Any]:\n"
+        "    record = {'id': 1}\n"
+        "    alias = record\n"
+        "    alias['name'] = 'Ada'\n"
+        "    return record\n"
+    )
+
+    assert not _check(source)
+
+
+def test_harmless_alias_preserves_fixed_record_evidence() -> None:
+    source = (
+        "def payload() -> dict[str, Any]:\n"
+        "    record = {'id': 1}\n"
+        "    alias = record\n"
+        "    return alias\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+def test_mixed_record_and_unknown_list_is_not_fixed() -> None:
+    source = "def payload() -> list[dict[str, Any]]:\n    return [{'id': 1}, external]\n"
+
+    assert not _check(source)
+
+
+def test_unimported_typing_spellings_do_not_claim_provenance() -> None:
+    source = "def payload() -> Dict[str, Any]:\n    return {'id': 1}\n"
+
+    assert PydanticAtBoundaries().check(Path("service.py"), source) == []
+
+
+def test_nested_bindings_do_not_shadow_module_annotation_names() -> None:
+    source = """
+from typing import Any
+
+def helper(dict):
+    Any = object
+    return dict, Any
+
+def payload() -> dict[str, Any]:
+    return {"id": 1}
+"""
+
+    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+
+
+def test_foreign_overload_decorator_does_not_exempt_record_return() -> None:
+    source = """
+from typing import Any
+from vendor import overload
+
+@overload
+def payload() -> dict[str, Any]:
+    return {"id": 1}
+"""
+
+    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+
+
+def test_module_comprehension_targets_do_not_shadow_annotations() -> None:
+    source = """
+from typing import Any
+consume([dict for dict in values])
+[Any for Any in values]
+
+def payload() -> dict[str, Any]:
+    return {"id": 1}
+"""
+
+    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+
+
+@pytest.mark.parametrize("name", ["Any", "dict"])
+def test_module_comprehension_walrus_targets_do_shadow_annotations(name: str) -> None:
+    source = """
+from typing import Any
+[(TARGET := value) for value in values]
+
+def payload() -> dict[str, Any]:
+    return {"id": 1}
+""".replace("TARGET", name)
+
+    assert PydanticAtBoundaries().check(Path("service.py"), source) == []
+
+
+def test_type_checking_imports_have_annotation_provenance() -> None:
+    source = """
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Any
+
+def payload() -> dict[str, Any]:
+    return {"id": 1}
+"""
+
+    assert len(PydanticAtBoundaries().check(Path("service.py"), source)) == 1
+
+
+def test_annotated_harmless_alias_preserves_fixed_record_evidence() -> None:
+    source = (
+        "def payload() -> dict[str, Any]:\n"
+        "    record = {'id': 1}\n"
+        "    alias: dict[str, Any] = record\n"
+        "    return alias\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+def test_mutation_through_annotated_alias_makes_shape_open() -> None:
+    source = (
+        "def payload() -> dict[str, Any]:\n"
+        "    record = {'id': 1}\n"
+        "    alias: dict[str, Any] = record\n"
+        "    alias['name'] = 'Ada'\n"
+        "    return record\n"
+    )
 
     assert not _check(source)

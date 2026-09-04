@@ -386,25 +386,33 @@
       "task": "rule-audit/python/no-vague-suppression-description",
       "family": "python",
       "ruleId": "no-vague-suppression-description",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 17 original focused cases and scanned between 1,740 and 7,099 tracked Python files plus 462 to 695 popular-package files, initially finding zero diagnostics. Suppression inventories exposed 970 modern ruff: ignore directives in the smaller first-party scan, all invisible to the original matcher, plus a standalone inert-comment false positive and closed generic phrase misses. Post-change calibration ran 40 focused cases, 2,928 first-party files, and the same normalized 462-file popular corpus: it produced one unambiguous generic pre-existing/out-of-scope warning, zero popular findings, and zero scanner failures after removing the context-dependent word same.",
+      "outcome": "Kept SARJ419 and the accurate no-vague-suppression-description selector, but staged the maintainability policy as warning because organic positive evidence remains limited. Added modern Ruff and BasedPyright directives, real Ruff and Flake8 file directives, en-dash separators, every suppression segment in a physical comment, and a bounded exact vocabulary of generic reasons. Ordinary directives must attach to code, each comment emits at most once, concrete descriptions containing generic words remain accepted, and Pylint, blanket or missing reasons, formatter and coverage pragmas, necessity, cross-line context such as same, and subjective substring scoring remain outside scope. The UI now uses current Ruff syntax, states the exact boundary, requests a removal condition, and quotes the rejected reason."
     },
     {
       "task": "rule-audit/python/opaque-parametrize-case-needs-id",
       "family": "python",
       "ruleId": "opaque-parametrize-case-needs-id",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 68 original focused cases and scanned between 1,976 and 7,099 tracked Python files plus a normalized 462-file popular corpus. The broad scan found 36 diagnostics covering 112 opaque rows; every finding was reviewed and all 36 were valid diagnosability problems. A second corpus exposed six definite false positives from string-producing dedent/format and encode calls. Post-change validation ran 89 focused cases, preserved all 36 first-party findings with zero observed false positives, and produced zero findings in the same popular corpus.",
+      "outcome": "Kept SARJ042, opaque-parametrize-case-needs-id, and its compatibility alias, but staged it as warning because it governs test-output diagnosability and repository-level pytest_make_parametrize_id hooks remain outside analysis. Added import- and rebinding-aware pytest mark and param resolution, positional and keyword argnames/argvalues, literal None handling for decorator and per-case IDs, partial static ID lists, positional ids, Ellipsis, generated-file exclusion, unshadowed builtin constructors, import-proven re.compile, and proven string-producing encode/format/textwrap.dedent chains. Removed invalid bare pytest imports and terminal-name guesses. Reworked the UI around semantic per-case IDs and pytest's real argument-name/index fallback such as payload0, including correct singular grammar."
     },
     {
       "task": "rule-audit/python/over-mocked-test",
       "family": "python",
       "ruleId": "over-mocked-test",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 136 original focused cases. Read-only scans covered up to 7,099 tracked first-party Python files, a normalized 462-file installed-source corpus, and 236 files from detect-secrets and pre-commit-hooks; all scans produced zero findings. A 1,976-file subset contained 11,010 collected tests with inferred substitution counts of 10,587 at zero, 340 at one, 55 at two, 24 at three, two at four, two at five, and none above the threshold. Adversarial tests reproduced false positives from nested lexical scopes, rebound imports, arbitrary local mocker objects, and parametrized arguments named mock_*, plus a false negative for keyword-form patch.object. Post-change validation ran 147 focused cases with all demonstrated defects covered.",
+      "outcome": "Kept SARJ062 and the concise over-mocked-test name, but staged it as warning because the six-root threshold is a context-sensitive maintainability signal with no organic positive in the measured corpora. Excluded generated tests and nested lexical scopes; made module imports and function-local bindings shadow-aware; required mocker and monkeypatch to be actual test parameters; excluded import-proven pytest parametrized arguments from the mock-fixture heuristic; and supported positional or keyword patch targets and patch.object attributes. Reworked the public examples, summary, limitations, and diagnostic to describe independently rooted doubles and inferred substitutions without claiming the test cannot exercise production code. Deliberately retained conservative owner collapsing and infrastructure, class-level, and composition-root exclusions because broadening them lacked precision evidence."
     },
     {
       "task": "rule-audit/python/prefer-class-row",
       "family": "python",
       "ruleId": "prefer-class-row",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran all 99 original focused cases and scanned up to 7,099 tracked first-party Python files plus a normalized 462-file installed-source corpus. The original blanket matcher emitted 107 findings across 28 files: five were already suppressed, 89 duplicated bank and Noura sites intentionally exposed dictionary contracts, and only a small AI subset immediately converted fetched rows to models. Reviewers also reproduced false positives for arbitrary call, decorator, and class keywords and false negatives caused by function-wide fetch-count and SQL-string heuristics. After narrowing, 45 focused cases passed and the same 7,099-file scan produced 15 mechanically actionable unchanged fetch-to-model conversions, with mixed-shape, dynamic, raw-dictionary, and transformed-row sites excluded.",
+      "outcome": "Kept SARJ013 and the accurate prefer-class-row name, changed its category to maintainability, and staged it as warning. Replaced the blanket row_factory keyword prohibition with scope- and import-aware dataflow from a locally bound Psycopg dict_row cursor through fetchone, fetchmany, or fetchall into exactly one Model(**row) or Model.model_validate(row) conversion. Excluded generated, test, and migration files; connection-level and arbitrary keyword consumers; shadowed imports; mutated rows; and cursors with raw or multiple result shapes. Reworked the UI to describe removal of a redundant intermediate mapping without claiming that Psycopg dict_row is invalid or inherently unvalidated. SARJ414 remains the separate owner for fetched non-dict cursors without class_row."
     },
     {
       "task": "rule-audit/python/prefer-collection-comprehension",
@@ -418,85 +426,105 @@
       "task": "rule-audit/python/prefer-constant-time-secret-compare",
       "family": "python",
       "ruleId": "prefer-constant-time-secret-compare",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 71 focused cases and a stable scan of 7,098 tracked Python files across 85 repositories. The final detector reported six high-confidence authentication gates with zero observed false positives or scanner errors: three Bulbul metrics bearer-token gates, two byte-identical demo webhook-token gates, and one Summer X-Secret-Key gate. A normalized 462-file popular-source sample plus 164 detect-secrets and 72 pre-commit-hooks files produced zero findings, eliminating the original Pygments lexer, cache-hash, secret-object, and mock-client noise.",
+      "outcome": "Kept the accurate prefer-constant-time-secret-compare name and staged SARJ011 as a warning. Narrowed ordinary equality findings to a proven cross-operand pair of externally supplied authenticator and configured or stored secret, with same-scope position-aware aliases, neutral-rebinding kills, request-shaped mapping provenance, proven os imports, dominating if-walrus bindings, camelCase roles, password-specific remediation, exact public sentinels, and generated/test exclusions. Chained comparisons and ambiguous token, hash, model, protocol-marker, and equality-method shapes remain excluded; the public UI now demonstrates compatible ASCII byte operands for hmac.compare_digest."
     },
     {
       "task": "rule-audit/python/prefer-fstring-over-concat",
       "family": "python",
       "ruleId": "prefer-fstring-over-concat",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 75 focused cases and scanned 7,098 tracked first-party Python files across 85 repositories plus a normalized 462-file Pygments and pytest corpus. The original broad rule produced 39 first-party findings with 17 bad recommendations and 130 popular-source findings dominated by regex, style-table, ANSI, path, identifier, and protocol fragments. Final calibration produced seven first-party and eleven popular-source warnings; all 18 were inspected as defensible human-readable interpolation improvements, with zero observed false positives or scanner errors.",
+      "outcome": "Kept the compatible prefer-fstring-over-concat name and staged SARJ068 as a warning. Narrowed it to short prose-like interpolation inside callable scopes with proven string operands; added conservative binding and import provenance, late-rebinding kills, and exclusions for generated code, logging, common SQL and regex forms, long literals, module and class declarations, URL and path fragments, units, filenames, identifiers, protocol punctuation, lazy strings, and ORM expressions. Removed arbitrary operand-count join advice and comment bypasses. The UI now preserves explicit str and repr semantics with !s and !r instead of claiming wrappers can disappear."
     },
     {
       "task": "rule-audit/python/prefer-immutable-module-constant",
       "family": "python",
       "ruleId": "prefer-immutable-module-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 91 focused rule cases and scanned 7,098 tracked Python files across 85 repositories, producing 436 warnings in 214 files with zero scanner errors. A deterministic 60-finding fleet sample had no observed bad false positives; a separate normalized 462-file Pygments, packaging, and pytest corpus produced 71 advisory findings. Compatibility-heavy public dict and concrete list contracts remain, so the rule stays advisory. The final detector also passed adversarial alias, positional and starred destructuring, bound-method, subscript, generated-source, test-support, and shadowed-builtin probes.",
+      "outcome": "Kept the compatible prefer-immutable-module-constant name and staged SARJ096 as a warning. Narrowed it to nonempty uppercase module collections with conservative mutation, alias, escape, and concrete-API analysis; excluded tests, shared test support, generated sources, empty containers, reassignment, and ambiguous consumers. The UI now says replacements prevent only top-level membership or key changes, explicitly documents shallow immutability and concrete API compatibility, and demonstrates a Mapping-typed read-only mapping."
     },
     {
       "task": "rule-audit/python/prefer-library-fake",
       "family": "python",
       "ruleId": "prefer-library-fake",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 178 focused cases. Separate live scans covered 7,119 tracked Python files across 85 repositories and 7,276 files across 86 repositories, both with zero findings or scanner errors; a normalized 462-file Pygments, packaging, and pytest corpus also produced zero findings. Seeded adversarial cases exposed and then verified fixes for application ports, failure scripts, call recorders, generated doubles, aliased protocols, import provenance, clocks, vendor HTTP clients, and unsupported fidelity claims.",
+      "outcome": "Retained the compatible prefer-library-fake selector because Python migration aliases are not accepted as runtime selectors, but rewrote the UI around maintained service doubles and staged SARJ059 as a warning. Most service families now require multiple recognized protocol methods plus non-bookkeeping state produced by one protocol operation and read by another; LLM and BigQuery require distinctive raw envelopes. Removed clock, SendGrid, Mailgun, and Bedrock misclassifications; made maintained-tool imports unconditional and service-specific; excluded generated code; resolved aliased extension bases; softened fidelity claims; and replaced the opaque public example with a real boto3 client exercised under Moto."
     },
     {
       "task": "rule-audit/python/prefer-match-assert-never",
       "family": "python",
       "ruleId": "prefer-match-assert-never",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 106 focused cases and scanned between 1,972 and 7,276 tracked Python files plus a normalized 462-file popular corpus. The only original fleet finding depended on an untyped imported owner and was judged at least intentionally tolerant; adversarial probes reproduced false positives for imported constants, ordinary classes, open class-pattern domains, flags, shadowed enum bases, handler maps, generated files, and rebound names. Post-change scans produced zero findings across 7,276 tracked files and 462 popular files, while 58 focused cases, Ruff, BasedPyright, catalog validation, and rule verification passed.",
+      "outcome": "Retained the compatible prefer-match-assert-never selector, rewrote the UI around typed local enums and real assert_never usage, and staged SARJ032 as a warning. The matcher now requires an unshadowed locally declared non-flag enum and an explicitly typed, lexically unmodified parameter; validates declared members; supports aliased enum imports, named catch-alls, ellipsis, reversed equality and identity comparisons; and excludes generated files. Removed arbitrary imported-owner and open class-pattern inference plus the contradictory incomplete handler-map detector, whose direct lookup already failed loudly with KeyError."
     },
     {
       "task": "rule-audit/python/prefer-match-type-dispatch",
       "family": "python",
       "ruleId": "prefer-match-type-dispatch",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 88 focused cases and scanned up to 7,120 tracked Python files across 85 repositories plus a normalized 462-file popular corpus. The original matcher produced 65 fleet findings, including 57 subjective two-arm conversions and six unrelated repeated-capture findings; a separate private scan found 232 findings, 219 in generated OpenAPI clients. Post-change validation ran 44 focused cases and produced one genuine finding and zero observed false positives across 7,120 tracked files, plus zero findings across the popular corpus.",
+      "outcome": "Retained the compatible prefer-match-type-dispatch selector, rewrote the UI around three-or-more-branch runtime type dispatch, and staged SARJ080 as a warning. The matcher now requires adjacent unguarded branches over one simple subject, at least three distinct proven types, and terminating sibling checks; recognizes unshadowed builtins, module-local classes, and stdlib ast classes; excludes generated files and ambiguous imports or bindings; and shares one AST traversal for better fleet performance. Removed unrelated exception-flow, sentinel-guard, repeated-capture, issubclass, and noisy two-arm guidance."
     },
     {
       "task": "rule-audit/python/prefer-module-level-constant",
       "family": "python",
       "ruleId": "prefer-module-level-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 194 focused cases and scanned up to 7,120 tracked Python files across 85 repositories plus a normalized 462-file popular corpus. The original matcher produced 96 fleet findings and exposed unsafe advice for a nested mutable accumulator, representation-sensitive equality, formatting, slices, copy and serialization, unproven re and builtin bindings, numeric re.DEBUG flags, lazy or identity-preserving consumers, module monkeypatches, and missed test-support paths. Post-change validation ran 215 focused cases and found 50 advisory candidates across 7,119 tracked files with no observed in-scope false positives, plus zero findings across the popular corpus.",
+      "outcome": "Retained the compatible prefer-module-level-constant selector, rewrote the UI around behavior-preserving immutable module values, and staged SARJ039 as a warning because syntax cannot prove hotness. Collections now require eight deeply immutable elements, or three inside a loop, and only representation-insensitive reads qualify; set iteration, escaping or lazy consumers, equality, formatting, slicing, copying, serialization, and nested mutable state are excluded. Regex candidates require proven unmodified stdlib re bindings, reject symbolic or numeric DEBUG flags, and abstain after module attribute mutation. Test-support and case-insensitive test directories are excluded, and the public tuple example is executable and clean under SARJ096."
     },
     {
       "task": "rule-audit/python/prefer-namedtuple-over-tuple-return",
       "family": "python",
       "ruleId": "prefer-namedtuple-over-tuple-return",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 121 focused cases and scanned up to 7,120 tracked Python files plus normalized popular corpora of 443 and 462 Pygments, packaging, and pytest files. The original matcher produced 392 first-party findings, including 51 test-like helpers in a smaller 84-finding scan, and crashed on a cyclic opaque-use probe. Post-change validation ran 63 focused cases; first-party scans produced zero findings or one manually confirmed record-like API candidate, and both popular scans produced zero findings. Ruff, BasedPyright, catalog checks, warning metadata tests, and the full 7,304-test Python suite passed.",
+      "outcome": "Retained the compatible prefer-namedtuple-over-tuple-return selector, rewrote the UI around public record-like returns, and staged SARJ026 as a warning. The matcher now requires an undecorated public top-level function with an explicit provenance-resolved builtin or typing tuple annotation containing at least three fixed heterogeneous fields. It excludes inferred and aliased returns, private or nested functions, methods, generated and non-production paths, decorated framework handlers, overload declarations, key callbacks, homogeneous builtin spellings, variadic and wrapped tuples, and ambiguous imports. The remedy recommends typing.NamedTuple only for tuple-compatible migrations and reserves dataclasses or models for deliberate caller changes."
     },
     {
       "task": "rule-audit/python/prefer-nominal-id-types",
       "family": "python",
       "ruleId": "prefer-nominal-id-types",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 73 focused cases plus precedence coverage and scanned up to 7,120 tracked Python files plus a 443-file Pygments, packaging, and pytest corpus. The original matcher produced 373 fleet findings and reproduced false positives for unlike carriers, scalar versus collection roles, shadowed primitives, unrelated UUID and wrapper types, raw TypedDict and Pydantic wire models, decorated overrides, private boundaries, SQLAlchemy Mapped fields, and operational logging payloads. Post-change validation ran 78 focused cases and 87 with precedence; the broad fleet scan fell to 199 warning candidates, the Bulbul/Automations/Saqi scan fell from 120 to 21 manually reviewed credible domain boundaries, and the popular corpus remained at zero findings.",
+      "outcome": "Retained the accurate prefer-nominal-id-types selector, rewrote the UI around genuinely swappable same-carrier identifier roles, and staged SARJ093 as a warning. Primitive, UUID, wrapper, NewType, TypeAliasType, SQLAlchemy, Pydantic, and TypedDict decisions now require import provenance; unlike carrier shapes do not report. The matcher excludes generated and non-domain paths, private or decorated boundaries, operational audit and logger contexts, plural tracing IDs, raw schemas, SQLAlchemy Mapped fields, and direct or Annotated Pydantic wire aliases; it also prevents duplicate class and constructor diagnostics. The executable remedy distinguishes low-cost typing.NewType from runtime nominal value objects."
     },
     {
       "task": "rule-audit/python/prefer-non-nullable-collection",
       "family": "python",
       "ruleId": "prefer-non-nullable-collection",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/prefer-one-for-required-row",
-      "family": "python",
-      "ruleId": "prefer-one-for-required-row",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 68 focused cases and scanned up to 7,120 tracked Python files plus a 443-file Pygments, packaging, and pytest corpus. The original detector produced six fleet findings representing four unique implementations and two findings in Bulbul/Automations/Saqi, but also reproduced false positives for decorated framework callbacks, derived constructors, identity-preserving guards and conditionals, shadowed list and list(), unrelated Optional and List types, and ambiguous wildcard imports. Post-change validation ran 44 focused cases; both fleet scans retained only the same two high-signal immediate collapses and the popular corpus remained at zero findings.",
+      "outcome": "Retained the compatible prefer-non-nullable-collection selector while making its Python list-parameter scope explicit, reclassified SARJ082 as a maintainability warning, and rewrote the UI to describe an advisory caller-visible API migration. The matcher now requires provenance-resolved list, Optional, Union, Annotated, and list() syntax and only reports a direct one-read items-or-empty-list collapse or a first self-assignment with that shape. Decorated functions, constructors of non-object bases, tests, generated and support code, nested captures, multiple pre-normalization reads, guards, conditional expressions, shadowed bindings, and ambiguous imports are excluded."
     },
     {
       "task": "rule-audit/python/prefer-or-pattern",
       "family": "python",
       "ruleId": "prefer-or-pattern",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 72 focused cases and scanned up to 7,325 tracked Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced six broad-fleet findings, two Bulbul/Automations/Saqi findings, and nine distinct findings in a separate 7,299-path scan; every finding was a valid merge and the popular corpus remained at zero. Reviewers reproduced generated-source findings, partial three-arm previews, false negatives when a pattern string contained #, ignored leading comments, irrefutable nested as-patterns, no-op constant bodies, and a 2.3x tokenization regression during the initial repair. Post-change validation ran 81 focused cases, retained the same high-precision fleet findings, and restored a no-tokenization fast path for files without a structurally mergeable candidate.",
+      "outcome": "Retained the accurate and compatible prefer-or-pattern selector, rewrote the public UI with self-contained literal patterns, and staged SARJ070 as a maintainability warning. The matcher now excludes generated source, tokenizes real comments only after a cheap structural prefilter proves adjacent arms could merge, preserves leading and intervening comment boundaries, rejects recursively irrefutable patterns and constant-only bodies, and renders every arm in a valid bounded preview or omits the preview entirely. Guards, adjacency, equal bound-name sets, structural body equality, and compilation of the proposed combined pattern remain required; no autofix is offered."
     },
     {
       "task": "rule-audit/python/prefer-self-documenting-constant",
       "family": "python",
       "ruleId": "prefer-self-documenting-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 105 focused cases and scanned up to 7,325 tracked Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced two broad-fleet findings, both useful, and zero popular-corpus findings, but adversarial probes reproduced invalid HTTPStatus advice for non-HTTP and vendor codes, shadowed and mutated frozenset constructors, aliased enum members, bare m interpreted as minutes, unrelated unit clauses, and overlap with the since-retired SARJ014 duration rule. Post-change validation ran the combined SARJ097 and precedence cases. The broad fleet retained one manually confirmed packed-ID byte-size warning, Bulbul/Automations/Saqi produced zero findings, the popular corpus remained clean, and runtime stayed within normal variance of the original scan.",
+      "outcome": "Retained the compatible prefer-self-documenting-constant umbrella selector, expanded its public UI to show both unit and HTTP-status cases, and staged SARJ097 as a maintainability warning. Unit inference now binds context-only phrases to the declaration or generic value subject, respects punctuation, conjunction, dash, and multiline clause boundaries, rejects conflicting unit-shaped names, and does not treat bare m as minutes. HTTP guidance requires explicit HTTP evidence, standard HTTPStatus members, and a provenance-safe frozenset constructor; exact-int boundaries receive .value guidance. Generated/comment scans are gated behind syntactic candidates, and enum aliases and builtins mutation are respected. SARJ014 was later retired, so SARJ097 now owns its distinct comment-based signal without cross-rule precedence."
     },
     {
       "task": "rule-audit/python/prefer-self-type-annotation",
       "family": "python",
       "ruleId": "prefer-self-type-annotation",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 18 focused cases and scanned up to 7,326 local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced 42 broad-fleet findings and nine Bulbul findings, but reproduced invalid Self advice for static methods, generators, __init__, final classes, metaclasses, generic specialization changes, rebound receivers, shadowed or mutated decorators, and deliberate base-class contracts. Post-change validation ran 60 focused cases. The broad fleet produced 38 reviewed warning-level suggestions with zero semantic false positives, Bulbul retained nine valid findings while Automations and Saqi remained clean, and the popular corpus retained five plausible advisory findings after four final-class findings disappeared.",
+      "outcome": "Retained the accurate and compatible prefer-self-type-annotation selector, reclassified SARJ078 as a maintainability warning, and added paired fluent-method and alternate-constructor examples. The matcher now requires an exact enclosing-class annotation and receiver-preserving returns; resolves method decorators and Pydantic constructors by provenance; derives the actual receiver; rejects every owning-scope rebinding family; excludes static methods, generators, __init__, final classes, behavior-changing decorators, deliberate base contracts, generic specializations, metaclasses, and Ruff-owned iterator methods; follows safe metaclass aliases; and abstains after builtin decorator mutation. A structural candidate gate confines the added analysis to relevant files, and the diagnostic presents Self as a reviewed public-contract improvement rather than an automatic correction."
     },
     {
       "task": "rule-audit/python/prefer-set-isdisjoint",
@@ -510,19 +538,17 @@
       "task": "rule-audit/python/prefer-str-enum",
       "family": "python",
       "ruleId": "prefer-str-enum",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 278 focused cases and scanned up to 8,249 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original matcher produced 18 broad-fleet findings and 14 popular-corpus findings, including false positives for open plugin and platform vocabularies, already-Literal producers, pure inequality, non-exhaustive matches, shadowed builtins, and constructor forwarding. Post-change validation ran 242 rule cases, 248 combined rule and CLI-severity cases, the 7,316-test Python suite, strict BasedPyright, and dogfood across 93 rules and 456 source files. The final matcher retained three manually confirmed local rejecting dispatches, produced zero popular-corpus findings, and cut the popular-corpus runtime by more than half after a rejection-aware lexical gate and linear dominance scan.",
+      "outcome": "Retained the compatible prefer-str-enum selector, reclassified SARJ006 as a maintainability warning, and rewrote its UI around application-owned string domains with explicit closed-set evidence. Class fields require a provenance-safe builtin str annotation plus an associated sibling choice collection. Dispatch findings require a direct function-body rejecting membership guard, exhaustive if chain, or rejecting wildcard match; open, nested, caught, prior-return, test-only, external, wire-bound, generated, already-Literal, and suppressed cases abstain. Removed speculative constructor-copy inference, made import provenance lazy, added deterministic linear-scan coverage, synchronized catalog and formatted examples, and recommends either StrEnum or a named Literal without autofix."
     },
     {
       "task": "rule-audit/python/prefer-struct-over-namedtuple",
       "family": "python",
       "ruleId": "prefer-struct-over-namedtuple",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/prefer-timedelta-for-durations",
-      "family": "python",
-      "ruleId": "prefer-timedelta-for-durations",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 90 focused cases and one expected failure, scanned up to 8,250 tracked local Python files, and evaluated a normalized 443-file Pygments, packaging, and pytest corpus. The original error-level rule reported imports rather than declarations, produced a compatibility-branch false positive, and had scope-insensitive false negatives plus provenance errors for rebinding, wildcard imports, pattern captures, and nested class namespaces. Post-change validation ran 121 focused cases, the 7,344-test Python suite, and strict BasedPyright. The final broad scan retained one manually confirmed six-field application record at its construction site with zero scan errors; Bulbul, Automations, Saqi, the popular corpus, and the standards source tree remained clean. A lexical candidate gate reduced the broad scan from 114 seconds to 2.5 seconds.",
+      "outcome": "Retained the shipped prefer-struct-over-namedtuple selector because Python rule aliases are documentation-only, but rewrote every public surface around the accurate typed-record objective and staged SARJ015 as a maintainability warning. The matcher now reports source-ordered factory calls only when scope- and position-aware provenance proves collections.namedtuple and a matching class-like declaration has a literal non-empty field set. It excludes unused imports, tests, generated or vendored code, compatibility branches, dynamic or renamed factories, ambiguous wildcard and duplicate aliases, invalid or duplicate fields, custom module identities, zero-field probes, suppressions, and records with complete field annotations. The remediation preserves tuple behavior with class-based typing.NamedTuple and presents frozen slotted dataclasses or existing validation models only as reviewed semantic changes; no autofix is offered."
     },
     {
       "task": "rule-audit/python/prefer-walrus-awaited-none-guard",
@@ -536,121 +562,145 @@
       "task": "rule-audit/python/prefer-walrus-comprehension-filter",
       "family": "python",
       "ruleId": "prefer-walrus-comprehension-filter",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 22 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule reported 46 broad-fleet findings across 33 files, dominated by string normalization and mapping access, and three popular-corpus findings, but adversarial probes reproduced behavior-changing advice for random and consuming calls, unsafe short-circuit and conditional paths, intervening mutation, nested calls and comprehensions, outer-target shadowing, test/generated code, and duplicate filters. Post-change validation ran 33 focused cases and strict BasedPyright. Bulbul, Automations, and Saqi retained five manually reviewed application findings; the popular corpus retained two useful string-normalization findings with zero false positives or scan errors.",
+      "outcome": "Retained the compatible prefer-walrus-comprehension-filter selector because Python aliases are documentation-only, but rewrote the UI around the accurate repeated-call signal and staged SARJ076 as a performance warning. The matcher now excludes test, generated, nested, deferred, awaited, nested-call, recognized type-inspection, consuming or nondeterministic, unsafe short-circuit, and intervening-call cases; it also emits once per repeated signature. Remediation explicitly requires that reevaluation be unintended and the containing-scope name be fresh, otherwise it recommends preserving separate evaluations or using an explicit loop. A lexical candidate gate avoids parsing files that cannot contain the pattern."
     },
     {
       "task": "rule-audit/python/prefer-walrus-regex-match",
       "family": "python",
       "ruleId": "prefer-walrus-regex-match",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 23 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule reported 15 broad-fleet findings, all style candidates, and 10 popular-corpus findings, including two ambiguous long or multiline rewrites; adversarial probes reproduced false positives for unproven or shadowed regex receivers, finditer truthiness, use before compile, comments or gaps, and test or generated code. Post-change validation ran 38 focused cases and strict BasedPyright. The broad fleet retained 11 of 11 valid findings and the popular corpus retained eight of eight valid findings with zero scan errors; Bulbul retained four valid findings while Automations and Saqi retained none. A warm broad scan took 19.742 seconds versus the original 17.165 seconds.",
+      "outcome": "Retained the compatible selector because Python aliases are documentation-only and staged SARJ081 as a warning. The matcher now requires a proven re or regex module alias, a unique source-ordered compile binding, or a Pattern-annotated parameter; it no longer guesses receiver names or treats finditer as a match result. It requires physically adjacent single-line statements, preserves exact truthiness or None semantics, rejects rewrites over 100 columns, and excludes later use, comments, blank lines, rebindings, tests, and generated files. A lexical candidate gate limits scan cost. Pylint R6103 owns the broader optional transformation and this rule should be retired if that checker is adopted."
     },
     {
       "task": "rule-audit/python/prefer-walrus-stream-loop",
       "family": "python",
       "ruleId": "prefer-walrus-stream-loop",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/preserve-declared-nominal-id",
-      "family": "python",
-      "ruleId": "preserve-declared-nominal-id",
-      "state": "pending"
-    },
-    {
-      "task": "rule-audit/python/preserve-enum-types",
-      "family": "python",
-      "ruleId": "preserve-enum-types",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 12 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule produced 26 broad-fleet findings, all plausible style opportunities, and zero popular-corpus findings, but adversarial probes found behavior-changing None-sentinel guidance, invalid empty-body rewrites, guard-else loss, arbitrary non-call and yield producers, type-comment loss, generated and test noise, and unreadable multiline or overlong rewrites. Post-change validation ran 28 focused cases. The broad fleet retained 22 of 22 valid findings across 17 files with zero scan errors, while the popular corpus remained clean; the scan fell from 31.499 to 3.886 seconds. Bulbul retained one compact fetchmany finding and intentionally dropped one multiline batch-fetch suggestion.",
+      "outcome": "Retained the compatible prefer-walrus-stream-loop selector because Python aliases do not resolve at runtime, but rewrote the UI around the accurate compact producer-and-sentinel shape and staged SARJ077 as a style warning. The matcher now requires a call or awaited call, a nonempty rewritten body, no loop or guard else, physical single-line adjacency, no attached or intervening comments, and a rewrite within 100 columns; tests, generated files, type comments, multiline producers, and non-call expressions are excluded. None and reversed-None guards receive exact is-not-None guidance so falsy non-None values remain valid. A lexical candidate gate reduced broad-scan time by 87.7 percent. Ruff has no owner; Pylint R6103 is adjacent but does not own while-sentinel loops."
     },
     {
       "task": "rule-audit/python/production-derived-test-cases",
       "family": "python",
       "ruleId": "production-derived-test-cases",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 21 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule produced two broad-fleet findings: one genuine Bulbul eligibility-oracle defect and one false positive from a qualified shared-test module. Adversarial probes reproduced stdlib, relative, test-support, third-party, generic smoke-sweep, class-shadow, and shadowed-wrapper false positives; tautological or dead assertions suppressed findings, keyword argvalues and suppressions were missed, and the UI omitted the promised equality oracle. Post-change validation ran 33 focused cases. The broad fleet retained the one valid Bulbul finding with zero errors in 7.164 seconds versus 8.859 originally, and the popular corpus remained clean.",
+      "outcome": "Retained the compatible production-derived-test-cases selector and staged SARJ409 as a testing warning scoped to contractual eligibility, support, allow, or required membership. Imports must resolve to first-party non-test source; relative, stdlib, third-party, test-support, generic collection, class-shadowed, and shadowed-wrapper cases abstain. Positional and keyword argvalues plus simple builtin wrappers are recognized. Only a direct reachable equality against a distinct literal table bound exactly once provides the independent-oracle exemption, and exact suppressions are honored. Public guidance now defines the literal table, asserts production equality, and parametrizes from the independent table. A lexical membership gate improves scan time."
     },
     {
       "task": "rule-audit/python/pydantic-at-boundaries",
       "family": "python",
       "ruleId": "pydantic-at-boundaries",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran 368 focused cases and scanned 9,410 tracked Python files. The original matcher produced 113 raw findings and failed 12 of 24 adversarial provenance and protocol cases; reviewed findings mixed useful unnamed-record boundaries with framework serializers, overrides, private classes, shadowed annotations, generated code, and guessed FastAPI routes. The repaired warning produced 91 candidates across the broad fleet, 55 after clone normalization, and no findings in the 1,277-file Bulbul source corpus. The full Python suite passed 7,079 tests with three expected xfails.",
+      "outcome": "Kept the legacy pydantic-at-boundaries selector for compatibility, added named-fixed-record-return as its precise alias, and staged SARJ008 as warning because whether an ordinary Python API needs a named record remains architectural judgment. TypedDict-first UI now describes the actual fixed-record signal. The rule proves typing and framework imports, respects lexical module scope, suppressions, generated code, private classes, serializers, validators, fixtures, overrides, conversion protocols, open or escaped mappings, and mutation through aliases. SARJ094 now exclusively owns visible FastAPI response contracts, including unannotated fixed records and response_model=None, while respecting concrete response models and status-matched response schemas; hidden routes retain consistent SARJ008 coverage."
     },
     {
       "task": "rule-audit/python/redundant-class-docstring",
       "family": "python",
       "ruleId": "redundant-class-docstring",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews adversarially tested framework provenance, inheritance, decorators, runtime docstring readers, alias rebinding, relational wording, semantic qualifiers, numbers, and non-Latin prose. The final matcher passed 102 focused cases before the Unicode additions, 308 combined focused and metadata cases in the final reviewer gate, and the full 7,129-test Python suite with three expected xfails. A fresh scan of 10,334 tracked Python paths produced one credible finding in Tahded and no rule exceptions; two unrelated tracked paths were unreadable.",
+      "outcome": "Retained the compatible redundant-class-docstring selector, added class-docstring-restates-name as its precise alias, and staged SARJ085 as a warning. The rule now targets only undecorated, base-free classes and abstains for recognized in-file runtime docstring reads, generated files, and docstring-only bodies. It accepts only articles and the word class as grammatical filler, tokenizes Unicode letters and numbers, and requires every remaining stem to be carried by the class name. This deliberately narrow boundary avoids guessing whether inheritance, decorators, relational wording, qualifiers, numbers, or multilingual prose carry runtime or semantic meaning. Public examples and catalog text now describe that exact scope."
     },
     {
       "task": "rule-audit/python/redundant-docstring",
       "family": "python",
       "ruleId": "redundant-docstring",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 87 focused cases and scanned 10,334 tracked Python paths. The original error rule produced 306 raw findings and 236 clone-normalized findings, including confirmed false positives from semantic qualifiers, abstract contracts, runtime docstring consumers, aliased decorators, inherited class APIs, nested class-scope leakage, and relational or selection prose. Post-change validation ran 94 focused Python, precedence, and severity cases plus the full 7,120-test Python suite with three expected xfails. A final scan of 10,336 tracked Python paths produced 58 findings, 44 after clone normalization, with no rule exceptions; sampled groups were credible restatements and two unrelated tracked paths were unreadable.",
+      "outcome": "Retained the compatible redundant-docstring selector, added function-docstring-restates-declaration as its precise alias, and staged SARJ050 as a warning with no autofix. The matcher now excludes decorated functions, methods under decorated or inherited classes, recognized in-file runtime docstring readers, generated files, and docstring-only bodies. It no longer borrows enclosing-class vocabulary, recognizes exact suppressions, tokenizes Unicode words and numbers, and ignores only articles plus function or method. Multi-parameter prose must include a distinguishing stem unique to every parameter, preventing one selected operand or a shared id, path, value, or user suffix from masquerading as full declaration restatement. Ruff D418 retains ownership of overload docstrings, while D402 does not cover this semantic signal."
     },
     {
       "task": "rule-audit/python/redundant-module-docstring",
       "family": "python",
       "ruleId": "redundant-module-docstring",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 45 focused cases and scanned 10,336 tracked Python paths. The original blocking rule had zero fleet findings and reproduced false positives for runtime module-docstring consumers, executable scripts, directional prose, semantic qualifiers, novel numbers, non-Latin words, and incomplete filename or parent-package prefixes. Post-change validation ran 80 focused cases, 351 related docstring and precedence cases, and the full 7,155-test Python suite with three expected xfails. The final broad scan remained at zero findings with no rule exceptions; two unrelated tracked paths were unreadable.",
+      "outcome": "Retained redundant-module-docstring for compatibility, added module-docstring-restates-path as its precise alias, and staged SARJ099 as a warning with no autofix. The matcher now removes only documented generic module vocabulary and requires the complete normalized filename, optionally followed by the complete immediate parent component. Component order, lowercase compounds, Unicode scripts, and numbers are preserved. Shebang and recursively recognized main-guard modules, direct or indirect visible `__doc__` reads and publication, special modules, stubs, tests, generated files, multiline documentation, protected facts, and exact suppressions abstain. Remediation now requires confirming that external documentation and runtime consumers do not depend on the module docstring. The raw SARJ085 and SARJ050 diagnostics were also aligned with their already-staged warning policy, and precedence tests now preserve a generic error beside a specific warning."
     },
     {
       "task": "rule-audit/python/repeated-static-call-cases",
       "family": "python",
       "ruleId": "repeated-static-call-cases",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews reproduced the original rule's stateful-call, fixture-lifecycle, collection-ownership, alias-provenance, assertion-message, symbolic-input, and suppression false positives. The original broad scan produced 11 raw findings across 10,336 tracked Python paths, including a stateful database case. Post-change validation ran 72 focused cases, 200 focused and adjacent cases, 56 standards lifecycle cases, and the full 7,213-test Python suite with three expected xfails. A final broad scan produced zero findings across 10,334 readable tracked files (96.31 MB; two unrelated paths were unreadable), with a 6.37-second median over three loaded-source runs compared with 24.70 seconds before the early gates.",
+      "outcome": "Retained repeated-static-call-cases for compatibility, added repeated-static-call-assertions as its precise alias, and staged SARJ413 as a warning with no autofix. The rule now limits itself to whole-body groups of at least three same-shape direct-name calls with literal inputs and expectations in undecorated zero-parameter pytest tests. It abstains for setup, comments, assertion messages, fixtures, decorators, inherited or uncollected classes, statically falsey __test__ values, direct and aliased collection exclusions, symbolic or attribute calls, likely stateful mutators and their aliases, mocks, snapshots, spies, mapping accessors, and SARJ066 duplicate-test ownership. Exact sarj-noqa codes are honored without treating unrelated suppression directives as prose. Remediation explicitly requires judgment that order, shared state, fixture lifecycle, and identity are irrelevant before parameterizing."
     },
     {
       "task": "rule-audit/python/require-keyword-only-swap-prone-params",
       "family": "python",
       "ruleId": "require-keyword-only-swap-prone-params",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 156 focused cases and scanned overlapping local, installed-package, vendored, and standard-library corpora. The largest post-change scan covered 6,951 readable tracked Python files (60.39 MB) across 89 repositories and produced 148 warning candidates in 14 repositories; separate scans covered 4,429 local files plus 655 stdlib files and 2,723 six-repository files. Review reproduced false positives for structural Protocol implementations, bound callbacks, unknown decorators, symmetric password confirmation, and unproven hmac.compare_digest provenance, plus missing exact suppression. Post-change validation ran 182 focused cases, 390 focused and adjacent cases, strict BasedPyright, and the full 7,239-test Python suite with three expected xfails.",
+      "outcome": "Retained require-keyword-only-swap-prone-params as the accurate canonical selector and kept kwonly-same-type-params only as a compatibility alias. SARJ034 is now staged as a warning with no autofix because signature changes can break public APIs, callbacks, and protocols. The UI is probabilistic, names every triggering parameter, shows positional and named calls, and conditions remediation on calling-contract ownership. The detector excludes externally decorated callables, inherited or metaclass-controlled classes, recognized framework and runtime protocols, local structural Protocol implementations, bound callback references, exact suppressions, and proven symmetric rejection guards. Symmetric hmac.compare_digest handling requires an unshadowed top-level stdlib import, supports aliases, rejects every AST binding form including PEP 695 type parameters, and accepts only identity or exact UTF-8 encoding transforms. Explicit object inheritance remains analyzable, while bare str, int, and float annotations keep the rule disjoint from Ruff FBT001 boolean ownership and PLR0917 argument-count ownership."
     },
     {
       "task": "rule-audit/python/require-nodecode-for-splitting-settings-field",
       "family": "python",
       "ruleId": "require-nodecode-for-splitting-settings-field",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 20 focused cases and scanned overlapping local corpora of 4,429, 6,951, and 10,349 tracked Python files (up to 96.32 MB across 90 repositories), all with zero findings and no rule errors. The zero-hit fleet provided no precision evidence for error severity. Adversarial and Pydantic Settings 2.15 runtime checks reproduced false positives for conditional init-only coercion, multi-field ownership, class-header and ConfigDict decoding policy, plus duplicate diagnostics, incorrect value-parameter selection, dynamic targets, conditional return expressions, and missing exact suppression. Post-change validation ran 46 focused cases, 254 focused and adjacent cases, strict BasedPyright, and the full 7,265-test Python suite with three expected xfails.",
+      "outcome": "Retained require-nodecode-for-splitting-settings-field as the accurate canonical selector and staged SARJ424 as a warning with no autofix. The UI now describes Pydantic Settings environment-source decoding, demonstrates a raw non-JSON environment value, names the responsible validator, and conditions NoDecode or class-level decoding changes on the intended input contract. The detector requires one literal field target and a sole return expression with a split on a guaranteed evaluation path, derives the value parameter from classmethod or staticmethod ownership, and abstains for conditional, lazy, pass-through, multi-field, dynamic, or starred cases. It recognizes class keywords, SettingsConfigDict, Pydantic ConfigDict, ordered dict unpacking, nested ForceDecode metadata, custom sources, field and validator suppressions, and deduplicates by field. A semantics-preserving lexical prefilter reduces corpus cost without depending on attribute spacing. Ruff, Pylint, and type checkers do not own this cross-node framework behavior."
     },
     {
       "task": "rule-audit/python/require-port-for-service",
       "family": "python",
       "ruleId": "require-port-for-service",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 224 focused cases and an exact final scan of 90 repositories, 10,349 tracked Python files, and 96,317,906 bytes. The scan completed in 4.144 seconds with four findings representing two unique Bulbul services duplicated by a worktree, plus two unrelated stale or malformed tracked-path read errors. One service had concrete-typed consumers and fake substitutes; the other remained a lower-confidence advisory, confirming that error severity was not justified. Adversarial review reproduced false positives from structural Protocol conformance, Literal values, framework callbacks, nested classes, generic Service imports, unproven cast calls, overwritten constructor fields, dead statements and branches, compound control flow, comprehensions, generators, and chained comparisons. Final validation ran 259 focused cases, strict BasedPyright, Ruff, 68 standards lifecycle and documentation cases, and the full 7,300-test Python suite with three expected xfails.",
+      "outcome": "Retained require-port-for-service as the stable cross-language selector and staged SARJ071 as a warning with no autofix. The UI now presents a conditional consumer-owned Protocol advisory, shows an explicit consumer and structural Protocol, and documents that cross-module need cannot be proven and may require exact suppression. The detector is limited to direct module classes with a required, directly stored collaborator used by at least two ordinary public methods. It recognizes visible structural ports without nominal inheritance, exact suppressions, reversed main guards, proven typing cast aliases, PEP 695 class syntax, and chained collaborator calls. It excludes framework callbacks, value and driver annotations, persistence dependencies, ambiguous or control-flow-dependent constructor storage, statically unreachable expressions and statements, and unsupported compound or deferred execution rather than manufacturing evidence. Ruff, Pylint, and type checkers do not own this file-local dependency-inversion heuristic."
     },
     {
       "task": "rule-audit/python/require-pydantic-for-external-json",
       "family": "python",
       "ruleId": "require-pydantic-for-external-json",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviewers expanded the original 48 focused cases to 119 adversarial and documentation cases and scanned an exact local corpus of 90 repositories, 10,350 tracked Python files, and 96,330,816 bytes. The final corpus produced 65 raw findings, 45 content-distinct path-line findings, and nine distinct contents across seven repositories and 14 repository-files, plus one unrelated read error; manual classification found all nine distinct contents actionable, with zero false positives or uncertain cases. Review reproduced false positives and false negatives involving unknown parameters, local JSON, arbitrary json/text lookalikes, open record iteration, helper rebinding, validator aliases, same-line ordering, validation-state reassignment, class decorators and method overrides, module/function shadowing, PEP 695 binders, and malformed test fixtures. Final validation ran 119 focused cases, strict BasedPyright, Ruff, the hard performance gates, 18 standards lifecycle/catalog cases, and the full 7,369-test Python suite with three expected xfails.",
+      "outcome": "Retained require-pydantic-for-external-json as the stable selector and staged SARJ411 as a warning with no autofix. The UI now asks for runtime schema validation only at import-proven external JSON record reads and demonstrates a concrete HTTP boundary with a Pydantic model. The detector follows literal field reads through single-assignment HTTP, JSON, environment, subprocess, and simple helper provenance; recognizes Pydantic models and TypeAdapters, Marshmallow schemas and instances, and jsonschema functions and validator instances through unique aliases; and applies order-aware validation dominance with kill-on-rebind semantics. It rejects decorated or validator-overriding schema classes, invalidates imported and local shadowing across ordinary and PEP 695 binders, honors exact suppressions, and abstains on tests, generated files, repository-local JSON, dynamic record access, unknown parameters, and complex binders. Consolidated scope-aware binding scans keep the rule within the repository's absolute and relative performance budgets. Ruff, Pylint, and type checkers do not own this cross-statement external-data provenance policy."
     },
     {
       "task": "rule-audit/python/require-pydantic-ordinal-lower-bound",
       "family": "python",
       "ruleId": "require-pydantic-ordinal-lower-bound",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviewers expanded the original 10 focused cases to 65 adversarial and documentation cases and scanned 134 local checkouts or worktrees containing 12,376 tracked Python files and 112,964,274 bytes. The final scan completed in 5.492 seconds with two raw findings representing one distinct Bulbul field duplicated by a worktree, plus one unrelated read error; manual classification found the distinct contract actionable, with zero false positives or uncertain cases. Review reproduced unproven BaseModel and Field lookalikes, import and annotation alias failures, positional and Annotated defaults, private and ClassVar pseudo-fields, incidental or negated prose, accepted and rejected sentinel semantics, oversized numeric literals, Pydantic v1 and v2 validators, unknown metadata, dynamic bounds, insufficient and repeated ordered constraints, union and Optional branches, nested containers, and module or class shadowing. Final validation ran 65 focused cases, strict BasedPyright, Ruff, the absolute and relative performance gates, and the full 7,426-test Python suite with three expected xfails.",
+      "outcome": "Retained require-pydantic-ordinal-lower-bound as the accurate stable selector and returned SARJ418 to warning with no autofix because its prior error promotion lacked clean-fleet evidence. The UI now describes the observable mismatch between an unqualified ordinal origin and accepted smaller integers, uses a realistic import-complete Bulbul-shaped example, and recommends PositiveInt, NonNegativeInt, or an exact top-level bound. The detector requires a direct import-proven Pydantic BaseModel and Field, a corroborating ordinal field name, a bounded unqualified first-position clause, and a literal matching default. It supports import aliases, positional and Annotated defaults, unique annotation aliases, Literal, conint, Ge, Gt, Interval, PEP 604 and typing unions, Optional, numeric bounds, last-kind-wins constraint ordering, exact suppressions, and Pydantic v1 or v2 validators. It abstains for accepted sentinel language, dynamic bounds, unknown validator metadata, indirect models, unknown or rebound aliases, private or ClassVar fields, nested non-integer contracts, tests, and generated files. Ruff, Pylint, and type checkers do not own this prose-to-runtime-schema consistency policy; SARJ400 separately owns invalid literal defaults."
     },
     {
-      "task": "rule-audit/python/require-validated-row-factory",
+      "task": "rule-audit/python/no-positional-psycopg-row-escape",
       "family": "python",
-      "ruleId": "require-validated-row-factory",
-      "state": "pending"
+      "ruleId": "no-positional-psycopg-row-escape",
+      "state": "complete",
+      "evidence": "Three independent reviewers expanded the original eight focused cases to 72 documentation and adversarial cases. The original detector produced 187 raw findings, 123 content-distinct path-line findings, and 61 distinct file contents across the local fleet; review found zero detector-proven actionable cases, at least four definite false positives, and 119 uncertain findings because Psycopg provenance, cursor lifetime, inherited factories, and result escape were unproven. After redesign, an exact scan of 134 local repositories or worktrees, 12,376 tracked Python files, and 112,964,274 bytes completed in 5.801 seconds with zero raw or content-distinct findings and one unrelated read error; seeded positives still emitted exactly one warning. Review reproduced SQLite and arbitrary cursor lookalikes, import and local shadowing, connection and pool generics, inherited and assigned factories, scalar and named factories, sequential and nested cursor lifetimes, source-order rebinding, constructor and descriptor ambiguity, branch and loop lineage, abrupt control flow, shared-alias mutation, exact suppression, and test, support, migration, generated, and malformed inputs. Final validation ran 72 focused cases, Ruff, strict BasedPyright, catalog and warning-lifecycle checks, generated UI projection checks, and the full Python suite.",
+      "outcome": "Renamed SARJ414 to no-positional-psycopg-row-escape, retained require-validated-row-factory as a migration alias, and returned the rule to warning with no autofix. The UI now describes the observable policy: an import- or annotation-proven positional Psycopg record must not escape a function unchanged. It recommends class_row for returned records, scalar_row for scalar projections, and local transformation for positional results without claiming that every named factory validates values. The detector proves direct Psycopg connections, nested ConnectionPool connection generics, TupleRow and tuple annotations, explicit tuple_row factories, exact cursor lifetimes, ordered factory mutations, and path-sensitive unchanged aliases. It allows import-proven named or scalar factories and locally transformed results, and conservatively abstains on unknown or custom factories, inherited untyped pool state, ambiguous constructors or descriptors, binding shadowing or rebinding, complex try/finally and loop-control lineage, tests, test support, migrations, and generated files. Ruff, Pylint, and type checkers do not own this cross-statement runtime row-shape escape policy; SARJ013 separately owns redundant dict_row-to-model conversion."
     },
     {
       "task": "rule-audit/python/restated-test-docstring",
       "family": "python",
       "ruleId": "restated-test-docstring",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews expanded 32 focused cases to 82 and reproduced false positives for non-collected helper methods, fixtures and properties, constructor-bearing or nested Test classes, unittest docstrings, explicit __test__ opt-outs, class-local decorator shadows, stale aliases, multiline suppressions, and nested lexical readers. They also found false negatives for default test* names and import-proven pytest marks, plus accidental evidence from nested scopes and cross-method class synthesis. The final exact scan covered 134 repositories or worktrees, 12,376 tracked Python files, and 112,964,274 bytes: 183 raw findings collapsed to 134 content-distinct findings, all 134 manually classified actionable with zero false positives or uncertain cases, and one unrelated read error. The six distinct findings removed from the original scan were five ambiguous cross-method summaries and one accidental decorator-token match. Ruff, strict BasedPyright, focused diagnostics, generated UI projections, and the full Python suite pass.",
+      "outcome": "Kept the accurate restated-test-docstring ID and testing category, staged SARJ088 as a warning with no autofix, made the diagnostic actionable, and replaced the empty accepted example with preserved hidden-regression context. The detector now follows default pytest collection boundaries, literal and ambiguous __test__ opt-outs, import-proven pytest marks with class-scope shadowing, per-method rather than cross-method class evidence, same-lexical-body identifiers, span-aware exact suppressions, and source-ordered stable aliases for recognized runtime docstring consumers. It conservatively abstains on arbitrary decorators, inherited or constructor-bearing test classes, local or ambiguous alias provenance, structured or value-bearing docstrings, generated files, and lexical paraphrases it cannot prove redundant. Ruff and pydocstyle own docstring presence and syntax, not semantic restatement, so the custom advisory remains justified."
     },
     {
-      "task": "rule-audit/python/source-coupled-test",
+      "task": "rule-audit/python/no-raw-source-text-test-oracle",
       "family": "python",
-      "ruleId": "source-coupled-test",
-      "state": "pending"
+      "ruleId": "no-raw-source-text-test-oracle",
+      "state": "complete",
+      "evidence": "Three independent reviewers expanded the original detector to 103 focused SARJ402 and shared-SARJ412 cases and reproduced false positives from unproven Path/open lookalikes, non-collected pytest shapes, class-scope decorator shadowing, representation fixtures, mixed branches, sibling try and match paths, zero-iteration loops, and stale taint across destructuring, loop, with, and exception targets. They also reproduced missing exact suppressions and suppression-before-deduplication behavior. The final exact scan covered 134 repositories or worktrees, 12,376 tracked Python files, and 112,964,274 bytes in 16.202 seconds: 165 raw findings collapsed to 79 content-distinct findings, with 13 actionable, 65 intentional exact-representation contracts requiring reasoned suppressions, one documented false positive from an interprocedurally returned temporary extraction path, zero uncertain cases, and one unrelated read error. The rule remains warning-only because of that explicit interprocedural limit. Final validation ran the 103 focused cases, strict BasedPyright, Ruff, public example and generated catalog checks, 69 Standards lifecycle tests, and the full 7,580-test Python suite with three expected xfails.",
+      "outcome": "Renamed SARJ402 to no-raw-source-text-test-oracle, retained source-coupled-test as a migration alias, and staged it as a warning with no autofix. The UI now names the observable raw-text oracle rather than broadly implying all source coupling, uses import-complete parsed-field and substring examples, and explains exact suppression for deliberate representation contracts. The detector proves pathlib, io, built-in open, inspect, path aliases and source-like suffixes; follows common text transforms; honors span-aware exact suppressions before origin deduplication; and models pytest or unittest collection with source-ordered decorator provenance. It excludes fixture, golden, snapshot, generated, temporary-fixture, malformed, non-test, unproven API, and nested-scope cases, clears every supported binding target, and conservatively intersects if, loop, try, and match flow paths. SARJ412 shares the hardened analyzer, documents its representation-directory behavior, and now honors exact SARJ412 suppressions. Ruff, Pylint, and type checkers do not own this cross-statement raw-representation oracle policy."
     },
     {
-      "task": "rule-audit/python/sql-requires-injected-pool-owner",
+      "task": "rule-audit/python/no-psycopg-execution-outside-injected-owner",
       "family": "python",
-      "ruleId": "sql-requires-injected-pool-owner",
-      "state": "pending"
+      "ruleId": "no-psycopg-execution-outside-injected-owner",
+      "state": "complete",
+      "evidence": "Three independent reviewers expanded the original five focused cases to 35 adversarial and documentation cases and scanned an exact local corpus of 134 repositories or worktrees, 12,376 tracked Python files, and 112,964,274 bytes. The original detector produced 239 raw findings and 158 content-distinct findings; manual classification found only 13 actionable, 143 intentional test, operational, provisioning, backfill, and health-check contexts, and two uncertain startup probes. After redesign, the final scan completed in 36.850 seconds with 15 raw findings and 13 content-distinct findings, all 13 actionable with zero false positives or uncertain cases, plus one unrelated read error. Review reproduced lookalike types, generic and mixed-union annotations, unstable aliases, every ordinary binding and shadowing form, nested-scope duplicates, source-order rebindings, abrupt exits, constructor aliases and mutations, module-global owners, exact suppressions, and test, migration, generated, operational, and health-probe boundaries. Final validation ran 35 focused cases, Ruff, strict BasedPyright, the full Python suite, and 92 Standards lifecycle, ledger, inventory, catalog, warning-generation, and foundation tests.",
+      "outcome": "Renamed SARJ415 to no-psycopg-execution-outside-injected-owner, retained sql-requires-injected-pool-owner as a migration alias, and staged the rule as a warning with no autofix. The UI now describes import-proven Psycopg execution in a free helper and shows a constructor-injected persistence owner with complete imports. The detector follows proven Connection, AsyncConnection, ConnectionPool, and AsyncConnectionPool annotations and constructors through stable aliases, supported wrappers and generics, assignments, walruses, connection and cursor contexts, module globals, constructor-local aliases, and conservative control-flow joins. It proves constructor storage in source order, revokes ownership after direct or reflective mutation, models non-fallthrough branches, honors exact suppressions, and avoids duplicate nested-scope diagnostics. It abstains on ambiguous unions and aliases, local import or binding shadowing, unknown and interprocedural flows, tests and support code, migrations, generated files, conventional operational-script roots, and literal SELECT 1 probes. Ruff, Pylint, Bandit, and type checkers do not own this persistence-boundary policy."
     },
     {
       "task": "rule-audit/python/stepdown",

@@ -50,8 +50,13 @@ from sarj_python_lint.rules.no_hidden_constructor_fallback import (
 )
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
+from sarj_python_lint.rules.no_positional_psycopg_row_escape import NoPositionalPsycopgRowEscape
+from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import (
+    NoPsycopgExecutionOutsideInjectedOwner,
+)
 from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
+from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
 from sarj_python_lint.rules.no_redundant_literal_description import NoRedundantLiteralDescription
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
 from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
@@ -96,7 +101,6 @@ from sarj_python_lint.rules.prefer_nominal_id_types import PreferNominalIdTypes
 from sarj_python_lint.rules.prefer_non_nullable_collection import (
     PreferNonNullableCollection,
 )
-from sarj_python_lint.rules.prefer_one_for_required_row import PreferOneForRequiredRow
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
     PreferSelfDocumentingConstant,
@@ -107,17 +111,12 @@ from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 from sarj_python_lint.rules.prefer_struct_over_namedtuple import (
     PreferStructOverNamedtuple,
 )
-from sarj_python_lint.rules.prefer_timedelta_for_durations import (
-    PreferTimedeltaForDurations,
-)
 from sarj_python_lint.rules.prefer_walrus_awaited_none_guard import PreferWalrusAwaitedNoneGuard
 from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
     PreferWalrusComprehensionFilter,
 )
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
-from sarj_python_lint.rules.preserve_declared_nominal_id import PreserveDeclaredNominalId
-from sarj_python_lint.rules.preserve_enum_types import PreserveEnumTypes
 from sarj_python_lint.rules.production_derived_test_cases import ProductionDerivedTestCases
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import PytestFixtureReturnsBareTuple
@@ -139,10 +138,7 @@ from sarj_python_lint.rules.require_pydantic_for_external_json import (
 from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
-from sarj_python_lint.rules.require_validated_row_factory import RequireValidatedRowFactory
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
-from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
-from sarj_python_lint.rules.sql_requires_injected_pool_owner import SqlRequiresInjectedPoolOwner
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
 from sarj_python_lint.rules.store_insert_requires_on_conflict import (
@@ -179,12 +175,11 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         FakesInSharedLocation.id: FakesInSharedLocation,
         PreferConstantTimeSecretCompare.id: PreferConstantTimeSecretCompare,
         NoSecretInLog.id: NoSecretInLog,
-        PreferTimedeltaForDurations.id: PreferTimedeltaForDurations,
         PreferStructOverNamedtuple.id: PreferStructOverNamedtuple,
         NoCommentCruft.id: NoCommentCruft,
         NoConftestTestModuleImport.id: NoConftestTestModuleImport,
         StoreInsertRequiresOnConflict.id: StoreInsertRequiresOnConflict,
-        SourceCoupledTest.id: SourceCoupledTest,
+        NoRawSourceTextTestOracle.id: NoRawSourceTextTestOracle,
         IacSourceCoupledTest.id: IacSourceCoupledTest,
         NoRawConnectionInTests.id: NoRawConnectionInTests,
         NoAnalyticalAggregationInPostgresStore.id: NoAnalyticalAggregationInPostgresStore,
@@ -201,7 +196,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         PytestFixtureReturnsBareTuple.id: PytestFixtureReturnsBareTuple,
         StoreGetDelegatesToBulkRead.id: StoreGetDelegatesToBulkRead,
-        PreferOneForRequiredRow.id: PreferOneForRequiredRow,
         RepeatedKwargHeavyCallInTest.id: RepeatedKwargHeavyCallInTest,
         DefectXfailRequiresExplicitStrict.id: DefectXfailRequiresExplicitStrict,
         NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
@@ -249,10 +243,8 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         ProductionDerivedTestCases.id: ProductionDerivedTestCases,
         UncontrolledRandomnessInTest.id: UncontrolledRandomnessInTest,
         RepeatedStaticCallCases.id: RepeatedStaticCallCases,
-        RequireValidatedRowFactory.id: RequireValidatedRowFactory,
-        SqlRequiresInjectedPoolOwner.id: SqlRequiresInjectedPoolOwner,
-        PreserveDeclaredNominalId.id: PreserveDeclaredNominalId,
-        PreserveEnumTypes.id: PreserveEnumTypes,
+        NoPositionalPsycopgRowEscape.id: NoPositionalPsycopgRowEscape,
+        NoPsycopgExecutionOutsideInjectedOwner.id: NoPsycopgExecutionOutsideInjectedOwner,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,

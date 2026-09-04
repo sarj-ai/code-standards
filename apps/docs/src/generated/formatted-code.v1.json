@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "931054ccd15e5f995b2a48becd403865f65a310218b68a50ee22e19211d9d06a",
+  "catalogSha256": "d65e65f11eff38063e4e0f72b1522d43aae2415549803f5f62b61018bcfbf206",
   "cliSha256": "03a003e18ad8ccd5fdbc94b83f32b43764ae9a01f2c9b8ae3e53710c7b401bbf",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -4166,6 +4166,21 @@
           "title": "Visible operation without an explicit success status"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\nfrom pydantic import BaseModel\n\n\nclass HealthResponse(BaseModel):\n    status: str\n\n\nrouter = APIRouter()\n\n\n@router.get(\"/health\", status_code=200)\nasync def health() -> HealthResponse:\n    return HealthResponse(status=\"ok\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "named-record-response",
+          "outcome": "accept",
+          "scenarioId": "unannotated-record",
+          "title": "Named response type documents the record"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -4194,6 +4209,21 @@
           "outcome": "accept",
           "scenarioId": "schema-integrity",
           "title": "A named response type preserves a concrete schema"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/health\", status_code=200)\nasync def health():\n    return {\"status\": \"ok\"}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "unannotated-record-response",
+          "outcome": "reject",
+          "scenarioId": "unannotated-record",
+          "title": "Unnamed record leaves the response schema implicit"
         }
       ],
       "optionsSchemaSource": null
@@ -4220,7 +4250,7 @@
           "files": [
             {
               "path": "tests/test_policy.py",
-              "source": "def test_policy():\n    source = Path(\"main.tf\").read_text()\n    assert \"prevent_destroy = true\" in source\n"
+              "source": "from pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"main.tf\").read_text()\n    assert \"prevent_destroy = true\" in source\n"
             }
           ],
           "fixedFiles": [],
@@ -4995,6 +5025,76 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-positional-psycopg-row-escape": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "import psycopg\n\n\nasync def load(dsn: str):\n    async with await psycopg.AsyncConnection.connect(dsn) as conn:\n        async with conn.cursor() as cursor:\n            await cursor.execute(\"SELECT id, state FROM task\")\n            return await cursor.fetchone()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "escaping-positional-record",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A positional database record escapes unchanged"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "from psycopg import AsyncConnection\nfrom psycopg.rows import class_row\nfrom pydantic import BaseModel\n\n\nclass TaskRow(BaseModel):\n    id: str\n    state: str\n\n\nasync def load(conn: AsyncConnection[tuple[object, ...]]):\n    async with conn.cursor(row_factory=class_row(TaskRow)) as cursor:\n        await cursor.execute(\"SELECT id, state FROM task\")\n        return await cursor.fetchone()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "named-record-factory",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A returned record has a named row contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-psycopg-execution-outside-injected-owner": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/retry_rows.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nasync def mark(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await conn.execute(\"UPDATE call SET retry = true\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry_rows.py",
+          "id": "free-psycopg-helper",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not execute persistence operations in a free helper"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/store.py",
+              "source": "from psycopg_pool import AsyncConnectionPool\n\n\nclass Store:\n    def __init__(self, pool: AsyncConnectionPool):\n        self.pool = pool\n\n    async def save(self):\n        async with self.pool.connection() as conn:\n            await conn.execute(\"UPDATE call SET retry = true\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/store.py",
+          "id": "injected-store-psycopg",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Execute through an injected persistence owner"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-random-uuid-in-sql": {
       "examples": [
         {
@@ -5061,6 +5161,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A test reads through the owning store API"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-raw-source-text-test-oracle": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "from pathlib import Path\n\nimport yaml\n\n\ndef test_policy():\n    workflow = yaml.safe_load(Path(\"workflow.yml\").read_text())\n    assert workflow[\"permissions\"][\"contents\"] == \"read\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "parsed-workflow-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Assert on parsed workflow behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "from pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "workflow-substring-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not prove workflow behavior with a substring"
         }
       ],
       "optionsSchemaSource": null
@@ -5467,7 +5602,7 @@
           "files": [
             {
               "path": "adapter.py",
-              "source": "value = vendor.value  # type: ignore[attr-defined] -- false positive\n"
+              "source": "value = vendor.value  # ruff: ignore[attr-defined] -- false positive\n"
             }
           ],
           "fixedFiles": [],
@@ -5522,7 +5657,7 @@
           "files": [
             {
               "path": "tests/test_handler.py",
-              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"payload\", [{\"a\": 1}, {\"a\": 2}], ids=[\"first\", \"second\"])\ndef test_handler(payload):\n    assert handle(payload)\n"
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\n    \"payload\",\n    [\n        pytest.param({}, id=\"empty-payload\"),\n        pytest.param({\"status\": \"invalid\"}, id=\"invalid-status\"),\n    ],\n)\ndef test_handler(payload):\n    assert handle(payload)\n"
             }
           ],
           "fixedFiles": [],
@@ -5537,7 +5672,7 @@
           "files": [
             {
               "path": "tests/test_handler.py",
-              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"payload\", [{\"a\": 1}, {\"a\": 2}])\ndef test_handler(payload):\n    assert handle(payload)\n"
+              "source": "import pytest\n\n\n@pytest.mark.parametrize(\"payload\", [{}, {\"status\": \"invalid\"}])\ndef test_handler(payload):\n    assert handle(payload)\n"
             }
           ],
           "fixedFiles": [],
@@ -5557,7 +5692,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "from unittest.mock import patch\n\n\n@patch(\"app.payment_gateway\")\ndef test_run(gateway):\n    assert run() == 1\n"
+              "source": "from unittest.mock import patch\n\n\n@patch(\"shop.payment_gateway.charge\")\ndef test_checkout(gateway, test_database, inventory_service):\n    result = checkout(test_database, inventory_service)\n    assert result.status == \"confirmed\"\n"
             }
           ],
           "fixedFiles": [],
@@ -5565,14 +5700,14 @@
           "id": "external-boundary-only",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Test patches one external boundary"
+          "title": "Component test keeps one external boundary"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "from unittest.mock import patch\n\n\n@patch(\"app.mod0.collaborator\")\n@patch(\"app.mod1.collaborator\")\n@patch(\"app.mod2.collaborator\")\n@patch(\"app.mod3.collaborator\")\n@patch(\"app.mod4.collaborator\")\n@patch(\"app.mod5.collaborator\")\ndef test_run(a, b, c, d, e, f):\n    assert run() == 1\n"
+              "source": "from unittest.mock import patch\n\n\n@patch(\"shop.inventory.reserve\")\n@patch(\"shop.payments.charge\")\n@patch(\"shop.shipping.quote\")\n@patch(\"shop.tax.calculate\")\n@patch(\"shop.email.send_receipt\")\n@patch(\"shop.risk.approve\")\ndef test_checkout(risk, email, tax, shipping, payments, inventory):\n    assert checkout() == \"confirmed\"\n"
             }
           ],
           "fixedFiles": [],
@@ -5592,30 +5727,30 @@
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "from psycopg.rows import dict_row\n\ncursor = connection.cursor(row_factory=dict_row)\n"
+              "source": "from psycopg.rows import dict_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=dict_row) as cursor:\n        row = await cursor.fetchone()\n        return Task.model_validate(row)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/task_store.py",
-          "id": "dictionary-row-factory",
+          "id": "dict-row-then-model",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Cursor returns unvalidated dictionaries"
+          "title": "Fetched dictionary is immediately converted"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "from psycopg.rows import class_row\n\ncursor = connection.cursor(row_factory=class_row(Task))\n"
+              "source": "from psycopg.rows import class_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=class_row(Task)) as cursor:\n        return await cursor.fetchone()\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/task_store.py",
-          "id": "validated-class-row-factory",
+          "id": "model-row-factory",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Cursor validates rows into a model"
+          "title": "Cursor constructs the model directly"
         }
       ],
       "optionsSchemaSource": null
@@ -5662,30 +5797,30 @@
           "files": [
             {
               "path": "auth.py",
-              "source": "import hmac\n\n\ndef authenticated(token, expected):\n    return hmac.compare_digest(token, expected)\n"
+              "source": "import hmac\n\n\ndef authenticated(request, settings):\n    provided = request.headers[\"X-API-Key\"]\n    return hmac.compare_digest(\n        provided.encode(\"ascii\"), settings.api_key.encode(\"ascii\")\n    )\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "auth.py",
-          "id": "constant-time-token-comparison",
+          "id": "request-api-key-constant-time",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Token compared in constant time"
+          "title": "Request API key uses constant-time comparison"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "auth.py",
-              "source": "def authenticated(token, expected):\n    return token == expected\n"
+              "source": "def authenticated(request, settings):\n    return request.headers[\"X-API-Key\"] == settings.api_key\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "auth.py",
-          "id": "direct-token-comparison",
+          "id": "request-api-key-equality",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Token compared with equality"
+          "title": "Request API key uses ordinary equality"
         }
       ],
       "optionsSchemaSource": null
@@ -5747,7 +5882,7 @@
           "files": [
             {
               "path": "settings.py",
-              "source": "from types import MappingProxyType\n\nROLE_LABELS = MappingProxyType({\"admin\": \"Administrator\"})\n"
+              "source": "from collections.abc import Mapping\nfrom types import MappingProxyType\n\nROLE_LABELS: Mapping[str, str] = MappingProxyType({\"admin\": \"Administrator\"})\n"
             }
           ],
           "fixedFiles": [],
@@ -5812,7 +5947,7 @@
           "files": [
             {
               "path": "tests/test_upload.py",
-              "source": "from moto import mock_aws\n\n\n@mock_aws\ndef test_upload():\n    assert upload_with_real_client()\n"
+              "source": "import boto3\nfrom moto import mock_aws\n\n\n@mock_aws\ndef test_upload():\n    client = boto3.client(\"s3\", region_name=\"us-east-1\")\n    client.create_bucket(Bucket=\"uploads\")\n    upload(client, bucket=\"uploads\", key=\"avatar\", body=b\"image\")\n    result = client.get_object(Bucket=\"uploads\", Key=\"avatar\")\n    assert result[\"Body\"].read() == b\"image\"\n"
             }
           ],
           "fixedFiles": [],
@@ -5832,7 +5967,7 @@
           "files": [
             {
               "path": "dispatch.py",
-              "source": "from kinds import Kind\n\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            raise AssertionError(kind)\n"
+              "source": "from enum import StrEnum\nfrom typing import assert_never\n\n\nclass Kind(StrEnum):\n    A = \"a\"\n    B = \"b\"\n    C = \"c\"\n\n\ndef handle(kind: Kind) -> None:\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case Kind.C:\n            handle_c()\n        case _ as unreachable:\n            assert_never(unreachable)\n"
             }
           ],
           "fixedFiles": [],
@@ -5847,7 +5982,7 @@
           "files": [
             {
               "path": "dispatch.py",
-              "source": "from kinds import Kind\n\n\ndef handle(kind):\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            pass\n"
+              "source": "from enum import StrEnum\n\n\nclass Kind(StrEnum):\n    A = \"a\"\n    B = \"b\"\n    C = \"c\"\n\n\ndef handle(kind: Kind) -> None:\n    match kind:\n        case Kind.A:\n            handle_a()\n        case Kind.B:\n            handle_b()\n        case _:\n            pass\n"
             }
           ],
           "fixedFiles": [],
@@ -5867,7 +6002,7 @@
           "files": [
             {
               "path": "app/parser.py",
-              "source": "def parse(value: object):\n    match value:\n        case Text():\n            return value\n        case Binary():\n            return value\n        case PathValue():\n            return value\n        case _:\n            return coerce(value)\n"
+              "source": "def parse(value: object):\n    match value:\n        case str():\n            return parse_text(value)\n        case bytes():\n            return parse_bytes(value)\n        case dict():\n            return parse_mapping(value)\n        case _:\n            raise TypeError(type(value))\n"
             }
           ],
           "fixedFiles": [],
@@ -5875,22 +6010,22 @@
           "id": "match-type-cases",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Parser names value shapes with match arms"
+          "title": "Class patterns make the type dispatch explicit"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "app/parser.py",
-              "source": "def parse(value: object):\n    if isinstance(value, Text):\n        return value\n    if isinstance(value, Binary):\n        return value\n    if isinstance(value, PathValue):\n        return value\n    return coerce(value)\n"
+              "source": "def parse(value: object):\n    if isinstance(value, str):\n        return parse_text(value)\n    elif isinstance(value, bytes):\n        return parse_bytes(value)\n    elif isinstance(value, dict):\n        return parse_mapping(value)\n    raise TypeError(type(value))\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/parser.py",
-          "id": "sequential-type-guards",
+          "id": "three-branch-type-dispatch",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Parser dispatches through sequential guards"
+          "title": "Repeated branches dispatch on runtime type"
         }
       ],
       "optionsSchemaSource": null
@@ -5898,34 +6033,34 @@
     "python:prefer-module-level-constant": {
       "examples": [
         {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "service.py",
-              "source": "def handle(value):\n    allowed = [\"a\", \"b\", \"c\"]\n    return value in allowed\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service.py",
-          "id": "list-built-per-call",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Static list rebuilt in a function"
-        },
-        {
           "expectedCount": 0,
           "files": [
             {
               "path": "service.py",
-              "source": "ALLOWED = [\"a\", \"b\", \"c\"]\n\n\ndef handle(value):\n    return value in ALLOWED\n"
+              "source": "ALLOWED = (\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\")\n\n\ndef handle(value):\n    return value in ALLOWED\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "service.py",
-          "id": "module-level-list",
+          "id": "immutable-module-membership",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Static list defined once"
+          "title": "Immutable membership table defined once"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "def handle(value):\n    allowed = [\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\"]\n    return value in allowed\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "static-membership-built-per-call",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Substantial static membership table rebuilt per call"
         }
       ],
       "optionsSchemaSource": null
@@ -5937,7 +6072,7 @@
           "files": [
             {
               "path": "app/profile.py",
-              "source": "from typing import NamedTuple\n\n\nclass Profile(NamedTuple):\n    name: str\n    age: int\n\n\ndef load_profile() -> Profile:\n    return Profile(\"Ada\", 42)\n"
+              "source": "from typing import NamedTuple\n\n\nclass Profile(NamedTuple):\n    name: str\n    age: int\n    active: bool\n\n\ndef load_profile() -> Profile:\n    return Profile(name=\"Ada\", age=42, active=True)\n"
             }
           ],
           "fixedFiles": [],
@@ -5945,14 +6080,14 @@
           "id": "named-public-return",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Public function returns a named record"
+          "title": "Public function returns a tuple-compatible named record"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "app/profile.py",
-              "source": "def load_profile() -> tuple[str, int]:\n    return \"Ada\", 42\n"
+              "source": "def load_profile() -> tuple[str, int, bool]:\n    return \"Ada\", 42, True\n"
             }
           ],
           "fixedFiles": [],
@@ -5960,7 +6095,7 @@
           "id": "positional-public-return",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Public function returns a positional pair"
+          "title": "Public function returns a positional record"
         }
       ],
       "optionsSchemaSource": null
@@ -5972,7 +6107,7 @@
           "files": [
             {
               "path": "app/services/files.py",
-              "source": "def move(file_id: FileId, parent_folder_id: FolderId) -> None: ...\n"
+              "source": "from typing import NewType\n\nFileId = NewType(\"FileId\", str)\nFolderId = NewType(\"FolderId\", str)\n\n\ndef move(file_id: FileId, parent_folder_id: FolderId) -> None: ...\n"
             }
           ],
           "fixedFiles": [],
@@ -5980,7 +6115,7 @@
           "id": "nominal-id-roles",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Distinct ID roles use nominal types"
+          "title": "NewType makes the two domain roles distinct"
         },
         {
           "expectedCount": 1,
@@ -5992,10 +6127,10 @@
           ],
           "fixedFiles": [],
           "focusPath": "app/services/files.py",
-          "id": "primitive-id-roles",
+          "id": "swappable-primitive-id-roles",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Distinct ID roles share a primitive type"
+          "title": "Two domain ID roles share the same primitive carrier"
         }
       ],
       "optionsSchemaSource": null
@@ -6012,60 +6147,25 @@
           ],
           "fixedFiles": [],
           "focusPath": "app/resolver.py",
-          "id": "equivalent-empty-list-states",
+          "id": "collapsed-nullable-list",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Nullable list is immediately normalized"
+          "title": "Nullable list is immediately collapsed to an empty list"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "app/resolver.py",
-              "source": "def resolve(candidates: list[str]) -> list[str]:\n    return candidates\n"
+              "source": "from collections.abc import Sequence\n\n\ndef resolve(candidates: Sequence[str] = ()) -> list[str]:\n    return list(candidates)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/resolver.py",
-          "id": "required-list-input",
+          "id": "immutable-empty-input",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Required list has one empty state"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:prefer-one-for-required-row": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/settings_store.py",
-              "source": "async def save(cursor):\n    row = await cursor.fetchone()\n    assert row is not None, \"RETURNING must yield a row\"\n    return row\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/settings_store.py",
-          "id": "required-returning-row",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Use the shared required-row contract"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/settings_store.py",
-              "source": "async def save(cursor):\n    return one(await cursor.fetchone())\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/settings_store.py",
-          "id": "required-row-helper",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Centralize the missing-row failure"
+          "title": "Immutable empty default keeps omission non-nullable"
         }
       ],
       "optionsSchemaSource": null
@@ -6077,7 +6177,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "def configure(value):\n    match value:\n        case LocalSettings():\n            return build(value)\n        case RemoteSettings():\n            return build(value)\n"
+              "source": "def status(value):\n    match value:\n        case \"queued\":\n            return \"active\"\n        case \"running\":\n            return \"active\"\n"
             }
           ],
           "fixedFiles": [],
@@ -6092,7 +6192,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "def configure(value):\n    match value:\n        case LocalSettings() | RemoteSettings():\n            return build(value)\n"
+              "source": "def status(value):\n    match value:\n        case \"queued\" | \"running\":\n            return \"active\"\n"
             }
           ],
           "fixedFiles": [],
@@ -6107,6 +6207,21 @@
     },
     "python:prefer-self-documenting-constant": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/retry.py",
+              "source": "# Retry HTTP responses 408 and 429.\nRETRYABLE_HTTP_STATUS_CODES = {408, 429}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry.py",
+          "id": "bare-http-status-collection",
+          "outcome": "reject",
+          "scenarioId": "http-status",
+          "title": "HTTP status collection uses bare integers"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -6126,8 +6241,23 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/retry.py",
+              "source": "from http import HTTPStatus\n\nRETRYABLE_HTTP_STATUS_CODES = {\n    HTTPStatus.REQUEST_TIMEOUT,\n    HTTPStatus.TOO_MANY_REQUESTS,\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/retry.py",
+          "id": "named-http-status-collection",
+          "outcome": "accept",
+          "scenarioId": "http-status",
+          "title": "HTTP status members carry protocol meaning"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/settings.py",
-              "source": "# Request deadline in seconds.\nREQUEST_DEADLINE_SECONDS = 10\n"
+              "source": "# The upstream gateway closes idle requests first.\nREQUEST_DEADLINE_SECONDS = 10\n"
             }
           ],
           "fixedFiles": [],
@@ -6147,6 +6277,21 @@
           "files": [
             {
               "path": "app/builder.py",
+              "source": "class Builder:\n    @classmethod\n    def create(cls) -> \"Builder\":\n        return cls()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/builder.py",
+          "id": "concrete-classmethod-return",
+          "outcome": "reject",
+          "scenarioId": "alternate-constructor",
+          "title": "Alternate constructor names its enclosing class"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/builder.py",
               "source": "class Builder:\n    def set_name(self, name: str) -> \"Builder\":\n        self.name = name\n        return self\n"
             }
           ],
@@ -6154,8 +6299,23 @@
           "focusPath": "app/builder.py",
           "id": "enclosing-class-return",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "fluent-method",
           "title": "Fluent method names its enclosing class"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/builder.py",
+              "source": "from typing import Self\n\n\nclass Builder:\n    @classmethod\n    def create(cls) -> Self:\n        return cls()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/builder.py",
+          "id": "self-classmethod-return",
+          "outcome": "accept",
+          "scenarioId": "alternate-constructor",
+          "title": "Alternate constructor preserves subclass type"
         },
         {
           "expectedCount": 0,
@@ -6169,7 +6329,7 @@
           "focusPath": "app/builder.py",
           "id": "self-return-annotation",
           "outcome": "accept",
-          "scenarioId": "primary",
+          "scenarioId": "fluent-method",
           "title": "Fluent method preserves subclass type"
         }
       ],
@@ -6213,6 +6373,21 @@
     "python:prefer-str-enum": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    if kind == \"text\":\n        return \"Text\"\n    if kind == \"image\":\n        return \"Image\"\n    return render_plugin(kind)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "open-string-dispatch",
+          "outcome": "accept",
+          "scenarioId": "rejecting-dispatch",
+          "title": "Dispatch forwards unlisted strings"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -6224,8 +6399,23 @@
           "focusPath": "app/order.py",
           "id": "raw-string-choice-field",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "choice-field",
           "title": "String field backed by a closed choice collection"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "def render(kind: str) -> str:\n    match kind:\n        case \"text\":\n            return \"Text\"\n        case \"image\":\n            return \"Image\"\n        case _:\n            raise ValueError(\"unsupported kind\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "rejecting-string-dispatch",
+          "outcome": "reject",
+          "scenarioId": "rejecting-dispatch",
+          "title": "Dispatch rejects every unlisted string"
         },
         {
           "expectedCount": 0,
@@ -6239,7 +6429,7 @@
           "focusPath": "app/order.py",
           "id": "string-enum-field",
           "outcome": "accept",
-          "scenarioId": "primary",
+          "scenarioId": "choice-field",
           "title": "Closed domain represented by a string enum"
         }
       ],
@@ -6252,7 +6442,7 @@
           "files": [
             {
               "path": "models.py",
-              "source": "import collections\n\nRow = collections.namedtuple(\"Row\", [\"id\", \"name\"])\n"
+              "source": "from collections import namedtuple\n\nRow = namedtuple(\"Row\", [\"id\", \"name\"])\n"
             }
           ],
           "fixedFiles": [],
@@ -6260,14 +6450,14 @@
           "id": "collections-namedtuple",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Functional untyped namedtuple"
+          "title": "Static record omits field types"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "models.py",
-              "source": "from typing import NamedTuple\n\n\nclass Row(NamedTuple):\n    id: int\n    name: str\n"
+              "source": "from typing import NamedTuple\n\n\nclass Row(NamedTuple):\n    id: int\n    name: str\n\n\nrow = Row(1, \"Ada\")\nid, name = row\n"
             }
           ],
           "fixedFiles": [],
@@ -6275,42 +6465,7 @@
           "id": "typed-named-tuple",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Typed NamedTuple declaration"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:prefer-timedelta-for-durations": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "scheduler.py",
-              "source": "def schedule(timeout_seconds: int) -> None: ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "scheduler.py",
-          "id": "numeric-duration-parameter",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Seconds represented as an integer"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "scheduler.py",
-              "source": "from datetime import timedelta\n\n\ndef schedule(timeout: timedelta) -> None: ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "scheduler.py",
-          "id": "timedelta-duration-parameter",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Duration represented as timedelta"
+          "title": "Typed tuple-compatible record"
         }
       ],
       "optionsSchemaSource": null
@@ -6357,7 +6512,7 @@
           "files": [
             {
               "path": "app/values.py",
-              "source": "def collect(values):\n    return [result for value in values if (result := compute(value))]\n"
+              "source": "def normalized(values):\n    return [clean for value in values if (clean := value.strip())]\n"
             }
           ],
           "fixedFiles": [],
@@ -6372,7 +6527,7 @@
           "files": [
             {
               "path": "app/values.py",
-              "source": "def collect(values):\n    return [compute(value) for value in values if compute(value)]\n"
+              "source": "def normalized(values):\n    return [value.strip() for value in values if value.strip()]\n"
             }
           ],
           "fixedFiles": [],
@@ -6426,6 +6581,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/messages.py",
+              "source": "while (message := receive()) is not None:\n    consume(message)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/messages.py",
+          "id": "conditional-none-sentinel-binding",
+          "outcome": "accept",
+          "scenarioId": "none-sentinel",
+          "title": "Named-expression loop keeps accepting falsy messages"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/stream.py",
               "source": "while chunk := stream.read(8192):\n    process(chunk)\n"
             }
@@ -6436,6 +6606,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Stream loop binds in its condition"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/messages.py",
+              "source": "while True:\n    message = receive()\n    if message is None:\n        break\n    consume(message)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/messages.py",
+          "id": "explicit-none-sentinel-break",
+          "outcome": "reject",
+          "scenarioId": "none-sentinel",
+          "title": "Producer loop preserves a None sentinel"
         },
         {
           "expectedCount": 1,
@@ -6455,88 +6640,18 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:preserve-declared-nominal-id": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/fake.py",
-              "source": "from typing import NewType, override\n\nSipTrunkId = NewType(\"SipTrunkId\", str)\n\n\nclass Fake:\n    @override\n    def route(self, sip_trunk_id: str): ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/fake.py",
-          "id": "declared-id-erased",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A declared nominal ID is widened to string"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/fake.py",
-              "source": "from typing import NewType, override\n\nSipTrunkId = NewType(\"SipTrunkId\", str)\n\n\nclass Fake:\n    @override\n    def route(self, sip_trunk_id: SipTrunkId): ...\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/fake.py",
-          "id": "declared-id-preserved",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A declared nominal ID remains nominal"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:preserve-enum-types": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/__init__.py",
-              "source": "from enum import StrEnum\n\n\nclass Status(StrEnum):\n    READY = \"ready\"\n\n\nclass Result:\n    status: Status | None\n\n\ndef render(result):\n    match result:\n        case Result():\n            return str(result.status)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/__init__.py",
-          "id": "matched-enum-erased",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A matched result enum is converted to string"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/__init__.py",
-              "source": "from enum import StrEnum\n\n\nclass Status(StrEnum):\n    READY = \"ready\"\n\n\nclass Result:\n    status: Status | None\n\n\ndef render(result):\n    match result:\n        case Result():\n            return result.status\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/__init__.py",
-          "id": "matched-enum-preserved",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A matched result enum remains typed"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "python:production-derived-test-cases": {
       "examples": [
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "tests/test_models.py",
-              "source": "import pytest\n\nEXPECTED_MODELS = (\"a\", \"b\")\n\n\n@pytest.mark.parametrize(\"model\", EXPECTED_MODELS)\ndef test_model(model):\n    assert build(model).tier == \"priority\"\n"
+              "path": "app/tests/test_models.py",
+              "source": "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\nEXPECTED_MODELS = (\"a\", \"b\")\n\n\ndef test_model_membership():\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n\n\n@pytest.mark.parametrize(\"model\", EXPECTED_MODELS)\ndef test_model(model):\n    assert build(model).tier == \"priority\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_models.py",
+          "focusPath": "app/tests/test_models.py",
           "id": "independent-model-cases",
           "outcome": "accept",
           "scenarioId": "primary",
@@ -6546,12 +6661,12 @@
           "expectedCount": 1,
           "files": [
             {
-              "path": "tests/test_models.py",
+              "path": "app/tests/test_models.py",
               "source": "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\n\n@pytest.mark.parametrize(\"model\", ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model).tier == \"priority\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/test_models.py",
+          "focusPath": "app/tests/test_models.py",
           "id": "production-derived-model-cases",
           "outcome": "reject",
           "scenarioId": "primary",
@@ -6567,7 +6682,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "def build_payload(call) -> CallPayload:\n    return CallPayload(id=call.id)\n"
+              "source": "from typing import TypedDict\n\n\nclass CallPayload(TypedDict):\n    id: str\n\n\ndef build_payload(call) -> CallPayload:\n    return {\"id\": call.id}\n"
             }
           ],
           "fixedFiles": [],
@@ -6575,7 +6690,7 @@
           "id": "typed-boundary-model",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Named model returned from a public function"
+          "title": "TypedDict names the returned record"
         },
         {
           "expectedCount": 1,
@@ -6590,7 +6705,7 @@
           "id": "untyped-dictionary-boundary",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Untyped dictionary returned from a public function"
+          "title": "Public API returns an unnamed record"
         }
       ],
       "optionsSchemaSource": null
@@ -6657,7 +6772,7 @@
           "id": "class-invariant",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Docstring records an invariant"
+          "title": "Docstring adds a concrete constraint"
         },
         {
           "expectedCount": 1,
@@ -6672,7 +6787,7 @@
           "id": "class-name-restatement",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Docstring repeats the class name"
+          "title": "Docstring only repeats the class name"
         }
       ],
       "optionsSchemaSource": null
@@ -6692,7 +6807,7 @@
           "id": "behavioral-docstring",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Docstring documents behavior"
+          "title": "Function docstring adds an atomicity guarantee"
         },
         {
           "expectedCount": 1,
@@ -6707,7 +6822,7 @@
           "id": "signature-restatement",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Docstring repeats the function name"
+          "title": "Function docstring only repeats its declaration"
         }
       ],
       "optionsSchemaSource": null
@@ -6824,7 +6939,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "def move(*, source_id: str, target_id: str) -> None: ...\n"
+              "source": "def move(*, source_id: str, target_id: str) -> None: ...\n\n\nmove(source_id=\"inbox\", target_id=\"archive\")\n"
             }
           ],
           "fixedFiles": [],
@@ -6839,7 +6954,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "def move(source_id: str, target_id: str) -> None: ...\n"
+              "source": "def move(source_id: str, target_id: str) -> None: ...\n\n\nmove(\"inbox\", \"archive\")\n"
             }
           ],
           "fixedFiles": [],
@@ -6859,7 +6974,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "from typing import Annotated\nfrom pydantic import field_validator\nfrom pydantic_settings import BaseSettings, NoDecode\n\n\nclass Settings(BaseSettings):\n    emails: Annotated[list[str], NoDecode]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n"
+              "source": "import os\nfrom typing import Annotated\nfrom pydantic import field_validator\nfrom pydantic_settings import BaseSettings, NoDecode\n\n\nclass Settings(BaseSettings):\n    emails: Annotated[list[str], NoDecode]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n\n\nos.environ[\"EMAILS\"] = \"one@example.com,two@example.com\"\nSettings()\n"
             }
           ],
           "fixedFiles": [],
@@ -6874,7 +6989,7 @@
           "files": [
             {
               "path": "app/settings.py",
-              "source": "from pydantic import field_validator\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    emails: list[str]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n"
+              "source": "import os\nfrom pydantic import field_validator\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    emails: list[str]\n\n    @field_validator(\"emails\", mode=\"before\")\n    @classmethod\n    def split_emails(cls, value):\n        return value.split(\",\")\n\n\nos.environ[\"EMAILS\"] = \"one@example.com,two@example.com\"\nSettings()\n"
             }
           ],
           "fixedFiles": [],
@@ -6894,7 +7009,7 @@
           "files": [
             {
               "path": "app/services/thing_service.py",
-              "source": "class ThingService:\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n"
+              "source": "class ThingService:\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n\n\ndef sync(service: ThingService) -> None:\n    service.write(\"inbox\", service.read(\"outbox\"))\n"
             }
           ],
           "fixedFiles": [],
@@ -6909,7 +7024,7 @@
           "files": [
             {
               "path": "app/services/thing_service.py",
-              "source": "class ThingService(ThingServicePort):\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n"
+              "source": "from typing import Protocol\n\n\nclass ThingServicePort(Protocol):\n    def read(self, key: str) -> str: ...\n    def write(self, key: str, value: str) -> None: ...\n\n\nclass ThingService:\n    def __init__(self, client: ThingClient) -> None:\n        self.client = client\n\n    def read(self, key: str) -> str:\n        return self.client.get(key)\n\n    def write(self, key: str, value: str) -> None:\n        self.client.put(key, value)\n\n\ndef sync(service: ThingServicePort) -> None:\n    service.write(\"inbox\", service.read(\"outbox\"))\n"
             }
           ],
           "fixedFiles": [],
@@ -6917,7 +7032,7 @@
           "id": "declared-service-port",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Service implements a declared port"
+          "title": "A visible structural port already describes the service boundary"
         }
       ],
       "optionsSchemaSource": null
@@ -6929,7 +7044,7 @@
           "files": [
             {
               "path": "protocol.py",
-              "source": "import json\n\n\ndef parse(payload: str) -> object:\n    report = json.loads(payload)\n    return report.get(\"version\")\n"
+              "source": "import httpx\n\n\ndef fetch() -> object:\n    report = httpx.get(\"https://api.example/report\").json()\n    return report.get(\"version\")\n"
             }
           ],
           "fixedFiles": [],
@@ -6944,7 +7059,7 @@
           "files": [
             {
               "path": "protocol.py",
-              "source": "def parse(payload: str) -> Report:\n    return Report.model_validate_json(payload)\n"
+              "source": "import httpx\nfrom pydantic import BaseModel\n\n\nclass Report(BaseModel):\n    version: int\n\n\ndef fetch() -> Report:\n    raw = httpx.get(\"https://api.example/report\").json()\n    report = Report.model_validate(raw)\n    return report\n"
             }
           ],
           "fixedFiles": [],
@@ -6964,7 +7079,7 @@
           "files": [
             {
               "path": "api.py",
-              "source": "class Detail(BaseModel):\n    retry_attempt_number: int = Field(\n        default=1, ge=1, description=\"1 for the first attempt\"\n    )\n"
+              "source": "from pydantic import BaseModel, Field, PositiveInt\n\n\nclass CallDetail(BaseModel):\n    retry_attempt_number: PositiveInt = Field(\n        default=1,\n        description=\"Which dial this call is within its retry group (1 for the first attempt).\",\n    )\n"
             }
           ],
           "fixedFiles": [],
@@ -6979,7 +7094,7 @@
           "files": [
             {
               "path": "api.py",
-              "source": "class Detail(BaseModel):\n    retry_attempt_number: int = Field(default=1, description=\"1 for the first attempt\")\n"
+              "source": "from pydantic import BaseModel, Field\n\n\nclass CallDetail(BaseModel):\n    retry_attempt_number: int = Field(\n        default=1,\n        description=\"Which dial this call is within its retry group (1 for the first attempt).\",\n    )\n"
             }
           ],
           "fixedFiles": [],
@@ -6987,42 +7102,7 @@
           "id": "ordinal-prose-only",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "An ordinal minimum exists only in prose"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:require-validated-row-factory": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "store.py",
-              "source": "def load(conn):\n    with conn.cursor() as cur:\n        return cur.fetchone()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "store.py",
-          "id": "bare-fetched-cursor",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A fetched cursor returns positional rows"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "store.py",
-              "source": "def load(conn):\n    with conn.cursor(row_factory=class_row(PendingTimeRow)) as cur:\n        return cur.fetchone()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "store.py",
-          "id": "validated-fetched-cursor",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A fetched cursor validates a row model"
+          "title": "An unqualified ordinal origin lacks a lower bound"
         }
       ],
       "optionsSchemaSource": null
@@ -7049,7 +7129,7 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def test_widget_renders():\n    assert render(widget)\n"
+              "source": "def test_widget_renders():\n    \"\"\"Without the stable key, retries would render the widget twice.\"\"\"\n    assert render(widget)\n"
             }
           ],
           "fixedFiles": [],
@@ -7057,77 +7137,7 @@
           "id": "test-regression-context",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Redundant docstring removed"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:source-coupled-test": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_policy.py",
-              "source": "def test_policy():\n    workflow = yaml.safe_load(Path(\"workflow.yml\").read_text())\n    assert verify(workflow) == []\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_policy.py",
-          "id": "parsed-workflow-contract",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Assert on parsed workflow behavior"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_policy.py",
-              "source": "def test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_policy.py",
-          "id": "workflow-substring-contract",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not prove workflow behavior with a substring"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:sql-requires-injected-pool-owner": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/fixtures/retry_rows.py",
-              "source": "async def seed(pool: AsyncConnectionPool):\n    async with pool.connection() as conn:\n        await conn.execute(\"UPDATE call SET retry = true\")\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/fixtures/retry_rows.py",
-          "id": "fixture-pool-sql",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A free fixture helper executes through a pool"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "class Store:\n    def __init__(self, pool: AsyncConnectionPool):\n        self.pool = pool\n\n    async def save(self):\n        async with self.pool.connection() as conn:\n            await conn.execute(\"UPDATE call SET retry = true\")\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "injected-store-sql",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A store executes through its injected pool"
+          "title": "Docstring records a hidden failure mode"
         }
       ],
       "optionsSchemaSource": null

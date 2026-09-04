@@ -1,10 +1,8 @@
 from pathlib import Path
-import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
@@ -12,11 +10,8 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
-SRC_PATH = "python/app/models/call_detail.py"
-
-
-def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
-    return PreferMatchTypeDispatch().check(Path(path), textwrap.dedent(source))
+def _check(source: str, path: str = "python/app/parser.py") -> list[Diagnostic]:
+    return PreferMatchTypeDispatch().check(Path(path), source)
 
 
 _PUBLIC_EXAMPLES = PreferMatchTypeDispatch.public_examples()
@@ -25,1314 +20,576 @@ _PUBLIC_EXAMPLES = PreferMatchTypeDispatch.public_examples()
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
-    assert len(PreferMatchTypeDispatch().check(Path(focus.path), focus.source)) == example.expected_count
+    assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
-# Core detection: Hideous parser helper / raise-in-try idiom                 #
-
-
-_HIDEOUS_PARSER_IDIOM = """
-def _parse_transferred_at(data: object) -> datetime | None | Unset:
-    if data is None:
-        return data
-    if isinstance(data, Unset):
-        return data
-    try:
-        if not isinstance(data, str):
-            raise TypeError()
-        transferred_at_type_0 = datetime.fromisoformat(data)
-        return transferred_at_type_0
-    except (TypeError, ValueError, AttributeError, KeyError):
-        pass
-    return cast(datetime | None | Unset, data)
+def test_flags_three_branch_isinstance_ladder_as_warning() -> None:
+    source = """
+def parse(value: object):
+    if isinstance(value, str):
+        return text(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+    return None
 """
 
+    diagnostics = _check(source)
 
-def test_flags_hideous_parser_helper():
-    diags = _check(_HIDEOUS_PARSER_IDIOM)
-    assert len(diags) >= 1
-    codes = {d.code for d in diags}
-    assert "SARJ080" in codes
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ080"
+    assert diagnostics[0].severity.value == "warning"
+    assert "3-branch isinstance ladder" in diagnostics[0].message
 
 
-def test_flags_control_flow_raise_inside_try():
+def test_allows_two_branch_ladder() -> None:
     source = """
-    def parse_item(val):
-        try:
-            if not isinstance(val, int):
-                raise ValueError()
-            return val * 2
-        except ValueError:
-            return 0
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ080"
-    assert "Control-flow raise in try block" in diags[0].message
-    assert diags[0].line == 5
+def parse(value: object):
+    if isinstance(value, str):
+        return text(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    return None
+"""
 
-
-def test_skips_idiomatic_none_unset_passthrough_prologue():
-    source = """
-    def _parse_field(val: object):
-        if val is None:
-            return val
-        if isinstance(val, Unset):
-            return val
-        if isinstance(val, int):
-            return str(val)
-        return None
-    """
     assert _check(source) == []
 
 
-def test_flags_qualified_attribute_exceptions():
+def test_flags_three_terminating_sibling_checks() -> None:
     source = """
-    def parse_mod_exc(val):
-        try:
-            if not isinstance(val, str):
-                raise my_module.CustomTypeError()
-            return val
-        except my_module.CustomTypeError:
-            return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "raise CustomTypeError()" in diags[0].message
+def parse(value: object):
+    if isinstance(value, str):
+        return text(value)
+    if isinstance(value, bytes):
+        return binary(value)
+    if isinstance(value, dict):
+        return mapping(value)
+    raise TypeError(type(value))
+"""
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert "terminating isinstance sequence" in diagnostics[0].message
 
 
-def test_flags_raised_exception_attribute_no_call():
+@pytest.mark.parametrize("unrelated_position", ["before", "after"])
+def test_finds_sibling_dispatch_next_to_unrelated_terminating_if(unrelated_position: str) -> None:
+    unrelated = "    if ready:\n        return cached()\n"
+    dispatch = """    if isinstance(value, str):
+        return text(value)
+    if isinstance(value, bytes):
+        return binary(value)
+    if isinstance(value, dict):
+        return mapping(value)
+"""
+    body = unrelated + dispatch if unrelated_position == "before" else dispatch + unrelated
+    source = f"def parse(value: object):\n{body}    return None\n"
+
+    assert len(_check(source)) == 1
+
+
+def test_allows_nonterminating_sibling_checks() -> None:
     source = """
-    def parse_item(val):
-        try:
-            if not isinstance(val, int):
-                raise builtins.ValueError
-            return val
-        except builtins.ValueError:
-            return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
+def observe(value: object) -> None:
+    if isinstance(value, str):
+        strings.add(value)
+    if isinstance(value, bytes):
+        binaries.add(value)
+    if isinstance(value, dict):
+        mappings.add(value)
+"""
 
-
-def test_flags_tuple_exception_handlers():
-    source = """
-    def parse_item(val):
-        try:
-            if not isinstance(val, int):
-                raise TypeError()
-            return val
-        except (ValueError, builtins.TypeError):
-            return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_try_star():
-    source = """
-    def parse_item(val):
-        try:
-            if not isinstance(val, int):
-                raise ValueError()
-            return val
-        except* ValueError:
-            return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_nested_try_blocks():
-    source = """
-    def foo(val):
-        try:
-            try:
-                if not isinstance(val, int):
-                    raise ValueError()
-                return val
-            except ValueError:
-                return None
-        except TypeError:
-            return 0
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_skips_inner_function_try_block_from_outer_scope():
-    source = """
-    def outer():
-        try:
-            def inner():
-                raise ValueError()
-            inner()
-        except ValueError:
-            pass
-    """
     assert _check(source) == []
 
 
-def test_skips_legitimate_raise_not_caught_by_local_try():
+def test_allows_mixed_subjects() -> None:
     source = """
-    def validate(val):
-        try:
-            if val < 0:
-                raise ValueError("Negative value")
-            process(val)
-        except TypeError:
-            pass
-    """
+def parse(first: object, second: object):
+    if isinstance(first, str):
+        return text(first)
+    elif isinstance(second, bytes):
+        return binary(second)
+    elif isinstance(first, dict):
+        return mapping(first)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_lowercase_exception_variable_caught_by_its_class():
+def test_allows_guarded_branches() -> None:
     source = """
-    def validate(val):
-        try:
-            if val < 0:
-                err = ValueError("Negative value")
-                raise err
-            return process(val)
-        except ValueError:
-            return None
-    """
+def parse(value: object):
+    if isinstance(value, str) and value:
+        return text(value)
+    elif isinstance(value, bytes) and value:
+        return binary(value)
+    elif isinstance(value, dict) and value:
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_match_case_idiom():
+def test_allows_repeated_or_overlapping_types() -> None:
     source = """
-    def parse_clean(data: object):
-        match data:
-            case None | Unset():
-                return data
-            case str():
-                try:
-                    return datetime.fromisoformat(data)
-                except ValueError:
-                    pass
-        return cast(data)
-    """
+def parse(value: object):
+    if isinstance(value, (str, bytes)):
+        return scalar(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_generated_source():
+def test_flags_disjoint_tuple_and_union_type_arms() -> None:
     source = """
-    # Automatically generated by openapi generator. DO NOT EDIT!
-    def _parse_transferred_at(data: object):
-        if data is None:
-            return data
-        if isinstance(data, Unset):
-            return data
-        try:
-            if not isinstance(data, str):
-                raise TypeError()
-            return datetime.fromisoformat(data)
-        except TypeError:
-            pass
-        return data
-    """
+def parse(value: object):
+    if isinstance(value, (str, bytes)):
+        return scalar(value)
+    elif isinstance(value, dict | list):
+        return collection(value)
+    elif isinstance(value, int):
+        return number(value)
+    return None
+"""
+
+    assert len(_check(source)) == 1
+
+
+def test_flags_unshadowed_module_local_classes() -> None:
+    source = """
+class Text: ...
+class Binary: ...
+class Mapping: ...
+
+def parse(value: object):
+    if isinstance(value, Text):
+        return text(value)
+    elif isinstance(value, Binary):
+        return binary(value)
+    elif isinstance(value, Mapping):
+        return mapping(value)
+    return None
+"""
+
+    assert len(_check(source)) == 1
+
+
+def test_allows_imported_class_like_runtime_bindings() -> None:
+    source = """
+from contracts import Text, Binary, Mapping
+
+def parse(value: object):
+    if isinstance(value, Text):
+        return text(value)
+    elif isinstance(value, Binary):
+        return binary(value)
+    elif isinstance(value, Mapping):
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-# Control-flow-raise arm: measured false-positive classes, deliberately not   # flagged.
-
-
-def test_skips_handler_that_re_raises_unchanged():
+def test_allows_function_shadow_of_module_class() -> None:
     source = """
-    def update_team_callbacks(request):
-        try:
-            if not request.team_id:
-                raise ProxyException("team_id required")
-            return apply(request)
-        except ProxyException as e:
-            log.exception("callback update failed")
-            raise e
-    """
+class Text: ...
+class Binary: ...
+class Mapping: ...
+
+def parse(value: object, Text):
+    if isinstance(value, Text):
+        return text(value)
+    elif isinstance(value, Binary):
+        return binary(value)
+    elif isinstance(value, Mapping):
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_handler_that_re_raises_a_wrapped_exception():
+def test_allows_import_rebinding_of_module_classes() -> None:
     source = """
-    def load(payload):
-        try:
-            if not isinstance(payload, dict):
-                raise ValueError("bad payload")
-            return payload["body"]
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-    """
+class Text: ...
+class Binary: ...
+class Mapping: ...
+from groups import Text, Binary, Mapping
+
+def parse(value: object):
+    if isinstance(value, Text):
+        return text(value)
+    elif isinstance(value, Binary):
+        return binary(value)
+    elif isinstance(value, Mapping):
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_handler_where_both_branches_raise():
-    source = """
-    def load(payload):
-        try:
-            if not isinstance(payload, dict):
-                raise ValueError("bad payload")
-            return payload["body"]
-        except ValueError as exc:
-            if strict:
-                raise
-            else:
-                raise HTTPException(status_code=400) from exc
-    """
-    assert _check(source) == []
-
-
-def test_flags_handler_that_only_sometimes_re_raises():
-    source = """
-    def load(payload):
-        try:
-            if not isinstance(payload, dict):
-                raise ValueError("bad payload")
-            return payload["body"]
-        except ValueError:
-            if strict:
-                raise
-            return {}
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_skips_generic_exception_fault_barrier():
-    source = """
-    def create_team(request):
-        try:
-            if not request.team_id:
-                raise ProxyException("team_id required")
-            return build(request)
-        except Exception as exc:
-            log.exception("unhandled")
-            return error_response(exc)
-    """
-    assert _check(source) == []
-
-
-def test_skips_exact_handler_shadowed_by_an_earlier_generic_handler():
-    source = """
-    def create_team(request):
-        try:
-            if not request.team_id:
-                raise ProxyException("team_id required")
-            return build(request)
-        except Exception:
-            return error_response()
-        except ProxyException:
-            return invalid_team_response()
-    """
-    assert _check(source) == []
-
-
-def test_skips_bare_except_fault_barrier():
-    source = """
-    def parse_bare(val):
-        try:
-            if not isinstance(val, str):
-                raise TypeError()
-            return val
-        except:
-            return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_base_exception_only_type_under_except_exception():
-    source = """
-    def shutdown(code):
-        try:
-            if code:
-                raise SystemExit(code)
-            return run()
-        except Exception:
-            return None
-    """
-    assert _check(source) == []
-
-
-def test_flags_exception_raised_and_caught_by_its_own_name():
-    source = """
-    def parse_item(val):
-        try:
-            if not isinstance(val, int):
-                raise Exception("not an int")
-            return val
-        except Exception:
-            return 0
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_skips_raise_inside_a_long_try_body():
-    body = "\n".join(f"            step_{i}()" for i in range(30))
+@pytest.mark.parametrize(
+    "shadow",
+    [
+        "def Text(): ...",
+        "def outer():\n    class Text: ...",
+    ],
+)
+def test_allows_declaration_rebinding_of_module_class(shadow: str) -> None:
     source = f"""
-    def endpoint(request):
-        try:
-            if not request.user:
-                raise ValueError("no user")
-{body}
-            return ok()
-        except ValueError:
-            return error()
-    """
+class Text: ...
+class Binary: ...
+class Mapping: ...
+{shadow}
+
+def parse(value: object):
+    if isinstance(value, Text):
+        return text(value)
+    elif isinstance(value, Binary):
+        return binary(value)
+    elif isinstance(value, Mapping):
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_flags_raise_in_a_try_body_at_the_span_limit():
-    body = "\n".join(f"            step_{i}()" for i in range(17))
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "Supported = (str, bytes)",
+        "Supported = str | bytes",
+        "Supported = load_types()",
+    ],
+)
+def test_allows_runtime_type_group_bindings(declaration: str) -> None:
     source = f"""
-    def endpoint(user):
-        try:
-            if not isinstance(user, User):
-                raise ValueError("no user")
-{body}
-            return ok()
-        except ValueError:
-            return error()
-    """
-    diags = _check(source)
-    assert len(diags) == 1
+{declaration}
 
+def parse(value: object):
+    if isinstance(value, Supported):
+        return scalar(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+    elif isinstance(value, list):
+        return sequence(value)
+    return None
+"""
 
-def test_skips_try_body_that_is_only_a_raise():
-    source = """
-    def build_einfo():
-        try:
-            raise Reject(requeue=True)
-        except Reject:
-            einfo = ExceptionInfo(internal=True)
-        return einfo
-    """
-    assert _check(source, path="python/app/support/einfo.py") == []
-
-
-def test_skips_control_flow_raise_in_a_test_file():
-    source = """
-    def test_does_not_execute_if_transaction_rolled_back(self):
-        try:
-            with transaction.atomic():
-                self.do(1)
-                raise ForcedError()
-        except ForcedError:
-            pass
-        self.assertDone([])
-    """
-    assert _check(source, path="python/tests/test_transaction_hooks.py") == []
-
-
-def test_sequential_guards_still_report_in_a_test_file():
-    source = """
-    class TagField(Field):
-        def to_python(self, value):
-            if isinstance(value, Tag):
-                return value
-            if value is None:
-                return value
-            return Tag(int(value))
-    """
-    diags = _check(source, path="python/tests/postgres/models.py")
-    assert len(diags) == 1
-    assert "Sequential sentinel/type guards" in diags[0].message
-
-
-# Surviving true positives, transcribed from the OSS corpus.
-
-
-def test_flags_django_was_modified_since_shape():
-    source = """
-    def was_modified_since(header=None, mtime=0):
-        try:
-            if header is None:
-                raise ValueError
-            header_mtime = parse_http_date(header)
-            if int(mtime) > header_mtime:
-                raise ValueError
-        except (ValueError, OverflowError):
-            return True
-        return False
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert [d.line for d in diags] == [5]
-
-
-def test_skips_validation_raise_sharing_a_converter_handler() -> None:
-    source = """
-    def parse_budget(raw):
-        try:
-            budget = float(raw)
-            if budget <= 0:
-                raise ValueError("positive budget required")
-        except ValueError:
-            raise SystemExit("invalid budget")
-        return budget
-    """
     assert _check(source) == []
 
 
-def test_flags_django_normalize_together_shape():
+def test_flags_proven_stdlib_ast_classes() -> None:
     source = """
-    def normalize_together(option_together):
-        try:
-            if not option_together:
-                return ()
-            if not isinstance(option_together, (tuple, list)):
-                raise TypeError
-            first_element = option_together[0]
-            if not isinstance(first_element, (tuple, list)):
-                option_together = (option_together,)
-            return tuple(tuple(ot) for ot in option_together)
-        except TypeError:
-            return option_together
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "raise TypeError()" in diags[0].message
+import ast
+
+def name(node: ast.AST):
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Attribute):
+        return node.attr
+    elif isinstance(node, ast.Constant):
+        return str(node.value)
+    return None
+"""
+
+    assert len(_check(source)) == 1
 
 
-# Sequential-guard arm: measured false-positive classes.                      #
-
-
-def test_skips_guards_returning_a_different_value():
+def test_flags_directly_imported_stdlib_ast_classes() -> None:
     source = """
-    def most_recent_job(job_type, session):
-        if job_type == "TriggererJob":
-            return None
-        if job_type is None:
-            return None
-        return session.query(Job).first()
-    """
+from ast import Name, expr, operator
+
+def name(node):
+    if isinstance(node, Name):
+        return node.id
+    elif isinstance(node, expr):
+        return "expression"
+    elif isinstance(node, operator):
+        return "operator"
+    return None
+"""
+
+    assert len(_check(source)) == 1
+
+
+def test_allows_shadowed_ast_module() -> None:
+    source = """
+import ast
+
+def name(ast, node):
+    if isinstance(node, ast.Name):
+        return node.id
+    elif isinstance(node, ast.Attribute):
+        return node.attr
+    elif isinstance(node, ast.Constant):
+        return str(node.value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_guards_with_no_type_check_in_the_chain():
+def test_allows_non_type_stdlib_ast_attributes() -> None:
     source = """
-    def resolve_kind(kind):
-        if kind == "PENDING":
-            return kind
-        if kind == "ACTIVE":
-            return kind
-        return normalize(kind)
-    """
+import ast
+
+def name(node):
+    if isinstance(node, ast.walk):
+        return "walk"
+    elif isinstance(node, ast.dump):
+        return "dump"
+    elif isinstance(node, ast.parse):
+        return "parse"
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_bare_name_sentinel_comparator():
+def test_allows_shadowed_isinstance() -> None:
     source = """
-    def summarize(ticket_data, other):
-        if ticket_data is TICKET_NOT_FOUND:
-            return ticket_data
-        if ticket_data is UNSET:
-            return ticket_data
-        return render(ticket_data)
-    """
+def parse(value: object, isinstance):
+    if isinstance(value, str):
+        return text(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_single_passthrough_guard():
-    source = """
-    def to_python(value):
-        if value is None:
-            return value
-        return parse(value)
-    """
+@pytest.mark.parametrize(
+    "nested_import",
+    [
+        "from fake import check as isinstance",
+        "from fake import Text as str",
+        "import fake as ast",
+    ],
+)
+def test_allows_function_local_import_shadow(nested_import: str) -> None:
+    source = f"""
+import ast
+
+def parse(value: object):
+    {nested_import}
+    if isinstance(value, str):
+        return text(value)
+    elif isinstance(value, ast.Name):
+        return name(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+    return None
+"""
+
     assert _check(source) == []
 
 
-def test_flags_django_to_python_shape():
+def test_allows_wildcard_import_with_unproven_bindings() -> None:
     source = """
-    def to_python(self, value):
-        if value is None:
-            return value
-        if isinstance(value, datetime.datetime):
-            return value
-        return self.parse(value)
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "2 checks on 'value'" in diags[0].message
+from fake import *
 
+def parse(value):
+    if isinstance(value, str):
+        return text(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+"""
 
-def test_flags_issubclass_and_is_not_none_passthrough_guards():
-    source = """
-    def normalize(value):
-        if issubclass(value, BaseModel):
-            return value
-        if value is not None:
-            return value
-        return Missing
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "2 checks on 'value'" in diags[0].message
-
-
-def test_flags_passthrough_guards_after_a_docstring():
-    source = '''
-    def deserialize(o):
-        """Deserialize an object."""
-        if o is None:
-            return o
-        if isinstance(o, _primitives):
-            return o
-        return _deserialize(o)
-    '''
-    diags = _check(source)
-    assert len(diags) == 1
-
-
-def test_skips_passthrough_guards_on_different_variables():
-    source = """
-    def combine(left, right):
-        if left is None:
-            return left
-        if right is None:
-            return right
-        return left + right
-    """
     assert _check(source) == []
-
-
-# Isinstance ladder arm.                                                     #
-
-
-def test_flags_child_block_type_dispatch_ladder():
-    source = """
-    def _child_blocks(node: ast.AST) -> list[list[ast.stmt]]:
-        blocks: list[list[ast.stmt]] = []
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            blocks.append(node.body)
-        elif isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While)):
-            blocks.extend((node.body, node.orelse))
-        elif isinstance(node, (ast.With, ast.AsyncWith, ast.ExceptHandler)):
-            blocks.append(node.body)
-        elif isinstance(node, (ast.Try, ast.TryStar)):
-            blocks.extend((node.body, node.orelse, node.finalbody))
-            blocks.extend(handler.body for handler in node.handlers)
-        elif isinstance(node, ast.Match):
-            blocks.extend(case.body for case in node.cases)
-        return [block for block in blocks if block]
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].line == 4
-    assert "5-branch isinstance dispatch" in diags[0].message
-
-
-def test_flags_isinstance_ladder_with_default_else():
-    source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        elif isinstance(value, bytes):
-            return value.decode()
-        elif isinstance(value, Path):
-            return value.read_text()
-        else:
-            raise TypeError(type(value))
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "3-branch isinstance dispatch" in diags[0].message
-
-
-def test_two_branch_ladder_is_an_advisory_sarj080_finding():
-    source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        elif isinstance(value, bytes):
-            return value.decode()
-        return None
-    """
-    diags = _check(source)
-    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.ERROR)]
-    assert "2-branch isinstance dispatch" in diags[0].message
-
-
-def test_four_branch_ladder_reports_one_blocking_root_finding():
-    source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        elif isinstance(value, bytes):
-            return value.decode()
-        elif isinstance(value, int):
-            return str(value)
-        elif isinstance(value, float):
-            return str(value)
-        return None
-    """
-    diags = _check(source)
-    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.ERROR)]
-    assert "4-branch isinstance dispatch" in diags[0].message
-
-
-def test_flags_guarded_two_branch_ladder_as_advisory():
-    source = """
-    def render(value):
-        if isinstance(value, Text) and value.visible:
-            return value.text
-        elif isinstance(value, Binary) and value.complete:
-            return value.decode()
-        return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].severity is Severity.ERROR
-
-
-def test_skips_guard_that_rebinds_dispatch_subject():
-    source = """
-    def render(value):
-        if isinstance(value, Text) and ((value := Binary()) and False):
-            return value.text
-        elif isinstance(value, Binary):
-            return value.decode()
-        return None
-    """
-    assert _check(source) == []
-
-
-def test_two_branch_stdlib_ast_visitor_is_advisory():
-    source = """
-    import ast
-
-    def name(node):
-        if isinstance(node, ast.Name):
-            return node.id
-        elif isinstance(node, ast.Attribute):
-            return node.attr
-        return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].severity is Severity.ERROR
-
-
-def test_sequential_stdlib_ast_early_returns_are_advisory():
-    source = """
-    import ast
-
-    def final_name(node: ast.AST) -> str | None:
-        if isinstance(node, ast.Name):
-            return node.id
-        if isinstance(node, ast.Attribute):
-            return node.attr
-        return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].severity is Severity.ERROR
-
-
-def test_two_branch_private_class_dispatch_is_advisory():
-    source = """
-    def consume(value):
-        if isinstance(value, str):
-            return value
-        elif isinstance(value, self._FlushSentinel):
-            return ""
-        return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].severity is Severity.ERROR
-
-
-def test_flags_terminating_sibling_isinstance_dispatch():
-    source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        if isinstance(value, bytes):
-            return value.decode()
-        if isinstance(value, Path):
-            return value.read_text()
-        raise TypeError(value)
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "3-branch terminating isinstance dispatch" in diags[0].message
-
-
-def test_two_terminating_sibling_branches_are_advisory():
-    source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        if isinstance(value, bytes):
-            return value.decode()
-        raise TypeError(value)
-    """
-    diags = _check(source)
-    assert [(diag.code, diag.line, diag.severity) for diag in diags] == [("SARJ080", 3, Severity.ERROR)]
-    assert "2-branch terminating isinstance dispatch" in diags[0].message
-
-
-def test_sequential_dispatch_never_reports_an_unsafe_tail_fragment():
-    source = """
-    def render(value):
-        if not isinstance(value, object):
-            return None
-        if isinstance(value, str):
-            return value
-        if isinstance(value, bytes):
-            return value.decode()
-        if isinstance(value, Path):
-            return value.read_text()
-        return None
-    """
-    assert _check(source) == []
-
-
-def test_two_terminating_try_branches_are_advisory():
-    source = """
-    def coerce(value):
-        if isinstance(value, Text):
-            try:
-                return value.text
-            except ValueError:
-                return None
-        if isinstance(value, Binary):
-            try:
-                return value.decode()
-            except ValueError:
-                return None
-        return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].severity is Severity.ERROR
-
-
-def test_flags_terminating_sibling_isinstance_dispatch_with_case_guards():
-    diags = _check(
-        """
-        import ast
-
-        def mentions_export_name(node):
-            for child in ast.walk(node):
-                if isinstance(child, ast.Name) and child.id == "__all__":
-                    return True
-                if isinstance(child, ast.alias) and (child.asname or child.name) == "__all__":
-                    return True
-                if isinstance(child, (ast.FunctionDef, ast.ClassDef)) and child.name == "__all__":
-                    return True
-            return False
-        """
-    )
-    assert len(diags) == 1
-    assert "3-branch terminating isinstance dispatch" in diags[0].message
 
 
 @pytest.mark.parametrize(
     "source",
     [
         """
-        class FakeAst:
-            alias = (str, bytes)
-            arg = (int, float)
-            keyword = (list, dict)
-
-        ast = FakeAst()
-
-        def render(value):
-            if isinstance(value, ast.alias) and value:
-                return 1
-            if isinstance(value, ast.arg) and value:
-                return 2
-            if isinstance(value, ast.keyword) and value:
-                return 3
-            return 0
-        """,
+def parse(value):
+    try:
+        load()
+    except Exception as isinstance:
+        if isinstance(value, str):
+            return text(value)
+        elif isinstance(value, bytes):
+            return binary(value)
+        elif isinstance(value, dict):
+            return mapping(value)
+""",
         """
-        import ast
-
-        def render(ast, value):
-            if isinstance(value, ast.alias) and value:
-                return 1
-            if isinstance(value, ast.arg) and value:
-                return 2
-            if isinstance(value, ast.keyword) and value:
-                return 3
-            return 0
-        """,
+def parse(value):
+    try:
+        load()
+    except Exception as str:
+        if isinstance(value, str):
+            return text(value)
+        elif isinstance(value, bytes):
+            return binary(value)
+        elif isinstance(value, dict):
+            return mapping(value)
+""",
         """
-        def render(value):
-            if isinstance(value, Text) and value.visible:
-                return value.text
-            elif isinstance(value, Binary) and value.complete:
-                return value.decode()
-            elif isinstance(value, PathValue) and value.exists():
-                return value.read_text()
-            return None
-        """,
-        """
-        def render(value):
-            if feature_enabled() and isinstance(value, Text):
-                return value.text
-            if feature_enabled() and isinstance(value, Binary):
-                return value.decode()
-            if feature_enabled() and isinstance(value, PathValue):
-                return value.read_text()
-            return None
-        """,
-        """
-        def render(value):
-            if isinstance(value, Text) or value is None:
-                return value
-            if isinstance(value, Binary) or use_binary_fallback():
-                return value
-            if isinstance(value, PathValue) or use_path_fallback():
-                return value
-            return None
-        """,
-    ],
-    ids=(
-        "unproven-lowercase-ast-binding",
-        "shadowed-stdlib-ast-binding",
-        "three-arm-guarded-ladder-remains-outside-the-advisory",
-        "isinstance-is-not-leading-and-operand",
-        "or-conditions-do-not-map-to-guards",
-    ),
-)
-def test_skips_unsafe_guarded_dispatch_rewrites(source: str):
-    assert _check(source) == []
-
-
-def test_flags_terminating_sibling_dispatch_inside_loop():
-    source = """
-    def emit(values):
-        for value in values:
+def parse(payload, value):
+    match payload:
+        case {"fn": isinstance}:
             if isinstance(value, str):
-                continue
-            if isinstance(value, bytes):
-                continue
-            if isinstance(value, Path):
-                continue
-            emit_unknown(value)
-    """
-    assert len(_check(source)) == 1
-
-
-def test_skips_cumulative_sibling_isinstance_checks():
-    source = """
-    def observe(value):
-        if isinstance(value, str):
-            seen.add(value)
-        if isinstance(value, bytes):
-            seen.add(value)
-        if isinstance(value, Path):
-            seen.add(value)
-    """
+                return text(value)
+            elif isinstance(value, bytes):
+                return binary(value)
+            elif isinstance(value, dict):
+                return mapping(value)
+""",
+        """
+def parse(payload, value):
+    match payload:
+        case {"type": str}:
+            if isinstance(value, str):
+                return text(value)
+            elif isinstance(value, bytes):
+                return binary(value)
+            elif isinstance(value, dict):
+                return mapping(value)
+""",
+    ],
+)
+def test_allows_exception_and_pattern_shadow_bindings(source: str) -> None:
     assert _check(source) == []
 
 
-def test_reports_dispatch_after_subject_mutation_as_a_new_stable_run():
+def test_allows_issubclass_dispatch() -> None:
     source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        value = coerce(value)
-        if isinstance(value, bytes):
-            return value.decode()
-        if isinstance(value, Path):
-            return value.read_text()
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].line == 6
-    assert diags[0].severity is Severity.ERROR
-
-
-def test_sequential_passthrough_guards_report_once():
-    source = """
-    def normalize(value):
-        if isinstance(value, Text):
-            return value
-        if isinstance(value, Binary):
-            return value
-        if isinstance(value, PathValue):
-            return value
-        return coerce(value)
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "Sequential sentinel/type guards" in diags[0].message
-
-
-# Repeated class-pattern attribute captures.                                  #
-
-
-def test_flags_repeated_attribute_capture_across_class_or_pattern():
-    source = """
-    def statement_blocks(owner: ast.AST):
-        match owner:
-            case (
-                ast.Module(body=body)
-                | ast.FunctionDef(body=body)
-                | ast.AsyncFunctionDef(body=body)
-                | ast.ClassDef(body=body)
-            ):
-                return tuple(body)
-            case _:
-                return ()
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].line == 5
-    assert "repeats `body=body` across 4 class alternatives" in diags[0].message
-    assert "use `owner.body`" in diags[0].message
-
-
-def test_flags_repeated_attribute_capture_with_a_clearer_local_alias():
-    source = """
-    def result_for(item):
-        match item:
-            case Ready(result=value) | Cached(result=value):
-                return normalize(value)
-            case _:
-                return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "repeats `result=value` across 2 class alternatives" in diags[0].message
-    assert "use `item.result`" in diags[0].message
-
-
-def test_flags_each_shared_capture_once():
-    source = """
-    def coordinates(point):
-        match point:
-            case Cartesian(x=x, y=y) | ScreenPoint(x=x, y=y):
-                return x, y
-            case _:
-                return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "repeats `x=x` and `y=y`" in diags[0].message
-    assert "use `point.x` and `point.y`" in diags[0].message
-
-
-def test_keeps_other_discriminating_class_patterns():
-    source = """
-    def payload_for(result):
-        match result:
-            case Success(payload=payload, status=200) | Cached(payload=payload, fresh=True):
-                return payload
-            case _:
-                return None
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert "`result.payload`" in diags[0].message
-
-
-def test_skips_different_attributes_bound_to_one_name():
-    source = """
-    def display_name(item):
-        match item:
-            case User(name=value) | Team(label=value):
-                return value
-            case _:
-                return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_mixed_class_and_mapping_or_pattern():
-    source = """
-    def body_for(item):
-        match item:
-            case Response(body=body) | {"body": body}:
-                return body
-            case _:
-                return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_non_name_match_subject():
-    source = """
-    def voice_for(models):
-        match models.tts:
-            case OpenAI(voice=voice) | Groq(voice=voice):
-                return voice
-            case _:
-                return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_capture_used_by_guard():
-    source = """
-    def positive_value(item):
-        match item:
-            case Left(value=value) | Right(value=value) if value > 0:
-                return value
-            case _:
-                return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_reassigned_subject_or_capture():
-    subject_source = """
-    def consume(item):
-        match item:
-            case Left(value=value) | Right(value=value):
-                item = normalize(item)
-                return value
-            case _:
-                return None
-    """
-    capture_source = """
-    def consume(item):
-        match item:
-            case Left(value=value) | Right(value=value):
-                value = normalize(value)
-                return value
-            case _:
-                return None
-    """
-    assert _check(subject_source) == []
-    assert _check(capture_source) == []
-
-
-def test_skips_subject_attribute_mutation_before_using_snapshot_capture():
-    source = """
-    def consume(item):
-        match item:
-            case Left(value=value) | Right(value=value):
-                item.value = normalize(item.value)
-                return value
-            case _:
-                return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_capture_closed_over_by_a_nested_scope():
-    source = """
-    def deferred(item):
-        match item:
-            case Left(value=value) | Right(value=value):
-                return lambda: value
-            case _:
-                return None
-    """
-    assert _check(source) == []
-
-
-def test_skips_unused_capture_and_single_class_pattern():
-    unused_source = """
-    def classify(item):
-        match item:
-            case Left(value=value) | Right(value=value):
-                return "number"
-            case _:
-                return "other"
-    """
-    single_source = """
-    def unwrap(item):
-        match item:
-            case Box(value=value):
-                return value
-            case _:
-                return None
-    """
-    assert _check(unused_source) == []
-    assert _check(single_source) == []
-
-
-def test_flags_qualified_and_or_pattern_compatible_types():
-    source = """
-    def visit(node):
-        if isinstance(node, (ast.For, ast.AsyncFor)):
-            visit_loop(node)
-        elif isinstance(node, ast.If):
-            visit_if(node)
-        elif isinstance(node, CustomNode):
-            visit_custom(node)
-    """
-    assert len(_check(source)) == 1
-
-
-def test_flags_full_ladder_with_pep604_isinstance_union():
-    source = """
-    def visit(node):
-        if isinstance(node, ast.Name):
-            visit_name(node)
-        elif isinstance(node, ast.AugAssign | ast.AnnAssign):
-            visit_assignment(node)
-        elif isinstance(node, ast.Call):
-            visit_call(node)
-        elif isinstance(node, CustomNode):
-            visit_custom(node)
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].line == 3
-    assert "4-branch" in diags[0].message
-
-
-def test_unrecognized_ladder_head_never_reports_a_tail_fragment():
-    source = """
-    def visit(node):
-        if isinstance(node, runtime_types):
-            visit_runtime(node)
-        elif isinstance(node, ast.Name):
-            visit_name(node)
-        elif isinstance(node, ast.Call):
-            visit_call(node)
-        elif isinstance(node, CustomNode):
-            visit_custom(node)
-    """
-    assert _check(source) == []
-
-
-def test_flags_two_branch_isinstance_choice_as_warning():
-    source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        elif isinstance(value, bytes):
-            return value.decode()
-    """
-    diags = _check(source)
-    assert len(diags) == 1
-    assert diags[0].severity is Severity.ERROR
-
-
-def test_skips_isinstance_ladder_on_different_subjects():
-    source = """
-    def combine(left, right):
-        if isinstance(left, str):
-            return left
-        elif isinstance(right, bytes):
-            return right.decode()
-        elif isinstance(left, Path):
-            return left.read_text()
-    """
-    assert _check(source) == []
-
-
-def test_skips_mixed_predicate_ladder():
-    source = """
-    def render(value):
-        if isinstance(value, str):
-            return value
-        elif value is None:
-            return ""
-        elif isinstance(value, bytes):
-            return value.decode()
-        elif isinstance(value, Path):
-            return value.read_text()
-    """
-    assert _check(source) == []
-
-
-def test_skips_dynamic_isinstance_type_tuple():
-    source = """
-    def render(value):
-        if isinstance(value, text_types):
-            return str(value)
-        elif isinstance(value, binary_types):
-            return bytes(value)
-        elif isinstance(value, path_types):
-            return Path(value)
-    """
-    assert _check(source) == []
-
-
-def test_skips_constant_style_dynamic_type_tuple():
-    source = """
-    NODE_TYPES = (Leaf, Branch)
-
-    def render(value):
-        if isinstance(value, NODE_TYPES):
-            return render_node(value)
-        elif isinstance(value, TOKEN_TYPES):
-            return render_token(value)
-        elif isinstance(value, VALUE_TYPES):
-            return render_value(value)
-    """
-    assert _check(source) == []
-
-
-def test_skips_class_cased_runtime_tuple_aliases():
-    source = """
-    TextTypes = (str, bytes)
-    BinaryTypes: tuple[type, ...] = (bytearray, memoryview)
-    PathTypes = (Path, PurePath)
-
-    def render(value):
-        if isinstance(value, TextTypes):
-            return str(value)
-        elif isinstance(value, BinaryTypes):
-            return bytes(value)
-        elif isinstance(value, PathTypes):
-            return Path(value)
-    """
+def classify(cls: type):
+    if issubclass(cls, Text):
+        return "text"
+    elif issubclass(cls, Binary):
+        return "binary"
+    elif issubclass(cls, Mapping):
+        return "mapping"
+    return None
+"""
 
     assert _check(source) == []
 
 
-def test_skips_non_dotted_class_expression():
+def test_allows_locally_caught_validation_raise() -> None:
     source = """
-    def render(value):
-        if isinstance(value, registry().Text):
-            return render_text(value)
-        elif isinstance(value, registry().Binary):
-            return render_binary(value)
-        elif isinstance(value, registry().Path):
-            return render_path(value)
-    """
+def parse(value: object):
+    try:
+        if value is None:
+            raise ValueError("required")
+        return value
+    except ValueError:
+        return None
+"""
+
     assert _check(source) == []
 
 
-def test_skips_file_that_shadows_isinstance():
+def test_allows_sequential_passthrough_guards() -> None:
     source = """
-    def isinstance(value, expected):
-        return expected.accepts(value)
+def parse(value: object):
+    if value is None:
+        return value
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bytes):
+        return value
+    return coerce(value)
+"""
 
-    def render(value):
-        if isinstance(value, Text):
-            return render_text(value)
-        elif isinstance(value, Binary):
-            return render_binary(value)
-        elif isinstance(value, Path):
-            return render_path(value)
-    """
     assert _check(source) == []
 
 
-def test_skips_issubclass_ladder():
+def test_allows_repeated_captures_in_existing_match() -> None:
     source = """
-    def classify(model):
-        if issubclass(model, Admin):
-            return "admin"
-        elif issubclass(model, User):
-            return "user"
-        elif issubclass(model, Record):
-            return "record"
-    """
+def body(node):
+    match node:
+        case Function(body=body) | Class(body=body):
+            mutate(node)
+            return body
+    return []
+"""
+
     assert _check(source) == []
 
 
-def test_skips_repeated_effectful_subject_expression():
+def test_allows_generated_source() -> None:
+    source = """# Generated by OpenAPI generator. Do not edit.
+def parse(value: object):
+    if isinstance(value, str):
+        return text(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+    return None
+"""
+
+    assert _check(source) == []
+
+
+def test_reports_multiple_dispatches_in_source_order() -> None:
     source = """
-    def read():
-        if isinstance(current_value(), str):
-            return "str"
-        elif isinstance(current_value(), bytes):
-            return "bytes"
-        elif isinstance(current_value(), Path):
-            return "path"
-    """
+def first(value: object):
+    if isinstance(value, str):
+        return text(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+
+def second(value: object):
+    if isinstance(value, int):
+        return integer(value)
+    elif isinstance(value, float):
+        return floating(value)
+    elif isinstance(value, complex):
+        return number(value)
+"""
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 2
+    assert [(item.line, item.col) for item in diagnostics] == sorted(
+        (item.line, item.col) for item in diagnostics
+    )
+
+
+def test_finds_valid_child_ladder_under_unrelated_outer_if() -> None:
+    source = """
+def parse(value: object):
+    if ready:
+        return cached()
+    elif isinstance(value, str):
+        return text(value)
+    elif isinstance(value, bytes):
+        return binary(value)
+    elif isinstance(value, dict):
+        return mapping(value)
+    return None
+"""
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 5
+
+
+@pytest.mark.parametrize("source", ["", "# comment\n", "def f(:\n    pass"])
+def test_trivial_or_invalid_source_is_ignored(source: str) -> None:
     assert _check(source) == []

@@ -50,8 +50,11 @@
       "no-hidden-constructor-fallback",
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
+      "no-positional-psycopg-row-escape",
+      "no-psycopg-execution-outside-injected-owner",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
+      "no-raw-source-text-test-oracle",
       "no-repeated-structured-string-literal",
       "no-repeated-test-body",
       "no-restated-closed-domain-description",
@@ -78,20 +81,16 @@
       "prefer-namedtuple-over-tuple-return",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
-      "prefer-one-for-required-row",
       "prefer-or-pattern",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-set-isdisjoint",
       "prefer-str-enum",
       "prefer-struct-over-namedtuple",
-      "prefer-timedelta-for-durations",
       "prefer-walrus-awaited-none-guard",
       "prefer-walrus-comprehension-filter",
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
-      "preserve-declared-nominal-id",
-      "preserve-enum-types",
       "production-derived-test-cases",
       "pydantic-at-boundaries",
       "pytest-fixture-returns-bare-tuple",
@@ -105,10 +104,7 @@
       "require-port-for-service",
       "require-pydantic-for-external-json",
       "require-pydantic-ordinal-lower-bound",
-      "require-validated-row-factory",
       "restated-test-docstring",
-      "source-coupled-test",
-      "sql-requires-injected-pool-owner",
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "store-insert-requires-on-conflict",
@@ -266,7 +262,6 @@
       "SARJ011",
       "SARJ012",
       "SARJ013",
-      "SARJ014",
       "SARJ015",
       "SARJ016",
       "SARJ018",
@@ -334,13 +329,10 @@
       "SARJ413",
       "SARJ414",
       "SARJ415",
-      "SARJ416",
-      "SARJ417",
       "SARJ418",
       "SARJ419",
       "SARJ420",
       "SARJ421",
-      "SARJ422",
       "SARJ423",
       "SARJ424",
       "SARJ425",
@@ -589,6 +581,13 @@
       "note": "Delete SARJ010 suppressions and baseline keys; strict BasedPyright `reportUnreachable` owns semantic unreachable-code detection."
     },
     {
+      "id": "SARJ014",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ014 suppressions and baseline keys; numeric durations are required by common SDK, protocol, serialization, timeout, TTL, and metrics boundaries, so syntax cannot require timedelta without widespread false positives. There is no replacement."
+    },
+    {
       "id": "SARJ017",
       "kind": "code",
       "status": "removed",
@@ -750,6 +749,27 @@
       "note": "Delete SARJ405 suppressions and baseline keys. Trailing-slash routes are valid FastAPI API contracts, and changing them can break clients."
     },
     {
+      "id": "SARJ416",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ416 suppressions and baseline keys. The rule inferred a nominal override contract from any project NewType with the same normalized parameter name without resolving the base method or carrier, and its only finding in 5,323 tracked files contradicted the actual base signature. There is no replacement."
+    },
+    {
+      "id": "SARJ417",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ417 suppressions and baseline keys. Converting an enum to str is commonly required at rendering, logging, JSON, header, and exception boundaries; the rule never proved a receiving enum contract and produced no findings across 5,323 tracked files. There is no replacement."
+    },
+    {
+      "id": "SARJ422",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ422 suppressions and baseline keys. Ruff S101 already owns removable production assertions; use an explicit missing-row exception or the database adapter's proven cardinality API."
+    },
+    {
       "id": "SARJ433",
       "kind": "code",
       "status": "removed",
@@ -762,6 +782,13 @@
       "status": "renamed",
       "replacement": "add-constraint-requires-not-valid",
       "note": "Replace sarj-add-constraint-not-valid with sarj-add-constraint-requires-not-valid before upgrading."
+    },
+    {
+      "id": "class-docstring-restates-name",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "redundant-class-docstring",
+      "note": "Replace sarj-class-docstring-restates-name with sarj-redundant-class-docstring before upgrading."
     },
     {
       "id": "conditional-assertion-in-test",
@@ -820,6 +847,13 @@
       "note": "Replace sarj-fixture-returns-bare-tuple with sarj-pytest-fixture-returns-bare-tuple before upgrading."
     },
     {
+      "id": "function-docstring-restates-declaration",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "redundant-docstring",
+      "note": "Replace sarj-function-docstring-restates-declaration with sarj-redundant-docstring before upgrading."
+    },
+    {
       "id": "get-delegates-to-get-many",
       "kind": "python",
       "status": "renamed",
@@ -860,6 +894,20 @@
       "status": "renamed",
       "replacement": "require-keyword-only-swap-prone-params",
       "note": "Replace sarj-kwonly-same-type-params with sarj-require-keyword-only-swap-prone-params before upgrading."
+    },
+    {
+      "id": "module-docstring-restates-path",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "redundant-module-docstring",
+      "note": "Replace sarj-module-docstring-restates-path with sarj-redundant-module-docstring before upgrading."
+    },
+    {
+      "id": "named-fixed-record-return",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "pydantic-at-boundaries",
+      "note": "Replace sarj-named-fixed-record-return with sarj-pydantic-at-boundaries before upgrading."
     },
     {
       "id": "no-aggregation-in-store-query",
@@ -1072,6 +1120,13 @@
       "note": "Remove this hook from pre-commit; generic match destructuring changes failure, evaluation, and binding semantics."
     },
     {
+      "id": "prefer-one-for-required-row",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove prefer-one-for-required-row from custom rule configuration. Ruff S101 already reports the unsafe assertion, and no universal one(row) helper contract exists."
+    },
+    {
       "id": "prefer-real-store-in-tests",
       "kind": "python",
       "status": "removed",
@@ -1086,6 +1141,41 @@
       "note": "Remove this pre-commit hook. Sentence count does not distinguish durable rationale from noise; use the narrower no-comment-cruft, no-restated-comment, and no-long-comment hooks."
     },
     {
+      "id": "prefer-timedelta-for-durations",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit; numeric durations are required by common SDK, protocol, serialization, timeout, TTL, and metrics boundaries, so syntax cannot require timedelta without widespread false positives. There is no replacement."
+    },
+    {
+      "id": "preserve-declared-nominal-id",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit. The rule inferred a nominal override contract from any project NewType with the same normalized parameter name without resolving the base method or carrier, and its only finding in 5,323 tracked files contradicted the actual base signature. There is no replacement."
+    },
+    {
+      "id": "preserve-enum-types",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit. Converting an enum to str is commonly required at rendering, logging, JSON, header, and exception boundaries; the rule never proved a receiving enum contract and produced no findings across 5,323 tracked files. There is no replacement."
+    },
+    {
+      "id": "repeated-static-call-assertions",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "repeated-static-call-cases",
+      "note": "Replace sarj-repeated-static-call-assertions with sarj-repeated-static-call-cases before upgrading."
+    },
+    {
+      "id": "require-validated-row-factory",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-positional-psycopg-row-escape",
+      "note": "Replace sarj-require-validated-row-factory with sarj-no-positional-psycopg-row-escape before upgrading."
+    },
+    {
       "id": "single-public-export",
       "kind": "python",
       "status": "renamed",
@@ -1098,6 +1188,20 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; a computed real-clock delay can deliberately exercise timeout, TTL, or monotonic-clock behavior."
+    },
+    {
+      "id": "source-coupled-test",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-raw-source-text-test-oracle",
+      "note": "Replace sarj-source-coupled-test with sarj-no-raw-source-text-test-oracle before upgrading."
+    },
+    {
+      "id": "sql-requires-injected-pool-owner",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-psycopg-execution-outside-injected-owner",
+      "note": "Replace sarj-sql-requires-injected-pool-owner with sarj-no-psycopg-execution-outside-injected-owner before upgrading."
     },
     {
       "id": "tautological-mock-assertion",

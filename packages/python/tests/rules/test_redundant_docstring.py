@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.rules._docstrings import FILLER_QUALIFIERS
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 
 
@@ -40,9 +39,9 @@ RESTATEMENTS = [
     ("create_version_tag(rl_version: str)", "Create a version tag."),
     ("update_message(task_id: str, message: Message)", "Update task message."),
     ("list_by_organization(org_id: str)", "List by organization."),
-    ("_refresh_ttl(key: str)", "Refresh TTL on a key."),
+    ("_refresh_ttl(key: str)", "Refresh key TTL."),
     ("log_tts_generation(text: str)", "Log TTS generation."),
-    ("test_verify_otp_invalid_token(client: TestClient)", "Test verifying OTP with invalid token."),
+    ("test_verify_otp_invalid_token(client: TestClient)", "Test verify OTP invalid token."),
 ]
 
 
@@ -52,7 +51,7 @@ def test_flags_name_restating_docstring(signature: str, docstring: str):
     assert len(diags) == 1
     assert diags[0].code == "SARJ050"
     assert (diags[0].line, diags[0].col) == (2, 5)
-    assert "delete the whole docstring" in diags[0].message
+    assert "only repeats its declaration" in diags[0].message
 
 
 def test_one_novel_word_keeps_the_docstring():
@@ -81,7 +80,7 @@ def test_class_name_counts_towards_the_signature():
 
 
 def test_annotation_tokens_count_towards_the_signature():
-    assert len(_fn("build(spec: InstructionSpec) -> Instructions", "Build instructions from the spec.")) == 1
+    assert len(_fn("build(spec: InstructionSpec) -> Instructions", "Build spec instructions.")) == 1
 
 
 @pytest.mark.parametrize(
@@ -210,82 +209,146 @@ def test_a_literal_value_the_signature_does_not_carry_is_content(docstring: str)
 
 
 def test_a_number_the_signature_already_carries_still_fires():
-    diags = _fn("test_retry_limit_5_valid(retry_limit: int)", "Test that retry_limit=5 is valid.")
+    diags = _fn("test_retry_limit_5_valid(retry_limit: int)", "Test retry limit 5 valid.")
     assert len(diags) == 1
     assert diags[0].code == "SARJ050"
 
 
 def test_an_annotation_carrying_the_number_counts_as_the_signature():
-    assert len(_fn("cap(value: Literal[5], flag: bool)", "Cap the value at 5.")) == 1
+    assert len(_fn("cap(value: Literal[5])", "Cap value 5.")) == 1
 
 
-# A qualifier that narrows nothing ("a SPECIFIC account", "the APPROPRIATE config") was the single commonest reason a pure restatement survived.
-
-
-# Spelled out rather than read from the source set, so DROPPING a word fails a case instead of deleting one.
-EXPECTED_FILLER = [
-    "actual",
-    "already",
-    "appropriate",
-    "associated",
-    "available",
-    "basic",
-    "correct",
-    "correctly",
-    "corresponding",
-    "default",
-    "desired",
-    "entire",
-    "existing",
-    "full",
-    "general",
-    "necessary",
-    "optional",
-    "overall",
-    "particular",
-    "properly",
-    "relevant",
-    "required",
-    "simple",
-    "single",
-    "specific",
-    "standard",
-    "successfully",
-    "suitable",
-    "supported",
-    "various",
-    "whole",
-]
-
-
-def test_the_filler_vocabulary_is_pinned():
-    assert sorted(FILLER_QUALIFIERS) == sorted(EXPECTED_FILLER)
-
-
-@pytest.mark.parametrize("filler", EXPECTED_FILLER)
-def test_every_filler_qualifier_is_discounted(filler: str):
-    diags = _fn("get_account(account_id: str)", f"Get the {filler} account by ID.")
-    assert len(diags) == 1, f"{filler!r} rescued a pure restatement"
-    assert diags[0].code == "SARJ050"
-
-
-FILLER_RESTATEMENTS = [
-    ("get_account(account_id: str)", "Get a specific account by ID."),
-    ("get_model_config(model: str)", "Get the appropriate model config."),
-    ("list_tags(graph: Graph)", "The tags associated with the graph."),
-    ("update_preview(chart: Chart)", "Update the chart preview correctly."),
-    ("get_file_metadata(file_id: str)", "Get metadata for a specific file."),
-    ("load_defaults(config: Config)", "Load the default config values."),
-    ("render(widget: Widget)", "Render the entire widget."),
-]
-
-
-@pytest.mark.parametrize(("signature", "docstring"), FILLER_RESTATEMENTS)
-def test_a_filler_qualifier_does_not_rescue_a_restatement(signature: str, docstring: str):
-    diags = _fn(signature, docstring)
-    assert len(diags) == 1
-    assert diags[0].code == "SARJ050"
+@pytest.mark.parametrize(
+    ("signature", "docstring"),
+    [
+        ("get_user()", "Get the current user."),
+        ("get_config()", "Get the default config."),
+        ("list_formats()", "List supported formats."),
+        ("get_fields()", "Get required fields."),
+        ("list_users()", "List all users."),
+    ],
+)
+def test_semantic_qualifier_keeps_docstring(signature: str, docstring: str) -> None:
+    assert _fn(signature, docstring) == []
 
 
 def test_main_is_not_filler():
     assert len(_check('def main():\n    """Main function."""\n    return None\n')) == 1
+
+
+def test_nested_function_does_not_inherit_enclosing_class_name() -> None:
+    source = '''
+class User:
+    def build(self):
+        def get():
+            """Get user."""
+            return None
+
+        return get
+'''
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "get_user.__doc__",
+        "inspect.getdoc(get_user)",
+        "pydoc.render_doc(get_user)",
+        'getattr(get_user, "__doc__")',
+        "help(get_user)",
+        'get_user.__dict__["__doc__"]',
+        'vars(get_user)["__doc__"]',
+        "reader = get_user\nREGISTRY = reader.__doc__",
+        "reader = get_user\nREGISTRY = reader.__doc__\nreader = other",
+    ],
+)
+def test_recognized_runtime_docstring_read_is_exempt(consumer: str) -> None:
+    source = f'''\
+def get_user():
+    """Get user."""
+    return None
+
+{consumer}
+'''
+
+    assert _check(source) == []
+
+
+def test_arbitrary_decorator_is_conservatively_exempt() -> None:
+    source = '''
+@register
+def get_user():
+    """Get user."""
+    return None
+'''
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("class_header", ["Store(BaseStore)", "Store", "Store(TestCase)"])
+def test_inherited_or_decorated_class_methods_are_exempt(class_header: str) -> None:
+    decorator = "@registered\n" if class_header == "Store" else ""
+    source = f'''\
+{decorator}class {class_header}:
+    def get_user(self):
+        """Get user."""
+        return None
+'''
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "docstring",
+    ["Return fallback when primary.", "Return primary when fallback."],
+)
+def test_relational_word_keeps_potentially_meaningful_prose(docstring: str) -> None:
+    assert _fn("return_value(primary: str, fallback: str)", docstring) == []
+
+
+def test_selection_among_multiple_parameters_is_preserved() -> None:
+    assert _fn("choose(primary: str, fallback: str)", "Choose fallback.") == []
+
+
+@pytest.mark.parametrize(
+    ("signature", "docstring"),
+    [
+        ("choose(primary_value: str, fallback_value: str)", "Choose fallback value."),
+        ("copy(source_path: str, target_path: str)", "Copy target path."),
+    ],
+)
+def test_shared_parameter_stem_does_not_fake_full_coverage(signature: str, docstring: str) -> None:
+    assert _fn(signature, docstring) == []
+
+
+def test_distinguishing_stem_from_each_parameter_allows_restatement() -> None:
+    diagnostics = _fn(
+        "copy(source_path: str, target_path: str)",
+        "Copy source path target path.",
+    )
+
+    assert len(diagnostics) == 1
+
+
+def test_enclosing_class_words_do_not_make_method_prose_redundant() -> None:
+    source = '''
+class PrimaryFallback:
+    def choose(self):
+        """Choose fallback."""
+        return None
+'''
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("term", ["سريع", "سياسة", "例外"])
+def test_non_latin_semantic_term_is_preserved(term: str) -> None:
+    assert _fn("retry_policy()", f"Retry policy {term}.") == []
+
+
+def test_inline_suppression_is_honored() -> None:
+    source = 'def get_user():\n    """Get user."""  # sarj-noqa: SARJ050\n    return None\n'
+
+    assert _check(source) == []

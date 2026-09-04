@@ -15,10 +15,11 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
     parse_or_none,
 )
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
-from sarj_python_lint.rules._docstrings import STOPWORDS, VALUE_MARKER_RE, restates, sections
+from sarj_python_lint.rules._docstrings import VALUE_MARKER_RE, sections
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -29,8 +30,8 @@ if TYPE_CHECKING:
 _SPECIAL_MODULES = frozenset({"__init__.py", "__main__.py"})
 _SUMMARY_ONLY = frozenset({"summary"})
 _SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
-_WORD_RE = re.compile(r"[A-Za-z][A-Za-z0-9']*")
-_WORKING_WITH_RE = re.compile(r"\bworking\s+with\b", re.IGNORECASE)
+_DOCSTRING_TOKEN_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?|\d+")
+_GRAMMATICAL_FILLER = frozenset({"a", "an", "the"})
 _MIN_DOUBLED_STEM_LENGTH = 2
 
 # These words describe existence rather than purpose; unknown words are evidence
@@ -42,10 +43,10 @@ _MODULE_FILLER_STEMS = frozenset(
         "function",
         "helper",
         "implementation",
-        "level",
         "module",
         "operation",
         "utility",
+        "utils",
     )
 )
 
@@ -55,20 +56,18 @@ class RedundantModuleDocstring(Rule):
     id: str = "redundant-module-docstring"
     code: str = "SARJ099"
     documentation = RuleDocumentation(
-        summary=(
-            "Module docstring restates the file path — delete it; clarify the author-controlled module path or exports "
-            "if the purpose is unclear."
-        ),
+        summary=("Module docstring only repeats the filename and, optionally, its immediate parent package."),
         rationale="A one-line restatement of a module path duplicates information already visible to readers and search tools.",
         remediation=(
-            "Delete the docstring and clarify the author-controlled module path or exports. Keep durable boundaries "
-            "and compatibility constraints near the code they govern or in maintained documentation."
+            "Remove the restatement after confirming module `__doc__` is not an external documentation or runtime "
+            "contract. Clarify author-controlled names or exports, and keep durable constraints."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
+        aliases=("module-docstring-restates-path",),
         limitations=(
-            "Only single-line summary docstrings in non-test implementation modules are checked.",
-            "Special modules, stubs, generated files, multiline documentation, and prose with protected technical facts are excluded.",
+            "Only single-line summaries are compared, after generic module vocabulary is removed, with the complete normalized filename and optionally the complete immediate parent package.",
+            "Shebang and main-guard modules, visible `__doc__` reads or publication, special modules, stubs, generated files, multiline documentation, and protected technical facts are excluded.",
         ),
         examples=(
             RuleExample(
@@ -99,10 +98,12 @@ class RedundantModuleDocstring(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if self._excluded_path(path) or is_generated(path, source):
+        if self._excluded_path(path) or is_generated(path, source) or source.startswith("#!"):
             return []
         tree = parse_or_none(path, source)
         if tree is None or len(tree.body) <= 1:
+            return []
+        if _is_executable_module(tree) or _uses_module_docstring(tree):
             return []
         expression = tree.body[0]
         if (
@@ -116,6 +117,8 @@ class RedundantModuleDocstring(Rule):
             return []
         if not _restates_path(docstring, path):
             return []
+        if is_suppressed(source.splitlines(), expression.lineno, self.code):
+            return []
         return [
             Diagnostic(
                 path=path,
@@ -123,7 +126,7 @@ class RedundantModuleDocstring(Rule):
                 col=expression.col_offset + 1,
                 code=self.code,
                 message=self.description,
-                severity=Severity.ERROR,
+                severity=Severity.WARNING,
             )
         ]
 
@@ -143,38 +146,73 @@ class RedundantModuleDocstring(Rule):
 
 
 def _restates_path(docstring: str, path: Path) -> bool:
-    comparison = _WORKING_WITH_RE.sub("", docstring)
-    path_stems = _path_stems(path)
-    known_stems = path_stems | _MODULE_FILLER_STEMS
-    if restates(comparison, known_stems):
-        return True
-
-    # Common doubled-consonant inflections lose a suffix but keep the doubled
-    # consonant in the shared conservative stemmer (``logging`` -> ``logg``).
-    content_stems = tuple(
-        _module_stem(word)
-        for match in _WORD_RE.finditer(comparison)
-        if (word := match.group(0).lower()) not in STOPWORDS
-    )
-    if content_stems and all(content in known_stems for content in content_stems):
-        return True
-
-    # Lowercase compound filenames do not expose word boundaries to
-    # ``split_identifier``; require the entire non-filler phrase to
-    # reconstruct one path token so an extra purpose or constraint keeps the
-    # docstring.
-    content_words = tuple(
+    content_words = [
         word
-        for match in _WORD_RE.finditer(comparison)
-        if (word := match.group(0).lower()) not in STOPWORDS and stem(word) not in _MODULE_FILLER_STEMS
+        for match in _DOCSTRING_TOKEN_RE.finditer(docstring)
+        if (word := match.group(0).lower()) not in _GRAMMATICAL_FILLER
+        and _module_stem(word) not in _MODULE_FILLER_STEMS
+    ]
+    if not content_words:
+        return False
+    filename = _component_tokens(path.stem)
+    parent = _component_tokens(path.parent.name)
+    filename_stems = _component_stems(filename)
+    parent_stems = _component_stems(parent)
+    for split_at in range(len(content_words) + 1):
+        filename_words = content_words[:split_at]
+        parent_words = content_words[split_at:]
+        if not _matches_component(filename_words, filename, filename_stems):
+            continue
+        if not parent_words or _matches_component(parent_words, parent, parent_stems):
+            return True
+    return False
+
+
+def _component_tokens(component: str) -> list[str]:
+    tokens: list[str] = []
+    for chunk in component.split("_"):
+        if chunk.isascii():
+            tokens.extend(split_identifier(chunk))
+        else:
+            tokens.extend(match.group(0).lower() for match in _DOCSTRING_TOKEN_RE.finditer(chunk))
+    return tokens
+
+
+def _component_stems(tokens: list[str]) -> list[str]:
+    return [result for token in tokens if (result := _module_stem(token)) not in _MODULE_FILLER_STEMS]
+
+
+def _matches_component(words: list[str], tokens: list[str], token_stems: list[str]) -> bool:
+    word_stems = [_module_stem(word) for word in words]
+    if word_stems == token_stems:
+        return True
+    return bool(words) and "".join(words) == "".join(tokens)
+
+
+def _uses_module_docstring(tree: ast.Module) -> bool:
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and node.id == "__doc__" and isinstance(node.ctx, ast.Load):
+            return True
+        if isinstance(node, ast.Attribute) and node.attr == "__doc__":
+            return True
+        if isinstance(node, ast.Constant) and node.value == "__doc__":
+            return True
+    return False
+
+
+def _is_executable_module(tree: ast.Module) -> bool:
+    return any(isinstance(statement, ast.If) and _is_main_guard(statement.test) for statement in tree.body)
+
+
+def _is_main_guard(node: ast.expr) -> bool:
+    if isinstance(node, ast.BoolOp):
+        return any(_is_main_guard(value) for value in node.values)
+    if not isinstance(node, ast.Compare) or len(node.ops) != 1 or len(node.comparators) != 1:
+        return False
+    operands = (node.left, node.comparators[0])
+    return any(isinstance(operand, ast.Name) and operand.id == "__name__" for operand in operands) and any(
+        isinstance(operand, ast.Constant) and operand.value == "__main__" for operand in operands
     )
-    path_tokens = {*split_identifier(path.stem), *split_identifier(path.parent.name)}
-    return bool(content_words) and "".join(content_words) in path_tokens
-
-
-def _path_stems(path: Path) -> set[str]:
-    tokens = [*split_identifier(path.stem), *split_identifier(path.parent.name)]
-    return {_module_stem(token) for token in tokens}
 
 
 def _module_stem(word: str) -> str:

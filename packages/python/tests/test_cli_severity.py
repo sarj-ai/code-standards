@@ -12,29 +12,31 @@ if TYPE_CHECKING:
     import pytest
 
 
-def test_promoted_error_is_recorded_with_other_errors_when_baseline_is_updated(
+def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     target = tmp_path / "example.py"
-    target.write_text("VALUES = [1]\n\n# ----------------\nerror_value = 2\n")
+    target.write_text(
+        'class Record:\n    status: str\n    status_choices = ("active", "disabled")\n\n# ----------------\nerror_value = 2\n'
+    )
     baseline = tmp_path / "baseline.json"
-    rules = ["check", "--rule", "prefer-immutable-module-constant", "--rule", "no-comment-cruft"]
+    rules = ["check", "--rule", "prefer-str-enum", "--rule", "no-comment-cruft"]
 
     assert main([*rules, str(target)]) == 1
     control = capsys.readouterr().out
-    assert f"{target}:1:1: SARJ096 " in control
-    assert f"{target}:3:1: SARJ016 " in control
+    assert "SARJ006 " in control
+    assert "SARJ016 " in control
 
     assert main([*rules, "--update-baseline", str(baseline), str(target)]) == 0
-    assert json.loads(baseline.read_text()) == {str(target): {"SARJ016": 1, "SARJ096": 1}}
+    assert json.loads(baseline.read_text()) == {str(target): {"SARJ016": 1}}
     baseline_output = capsys.readouterr().out
-    assert "2 blocking diagnostics over 1 files; 0 warnings excluded" in baseline_output
+    assert "1 blocking diagnostics over 1 files; 1 warnings excluded" in baseline_output
 
     assert main([*rules, "--baseline", str(baseline), str(target)]) == 0
-    assert not capsys.readouterr().out
+    assert "SARJ006 warning:" in capsys.readouterr().out
 
 
-def test_promoted_error_only_baseline_records_the_finding(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "example.py"
     target.write_text("VALUES = [1]\n")
     baseline = tmp_path / "baseline.json"
@@ -53,8 +55,8 @@ def test_promoted_error_only_baseline_records_the_finding(tmp_path: Path, capsys
         == 0
     )
 
-    assert json.loads(baseline.read_text()) == {str(target): {"SARJ096": 1}}
-    assert "1 blocking diagnostics over 1 files; 0 warnings excluded" in capsys.readouterr().out
+    assert json.loads(baseline.read_text()) == {}
+    assert "0 blocking diagnostics over 0 files; 1 warnings excluded" in capsys.readouterr().out
 
 
 def test_baseline_written_from_absolute_repo_path_is_portable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -15,8 +15,9 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
-from sarj_python_lint.rules.source_coupled_test import FunctionAnalyzer, top_level_test_functions
+from sarj_python_lint.rules.no_raw_source_text_test_oracle import FunctionAnalyzer, top_level_test_functions
 
 
 if TYPE_CHECKING:
@@ -45,7 +46,7 @@ class IacSourceCoupledTest(Rule):
             "The rule follows local aliases, path collections, context-managed reads, and common normalization; interprocedural flows remain unreported.",
             "Files produced beneath recognized temporary-directory fixtures are generated outputs and remain unreported.",
             "The Python detector currently owns Terraform and HCL suffixes; YAML remains with the general source-coupled rule.",
-            "Golden, packaging, formatter, and compatibility representation contracts require an exact suppression.",
+            "Fixture, golden, and snapshot paths are treated as deliberate representation contracts; other packaging, formatter, and compatibility contracts require an exact suppression.",
         ),
         examples=(
             RuleExample(
@@ -72,7 +73,7 @@ class IacSourceCoupledTest(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_policy.py",
-                        "def test_policy():\n    source = Path('main.tf').read_text()\n    assert 'prevent_destroy = true' in source\n",
+                        "from pathlib import Path\n\ndef test_policy():\n    source = Path('main.tf').read_text()\n    assert 'prevent_destroy = true' in source\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_policy.py"),
@@ -90,10 +91,18 @@ class IacSourceCoupledTest(Rule):
         tree = parse_or_none(path, source)
         if not isinstance(tree, ast.Module):
             return []
+        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        source_lines = source.splitlines()
         assertions = [
             assertion
-            for function, unittest_style in top_level_test_functions(tree)
-            for assertion in FunctionAnalyzer(IAC_SOURCE_SUFFIXES, unittest_style=unittest_style).analyze(function)
+            for function, unittest_style in top_level_test_functions(tree, imports)
+            for assertion in FunctionAnalyzer(
+                IAC_SOURCE_SUFFIXES,
+                imports=imports,
+                suppression_code=self.code,
+                suppression_lines=source_lines,
+                unittest_style=unittest_style,
+            ).analyze(function)
         ]
         return [
             Diagnostic(

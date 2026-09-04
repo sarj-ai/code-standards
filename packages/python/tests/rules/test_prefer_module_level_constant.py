@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmutableModuleConstant
 from sarj_python_lint.rules.prefer_module_level_constant import PreferModuleLevelConstant
 
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
 
 
 SRC_PATH = "python/app/app/calls/service.py"
+EIGHT_LIST = '["a", "b", "c", "d", "e", "f", "g", "h"]'
 
 
 def _check(source: str, path: str = SRC_PATH) -> list[Diagnostic]:
@@ -26,6 +28,19 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
+def test_public_accept_example_is_immutable_and_preserves_unhashable_membership() -> None:
+    example = next(example for example in _PUBLIC_EXAMPLES if example.expected_count == 0)
+    source = example.focus_file.source
+    namespace: dict[str, object] = {}
+
+    exec(compile(source, str(example.focus_file.path), "exec"), namespace)  # ruff: ignore[exec-builtin] - executable rule fixture
+
+    handle = namespace["handle"]
+    assert callable(handle)
+    assert handle([]) is False
+    assert PreferImmutableModuleConstant().check(Path(example.focus_file.path), source) == []
+
+
 def _fn(body: str) -> str:
     indented = "\n".join(f"    {line}" if line else "" for line in body.splitlines())
     return f"def handle(payload):\n{indented}\n"
@@ -37,16 +52,12 @@ def _fn(body: str) -> str:
 @pytest.mark.parametrize(
     ("value", "kind"),
     [
-        ('["a", "b", "c"]', "list"),
-        ('{"a": 1, "b": 2, "c": 3}', "dict"),
-        ('{"a", "b", "c"}', "set"),
-        ('(["a"], ["b"], ["c"])', "tuple"),
-        ('frozenset(["a", "b", "c"])', "frozenset"),
-        ('frozenset({"a", "b", "c"})', "frozenset"),
-        ("[1, -2, 3.5, 4]", "list"),
-        ('[True, False, None, b"x"]', "list"),
-        ('[["a", "b"], ["c"], ["d"]]', "list"),
-        ('{"a": {"nested": [1, 2]}, "b": 2, "c": 3}', "dict"),
+        (EIGHT_LIST, "list"),
+        ('{"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7, "h": 8}', "dict"),
+        ('{"a", "b", "c", "d", "e", "f", "g", "h"}', "set"),
+        ('frozenset(["a", "b", "c", "d", "e", "f", "g", "h"])', "frozenset"),
+        ("[1, -2, 3.5, 4, 5, 6, 7, 8]", "list"),
+        ('[True, False, None, b"x", 1, 2, 3, 4]', "list"),
     ],
 )
 def test_flags_constant_only_displays(value: str, kind: str):
@@ -68,7 +79,7 @@ def test_flags_constant_only_displays(value: str, kind: str):
     ],
 )
 def test_flags_constant_regex(value: str):
-    diags = _check(_fn(f"pattern = {value}\nreturn pattern.match(payload) is not None"))
+    diags = _check("import re\n\n" + _fn(f"pattern = {value}\nreturn pattern.match(payload) is not None"))
     assert len(diags) == 1
     assert "regex-cache lookup on every call" in diags[0].message
 
@@ -87,7 +98,7 @@ def test_flags_constant_regex(value: str):
     ],
 )
 def test_fires_for_immutable_regex_reads(usage: str):
-    assert len(_check(_fn(f'pattern = re.compile("^x$")\n{usage}'))) == 1
+    assert len(_check("import re\n\n" + _fn(f'pattern = re.compile("^x$")\n{usage}'))) == 1
 
 
 @pytest.mark.parametrize(
@@ -104,17 +115,17 @@ def test_ignores_escaping_or_unknown_regex_usage(usage: str):
 
 
 def test_flags_annotated_assignment():
-    src = _fn('allowed: list[str] = ["a", "b", "c"]\nreturn len(allowed)')
+    src = _fn(f"allowed: list[str] = {EIGHT_LIST}\nreturn len(allowed)")
     assert len(_check(src)) == 1
 
 
 def test_message_points_at_module_scope():
-    diags = _check(_fn('allowed = ["a", "b", "c"]\nreturn len(allowed)'))
+    diags = _check(_fn(f"allowed = {EIGHT_LIST}\nreturn len(allowed)"))
     assert "module scope" in diags[0].message
 
 
 def test_line_and_col():
-    diags = _check(_fn('allowed = ["a", "b", "c"]\nreturn len(allowed)'))
+    diags = _check(_fn(f"allowed = {EIGHT_LIST}\nreturn len(allowed)"))
     assert (diags[0].line, diags[0].col) == (2, 5)
 
 
@@ -144,9 +155,9 @@ def test_ignores_immutable_literal_tuples(value: str):
     assert _check(_fn(f"allowed = {value}\nreturn len(allowed)")) == []
 
 
-def test_min_elements_boundary_is_three():
-    assert _check(_fn('allowed = ["a", "b"]\nreturn len(allowed)')) == []
-    assert len(_check(_fn('allowed = ["a", "b", "c"]\nreturn len(allowed)'))) == 1
+def test_min_elements_boundary_is_eight():
+    assert _check(_fn('allowed = ["a", "b", "c", "d", "e", "f", "g"]\nreturn len(allowed)')) == []
+    assert len(_check(_fn(f"allowed = {EIGHT_LIST}\nreturn len(allowed)"))) == 1
 
 
 # Negative: the constant-only leaf gate.                                      #
@@ -201,8 +212,8 @@ def test_ignores_deeply_nested_displays():
     assert _check(_fn(f"allowed = {value}\nreturn len(allowed)")) == []
 
 
-def test_accepts_displays_at_maximum_literal_depth():
-    value = "[[[[1]]], 2, 3]"
+def test_accepts_deeply_immutable_tuple_elements():
+    value = "[((1,),), 2, 3, 4, 5, 6, 7, 8]"
     assert len(_check(_fn(f"allowed = {value}\nreturn len(allowed)"))) == 1
 
 
@@ -376,50 +387,35 @@ def test_ignores_capture_by_inner_scope(closure: str):
         "return len(allowed)",
         "return sorted(allowed)",
         "return set(allowed)",
-        "return frozenset(allowed)",
         "return list(allowed)",
-        "return tuple(allowed)",
         "return dict(allowed)",
         "return any(allowed)",
         "return all(allowed)",
         "return min(allowed)",
         "return max(allowed)",
         "return sum(allowed)",
-        "return list(enumerate(allowed))",
-        "return list(reversed(allowed))",
-        "return next(iter(allowed))",
-        "return json.dumps(allowed)",
         "return sorted(allowed, key=str)",
-        "return json.dumps(allowed, indent=2)",
-        "return allowed.get(payload)",
-        "return list(allowed.keys())",
-        "return list(allowed.values())",
-        "return list(allowed.items())",
-        "return allowed.copy()",
         "return allowed.index(payload)",
         "return allowed.count(payload)",
         "return payload in allowed",
         "return payload not in allowed",
-        "return allowed == other",
         "return allowed[0]",
         "return allowed[payload]",
-        'return f"{allowed}"',
         "for item in allowed:\n    emit(item)",
         "return [item for item in allowed]",
-        "return {k: v for k, v in allowed.items()}",
         "async for item in allowed:\n    emit(item)",
     ],
 )
 def test_fires_for_safe_consumers(usage: str):
-    src = "async def handle(payload):\n    allowed = ['a', 'b', 'c']\n"
+    src = f"async def handle(payload):\n    allowed = {EIGHT_LIST}\n"
     src += "\n".join(f"    {line}" for line in usage.splitlines()) + "\n"
     diags = _check(src)
     assert len(diags) == 1, usage
 
 
 def test_sorted_copies_but_sort_mutates():
-    assert len(_check(_fn('allowed = ["a", "b", "c"]\nreturn sorted(allowed)'))) == 1
-    assert _check(_fn('allowed = ["a", "b", "c"]\nallowed.sort()\nreturn allowed')) == []
+    assert len(_check(_fn(f"allowed = {EIGHT_LIST}\nreturn sorted(allowed)"))) == 1
+    assert _check(_fn(f"allowed = {EIGHT_LIST}\nallowed.sort()\nreturn allowed")) == []
 
 
 def test_ignores_binding_the_function_never_reads():
@@ -430,7 +426,7 @@ def test_ignores_binding_the_function_never_reads():
 
 
 def test_fires_on_multiple_safe_reads():
-    src = _fn('allowed = ["a", "b", "c"]\nif payload in allowed:\n    return len(allowed)\nreturn allowed.index("a")')
+    src = _fn(f'allowed = {EIGHT_LIST}\nif payload in allowed:\n    return len(allowed)\nreturn allowed.index("a")')
     assert len(_check(src)) == 1
 
 
@@ -438,19 +434,19 @@ def test_fires_on_multiple_safe_reads():
 
 
 def test_fires_inside_nested_function():
-    src = "def outer():\n    def inner(payload):\n        allowed = ['a', 'b', 'c']\n        return payload in allowed\n    return inner\n"
+    src = f"def outer():\n    def inner(payload):\n        allowed = {EIGHT_LIST}\n        return payload in allowed\n    return inner\n"
     diags = _check(src)
     assert len(diags) == 1
     assert diags[0].line == 3
 
 
 def test_fires_inside_method():
-    src = "class Service:\n    def handle(self, payload):\n        allowed = ['a', 'b', 'c']\n        return payload in allowed\n"
+    src = f"class Service:\n    def handle(self, payload):\n        allowed = {EIGHT_LIST}\n        return payload in allowed\n"
     assert len(_check(src)) == 1
 
 
 def test_fires_inside_async_method():
-    src = "class Service:\n    async def handle(self, payload):\n        allowed = ['a', 'b', 'c']\n        return payload in allowed\n"
+    src = f"class Service:\n    async def handle(self, payload):\n        allowed = {EIGHT_LIST}\n        return payload in allowed\n"
     assert len(_check(src)) == 1
 
 
@@ -462,21 +458,21 @@ def test_fires_inside_a_loop_body():
 def test_reports_each_function_once():
     src = (
         "def a(payload):\n"
-        "    allowed = ['a', 'b', 'c']\n"
+        f"    allowed = {EIGHT_LIST}\n"
         "    return payload in allowed\n"
         "\n"
         "def b(payload):\n"
-        "    allowed = ['a', 'b', 'c']\n"
+        f"    allowed = {EIGHT_LIST}\n"
         "    return payload in allowed\n"
     )
     assert len(_check(src)) == 2
 
 
 def test_multiple_hits_sorted():
-    src = _fn(
-        'lookup = {"a": 1, "b": 2, "c": 3}\n'
+    src = "import re\n\n" + _fn(
+        'lookup = {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7, "h": 8}\n'
         'pattern = re.compile("^x$")\n'
-        'allowed = ["a", "b", "c"]\n'
+        f"allowed = {EIGHT_LIST}\n"
         "return len(lookup) + len(allowed) + len(pattern.findall(payload))"
     )
     diags = _check(src)
@@ -487,7 +483,7 @@ def test_multiple_hits_sorted():
 # File-scope exemptions and edge cases.                                       #
 
 
-_HIT = "def handle(payload):\n    allowed = ['a', 'b', 'c']\n    return payload in allowed\n"
+_HIT = f"def handle(payload):\n    allowed = {EIGHT_LIST}\n    return payload in allowed\n"
 
 
 @pytest.mark.parametrize(
@@ -549,15 +545,143 @@ def test_ignores_function_that_reflects_over_its_frame(reflection: str):
 
 def test_vars_with_an_argument_is_not_frame_reflection():
     # `vars(obj)` reads someone else's __dict__ — it does not expose this frame.
-    src = _fn("allowed = ['a', 'b', 'c']\nemit(vars(payload))\nreturn len(allowed)")
+    src = _fn(f"allowed = {EIGHT_LIST}\nemit(vars(payload))\nreturn len(allowed)")
     assert len(_check(src)) == 1
 
 
 def test_read_by_a_safe_consumer_still_fires():
     # The opposite case for the zero-read guard: one recognised read is enough.
-    assert len(_check(_fn("allowed = ['a', 'b', 'c']\nreturn len(allowed)"))) == 1
+    assert len(_check(_fn(f"allowed = {EIGHT_LIST}\nreturn len(allowed)"))) == 1
 
 
 def test_regex_bound_but_never_used_is_ignored():
-    src = _fn('pattern = re.compile(r"^[a-z]+$")\nreturn payload')
+    src = "import re\n\n" + _fn('pattern = re.compile(r"^[a-z]+$")\nreturn payload')
     assert _check(src) == []
+
+
+def test_diagnostic_is_advisory() -> None:
+    diagnostic = _check(_fn(f"allowed = {EIGHT_LIST}\nreturn payload in allowed"))[0]
+
+    assert diagnostic.severity.value == "warning"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _fn('pattern = re.compile("x")\nreturn pattern.search(payload)'),
+        "import fake as re\n\n" + _fn('pattern = re.compile("x")\nreturn pattern.search(payload)'),
+        "import re\n\ndef handle(re, payload):\n    pattern = re.compile('x')\n    return pattern.search(payload)\n",
+        "import re\n\ndef handle(payload):\n    import fake as re\n    pattern = re.compile('x')\n    return pattern.search(payload)\n",
+        "import re\n\n" + _fn('pattern = re.compile("x", re.DEBUG)\nreturn pattern.search(payload)'),
+        "import re\n\n" + _fn('pattern = re.compile("x", 128)\nreturn pattern.search(payload)'),
+        "import re\n\n" + _fn('pattern = re.compile("x", 130)\nreturn pattern.search(payload)'),
+        "import re\nre.compile = custom_compile\n\n" + _fn('pattern = re.compile("x")\nreturn pattern.search(payload)'),
+        "import re\nre.IGNORECASE = re.DEBUG\n\n"
+        + _fn('pattern = re.compile("x", re.IGNORECASE)\nreturn pattern.search(payload)'),
+    ],
+    ids=(
+        "missing-import",
+        "foreign-module",
+        "parameter-shadow",
+        "nested-import-shadow",
+        "symbolic-debug",
+        "numeric-debug",
+        "combined-numeric-debug",
+        "compile-monkeypatch",
+        "flag-monkeypatch",
+    ),
+)
+def test_ignores_unproven_or_observable_regex_construction(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("header", "call"),
+    [
+        ("import re as regex\n\n", 'regex.compile("x")'),
+        ("from re import compile as compile_pattern\n\n", 'compile_pattern("x")'),
+    ],
+)
+def test_flags_proven_regex_aliases(header: str, call: str) -> None:
+    source = header + _fn(f"pattern = {call}\nreturn pattern.search(payload)")
+
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        "return allowed == other",
+        "return allowed is other",
+        'return f"{allowed}"',
+        "return repr(allowed)",
+        "return allowed.copy()",
+        "return allowed[:]",
+        "return allowed[1:3]",
+        "return json.dumps(allowed)",
+        "return iter(allowed)",
+        "return reversed(allowed)",
+        "return enumerate(allowed)",
+        "return tuple(allowed)",
+        "return frozenset(allowed)",
+    ],
+)
+def test_ignores_representation_sensitive_reads(usage: str) -> None:
+    source = _fn(f"allowed = {EIGHT_LIST}\n{usage}")
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("usage", ["return list(allowed)", "for item in allowed:\n    emit(item)"])
+def test_ignores_set_reads_that_expose_iteration_order(usage: str) -> None:
+    source = _fn('allowed = {"a", "b", "c", "d", "e", "f", "g", "h"}\n' + usage)
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        '[["a"], ["b"], ["c"], ["d"], ["e"], ["f"], ["g"], ["h"]]',
+        '{"a": {"total": 0}, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7, "h": 8}',
+        '(["a"], ["b"], ["c"], ["d"], ["e"], ["f"], ["g"], ["h"])',
+    ],
+)
+def test_ignores_nested_mutable_values(value: str) -> None:
+    assert _check(_fn(f"allowed = {value}\nreturn len(allowed)")) == []
+
+
+def test_ignores_corpus_nested_accumulator() -> None:
+    source = _fn(
+        'stats = {"a": {"total": 0}, "b": {"total": 0}, "c": {"total": 0}, "d": {"total": 0}, '
+        '"e": {"total": 0}, "f": {"total": 0}, "g": {"total": 0}, "h": {"total": 0}}\n'
+        'for row in payload:\n    stats[row]["total"] += 1\nreturn len(stats)'
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        f"def handle(len, payload):\n    allowed = {EIGHT_LIST}\n    return len(allowed)\n",
+        f"def len(value):\n    return 8\n\ndef handle(payload):\n    allowed = {EIGHT_LIST}\n    return len(allowed)\n",
+        f"def handle(payload):\n    import fake as len\n    allowed = {EIGHT_LIST}\n    return len(allowed)\n",
+        f"from fake import *\n\ndef handle(payload):\n    allowed = {EIGHT_LIST}\n    return len(allowed)\n",
+    ],
+)
+def test_ignores_unproven_builtin_consumer(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "Tests/service.py",
+        "Testing/smoke_test_utils.py",
+        "python/common/testing/builders.py",
+        "python/app/fakes/service.py",
+    ],
+)
+def test_skips_case_insensitive_test_support_paths(path: str) -> None:
+    assert _check(_HIT, path) == []

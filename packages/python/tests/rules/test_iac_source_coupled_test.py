@@ -5,11 +5,12 @@ import pytest
 
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.iac_source_coupled_test import IacSourceCoupledTest
-from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
+from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
 
 
 def check(source: str, path: str = "tests/test_policy.py"):
-    return IacSourceCoupledTest().check(Path(path), textwrap.dedent(source))
+    imports = "from pathlib import Path\nimport inspect\nimport io\nimport unittest\n\n"
+    return IacSourceCoupledTest().check(Path(path), imports + textwrap.dedent(source))
 
 
 @pytest.mark.parametrize("suffix", ["tf", "hcl", "tfvars", "tf.json", "tftest.hcl", "tftest.json"])
@@ -226,4 +227,37 @@ def test_specific_rule_owns_iac_without_duplicate_from_sarj402() -> None:
             assert "resource" in source
     """)
     assert len(check(source)) == 1
-    assert SourceCoupledTest().check(Path("tests/test_policy.py"), source) == []
+    assert NoRawSourceTextTestOracle().check(Path("tests/test_policy.py"), source) == []
+
+
+def test_exact_sarj412_suppression_and_unrelated_code() -> None:
+    assert (
+        check("""
+        def test_policy():
+            source = Path("main.tf").read_text()
+            assert "resource" in source  # sarj-noqa: SARJ412 — compatibility format
+    """)
+        == []
+    )
+    assert (
+        len(
+            check("""
+        def test_policy():
+            source = Path("main.tf").read_text()
+            assert "resource" in source  # sarj-noqa: SARJ402 — separate policy
+    """)
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize("directory", ["fixtures", "golden", "snapshots"])
+def test_allows_iac_representation_contract_directories(directory: str) -> None:
+    assert (
+        check(f"""
+        def test_policy():
+            source = Path("tests/{directory}/main.tf").read_text()
+            assert "resource" in source
+    """)
+        == []
+    )

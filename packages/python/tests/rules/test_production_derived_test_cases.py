@@ -6,7 +6,7 @@ import pytest
 from sarj_python_lint.rules.production_derived_test_cases import ProductionDerivedTestCases
 
 
-TEST_PATH = Path("tests/test_factory.py")
+TEST_PATH = Path("app/tests/test_factory.py")
 
 
 def _check(source: str, path: Path = TEST_PATH):
@@ -192,6 +192,120 @@ def test_class_scope_shadowing_rejects_pytest_provenance() -> None:
         @pytest.mark.parametrize('model', ELIGIBLE_MODELS)
         def test_method(self, model):
             assert build(model) is not None
+    """
+    assert _check(source) == []
+
+
+def test_class_scope_shadowing_rejects_collection_provenance() -> None:
+    source = """
+    import pytest
+    from app.models import ELIGIBLE_MODELS
+
+    class TestModels:
+        ELIGIBLE_MODELS = ("local",)
+
+        @pytest.mark.parametrize("model", ELIGIBLE_MODELS)
+        def test_method(self, model):
+            assert build(model) is not None
+    """
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "import_line",
+    [
+        pytest.param("from .cases import ELIGIBLE_MODELS", id="relative-helper"),
+        pytest.param("from app.tests.cases import ELIGIBLE_MODELS", id="test-package"),
+        pytest.param("from app.testing.cases import ELIGIBLE_MODELS", id="testing-package"),
+        pytest.param("from app.testing_utils.cases import ELIGIBLE_MODELS", id="testing-utilities"),
+        pytest.param("from app.fakes.cases import ELIGIBLE_MODELS", id="fake-package"),
+        pytest.param("from string import ascii_letters as ELIGIBLE_MODELS", id="stdlib"),
+    ],
+)
+def test_excludes_unproven_or_test_support_imports(import_line: str) -> None:
+    source = f"""
+    import pytest
+    {import_line}
+
+    @pytest.mark.parametrize("model", ELIGIBLE_MODELS)
+    def test_model(model):
+        assert build(model) is not None
+    """
+    assert _check(source) == []
+
+
+def test_ignores_generic_dynamic_sweep_without_membership_contract_name() -> None:
+    source = """
+    import pytest
+    from app.formats import ALL_FORMATS
+
+    @pytest.mark.parametrize("format", ALL_FORMATS)
+    def test_every_format_round_trips(format):
+        assert round_trip(format)
+    """
+    assert _check(source) == []
+
+
+def test_tautological_or_unreachable_assertion_is_not_an_oracle() -> None:
+    source = """
+    import pytest
+    from app.models import ELIGIBLE_MODELS
+
+    if False:
+        assert ELIGIBLE_MODELS == {"a", "b"}
+
+    def helper():
+        assert ELIGIBLE_MODELS == {"a", "b"}
+
+    assert ELIGIBLE_MODELS == ELIGIBLE_MODELS
+
+    @pytest.mark.parametrize("model", ELIGIBLE_MODELS)
+    def test_model(model):
+        assert build(model) is not None
+    """
+    assert len(_check(source)) == 1
+
+
+def test_rebound_expected_table_is_not_an_independent_oracle() -> None:
+    source = """
+    import pytest
+    from app.models import ELIGIBLE_MODELS
+
+    EXPECTED_MODELS = ("a", "b")
+    EXPECTED_MODELS = ELIGIBLE_MODELS
+
+    def test_membership():
+        assert ELIGIBLE_MODELS == EXPECTED_MODELS
+
+    @pytest.mark.parametrize("model", ELIGIBLE_MODELS)
+    def test_model(model):
+        assert build(model) is not None
+    """
+    assert len(_check(source)) == 1
+
+
+def test_accepts_keyword_argvalues_and_exact_suppression() -> None:
+    source = """
+    import pytest
+    from app.models import ELIGIBLE_MODELS
+
+    @pytest.mark.parametrize(argnames="model", argvalues=ELIGIBLE_MODELS)  # sarj-noqa: SARJ409 — dynamic smoke sweep
+    def test_model(model):
+        assert build(model) is not None
+    """
+    assert _check(source) == []
+
+
+def test_shadowed_collection_wrapper_is_not_treated_as_builtin() -> None:
+    source = """
+    import pytest
+    from app.models import ELIGIBLE_MODELS
+
+    sorted = custom_sort
+
+    @pytest.mark.parametrize("model", sorted(ELIGIBLE_MODELS))
+    def test_model(model):
+        assert build(model) is not None
     """
     assert _check(source) == []
 

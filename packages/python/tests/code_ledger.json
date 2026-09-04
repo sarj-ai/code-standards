@@ -144,7 +144,10 @@
   "SARJ099": "redundant-module-docstring",
   "SARJ400": "invalid-pydantic-field-default",
   "SARJ401": "no-frozen-after-validator-field-write",
-  "SARJ402": "source-coupled-test",
+  "SARJ402": [
+    "source-coupled-test",
+    "no-raw-source-text-test-oracle"
+  ],
   "SARJ404": "no-unique-violation-message-match",
   "SARJ405": "no-apirouter-root-trailing-slash",
   "SARJ407": [
@@ -157,8 +160,14 @@
   "SARJ411": "require-pydantic-for-external-json",
   "SARJ412": "iac-source-coupled-test",
   "SARJ413": "repeated-static-call-cases",
-  "SARJ414": "require-validated-row-factory",
-  "SARJ415": "sql-requires-injected-pool-owner",
+  "SARJ414": [
+    "require-validated-row-factory",
+    "no-positional-psycopg-row-escape"
+  ],
+  "SARJ415": [
+    "sql-requires-injected-pool-owner",
+    "no-psycopg-execution-outside-injected-owner"
+  ],
   "SARJ416": "preserve-declared-nominal-id",
   "SARJ417": "preserve-enum-types",
   "SARJ418": "require-pydantic-ordinal-lower-bound",

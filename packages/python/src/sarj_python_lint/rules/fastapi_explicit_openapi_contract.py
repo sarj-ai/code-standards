@@ -26,6 +26,7 @@ from sarj_python_lint.rules._fastapi import (
     Route,
     flat_name,
 )
+from sarj_python_lint.rules._fixed_record import builds_fixed_record
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
@@ -150,6 +151,42 @@ class FastapiExplicitOpenapiContract(Rule):
                 focus_path=PurePosixPath("api.py"),
                 expected_count=0,
                 scenario="schema-integrity",
+                public=True,
+            ),
+            RuleExample(
+                example_id="unannotated-record-response",
+                title="Unnamed record leaves the response schema implicit",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n"
+                        "@router.get('/health', status_code=200)\n"
+                        "async def health():\n    return {'status': 'ok'}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=1,
+                scenario="unannotated-record",
+                public=True,
+            ),
+            RuleExample(
+                example_id="named-record-response",
+                title="Named response type documents the record",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\nfrom pydantic import BaseModel\n\n"
+                        "class HealthResponse(BaseModel):\n    status: str\n\n"
+                        "router = APIRouter()\n\n@router.get('/health', status_code=200)\n"
+                        "async def health() -> HealthResponse:\n"
+                        "    return HealthResponse(status='ok')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=0,
+                scenario="unannotated-record",
                 public=True,
             ),
         ),
@@ -386,10 +423,27 @@ def _check_return(
 ) -> list[_Finding]:
     annotation = index.resolve_annotation(function.returns)
     if annotation is None:
+        if not builds_fixed_record(function):
+            return []
+        for route in _operations(routes):
+            if route.has_unpack:
+                continue
+            response_model = route.keywords.get("response_model")
+            status = _status_code(route.keywords.get("status_code"), index) or HTTPStatus.OK
+            if (
+                _concrete_response_model(response_model, index)
+                or any(_documents_response_model(node, status, index) for node in _route_response_nodes(route))
+            ):
+                continue
+            return [
+                _Finding(
+                    function,
+                    "[return] fixed-shape dictionary requires a named return type or concrete response_model.",
+                )
+            ]
         return []
     problems: set[str] = set()
-    if _schema_erasing(annotation, index):
-        problems.add("response annotation erases its OpenAPI schema; define an output model")
+    annotation_erases_schema = _schema_erasing(annotation, index)
     is_response = index.is_response(annotation)
     is_none = _is_none_annotation(annotation, index)
     for route in _operations(routes):
@@ -398,6 +452,8 @@ def _check_return(
         keywords = route.keywords
         response_model = keywords.get("response_model")
         response_model_none = response_model is not None and _literal_none(response_model)
+        if annotation_erases_schema and not _concrete_response_model(response_model, index):
+            problems.add("response annotation erases its OpenAPI schema; define an output model")
         status = _status_code(keywords.get("status_code"), index)
         response_class = keywords.get("response_class") or route.inherited_response_class
         if is_response and status not in _NO_CONTENT_STATUSES and response_class is None:
@@ -455,6 +511,24 @@ def _documents_response_content(node: ast.expr | None, status: int | None, index
         for entry_key, entry_value in zip(value.keys, value.values, strict=True):
             if isinstance(entry_key, ast.Constant) and entry_key.value == "content":
                 return True
+            if (
+                isinstance(entry_key, ast.Constant)
+                and entry_key.value == "model"
+                and _concrete_response_model(entry_value, index)
+            ):
+                return True
+    return False
+
+
+def _documents_response_model(node: ast.expr | None, status: int | None, index: FastapiIndex) -> bool:
+    if not isinstance(node, ast.Dict):
+        return False
+    for key, value in zip(node.keys, node.values, strict=True):
+        if key is None or not isinstance(value, ast.Dict):
+            continue
+        if status is not None and status not in _response_codes(ast.Dict(keys=[key], values=[value]), index):
+            continue
+        for entry_key, entry_value in zip(value.keys, value.values, strict=True):
             if (
                 isinstance(entry_key, ast.Constant)
                 and entry_key.value == "model"

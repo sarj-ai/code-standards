@@ -89,7 +89,9 @@ def test_mobsf_rules_are_checksum_verified_and_exclude_presence_rules(
 
     rules = mobile_tools.mobsf_rules()
 
-    assert (rules / "swift" / "crypto.yaml").read_bytes() == actionable
+    assert (
+        rules / "swift" / "crypto.yaml"
+    ).read_bytes() == actionable  # sarj-noqa: SARJ402 -- extracted rule bytes are the archive-integrity contract
     assert not (rules / "best_practices").exists()
     assert mobile_tools.mobsf_rules() == rules
 

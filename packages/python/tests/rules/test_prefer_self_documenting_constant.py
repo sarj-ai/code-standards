@@ -5,6 +5,7 @@ import pytest
 
 from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import RuleExample, Severity
+from sarj_python_lint.rules import prefer_self_documenting_constant as rule_module
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.prefer_self_documenting_constant import (
@@ -43,9 +44,9 @@ def test_warns_when_comment_is_the_only_source_of_a_scalar_unit(comment: str, va
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ097"
-    assert findings[0].severity is Severity.ERROR
+    assert findings[0].severity is Severity.WARNING
     assert unit in findings[0].message
-    assert "preserving non-obvious rationale" in findings[0].message
+    assert "Keep non-obvious rationale" in findings[0].message
 
 
 @pytest.mark.parametrize(
@@ -154,6 +155,49 @@ def test_does_not_borrow_a_different_number_or_ordinal_from_the_rationale() -> N
     assert _check(source) == []
 
 
+def test_context_only_unit_must_describe_the_declared_constant() -> None:
+    source = "# Protocol version 2; timeout is measured in seconds.\nPROTOCOL_VERSION = 2\n"
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("separator", [",", ":", " –", " —", " and", " but", " while"])
+def test_context_unit_does_not_cross_a_clause_boundary(separator: str) -> None:
+    source = f"# Protocol version 2{separator} timeout is measured in seconds.\nPROTOCOL_VERSION = 2\n"
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("separator", [" - ", " -- "])
+def test_context_unit_does_not_cross_an_ascii_dash_boundary(separator: str) -> None:
+    source = f"# Protocol version 2{separator}timeout is measured in seconds.\nPROTOCOL_VERSION = 2\n"
+
+    assert _check(source) == []
+
+
+def test_context_unit_does_not_cross_attached_comment_lines() -> None:
+    source = "# Protocol version 2.\n# Timeout is measured in seconds.\nPROTOCOL_VERSION = 2\n"
+
+    assert _check(source) == []
+
+
+def test_exact_number_unit_does_not_override_a_conflicting_constant_name() -> None:
+    source = "# Provider waits 5 seconds; maximum retry count.\nMAX_RETRIES = 5\n"
+
+    assert _check(source) == []
+
+
+def test_bare_m_is_not_assumed_to_mean_minutes() -> None:
+    assert _check("# Keep a 5 m clearance.\nCLEARANCE = 5\n") == []
+
+
+def test_explicit_minutes_abbreviation_remains_supported() -> None:
+    findings = _check("# Wait 5 min before retrying.\nRETRY_WAIT = 5\n")
+
+    assert len(findings) == 1
+    assert "minutes" in findings[0].message
+
+
 def test_reports_module_and_class_constants_in_source_order() -> None:
     findings = _check(
         """
@@ -216,6 +260,20 @@ def test_enum_members_are_not_constant_candidates(base: str) -> None:
     assert _check(source) == []
 
 
+def test_enum_alias_members_are_not_constant_candidates() -> None:
+    source = """
+    import enum
+
+    E = enum.IntEnum
+
+    class Status(E):
+        # Timeout in seconds.
+        TIMEOUT = 5
+    """
+
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize("value", ["0", "-1"])
 @pytest.mark.parametrize("policy", ["disabled", "unlimited", "unknown", "inherit", "unset", "sentinel"])
 def test_policy_sentinels_are_not_misread_as_duration_values(value: str, policy: str) -> None:
@@ -234,7 +292,7 @@ def test_public_constant_message_warns_about_compatibility() -> None:
     findings = _check("# Five seconds.\nTIMEOUT = 5\n")
 
     assert len(findings) == 1
-    assert "preserving public compatibility" in findings[0].message
+    assert "public API, migrate compatibly" in findings[0].message
 
 
 def test_private_constant_message_stays_direct() -> None:
@@ -251,16 +309,65 @@ def test_private_constant_message_stays_direct() -> None:
         "[401, 403]",
         "(401, 403)",
         "frozenset({401, 403})",
-        "builtins.frozenset((401, 403))",
         "{401: 'Unauthorized', 403: 'Forbidden'}",
     ],
 )
 def test_warns_for_bare_integers_in_status_code_collections(value: str) -> None:
-    findings = _check(f"# Provider-unavailable responses include 401 and 403.\n_UNAVAILABLE_STATUS_CODES = {value}\n")
+    findings = _check(
+        f"# Provider-unavailable HTTP responses include 401 and 403.\n_UNAVAILABLE_STATUS_CODES = {value}\n"
+    )
 
     assert len(findings) == 1
     assert "http.HTTPStatus" in findings[0].message
-    assert findings[0].severity is Severity.ERROR
+    assert ".value" in findings[0].message
+    assert findings[0].severity is Severity.WARNING
+
+
+def test_proven_builtins_frozenset_is_supported() -> None:
+    findings = _check(
+        "import builtins\n\n"
+        "# HTTP responses include 401 and 403.\n"
+        "STATUS_CODES = builtins.frozenset((401, 403))\n"
+    )
+
+    assert len(findings) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def frozenset(values):\n    return values\n\n# HTTP codes 401 and 403.\nSTATUS_CODES = frozenset({401, 403})",
+        "import builtins\nbuiltins = adapter\n\n# HTTP codes 401 and 403.\nSTATUS_CODES = builtins.frozenset({401, 403})",
+        "from protocol import *\n\n# HTTP codes 401 and 403.\nSTATUS_CODES = frozenset({401, 403})",
+    ],
+)
+def test_unproven_frozenset_constructor_is_excluded(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("module_name", ["builtins", "runtime_builtins"])
+def test_mutated_builtins_frozenset_is_excluded(module_name: str) -> None:
+    import_line = "import builtins" if module_name == "builtins" else "import builtins as runtime_builtins"
+    source = (
+        f"{import_line}\n{module_name}.frozenset = fake\n\n"
+        "# HTTP status codes 408 and 429.\n"
+        f"HTTP_STATUS_CODES = {module_name}.frozenset({{408, 429}})\n"
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# SMTP status codes 250 and 550.\nSMTP_STATUS_CODES = {250, 550}",
+        "# SIP status codes 180 and 200.\nSIP_STATUS_CODES = {180, 200}",
+        "# Device status codes 200 and 201.\nDEVICE_STATUS_CODES = {200, 201}",
+        "# HTTP status codes 429 and 499.\nHTTP_STATUS_CODES = {429, 499}",
+    ],
+)
+def test_non_http_or_vendor_status_collections_are_excluded(source: str) -> None:
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
@@ -293,7 +400,7 @@ def test_ignores_status_collections_outside_the_proven_scope(source: str) -> Non
 def test_reports_one_diagnostic_per_constant() -> None:
     findings = _check(
         """
-        # Provider-unavailable codes include 401 and 403 responses.
+        # Provider-unavailable HTTP codes include 401 and 403 responses.
         UNAVAILABLE_STATUS_CODES = {401, 403}
         """
     )
@@ -350,12 +457,26 @@ def test_inline_unit_narration_remains_owned_by_sarj051() -> None:
     assert [finding.code for finding in findings] == ["SARJ051"]
 
 
-def test_cli_reports_the_rule_as_a_blocking_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_reports_the_rule_as_a_nonblocking_warning(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "limits.py"
     target.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")
 
-    assert main(["check", "--rule", "prefer-self-documenting-constant", str(target)]) == 1
-    assert "SARJ097 warning:" not in capsys.readouterr().out
+    assert main(["check", "--rule", "prefer-self-documenting-constant", str(target)]) == 0
+    assert "SARJ097 warning:" in capsys.readouterr().out
+
+
+def test_module_without_candidate_constants_skips_expensive_scans(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_if_called(*_args: object):
+        pytest.fail("source scans should be skipped without a numeric or status candidate")
+
+    monkeypatch.setattr(rule_module, "is_generated", fail_if_called)
+    monkeypatch.setattr(rule_module, "standalone_comments", fail_if_called)
+    monkeypatch.setattr(
+        "sarj_python_lint.rules.prefer_self_documenting_constant.ImportIndex.from_tree",
+        fail_if_called,
+    )
+
+    assert _check("LABEL = 'seconds'\n") == []
 
 
 def test_exact_code_suppression_is_honored_on_the_constant_line(

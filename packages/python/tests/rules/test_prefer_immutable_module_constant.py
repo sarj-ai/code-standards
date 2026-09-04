@@ -45,7 +45,7 @@ def test_warns_for_literal_mutable_module_constants(source: str, replacement: st
 
     assert len(findings) == 1
     assert findings[0].code == "SARJ096"
-    assert findings[0].severity is Severity.ERROR
+    assert findings[0].severity is Severity.WARNING
     assert replacement in findings[0].message
 
 
@@ -99,6 +99,116 @@ def test_ignores_test_and_generated_files() -> None:
     rule = PreferImmutableModuleConstant()
     assert rule.check(Path("tests/test_service.py"), "VALUES = [1, 2, 3]") == []
     assert rule.check(Path("generated.py"), source) == []
+    assert rule.check(Path("common/testing/builders.py"), "VALUES = [1, 2, 3]") == []
+
+
+def test_generated_module_docstring_is_clean() -> None:
+    source = '"""This file is generated. Do not edit it by hand."""\nMODULES = {"x": 1}\n'
+    assert PreferImmutableModuleConstant().check(Path("builtins.py"), source) == []
+
+
+def test_incidental_generate_and_do_not_edit_prose_is_not_treated_as_generated() -> None:
+    source = '"""Generate reports; do not edit runtime state."""\nVALUES = [1]\n'
+    assert len(PreferImmutableModuleConstant().check(Path("reports.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "VALUES = [1]\ndef mutate():\n    alias = VALUES\n    alias.append(2)",
+        "VALUES = [1]\ndef mutate():\n    append = VALUES.append\n    append(2)",
+        "VALUES = [1]\ndef mutate():\n    first, alias = (object(), VALUES)\n    alias.append(2)",
+        "VALUES = [1]\ndef mutate():\n    VALUES.__setitem__(0, 2)",
+        "VALUES = [1]\ndef snapshot():\n    return VALUES.copy()",
+    ],
+    ids=["direct-alias", "bound-mutator", "unpacked-alias", "dunder-mutation", "copy-api"],
+)
+def test_alias_mutation_and_concrete_collection_apis_are_clean(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "VALUES = [1]\nAPPEND = VALUES.append",
+        "VALUES = [1]\ndef callback():\n    return VALUES.append",
+        "VALUES = [1]\ndef callback(append=VALUES.append):\n    return append",
+    ],
+    ids=["module-alias", "return", "default"],
+)
+def test_exported_bound_mutator_preserves_concrete_collection_contract(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+def test_unrelated_bound_mutator_does_not_hide_module_finding() -> None:
+    source = "VALUES = [1]\nAPPEND = unrelated.append"
+    assert len(PreferImmutableModuleConstant().check(Path("service.py"), source)) == 1
+
+
+def test_mutating_independent_local_copy_does_not_hide_module_finding() -> None:
+    source = "VALUES = [1]\ndef mutate():\n    local = list(VALUES)\n    local.append(2)"
+    assert len(PreferImmutableModuleConstant().check(Path("service.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "VALUES = [[1], [2]]\ndef mutate():\n    first, second = VALUES\n    first.append(3)",
+        "LABELS = {'a': 'A'}\ndef render():\n    label = LABELS['a']\n    consume(label)",
+        "VALUES = [1]\ndef use():\n    unrelated, alias = (lambda: None, VALUES)\n    unrelated()",
+    ],
+    ids=["nested-element-mutation", "mapping-scalar-consumer", "unrelated-positional-element"],
+)
+def test_extracted_elements_do_not_hide_module_finding(source: str) -> None:
+    assert len(PreferImmutableModuleConstant().check(Path("service.py"), source)) == 1
+
+
+def test_positional_destructuring_tracks_whole_collection_alias() -> None:
+    source = "VALUES = [1]\ndef mutate():\n    unrelated, alias = (lambda: None, VALUES)\n    alias.append(2)"
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "VALUES = [1]\ndef mutate():\n    alias, *rest = (VALUES, object())\n    alias.append(2)",
+        "VALUES = [1]\ndef mutate():\n    *rest, alias = (object(), VALUES)\n    alias.append(2)",
+    ],
+    ids=["fixed-prefix", "fixed-suffix"],
+)
+def test_starred_destructuring_tracks_fixed_whole_collection_alias(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+def test_starred_capture_conservatively_exempts_nested_whole_collection() -> None:
+    source = (
+        "VALUES = [1]\n"
+        "def mutate():\n"
+        "    first, *rest = (object(), VALUES)\n"
+        "    rest[0].append(2)"
+    )
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def tuple(value):\n    value.append(2)\nVALUES = [1]\ntuple(VALUES)",
+        "VALUES = [1]\ndef mutate(tuple):\n    tuple(VALUES)",
+    ],
+    ids=["module-function", "function-parameter"],
+)
+def test_shadowed_non_escaping_builtin_can_receive_mutable_constant(source: str) -> None:
+    assert PreferImmutableModuleConstant().check(Path("service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["VALUES = [1]\nconsume(VALUES[0])", "VALUES = [1]\nconsume(VALUES[:])"],
+    ids=["element", "slice"],
+)
+def test_passing_subscript_does_not_hide_module_finding(source: str) -> None:
+    assert len(PreferImmutableModuleConstant().check(Path("service.py"), source)) == 1
 
 
 @pytest.mark.parametrize("source", ["A = B = []\nA.append(1)", "A = B = {}\nconsume(B)", "A = B = set()"])

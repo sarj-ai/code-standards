@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 
 
@@ -41,6 +42,40 @@ class {name}:
 
 # The public Before example is the canonical shape this rule exists for.
 _FAKE_S3 = _PUBLIC_EXAMPLES[0].focus_file.source
+
+
+def _stateful_redis(name: str = "FakeRedisClient") -> str:
+    return f"""
+class {name}:
+    def __init__(self):
+        self.values = {{}}
+
+    def get(self, key):
+        return self.values.get(key)
+
+    def set(self, key, value):
+        self.values[key] = value
+
+    def delete(self, key):
+        self.values.pop(key, None)
+"""
+
+
+def _stateful_postgres() -> str:
+    return """
+class FakePostgresPool:
+    def __init__(self):
+        self.rows = []
+
+    def execute(self, query):
+        self.rows.append(query)
+
+    def fetchone(self):
+        return self.rows.pop(0)
+
+    def rollback(self):
+        self.rows.clear()
+"""
 
 
 # File-scope gating.                                                          #
@@ -96,49 +131,35 @@ def test_skips_production_paths(path: str):
 
 
 @pytest.mark.parametrize(
-    ("name", "library"),
+    ("name", "library", "methods"),
     [
-        ("FakeS3Client", "moto"),
-        ("MockBoto3Client", "moto"),
-        ("FakeSqsQueue", "moto"),
-        ("FakeSnsPublisher", "moto"),
-        ("FakeDynamoDbTable", "moto"),
-        ("FakeKinesisStream", "moto"),
-        ("FakeSesMailer", "moto"),
-        ("FakeGcsBucket", "fake-gcs-server"),
-        ("FakePubSubPublisher", "emulator"),
-        ("StubKafkaProducer", "testcontainers"),
-        ("FakeRedisCache", "fakeredis"),
-        ("FakeValkeyCache", "fakeredis"),
-        ("FakeMongoCollection", "mongomock"),
-        ("FakePostgresPool", "testcontainers"),
-        ("FakePsycopgConnection", "testcontainers"),
-        ("FakeMySQLConnection", "testcontainers"),
-        ("FakeMariadbConnection", "testcontainers"),
-        ("FakeSmtpServer", "aiosmtpd"),
-        ("FakeSmtplibServer", "aiosmtpd"),
-        ("FakeAiosmtplibServer", "aiosmtpd"),
-        ("FakeSendGridClient", "aiosmtpd"),
-        ("FakeMailgunClient", "aiosmtpd"),
-        ("MockHttpxTransport", "respx"),
-        ("FakeAiohttpSession", "aioresponses"),
-        ("FakeRequestsSession", "responses"),
-        ("FakeClock", "time-machine"),
-        ("FakeDateTime", "time-machine"),
-        ("FakeMonotonicClock", "time-machine"),
+        ("FakeS3Client", "moto", "put_object get_object delete_object"),
+        ("FakeSqsQueue", "moto", "send_message receive_message delete_message"),
+        ("FakeGcsBucket", "fake-gcs-server", "upload download delete"),
+        ("FakePubSubPublisher", "emulator", "publish pull acknowledge"),
+        ("StubKafkaProducer", "testcontainers", "produce poll commit"),
+        ("FakeRedisCache", "fakeredis", "get set delete"),
+        ("FakeMongoCollection", "mongomock", "find_one insert_one delete_one"),
+        ("FakePostgresPool", "testcontainers", "execute fetchone rollback"),
+        ("FakeSmtpServer", "aiosmtpd", "login starttls send_message"),
+        ("MockHttpxTransport", "respx", "get post request"),
+        ("FakeAiohttpSession", "aioresponses", "get post request"),
+        ("FakeRequestsSession", "responses", "get post request"),
     ],
 )
-def test_each_service_names_its_own_library(name: str, library: str):
+def test_each_service_names_its_own_library(name: str, library: str, methods: str):
+    write, read, remove = methods.split()
+    definitions = (
+        f"    def {write}(self, key, value=None):\n        self.records[key] = value\n\n"
+        f"    def {read}(self, key, *args):\n        return self.records.get(key)\n\n"
+        f"    def {remove}(self, key, *args):\n        return self.records.pop(key, None)"
+    )
     src = f"""
 class {name}:
-    def a(self):
-        return 1
+    def __init__(self):
+        self.records = {{}}
 
-    def b(self):
-        return 2
-
-    def c(self):
-        return 3
+{definitions}
 """
     [diag] = _check(src)
     assert library in diag.message
@@ -150,64 +171,34 @@ def test_message_names_the_class_and_the_service():
     assert "`FakeS3Client`" in diag.message
     assert "AWS S3" in diag.message
     assert "mock_aws" in diag.message
+    assert diag.severity is Severity.WARNING
 
 
 def test_the_exact_message_text():
     [diag] = _check(_FAKE_S3)
     assert diag.message == (
-        "`FakeS3Client` hand-rolls AWS S3; a hand-written double only encodes what its author "
-        "remembered of the protocol, so the test passes against a service that does not exist. "
-        "use `moto`'s `mock_aws` (or MinIO via `testcontainers`) so the double enforces the real "
-        "bucket/key/versioning and NoSuchKey behaviour instead of a dict."
+        "`FakeS3Client` appears to reimplement substantial AWS S3 protocol behavior; a maintained test double "
+        "usually covers a broader supported behavior surface. Consider `moto`'s `mock_aws`, or a containerized "
+        "compatible service when the test needs behavior outside Moto's supported S3 model."
     )
 
 
 @pytest.mark.parametrize(
     "marker",
-    ["Fake", "Mock", "Stub", "Dummy", "InMemory", "Scripted", "Recording"],
+    ["Fake", "Mock", "Stub", "Dummy", "InMemory", "Recording"],
 )
 def test_every_double_marker_is_recognised(marker: str):
-    src = f"""
-class {marker}RedisClient:
-    def get(self, k):
-        return None
-
-    def set(self, k, v):
-        return True
-
-    def delete(self, k):
-        return 1
-"""
+    src = _stateful_redis(f"{marker}RedisClient")
     assert len(_check(src)) == 1
 
 
 def test_spy_is_recognised_as_a_word():
-    src = """
-class RedisSpy:
-    def get(self, k):
-        return None
-
-    def set(self, k, v):
-        return True
-
-    def delete(self, k):
-        return 1
-"""
+    src = _stateful_redis("RedisSpy")
     assert len(_check(src)) == 1
 
 
 def test_leading_underscores_do_not_hide_the_marker():
-    src = """
-class _FakeRedisCache:
-    def get(self, k):
-        return None
-
-    def set(self, k, v):
-        return True
-
-    def delete(self, k):
-        return 1
-"""
+    src = _stateful_redis("_FakeRedisCache")
     assert len(_check(src)) == 1
 
 
@@ -270,6 +261,123 @@ class {name}:
         return 3
 """
     assert _check(src) == []
+
+
+def test_application_owned_s3_port_is_not_a_protocol_model() -> None:
+    source = """
+class FakeS3Client:
+    def __init__(self):
+        self.uploads = {}
+
+    def upload_avatar(self, user_id, body):
+        self.uploads[user_id] = body
+
+    def avatar_exists(self, user_id):
+        return user_id in self.uploads
+
+    def reset(self):
+        self.uploads.clear()
+"""
+    assert _check(source) == []
+
+
+def test_scripted_redis_failures_are_not_a_stateful_protocol_model() -> None:
+    source = """
+class ScriptedRedisClient:
+    def get(self, key):
+        raise TimeoutError
+
+    def set(self, key, value):
+        raise ConnectionError
+
+    def delete(self, key):
+        raise PermissionError
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("name", ["ScriptedRedisClient", "FakeScriptedRedisClient", "RedisScriptedClient"])
+def test_scripted_redis_outcome_queue_is_not_a_protocol_model(name: str) -> None:
+    source = f"""
+class {name}:
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+
+    def get(self, key):
+        return self.outcomes.pop(0)
+
+    def set(self, key, value):
+        return self.outcomes.pop(0)
+
+    def delete(self, key):
+        return self.outcomes.pop(0)
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("field", ["_outcomes", "responses", "results", "queue", "script"])
+def test_preloaded_response_queue_is_not_protocol_state(field: str) -> None:
+    source = f"""
+class FakeRedisClient:
+    def __init__(self, responses):
+        self.{field} = list(responses)
+
+    def get(self, key):
+        return self.{field}.pop(0)
+
+    def set(self, key, value):
+        return self.{field}.pop(0)
+
+    def delete(self, key):
+        return self.{field}.pop(0)
+"""
+    assert _check(source) == []
+
+
+def test_redis_call_recorder_is_not_a_protocol_model() -> None:
+    source = """
+class FakeRedisClient:
+    def __init__(self):
+        self.calls = []
+
+    def get(self, key):
+        self.calls.append(("get", key))
+
+    def set(self, key, value):
+        self.calls.append(("set", key, value))
+
+    def delete(self, key):
+        self.calls.append(("delete", key))
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("name", ["FakeSendGridClient", "FakeMailgunClient", "FakeBedrockClient"])
+def test_non_smtp_or_non_http_provider_names_are_not_misclassified(name: str) -> None:
+    source = f"""
+class {name}:
+    def __init__(self):
+        self.calls = []
+
+    def request(self, value):
+        self.calls.append(value)
+
+    def send(self, value):
+        self.calls.append(value)
+
+    def close(self):
+        self.calls.clear()
+"""
+    assert _check(source) == []
+
+
+def test_generated_test_double_is_clean() -> None:
+    assert _check("# @generated\n" + _FAKE_S3) == []
+
+
+def test_aliased_application_protocol_base_is_clean() -> None:
+    source = "from app.ports import RedisProtocol as RP\n" + _stateful_redis("FakeRedisClient(RP)")
+    assert _check(source) == []
 
 
 def test_llm_raw_wire_envelope_still_fires():
@@ -540,7 +648,7 @@ class RecordingRedisClient:
     assert _check(src) == []
 
 
-def test_non_receiver_forward_is_not_a_spy():
+def test_stateless_non_receiver_forward_is_not_a_protocol_model():
     src = """
 class RecordingRedisClient:
     def get(self, key):
@@ -552,7 +660,7 @@ class RecordingRedisClient:
     def delete(self, key):
         return global_client.delete(key)
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_a_docstring_does_not_break_forward_detection():
@@ -594,8 +702,7 @@ class FakeS3Client:
     assert len(_check(src)) == 1
 
 
-def test_forwarding_under_a_different_method_name_is_not_a_forward():
-    # Renaming the call is reimplementation, not delegation.
+def test_stateless_method_renaming_adapter_is_not_a_protocol_model():
     src = """
 class FakeRedisClient:
     def __init__(self, inner):
@@ -610,7 +717,7 @@ class FakeRedisClient:
     def delete(self, key):
         return self._inner.remove(key)
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_exactly_half_the_methods_forwarding_is_still_a_spy():
@@ -633,7 +740,7 @@ class RecordingRedisClient:
     assert _check(src) == []
 
 
-def test_two_forwards_of_five_methods_is_not_a_spy():
+def test_two_forwards_plus_bookkeeping_are_not_a_protocol_model():
     # One method past the halfway mark: the class reimplements more than it
     # observes, so dropping the `forwards * 2 >= len(methods)` arm loses this.
     src = """
@@ -654,10 +761,10 @@ class RecordingRedisClient:
     def expire(self, key, seconds):
         self._ttls[key] = seconds
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_a_lone_forward_among_two_methods_is_not_a_spy():
+def test_a_lone_forward_and_canned_snapshot_are_not_a_protocol_model():
     # `forwards >= 2` carries this one alone: half of two methods forward, so
     # dropping the arm — or lowering the 2 to 1 — silences a real hand-roll.
     rows = "\n".join(f'            "key_{i}": {i},' for i in range(20))
@@ -671,10 +778,10 @@ class FakeRedisClient:
 {rows}
         }}
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_forwarding_to_a_module_level_object_is_not_a_spy():
+def test_stateless_forwarding_to_a_module_object_is_not_a_protocol_model():
     src = """
 class FakeRedisClient:
     def get(self, key):
@@ -686,7 +793,7 @@ class FakeRedisClient:
     def delete(self, key):
         return backend.delete(key)
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 # FP guard: data holders.                                                      #
@@ -741,9 +848,7 @@ class MockRedisSession(pydantic.BaseModel):
     assert _check(src) == []
 
 
-def test_a_dataclass_with_real_behaviour_still_fires():
-    # litellm `.../prisma_and_spend/conftest.py:249` FakeClock is a dataclass and is
-    # a genuine behaviour double — excluding every `@dataclass` would lose it.
+def test_an_injected_dataclass_clock_is_out_of_scope():
     src = """
 @dataclass
 class FakeClock:
@@ -758,7 +863,7 @@ class FakeClock:
     async def sleep(self, seconds):
         self.now += seconds
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_a_field_only_dataclass_does_not_reach_the_substance_floor():
@@ -814,7 +919,7 @@ class FakeRedisClient:
     assert _check(src) == []
 
 
-def test_three_real_methods_clears_the_floor():
+def test_three_protocol_named_but_stateless_methods_stay_silent():
     src = """
 class FakeRedisClient:
     def get(self, key):
@@ -826,10 +931,10 @@ class FakeRedisClient:
     def delete(self, key):
         return 1
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
-def test_a_long_double_with_two_real_methods_clears_the_floor():
+def test_a_long_stateless_double_with_two_protocol_methods_stays_silent():
     body = "\n".join(f"        self.field_{i} = {i}" for i in range(24))
     src = f"""
 class InMemorySmtpServer:
@@ -842,7 +947,7 @@ class InMemorySmtpServer:
     def login(self, user, password):
         return None
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def _two_real_methods_spanning(span: int) -> str:
@@ -866,10 +971,8 @@ def test_two_real_methods_one_line_below_the_span_floor_stay_silent():
     assert _check(_two_real_methods_spanning(24)) == []
 
 
-def test_two_real_methods_exactly_at_the_span_floor_fire():
-    # Pins `_MIN_LINES` and the `<` from above, and the `+ 1` in the span
-    # arithmetic: without it a 25-line class measures 24 and goes quiet.
-    assert len(_check(_two_real_methods_spanning(25))) == 1
+def test_two_stateless_methods_at_the_span_floor_stay_silent():
+    assert _check(_two_real_methods_spanning(25)) == []
 
 
 def test_three_methods_of_which_two_are_real_are_below_the_method_floor():
@@ -917,7 +1020,7 @@ class MockKafkaConsumerResource:
     assert _check(src) == []
 
 
-def test_a_nested_connection_class_counts_as_the_second_entry_point():
+def test_a_nested_smtp_call_recorder_is_not_a_protocol_model():
     # litellm `.../prisma_and_spend/conftest.py:323` — `InMemorySMTP` exposes one method, but that method defines a `_Conn` that hand-rolls starttls/login/ send_message.
     src = """
 @dataclass
@@ -948,7 +1051,7 @@ class InMemorySMTP:
 
         return _Conn
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_the_nested_class_alone_without_a_method_stays_silent():
@@ -967,65 +1070,36 @@ class InMemorySMTP:
 # FP guard: the library is already in use.                                     #
 
 
-@pytest.mark.parametrize(
-    ("import_line", "name"),
-    [
-        ("import fakeredis", "FakeRedisWithInfo"),
-        ("from fakeredis import FakeAsyncRedis", "FakeRedisWithInfo"),
-        ("import moto", "FakeS3Client"),
-        ("from moto import mock_aws", "FakeS3Client"),
-        ("import s3fs", "FakeS3Client"),
-        ("import respx", "FakeOpenAIClient"),
-        ("import vcr", "FakeOpenAIClient"),
-        ("import pytest_recording", "FakeOpenAIClient"),
-        ("import pytest_httpx", "FakeOpenAIClient"),
-        ("import responses", "FakeOpenAIClient"),
-        ("import aioresponses", "FakeOpenAIClient"),
-        ("import testcontainers.postgres", "FakePostgresPool"),
-        ("import gcp_storage_emulator", "FakeGcsBucket"),
-        ("import mongomock", "FakeMongoCollection"),
-        ("import pytest_postgresql", "FakePostgresPool"),
-        ("import aiosmtpd", "FakeSmtpServer"),
-        ("import mailpit", "FakeSmtpServer"),
-        ("import requests_mock", "FakeRequestsSession"),
-        ("import time_machine", "FakeClock"),
-        ("import freezegun", "FakeClock"),
-        ("import timemachine", "FakeClock"),
-    ],
-)
-def test_a_file_already_using_the_library_is_exempt(import_line: str, name: str):
-    # litellm `tests/llm_translation/test_vcr_redis_persister.py:413` defines
-    # `_FakeRedisWithInfo` in a module that already imports fakeredis.
-    src = f"""
-{import_line}
+@pytest.mark.parametrize("import_line", ["import fakeredis", "from fakeredis import FakeAsyncRedis"])
+def test_unconditional_matching_library_import_exempts(import_line: str):
+    assert _check(f"{import_line}\n{_stateful_redis()}") == []
 
-class {name}:
-    def a(self):
-        return 1
 
-    def b(self):
-        return 2
+def test_qualified_matching_container_import_exempts() -> None:
+    assert _check("import testcontainers.postgres\n" + _stateful_postgres()) == []
 
-    def c(self):
-        return 3
-"""
-    assert _check(src) == []
+
+def test_type_checking_library_import_does_not_exempt() -> None:
+    source = "if TYPE_CHECKING:\n    import fakeredis\n" + _stateful_redis()
+    assert len(_check(source)) == 1
+
+
+def test_nested_library_import_does_not_exempt() -> None:
+    source = "def helper():\n    import fakeredis\n" + _stateful_redis()
+    assert len(_check(source)) == 1
+
+
+def test_qualified_unrelated_container_import_does_not_exempt() -> None:
+    source = "import testcontainers.redis\n" + _stateful_postgres()
+    assert len(_check(source)) == 1
+
+
+def test_s3fs_client_import_does_not_claim_a_maintained_s3_fake() -> None:
+    assert len(_check("import s3fs\n" + _FAKE_S3)) == 1
 
 
 def test_importing_an_unrelated_library_does_not_exempt():
-    src = """
-import moto
-
-class FakeRedisClient:
-    def get(self, key):
-        return None
-
-    def set(self, key, value):
-        return True
-
-    def delete(self, key):
-        return 1
-"""
+    src = "import moto\n" + _stateful_redis()
     assert len(_check(src)) == 1
 
 
@@ -1034,14 +1108,17 @@ def test_a_relative_import_of_a_same_named_local_module_does_not_exempt():
 from . import responses
 
 class FakeRequestsSession:
+    def __init__(self):
+        self.routes = {}
+
     def get(self, url):
-        return None
+        return self.routes[url]
 
     def post(self, url, data):
-        return None
+        self.routes[url] = data
 
-    def close(self):
-        return None
+    def request(self, method, url):
+        return self.routes[(method, url)]
 """
     assert len(_check(src)) == 1
 
@@ -1134,33 +1211,26 @@ class {name}:
     assert _check(src) == []
 
 
-@pytest.mark.parametrize("name", ["FakeRequestsSession", "MockSesClient", "FakeClockSource"])
+@pytest.mark.parametrize("name", ["FakeRedisClient", "MockValkeyCache"])
 def test_the_same_token_as_a_whole_word_does_match(name: str):
-    src = f"""
-class {name}:
-    def a(self):
-        return 1
-
-    def b(self):
-        return 2
-
-    def c(self):
-        return 3
-"""
+    src = _stateful_redis(name)
     assert len(_check(src)) == 1
 
 
 def test_screaming_acronyms_split_correctly():
     src = """
 class FakeGCSBucket:
+    def __init__(self):
+        self.objects = {}
+
     def upload(self, path):
-        return None
+        self.objects[path] = b""
 
     def download(self, path):
-        return None
+        return self.objects[path]
 
     def delete(self, path):
-        return None
+        self.objects.pop(path)
 """
     [diag] = _check(src)
     assert "fake-gcs-server" in diag.message
@@ -1217,14 +1287,17 @@ def test_reports_line_and_column_of_the_class():
 def test_multiple_hits_in_one_file_are_sorted_by_position():
     src = """
 class FakeRedisClient:
+    def __init__(self):
+        self.values = {}
+
     def get(self, k):
-        return None
+        return self.values.get(k)
 
     def set(self, k, v):
-        return True
+        self.values[k] = v
 
     def delete(self, k):
-        return 1
+        self.values.pop(k, None)
 
 
 class FakeThing:
@@ -1239,14 +1312,17 @@ class FakeThing:
 
 
 class FakeS3Client:
+    def __init__(self):
+        self.objects = {}
+
     def put_object(self, b, k, body):
-        return {}
+        self.objects[(b, k)] = body
 
     def get_object(self, b, k):
-        return {}
+        return self.objects[(b, k)]
 
     def delete_object(self, b, k):
-        return {}
+        self.objects.pop((b, k), None)
 """
     diags = _check(src)
     assert len(diags) == 2
@@ -1258,17 +1334,17 @@ class FakeS3Client:
 def test_decorated_class_reports_the_class_line_not_the_decorator():
     src = """
 @dataclass
-class FakeClock:
-    now: float = 0.0
+class FakeRedisClient:
+    values: dict = field(default_factory=dict)
 
-    def advance(self, seconds):
-        self.now += seconds
+    def get(self, key):
+        return self.values.get(key)
 
-    def time(self):
-        return self.now
+    def set(self, key, value):
+        self.values[key] = value
 
-    def sleep(self, seconds):
-        self.now += seconds
+    def delete(self, key):
+        self.values.pop(key, None)
 """
     [diag] = _check(src)
     assert diag.line == 3

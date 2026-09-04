@@ -14,14 +14,14 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterable, Iterator, Mapping
     from pathlib import Path
 
 
@@ -44,7 +44,9 @@ _PATCH_SUBFORMS: Final[frozenset[_PatchSubform]] = frozenset({"object", "multipl
 
 # `patch.multiple(target, spec=..., a=Mock())`: everything that is NOT one of
 # these keywords names an attribute being replaced.
-_PATCH_CONFIG_KWARGS = frozenset({"spec", "spec_set", "autospec", "new_callable", "create", "instance", "unsafe"})
+_PATCH_CONFIG_KWARGS = frozenset(
+    {"target", "spec", "spec_set", "autospec", "new_callable", "create", "instance", "unsafe"}
+)
 
 # `patch(target, new)` supplies the replacement itself and injects no parameter;
 # `patch.object(target, attribute, new)` needs one more positional to say so.
@@ -59,6 +61,10 @@ _SETATTR_SPLIT_ARITY = 3
 _MOCKER = "mocker"
 
 _MONKEYPATCH = "monkeypatch"
+
+_PYTEST = "pytest"
+
+_PARAMETRIZE = "parametrize"
 
 # `monkeypatch.setenv`/`delenv` are environment, not substitution; `setitem`/
 # `delitem` edit a config dict; `syspath_prepend`/`chdir` are process state.
@@ -173,14 +179,21 @@ class OverMockedTest(Rule):
     id: str = "over-mocked-test"
     code: str = "SARJ062"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Tests should not replace more than five distinct collaborators.",
-        rationale="Broad mock wiring couples tests to implementation details while exercising little production behavior.",
-        remediation="Use real dependencies or a higher-level test harness and mock only true external boundaries.",
+        summary="Tests should not use more than five independently rooted test doubles or collaborator substitutions.",
+        rationale="Broad double setup obscures the behavior under test and often couples tests to implementation wiring.",
+        remediation=(
+            "Prefer real in-process dependencies, a component harness, or purpose-built fakes; keep mocks at true "
+            "external boundaries."
+        ),
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only collected tests are analyzed; configuration knobs do not count as collaborators.",
-            "Tests explicitly identified as documentation-example harnesses are excluded.",
+            "Only maintained, collected tests are analyzed; generated files and nested lexical scopes are excluded.",
+            "The warning counts independently rooted doubles and inferred collaborator owners, including mock-named fixtures.",
+            (
+                "Class-level patches, configuration and process-state knobs, and identified composition-root or "
+                "documentation harnesses are excluded."
+            ),
         ),
         examples=(
             RuleExample(
@@ -190,7 +203,7 @@ class OverMockedTest(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        'from unittest.mock import patch\n\n@patch("app.mod0.collaborator")\n@patch("app.mod1.collaborator")\n@patch("app.mod2.collaborator")\n@patch("app.mod3.collaborator")\n@patch("app.mod4.collaborator")\n@patch("app.mod5.collaborator")\ndef test_run(a, b, c, d, e, f):\n    assert run() == 1\n',
+                        'from unittest.mock import patch\n\n@patch("shop.inventory.reserve")\n@patch("shop.payments.charge")\n@patch("shop.shipping.quote")\n@patch("shop.tax.calculate")\n@patch("shop.email.send_receipt")\n@patch("shop.risk.approve")\ndef test_checkout(risk, email, tax, shipping, payments, inventory):\n    assert checkout() == "confirmed"\n',
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
@@ -199,12 +212,12 @@ class OverMockedTest(Rule):
             ),
             RuleExample(
                 example_id="external-boundary-only",
-                title="Test patches one external boundary",
+                title="Component test keeps one external boundary",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        'from unittest.mock import patch\n\n@patch("app.payment_gateway")\ndef test_run(gateway):\n    assert run() == 1\n',
+                        'from unittest.mock import patch\n\n@patch("shop.payment_gateway.charge")\ndef test_checkout(gateway, test_database, inventory_service):\n    result = checkout(test_database, inventory_service)\n    assert result.status == "confirmed"\n',
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
@@ -217,7 +230,7 @@ class OverMockedTest(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_test_path(path):
+        if not is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -230,10 +243,11 @@ class OverMockedTest(Rule):
                 col=node.col_offset + 1,
                 code=self.code,
                 message=(
-                    f"`{node.name}` substitutes {count} collaborators — at that ratio it exercises the "
-                    "mock wiring, not the code. Prefer a real dependency (a test database, an in-process "
-                    "app, `respx` for HTTP) and mock only the true external boundary."
+                    f"`{node.name}` uses {count} independently rooted test doubles or substitutions. "
+                    "Consider real in-process dependencies, a component harness, or purpose-built fakes, keeping "
+                    "mocks at true external boundaries."
                 ),
+                severity=Severity.WARNING,
             )
             for node, count in _over_mocked_tests(path, tree)
         ]
@@ -270,6 +284,57 @@ def _tokens(text: str) -> frozenset[str]:
     return frozenset(word[0].lower() for word in _TOKEN_RE.finditer(text))
 
 
+class _BindingVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+
+    @override
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, ast.Store):
+            self.names.add(node.id)
+
+    @override
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.names.add(node.name)
+
+    @override
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        del node
+
+    @override
+    def visit_Import(self, node: ast.Import) -> None:
+        self.names.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
+
+    @override
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        self.names.update(alias.asname or alias.name for alias in node.names)
+
+
+def _bound_names(statements: Iterable[ast.stmt]) -> frozenset[str]:
+    visitor = _BindingVisitor()
+    for statement in statements:
+        visitor.visit(statement)
+    return frozenset(visitor.names)
+
+
+def _parameter_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    args = func.args
+    names = {
+        *(arg.arg for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs)),
+        *((args.vararg.arg,) if args.vararg is not None else ()),
+        *((args.kwarg.arg,) if args.kwarg is not None else ()),
+    }
+    return frozenset(names)
+
+
 # The directory a test suite is rooted at.
 _TEST_ROOT_NAMES = frozenset({"t", "test", "tests"})
 
@@ -299,15 +364,20 @@ class _MockNames:
         self.modules: set[str] = set()
         self.symbols: dict[str, str] = {}
         self.qualified: dict[str, str] = {}
+        self.pytest_modules: set[str] = set()
+        self.pytest_parametrize: set[str] = set()
+        self.fixture_handles: set[str] = set()
 
     @classmethod
     def from_tree(cls, tree: ast.Module) -> _MockNames:
         found = cls()
-        for node in nodes(tree, ast.Import, ast.ImportFrom):
-            if isinstance(node, ast.Import):
-                found._add_plain_import(node)
+        for stmt in tree.body:
+            if isinstance(stmt, ast.Import):
+                found._add_plain_import(stmt)
+            elif isinstance(stmt, ast.ImportFrom):
+                found._add_from_import(stmt)
             else:
-                found._add_from_import(node)
+                found._remove_bound_names(_bound_names((stmt,)))
         return found
 
     def _add_plain_import(self, node: ast.Import) -> None:
@@ -317,6 +387,8 @@ class _MockNames:
                 self.modules.add(alias.asname or "unittest")
             elif alias.name == _MOCK_BACKPORT:
                 self.modules.add(alias.asname or _MOCK_BACKPORT)
+            elif alias.name == _PYTEST:
+                self.pytest_modules.add(alias.asname or _PYTEST)
             if alias.asname is not None:
                 self.qualified[alias.asname] = alias.name
 
@@ -329,10 +401,43 @@ class _MockNames:
             for alias in node.names:
                 if alias.name == _PATCH or alias.name in _MOCK_FACTORIES:
                     self.symbols[alias.asname or alias.name] = alias.name
+        elif node.module == "pytest.mark":
+            for alias in node.names:
+                if alias.name == _PARAMETRIZE:
+                    self.pytest_parametrize.add(alias.asname or alias.name)
         # A relative import has no absolute path to resolve a bare name onto.
         if node.module is not None and node.level == 0:
             for alias in node.names:
                 self.qualified[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+
+    def _remove_bound_names(self, bound: frozenset[str]) -> None:
+        self.modules.difference_update(bound)
+        self.pytest_modules.difference_update(bound)
+        self.pytest_parametrize.difference_update(bound)
+        for name in bound:
+            self.symbols.pop(name, None)
+            self.qualified.pop(name, None)
+
+    def scoped(
+        self,
+        blocked: frozenset[str],
+        *,
+        allow_mocker: bool,
+        allow_monkeypatch: bool,
+    ) -> _MockNames:
+        scoped = _MockNames()
+        scoped.modules = self.modules - blocked
+        if allow_mocker:
+            scoped.modules.add(_MOCKER)
+        scoped.symbols = {name: symbol for name, symbol in self.symbols.items() if name not in blocked}
+        scoped.qualified = {name: source for name, source in self.qualified.items() if name not in blocked}
+        scoped.pytest_modules = self.pytest_modules - blocked
+        scoped.pytest_parametrize = self.pytest_parametrize - blocked
+        if allow_mocker:
+            scoped.fixture_handles.add(_MOCKER)
+        if allow_monkeypatch:
+            scoped.fixture_handles.add(_MONKEYPATCH)
+        return scoped
 
     def qualify(self, owner: str) -> str:
         head, dot, rest = owner.partition(".")
@@ -343,7 +448,7 @@ class _MockNames:
 
     def is_mock_module(self, node: ast.expr) -> bool:
         if isinstance(node, ast.Name):
-            return node.id in self.modules or node.id == _MOCKER
+            return node.id in self.modules
         # `unittest.mock.patch(...)` — the receiver is itself an attribute chain.
         if isinstance(node, ast.Attribute) and node.attr == _MOCK_BACKPORT:
             return isinstance(node.value, ast.Name) and node.value.id in self.modules
@@ -373,6 +478,21 @@ class _MockNames:
             return func.attr
         return None
 
+    def is_parametrize(self, func: ast.expr) -> bool:
+        if isinstance(func, ast.Name):
+            return func.id in self.pytest_parametrize
+        return (
+            isinstance(func, ast.Attribute)
+            and func.attr == _PARAMETRIZE
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "mark"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id in self.pytest_modules
+        )
+
+    def is_fixture_handle(self, node: ast.expr, name: str) -> bool:
+        return isinstance(node, ast.Name) and node.id == name and name in self.fixture_handles
+
 
 class _BodyScan(NamedTuple):
     subs: set[_SubstitutionKey]
@@ -397,7 +517,8 @@ def _substitutions(
 
     scan = _body_substitutions(func, names)
     subs |= scan.subs
-    subs.update(_SubstitutionKey(name, name) for name in _mock_parameters(func, len(injected)))
+    parametrized = _parametrized_arguments(func, names)
+    subs.update(_SubstitutionKey(name, name) for name in _mock_parameters(func, len(injected), parametrized))
     facets = scan.facets | _injected_facets(func, injected)
     return frozenset(names.qualify(_resolve(owning, facets)) for target, owning in subs if not _is_infra_target(target))
 
@@ -451,22 +572,39 @@ def _injected_facets(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: lis
     return {param: owning for param, owning in zip(positional, injected, strict=False) if owning is not None}
 
 
-def _body_substitutions(func: ast.AST, names: _MockNames) -> _BodyScan:
+def _body_substitutions(func: ast.FunctionDef | ast.AsyncFunctionDef, names: _MockNames) -> _BodyScan:
+    local_bindings = _bound_names(func.body)
+    parameters = _parameter_names(func)
+    scoped_names = names.scoped(
+        local_bindings | parameters,
+        allow_mocker=_MOCKER in parameters and _MOCKER not in local_bindings,
+        allow_monkeypatch=_MONKEYPATCH in parameters and _MONKEYPATCH not in local_bindings,
+    )
     scan = _BodyScan(subs=set(), facets={})
-    for node in walk(func):
+    for node in _lexical_body_nodes(func):
         if isinstance(node, ast.Call):
-            scan.subs.update(_call_substitutions(node, names))
+            scan.subs.update(_call_substitutions(node, scoped_names))
         elif isinstance(node, ast.Assign):
             for target in node.targets:
-                scan.subs.update(_binding_keys(target, node.value, names))
-            _record_facets(node.targets, node.value, names, scan.facets)
+                scan.subs.update(_binding_keys(target, node.value, scoped_names))
+            _record_facets(node.targets, node.value, scoped_names, scan.facets)
         elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            scan.subs.update(_binding_keys(node.target, node.value, names))
-            _record_facets([node.target], node.value, names, scan.facets)
+            scan.subs.update(_binding_keys(node.target, node.value, scoped_names))
+            _record_facets([node.target], node.value, scoped_names, scan.facets)
         elif isinstance(node, ast.withitem) and node.optional_vars is not None:
-            scan.subs.update(_binding_keys(node.optional_vars, node.context_expr, names))
-            _record_handle_facet([node.optional_vars], node.context_expr, names, scan.facets)
+            scan.subs.update(_binding_keys(node.optional_vars, node.context_expr, scoped_names))
+            _record_handle_facet([node.optional_vars], node.context_expr, scoped_names, scan.facets)
     return scan
+
+
+def _lexical_body_nodes(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
+    pending: list[ast.AST] = list(reversed(func.body))
+    while pending:
+        node = pending.pop()
+        yield node
+        if isinstance(node, (*_FUNC_NODES, ast.ClassDef, ast.Lambda)):
+            continue
+        pending.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
 def _record_facets(targets: list[ast.expr], value: ast.expr, names: _MockNames, facets: dict[str, str]) -> None:
@@ -554,23 +692,31 @@ def _patch_keys(call: ast.Call, subform: _PatchSubform, names: _MockNames) -> li
     if subform == "dict":
         return []
     if subform in {"object", "multiple"}:
-        if not call.args:
+        target = _call_argument(call, 0, "target")
+        if target is None:
             return []
-        receiver = _receiver(call.args[0], names)
-        attrs = (
-            [_target_text(call.args[1]) if len(call.args) > 1 else _keyword_text(call, "attribute")]
-            if subform == "object"
-            else _replaced_attributes(call)
-        )
+        receiver = _receiver(target, names)
+        attribute = _call_argument(call, 1, "attribute")
+        if subform == "object":
+            attrs = [] if attribute is None else [_target_text(attribute)]
+        else:
+            attrs = _replaced_attributes(call)
         return (
             [_SubstitutionKey(f"{receiver.target}.{attr}", receiver.owner) for attr in attrs]
             if attrs
             else [_SubstitutionKey(receiver.target, receiver.owner)]
         )
-    if not call.args:
+    target = _call_argument(call, 0, "target")
+    if target is None:
         return []
-    target = _target_text(call.args[0])
-    return [_SubstitutionKey(target, _owner_of(target))]
+    target_text = _target_text(target)
+    return [_SubstitutionKey(target_text, _owner_of(target_text))]
+
+
+def _call_argument(call: ast.Call, position: int, name: str) -> ast.expr | None:
+    if len(call.args) > position:
+        return call.args[position]
+    return next((keyword.value for keyword in call.keywords if keyword.arg == name), None)
 
 
 def _receiver(node: ast.expr, names: _MockNames) -> _MockReceiver:
@@ -593,7 +739,7 @@ def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[_SubstitutionKe
     func = call.func
     if not isinstance(func, ast.Attribute) or func.attr != _MONKEYPATCH_SUBSTITUTION:
         return []
-    if not (isinstance(func.value, ast.Name) and func.value.id == _MONKEYPATCH):
+    if not names.is_fixture_handle(func.value, _MONKEYPATCH):
         return []
     if not call.args:
         return []
@@ -606,11 +752,37 @@ def _monkeypatch_keys(call: ast.Call, names: _MockNames) -> list[_SubstitutionKe
     return [_SubstitutionKey(receiver.target, _owner_of(receiver.target))]
 
 
-def _mock_parameters(func: ast.FunctionDef | ast.AsyncFunctionDef, injected: int) -> list[str]:
+def _parametrized_arguments(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    names: _MockNames,
+) -> frozenset[str]:
+    parametrized: set[str] = set()
+    for decorator in func.decorator_list:
+        if not isinstance(decorator, ast.Call) or not names.is_parametrize(decorator.func):
+            continue
+        argnames = _call_argument(decorator, 0, "argnames")
+        if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
+            parametrized.update(
+                stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip())
+            )
+        elif isinstance(argnames, (ast.List, ast.Tuple)):
+            parametrized.update(
+                element.value
+                for element in argnames.elts
+                if isinstance(element, ast.Constant) and isinstance(element.value, str)
+            )
+    return frozenset(parametrized)
+
+
+def _mock_parameters(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    injected: int,
+    parametrized: frozenset[str],
+) -> list[str]:
     args = func.args
     positional = [name for arg in (*args.posonlyargs, *args.args) if (name := arg.arg) not in _TEST_CASE_RECEIVERS]
     candidates = [*positional[injected:], *(arg.arg for arg in args.kwonlyargs)]
-    return [name for name in candidates if _is_mock_fixture(name)]
+    return [name for name in candidates if name not in parametrized and _is_mock_fixture(name)]
 
 
 def _is_mock_fixture(name: str) -> bool:
@@ -635,13 +807,6 @@ def _joined_text(node: ast.JoinedStr) -> str:
         elif isinstance(value, ast.FormattedValue):
             parts.append(_dotted(value.value) or "?")
     return "".join(parts)
-
-
-def _keyword_text(call: ast.Call, name: str) -> str:
-    for kw in call.keywords:
-        if kw.arg == name:
-            return _target_text(kw.value)
-    return "?"
 
 
 def _dotted(node: ast.expr) -> str | None:

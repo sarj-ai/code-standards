@@ -106,7 +106,7 @@ def test_python_configs_pin_the_314_language_floor() -> None:
         parsed = tomllib.loads((CONFIGS_DIR / config_name).read_text(encoding="utf-8"))
         assert parsed["target-version"] == "py314"
     pyright = (CONFIGS_DIR / "pyright.strict.json").read_text(encoding="utf-8")
-    assert '"pythonVersion": "3.14"' in pyright
+    assert '"pythonVersion": "3.14"' in pyright  # sarj-noqa: SARJ402 -- exact config text is the compatibility contract
 
 
 def test_pyright_and_basedpyright_policies_are_explicitly_split() -> None:
@@ -129,12 +129,18 @@ def test_pyright_and_basedpyright_policies_are_explicitly_split() -> None:
         "strictGenericNarrowing",
     }
 
-    assert '"extends": "./pyright.strict.json"' in basedpyright
-    assert '"enableBasedFeatures": false' in basedpyright
+    assert (
+        '"extends": "./pyright.strict.json"' in basedpyright
+    )  # sarj-noqa: SARJ402 -- exact config text is the inheritance contract
+    assert (
+        '"enableBasedFeatures": false' in basedpyright
+    )  # sarj-noqa: SARJ402 -- exact config text is the analyzer contract
     for setting in based_only:
-        assert f'"{setting}"' not in pyright
-        assert f'"{setting}"' in basedpyright
-    assert '"enableExperimentalFeatures": false' in pyright
+        assert f'"{setting}"' not in pyright  # sarj-noqa: SARJ402 -- exact config text defines the analyzer boundary
+        assert f'"{setting}"' in basedpyright  # sarj-noqa: SARJ402 -- exact config text defines the analyzer boundary
+    assert (
+        '"enableExperimentalFeatures": false' in pyright
+    )  # sarj-noqa: SARJ402 -- exact config text is the analyzer contract
 
 
 def test_python315_watch_profiles_are_advisory_and_isolated() -> None:
@@ -150,9 +156,15 @@ def test_python315_watch_profiles_are_advisory_and_isolated() -> None:
             },
         },
     }
-    assert '"extends": "./basedpyright.strict.json"' in based_watch
-    assert '"pythonVersion": "3.15"' in based_watch
-    assert '"enableExperimentalFeatures": true' in based_watch
+    assert (
+        '"extends": "./basedpyright.strict.json"' in based_watch
+    )  # sarj-noqa: SARJ402 -- exact config text is the watch-profile contract
+    assert (
+        '"pythonVersion": "3.15"' in based_watch
+    )  # sarj-noqa: SARJ402 -- exact config text is the watch-profile contract
+    assert (
+        '"enableExperimentalFeatures": true' in based_watch
+    )  # sarj-noqa: SARJ402 -- exact config text is the watch-profile contract
 
 
 @pytest.mark.parametrize("config_name", ["eslint.strict.mjs", "eslint.application.mjs"])
@@ -814,7 +826,9 @@ def test_init_application_profile_selects_application_artifacts(tmp_path: Path) 
     assert adopted is not None
     assert adopted.profile == "application"
     expected = CONFIGS_DIR / "ruff.application.toml"
-    assert (tmp_path / ".ruff-strict.toml").read_bytes() == expected.read_bytes()
+    assert (
+        tmp_path / ".ruff-strict.toml"
+    ).read_bytes() == expected.read_bytes()  # sarj-noqa: SARJ402 -- generated config bytes are the adoption contract
 
 
 def test_setup_explicit_configs_update_manifest_without_losing_exclusions(tmp_path: Path) -> None:
@@ -866,7 +880,9 @@ def test_sync_uses_profile_recorded_in_manifest(tmp_path: Path) -> None:
     _ = _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install").returncode == 0
     expected = CONFIGS_DIR / "eslint.application.mjs"
-    assert (tmp_path / "eslint.strict.mjs").read_bytes() == expected.read_bytes()
+    assert (
+        tmp_path / "eslint.strict.mjs"
+    ).read_bytes() == expected.read_bytes()  # sarj-noqa: SARJ402 -- generated config bytes are the adoption contract
     assert _cli("--root", str(tmp_path), "doctor").returncode == 0
 
 

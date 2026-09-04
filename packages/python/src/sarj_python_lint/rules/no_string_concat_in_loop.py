@@ -129,28 +129,31 @@ class _ConcatVisitor(ast.NodeVisitor):
 
     @override
     def generic_visit(self, node: ast.AST) -> None:
-        if isinstance(node, ast.ClassDef):
-            self._class_string_attrs.append(_class_string_attributes(node))
-            super().generic_visit(node)
-            self._class_string_attrs.pop()
-            return
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            saved_depth = self._loop_depth
-            saved_probes = self._while_probe_names
-            saved_reads = self._loop_reads
-            self._loop_depth = 0
-            self._while_probe_names = []
-            self._loop_reads = []
-            self._functions.append(node)
-            super().generic_visit(node)
-            self._functions.pop()
-            self._loop_depth = saved_depth
-            self._while_probe_names = saved_probes
-            self._loop_reads = saved_reads
-            return
-        if isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
-            self._visit_loop(node)
-            return
+        match node:
+            case ast.ClassDef():
+                self._class_string_attrs.append(_class_string_attributes(node))
+                super().generic_visit(node)
+                self._class_string_attrs.pop()
+                return
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                saved_depth = self._loop_depth
+                saved_probes = self._while_probe_names
+                saved_reads = self._loop_reads
+                self._loop_depth = 0
+                self._while_probe_names = []
+                self._loop_reads = []
+                self._functions.append(node)
+                super().generic_visit(node)
+                self._functions.pop()
+                self._loop_depth = saved_depth
+                self._while_probe_names = saved_probes
+                self._loop_reads = saved_reads
+                return
+            case ast.For() | ast.AsyncFor() | ast.While():
+                self._visit_loop(node)
+                return
+            case _:
+                pass
         if (
             self._loop_depth
             and self._is_in_loop_concat(node)

@@ -98,6 +98,15 @@ def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: P
     assert [finding.code for finding in diagnostics] == ["SARJ093"]
 
 
+def test_comment_only_unit_warning_remains_when_selected_alone(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text("# Timeout in seconds.\nTIMEOUT = 5\n", encoding="utf-8")
+
+    diagnostics = analyze(["prefer-self-documenting-constant"], [source])
+
+    assert [finding.code for finding in diagnostics] == ["SARJ097"]
+
+
 def test_precedence_never_crosses_source_locations() -> None:
     diagnostics = [_diagnostic("SARJ050", line=2), _diagnostic("SARJ088", line=3)]
 
@@ -117,7 +126,7 @@ def test_suppressing_specific_finding_preserves_unsuppressed_generic_twin(
     source = tmp_path / "test_service.py"
     source.write_text(
         "def test_returns_none_when_missing():\n"
-        '    """Test that it returns None when missing."""  # sarj-noqa: SARJ088\n'
+        '    """Test returns None when missing."""  # sarj-noqa: SARJ088\n'
         "    assert lookup() is None\n",
         encoding="utf-8",
     )
@@ -133,7 +142,7 @@ def test_suppressing_specific_finding_preserves_unsuppressed_generic_twin(
         ]
     )
 
-    assert status == 1
+    assert status == 0
     output = capsys.readouterr().out
-    assert "SARJ050" in output
+    assert "SARJ050 warning:" in output
     assert "SARJ088" not in output

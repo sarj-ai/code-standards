@@ -43,6 +43,9 @@ def test_flags_same_primitive_positionals(params: str, primitive: str):
     assert diags[0].code == "SARJ034"
     assert f"`{primitive}`" in diags[0].message
     assert "`f`" in diags[0].message
+    first_parameter = params.partition(":")[0]
+    assert f"`{first_parameter}`" in diags[0].message
+    assert diags[0].severity == "warning"
 
 
 def test_positional_booleans_are_owned_by_ruff_fbt001() -> None:
@@ -215,12 +218,12 @@ class T:
     assert _check(src) == []
 
 
-def test_non_exempt_decorator_still_fires():
+def test_excludes_decorated_callable_with_unknown_calling_convention() -> None:
     src = """
 @retry(attempts=3)
 def f(source_id: str, target_id: str) -> None: ...
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 # Negative: HTTP route handlers — FastAPI binds params by name.                #
@@ -256,12 +259,12 @@ async def handler(org_id: str, call_id: str) -> None: ...
         'app.route("/x")',  # not an HTTP-method attribute
     ],
 )
-def test_non_route_shaped_decorators_still_fire(decorator: str):
+def test_excludes_other_decorated_callables(decorator: str) -> None:
     src = f"""
 @{decorator}
 def f(source_id: str, target_id: str) -> None: ...
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 # Negative: test files are exempt.                                             #
@@ -525,12 +528,12 @@ def main(bind_host: str, cors_origin: str) -> None: ...
         'self.cli.command("x")',  # receiver is an attribute chain, not a Name
     ],
 )
-def test_non_cli_shaped_decorators_still_fire(decorator: str):
+def test_excludes_non_cli_decorators_with_unknown_calling_convention(decorator: str) -> None:
     src = f"""
 @{decorator}
 def f(source_id: str, target_id: str) -> None: ...
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_pep484_positional_only_param_names_are_exempt():
@@ -692,5 +695,164 @@ def test_positive_distilled_from_trio_set_result():
 class ResultHolder:
     def set_result(self, expected: int, actual: int, result: str | None) -> None:
         self.results[actual][expected] = result
+"""
+    assert len(_check(src)) == 1
+
+
+def test_excludes_base_free_structural_protocol_implementation() -> None:
+    src = """
+from typing import Protocol
+
+class Mover(Protocol):
+    def move(self, source_path: str, target_path: str) -> None: ...
+
+class Impl:
+    def move(self, source_path: str, target_path: str) -> None: ...
+
+impl: Mover = Impl()
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize("reference", ["register(Handler.process)", "register(handler.process)"])
+def test_excludes_bound_method_callback_references(reference: str) -> None:
+    src = f"""
+class Handler:
+    def process(self, source_id: str, target_id: str) -> None: ...
+
+handler = Handler()
+{reference}
+"""
+    assert _check(src) == []
+
+
+def test_object_base_does_not_imply_an_external_contract() -> None:
+    src = """
+class Mover(object):
+    def move(self, source_id: str, target_id: str) -> None: ...
+"""
+    assert len(_check(src)) == 1
+
+
+def test_exact_inline_suppression_is_honored() -> None:
+    src = "def move(source_id: str, target_id: str) -> None: ...  # sarj-noqa: SARJ034\n"
+    assert _check(src) == []
+
+
+def test_unrelated_inline_suppression_does_not_hide_finding() -> None:
+    src = "def move(source_id: str, target_id: str) -> None: ...  # sarj-noqa: SARJ999\n"
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "password != password_confirmation",
+        "password_confirmation != password",
+        'not hmac.compare_digest(password.encode("utf-8"), password_confirmation.encode("utf-8"))',
+        'not hmac.compare_digest(password_confirmation.encode("utf-8"), password.encode("utf-8"))',
+    ],
+)
+def test_excludes_exact_symmetric_validation(condition: str) -> None:
+    src = f"""
+import hmac
+
+def validate_password_confirmation(password: str, password_confirmation: str) -> bool:
+    if {condition}:
+        raise ValueError("passwords differ")
+    return True
+"""
+    assert _check(src) == []
+
+
+def test_symmetric_guard_with_asymmetric_use_still_fires() -> None:
+    src = """
+def validate_password_confirmation(password: str, password_confirmation: str) -> str:
+    if password != password_confirmation:
+        raise ValueError("passwords differ")
+    return password
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "record(password) != record(password_confirmation)",
+        "not audit.compare_digest(password, password_confirmation)",
+        'not hmac.compare_digest(password.encode("ascii"), password_confirmation.encode("ascii"))',
+    ],
+)
+def test_unproven_symmetric_guard_still_fires(condition: str) -> None:
+    src = f"""
+def validate_password_confirmation(password: str, password_confirmation: str) -> bool:
+    if {condition}:
+        raise ValueError("passwords differ")
+    return True
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize(
+    "binding",
+    ["", "from vendor import hmac", "import hmac\nhmac = Fake()"],
+)
+def test_unproven_hmac_binding_still_fires(binding: str) -> None:
+    src = f"""
+{binding}
+
+def validate_password_confirmation(password: str, password_confirmation: str) -> bool:
+    if not hmac.compare_digest(password, password_confirmation):
+        raise ValueError("passwords differ")
+    return True
+"""
+    assert len(_check(src)) == 1
+
+
+def test_proven_hmac_alias_is_symmetric() -> None:
+    src = """
+import hmac as secure_hmac
+
+def validate_password_confirmation(password: str, password_confirmation: str) -> bool:
+    if not secure_hmac.compare_digest(password, password_confirmation):
+        raise ValueError("passwords differ")
+    return True
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "rebinding",
+    [
+        'match payload:\n    case {"hmac": hmac}:\n        pass',
+        "try:\n    pass\nexcept Exception as hmac:\n    pass",
+        'match payload:\n    case {"value": value, **hmac}:\n        pass',
+        "match payload:\n    case [*hmac]:\n        pass",
+        "match payload:\n    case hmac:\n        pass",
+    ],
+)
+def test_string_backed_hmac_rebinding_is_not_trusted(rebinding: str) -> None:
+    src = f"""
+import hmac
+
+{rebinding}
+
+def validate_password_confirmation(password: str, password_confirmation: str) -> bool:
+    if not hmac.compare_digest(password, password_confirmation):
+        raise ValueError("passwords differ")
+    return True
+"""
+    assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("type_parameter", ["hmac", "*hmac", "**hmac"])
+def test_type_parameter_hmac_rebinding_is_not_trusted(type_parameter: str) -> None:
+    src = f"""
+import hmac
+
+def validate_password_confirmation[{type_parameter}](password: str, password_confirmation: str) -> bool:
+    if not hmac.compare_digest(password, password_confirmation):
+        raise ValueError("passwords differ")
+    return True
 """
     assert len(_check(src)) == 1

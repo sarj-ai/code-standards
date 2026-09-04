@@ -17,7 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
-from sarj_python_lint.rules._paths import is_generated, is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
@@ -43,7 +43,13 @@ _MUTATING_METHODS = frozenset(
         "sort",
         "symmetric_difference_update",
         "update",
+        "__delitem__",
+        "__setitem__",
     }
+)
+_CONCRETE_COLLECTION_METHODS = _MUTATING_METHODS | {"copy"}
+_NON_ESCAPING_CALLS = frozenset(
+    {"all", "any", "dict", "enumerate", "frozenset", "iter", "len", "list", "max", "min", "reversed", "set", "sorted", "sum", "tuple"}
 )
 
 
@@ -52,20 +58,23 @@ class PreferImmutableModuleConstant(Rule):
     code: str = "SARJ096"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary=(
-            "module-level constant collections expose mutable shared state; use tuple, frozenset, or an immutable mapping"
+            "Nonempty uppercase module collections allow top-level membership or keys to change at runtime."
         ),
         rationale=(
-            "A constant-looking mutable collection can be changed by any importer, so its value depends on process history "
-            "rather than the module's source."
+            "A constant-looking collection can expose process-wide top-level mutation even when callers intend it as a "
+            "read-only lookup table."
         ),
         remediation=(
-            "Use a tuple for ordered values, a frozenset for membership, or an immutable mapping for keyed values."
+            "When the concrete collection API is not part of the contract, use a tuple for ordered values, a frozenset for "
+            "membership, or a Mapping-typed immutable mapping for keyed values. Recursively freeze nested values when needed."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Empty collections and collections intentionally mutated or passed to unknown calls are not reported.",
-            "Test and generated files are excluded.",
+            "The suggested replacements prevent top-level membership or key changes; tuple and MappingProxyType are shallow.",
+            "Changing list or dict to an immutable type can affect consumers, serialization, equality, and concrete API methods.",
+            "Test, test-support, and generated files are excluded.",
         ),
         examples=(
             RuleExample(
@@ -104,7 +113,7 @@ class PreferImmutableModuleConstant(Rule):
                 files=(
                     ExampleFile.python(
                         "settings.py",
-                        'from types import MappingProxyType\n\nROLE_LABELS = MappingProxyType({"admin": "Administrator"})\n',
+                        'from collections.abc import Mapping\nfrom types import MappingProxyType\n\nROLE_LABELS: Mapping[str, str] = MappingProxyType({"admin": "Administrator"})\n',
                     ),
                 ),
                 focus_path=PurePosixPath("settings.py"),
@@ -117,7 +126,7 @@ class PreferImmutableModuleConstant(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_test_path(path) or is_generated(path, source):
+        if is_test_path(path) or is_test_support_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -137,7 +146,7 @@ class PreferImmutableModuleConstant(Rule):
                         statement.col_offset + 1,
                         self.code,
                         _message(name, kind),
-                        Severity.ERROR,
+                        Severity.WARNING,
                     )
                 )
         return findings
@@ -185,14 +194,15 @@ def _mutated_names(tree: ast.Module) -> frozenset[str]:
         for name, _ in _bindings(statement):
             module_bindings[name] = module_bindings.get(name, 0) + 1
     mutated.update(name for name, count in module_bindings.items() if count > 1)
-    visitor = _MutationVisitor(mutated)
+    visitor = _MutationVisitor(mutated, _module_bound_names(tree) & _NON_ESCAPING_CALLS)
     visitor.visit(tree)
     return frozenset(mutated)
 
 
 class _MutationVisitor(ast.NodeVisitor):
-    def __init__(self, mutated: set[str]) -> None:
+    def __init__(self, mutated: set[str], shadowed_non_escaping_calls: set[str]) -> None:
         self.mutated: set[str] = mutated
+        self._shadowed_non_escaping_calls: set[str] = shadowed_non_escaping_calls
         self._scopes: list[tuple[set[str], set[str]]] = []
         self._local_container_roots: list[dict[str, set[str]]] = []
         self._module_container_roots: dict[str, set[str]] = {}
@@ -249,9 +259,7 @@ class _MutationVisitor(ast.NodeVisitor):
             self.visit(node.value)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
-        self._record_name(
-            _mutated_target(node.target) or (node.target.id if isinstance(node.target, ast.Name) else None)
-        )
+        self._record_name(_mutated_target(node.target) or (node.target.id if isinstance(node.target, ast.Name) else None))
         self.visit(node.value)
 
     def visit_Delete(self, node: ast.Delete) -> None:
@@ -259,37 +267,82 @@ class _MutationVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         match node.func:
-            case ast.Attribute(value=value, attr=method) if method in _MUTATING_METHODS:
+            case ast.Attribute(value=value, attr=method) if method in _CONCRETE_COLLECTION_METHODS:
                 self._record_name(_root_name(value))
+            case ast.Name(id=name) if self._alias_roots(name):
+                self.mutated.update(self._alias_roots(name))
             case _:
                 pass
         if not (
-            isinstance(node.func, ast.Name) and node.func.id in {"all", "any", "frozenset", "iter", "len", "tuple"}
+            isinstance(node.func, ast.Name)
+            and node.func.id in _NON_ESCAPING_CALLS
+            and not self._is_shadowed(node.func.id)
         ):
             for argument in (*node.args, *(keyword.value for keyword in node.keywords)):
                 for name in self._module_roots(argument, call_argument=True):
                     self._record_name(name)
         self.generic_visit(node)
 
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if node.attr in _CONCRETE_COLLECTION_METHODS:
+            self._record_name(_root_name(node.value))
+        self.generic_visit(node)
+
     def _remember_local_container_roots(self, targets: tuple[ast.expr, ...] | list[ast.expr], value: ast.expr) -> None:
-        roots = self._module_roots(value)
+        for target in targets:
+            self._remember_target_roots(target, value)
+
+    def _remember_target_roots(self, target: ast.expr, value: ast.expr) -> None:
+        if isinstance(target, (ast.Tuple, ast.List)):
+            if isinstance(value, (ast.Tuple, ast.List)):
+                starred = [index for index, element in enumerate(target.elts) if isinstance(element, ast.Starred)]
+                if not starred and len(target.elts) == len(value.elts):
+                    for target_element, value_element in zip(target.elts, value.elts, strict=True):
+                        self._remember_target_roots(target_element, value_element)
+                elif len(starred) == 1 and len(value.elts) >= len(target.elts) - 1:
+                    star = starred[0]
+                    for target_element, value_element in zip(target.elts[:star], value.elts[:star], strict=True):
+                        self._remember_target_roots(target_element, value_element)
+                    suffix_length = len(target.elts) - star - 1
+                    captured_end = len(value.elts) - suffix_length if suffix_length else len(value.elts)
+                    for value_element in value.elts[star:captured_end]:
+                        for root in self._module_roots(value_element):
+                            self._record_name(root)
+                    if suffix_length:
+                        for target_element, value_element in zip(
+                            target.elts[-suffix_length:], value.elts[-suffix_length:], strict=True
+                        ):
+                            self._remember_target_roots(target_element, value_element)
+            return
+        if isinstance(value, ast.Subscript):
+            return
+        self._store_alias_roots(target, self._module_roots(value))
+
+    def _store_alias_roots(self, target: ast.expr, roots: set[str]) -> None:
         if not roots:
             return
         if not self._local_container_roots:
-            for target in targets:
-                if isinstance(target, ast.Name):
-                    self._module_container_roots.setdefault(target.id, set()).update(roots)
+            for name in _target_names(target):
+                self._module_container_roots.setdefault(name, set()).update(roots)
             return
         locals_ = self._scopes[-1][0]
         aliases = self._local_container_roots[-1]
-        for target in targets:
-            if isinstance(target, ast.Name) and target.id in locals_:
-                aliases.setdefault(target.id, set()).update(roots)
+        for name in _target_names(target):
+            if name in locals_:
+                aliases.setdefault(name, set()).update(roots)
 
     def _module_roots(self, value: ast.expr, *, call_argument: bool = False) -> set[str]:
         roots: set[str] = set()
-        direct_root = _root_name(value) if call_argument else None
-        names = (direct_root,) if direct_root is not None else _literal_container_root_names(value)
+        if call_argument and isinstance(value, ast.Subscript):
+            names = ()
+        elif call_argument:
+            direct_root = _root_name(value)
+            names = (direct_root,) if direct_root is not None else _literal_container_root_names(value)
+        elif isinstance(value, ast.Subscript):
+            root = _root_name(value)
+            names = (root,) if root is not None else ()
+        else:
+            names = _literal_container_root_names(value)
         for name in names:
             alias = next(
                 (scope[name] for scope in reversed(self._local_container_roots) if name in scope),
@@ -311,6 +364,14 @@ class _MutationVisitor(ast.NodeVisitor):
                 return False
         return True
 
+    def _is_shadowed(self, name: str) -> bool:
+        for locals_, globals_ in reversed(self._scopes):
+            if name in globals_:
+                return name in self._shadowed_non_escaping_calls
+            if name in locals_:
+                return True
+        return name in self._shadowed_non_escaping_calls
+
     def _record_targets(self, targets: tuple[ast.expr, ...] | list[ast.expr]) -> None:
         for target in targets:
             name = _mutated_target(target)
@@ -320,6 +381,12 @@ class _MutationVisitor(ast.NodeVisitor):
 
     def _record_name(self, name: str | None) -> None:
         if name is None:
+            return
+        aliases = self._alias_roots(name)
+        if aliases:
+            self.mutated.update(aliases)
+            if self._is_module_reference(name):
+                self.mutated.add(name)
             return
         if not self._scopes:
             self.mutated.add(name)
@@ -331,6 +398,12 @@ class _MutationVisitor(ast.NodeVisitor):
             if name in locals_:
                 return
         self.mutated.add(name)
+
+    def _alias_roots(self, name: str) -> set[str]:
+        for aliases in reversed(self._local_container_roots):
+            if name in aliases:
+                return aliases[name]
+        return self._module_container_roots.get(name, set())
 
 
 def _scope_global_names(body: list[ast.stmt]) -> set[str]:
@@ -500,7 +573,7 @@ def _literal_container_root_names(value: ast.expr) -> tuple[str, ...]:
     match value:
         case ast.Name(id=name):
             return (name,)
-        case ast.Attribute(value=parent, attr=method) if method in _MUTATING_METHODS:
+        case ast.Attribute(value=parent, attr=method) if method in _CONCRETE_COLLECTION_METHODS:
             root = _root_name(parent)
             return (root,) if root is not None else ()
         case ast.Dict(keys=keys, values=values):
@@ -516,4 +589,19 @@ def _literal_container_root_names(value: ast.expr) -> tuple[str, ...]:
 
 def _message(name: str, kind: str) -> str:
     replacement = {"list": "tuple", "set": "frozenset", "dict": "an immutable mapping"}[kind]
-    return f"module constant `{name}` is a mutable {kind} — use {replacement} so shared state cannot drift at runtime."
+    return (
+        f"uppercase module collection `{name}` is a mutable {kind} — consider {replacement} to prevent top-level "
+        "membership or key changes; preserve concrete APIs and recursively freeze nested values when required."
+    )
+
+
+def _target_names(target: ast.expr) -> tuple[str, ...]:
+    match target:
+        case ast.Name(id=name):
+            return (name,)
+        case ast.Tuple() | ast.List():
+            return tuple(name for item in target.elts for name in _target_names(item))
+        case ast.Starred(value=value):
+            return _target_names(value)
+        case _:
+            return ()

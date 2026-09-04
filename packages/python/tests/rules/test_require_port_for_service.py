@@ -49,17 +49,17 @@ def test_flags_concrete_service_with_injected_collaborator() -> None:
     assert diags[0].code == "SARJ071"
     assert diags[0].line == 2
     assert diags[0].col == 1
-    assert diags[0].severity is Severity.ERROR
+    assert diags[0].severity is Severity.WARNING
 
 
 def test_message_is_exactly_the_shipped_text() -> None:
     # Pins the whole message, not a substring: mutation testing showed the constants
     # could be replaced wholesale without a single test noticing.
     assert _check(_SERVICE)[0].message == (
-        "`ThingService` injects `ThingDAO` and exposes 2 public methods without a declared port. "
-        "If consumers genuinely need substitution, define a small "
-        "consumer-owned `Protocol`/ABC and type those consumers against it. Do not add a port solely "
-        "for a composition root or a single concrete consumer."
+        "`ThingService` injects `ThingDAO` and exposes 2 public methods with no recognizable in-file "
+        "or inherited port. If a real consumer needs substitution, define a small consumer-owned "
+        "`Protocol` and type that consumer against it; otherwise suppress this advisory instead of "
+        "adding an unused abstraction."
     )
 
 
@@ -741,7 +741,50 @@ def test_collaborator_stored_by_annotated_assignment_counts() -> None:
 
 
 def test_collaborator_stored_through_cast_counts() -> None:
-    assert len(_check(_SERVICE.replace("self.store = store", "self.store = cast(ThingDAO, store)"))) == 1
+    source = "from typing import cast\n" + _SERVICE.replace("self.store = store", "self.store = cast(ThingDAO, store)")
+    assert len(_check(source)) == 1
+
+
+def test_unproven_local_cast_does_not_count_as_transparent() -> None:
+    source = _SERVICE.replace("self.store = store", "self.store = cast(ThingDAO, store)")
+    assert _check(source) == []
+
+
+def test_overwritten_constructor_field_does_not_retain_the_injected_collaborator() -> None:
+    source = _SERVICE.replace("self.store = store", "self.store = store\n        self.store = DefaultDAO()")
+    assert _check(source) == []
+
+
+def test_constructor_field_written_from_two_parameters_has_ambiguous_provenance() -> None:
+    source = _SERVICE.replace("store: ThingDAO", "store: ThingDAO, mode: str").replace(
+        "self.store = store", "self.store = store\n        self.store = mode"
+    )
+    assert _check(source) == []
+
+
+def test_statically_dead_constructor_storage_does_not_retain_the_collaborator() -> None:
+    source = _SERVICE.replace("self.store = store", "if False:\n            self.store = store")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("terminator", ["return", "raise RuntimeError"], ids=["return", "raise"])
+def test_unreachable_constructor_storage_does_not_retain_the_collaborator(terminator: str) -> None:
+    source = _SERVICE.replace("self.store = store", f"{terminator}\n        self.store = store")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "self.store = store\n        if flag:\n            self.store = DefaultDAO()",
+        "self.store = store\n        with scope():\n            self.store = DefaultDAO()",
+        "if flag:\n            return\n        else:\n            raise RuntimeError\n        self.store = store",
+        "while True:\n            pass\n        self.store = store",
+    ],
+    ids=["dynamic-if-write", "with-write", "terminating-if", "nonterminating-while"],
+)
+def test_ambiguous_constructor_control_flow_abstains(replacement: str) -> None:
+    assert _check(_SERVICE.replace("self.store = store", replacement)) == []
 
 
 def test_collaborator_stored_with_default_fallback_is_exempt() -> None:
@@ -1222,7 +1265,6 @@ def test_a_top_level_if_that_is_not_a_main_guard_does_not_exempt() -> None:
     "test",
     [
         "__name__ != '__main__'",
-        "'__main__' == __name__",
         "__name__ == '__worker__'",
         "__name__ == '__main__' and ENABLED",
         "__name__",
@@ -1231,6 +1273,11 @@ def test_a_top_level_if_that_is_not_a_main_guard_does_not_exempt() -> None:
 def test_only_the_exact_main_guard_exempts_a_module(test: str) -> None:
     source = f"{_SERVICE}\n\nif {test}:\n    main()\n"
     assert len(_check(source)) == 1
+
+
+def test_reversed_main_guard_exempts_a_module() -> None:
+    source = f"{_SERVICE}\n\nif '__main__' == __name__:\n    main()\n"
+    assert _check(source) == []
 
 
 def test_generated_source_is_exempt() -> None:
@@ -1287,30 +1334,31 @@ def test_subscripted_builtin_container_is_still_a_value(annotation: str) -> None
     assert _check(_SERVICE.replace("store: ThingDAO", f"store: {annotation}")) == []
 
 
-def test_nested_class_is_reached() -> None:
+def test_nested_class_is_outside_the_file_level_architecture_boundary() -> None:
     nested = f"class Outer:\n{textwrap.indent(_SERVICE, '    ')}"
-    assert len(_check(nested)) == 1
+    assert _check(nested) == []
 
 
-def test_nested_finding_reports_its_real_line_and_column() -> None:
-    # Both coordinates non-1, so a hardcoded `col=1` (or `col_offset` without the +1) cannot pass.
-    diags = _check(
+def test_function_local_class_is_outside_the_file_level_architecture_boundary() -> None:
+    assert (
+        _check(
+            """
+        def build_service() -> type:
+            class ThingService:
+                def __init__(self, store: ThingDAO) -> None:
+                    self.store = store
+
+                def read(self) -> str:
+                    return self.store.get()
+
+                def write(self) -> None:
+                    self.store.put()
+
+            return ThingService
         """
-        class Outer:
-            class Middle:
-
-                class ThingService:
-                    def __init__(self, store: ThingDAO) -> None:
-                        self.store = store
-
-                    def read(self) -> str:
-                        return self.store.get()
-
-                    def write(self) -> None:
-                        self.store.put()
-        """
+        )
+        == []
     )
-    assert [(d.line, d.col) for d in diags] == [(5, 9)]
 
 
 def test_multiple_findings_are_sorted_by_position() -> None:
@@ -1346,6 +1394,8 @@ def test_rule_metadata() -> None:
     rule = RequirePortForService()
     assert rule.id == "require-port-for-service"
     assert rule.code == "SARJ071"
+    assert rule.documentation is not None
+    assert rule.documentation.aliases == ()
     assert len(rule.description) >= 10
 
 
@@ -1411,3 +1461,180 @@ def test_absolute_nested_tools_package_remains_library_code(tmp_path: Path) -> N
     diagnostics = RequirePortForService().check(repository / "src" / "app" / "tools" / "service.py", _SERVICE)
 
     assert len(diagnostics) == 1
+
+
+def test_literal_annotation_is_a_value_not_a_collaborator() -> None:
+    assert _check(_SERVICE.replace("store: ThingDAO", "store: Literal['primary']")) == []
+
+
+def test_framework_decorated_callback_is_not_a_service_boundary() -> None:
+    source = _SERVICE.replace(
+        "    def read(self, key: str) -> str:",
+        "    @router.get('/things/{key}')\n    def read(self, key: str) -> str:",
+    )
+    assert _check(source) == []
+
+
+def test_named_structural_protocol_satisfies_the_boundary_without_inheritance() -> None:
+    source = """
+class ThingServicePort(Protocol):
+    def read(self, key: str) -> str: ...
+    def write(self, key: str, value: str) -> None: ...
+
+class ThingService:
+    def __init__(self, dao: ThingDAO) -> None:
+        self.dao = dao
+
+    def read(self, key: str) -> str:
+        return self.dao.get(key)
+
+    def write(self, key: str, value: str) -> None:
+        self.dao.put(key, value)
+
+def sync(service: ThingServicePort) -> None:
+    service.write("inbox", service.read("outbox"))
+"""
+    assert _check(source) == []
+
+
+def test_exact_class_suppression_is_honored() -> None:
+    source = _SERVICE.replace("class ThingService:", "class ThingService:  # sarj-noqa: SARJ071")
+    assert _check(source) == []
+
+
+def test_unrelated_class_suppression_does_not_hide_the_advisory() -> None:
+    source = _SERVICE.replace("class ThingService:", "class ThingService:  # sarj-noqa: SARJ072")
+    assert len(_check(source)) == 1
+
+
+def test_calls_in_statically_dead_branches_do_not_supply_behavioral_evidence() -> None:
+    source = _SERVICE.replace(
+        "return self.store.get(key)", "if False:\n            self.store.get(key)\n        return ''"
+    ).replace("self.store.put(key, value)", "if False:\n            self.store.put(key, value)")
+    assert _check(source) == []
+
+
+def test_calls_in_statically_dead_loops_do_not_supply_behavioral_evidence() -> None:
+    source = _SERVICE.replace(
+        "return self.store.get(key)", "while False:\n            self.store.get(key)\n        return ''"
+    ).replace("self.store.put(key, value)", "while False:\n            self.store.put(key, value)")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("read_body", "write_body"),
+    [
+        ("return None\n        self.store.get(key)", "return None\n        self.store.put(key, value)"),
+        (
+            "raise RuntimeError\n        self.store.get(key)",
+            "raise RuntimeError\n        self.store.put(key, value)",
+        ),
+        ("return False and self.store.get(key)", "return True or self.store.put(key, value)"),
+    ],
+    ids=["after-return", "after-raise", "short-circuited-boolean"],
+)
+def test_unreachable_calls_do_not_supply_behavioral_evidence(read_body: str, write_body: str) -> None:
+    source = _SERVICE.replace("return self.store.get(key)", read_body).replace("self.store.put(key, value)", write_body)
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("read_body", "write_body"),
+    [
+        (
+            "with scope():\n            return None\n            self.store.get(key)",
+            "with scope():\n            return None\n            self.store.put(key, value)",
+        ),
+        (
+            "try:\n            return None\n            self.store.get(key)\n        finally:\n            pass",
+            "try:\n            return None\n            self.store.put(key, value)\n        finally:\n            pass",
+        ),
+        (
+            "for _ in ():\n            self.store.get(key)\n        return ''",
+            "for _ in ():\n            self.store.put(key, value)",
+        ),
+        (
+            "while True:\n            break\n            self.store.get(key)\n        return ''",
+            "while True:\n            break\n            self.store.put(key, value)",
+        ),
+        (
+            "match key:\n            case _:\n                return None\n                self.store.get(key)",
+            "match key:\n            case _:\n                return None\n                self.store.put(key, value)",
+        ),
+    ],
+    ids=["with", "try", "empty-for", "after-break", "match"],
+)
+def test_unsupported_compound_suites_do_not_supply_behavioral_evidence(read_body: str, write_body: str) -> None:
+    source = _SERVICE.replace("return self.store.get(key)", read_body).replace("self.store.put(key, value)", write_body)
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "while True:\n            pass",
+        "match key:\n            case _:\n                return None",
+    ],
+    ids=["nonterminating-while", "terminating-match"],
+)
+def test_unsupported_compound_before_a_call_makes_the_method_abstain(prefix: str) -> None:
+    source = _SERVICE.replace("return self.store.get(key)", f"{prefix}\n        return self.store.get(key)").replace(
+        "self.store.put(key, value)", f"{prefix}\n        self.store.put(key, value)"
+    )
+    assert _check(source) == []
+
+
+def test_nested_static_boolean_short_circuit_does_not_supply_behavioral_evidence() -> None:
+    source = _SERVICE.replace("return self.store.get(key)", "return (0 or 1) or self.store.get(key)").replace(
+        "self.store.put(key, value)", "return (1 and 0) and self.store.put(key, value)"
+    )
+    assert _check(source) == []
+
+
+def test_chained_comparison_does_not_supply_unreachable_behavioral_evidence() -> None:
+    source = _SERVICE.replace("return self.store.get(key)", "return 0 > 1 > self.store.get(key)").replace(
+        "self.store.put(key, value)", "return 0 > 1 > self.store.put(key, value)"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("read_body", "write_body"),
+    [
+        (
+            "return [self.store.get(key) for _ in ()]",
+            "return [self.store.put(key, value) for _ in values if False]",
+        ),
+        (
+            "return (self.store.get(key) for _ in values)",
+            "return (self.store.put(key, value) for _ in values)",
+        ),
+    ],
+    ids=["comprehensions", "deferred-generators"],
+)
+def test_expression_level_loops_do_not_supply_behavioral_evidence(read_body: str, write_body: str) -> None:
+    source = _SERVICE.replace("return self.store.get(key)", read_body).replace("self.store.put(key, value)", write_body)
+    assert _check(source) == []
+
+
+def test_calls_in_statically_true_branches_supply_behavioral_evidence() -> None:
+    source = _SERVICE.replace(
+        "return self.store.get(key)", "if True:\n            return self.store.get(key)\n        return ''"
+    ).replace("self.store.put(key, value)", "if True:\n            self.store.put(key, value)")
+    assert len(_check(source)) == 1
+
+
+def test_chained_collaborator_calls_supply_behavioral_evidence() -> None:
+    source = _SERVICE.replace("self.store.get", "self.store.users.get").replace(
+        "self.store.put", "self.store.users.put"
+    )
+    assert len(_check(source)) == 1
+
+
+def test_unrelated_import_named_service_does_not_look_like_a_port() -> None:
+    assert len(_check("from framework import Service\n" + _SERVICE)) == 1
+
+
+def test_pep_695_service_class_passes_the_lexical_prefilter() -> None:
+    source = _SERVICE.replace("class ThingService:", "class ThingService[T]:")
+    assert len(_check(source)) == 1

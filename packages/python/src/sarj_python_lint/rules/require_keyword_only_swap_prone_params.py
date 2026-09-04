@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -14,6 +14,8 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
+    is_suppressed,
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
@@ -106,20 +108,29 @@ _RISKY_NAME_PART_RE = re.compile(
 )
 
 
+class _SwapProneGroup(NamedTuple):
+    annotation: str
+    parameters: tuple[str, ...]
+
+
 @final
 class RequireKeywordOnlySwapProneParams(Rule):
     id: str = "require-keyword-only-swap-prone-params"
     code: str = "SARJ034"
     documentation = RuleDocumentation(
-        summary="Swap-prone parameters with the same primitive type should be keyword-only.",
-        rationale="Callers can exchange semantically distinct positional values without a type-checking failure.",
-        remediation="Insert `*` before the risky parameters and pass them by name at call sites.",
+        summary="Risky-name positional parameters sharing a primitive annotation may be confused.",
+        rationale="A caller can exchange semantically distinct positional values without a type-checking failure.",
+        remediation=(
+            "If API, callback, and protocol compatibility permit, make the risky parameters keyword-only and update "
+            "callers; otherwise retain the contract and suppress the warning locally."
+        ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         aliases=("kwonly-same-type-params",),
         limitations=(
             "Only high-risk groups of bare `str`, `int`, or `float` annotations are reported.",
-            "Tests, generated code, protocols, routes, CLI handlers, overrides, and conventional ordered pairs are excluded.",
+            "Tests, generated code, migrations, conventional ordered groups, explicit inheritance, local structural protocols, and recognized routes, CLI handlers, callbacks, and runtime protocols are excluded.",
+            "External and published calling contracts cannot be proven from one file, so this compatibility-sensitive rule remains a warning without autofix.",
         ),
         examples=(
             RuleExample(
@@ -129,7 +140,7 @@ class RequireKeywordOnlySwapProneParams(Rule):
                 files=(
                     ExampleFile.python(
                         "service.py",
-                        "def move(source_id: str, target_id: str) -> None: ...\n",
+                        "def move(source_id: str, target_id: str) -> None: ...\n\nmove('inbox', 'archive')\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -143,7 +154,7 @@ class RequireKeywordOnlySwapProneParams(Rule):
                 files=(
                     ExampleFile.python(
                         "service.py",
-                        "def move(*, source_id: str, target_id: str) -> None: ...\n",
+                        "def move(*, source_id: str, target_id: str) -> None: ...\n\nmove(source_id='inbox', target_id='archive')\n",
                     ),
                 ),
                 focus_path=PurePosixPath("service.py"),
@@ -172,10 +183,21 @@ class RequireKeywordOnlySwapProneParams(Rule):
         value_referenced = _value_referenced_names(tree)
         overload_names = _overload_stub_names(tree)
         method_ids = _method_node_ids(tree)
-        subclass_method_ids = _subclass_method_node_ids(tree)
+        externally_owned_method_ids = _externally_owned_method_node_ids(tree)
+        protocol_method_names = _protocol_method_names(tree)
+        trusted_hmac_bindings = _trusted_hmac_bindings(tree)
+        source_lines = source.splitlines()
         diags: list[Diagnostic] = []
         for node, offending in candidates:
-            if node.name in value_referenced or node.name in overload_names or id(node) in subclass_method_ids:
+            exclusions = (
+                node.name in value_referenced,
+                node.name in overload_names,
+                id(node) in externally_owned_method_ids,
+                id(node) in method_ids and node.name in protocol_method_names,
+                _is_symmetric_rejection_guard(node, offending.parameters, trusted_hmac_bindings),
+                is_suppressed(source_lines, node.lineno, self.code),
+            )
+            if any(exclusions):
                 continue
             # Checked last: `_calls_super_same_name` walks the body, so it runs
             # only for the few signatures that would otherwise be reported.
@@ -187,10 +209,11 @@ class RequireKeywordOnlySwapProneParams(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
+                    severity=Severity.WARNING,
                     message=(
-                        f"`{node.name}` takes multiple positional `{offending}` "
-                        "parameters — swap-prone at call sites; insert `*` to "
-                        "make them keyword-only."
+                        f"`{node.name}` has confusable positional `{offending.annotation}` parameters "
+                        f"{_parameter_list(offending.parameters)}; make them keyword-only only if this callable owns "
+                        "its calling convention."
                     ),
                 )
             )
@@ -218,6 +241,8 @@ def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         return True
     if name.startswith(_EXEMPT_NAME_PREFIXES):
         return True
+    if node.decorator_list and not all(_is_locally_owned_method_decorator(dec) for dec in node.decorator_list):
+        return True
     return any(
         (isinstance(dec, ast.Name) and dec.id in _EXEMPT_DECORATORS)
         or (isinstance(dec, ast.Attribute) and dec.attr in _EXEMPT_DECORATORS)
@@ -225,6 +250,10 @@ def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         or _is_cli_command_decorator(dec)
         for dec in node.decorator_list
     )
+
+
+def _is_locally_owned_method_decorator(dec: ast.expr) -> bool:
+    return isinstance(dec, ast.Name) and dec.id in {"classmethod", "staticmethod"}
 
 
 def _is_cli_command_decorator(dec: ast.expr) -> bool:
@@ -238,6 +267,15 @@ def _is_cli_command_decorator(dec: ast.expr) -> bool:
             return False
 
 
+def _dotted_name(node: ast.expr) -> tuple[str, ...] | None:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        parent = _dotted_name(node.value)
+        return None if parent is None else (*parent, node.attr)
+    return None
+
+
 def _method_node_ids(tree: ast.AST) -> frozenset[int]:
     return frozenset(
         id(child)
@@ -247,11 +285,23 @@ def _method_node_ids(tree: ast.AST) -> frozenset[int]:
     )
 
 
-def _subclass_method_node_ids(tree: ast.AST) -> frozenset[int]:
+def _externally_owned_method_node_ids(tree: ast.AST) -> frozenset[int]:
     return frozenset(
         id(child)
         for node in nodes(tree, ast.ClassDef)
-        if node.bases
+        if node.decorator_list
+        or node.keywords
+        or any(not (isinstance(base, ast.Name) and base.id == "object") for base in node.bases)
+        for child in node.body
+        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+    )
+
+
+def _protocol_method_names(tree: ast.AST) -> frozenset[str]:
+    return frozenset(
+        child.name
+        for node in nodes(tree, ast.ClassDef)
+        if any((base_name := _dotted_name(base)) is not None and base_name[-1] == "Protocol" for base in node.bases)
         for child in node.body
         if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
     )
@@ -278,7 +328,7 @@ def _is_route_decorator(dec: ast.expr) -> bool:
             return False
 
 
-def _swap_prone_annotation(args: ast.arguments) -> str | None:
+def _swap_prone_annotation(args: ast.arguments) -> _SwapProneGroup | None:
     params = list(args.args)
     if params and params[0].arg in {"self", "cls"}:
         params = params[1:]
@@ -294,8 +344,155 @@ def _swap_prone_annotation(args: ast.arguments) -> str | None:
             and not (_is_symmetric_numbering(arg_names) or _is_conventional_order(arg_names))
             and _is_high_value_group(arg_names)
         ):
-            return name
+            return _SwapProneGroup(name, tuple(arg_names))
     return None
+
+
+def _parameter_list(parameters: tuple[str, ...]) -> str:
+    rendered = [f"`{parameter}`" for parameter in parameters]
+    if len(rendered) == _MIN_SAME_TYPE:
+        return f"{rendered[0]} and {rendered[1]}"
+    return f"{', '.join(rendered[:-1])}, and {rendered[-1]}"
+
+
+def _is_symmetric_rejection_guard(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    parameters: tuple[str, ...],
+    trusted_hmac_bindings: frozenset[str],
+) -> bool:
+    if len(parameters) != _MIN_SAME_TYPE:
+        return False
+    body = node.body[1:] if ast.get_docstring(node, clean=False) is not None else node.body
+    if not (
+        len(body) == _MIN_SAME_TYPE
+        and isinstance(guard := body[0], ast.If)
+        and not guard.orelse
+        and len(guard.body) == 1
+        and isinstance(guard.body[0], ast.Raise)
+        and isinstance(result := body[1], ast.Return)
+        and isinstance(result.value, ast.Constant)
+        and result.value.value is True
+    ):
+        return False
+    if any(
+        loaded.id in parameters
+        for statement in (*guard.body, result)
+        for loaded in walk(statement)
+        if isinstance(loaded, ast.Name) and isinstance(loaded.ctx, ast.Load)
+    ):
+        return False
+    operands = _symmetric_guard_operands(guard.test, trusted_hmac_bindings)
+    return operands is not None and _same_parameter_transform(*operands, *parameters)
+
+
+def _symmetric_guard_operands(
+    condition: ast.expr,
+    trusted_hmac_bindings: frozenset[str],
+) -> tuple[ast.expr, ast.expr] | None:
+    if (
+        isinstance(condition, ast.Compare)
+        and len(condition.ops) == 1
+        and isinstance(condition.ops[0], ast.NotEq)
+        and len(condition.comparators) == 1
+    ):
+        return condition.left, condition.comparators[0]
+    if not (isinstance(condition, ast.UnaryOp) and isinstance(condition.op, ast.Not)):
+        return None
+    call = condition.operand
+    if not isinstance(call, ast.Call) or call.keywords or len(call.args) != _MIN_SAME_TYPE:
+        return None
+    callee = _dotted_name(call.func)
+    return (
+        (call.args[0], call.args[1])
+        if callee is not None
+        and len(callee) == _MIN_SAME_TYPE
+        and callee[-1] == "compare_digest"
+        and callee[0] in trusted_hmac_bindings
+        else None
+    )
+
+
+def _trusted_hmac_bindings(tree: ast.Module) -> frozenset[str]:
+    top_level_imports = {
+        alias.asname or alias.name
+        for statement in tree.body
+        if isinstance(statement, ast.Import)
+        for alias in statement.names
+        if alias.name == "hmac"
+    }
+    if not top_level_imports:
+        return frozenset()
+    rebound = {
+        node.id
+        for node in walk(tree)
+        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load) and node.id in top_level_imports
+    }
+    rebound.update(node.arg for node in walk(tree) if isinstance(node, ast.arg) and node.arg in top_level_imports)
+    rebound.update(
+        node.name
+        for node in walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in top_level_imports
+    )
+    rebound.update(
+        node.name
+        for node in walk(tree)
+        if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar))
+        and node.name is not None
+        and node.name in top_level_imports
+    )
+    rebound.update(
+        node.name
+        for node in walk(tree)
+        if isinstance(node, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple)) and node.name in top_level_imports
+    )
+    rebound.update(
+        node.rest
+        for node in walk(tree)
+        if isinstance(node, ast.MatchMapping) and node.rest is not None and node.rest in top_level_imports
+    )
+    for node in walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        for alias in node.names:
+            binding = alias.asname or alias.name.rsplit(".", maxsplit=1)[-1]
+            is_trusted_import = (
+                node in tree.body
+                and isinstance(node, ast.Import)
+                and alias.name == "hmac"
+                and binding in top_level_imports
+            )
+            if binding in top_level_imports and not is_trusted_import:
+                rebound.add(binding)
+    return frozenset(top_level_imports - rebound)
+
+
+def _same_parameter_transform(left: ast.expr, right: ast.expr, left_name: str, right_name: str) -> bool:
+    return _same_parameter_transform_in_order(left, right, left_name, right_name) or _same_parameter_transform_in_order(
+        left, right, right_name, left_name
+    )
+
+
+def _same_parameter_transform_in_order(left: ast.expr, right: ast.expr, left_name: str, right_name: str) -> bool:
+    left_transform = _safe_parameter_transform(left, left_name)
+    return left_transform is not None and left_transform == _safe_parameter_transform(right, right_name)
+
+
+def _safe_parameter_transform(node: ast.expr, parameter: str) -> tuple[str, ...] | None:
+    if isinstance(node, ast.Name) and node.id == parameter:
+        return ("identity",)
+    if not (
+        isinstance(node, ast.Call)
+        and not node.keywords
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "utf-8"
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "encode"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == parameter
+    ):
+        return None
+    return ("encode", "utf-8")
 
 
 def _is_high_value_group(arg_names: list[str]) -> bool:
@@ -332,9 +529,13 @@ def _shares_one_stem(arg_names: list[str], suffix: re.Pattern[str]) -> bool:
 
 def _value_referenced_names(tree: ast.AST) -> frozenset[str]:
     call_funcs = {id(node.func) for node in nodes(tree, ast.Call)}
-    return frozenset(
-        node.id for node in nodes(tree, ast.Name) if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
+    names = {node.id for node in nodes(tree, ast.Name) if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs}
+    names.update(
+        node.attr
+        for node in nodes(tree, ast.Attribute)
+        if isinstance(node.ctx, ast.Load) and id(node) not in call_funcs
     )
+    return frozenset(names)
 
 
 def _overload_stub_names(tree: ast.AST) -> frozenset[str]:
