@@ -122,6 +122,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       const playwright = (playwrightConfig as Linter.Config).rules ?? {};
 
       expect(severityOf(unit["vitest/prefer-to-be"])).toBe(2);
+      expect(severityOf(unit["vitest/prefer-called-once"])).toBe(2);
+      expect(severityOf(unit["vitest/prefer-expect-resolves"])).toBe(2);
       expect(severityOf(unit["jest/prefer-to-be"])).toBe(0);
       expect(unit["playwright/no-unnecessary-assertions"]).toBeUndefined();
       expect(severityOf(bun["vitest/prefer-to-be"])).toBe(0);
@@ -142,6 +144,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const rules = (configured as Linter.Config).rules ?? {};
 
     expect(severityOf(rules["vitest/prefer-to-be"])).toBe(2);
+    expect(severityOf(rules["vitest/prefer-called-once"])).toBe(2);
+    expect(severityOf(rules["vitest/prefer-expect-resolves"])).toBe(2);
     expect(severityOf(rules["node-test/no-useless-assertion"])).toBe(2);
     expect(severityOf(rules["jest/prefer-to-be"])).toBe(0);
     expect(severityOf(rules["testing-library/prefer-screen-queries"])).toBe(0);
@@ -155,6 +159,20 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
         source: 'import { expect } from "vitest"; expect(1).toEqual(1);',
         nearMiss: 'import { expect } from "vitest"; expect({ value: 1 }).toEqual({ value: 1 });',
         expected: ["vitest/prefer-to-be"],
+      },
+      {
+        frameworks: ["vitest"],
+        path: "src/called-once.test.ts",
+        source: 'import { expect } from "vitest"; expect(callback).toHaveBeenCalledTimes(1);',
+        nearMiss: 'import { expect } from "vitest"; expect(callback).toHaveBeenCalledTimes(2);',
+        expected: ["vitest/prefer-called-once"],
+      },
+      {
+        frameworks: ["vitest"],
+        path: "src/resolves.test.ts",
+        source: 'import { expect } from "vitest"; expect(await operation()).toBe("ok");',
+        nearMiss: 'import { expect } from "vitest"; await expect(operation()).resolves.toBe("ok");',
+        expected: ["vitest/prefer-expect-resolves"],
       },
       {
         frameworks: ["bun"],
@@ -263,6 +281,36 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       expect(fixed).toContain("toBe(1)");
       expect(second?.output).toBeUndefined();
       expect(second?.messages.some((message) => message.ruleId === runner.rule)).toBe(false);
+    }
+  });
+
+  it.each(CONFIG_FACTORIES)("%s applies Vitest concision fixes idempotently", async (_name, createConfig) => {
+    const eslint = new ESLint({
+      fix: true,
+      overrideConfigFile: true,
+      overrideConfig: createConfig({ projectService: false, testFrameworks: ["vitest"] }),
+    });
+    const cases = [
+      {
+        source: 'import { expect } from "vitest"; expect(callback).toHaveBeenCalledTimes(1);',
+        fixed: "toHaveBeenCalledOnce()",
+        rule: "vitest/prefer-called-once",
+      },
+      {
+        source: 'import { expect } from "vitest"; expect(await operation()).toBe("ok");',
+        fixed: 'await expect(operation()).resolves.toBe("ok")',
+        rule: "vitest/prefer-expect-resolves",
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      const [first] = await eslint.lintText(testCase.source, { filePath: "src/unit.test.ts" });
+      const fixed = first?.output ?? testCase.source;
+      const [second] = await eslint.lintText(fixed, { filePath: "src/unit.test.ts" });
+
+      expect(fixed).toContain(testCase.fixed);
+      expect(second?.output).toBeUndefined();
+      expect(second?.messages.some((message) => message.ruleId === testCase.rule)).toBe(false);
     }
   });
 

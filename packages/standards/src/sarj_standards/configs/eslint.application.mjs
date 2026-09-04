@@ -1170,6 +1170,8 @@ export function createConfig(options = {}) {
       // Dense assertions preserve the tested invariant while deleting ceremony.
       // Keep this curated: broad `all` presets also impose suite structure,
       // assertion counts, snapshots, padding, and other non-semantic policy.
+      "vitest/prefer-called-once": HAS_VITEST ? "error" : "off",
+      "vitest/prefer-expect-resolves": HAS_VITEST ? "error" : "off",
       "vitest/prefer-to-be": HAS_VITEST ? "error" : "off",
 
       // eslint-plugin-jest can parse Bun's Jest-compatible `bun:test` API when
