@@ -725,10 +725,12 @@
       "outcome": "Renamed SARJ089 to no-bare-test-phase-comments and retained test-phase-label-comment as a migration alias. The rule remains no-autofix and is staged as a warning. It now parses the file before scanning, limits its grammar to standard Arrange, Act, Assert, Given, When, and Then labels with bounded decoration, optional phase suffixes, numbering, and explicit joins, and reports the matched label with concrete remediation. Generic lifecycle and domain words are preserved. The UI now states that the entire recognized test or test-support file is scanned, names trailing and bracketed-comment exclusions, shows a complete executable AAA rejection, and preserves a genuinely explanatory causal comment."
     },
     {
-      "task": "rule-audit/python/trailing-value-narration",
+      "task": "rule-audit/python/no-trailing-numeric-unit-assignment-comment",
       "family": "python",
-      "ruleId": "trailing-value-narration",
-      "state": "pending"
+      "ruleId": "no-trailing-numeric-unit-assignment-comment",
+      "state": "complete",
+      "evidence": "Three independent reviewers reproduced that the token-only detector contradicted its simple-assignment contract, emitted on calls, returns, loops, assertions, chained or destructured assignments, and tokenizable invalid Python, and defaulted a judgment-heavy style preference to error. The original exact scan covered 139 repositories or worktrees, 14,274 tracked Python files, and 137,303,621 bytes in 19.5620 seconds: four raw findings collapsed to three content-distinct findings, with one actionable result and two false positives from a call-expression size limit and a multi-number protobuf wire-format explanation. The final exact scan covered 139 repositories or worktrees, 14,275 files, and 137,310,605 bytes in 36.2991 seconds: one actionable warning, zero false positives, zero uncertain cases, and zero read or detector errors. Focused and performance validation passed 45 tests in 11.46 seconds; combined focused and metadata validation passed 237 tests. Ruff and Pylint do not own this exact redundant numeric-unit assignment-comment policy.",
+      "outcome": "Renamed SARJ051 to no-trailing-numeric-unit-assignment-comment and retained trailing-value-narration as a migration alias. The no-autofix rule is explicitly warning-only. It now parses valid Python, limits detection to one-line assignments with exactly one simple name or attribute target and a simple numeric expression, normalizes decimal, underscored, hexadecimal, and scientific notation, and requires exactly one matching number plus a recognized unit in the trailing comment. Calls, returns, loops, assertions, chained or destructured assignments, multi-statement lines, multi-number comments, bracketed values, references, directives, approximate conversions, generated files, and invalid syntax are excluded. The UI now distinguishes machine-visible names from type-enforced units and provides an executable typed-duration example and concrete remediation."
     },
     {
       "task": "rule-audit/python/trivially-true-assertion",

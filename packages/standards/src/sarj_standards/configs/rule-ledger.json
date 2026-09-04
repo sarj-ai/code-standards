@@ -64,6 +64,7 @@
       "no-select-star",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
+      "no-trailing-numeric-unit-assignment-comment",
       "no-unique-violation-message-match",
       "no-unnecessary-docstring",
       "no-vague-suppression-description",
@@ -110,7 +111,6 @@
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "timestamp-order-requires-tiebreaker",
-      "trailing-value-narration",
       "trivially-true-assertion",
       "typed-error-reasons",
       "uncontrolled-randomness-in-test",
@@ -1237,6 +1237,13 @@
       "status": "renamed",
       "replacement": "no-bare-test-phase-comments",
       "note": "Replace sarj-test-phase-label-comment with sarj-no-bare-test-phase-comments before upgrading."
+    },
+    {
+      "id": "trailing-value-narration",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-trailing-numeric-unit-assignment-comment",
+      "note": "Replace sarj-trailing-value-narration with sarj-no-trailing-numeric-unit-assignment-comment before upgrading."
     },
     {
       "id": "unpinned-github-action",

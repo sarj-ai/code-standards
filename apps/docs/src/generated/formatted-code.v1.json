@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a5781e41c0e10b1ba1180f7cd907a4ddef930bbb8f1597ebcd2386e45b81c6ed",
-  "cliSha256": "b42df88dc1748b94ee9f23094db1c4cf4cc1992ab9d65a7f0a831f44be8aafff",
+  "catalogSha256": "59afff0122aec732e3b9b420d29ac6a46e030664f9ec820ec49090007fd25c50",
+  "cliSha256": "ec32c53e62673402aa791b56c2f1b53a4c16c85620f819901ef15a22fd7ce55a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5545,6 +5545,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-trailing-numeric-unit-assignment-comment": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "settings.py",
+              "source": "STALE_TIME = 5 * 60 * 1000  # 5 minutes\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "settings.py",
+          "id": "repeated-numeric-unit",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Comment repeats the duration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "settings.py",
+              "source": "from datetime import timedelta\n\nSTALE_TIME = timedelta(minutes=5)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "settings.py",
+          "id": "unit-encoded-in-value",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Typed value carries the unit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-unique-violation-message-match": {
       "examples": [
         {
@@ -7313,41 +7348,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A store query orders only by a timestamp"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:trailing-value-narration": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "settings.py",
-              "source": "BACKOFF = 2 * 60  # doubles per attempt\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "settings.py",
-          "id": "comment-explains-policy",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Comment explains a policy"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "settings.py",
-              "source": "STALE_TIME = 5 * 60 * 1000  # 5 minutes\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "settings.py",
-          "id": "repeated-duration",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Comment repeats the duration"
         }
       ],
       "optionsSchemaSource": null

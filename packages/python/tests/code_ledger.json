@@ -81,7 +81,10 @@
   "SARJ048": "no-first-party-private-import",
   "SARJ049": "no-restated-comment",
   "SARJ050": "redundant-docstring",
-  "SARJ051": "trailing-value-narration",
+  "SARJ051": [
+    "trailing-value-narration",
+    "no-trailing-numeric-unit-assignment-comment"
+  ],
   "SARJ052": "no-stdlib-logging",
   "SARJ053": "no-random-uuid-in-sql",
   "SARJ054": "no-file-level-escape-hatch-suppression",

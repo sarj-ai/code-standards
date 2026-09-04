@@ -252,15 +252,15 @@ def test_doctor_finds_a_deleted_alias_in_source_and_suppressions(tmp_path: Path)
     assert all(f"renamed to {new}" in finding.detail for finding in findings)
 
 
-def test_doctor_leaves_the_python_twin_of_a_deleted_eslint_alias_alone(tmp_path: Path) -> None:
+def test_doctor_migrates_the_renamed_python_rule_without_confusing_its_eslint_twin(tmp_path: Path) -> None:
     _ = (tmp_path / ".pre-commit-config.yaml").write_text(
         "repos:\n  - hooks:\n      - id: sarj-trailing-value-narration\n", encoding="utf-8"
     )
-    assert not list(check_retired_rules(tmp_path)), (
-        "`trailing-value-narration` is a LIVE sarj-python-lint rule and its hook id;"
-        " only the ESLint rule of that name was renamed, and flagging the hook would"
-        " tell a consumer to delete a check that still exists"
-    )
+    findings = list(check_retired_rules(tmp_path))
+    assert [finding.level for finding in findings] == [Level.DRIFT]
+    assert "trailing-value-narration x1" in findings[0].where
+    assert "renamed to no-trailing-numeric-unit-assignment-comment" in findings[0].detail
+    assert "@sarj/no-trailing-value-narration" not in findings[0].detail
 
 
 def test_doctor_names_a_stale_disable_directive(tmp_path: Path) -> None:

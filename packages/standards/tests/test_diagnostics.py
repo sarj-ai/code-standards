@@ -731,7 +731,7 @@ def test_standards_analyze_converts_python_ast_byte_columns_to_utf16(tmp_path: P
 
 
 def test_standards_analyze_converts_python_token_columns_to_utf16(tmp_path: Path) -> None:
-    text = "label = '😀'; stale = 5 * 60  # 5 minutes\n"
+    text = "𝕩 = 5 * 60  # 5 minutes\n"
     source = tmp_path / "service.py"
     source.write_text(text, encoding="utf-8")
 
