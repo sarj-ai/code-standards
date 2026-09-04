@@ -322,8 +322,16 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         hook_manager=hook_manager,
         disabled_capabilities=disabled,
         excluded_paths=_path_patterns(root, exclude_table, "paths"),
-        excluded_rules=_rule_selectors(exclude_table, "rules"),
-        exclusion_overrides=_exclusion_overrides(root, exclude_table),
+        excluded_rules=_rule_selectors(
+            exclude_table,
+            "rules",
+            discard_retired=expected_schema == LEGACY_MANIFEST_SCHEMA,
+        ),
+        exclusion_overrides=_exclusion_overrides(
+            root,
+            exclude_table,
+            discard_retired=expected_schema == LEGACY_MANIFEST_SCHEMA,
+        ),
         durable_artifacts=_string_list(
             artifacts_table,
             "durable",
@@ -426,8 +434,8 @@ def _load_schema_less_manifest(  # ruff: ignore[too-many-locals] -- validate the
         verify_paths=_verify_paths(root, verify_table),
         hook_manager=hook_manager,
         excluded_paths=_path_patterns(root, exclude_table, "paths"),
-        excluded_rules=_rule_selectors(exclude_table, "rules"),
-        exclusion_overrides=_exclusion_overrides(root, exclude_table),
+        excluded_rules=_rule_selectors(exclude_table, "rules", discard_retired=True),
+        exclusion_overrides=_exclusion_overrides(root, exclude_table, discard_retired=True),
     )
 
 
@@ -476,9 +484,18 @@ def _path_patterns(root: Path, table: Mapping[str, object], key: str) -> tuple[s
     return tuple(validate_excluded_path(root, pattern) for pattern in patterns)
 
 
-def _rule_selectors(table: Mapping[str, object], key: str) -> tuple[str, ...]:
+def _rule_selectors(
+    table: Mapping[str, object],
+    key: str,
+    *,
+    discard_retired: bool = False,
+) -> tuple[str, ...]:
     selectors = _string_list(table, key, label=f"manifest [exclude].{key}")
-    return tuple(validate_excluded_rule(selector) for selector in selectors)
+    return tuple(
+        validate_excluded_rule(selector)
+        for selector in selectors
+        if not discard_retired or not _retired_rule_selector(selector)
+    )
 
 
 def validate_excluded_path(root: Path, pattern: str) -> str:
@@ -508,6 +525,18 @@ def validate_excluded_rule(selector: str) -> str:
         raise ValueError(msg)
     _validate_known_rule(engine, rule, selector)
     return selector
+
+
+def _retired_rule_selector(selector: str) -> bool:
+    from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level] -- avoid a manifest/ledger import cycle.
+        ledger,
+    )
+
+    engine, separator, rule = selector.partition(":")
+    if not separator:
+        return False
+    kind = ledger.CODE if engine == "python" and re.fullmatch(r"SARJ[0-9]{3}", rule) else engine
+    return any(entry.kind == kind and entry.id == rule for entry in ledger.load().retired)
 
 
 def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
@@ -548,17 +577,24 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
         raise ValueError(msg)
 
 
-def _exclusion_overrides(root: Path, table: Mapping[str, object]) -> tuple[ExclusionOverride, ...]:
+def _exclusion_overrides(
+    root: Path,
+    table: Mapping[str, object],
+    *,
+    discard_retired: bool = False,
+) -> tuple[ExclusionOverride, ...]:
     values = list_field(table, "overrides")
     overrides: list[ExclusionOverride] = []
     for value in values:
         item = as_table(value)
         paths = _path_patterns(root, item, "paths")
-        rules = _rule_selectors(item, "rules")
+        rules = _rule_selectors(item, "rules", discard_retired=discard_retired)
         reason = text_field(item, "reason")
-        if not paths or not rules or reason is None or not reason.strip():
+        if not paths or not list_field(item, "rules") or reason is None or not reason.strip():
             msg = "each [[exclude.overrides]] entry must set non-empty paths, rules, and reason"
             raise ValueError(msg)
+        if not rules:
+            continue
         overrides.append(ExclusionOverride(paths, rules, reason))
     return tuple(overrides)
 

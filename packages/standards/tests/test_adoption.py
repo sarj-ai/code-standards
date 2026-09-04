@@ -434,6 +434,29 @@ def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_too
     )
 
 
+def test_setup_discards_retired_rule_exclusions_while_migrating_schema_three(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    manifest_path = tmp_path / manifest.MANIFEST_NAME
+    manifest_path.write_text(
+        'schema = 3\nbundle = "7.7.0"\n'
+        '[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"]\n'
+        '[exclude]\nrules = ["python:SARJ012", "python:SARJ014"]\n'
+        '[[exclude.overrides]]\npaths = ["tests/old/**"]\nrules = ["python:SARJ014"]\nreason = "retired"\n'
+        '[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012", "python:SARJ014"]\n'
+        'reason = "mixed"\n',
+        encoding="utf-8",
+    )
+
+    proc = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert proc.returncode == 0, proc.stderr
+    migrated = manifest.load(tmp_path)
+    assert migrated is not None
+    assert migrated.excluded_rules == ("python:SARJ012",)
+    assert migrated.exclusion_overrides == (manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), "mixed"),)
+    assert "SARJ014" not in manifest_path.read_text(encoding="utf-8")
+
+
 def test_setup_losslessly_rerenders_schema_three_as_schema_four(tmp_path: Path) -> None:
     _python_repo(tmp_path)
     baseline = tmp_path / "diagnostics.json"
