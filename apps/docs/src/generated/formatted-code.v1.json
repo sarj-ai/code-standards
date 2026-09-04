@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3e05c77e3ab2b90dee8b305768215b17c8e9caaa1f06ac08ca4bbda7b332fa43",
+  "catalogSha256": "087d244ef2990c6cd11ea8d404c73673546c4fb542546bcda4fcf82930804c48",
   "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6466,41 +6466,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Stream loop assigns and then breaks"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:preserve-enum-types": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/__init__.py",
-              "source": "from enum import StrEnum\n\n\nclass Status(StrEnum):\n    READY = \"ready\"\n\n\nclass Result:\n    status: Status | None\n\n\ndef render(result):\n    match result:\n        case Result():\n            return str(result.status)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/__init__.py",
-          "id": "matched-enum-erased",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A matched result enum is converted to string"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/__init__.py",
-              "source": "from enum import StrEnum\n\n\nclass Status(StrEnum):\n    READY = \"ready\"\n\n\nclass Result:\n    status: Status | None\n\n\ndef render(result):\n    match result:\n        case Result():\n            return result.status\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/__init__.py",
-          "id": "matched-enum-preserved",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A matched result enum remains typed"
         }
       ],
       "optionsSchemaSource": null

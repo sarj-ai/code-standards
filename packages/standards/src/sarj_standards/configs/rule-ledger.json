@@ -88,7 +88,6 @@
       "prefer-walrus-comprehension-filter",
       "prefer-walrus-regex-match",
       "prefer-walrus-stream-loop",
-      "preserve-enum-types",
       "production-derived-test-cases",
       "pydantic-at-boundaries",
       "pytest-fixture-returns-bare-tuple",
@@ -330,7 +329,6 @@
       "SARJ413",
       "SARJ414",
       "SARJ415",
-      "SARJ417",
       "SARJ418",
       "SARJ419",
       "SARJ420",
@@ -758,6 +756,13 @@
       "note": "Delete SARJ416 suppressions and baseline keys. The rule inferred a nominal override contract from any project NewType with the same normalized parameter name without resolving the base method or carrier, and its only finding in 5,323 tracked files contradicted the actual base signature. There is no replacement."
     },
     {
+      "id": "SARJ417",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Delete SARJ417 suppressions and baseline keys. Converting an enum to str is commonly required at rendering, logging, JSON, header, and exception boundaries; the rule never proved a receiving enum contract and produced no findings across 5,323 tracked files. There is no replacement."
+    },
+    {
       "id": "SARJ422",
       "kind": "code",
       "status": "removed",
@@ -1120,6 +1125,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit. The rule inferred a nominal override contract from any project NewType with the same normalized parameter name without resolving the base method or carrier, and its only finding in 5,323 tracked files contradicted the actual base signature. There is no replacement."
+    },
+    {
+      "id": "preserve-enum-types",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Remove this hook from pre-commit. Converting an enum to str is commonly required at rendering, logging, JSON, header, and exception boundaries; the rule never proved a receiving enum contract and produced no findings across 5,323 tracked files. There is no replacement."
     },
     {
       "id": "single-public-export",

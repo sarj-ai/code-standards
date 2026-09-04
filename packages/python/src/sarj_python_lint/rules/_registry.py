@@ -112,7 +112,6 @@ from sarj_python_lint.rules.prefer_walrus_comprehension_filter import (
 )
 from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch
 from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop
-from sarj_python_lint.rules.preserve_enum_types import PreserveEnumTypes
 from sarj_python_lint.rules.production_derived_test_cases import ProductionDerivedTestCases
 from sarj_python_lint.rules.pydantic_at_boundaries import PydanticAtBoundaries
 from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import PytestFixtureReturnsBareTuple
@@ -244,7 +243,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RepeatedStaticCallCases.id: RepeatedStaticCallCases,
         RequireValidatedRowFactory.id: RequireValidatedRowFactory,
         SqlRequiresInjectedPoolOwner.id: SqlRequiresInjectedPoolOwner,
-        PreserveEnumTypes.id: PreserveEnumTypes,
         RequirePydanticOrdinalLowerBound.id: RequirePydanticOrdinalLowerBound,
         RequireNoDecodeForSplittingSettingsField.id: RequireNoDecodeForSplittingSettingsField,
         NoVagueSuppressionDescription.id: NoVagueSuppressionDescription,
