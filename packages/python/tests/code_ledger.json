@@ -100,7 +100,7 @@
   "SARJ061": "no-patching-system-under-test",
   "SARJ062": "over-mocked-test",
   "SARJ063": null,
-  "SARJ064": "trivially-true-assertion",
+  "SARJ064": null,
   "SARJ065": null,
   "SARJ066": [
     "duplicate-test-body",

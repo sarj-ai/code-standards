@@ -146,7 +146,6 @@ from sarj_python_lint.rules.store_insert_requires_on_conflict import (
 )
 from sarj_python_lint.rules.timestamp_order_requires_tiebreaker import TimestampOrderRequiresTiebreaker
 from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarration
-from sarj_python_lint.rules.trivially_true_assertion import TriviallyTrueAssertion
 from sarj_python_lint.rules.typed_error_reasons import TypedErrorReasons
 from sarj_python_lint.rules.uncontrolled_randomness_in_test import UncontrolledRandomnessInTest
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
@@ -211,7 +210,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         OverMockedTest.id: OverMockedTest,
         InvalidPydanticFieldDefault.id: InvalidPydanticFieldDefault,
         NoFrozenAfterValidatorFieldWrite.id: NoFrozenAfterValidatorFieldWrite,
-        TriviallyTrueAssertion.id: TriviallyTrueAssertion,
         NoRepeatedTestBody.id: NoRepeatedTestBody,
         UnusedMockSetup.id: UnusedMockSetup,
         PreferFstringOverConcat.id: PreferFstringOverConcat,

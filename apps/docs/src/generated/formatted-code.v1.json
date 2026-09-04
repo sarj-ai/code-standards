@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "59afff0122aec732e3b9b420d29ac6a46e030664f9ec820ec49090007fd25c50",
-  "cliSha256": "ec32c53e62673402aa791b56c2f1b53a4c16c85620f819901ef15a22fd7ce55a",
+  "catalogSha256": "c1e01575f6412f6a719d97e63b31553fa9c109dfd28c0e9526670f1b7ce7d569",
+  "cliSha256": "6a45b8fc16f56aaae9bbba48ccb8ee8eb216444799a97c4d3083b81eb0e87905",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7348,41 +7348,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A store query orders only by a timestamp"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:trivially-true-assertion": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_user.py",
-              "source": "def test_user():\n    user = User(name=\"Ada\")\n    assert user.name == \"Ada\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_user.py",
-          "id": "constructor-keyword-echo",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Assertion repeats a constructor keyword"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_user.py",
-              "source": "def test_user():\n    user = User(name=\"Ada Lovelace\")\n    assert user.initials == \"AL\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_user.py",
-          "id": "derived-value",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Assertion checks a derived value"
         }
       ],
       "optionsSchemaSource": null
