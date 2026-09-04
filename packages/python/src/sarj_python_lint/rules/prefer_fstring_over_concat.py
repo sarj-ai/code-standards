@@ -559,9 +559,7 @@ def _shadowed_producers(statements: list[ast.stmt], before_line: int | None) -> 
             bound = _bound_names(statement)
         if isinstance(statement, ast.Import):
             bound.difference_update(
-                alias.asname or alias.name
-                for alias in statement.names
-                if alias.name in {"json", "re"}
+                alias.asname or alias.name for alias in statement.names if alias.name in {"json", "re"}
             )
         shadowed.update(bound & _PRODUCER_NAMES)
     return frozenset(shadowed)

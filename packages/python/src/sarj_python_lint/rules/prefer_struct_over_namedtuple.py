@@ -297,8 +297,7 @@ def _scope_binding_events(
     for statement in scope.body:
         _collect_statement_bindings(statement, collected, direct=True)
     return {
-        name: tuple(sorted(bindings, key=lambda event: (event.line, event.col)))
-        for name, bindings in collected.items()
+        name: tuple(sorted(bindings, key=lambda event: (event.line, event.col))) for name, bindings in collected.items()
     }
 
 
@@ -314,8 +313,7 @@ def _collect_statement_bindings(
                 local = alias.asname or alias.name.partition(".")[0]
                 kind = (
                     _MODULE_FACTORY
-                    if alias.name == "collections"
-                    or (alias.name.startswith("collections.") and alias.asname is None)
+                    if alias.name == "collections" or (alias.name.startswith("collections.") and alias.asname is None)
                     else _OTHER_BINDING
                 )
                 collected.setdefault(local, []).append(

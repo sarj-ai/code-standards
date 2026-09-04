@@ -22,11 +22,7 @@ def _check(source: str, path: Path = _PATH) -> list[Diagnostic]:
 
 def _typed(source: str) -> str:
     tree = ast.parse(source)
-    names = sorted(
-        node.id
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
-    )
+    names = sorted(node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load))
     declarations = "; ".join(f"{name}: str" for name in names)
     return f"{declarations}\n{source}" if declarations else source
 
@@ -131,8 +127,8 @@ def test_long_literal_template_is_clean() -> None:
 
 
 def test_literal_budget_boundary() -> None:
-    assert len(_check(f'def prompt(value: str):\n    return {"a" * 160!r} + value\n')) == 1
-    assert _check(f'def prompt(value: str):\n    return {"a" * 161!r} + value\n') == []
+    assert len(_check(f"def prompt(value: str):\n    return {'a' * 160!r} + value\n")) == 1
+    assert _check(f"def prompt(value: str):\n    return {'a' * 161!r} + value\n") == []
 
 
 def test_unrelated_inline_comment_does_not_suppress_warning() -> None:
@@ -204,7 +200,7 @@ def test_logging_concatenation_is_left_to_logging_rules(source: str) -> None:
         'value = "x" + literal(column)',
         'value = "x" + (name if flag else other)',
         'value = "x" + "y"',
-        'value = f"{name + \'!\'}"',
+        "value = f\"{name + '!'}\"",
     ],
 )
 def test_ambiguous_or_owned_shapes_are_clean(source: str) -> None:

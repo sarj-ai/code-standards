@@ -272,9 +272,7 @@ def _cursors(
     )
 
 
-def _initial_bindings(
-    function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex
-) -> dict[str, _Shape]:
+def _initial_bindings(function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> dict[str, _Shape]:
     result: dict[str, _Shape] = {}
     for name, annotation in _parameter_annotations(function).items():
         shape = _connection_annotation_shape(annotation, imports)
@@ -480,7 +478,11 @@ def _connection_context_shape(
         or _resolves_connection_connect(call.func, imports)
     ):
         return _connect_call_shape(call, imports, shadowed)
-    if isinstance(call.func, ast.Attribute) and call.func.attr == "connection" and isinstance(call.func.value, ast.Name):
+    if (
+        isinstance(call.func, ast.Attribute)
+        and call.func.attr == "connection"
+        and isinstance(call.func.value, ast.Name)
+    ):
         return visible.get(call.func.value.id)
     return None
 
@@ -509,7 +511,12 @@ def _receiver_shape(
 ) -> _Shape:
     if isinstance(receiver, ast.Name):
         return visible.get(receiver.id, _Shape.UNKNOWN)
-    if owner is not None and isinstance(receiver, ast.Attribute) and isinstance(receiver.value, ast.Name) and receiver.value.id == "self":
+    if (
+        owner is not None
+        and isinstance(receiver, ast.Attribute)
+        and isinstance(receiver.value, ast.Name)
+        and receiver.value.id == "self"
+    ):
         if receiver.attr in invalidated_attrs:
             return _Shape.UNKNOWN
         return class_attrs.get((owner.lineno, receiver.attr), _Shape.UNKNOWN)
@@ -587,7 +594,9 @@ def _cursor_shape(cursor: _Cursor, fetch: ast.Call, imports: ImportIndex, shadow
         if _position(statement) >= _position(fetch):
             break
         match statement:
-            case ast.Assign(targets=[ast.Attribute(value=ast.Name(id=name), attr="row_factory")], value=value) if name == cursor.name:
+            case ast.Assign(targets=[ast.Attribute(value=ast.Name(id=name), attr="row_factory")], value=value) if (
+                name == cursor.name
+            ):
                 assignments.append(value)
             case _ if _assigns_cursor_factory(statement, cursor.name):
                 ambiguous = True
@@ -755,11 +764,7 @@ def _merge_origins(states: Iterable[dict[str, _OriginSet]]) -> dict[str, _Origin
     materialized = tuple(states)
     names = {name for state in materialized for name in state}
     return {
-        name: frozenset(
-            origin
-            for state in materialized
-            for origin in state.get(name, frozenset({None}))
-        )
+        name: frozenset(origin for state in materialized for origin in state.get(name, frozenset({None})))
         for name in names
     }
 
@@ -789,7 +794,9 @@ def _statement_mutation_roots(statement: ast.stmt) -> frozenset[str]:
         root: str | None = None
         if isinstance(node, ast.Attribute | ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
             root = _root_name(node)
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS:
+        elif (
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS
+        ):
             root = _root_name(node.func.value)
         if root is not None:
             roots.add(root)
@@ -894,9 +901,13 @@ def _scope_nodes(statements: Iterable[ast.stmt], *, stop_rebinding: str | None =
         yield node
         if isinstance(node, _SCOPE_NODES):
             continue
-        if stop_rebinding is not None and isinstance(node, ast.With | ast.AsyncWith) and any(
-            isinstance(item.optional_vars, ast.Name) and item.optional_vars.id == stop_rebinding
-            for item in node.items
+        if (
+            stop_rebinding is not None
+            and isinstance(node, ast.With | ast.AsyncWith)
+            and any(
+                isinstance(item.optional_vars, ast.Name) and item.optional_vars.id == stop_rebinding
+                for item in node.items
+            )
         ):
             continue
         pending.extend(reversed(list(ast.iter_child_nodes(node))))

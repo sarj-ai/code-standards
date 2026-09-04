@@ -63,11 +63,7 @@ def test_flags_negative_only_status_contracts(assertion: str) -> None:
     ],
 )
 def test_allows_specific_or_non_http_contracts(assertion: str) -> None:
-    source = (
-        "from http import HTTPStatus\n"
-        "from fastapi import status\n\n"
-        f"def test_route():\n    {assertion}\n"
-    )
+    source = f"from http import HTTPStatus\nfrom fastapi import status\n\ndef test_route():\n    {assertion}\n"
     assert _check(source) == []
 
 
@@ -106,10 +102,7 @@ def test_ignores_unproven_constants_and_uncollected_test_shapes(source: str) -> 
             "import fastapi.status as http_status\n\n"
             "def test_route():\n    assert response.status_code != http_status.HTTP_500_INTERNAL_SERVER_ERROR\n"
         ),
-        (
-            "class TestRoutes:\n"
-            "    def test_route(self):\n        assert response.status_code != 500\n"
-        ),
+        ("class TestRoutes:\n    def test_route(self):\n        assert response.status_code != 500\n"),
         (
             "from unittest import TestCase\n\n"
             "class Routes(TestCase):\n"

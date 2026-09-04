@@ -149,9 +149,7 @@ class NoRedundantLiteralDescription(Rule):
 
 
 def _is_direct_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
-    return any(
-        imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel") for base in node.bases
-    )
+    return any(imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel") for base in node.bases)
 
 
 def _local_closed_domains(tree: ast.Module, imports: ImportIndex) -> dict[str, frozenset[str]]:

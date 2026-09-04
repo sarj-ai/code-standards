@@ -131,7 +131,11 @@ class PreferWalrusStreamLoop(Rule):
         diags: list[Diagnostic] = []
 
         for node in nodes(tree, ast.While):
-            if not (isinstance(node.test, ast.Constant) and node.test.value is True) or node.orelse or len(node.body) < _MIN_BODY_LEN:
+            if (
+                not (isinstance(node.test, ast.Constant) and node.test.value is True)
+                or node.orelse
+                or len(node.body) < _MIN_BODY_LEN
+            ):
                 continue
 
             first_stmt = node.body[0]

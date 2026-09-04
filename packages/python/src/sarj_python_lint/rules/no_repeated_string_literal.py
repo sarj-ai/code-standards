@@ -163,9 +163,7 @@ class NoRepeatedStringLiteral(Rule):
             function_scopes = {scope for n in nodes if (scope := scope_of.get(id(n), _MODULE_SCOPE)) != _MODULE_SCOPE}
             canonical = canonical_constants.get(value, ())
             eligible_canonical = tuple(
-                name
-                for name, line in canonical
-                if all(line < scope_line_of.get(scope, 0) for scope in function_scopes)
+                name for name, line in canonical if all(line < scope_line_of.get(scope, 0) for scope in function_scopes)
             )
             if len(eligible_canonical) == 1 and function_scopes:
                 (constant_name,) = eligible_canonical
@@ -282,6 +280,16 @@ def _preview(value: str) -> str:
 
 def _is_skipped_path(path: Path) -> bool:
     excluded_parts = frozenset(
-        {"benchmark", "benchmarks", "example", "examples", "fixture", "fixtures", "migration", "migrations", "snapshots"}
+        {
+            "benchmark",
+            "benchmarks",
+            "example",
+            "examples",
+            "fixture",
+            "fixtures",
+            "migration",
+            "migrations",
+            "snapshots",
+        }
     )
     return is_test_path(path) or bool(excluded_parts.intersection(part.lower() for part in path.parts))

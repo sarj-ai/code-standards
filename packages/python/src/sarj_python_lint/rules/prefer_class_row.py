@@ -401,9 +401,7 @@ def _model_name(node: ast.expr) -> str | None:
 
 def _is_rebound_between(scoped_nodes: list[ast.AST], name: str, start: int, end: int) -> bool:
     return any(
-        start < node.lineno < end and _writes_name(node, name)
-        for node in scoped_nodes
-        if isinstance(node, ast.stmt)
+        start < node.lineno < end and _writes_name(node, name) for node in scoped_nodes if isinstance(node, ast.stmt)
     )
 
 

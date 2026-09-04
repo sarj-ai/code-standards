@@ -199,11 +199,6 @@ def _subscripted_docstring_owner(node: ast.Subscript) -> str | None:
     value = node.value
     if isinstance(value, ast.Attribute) and value.attr == "__dict__":
         return _terminal_name(value.value)
-    if (
-        isinstance(value, ast.Call)
-        and isinstance(value.func, ast.Name)
-        and value.func.id == "vars"
-        and value.args
-    ):
+    if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id == "vars" and value.args:
         return _terminal_name(value.args[0])
     return None

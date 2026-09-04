@@ -372,10 +372,7 @@ def test_ignores_a_look_alike_method_taking_other_keywords():
 
 def test_ignores_custom_and_free_assertion_apis():
     src = (
-        "def test_x(recorder):\n"
-        "    recorder.assertEqual(1, 1)\n"
-        "    assertEqual(1, 1)\n"
-        "    recorder.assertTrue(True)\n"
+        "def test_x(recorder):\n    recorder.assertEqual(1, 1)\n    assertEqual(1, 1)\n    recorder.assertTrue(True)\n"
     )
     assert _count(src) == 0
 

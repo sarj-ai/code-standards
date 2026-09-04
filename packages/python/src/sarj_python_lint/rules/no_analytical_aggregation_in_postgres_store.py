@@ -112,7 +112,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
                     ExampleFile.python(
                         "app/event_store.py",
                         "import psycopg\n\n"
-                        'QUERY = "SELECT DATE_TRUNC(\'day\', occurred_at), COUNT(*), AVG(latency_ms) '
+                        "QUERY = \"SELECT DATE_TRUNC('day', occurred_at), COUNT(*), AVG(latency_ms) "
                         'FROM event GROUP BY 1"\n',
                     ),
                 ),
@@ -127,8 +127,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
                 files=(
                     ExampleFile.python(
                         "app/account_store.py",
-                        "import psycopg\n\n"
-                        'QUERY = "SELECT SUM(amount) FROM ledger WHERE account_id = %s FOR UPDATE"\n',
+                        'import psycopg\n\nQUERY = "SELECT SUM(amount) FROM ledger WHERE account_id = %s FOR UPDATE"\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/account_store.py"),

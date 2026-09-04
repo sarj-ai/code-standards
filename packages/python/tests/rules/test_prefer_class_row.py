@@ -253,12 +253,16 @@ def test_excluded_paths_are_clean(path: Path) -> None:
 
 
 def test_generated_header_is_clean() -> None:
-    source = "# This file is generated. Do not edit.\n" + _IMPORT + textwrap.dedent("""
+    source = (
+        "# This file is generated. Do not edit.\n"
+        + _IMPORT
+        + textwrap.dedent("""
         def load(conn):
             with conn.cursor(row_factory=dict_row) as cursor:
                 row = cursor.fetchone()
                 return Task(**row)
     """)
+    )
     assert PreferClassRow().check(_PATH, source) == []
 
 

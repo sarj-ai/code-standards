@@ -138,9 +138,7 @@ _SERVICES: tuple[_Service, ...] = (
         words=frozenset({"httpx"}),
         infixes=("httpx",),
         imports=frozenset({"respx", "pytest_httpx"}),
-        advice=(
-            "consider `respx` or `pytest-httpx` while keeping the production `httpx` request and response path"
-        ),
+        advice=("consider `respx` or `pytest-httpx` while keeping the production `httpx` request and response path"),
     ),
     _Service(
         subject="an aiohttp client",
@@ -154,9 +152,7 @@ _SERVICES: tuple[_Service, ...] = (
         words=frozenset({"requests"}),
         infixes=(),
         imports=frozenset({"responses", "requests_mock"}),
-        advice=(
-            "consider `responses` or `requests-mock` while keeping the production `requests` session path"
-        ),
+        advice=("consider `responses` or `requests-mock` while keeping the production `requests` session path"),
     ),
 )
 
@@ -476,9 +472,7 @@ def _imported_base_aliases(tree: ast.Module) -> dict[str, str]:
     return aliases
 
 
-def _hand_rolled_service(
-    node: ast.ClassDef, imported: frozenset[str], base_aliases: dict[str, str]
-) -> _Service | None:
+def _hand_rolled_service(node: ast.ClassDef, imported: frozenset[str], base_aliases: dict[str, str]) -> _Service | None:
     base_names = _base_names(node, base_aliases)
     if (
         not _is_double_name(node.name)
@@ -577,7 +571,9 @@ def _receiver_field(value: ast.AST) -> str | None:
 
 
 def _has_matching_import(imported: frozenset[str], candidates: frozenset[str]) -> bool:
-    return any(module == candidate or module.startswith(f"{candidate}.") for module in imported for candidate in candidates)
+    return any(
+        module == candidate or module.startswith(f"{candidate}.") for module in imported for candidate in candidates
+    )
 
 
 def _is_double_name(name: str) -> bool:
@@ -629,8 +625,7 @@ def _is_data_holder(base_names: list[str]) -> bool:
 
 def _is_extension_point(base_names: list[str]) -> bool:
     return any(
-        base.startswith(_EXTENSION_POINT_PREFIXES) or base.endswith(_EXTENSION_POINT_SUFFIXES)
-        for base in base_names
+        base.startswith(_EXTENSION_POINT_PREFIXES) or base.endswith(_EXTENSION_POINT_SUFFIXES) for base in base_names
     )
 
 

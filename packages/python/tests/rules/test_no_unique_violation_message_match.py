@@ -109,8 +109,9 @@ def test_ignores_mixed_exception_tuples(caught: str) -> None:
 
 
 def test_flags_tuple_when_every_exception_is_a_supported_unique_violation() -> None:
-    assert len(
-        _check("""
+    assert (
+        len(
+            _check("""
         from psycopg.errors import UniqueViolation
         from psycopg2.errors import UniqueViolation as LegacyUniqueViolation
         try:
@@ -119,7 +120,9 @@ def test_flags_tuple_when_every_exception_is_a_supported_unique_violation() -> N
             if CONSTRAINT in str(exc):
                 raise
     """)
-    ) == 1
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize(
@@ -134,8 +137,9 @@ def test_flags_tuple_when_every_exception_is_a_supported_unique_violation() -> N
     ],
 )
 def test_flags_rendered_message_classification_forms(condition: str) -> None:
-    assert len(
-        _check(f"""
+    assert (
+        len(
+            _check(f"""
         from psycopg.errors import UniqueViolation
         try:
             save()
@@ -143,7 +147,9 @@ def test_flags_rendered_message_classification_forms(condition: str) -> None:
             if {condition}:
                 raise Duplicate from exc
     """)
-    ) == 1
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize(
@@ -155,8 +161,9 @@ def test_flags_rendered_message_classification_forms(condition: str) -> None:
     ],
 )
 def test_flags_import_proven_regex_classification(import_line: str, condition: str) -> None:
-    assert len(
-        _check(f"""
+    assert (
+        len(
+            _check(f"""
         {import_line}
         from psycopg.errors import UniqueViolation
         try:
@@ -165,12 +172,15 @@ def test_flags_import_proven_regex_classification(import_line: str, condition: s
             if {condition}:
                 return duplicate()
     """)
-    ) == 1
+        )
+        == 1
+    )
 
 
 def test_flags_straight_line_single_assignment_alias() -> None:
-    assert len(
-        _check("""
+    assert (
+        len(
+            _check("""
         from psycopg.errors import UniqueViolation
         try:
             save()
@@ -179,7 +189,9 @@ def test_flags_straight_line_single_assignment_alias() -> None:
             if CONSTRAINT in message:
                 raise Duplicate from exc
     """)
-    ) == 1
+        )
+        == 1
+    )
 
 
 @pytest.mark.parametrize(
@@ -368,8 +380,9 @@ def test_accepts_structured_constraint_fields(field: str) -> None:
 
 
 def test_nested_function_parameter_named_str_does_not_hide_builtin() -> None:
-    assert len(
-        _check("""
+    assert (
+        len(
+            _check("""
         from psycopg.errors import UniqueViolation
         try:
             save()
@@ -379,7 +392,9 @@ def test_nested_function_parameter_named_str_does_not_hide_builtin() -> None:
             if CONSTRAINT in str(exc):
                 raise
     """)
-    ) == 1
+        )
+        == 1
+    )
 
 
 def test_enclosing_parameter_named_str_hides_builtin() -> None:

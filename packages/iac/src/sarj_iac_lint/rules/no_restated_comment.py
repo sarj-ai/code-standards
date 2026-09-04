@@ -304,8 +304,8 @@ def _declaration_subject(code: str) -> str | None:
     if (block := _BLOCK_RE.match(code)) is not None:
         labels = [match.group(0).strip('"') for match in _WORD_RE.finditer(block["labels"])]
         if block["kind"] in {"resource", "data"} and len(labels) >= _RESOURCE_LABEL_COUNT:
-            return f'{block["kind"]} {labels[0]}.{labels[1]}'
-        return f'{block["kind"]} {labels[-1]}' if labels else block["kind"]
+            return f"{block['kind']} {labels[0]}.{labels[1]}"
+        return f"{block['kind']} {labels[-1]}" if labels else block["kind"]
     return None
 
 

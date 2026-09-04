@@ -251,9 +251,7 @@ class Standards:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
             adopted = (
-                load_manifest(self.root)
-                if normalized_mode not in {AnalysisMode.RAW, AnalysisMode.CORPUS}
-                else None
+                load_manifest(self.root) if normalized_mode not in {AnalysisMode.RAW, AnalysisMode.CORPUS} else None
             )
             selection_policy = (
                 Policy.corpus_from_manifest(self.root, adopted)

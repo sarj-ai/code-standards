@@ -164,9 +164,7 @@ def _module_import_index(tree: ast.Module) -> ImportIndex:
             if regular_names:
                 body.append(ast.ImportFrom(module=statement.module, names=regular_names, level=statement.level))
             body.extend(
-                ast.Import(
-                    names=[ast.alias(name=f"{statement.module}.errors", asname=alias.asname or alias.name)]
-                )
+                ast.Import(names=[ast.alias(name=f"{statement.module}.errors", asname=alias.asname or alias.name)])
                 for alias in statement.names
                 if alias.name == "errors"
             )
@@ -311,7 +309,9 @@ def _classification_matches(statements: list[ast.stmt], context: _HandlerContext
 
 
 def _branch_translates(statements: list[ast.stmt]) -> bool:
-    return any(isinstance(node, (ast.Raise, ast.Return)) for statement in statements for node in _walk_same_scope(statement))
+    return any(
+        isinstance(node, (ast.Raise, ast.Return)) for statement in statements for node in _walk_same_scope(statement)
+    )
 
 
 def _message_matches(node: ast.expr, context: _HandlerContext) -> list[ast.expr]:

@@ -181,9 +181,7 @@ class InvalidPydanticFieldDefault(Rule):
                 files=(
                     ExampleFile.python(
                         "app/models.py",
-                        "from pydantic import BaseModel\n\n"
-                        "class User(BaseModel):\n"
-                        "    display_name: str = None\n",
+                        "from pydantic import BaseModel\n\nclass User(BaseModel):\n    display_name: str = None\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/models.py"),
@@ -231,11 +229,7 @@ class InvalidPydanticFieldDefault(Rule):
                 if statement.target.id.startswith("_"):
                     continue
                 contract = _annotation_contract(path, tree, statement.annotation)
-                if (
-                    contract.transforms_default
-                    or transformers.all_fields
-                    or statement.target.id in transformers.fields
-                ):
+                if contract.transforms_default or transformers.all_fields or statement.target.id in transformers.fields:
                     continue
                 assignment_field = (
                     statement.value
@@ -276,10 +270,7 @@ def _is_direct_base_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
         return False
     return all(
         imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel")
-        or (
-            isinstance(base, ast.Subscript)
-            and imports.resolves(base.value, sources=_TYPING_SOURCES, symbol="Generic")
-        )
+        or (isinstance(base, ast.Subscript) and imports.resolves(base.value, sources=_TYPING_SOURCES, symbol="Generic"))
         for base in node.bases
     )
 

@@ -16,7 +16,9 @@ _PUBLIC_EXAMPLES = PydanticAtBoundaries.public_examples()
 
 
 def _check(source: str, path: str = "svc.py") -> list[Diagnostic]:
-    typed_source = f"{source}\nfrom typing import Annotated, Any, Dict, List, Optional, Union, overload\nimport typing\n"
+    typed_source = (
+        f"{source}\nfrom typing import Annotated, Any, Dict, List, Optional, Union, overload\nimport typing\n"
+    )
     return PydanticAtBoundaries().check(Path(path), typed_source)
 
 
@@ -983,12 +985,7 @@ def test_mutation_through_alias_makes_shape_open() -> None:
 
 
 def test_harmless_alias_preserves_fixed_record_evidence() -> None:
-    source = (
-        "def payload() -> dict[str, Any]:\n"
-        "    record = {'id': 1}\n"
-        "    alias = record\n"
-        "    return alias\n"
-    )
+    source = "def payload() -> dict[str, Any]:\n    record = {'id': 1}\n    alias = record\n    return alias\n"
 
     assert len(_check(source)) == 1
 

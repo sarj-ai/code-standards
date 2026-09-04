@@ -32,8 +32,8 @@ _PYDANTIC_VALIDATOR_SOURCES = frozenset({"pydantic", "pydantic.functional_valida
 _METACLASS_NEW_CONTRACT_PARAMETER_COUNT = 3
 _TRANSPARENT_DECORATORS = frozenset(
     {
-    (frozenset({"abc"}), "abstractmethod"),
-    (frozenset({"typing", "typing_extensions"}), "override"),
+        (frozenset({"abc"}), "abstractmethod"),
+        (frozenset({"typing", "typing_extensions"}), "override"),
     }
 )
 
@@ -167,10 +167,7 @@ class PreferSelfTypeAnnotation(Rule):
                 files=(
                     ExampleFile.python(
                         "app/builder.py",
-                        "class Builder:\n"
-                        "    @classmethod\n"
-                        '    def create(cls) -> "Builder":\n'
-                        "        return cls()\n",
+                        'class Builder:\n    @classmethod\n    def create(cls) -> "Builder":\n        return cls()\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/builder.py"),
@@ -317,9 +314,7 @@ def _is_builtin(
     if symbol in mutated_builtins:
         return False
     return (
-        isinstance(node, ast.Name)
-        and node.id == symbol
-        and imports.builtin_is_unshadowed(symbol)
+        isinstance(node, ast.Name) and node.id == symbol and imports.builtin_is_unshadowed(symbol)
     ) or imports.resolves(node, sources=_BUILTINS, symbol=symbol)
 
 
@@ -428,9 +423,7 @@ def _is_final_class(node: ast.ClassDef, imports: ImportIndex) -> bool:
 
 
 def _is_pydantic_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
-    return any(
-        imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel") for base in node.bases
-    )
+    return any(imports.resolves(base, sources=_PYDANTIC_BASE_MODEL_SOURCES, symbol="BaseModel") for base in node.bases)
 
 
 def _metaclass_ids(
@@ -570,7 +563,11 @@ def _safe_module_assignment_aliases(tree: ast.Module) -> dict[str, ast.expr]:
             for target in statement.targets:
                 if isinstance(target, ast.Name):
                     candidates[target.id] = statement.value
-        elif isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value is not None:
+        elif (
+            isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
+            and statement.value is not None
+        ):
             candidates[statement.target.id] = statement.value
     return {name: value for name, value in candidates.items() if binding_counts.get(name) == 1}
 

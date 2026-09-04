@@ -544,9 +544,7 @@ def by_if(status: Status) -> None:
     diagnostics = _check(source)
 
     assert len(diagnostics) == 2
-    assert [(item.line, item.col) for item in diagnostics] == sorted(
-        (item.line, item.col) for item in diagnostics
-    )
+    assert [(item.line, item.col) for item in diagnostics] == sorted((item.line, item.col) for item in diagnostics)
 
 
 @pytest.mark.parametrize("source", ["", "   ", "# comment\n", "def f(:\n    pass"])

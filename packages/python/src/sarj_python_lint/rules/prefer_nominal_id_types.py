@@ -216,8 +216,7 @@ def _is_excluded_path(path: Path) -> bool:
 
 def _has_wildcard_import(tree: ast.Module) -> bool:
     return any(
-        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
-        for node in ast.walk(tree)
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
     )
 
 
@@ -265,8 +264,10 @@ def _name_parts(name: str) -> set[str]:
                 parts.append(current.lower())
                 current = ""
             continue
-        starts_word = character.isupper() and bool(current) and (
-            name[index - 1].islower() or (index + 1 < len(name) and name[index + 1].islower())
+        starts_word = (
+            character.isupper()
+            and bool(current)
+            and (name[index - 1].islower() or (index + 1 < len(name) and name[index + 1].islower()))
         )
         if starts_word:
             parts.append(current.lower())
@@ -298,9 +299,11 @@ def _boundary_roles(
         return [
             role
             for statement in node.body
-            if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
+            if isinstance(statement, ast.AnnAssign)
+            and isinstance(statement.target, ast.Name)
             and not _has_pydantic_wire_alias(statement, imports)
-            if (role := _role(statement.target.id, statement.annotation, imports, facts, allow_bare_id=True)) is not None
+            if (role := _role(statement.target.id, statement.annotation, imports, facts, allow_bare_id=True))
+            is not None
         ]
     return []
 
@@ -401,10 +404,7 @@ def _alias_assignment(statement: ast.stmt) -> tuple[str | None, ast.expr | None]
 
 
 def _is_new_type_call(value: ast.expr, imports: ImportIndex) -> TypeGuard[ast.Call]:
-    return (
-        isinstance(value, ast.Call)
-        and imports.resolves(value.func, sources=_TYPING_SOURCES, symbol="NewType")
-    )
+    return isinstance(value, ast.Call) and imports.resolves(value.func, sources=_TYPING_SOURCES, symbol="NewType")
 
 
 def _type_alias_type_value(value: ast.expr, imports: ImportIndex) -> ast.expr | None:

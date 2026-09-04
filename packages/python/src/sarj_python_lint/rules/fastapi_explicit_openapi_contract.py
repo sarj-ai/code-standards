@@ -430,9 +430,8 @@ def _check_return(
                 continue
             response_model = route.keywords.get("response_model")
             status = _status_code(route.keywords.get("status_code"), index) or HTTPStatus.OK
-            if (
-                _concrete_response_model(response_model, index)
-                or any(_documents_response_model(node, status, index) for node in _route_response_nodes(route))
+            if _concrete_response_model(response_model, index) or any(
+                _documents_response_model(node, status, index) for node in _route_response_nodes(route)
             ):
                 continue
             return [
