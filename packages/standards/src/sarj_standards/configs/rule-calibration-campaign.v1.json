@@ -570,7 +570,9 @@
       "task": "rule-audit/python/prefer-walrus-regex-match",
       "family": "python",
       "ruleId": "prefer-walrus-regex-match",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 23 focused cases and scanned 8,248 tracked local Python files plus a normalized 443-file Pygments, packaging, and pytest corpus. The original error rule reported 15 broad-fleet findings, all style candidates, and 10 popular-corpus findings, including two ambiguous long or multiline rewrites; adversarial probes reproduced false positives for unproven or shadowed regex receivers, finditer truthiness, use before compile, comments or gaps, and test or generated code. Post-change validation ran 38 focused cases and strict BasedPyright. The broad fleet retained 11 of 11 valid findings and the popular corpus retained eight of eight valid findings with zero scan errors; Bulbul retained four valid findings while Automations and Saqi retained none. A warm broad scan took 19.742 seconds versus the original 17.165 seconds.",
+      "outcome": "Retained the compatible selector because Python aliases are documentation-only and staged SARJ081 as a warning. The matcher now requires a proven re or regex module alias, a unique source-ordered compile binding, or a Pattern-annotated parameter; it no longer guesses receiver names or treats finditer as a match result. It requires physically adjacent single-line statements, preserves exact truthiness or None semantics, rejects rewrites over 100 columns, and excludes later use, comments, blank lines, rebindings, tests, and generated files. A lexical candidate gate limits scan cost. Pylint R6103 owns the broader optional transformation and this rule should be retired if that checker is adopted."
     },
     {
       "task": "rule-audit/python/prefer-walrus-stream-loop",
