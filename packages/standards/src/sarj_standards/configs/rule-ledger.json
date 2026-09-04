@@ -847,6 +847,13 @@
       "note": "Replace sarj-fixture-returns-bare-tuple with sarj-pytest-fixture-returns-bare-tuple before upgrading."
     },
     {
+      "id": "function-docstring-restates-declaration",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "redundant-docstring",
+      "note": "Replace sarj-function-docstring-restates-declaration with sarj-redundant-docstring before upgrading."
+    },
+    {
       "id": "get-delegates-to-get-many",
       "kind": "python",
       "status": "renamed",

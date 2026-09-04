@@ -126,7 +126,7 @@ def test_suppressing_specific_finding_preserves_unsuppressed_generic_twin(
     source = tmp_path / "test_service.py"
     source.write_text(
         "def test_returns_none_when_missing():\n"
-        '    """Test that it returns None when missing."""  # sarj-noqa: SARJ088\n'
+        '    """Test returns None when missing."""  # sarj-noqa: SARJ088\n'
         "    assert lookup() is None\n",
         encoding="utf-8",
     )

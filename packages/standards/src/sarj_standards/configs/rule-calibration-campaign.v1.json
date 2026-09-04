@@ -610,7 +610,9 @@
       "task": "rule-audit/python/redundant-docstring",
       "family": "python",
       "ruleId": "redundant-docstring",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews ran the original 87 focused cases and scanned 10,334 tracked Python paths. The original error rule produced 306 raw findings and 236 clone-normalized findings, including confirmed false positives from semantic qualifiers, abstract contracts, runtime docstring consumers, aliased decorators, inherited class APIs, nested class-scope leakage, and relational or selection prose. Post-change validation ran 94 focused Python, precedence, and severity cases plus the full 7,120-test Python suite with three expected xfails. A final scan of 10,336 tracked Python paths produced 58 findings, 44 after clone normalization, with no rule exceptions; sampled groups were credible restatements and two unrelated tracked paths were unreadable.",
+      "outcome": "Retained the compatible redundant-docstring selector, added function-docstring-restates-declaration as its precise alias, and staged SARJ050 as a warning with no autofix. The matcher now excludes decorated functions, methods under decorated or inherited classes, recognized in-file runtime docstring readers, generated files, and docstring-only bodies. It no longer borrows enclosing-class vocabulary, recognizes exact suppressions, tokenizes Unicode words and numbers, and ignores only articles plus function or method. Multi-parameter prose must include a distinguishing stem unique to every parameter, preventing one selected operand or a shared id, path, value, or user suffix from masquerading as full declaration restatement. Ruff D418 retains ownership of overload docstrings, while D402 does not cover this semantic signal."
     },
     {
       "task": "rule-audit/python/redundant-module-docstring",
