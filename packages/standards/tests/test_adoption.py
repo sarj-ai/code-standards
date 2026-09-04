@@ -1856,6 +1856,22 @@ def test_doctor_warns_when_the_checkout_hook_is_not_installed(monkeypatch: pytes
     assert not [finding for finding in doctor.diagnose(consumer) if finding.id == "doctor.hooks.precommit-install"]
 
 
+def test_doctor_repair_installs_missing_precommit_and_commit_message_hooks(tmp_path: Path) -> None:
+    consumer = _python_repo(tmp_path / "consumer")
+    subprocess.run(("git", "init", "-q"), cwd=consumer, check=True, env={})
+    assert _cli("--root", str(consumer), "setup", "--no-install").returncode == 0
+
+    repaired = _cli("--root", str(consumer), "doctor", "--repair")
+
+    assert repaired.returncode == 0, repaired.stderr
+    findings = doctor.diagnose(consumer)
+    assert not [
+        finding
+        for finding in findings
+        if finding.id in {"doctor.hooks.precommit-install", "doctor.hooks.commit-message-install"}
+    ]
+
+
 def test_doctor_repair_converges_configuration_without_installing(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0

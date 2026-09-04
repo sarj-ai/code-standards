@@ -347,10 +347,15 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
             for finding in blockers:
                 print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
-        current_drift = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+        current_findings = doctor.diagnose(root)
+        current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
+        missing_hooks = not no_install and any(
+            finding.id in {"doctor.hooks.precommit-install", "doctor.hooks.commit-message-install"}
+            for finding in current_findings
+        )
         repair_status = (
             0
-            if not plan.changes and not current_drift
+            if not plan.changes and not current_drift and not missing_hooks
             else upgrade.apply(
                 plan,
                 install=not no_install,
