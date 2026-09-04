@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "7.9.21"
+version = "7.9.22"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -27,7 +27,7 @@ dependencies = [
   "semgrep==1.175.0",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
   "sarj-iac-lint==0.15.2",
-  "sarj-python-lint==0.80.12",
+  "sarj-python-lint==0.80.13",
   "sarj-sql-lint==0.16.5",
 ]
 
