@@ -709,10 +709,12 @@
       "state": "pending"
     },
     {
-      "task": "rule-audit/python/store-insert-requires-on-conflict",
+      "task": "rule-audit/python/replay-contract-insert-requires-duplicate-policy",
       "family": "python",
-      "ruleId": "store-insert-requires-on-conflict",
-      "state": "pending"
+      "ruleId": "replay-contract-insert-requires-duplicate-policy",
+      "state": "complete",
+      "evidence": "Three independent reviewers reproduced false positives from ownerless constants, docstrings, error prose, unused SQL-shaped bindings, SQL-looking parameter values, unrelated statements, generic NOT EXISTS clauses, incomplete conflict syntax, broad replay-name inference, and dynamic value names containing conflict-like words. The final exact scan covered 135 repositories or worktrees, 12,831 tracked Python files, and 118,830,769 bytes in 6.5052 seconds: three raw findings collapsed to one content-distinct finding, classified actionable with zero false positives, zero uncertain cases, and zero read or detector errors. The sole result is an enqueue write with no uniqueness key or duplicate policy. Final validation covered 70 focused cases, 202 shared SQL-helper cases, Ruff, strict Pyright, executable public examples, generated projections, and adversarial probes for stable bindings, query argument position, runtime targets, quoted identifiers, and dynamic conflict fragments.",
+      "outcome": "Renamed SARJ018 to replay-contract-insert-requires-duplicate-policy and retained store-insert-requires-on-conflict plus the longer replay-named spelling as migration aliases. The rule remains warning-only with no autofix. It now analyzes only literal or partly dynamic INSERT templates that flow directly or through a stable local binding to a recognized query argument inside a narrowly replay-named store callable. Conflict behavior is checked per statement and requires an explicit PostgreSQL or MySQL action, a safe SQLite form, or a same-target NOT EXISTS guard. Generated files, module constants, prose, non-query arguments, dead or rebound locals, nested-scope consumers, ambiguous method names, and recognizable dynamic policy composition are excluded. The UI now describes duplicate behavior accurately and provides executable callable-level examples."
     },
     {
       "task": "rule-audit/python/test-phase-label-comment",

@@ -20,7 +20,10 @@
   "SARJ015": "prefer-struct-over-namedtuple",
   "SARJ016": "no-comment-cruft",
   "SARJ017": "no-fstring-in-log",
-  "SARJ018": "store-insert-requires-on-conflict",
+  "SARJ018": [
+    "store-insert-requires-on-conflict",
+    "replay-contract-insert-requires-duplicate-policy"
+  ],
   "SARJ019": "no-query-with-many-joins",
   "SARJ020": [
     "no-aggregation-in-store-query",

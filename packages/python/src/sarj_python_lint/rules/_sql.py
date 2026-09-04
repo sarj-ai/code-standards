@@ -39,12 +39,28 @@ def sql_string_value(node: ast.expr, *, interpolation_placeholder: str = " ") ->
     return None
 
 
-def strip_sql_noise(text: str, *, mask_dollar_quotes: bool = True) -> str:
+def strip_sql_noise(
+    text: str,
+    *,
+    mask_dollar_quotes: bool = True,
+    mask_double_quotes: bool = True,
+) -> str:
     out = list(text)
     n = len(text)
     i = 0
     while i < n:
         ch = text[i]
+        if ch == '"' and not mask_double_quotes:
+            i += 1
+            while i < n:
+                if text[i] == '"':
+                    i += 1
+                    if i < n and text[i] == '"':
+                        i += 1
+                        continue
+                    break
+                i += 1
+            continue
         if ch in {"'", '"'}:
             out[i] = " "
             i += 1

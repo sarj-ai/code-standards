@@ -99,6 +99,7 @@
       "redundant-module-docstring",
       "repeated-kwarg-heavy-call-in-test",
       "repeated-static-call-cases",
+      "replay-contract-insert-requires-duplicate-policy",
       "require-keyword-only-swap-prone-params",
       "require-nodecode-for-splitting-settings-field",
       "require-port-for-service",
@@ -107,7 +108,6 @@
       "restated-test-docstring",
       "stepdown",
       "store-get-delegates-to-bulk-read",
-      "store-insert-requires-on-conflict",
       "test-phase-label-comment",
       "timestamp-order-requires-tiebreaker",
       "trailing-value-narration",
@@ -1169,6 +1169,13 @@
       "note": "Replace sarj-repeated-static-call-assertions with sarj-repeated-static-call-cases before upgrading."
     },
     {
+      "id": "replay-named-store-insert-requires-duplicate-policy",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "replay-contract-insert-requires-duplicate-policy",
+      "note": "Replace sarj-replay-named-store-insert-requires-duplicate-policy with sarj-replay-contract-insert-requires-duplicate-policy before upgrading."
+    },
+    {
       "id": "require-validated-row-factory",
       "kind": "python",
       "status": "renamed",
@@ -1202,6 +1209,13 @@
       "status": "renamed",
       "replacement": "no-psycopg-execution-outside-injected-owner",
       "note": "Replace sarj-sql-requires-injected-pool-owner with sarj-no-psycopg-execution-outside-injected-owner before upgrading."
+    },
+    {
+      "id": "store-insert-requires-on-conflict",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "replay-contract-insert-requires-duplicate-policy",
+      "note": "Replace sarj-store-insert-requires-on-conflict with sarj-replay-contract-insert-requires-duplicate-policy before upgrading."
     },
     {
       "id": "tautological-mock-assertion",
