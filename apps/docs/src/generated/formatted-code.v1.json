@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a577b2d5de42c6c942211ffd656cd5fe7e716a2ed009a78da8bf3425fa60b22c",
-  "cliSha256": "db9ce6efef4e73a05313c8db2c81312babb5e70a390b78b94892b016e37fd081",
+  "catalogSha256": "0b9ac12cb4adced01495c9c2e618d2d242bef0b60d460ac4faf8bcb210d05dd5",
+  "cliSha256": "ed6d47a3d9c64230f0ad1daa855dc412addda3c51916071a99798fa0becfb3ef",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3329,7 +3329,7 @@
     "iac:no-comment-cruft": {
       "examples": [
         {
-          "expectedCount": 5,
+          "expectedCount": 1,
           "files": [
             {
               "path": "main.tf",
@@ -3341,7 +3341,37 @@
           "id": "commented-resource",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Disabled Terraform resource"
+          "title": "Disabled HCL resource"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "# ==== Networking ====\nmodule \"networking\" {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "decorative-divider",
+          "outcome": "reject",
+          "scenarioId": "divider",
+          "title": "Decorative divider around a section title"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "# Networking is isolated to preserve the production trust boundary.\nmodule \"networking\" {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "descriptive-section-comment",
+          "outcome": "accept",
+          "scenarioId": "divider",
+          "title": "Section comment that explains a constraint"
         },
         {
           "expectedCount": 0,
@@ -3368,15 +3398,76 @@
           "files": [
             {
               "path": "env/dev/terraform.tfvars",
+              "source": "text_llm_enable_thinking = true\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"text_llm_enable_thinking\" {\n  type    = bool\n  default = true\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "env/dev/terraform.tfvars",
+          "id": "assignment-equal-to-declared-default",
+          "outcome": "reject",
+          "scenarioId": "equals-default",
+          "title": "Assignment restating the variable's declared default"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "env/dev/terraform.tfvars",
+              "source": "region      = \"me-central2\"\ngke_enabled = true\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n}\nvariable \"gke_enabled\" {\n  type = bool\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "env/dev/terraform.tfvars",
+          "id": "declared-assignment",
+          "outcome": "accept",
+          "scenarioId": "orphaned-key",
+          "title": "Every tfvars assignment has a parsed root declaration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "env/dev/terraform.tfvars",
+              "source": "text_llm_enable_thinking = true\n"
+            },
+            {
+              "path": "env/prod/terraform.tfvars",
+              "source": "text_llm_enable_thinking = false\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"text_llm_enable_thinking\" {\n  type    = bool\n  default = true\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "env/dev/terraform.tfvars",
+          "id": "default-is-an-active-environment-choice",
+          "outcome": "accept",
+          "scenarioId": "equals-default",
+          "title": "A sibling environment overrides the declared default"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "env/dev/terraform.tfvars",
               "source": "pagerduty_enabled = false\n"
             },
             {
               "path": "env/prod/terraform.tfvars",
-              "source": "pagerduty_enabled = \"false\"\n"
+              "source": "pagerduty_enabled = false\n"
             },
             {
               "path": "variables.tf",
-              "source": "variable \"pagerduty_enabled\" {\n  type    = string\n  default = \"true\"\n}\n"
+              "source": "variable \"pagerduty_enabled\" {\n  type    = bool\n  default = true\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3408,6 +3499,25 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Data input carrying a real per-environment difference"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "env/dev/terraform.tfvars",
+              "source": "region      = \"me-central2\"\ngke_enabled = true\n"
+            },
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "env/dev/terraform.tfvars",
+          "id": "orphaned-assignment-after-variable-deletion",
+          "outcome": "reject",
+          "scenarioId": "orphaned-key",
+          "title": "Assignment surviving the deletion of its variable"
         },
         {
           "expectedCount": 0,
@@ -3491,6 +3601,36 @@
           "title": "Resource gated on the environment name"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  redis_tier = var.redis_tiers_by_environment[var.environment]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "environment-keyed-input-map",
+          "outcome": "accept",
+          "scenarioId": "data-selection",
+          "title": "Externally supplied map selects a value without hard-coded branches"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  redis_tier = var.environment == \"prod\" ? \"STANDARD_HA\" : \"BASIC\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "hard-coded-environment-choice",
+          "outcome": "reject",
+          "scenarioId": "data-selection",
+          "title": "Code branches on a hard-coded environment label"
+        },
+        {
           "expectedCount": 2,
           "files": [
             {
@@ -3560,30 +3700,30 @@
           "files": [
             {
               "path": "tests/routing.tftest.hcl",
-              "source": "mock_provider \"aws\" {}\n\nrun \"routing\" {\n  command = plan\n}\n"
+              "source": "override_resource {\n  target = aws_s3_bucket.main\n  values = { arn = \"fixture-arn\" }\n}\n\nrun \"routing\" {\n  assert {\n    condition     = aws_s3_bucket.main.arn == \"fixture-arn\"\n    error_message = \"ARN mismatch\"\n  }\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/routing.tftest.hcl",
-          "id": "mocked-provider-oracle",
+          "id": "direct-override-reassertion",
           "outcome": "reject",
           "scenarioId": "terraform-provider-evidence",
-          "title": "Repository-authored provider values are not infrastructure evidence"
+          "title": "Assertion repeats its own resource override"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "tests/routing.tftest.hcl",
-              "source": "provider \"aws\" {\n  region = \"us-east-1\"\n}\n\nrun \"routing\" {\n  command = plan\n\n  assert {\n    condition     = aws_s3_bucket.main.bucket == var.bucket_name\n    error_message = \"bucket name drifted\"\n  }\n}\n"
+              "source": "mock_provider \"aws\" {}\n\nrun \"routing\" {\n  command = plan\n\n  assert {\n    condition     = aws_s3_bucket.main.bucket == var.bucket_name\n    error_message = \"bucket configuration drifted\"\n  }\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/routing.tftest.hcl",
-          "id": "real-provider-contract",
+          "id": "mock-backed-configuration-test",
           "outcome": "accept",
           "scenarioId": "terraform-provider-evidence",
-          "title": "A Terraform test may validate a real plan or apply"
+          "title": "Empty mock provider validates configured plan behavior"
         }
       ],
       "optionsSchemaSource": null
@@ -3603,7 +3743,7 @@
           "id": "attribute-restatement",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Comment repeats an attribute name and value"
+          "title": "Comment merely narrates an assignment"
         },
         {
           "expectedCount": 0,
@@ -3619,6 +3759,21 @@
           "outcome": "accept",
           "scenarioId": "generated-file",
           "title": "Generated HCL is owned by its generator"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "# Service accounts\napi_service_account_email    = module.iam.api_email\nworker_service_account_email = module.iam.worker_email\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "group-heading",
+          "outcome": "accept",
+          "scenarioId": "sibling-group",
+          "title": "Comment labels a group of sibling attributes"
         },
         {
           "expectedCount": 1,
@@ -3649,6 +3804,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Comment records a provider constraint"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "# Service account\nservice_account_email = module.iam.api_email\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "single-declaration-label",
+          "outcome": "reject",
+          "scenarioId": "sibling-group",
+          "title": "Comment repeats one declaration label"
         }
       ],
       "optionsSchemaSource": null
@@ -3660,30 +3830,30 @@
           "files": [
             {
               "path": "database.tf",
-              "source": "resource \"google_sql_database_instance\" \"main\" {\n  name                = \"prod\"\n  deletion_protection = true\n}\n"
+              "source": "resource \"google_sql_database\" \"app\" {\n  name            = \"app\"\n  instance        = google_sql_database_instance.main.name\n  deletion_policy = \"PREVENT\"\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "database.tf",
-          "id": "protected-database",
+          "id": "protected-child-database",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Stateful database with provider deletion protection"
+          "title": "Cloud SQL child database uses its provider guard"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "database.tf",
-              "source": "resource \"google_sql_database_instance\" \"main\" {\n  name = \"prod\"\n}\n"
+              "source": "resource \"google_sql_database\" \"app\" {\n  name     = \"app\"\n  instance = google_sql_database_instance.main.name\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "database.tf",
-          "id": "unguarded-database",
+          "id": "unguarded-child-database",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Stateful database without a deletion guard"
+          "title": "Cloud SQL child database uses its deletable default"
         }
       ],
       "optionsSchemaSource": null
@@ -3695,7 +3865,37 @@
           "files": [
             {
               "path": "storage.tf",
-              "source": "resource \"google_storage_bucket\" \"records\" {\n  name = \"records\"\n  lifecycle {\n    prevent_destroy = true\n  }\n}\n"
+              "source": "resource \"google_storage_bucket\" \"records\" {\n  name            = \"records\"\n  force_destroy   = true\n  deletion_policy = \"PREVENT\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage.tf",
+          "id": "destructive-provider-guarded-bucket",
+          "outcome": "accept",
+          "scenarioId": "destructive-setting",
+          "title": "Provider policy still blocks a force-enabled deletion"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "storage.tf",
+              "source": "resource \"google_storage_bucket\" \"records\" {\n  name          = \"records\"\n  force_destroy = true\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "storage.tf",
+          "id": "destructive-unguarded-bucket",
+          "outcome": "reject",
+          "scenarioId": "destructive-setting",
+          "title": "Force deletion is not a disposable-resource declaration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "storage.tf",
+              "source": "resource \"google_storage_bucket\" \"records\" {\n  name            = \"records\"\n  deletion_policy = \"PREVENT\"\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3703,7 +3903,7 @@
           "id": "protected-bucket",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Irreplaceable bucket protected at plan time"
+          "title": "Durable-data bucket protected by provider policy"
         },
         {
           "expectedCount": 1,
@@ -3718,7 +3918,7 @@
           "id": "unguarded-bucket",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Irreplaceable bucket without a deletion guard"
+          "title": "Durable-data bucket without a deletion guard"
         }
       ],
       "optionsSchemaSource": null
@@ -3738,7 +3938,7 @@
           "id": "non-strict-defect-pin",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Fixed defect would pass silently"
+          "title": "Unexpected pass does not fail the suite"
         },
         {
           "expectedCount": 0,
@@ -3753,7 +3953,7 @@
           "id": "strict-defect-pin",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Fixed defect fails loudly"
+          "title": "Unexpected pass fails the suite"
         }
       ],
       "optionsSchemaSource": null
@@ -3765,7 +3965,7 @@
           "files": [
             {
               "path": "app/widgets.py",
-              "source": "def count_widgets(tenant_id: str) -> int:\n    \"\"\"Count active widgets.\"\"\"\n    return 0\n"
+              "source": "def set_timeout(timeout_ms: int) -> None:\n    \"\"\"Configure request handling.\n\n    Args:\n        timeout_ms: Request deadline in milliseconds; zero disables retries.\n    \"\"\"\n"
             }
           ],
           "fixedFiles": [],
@@ -3773,7 +3973,7 @@
           "id": "argument-documents-unit",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Redundant argument section removed"
+          "title": "Unit and sentinel semantics add a contract"
         },
         {
           "expectedCount": 1,
@@ -3815,7 +4015,7 @@
           "files": [
             {
               "path": "app/lines.py",
-              "source": "def get_line_length(line: list[str]) -> int:\n    \"\"\"Measure a rendered line.\n\n    Returns:\n        int: The length of the line.\n    \"\"\"\n    return len(line)\n"
+              "source": "def get_line_length(line: list[str]) -> int:\n    \"\"\"Measure a rendered line.\n\n    Returns:\n        The line length.\n    \"\"\"\n    return len(line)\n"
             }
           ],
           "fixedFiles": [],
@@ -3884,16 +4084,16 @@
           "expectedCount": 0,
           "files": [
             {
-              "path": "tests/fakes/payment.py",
-              "source": "class FakePaymentGateway:\n    async def charge(self, amount: int) -> None:\n        pass\n"
+              "path": "tests/test_checkout.py",
+              "source": "def test_decline_retries_once():\n    class FakePaymentGateway:\n        async def charge(self, amount: int) -> None:\n            raise Declined()\n\n    assert retries(FakePaymentGateway()) == 1\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "tests/fakes/payment.py",
-          "id": "shared-fake-service",
+          "focusPath": "tests/test_checkout.py",
+          "id": "scenario-local-fake",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "A shared support module owns the fake"
+          "title": "A nested double is visibly coupled to one scenario"
         }
       ],
       "optionsSchemaSource": null
@@ -3929,6 +4129,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Visible operation without an explicit success status"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/users\", status_code=200)\nasync def read_users() -> dict:\n    return {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "schema-erasing-response",
+          "outcome": "reject",
+          "scenarioId": "schema-integrity",
+          "title": "A bare mapping erases the generated response schema"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/users\", status_code=200)\nasync def read_users() -> list[UserResponse]:\n    return []\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "typed-response-model",
+          "outcome": "accept",
+          "scenarioId": "schema-integrity",
+          "title": "A named response type preserves a concrete schema"
         }
       ],
       "optionsSchemaSource": null
@@ -3940,7 +4170,7 @@
           "files": [
             {
               "path": "tests/test_policy.py",
-              "source": "def test_policy():\n    plan = json.loads(Path(\"plan.json\").read_text())\n    assert verify(plan) == []\n"
+              "source": "def test_policy(rendered_plan_json: str):\n    plan = json.loads(rendered_plan_json)\n    changes = plan[\"resource_changes\"]\n    assert changes[0][\"change\"][\"actions\"] == [\"create\"]\n"
             }
           ],
           "fixedFiles": [],
@@ -3982,7 +4212,7 @@
           "focusPath": "app/models.py",
           "id": "default-satisfies-lower-bound",
           "outcome": "accept",
-          "scenarioId": "primary",
+          "scenarioId": "field-bound",
           "title": "Default satisfies the declared field bounds"
         },
         {
@@ -3997,8 +4227,38 @@
           "focusPath": "app/models.py",
           "id": "default-violates-lower-bound",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "field-bound",
           "title": "Default is outside the declared field bounds"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass User(BaseModel):\n    display_name: str = None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "non-null-field-has-null-default",
+          "outcome": "reject",
+          "scenarioId": "nullability",
+          "title": "A non-null field cannot default to None"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass User(BaseModel):\n    display_name: str | None = None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "nullable-field-has-null-default",
+          "outcome": "accept",
+          "scenarioId": "nullability",
+          "title": "Declare None when it is an allowed default"
         }
       ],
       "optionsSchemaSource": null
@@ -4010,15 +4270,15 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "from unittest.mock import Mock\n\n\ndef test_service():\n    client = Mock(spec=Client)\n    client.send()\n"
+              "source": "from unittest.mock import create_autospec\n\n\ndef test_service():\n    client = create_autospec(Client, instance=True, spec_set=True)\n    client.send()\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/test_service.py",
           "id": "mock-with-spec",
           "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Mock follows the collaborator contract"
+          "scenarioId": "constructor",
+          "title": "Autospecced mock follows attributes and signatures"
         },
         {
           "expectedCount": 1,
@@ -4032,8 +4292,38 @@
           "focusPath": "tests/test_service.py",
           "id": "mock-without-contract",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "constructor",
           "title": "Mock accepts any attribute"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_service.py",
+              "source": "from unittest.mock import patch\n\n\ndef test_service():\n    with patch(\"app.client.Client.send\", autospec=True) as send:\n        run_service()\n        send.assert_called_once()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "patch-with-autospec",
+          "outcome": "accept",
+          "scenarioId": "patch",
+          "title": "Patch preserves the callable contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_service.py",
+              "source": "from unittest.mock import patch\n\n\ndef test_service():\n    with patch(\"app.client.Client.send\") as send:\n        run_service()\n        send.assert_called_once()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "patch-without-contract",
+          "outcome": "reject",
+          "scenarioId": "patch",
+          "title": "Patch generates an unrestricted replacement"
         }
       ],
       "optionsSchemaSource": null
@@ -4045,7 +4335,7 @@
           "files": [
             {
               "path": "tests/test_route.py",
-              "source": "def test_invalid_payload(client):\n    response = client.post(\"/items\", json={})\n    assert response.status_code == 422\n"
+              "source": "def test_invalid_payload(client):\n    response = client.post(\"/items\", json={})\n    assert response.status_code == 422\n    assert response.json()[\"detail\"]\n"
             }
           ],
           "fixedFiles": [],
@@ -4079,31 +4369,31 @@
           "expectedCount": 0,
           "files": [
             {
-              "path": "app/call_store.py",
-              "source": "QUERY = \"SELECT id FROM call ORDER BY created_at LIMIT 50\"\n"
+              "path": "app/account_store.py",
+              "source": "import psycopg\n\nQUERY = \"SELECT SUM(amount) FROM ledger WHERE account_id = %s FOR UPDATE\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/call_store.py",
-          "id": "bounded-postgres-query",
+          "focusPath": "app/account_store.py",
+          "id": "bounded-transactional-aggregate",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Postgres store query reads bounded rows"
+          "title": "PostgreSQL preserves a bounded transactional invariant"
         },
         {
           "expectedCount": 1,
           "files": [
             {
-              "path": "app/call_store.py",
-              "source": "QUERY = \"SELECT SUM(amount) FROM call\"\n"
+              "path": "app/event_store.py",
+              "source": "import psycopg\n\nQUERY = \"SELECT DATE_TRUNC('day', occurred_at), COUNT(*), AVG(latency_ms) FROM event GROUP BY 1\"\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/call_store.py",
-          "id": "postgres-aggregate-query",
+          "focusPath": "app/event_store.py",
+          "id": "postgres-reporting-rollup",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Postgres store query performs aggregation"
+          "title": "PostgreSQL computes a time-series reporting rollup"
         }
       ],
       "optionsSchemaSource": null
@@ -4200,7 +4490,7 @@
           "files": [
             {
               "path": "app/store.py",
-              "source": "class Store:\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n\n\nclass MemoryStore(Store):\n    def get(self, key: str) -> str:\n        return key\n"
+              "source": "class Store:\n    def get(self, key: str) -> str:\n        \"\"\"Get a value by key.\"\"\"\n        return key\n\n\nclass MemoryStore(Store):\n    def get(self, key: str) -> str:\n        \"\"\"Read the process-local cache before the base backend.\"\"\"\n        return key\n"
             }
           ],
           "fixedFiles": [],
@@ -4208,7 +4498,7 @@
           "id": "override-specific-docstring",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Override relies on the base contract"
+          "title": "Override documents its implementation-specific behavior"
         }
       ],
       "optionsSchemaSource": null
@@ -4244,6 +4534,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Credentials allowed for every origin"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-docstring-type-restatement": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "def decode(payload: str) -> dict[str, object]:\n    \"\"\"Decode the payload.\n\n    Args:\n        payload: UTF-8 JSON; duplicate keys are rejected.\n    \"\"\"\n    return {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "behavioral-parameter-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Argument section records behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "def decode(payload: str) -> dict[str, object]:\n    \"\"\"Decode the payload.\n\n    Args:\n        payload (str): UTF-8 JSON; duplicate keys are rejected.\n    \"\"\"\n    return {}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "parameter-type-restatement",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Remove only the repeated type label"
         }
       ],
       "optionsSchemaSource": null
@@ -4565,76 +4890,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:no-isinstance-union-chain": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/events.py",
-              "source": "class Created: ...\n\n\nclass Deleted: ...\n\n\ndef name(event):\n    if isinstance(event, Created):\n        return \"created\"\n    elif isinstance(event, Deleted):\n        return \"deleted\"\n    else:\n        raise AssertionError\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/events.py",
-          "id": "local-union-isinstance-chain",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Closed local union dispatched with isinstance"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/events.py",
-              "source": "from typing import assert_never\n\n\nclass Created: ...\n\n\nclass Deleted: ...\n\n\ndef name(event):\n    match event:\n        case Created():\n            return \"created\"\n        case Deleted():\n            return \"deleted\"\n        case unreachable:\n            assert_never(unreachable)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/events.py",
-          "id": "local-union-match",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Closed local union dispatched with match"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-long-comment": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app.py",
-              "source": "\"\"\"One fact. Two facts. Three facts. Four facts.\n\nFive facts. Six facts. Seven facts. Eight facts.\n\"\"\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app.py",
-          "id": "structured-documentation",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Long documentation split into paragraphs"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app.py",
-              "source": "\"\"\"One fact. Two facts. Three facts. Four facts. Five facts. Six facts. Seven facts. Eight facts.\"\"\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app.py",
-          "id": "unstructured-prose-wall",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Eight-sentence prose wall"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "python:no-nested-pydantic-field-validator": {
       "examples": [
         {
@@ -4650,7 +4905,7 @@
           "id": "validator-nested-in-config",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Validator accidentally belongs to Config"
+          "title": "Nested Config silently does not validate Settings.language"
         },
         {
           "expectedCount": 0,
@@ -4677,7 +4932,7 @@
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "QUERY = \"SELECT id FROM task WHERE id > :cursor ORDER BY id LIMIT :limit\"\n"
+              "source": "QUERY = \"SELECT id FROM task WHERE (created_at, id) < (:cursor_created_at, :cursor_id) ORDER BY created_at DESC, id DESC LIMIT :limit\"\n"
             }
           ],
           "fixedFiles": [],
@@ -4685,7 +4940,7 @@
           "id": "keyset-page-query",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Page selected after the last ordered key"
+          "title": "Page selected with a stable composite cursor"
         },
         {
           "expectedCount": 1,
@@ -4701,76 +4956,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Page selected with an offset"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-optional-tenant-predicate": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "def build(args):\n    conditions = []\n    if args.organization_id:\n        conditions.append(SQL(\"organization_id = %s\"))\n    return conditions\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "conditional-tenant-clause",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Tenant clause depends on an optional filter"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/store.py",
-              "source": "def build(args):\n    conditions = [SQL(\"organization_id = %s\")]\n    return conditions\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/store.py",
-          "id": "required-tenant-clause",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Tenant clause is unconditional"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-query-with-many-joins": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/task_store.py",
-              "source": "QUERY = \"SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/task_store.py",
-          "id": "three-table-joins",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Query with three joins"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/task_store.py",
-              "source": "QUERY = \"SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/task_store.py",
-          "id": "two-table-joins",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Query with two joins"
         }
       ],
       "optionsSchemaSource": null
@@ -4845,49 +5030,14 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:no-redundant-literal-description": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/models.py",
-              "source": "from typing import Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Request(BaseModel):\n    kind: Literal[\"call\"] = Field(description=\"Must be 'call'\")\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/models.py",
-          "id": "literal-domain-restated",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Literal domain repeated in prose"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/models.py",
-              "source": "from typing import Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Request(BaseModel):\n    kind: Literal[\"call\"] = Field(description=\"Routes through the realtime provider.\")\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/models.py",
-          "id": "literal-rationale-described",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Description adds rationale"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-repeated-string-literal": {
+    "python:no-repeated-structured-string-literal": {
       "examples": [
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "queries.py",
-              "source": "def load():\n    return \"SELECT id, name, created_at FROM organization\"\n\n\ndef refresh():\n    return \"SELECT id, name, created_at FROM organization\"\n"
+              "source": "def load(cursor):\n    cursor.execute(\"SELECT id, name, created_at FROM organization\")\n\n\ndef refresh(cursor):\n    cursor.execute(\"SELECT id, name, created_at FROM organization\")\n"
             }
           ],
           "fixedFiles": [],
@@ -4902,7 +5052,7 @@
           "files": [
             {
               "path": "queries.py",
-              "source": "QUERY = \"SELECT id, name, created_at FROM organization\"\n\n\ndef load():\n    return QUERY\n\n\ndef refresh():\n    return QUERY\n"
+              "source": "_SELECT_ORGANIZATIONS = \"SELECT id, name, created_at FROM organization\"\n\n\ndef load(cursor):\n    cursor.execute(_SELECT_ORGANIZATIONS)\n\n\ndef refresh(cursor):\n    cursor.execute(_SELECT_ORGANIZATIONS)\n"
             }
           ],
           "fixedFiles": [],
@@ -4922,7 +5072,7 @@
           "files": [
             {
               "path": "tests/test_permissions.py",
-              "source": "def test_admin_can_delete():\n    user = make_user(\"admin\")\n    allowed = can_delete(user)\n    assert allowed\n\n\ndef test_editor_can_delete():\n    user = make_user(\"editor\")\n    allowed = can_delete(user)\n    assert allowed\n"
+              "source": "def test_rejects_blank_role():\n    role = parse_role(\"\")\n    result = validate(role)\n    assert result.invalid\n\n\ndef test_rejects_space_role():\n    role = parse_role(\" \")\n    result = validate(role)\n    assert result.invalid\n\n\ndef test_rejects_tab_role():\n    role = parse_role(\"\\t\")\n    result = validate(role)\n    assert result.invalid\n"
             }
           ],
           "fixedFiles": [],
@@ -4980,6 +5130,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-restated-closed-domain-description": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Request(BaseModel):\n    mode: Literal[\"realtime\", \"batch\"] = Field(\n        description=\"Use batch mode for work expected to exceed the request timeout.\"\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "closed-domain-behavior-described",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Description adds behavior not present in the schema"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel, Field\n\n\nclass Request(BaseModel):\n    mode: Literal[\"realtime\", \"batch\"] = Field(\n        description=\"Must be 'realtime' or 'batch'.\"\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "closed-domain-restated",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Closed domain repeated in prose"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-restated-comment": {
       "examples": [
         {
@@ -5022,7 +5207,7 @@
           "files": [
             {
               "path": "service.py",
-              "source": "token_prefix = token[:6]\nlogger.info(\"request\", token_prefix=token_prefix)\n"
+              "source": "logger.info(\n    \"request authenticated\", auth_method=\"bearer\", credential_present=token is not None\n)\n"
             }
           ],
           "fixedFiles": [],
@@ -5057,7 +5242,7 @@
           "files": [
             {
               "path": "app/call_store.py",
-              "source": "QUERY = \"SELECT id, status FROM call\"\n"
+              "source": "row = cursor.execute(\n    \"SELECT c.id, c.status FROM call AS c WHERE c.id = %s\",\n    (call_id,),\n).fetchone()\ncall = Call.model_validate(row)\n"
             }
           ],
           "fixedFiles": [],
@@ -5072,7 +5257,7 @@
           "files": [
             {
               "path": "app/call_store.py",
-              "source": "QUERY = \"SELECT * FROM call\"\n"
+              "source": "row = cursor.execute(\n    \"SELECT c.* FROM call AS c WHERE c.id = %s\",\n    (call_id,),\n).fetchone()\ncall = Call.model_validate(row)\n"
             }
           ],
           "fixedFiles": [],
@@ -5085,72 +5270,37 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:no-sentinel-return-on-except": {
+    "python:no-statically-truthy-assertion": {
       "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "service.py",
-              "source": "def load():\n    try:\n        return risky()\n    except Exception:\n        logger.warning(\"load failed\")\n        return None\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service.py",
-          "id": "observable-sentinel-return",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Exception logged before returning None"
-        },
         {
           "expectedCount": 1,
           "files": [
             {
-              "path": "service.py",
-              "source": "def load():\n    try:\n        return risky()\n    except Exception:\n        return None\n"
+              "path": "tests/test_service.py",
+              "source": "def test_service(response):\n    assert True, response.status_code == 200\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "service.py",
-          "id": "silent-sentinel-return",
+          "focusPath": "tests/test_service.py",
+          "id": "condition-in-message-slot",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Exception silently converted to None"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-stdlib-logging": {
-      "examples": [
+          "title": "The intended condition became an assertion message"
+        },
         {
           "expectedCount": 0,
           "files": [
             {
-              "path": "app/service.py",
-              "source": "from loguru import logger\n"
+              "path": "tests/test_service.py",
+              "source": "def test_service(response):\n    assert response.status_code == 200\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "app/service.py",
-          "id": "house-logger-import",
+          "focusPath": "tests/test_service.py",
+          "id": "runtime-value-assertion",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Application imports loguru"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/service.py",
-              "source": "import logging\n\nlogger = logging.getLogger(__name__)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/service.py",
-          "id": "stdlib-logging-import",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Application imports stdlib logging"
+          "title": "Assertion checks runtime output"
         }
       ],
       "optionsSchemaSource": null
@@ -5162,7 +5312,7 @@
           "files": [
             {
               "path": "app/render.py",
-              "source": "def render(items):\n    lines = []\n    for item in items:\n        lines.append(f\"{item}\\n\")\n    return \"\".join(lines)\n"
+              "source": "def render(items):\n    return \"\".join(str(item) for item in items)\n"
             }
           ],
           "fixedFiles": [],
@@ -5177,7 +5327,7 @@
           "files": [
             {
               "path": "app/render.py",
-              "source": "def render(items):\n    result = \"\"\n    for item in items:\n        result += f\"{item}\\n\"\n    return result\n"
+              "source": "def render(items):\n    result = \"\"\n    for item in items:\n        result += str(item)\n    return result\n"
             }
           ],
           "fixedFiles": [],
@@ -5186,76 +5336,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "String accumulator grown on every iteration"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-tautological-expect": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_service.py",
-              "source": "def test_service():\n    assert True\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_service.py",
-          "id": "literal-only-assertion",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Assertion always passes"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_service.py",
-              "source": "def test_service(result):\n    assert result == 1\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_service.py",
-          "id": "runtime-value-assertion",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Assertion checks runtime output"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-typed-doc-sections": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app.py",
-              "source": "def decode(value: str) -> dict[str, object]:\n    \"\"\"Decode the value.\n\n    Args:\n        value: Text to decode.\n    \"\"\"\n    return {}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app.py",
-          "id": "behavioral-parameter-contract",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Argument section records behavior"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app.py",
-              "source": "def decode(value: str) -> dict[str, object]:\n    \"\"\"Decode the value.\n\n    Args:\n        value (str): Text to decode.\n    \"\"\"\n    return {}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app.py",
-          "id": "parameter-type-restatement",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Parameter type repeats the annotation"
         }
       ],
       "optionsSchemaSource": null
@@ -5361,6 +5441,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Generic reason does not make the suppression auditable"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-whole-request-response-payload-in-log": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "logger.error(\n    \"provider failed\", request_id=request.id, response_status=response.status_code\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "response-metadata-logged",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Only explicit response metadata is logged"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "response_body = response.json()\nlogger.error(\"provider failed\", response_body=response_body)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "response-payload-logged",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Whole response payload passed to a logger"
         }
       ],
       "optionsSchemaSource": null
@@ -6452,11 +6567,15 @@
           "files": [
             {
               "path": "tests/conftest.py",
-              "source": "from typing import NamedTuple\n\nimport pytest\n\n\nclass Stores(NamedTuple):\n    org: object\n    user: object\n\n\n@pytest.fixture\ndef stores():\n    return Stores(org=org_store, user=user_store)\n"
+              "source": "import pytest\n\nfrom tests.support.stores import Stores\n\n\n@pytest.fixture\ndef stores() -> Stores:\n    return Stores(org=org_store, user=user_store)\n"
+            },
+            {
+              "path": "tests/support/stores.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Stores:\n    org: object\n    user: object\n"
             },
             {
               "path": "tests/test_users.py",
-              "source": "def test_user_lookup(stores):\n    assert stores.user.get(\"u1\")\n"
+              "source": "from tests.support.stores import Stores\n\n\ndef test_user_lookup(stores: Stores):\n    assert stores.user.get(\"u1\")\n"
             }
           ],
           "fixedFiles": [],
@@ -6600,7 +6719,7 @@
           "files": [
             {
               "path": "tests/test_call.py",
-              "source": "def build_style(**overrides):\n    defaults = dict(\n        color=\"red\",\n        bgcolor=\"black\",\n        bold=True,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    return Style(**(defaults | overrides))\n\n\ndef test_style():\n    style = build_style()\n    assert str(style)\n\n\ndef test_style_again():\n    other = build_style(color=\"blue\", bgcolor=\"white\", bold=False)\n    assert str(other)\n"
+              "source": "ORDER_DEFAULTS = {\n    \"organization_id\": \"org-1\",\n    \"actor_id\": \"user-1\",\n    \"currency\": \"SAR\",\n    \"locale\": \"ar-SA\",\n    \"channel\": \"web\",\n    \"notify_customer\": True,\n    \"retry_limit\": 3,\n}\n\n\ndef make_order(status):\n    return CreateOrderRequest(**ORDER_DEFAULTS, status=status)\n\n\ndef test_pending_order():\n    assert make_order(\"pending\").status == \"pending\"\n\n\ndef test_completed_order():\n    assert make_order(\"completed\").status == \"completed\"\n"
             }
           ],
           "fixedFiles": [],
@@ -6608,14 +6727,14 @@
           "id": "construction-through-builder",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Tests override builder defaults"
+          "title": "Tests keep incidental order defaults in one helper"
         },
         {
           "expectedCount": 2,
           "files": [
             {
               "path": "tests/test_call.py",
-              "source": "def test_style():\n    style = Style(\n        color=\"red\",\n        bgcolor=\"black\",\n        bold=True,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    assert str(style)\n\n\ndef test_style_again():\n    other = Style(\n        color=\"blue\",\n        bgcolor=\"white\",\n        bold=False,\n        dim=True,\n        italic=True,\n        underline=True,\n        blink=True,\n        blink2=True,\n        reverse=True,\n    )\n    assert str(other)\n"
+              "source": "def test_pending_order():\n    request = CreateOrderRequest(\n        organization_id=\"org-1\",\n        actor_id=\"user-1\",\n        currency=\"SAR\",\n        locale=\"ar-SA\",\n        channel=\"web\",\n        notify_customer=True,\n        retry_limit=3,\n        status=\"pending\",\n    )\n    assert request.status == \"pending\"\n\n\ndef test_completed_order():\n    request = CreateOrderRequest(\n        organization_id=\"org-1\",\n        actor_id=\"user-1\",\n        currency=\"SAR\",\n        locale=\"ar-SA\",\n        channel=\"web\",\n        notify_customer=True,\n        retry_limit=3,\n        status=\"completed\",\n    )\n    assert request.status == \"completed\"\n"
             }
           ],
           "fixedFiles": [],
@@ -6623,7 +6742,7 @@
           "id": "repeated-wide-construction",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Tests repeat every constructor argument"
+          "title": "Tests repeat incidental order setup"
         }
       ],
       "optionsSchemaSource": null
@@ -7020,7 +7139,7 @@
           "files": [
             {
               "path": "app/user_store.py",
-              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        return await self.query_one(user_id)\n\n    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n        return await self.query_many(user_ids)\n"
+              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        return await self.fetchrow(\"SELECT * FROM users WHERE id = %s\", user_id)\n\n    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n        return await self.fetch(\"SELECT * FROM users WHERE id = ANY(%s)\", user_ids)\n"
             }
           ],
           "fixedFiles": [],
@@ -7035,7 +7154,7 @@
           "files": [
             {
               "path": "app/user_store.py",
-              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        rows = await self.get_many([user_id])\n        return rows[0] if rows else None\n\n    async def get_many(self, user_ids: list[UserId]) -> list[User]:\n        return await self.query_many(user_ids)\n"
+              "source": "class UserStore:\n    async def get(self, user_id: UserId) -> User | None:\n        rows = await self.get_by_ids([user_id])\n        return rows.get(user_id)\n\n    async def get_by_ids(self, user_ids: list[UserId]) -> dict[UserId, User]:\n        return await self.query_many(user_ids)\n"
             }
           ],
           "fixedFiles": [],
@@ -7125,7 +7244,7 @@
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "QUERY = \"SELECT id, created_at FROM task ORDER BY created_at DESC, id DESC LIMIT 50\"\n"
+              "source": "QUERY = (\n    \"SELECT id, created_at FROM task \"\n    \"WHERE (created_at, id) < (%s, %s) \"\n    \"ORDER BY created_at DESC, id DESC LIMIT 50\"\n)\n"
             }
           ],
           "fixedFiles": [],
@@ -7140,7 +7259,7 @@
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "QUERY = \"SELECT id, created_at FROM task ORDER BY created_at DESC LIMIT 50\"\n"
+              "source": "QUERY = (\n    \"SELECT id, created_at FROM task \"\n    \"WHERE created_at < %s \"\n    \"ORDER BY created_at DESC LIMIT 50\"\n)\n"
             }
           ],
           "fixedFiles": [],
