@@ -28,14 +28,21 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 _OVERWRITTEN = """
+from unittest.mock import Mock
+
 def test_charge():
+    gateway = Mock()
+    other_mock = Mock()
     gateway.charge.return_value = 1
     gateway.charge.return_value = 2
     assert billing.charge(gateway) == 2
 """
 
 _ASSERTED_NOT_CALLED = """
+from unittest.mock import Mock
+
 def test_no_bearer_skips_lookup():
+    subject_service = Mock()
     subject_service.extract_api_key_user.return_value = None
     client.get("/mcp/test")
     subject_service.extract_api_key_user.assert_not_called()
@@ -64,7 +71,10 @@ def test_flags_adjacent_overwrite():
 
 def test_flags_overwritten_side_effect():
     src = """
+from unittest.mock import Mock
+
 def test_charge():
+    gateway = Mock()
     gateway.charge.side_effect = ValueError
     gateway.charge.side_effect = TypeError
     billing.charge(gateway)
@@ -74,7 +84,10 @@ def test_charge():
 
 def test_flags_overwrite_of_a_deep_path():
     src = """
+from unittest.mock import Mock
+
 def test_set():
+    self.backend = Mock()
     self.backend.one_client.kv.get.return_value = (1, {})
     self.backend.one_client.kv.get.return_value = (2, {})
     assert self.backend.get("k")
@@ -141,7 +154,10 @@ def test_charge():
 
 def test_flags_three_writes_as_two_findings():
     src = """
+from unittest.mock import Mock
+
 def test_charge():
+    gateway = Mock()
     gateway.charge.return_value = 1
     gateway.charge.return_value = 2
     gateway.charge.return_value = 3
@@ -152,13 +168,13 @@ def test_charge():
 
 def test_message_names_the_overwriting_line():
     [diag] = _check(_OVERWRITTEN)
-    assert "overwritten on line 4" in diag.message
+    assert "overwritten on line 8" in diag.message
     assert "`gateway.charge.return_value`" in diag.message
 
 
 def test_reports_the_first_of_the_pair():
     [diag] = _check(_OVERWRITTEN)
-    assert (diag.line, diag.col) == (3, 5)
+    assert (diag.line, diag.col) == (7, 5)
     assert diag.code == "SARJ067"
 
 
@@ -175,7 +191,11 @@ def test_reports_the_first_of_the_pair():
 )
 def test_inert_statements_between_the_writes_still_flag(filler: str):
     src = f"""
+from unittest.mock import Mock
+
 def test_charge():
+    gateway = Mock()
+    other_mock = Mock()
     gateway.charge.return_value = 1
     {filler}
     gateway.charge.return_value = 2
@@ -266,7 +286,10 @@ def test_charge():
 
 def test_two_writes_inside_the_same_nested_block_still_flag():
     src = """
+from unittest.mock import Mock
+
 def test_charge():
+    gateway = Mock()
     if flag:
         gateway.charge.return_value = 1
         gateway.charge.return_value = 2
@@ -312,7 +335,10 @@ def test_flags_configuration_contradicted_by_assert_not_called():
 
 def test_flags_assert_not_awaited():
     src = """
+from unittest.mock import AsyncMock
+
 async def test_skips_lookup():
+    service = AsyncMock()
     service.lookup.return_value = None
     await handle(request)
     service.lookup.assert_not_awaited()
@@ -320,21 +346,25 @@ async def test_skips_lookup():
     assert len(_check(src)) == 1
 
 
-def test_flags_when_the_assertion_is_on_a_dotted_prefix():
-    # `client.get` is never called, so configuring the response it would have
-    # returned is dead too.
+def test_parent_negative_assertion_does_not_prove_child_configuration_dead():
     src = """
+from unittest.mock import Mock
+
 def test_skips_fetch():
+    client = Mock()
     client.get.return_value.json.return_value = {"a": 1}
     service.run()
     client.get.assert_not_called()
 """
-    assert len(_check(src)) == 1
+    assert _check(src) == []
 
 
 def test_flags_side_effect_configuration_too():
     src = """
+from unittest.mock import Mock
+
 def test_skips_lookup():
+    service = Mock()
     service.lookup.side_effect = ValueError
     handle(request)
     service.lookup.assert_not_called()
@@ -344,8 +374,11 @@ def test_skips_lookup():
 
 def test_flags_inside_a_test_method():
     src = """
+from unittest.mock import Mock
+
 class TestIndex:
     def test_conflict_leaves_update_alone(self):
+        x = Mock()
         x._server.update.return_value = {"result": "updated"}
         x._set_with_state(task_id, result, state)
         x._server.update.assert_not_called()
@@ -355,7 +388,10 @@ class TestIndex:
 
 def test_trailing_plain_assertions_do_not_rescue_the_setup():
     src = """
+from unittest.mock import Mock
+
 def test_skips_lookup():
+    service = Mock()
     service.lookup.return_value = None
     handle(request)
     service.lookup.assert_not_called()
@@ -366,7 +402,11 @@ def test_skips_lookup():
 
 def test_trailing_assertion_call_on_another_mock_does_not_rescue_the_setup():
     src = """
+from unittest.mock import Mock
+
 def test_skips_lookup():
+    service = Mock()
+    audit = Mock()
     service.lookup.return_value = None
     handle(request)
     service.lookup.assert_not_called()
@@ -395,17 +435,19 @@ def test_message_names_the_asserted_path():
 def test_the_exact_assert_not_called_message():
     [diag] = _check(_ASSERTED_NOT_CALLED)
     assert diag.message == (
-        "`subject_service.extract_api_key_user.return_value` is configured here, but the test asserts "
-        "`subject_service.extract_api_key_user` was never called and nothing runs after that assertion "
-        "— the configured value can never be observed. Delete the setup, or assert on the call it was "
-        "written for"
+        "`subject_service.extract_api_key_user.return_value` is configured here, but the test ends by proving "
+        "`subject_service.extract_api_key_user` was never called, so its behavior cannot affect the test. "
+        "Delete the contradictory configuration"
     )
 
 
 def test_the_act_on_the_assertions_own_line_still_precedes_it():
     # Boundary on `last_effect <= line`: the last thing that can drive the mock shares a line with the assertion, so it still ran *before* it and nothing follows.
     src = """
+from unittest.mock import Mock
+
 def test_skips_lookup():
+    service = Mock()
     service.lookup.return_value = None
     handle(request); service.lookup.assert_not_called()
 """
@@ -459,7 +501,10 @@ def test_lookup_is_deferred():
 def test_a_positive_assertion_on_a_sibling_path_does_not_exempt():
     # `x._server.get` being called says nothing about `x._server.update`.
     src = """
+from unittest.mock import Mock
+
 def test_conflict():
+    x = Mock()
     x._server.update.return_value = {"result": "updated"}
     x._set_with_state(task_id, result, state)
     assert x._server.get.call_count == 1
@@ -494,7 +539,10 @@ def test_reconfiguring_after_the_assertion_without_a_second_act_still_flags():
     # Nothing runs after either write, so both the assertion and the rewrite
     # confirm the first value was never observed.
     src = """
+from unittest.mock import Mock
+
 def test_lookup():
+    service = Mock()
     service.lookup.return_value = None
     handle(request)
     service.lookup.assert_not_called()
@@ -590,6 +638,238 @@ def test_lookup():
     _arrange()
     handle(request)
     service.lookup.assert_not_called()
+"""
+    assert _check(src) == []
+
+
+# Proven no-match boundaries.                                                  #
+
+
+def test_reading_the_configured_value_between_writes_observes_the_first_setup():
+    src = """
+from unittest.mock import Mock
+
+def test_lookup():
+    service = Mock()
+    service.lookup.return_value = first
+    observed = service.lookup.return_value
+    service.lookup.return_value = second
+    assert observed is first
+"""
+    assert _check(src) == []
+
+
+def test_a_mock_constructor_keyword_can_observe_another_pending_mock():
+    src = """
+from unittest.mock import Mock
+
+def test_lookup():
+    service = Mock(return_value=first)
+    wrapper = Mock(return_value=service())
+    service.return_value = second
+    assert wrapper() is first
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    ("configuration", "observation", "replacement"),
+    [
+        pytest.param(
+            "value.__add__.return_value = 7",
+            "observed = value + 1",
+            "value.__add__.return_value = 8",
+            id="addition",
+        ),
+        pytest.param(
+            "value.__eq__.return_value = True",
+            "observed = value == sentinel",
+            "value.__eq__.return_value = False",
+            id="equality",
+        ),
+        pytest.param(
+            "value.__iter__.return_value = iter(items)",
+            "observed = [*value]",
+            "value.__iter__.return_value = iter(())",
+            id="iteration",
+        ),
+        pytest.param(
+            "value.__format__.return_value = 'shown'",
+            "observed = f'{value}'",
+            "value.__format__.return_value = 'replaced'",
+            id="formatting",
+        ),
+    ],
+)
+def test_magic_method_execution_observes_the_configured_value(
+    configuration: str,
+    observation: str,
+    replacement: str,
+):
+    src = f"""
+from unittest.mock import MagicMock
+
+def test_protocol(items, sentinel):
+    value = MagicMock()
+    {configuration}
+    {observation}
+    {replacement}
+    assert observed is not None
+"""
+    assert _check(src) == []
+
+
+def test_directly_asserting_the_return_value_observes_the_setup():
+    src = """
+from unittest.mock import Mock
+
+def test_lookup():
+    service = Mock()
+    service.lookup.return_value = result
+    assert service.lookup.return_value is result
+    service.lookup.assert_not_called()
+"""
+    assert _check(src) == []
+
+
+def test_mutually_exclusive_configuration_and_negative_assertion_do_not_pair():
+    src = """
+from unittest.mock import Mock
+
+def test_lookup(enabled):
+    service = Mock()
+    if enabled:
+        service.lookup.return_value = result
+    else:
+        service.lookup.assert_not_called()
+"""
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "banner"),
+    [
+        pytest.param("tests/generated/test_client.py", "", id="generated-directory"),
+        pytest.param(
+            TEST_PATH,
+            "# Code generated by the API compiler. DO NOT EDIT.\n",
+            id="generated-banner",
+        ),
+    ],
+)
+def test_generated_tests_are_excluded(path: str, banner: str):
+    source = """
+from unittest.mock import Mock
+
+def test_charge():
+    gateway = Mock()
+    gateway.charge.return_value = 1
+    gateway.charge.return_value = 2
+    assert billing.charge(gateway) == 2
+"""
+    assert _check(banner + source, path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            """
+events = []
+
+class Configuration:
+    @property
+    def return_value(self):
+        return None
+
+    @return_value.setter
+    def return_value(self, value):
+        events.append(value)
+
+def test_configuration():
+    config = Configuration()
+    config.return_value = first
+    config.return_value = second
+    assert events == [first, second]
+""",
+            id="ordinary-property-setter",
+        ),
+        pytest.param(
+            """
+def test_configuration():
+    config.return_value = result
+    exercise(config)
+    config.assert_not_called()
+""",
+            id="custom-negative-assert-api",
+        ),
+    ],
+)
+def test_unproven_mock_like_apis_are_excluded(source: str):
+    assert _check(source) == []
+
+
+def test_rebound_mocker_parameter_is_not_treated_as_the_pytest_mock_fixture():
+    src = """
+def test_lookup(mocker):
+    mocker = custom_factory
+    service = mocker.patch("app.service", return_value=first)
+    service.return_value = second
+    assert service() is second
+"""
+    assert _check(src) == []
+
+
+def test_unknown_assert_method_after_negative_assertion_can_observe_the_setup():
+    src = """
+from unittest.mock import Mock
+
+def test_lookup():
+    service = Mock()
+    service.lookup.return_value = result
+    exercise(service)
+    service.lookup.assert_not_called()
+    verifier.assert_consistent(service)
+"""
+    assert _check(src) == []
+
+
+def test_returning_the_mock_after_a_negative_assertion_escapes_its_configuration():
+    src = """
+from unittest.mock import Mock
+
+def configured_service():
+    service = Mock()
+    service.lookup.return_value = result
+    exercise(service)
+    service.lookup.assert_not_called()
+    return service
+"""
+    assert _check(src) == []
+
+
+def test_a_loop_backedge_does_not_make_the_previous_iteration_setup_dead():
+    src = """
+from unittest.mock import Mock
+
+def test_lookup(results):
+    service = Mock()
+    for result in results:
+        service.lookup.return_value = result
+    assert service.lookup.return_value is results[-1]
+"""
+    assert _check(src) == []
+
+
+def test_parent_not_called_does_not_prove_a_configured_child_was_unused():
+    src = """
+from unittest.mock import Mock
+
+def test_lookup():
+    service = Mock()
+    service.lookup.return_value = result
+    exercise(service.lookup)
+    service.assert_not_called()
 """
     assert _check(src) == []
 
@@ -724,7 +1004,10 @@ def test_charge():
 
 def test_a_statement_dead_under_both_shapes_is_reported_once():
     src = """
+from unittest.mock import Mock
+
 def test_lookup():
+    service = Mock()
     service.lookup.return_value = 1
     service.lookup.return_value = 2
     handle(request)
@@ -735,7 +1018,10 @@ def test_lookup():
 
 def test_multiple_hits_in_one_file_are_sorted_by_position():
     src = """
+from unittest.mock import Mock
+
 def test_one():
+    m = Mock()
     m.a.return_value = 1
     m.a.return_value = 2
     run(m)
@@ -744,12 +1030,13 @@ def test_two():
     assert run(m)
 
 def test_three():
+    m = Mock()
     m.b.return_value = 1
     m.b.return_value = 2
     run(m)
 """
     diags = _check(src)
-    assert [d.line for d in diags] == [3, 11]
+    assert [d.line for d in diags] == [6, 15]
 
 
 def test_diagnostics_carry_the_rule_code():
@@ -759,7 +1046,7 @@ def test_diagnostics_carry_the_rule_code():
 def test_the_exact_overwrite_message():
     [diag] = _check(_OVERWRITTEN)
     assert diag.message == (
-        "`gateway.charge.return_value` is set here and overwritten on line 4 with nothing in between "
+        "`gateway.charge.return_value` is set here and overwritten on line 8 with nothing in between "
         "that could call the mock, so this value is never used. Delete the dead setup, or move the code "
         "under test between the two configurations"
     )
@@ -767,12 +1054,15 @@ def test_the_exact_overwrite_message():
 
 def test_reports_the_position_of_a_finding_nested_in_a_class_and_a_with_block():
     src = """
+from unittest.mock import Mock, patch
+
 class TestBilling:
     def test_charge(self):
-        with mock.patch("billing.clock"):
+        gateway = Mock()
+        with patch("billing.clock"):
             gateway.charge.return_value = 1
             gateway.charge.return_value = 2
             assert billing.charge(gateway) == 2
 """
     [diag] = _check(src)
-    assert (diag.line, diag.col) == (5, 13)
+    assert (diag.line, diag.col) == (8, 13)

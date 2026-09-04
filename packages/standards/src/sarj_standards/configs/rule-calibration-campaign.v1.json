@@ -741,10 +741,12 @@
       "outcome": "Renamed SARJ410 to no-repeated-unseeded-stdlib-random-in-test and retained uncontrolled-randomness-in-test as a migration alias. The no-autofix rule is now warning-only. It checks default-collected pytest-style test functions and methods for standard-library random draws that execute in genuinely repeatable loop or comprehension regions, recognizes module and local aliases plus unseeded local Random instances, accepts only an earlier unconditional constant seed as suppression, and emits at most one diagnostic per test. One-time iterable evaluation, range calls with at most one iteration, loop else blocks, nested scopes, fixtures, __test__-disabled objects, generated files, support modules, injected RNGs, and property-framework tests are excluded. The UI now recommends isolated seeded generators and accurately describes reproducibility rather than guaranteed flaky outcomes."
     },
     {
-      "task": "rule-audit/python/unused-mock-setup",
+      "task": "rule-audit/python/no-provably-dead-mock-configuration",
       "family": "python",
-      "ruleId": "unused-mock-setup",
-      "state": "pending"
+      "ruleId": "no-provably-dead-mock-configuration",
+      "state": "complete",
+      "evidence": "Three independent reviewers reproduced false positives from effectful replacement right-hand sides, arbitrary operator protocols, direct configuration reads or escapes, mutually exclusive branches, loop backedges, child-mock prefix inference, arbitrary assert-like methods, rebound mocker parameters, generated files, and receivers not proven to be mocks. The final exact broad scan covered 140 repositories or worktrees, 14,347 tracked UTF-8 Python files, and 138,197,061 bytes in 27.6435 seconds with zero findings and zero read or detector errors. Focused validation passed 123 tests, including 16 new adversarial boundaries, and static typing passed without findings. Ruff and Pylint cover unused bindings and malformed mock assertions but do not own dead return_value or side_effect configuration.",
+      "outcome": "Renamed SARJ067 to no-provably-dead-mock-configuration and retained unused-mock-setup as a migration alias. The no-autofix rule is staged as a warning because the fleet has no positive findings to justify error promotion. Detection now requires provenance from unittest.mock or an unshadowed pytest-mock fixture, respects Python right-hand-side-before-store evaluation, treats arbitrary expressions and protocol operations as observable, and excludes generated files. Terminal never-called reasoning is limited to exact mock paths in the same straight-line block and abstains around direct configuration reads, escapes, loops, incompatible control flow, unknown assertion calls, or later effects. The UI examples are executable and the documentation names the two narrow proofs and shape-specific remediation."
     },
     {
       "task": "rule-audit/sql/add-constraint-requires-not-valid",

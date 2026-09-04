@@ -52,6 +52,7 @@
       "no-nested-pydantic-field-validator",
       "no-offset-pagination",
       "no-positional-psycopg-row-escape",
+      "no-provably-dead-mock-configuration",
       "no-psycopg-execution-outside-injected-owner",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
@@ -112,8 +113,7 @@
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "timestamp-order-requires-tiebreaker",
-      "typed-error-reasons",
-      "unused-mock-setup"
+      "typed-error-reasons"
     ],
     "sql": [
       "add-constraint-requires-not-valid",
@@ -1270,6 +1270,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this text rule from configuration; immutable GitHub Action pinning is no longer a Standards policy. There is no replacement."
+    },
+    {
+      "id": "unused-mock-setup",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-provably-dead-mock-configuration",
+      "note": "Replace sarj-unused-mock-setup with sarj-no-provably-dead-mock-configuration before upgrading."
     },
     {
       "id": "xfail-requires-strict",
