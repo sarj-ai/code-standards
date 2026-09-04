@@ -24,6 +24,7 @@
   ],
   "rules": {
     "python": [
+      "complex-postgres-query-requires-architecture-review",
       "defect-xfail-requires-explicit-strict",
       "docstring-args-restate-signature",
       "docstring-returns-restate-signature",
@@ -352,7 +353,8 @@
       "SARJ432",
       "SARJ434",
       "SARJ435",
-      "SARJ436"
+      "SARJ436",
+      "SARJ437"
     ],
     "sql": [
       "SARJ101",

@@ -263,7 +263,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "7.9.13"
+version = "7.9.14"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -1200,14 +1200,18 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.80.5"
+version = "0.80.6"
 source = { editable = "../python" }
 dependencies = [
     { name = "ruff" },
+    { name = "sqlglot" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "ruff", specifier = ">=0.16.5" }]
+requires-dist = [
+    { name = "ruff", specifier = ">=0.16.5" },
+    { name = "sqlglot", specifier = "==30.18.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1294,6 +1298,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/61/ac/2a84c37171c0cf5a10ea4b0a27d43eb0a1d29bd98b49c2c5ffe17ad24bbe/shellcheck_py-0.11.0.1-py2.py3-none-macosx_11_0_arm64.whl", hash = "sha256:6b88d0a244c82ed07e06a53e444da841f69330ca59ae15d4a66c391655dae7a0", size = 11381835, upload-time = "2025-08-09T17:53:36.852Z" },
     { url = "https://files.pythonhosted.org/packages/96/55/250e0e3367613a5c22bd82e33b16b889287d81ab0f7dda67e6514a4cccf4/shellcheck_py-0.11.0.1-py2.py3-none-manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:1b274df81de5b000ff78db433e7328b87e52e3c38481c60f8e488c3095beef05", size = 3800600, upload-time = "2025-08-09T17:53:38.643Z" },
     { url = "https://files.pythonhosted.org/packages/15/5b/bb14c0a7474463b1aa3c09e866cb172dffc66ed2993b7ea8f1db581e86ee/shellcheck_py-0.11.0.1-py2.py3-none-win_amd64.whl", hash = "sha256:784156289ecb17e91c692cd783ab5152333309588cabb10032a047331c63e759", size = 8027541, upload-time = "2025-08-09T17:53:40.889Z" },
+]
+
+[[package]]
+name = "sqlglot"
+version = "30.18.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/73/5b5ce3e23b3ded3ea1986c2c2991217460d5fd5161b3e00a8425f5dcb8a3/sqlglot-30.18.0.tar.gz", hash = "sha256:e57e1b205e341979d1df5b1212c1435c598a0437e4619e3f428b15d5bc3a5cc6", size = 6018496, upload-time = "2026-09-03T13:12:58.206Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/08/9f/3dd2ec8dd84a33e0092f1c815267bc055073f9e833b93e389c59c10f62cc/sqlglot-30.18.0-py3-none-any.whl", hash = "sha256:ee0f9a9f3e2193e763c326e52dfb377b96fdb4292f6305c3ff2d9a220e71c601", size = 748788, upload-time = "2026-09-03T13:12:56.467Z" },
 ]
 
 [[package]]

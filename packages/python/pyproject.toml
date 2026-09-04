@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.80.5"
+version = "0.80.6"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -15,7 +15,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["ruff>=0.16.5"]
+dependencies = ["ruff>=0.16.5", "sqlglot==30.18.0"]
 
 [project.scripts]
 sarj-python-lint = "sarj_python_lint.__main__:main"

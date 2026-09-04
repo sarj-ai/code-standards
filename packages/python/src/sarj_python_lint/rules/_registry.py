@@ -3,6 +3,9 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review import (
+    ComplexPostgresQueryRequiresArchitectureReview,
+)
 from sarj_python_lint.rules.defect_xfail_requires_explicit_strict import DefectXfailRequiresExplicitStrict
 from sarj_python_lint.rules.docstring_args_restate_signature import (
     DocstringArgsRestateSignature,
@@ -160,6 +163,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        ComplexPostgresQueryRequiresArchitectureReview.id: ComplexPostgresQueryRequiresArchitectureReview,
         ExcessiveCommentary.id: ExcessiveCommentary,
         PreferWalrusAwaitedNoneGuard.id: PreferWalrusAwaitedNoneGuard,
         TimestampOrderRequiresTiebreaker.id: TimestampOrderRequiresTiebreaker,
