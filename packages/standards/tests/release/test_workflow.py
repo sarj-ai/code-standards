@@ -141,15 +141,29 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
 
     assert "contents: write" not in release  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert "workflow_run:" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
-    assert "github.event.workflow_run.conclusion == 'success'" in workflow
-    assert "github.event.workflow_run.head_branch == 'main'" in workflow
-    assert "github.event.workflow_run.head_repository.full_name == github.repository" in workflow
-    assert "contents: write" in workflow
-    assert "\n  preflight:\n" in workflow
-    assert "\n  release-safety:\n    needs: preflight\n" in workflow
-    assert "\n  tag:\n    needs: [preflight, release-safety]\n" in workflow
-    assert "needs.preflight.outputs.recovery == 'true'" in workflow
-    assert "needs.release-safety.result == 'success'" in workflow
+    assert (
+        "github.event.workflow_run.conclusion == 'success'" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (
+        "github.event.workflow_run.head_branch == 'main'" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (
+        "github.event.workflow_run.head_repository.full_name == github.repository" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert "contents: write" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert "\n  preflight:\n" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (
+        "\n  release-safety:\n    needs: preflight\n" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (
+        "\n  tag:\n    needs: [preflight, release-safety]\n" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (
+        "needs.preflight.outputs.recovery == 'true'" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (
+        "needs.release-safety.result == 'success'" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     for specification in (
         "repo-ci.yml|release-ready",
         "private-refs.yml|private references",
@@ -161,13 +175,21 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
         "tsconfig-ci.yml|tsconfig CI",
         "standards-ci.yml|standards CI",
     ):
-        assert specification in workflow
-    assert "head_repository.full_name == $repo" in workflow
-    assert "actions/runs/$run_id/jobs" in workflow
-    assert "pending_jobs == 0 && successful_jobs > 0" in workflow
-    assert "maintain release create-tags typescript bootstrap python sql iac standards tsconfig" in workflow
-    assert '--commit "$PUBLISHED_SHA"' in workflow
-    assert 'maintain release verify-tags --commit "$TARGET_SHA"' in workflow
+        assert specification in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
+    assert (
+        "head_repository.full_name == $repo" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
+    assert "actions/runs/$run_id/jobs" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
+    assert (
+        "pending_jobs == 0 && successful_jobs > 0" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
+    assert (
+        "maintain release create-tags typescript bootstrap python sql iac standards tsconfig" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert '--commit "$PUBLISHED_SHA"' in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (
+        'maintain release verify-tags --commit "$TARGET_SHA"' in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
 
 
 def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
@@ -196,16 +218,24 @@ def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:
     assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
         workflow.count("verify_registry_publication.py pypi") == 5
     )
-    assert workflow.count("skip-existing: true") == 5
+    assert (
+        workflow.count("skip-existing: true") == 5
+    )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     for project, environment in (
         ("sarj-standards-bootstrap", "pypi-bootstrap-release"),
         ("sarj-python-lint", "pypi-python-release"),
         ("sarj-sql-lint", "pypi-sql-release"),
         ("sarj-iac-lint", "pypi-iac-release"),
     ):
-        assert f"--dist verified-dist --project {project}" in workflow
-        assert f"--environment {environment}" in workflow
-    assert "--project code-standards --project sarj-standards" in workflow
+        assert (
+            f"--dist verified-dist --project {project}" in workflow
+        )  # sarj-noqa: SARJ402 -- workflow text is the publisher contract
+        assert (
+            f"--environment {environment}" in workflow
+        )  # sarj-noqa: SARJ402 -- workflow text is the publisher contract
+    assert (
+        "--project code-standards --project sarj-standards" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the publisher contract
     assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         "pypi-attestations==0.0.30"
         in (REPO_ROOT / ".github/scripts/verify_registry_publication.py").read_text(encoding="utf-8")

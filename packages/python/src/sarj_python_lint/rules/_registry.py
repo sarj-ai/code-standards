@@ -53,6 +53,7 @@ from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_python_lint.rules.no_positional_psycopg_row_escape import NoPositionalPsycopgRowEscape
 from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
+from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
 from sarj_python_lint.rules.no_redundant_literal_description import NoRedundantLiteralDescription
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
 from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
@@ -135,7 +136,6 @@ from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
 )
 from sarj_python_lint.rules.restated_test_docstring import RestatedTestDocstring
-from sarj_python_lint.rules.source_coupled_test import SourceCoupledTest
 from sarj_python_lint.rules.sql_requires_injected_pool_owner import SqlRequiresInjectedPoolOwner
 from sarj_python_lint.rules.stepdown import Stepdown
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
@@ -177,7 +177,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoCommentCruft.id: NoCommentCruft,
         NoConftestTestModuleImport.id: NoConftestTestModuleImport,
         StoreInsertRequiresOnConflict.id: StoreInsertRequiresOnConflict,
-        SourceCoupledTest.id: SourceCoupledTest,
+        NoRawSourceTextTestOracle.id: NoRawSourceTextTestOracle,
         IacSourceCoupledTest.id: IacSourceCoupledTest,
         NoRawConnectionInTests.id: NoRawConnectionInTests,
         NoAnalyticalAggregationInPostgresStore.id: NoAnalyticalAggregationInPostgresStore,

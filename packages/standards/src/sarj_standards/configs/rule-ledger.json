@@ -53,6 +53,7 @@
       "no-positional-psycopg-row-escape",
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
+      "no-raw-source-text-test-oracle",
       "no-repeated-structured-string-literal",
       "no-repeated-test-body",
       "no-restated-closed-domain-description",
@@ -103,7 +104,6 @@
       "require-pydantic-for-external-json",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
-      "source-coupled-test",
       "sql-requires-injected-pool-owner",
       "stepdown",
       "store-get-delegates-to-bulk-read",
@@ -1188,6 +1188,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook; a computed real-clock delay can deliberately exercise timeout, TTL, or monotonic-clock behavior."
+    },
+    {
+      "id": "source-coupled-test",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-raw-source-text-test-oracle",
+      "note": "Replace sarj-source-coupled-test with sarj-no-raw-source-text-test-oracle before upgrading."
     },
     {
       "id": "tautological-mock-assertion",

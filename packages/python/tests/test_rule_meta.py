@@ -39,6 +39,7 @@ _RENAMED_RULES = {
     "no-analytical-aggregation-in-postgres-store": ("SARJ020", ("no-aggregation-in-store-query",)),
     "no-copied-inherited-docstring": ("SARJ084", ("duplicated-override-docstring",)),
     "no-positional-psycopg-row-escape": ("SARJ414", ("require-validated-row-factory",)),
+    "no-raw-source-text-test-oracle": ("SARJ402", ("source-coupled-test",)),
     "no-repeated-test-body": ("SARJ066", ("duplicate-test-body",)),
     "no-repeated-structured-string-literal": ("SARJ024", ("no-repeated-string-literal",)),
     "no-restated-closed-domain-description": ("SARJ423", ("no-redundant-literal-description",)),
