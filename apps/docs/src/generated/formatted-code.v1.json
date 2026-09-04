@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "91907faa15464fbe1c2cff70c9cd9e865054b6ea4d058063fc7070e620e96d1d",
-  "cliSha256": "d0eeb533cd3d911c093adcf70a97c4c1d6efa4e0ddbf9c43d6df171ee3605a2c",
+  "catalogSha256": "4bf0b47f8ad72d18dcac5b34cf642a05e6c170af8535c2d05bffb2054a618463",
+  "cliSha256": "0e590e6773fb50c6f451a3f438703250897e6512d67b82287a06b376d990868a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4669,6 +4669,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Remove only the repeated type label"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-dunder-all": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "diagnostics/__init__.py",
+              "source": "from .models import Diagnostic as Diagnostic\n\n__all__ = [\"Diagnostic\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "diagnostics/__init__.py",
+          "id": "duplicated-export-list",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not repeat an explicit re-export list"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "diagnostics/__init__.py",
+              "source": "from .models import Diagnostic as Diagnostic\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "diagnostics/__init__.py",
+          "id": "explicit-re-export",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Make the re-export explicit in the import"
         }
       ],
       "optionsSchemaSource": null

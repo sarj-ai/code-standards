@@ -42,6 +42,7 @@
       "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
       "no-docstring-type-restatement",
+      "no-dunder-all",
       "no-duplicate-dunder-all-entry",
       "no-fastapi-on-event",
       "no-file-level-escape-hatch-suppression",
@@ -344,7 +345,8 @@
       "SARJ434",
       "SARJ435",
       "SARJ436",
-      "SARJ437"
+      "SARJ437",
+      "SARJ438"
     ],
     "sql": [
       "SARJ101",

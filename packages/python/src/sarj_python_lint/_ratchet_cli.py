@@ -249,5 +249,8 @@ def _update(
     return 0
 
 
+run_ratchet = main
+
+
 if __name__ == "__main__":
     sys.exit(main())

@@ -10,8 +10,7 @@ from typing import TYPE_CHECKING, final
 
 import pytest
 
-from sarj_standards.libs.adoption import doctor as adoption_doctor
-from sarj_standards.libs.adoption import manifest as adoption_manifest
+from sarj_standards.libs.adoption import doctor as adoption_doctor, manifest as adoption_manifest
 from sarj_standards.libs.release import rollout
 
 from .fakes import FakeRolloutRunner as FakeRunner

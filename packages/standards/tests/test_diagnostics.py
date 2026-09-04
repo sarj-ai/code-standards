@@ -38,8 +38,7 @@ from sarj_standards.libs.diagnostics import (
     to_text,
 )
 from sarj_standards.libs.linting import external as external_module
-from sarj_standards.libs.linting.analysis import analyze as analyze_paths
-from sarj_standards.libs.linting.analysis import report_from_tools
+from sarj_standards.libs.linting.analysis import analyze as analyze_paths, report_from_tools
 from sarj_standards.libs.linting.policy import Policy
 
 

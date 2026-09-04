@@ -8,13 +8,9 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- latest updates execute a fixed uvx argv.
 from typing import TYPE_CHECKING
 
-from ._meta import (
-    __version__,
-)
+from ._meta import __version__ as __version__  # ruff: ignore[useless-import-alias] -- public API re-export.
 from .libs.adoption import launcher
-from .libs.adoption.doctor import Finding as DoctorFinding
-from .libs.adoption.doctor import Level as DoctorLevel
-from .libs.adoption.doctor import diagnose
+from .libs.adoption.doctor import Finding as DoctorFinding, Level as DoctorLevel, diagnose
 from .libs.adoption.lifecycle import (
     Inspection,
     execute,
@@ -32,41 +28,41 @@ from .libs.adoption.service import (
     plan_sync,
 )
 from .libs.diagnostics import (
-    AnalysisReport,
-    Completion,
-    Conclusion,
+    AnalysisReport as AnalysisReport,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Completion as Completion,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Conclusion as Conclusion,  # ruff: ignore[useless-import-alias] -- public API re-export.
     CoverageDisposition,
-    CoverageNotice,
-    Diagnostic,
-    ExecutionIssue,
-    Fix,
-    FixSafety,
-    Location,
-    Position,
-    Region,
-    RelatedLocation,
-    Severity,
+    CoverageNotice as CoverageNotice,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Diagnostic as Diagnostic,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    ExecutionIssue as ExecutionIssue,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Fix as Fix,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    FixSafety as FixSafety,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Location as Location,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Position as Position,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Region as Region,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    RelatedLocation as RelatedLocation,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    Severity as Severity,  # ruff: ignore[useless-import-alias] -- public API re-export.
     SourceDocument,
-    TextEdit,
-    ToolReport,
-    TrustMode,
-    to_github,
-    to_json,
-    to_sarif,
-    to_text,
+    TextEdit as TextEdit,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    ToolReport as ToolReport,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    TrustMode as TrustMode,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    baseline as diagnostic_baseline,
+    to_github as to_github,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    to_json as to_json,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    to_sarif as to_sarif,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    to_text as to_text,  # ruff: ignore[useless-import-alias] -- public API re-export.
 )
-from .libs.diagnostics import baseline as diagnostic_baseline
 from .libs.filesystem import is_link_like
-from .libs.linting.analysis import analyze as analyze_paths
-from .libs.linting.analysis import report_from_tools
+from .libs.linting.analysis import analyze as analyze_paths, report_from_tools
 from .libs.linting.external import analyze_external
-from .libs.linting.library_policy import ManifestPolicyError
-from .libs.linting.library_policy import accepts_path as library_policy_accepts_path
-from .libs.linting.library_policy import scan as check_library_policy
-from .libs.linting.library_policy import scan_paths as check_selected_library_policy
+from .libs.linting.library_policy import (
+    ManifestPolicyError,
+    accepts_path as library_policy_accepts_path,
+    scan as check_library_policy,
+    scan_paths as check_selected_library_policy,
+)
 from .libs.linting.policy import Policy
-from .libs.linting.runner import group_paths
-from .libs.linting.runner import run as check
+from .libs.linting.runner import group_paths, run as check
 from .libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
 
 
@@ -669,7 +665,9 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
     if isinstance(values, str):
         msg = "rules must be a sequence of canonical selectors, not one string"
         raise TypeError(msg)
-    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
+        rule_catalog_artifact,
+    )
 
     catalog = rule_catalog_artifact.load()
     raw_rules = _object_list(catalog.get("rules"), "shipped rule catalog rules")
@@ -689,7 +687,9 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
 
 
 def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> set[str]:
-    from sarj_standards.libs.linting.runner import GroupedPaths  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.runner import (  # ruff: ignore[import-outside-top-level]
+        GroupedPaths,
+    )
 
     if not isinstance(grouped, GroupedPaths):
         msg = "analysis routing has an invalid internal type"
@@ -872,34 +872,3 @@ def _object_list(value: object, label: str) -> list[object]:
         msg = f"{label} must be an array"
         raise TypeError(msg)
     return value  # pyright: ignore[reportUnknownVariableType]
-
-
-__all__ = [
-    "AnalysisMode",
-    "AnalysisReport",
-    "Change",
-    "Completion",
-    "Conclusion",
-    "CoverageNotice",
-    "Diagnostic",
-    "ExecutionIssue",
-    "Finding",
-    "Fix",
-    "FixSafety",
-    "Location",
-    "Position",
-    "Region",
-    "RelatedLocation",
-    "Result",
-    "Severity",
-    "Standards",
-    "Status",
-    "TextEdit",
-    "ToolReport",
-    "TrustMode",
-    "__version__",
-    "to_github",
-    "to_json",
-    "to_sarif",
-    "to_text",
-]

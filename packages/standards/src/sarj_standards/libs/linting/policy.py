@@ -122,6 +122,3 @@ def _compile_override(value: ExclusionOverride) -> _Override:
 @lru_cache(maxsize=1)
 def warning_selectors() -> frozenset[RuleSelector]:
     return frozenset(warning_levels.load(CONFIGS_DIR / "rule-warning-levels.v1.json"))
-
-
-__all__ = ["Policy"]

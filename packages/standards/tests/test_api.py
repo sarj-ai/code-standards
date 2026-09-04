@@ -21,12 +21,6 @@ if TYPE_CHECKING:
     from sarj_standards.libs.linting.runner import GroupedPaths
 
 
-def test_every_declared_public_api_resolves() -> None:
-    assert api.__all__
-    assert all(hasattr(api, name) for name in api.__all__)
-    assert len(api.__all__) == len(set(api.__all__))
-
-
 def test_package_root_exposes_the_small_consumer_facade() -> None:
     assert sarj_standards.Standards is api.Standards
     assert sarj_standards.Result is api.Result
@@ -161,8 +155,9 @@ def test_public_api_is_the_deliberately_small_stable_facade() -> None:
         "to_sarif",
         "__version__",
     }
-    assert expected <= set(api.__all__)
-    assert {"RUFF_STRICT", "plan_upgrade", "initialize", "sync_configs"}.isdisjoint(api.__all__)
+    exported = vars(api)
+    assert expected <= exported.keys()
+    assert {"RUFF_STRICT", "plan_upgrade", "initialize", "sync_configs"}.isdisjoint(exported)
 
 
 def test_standards_facade_returns_typed_doctor_result(tmp_path: Path) -> None:

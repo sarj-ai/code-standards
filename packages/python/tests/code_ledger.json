@@ -209,5 +209,6 @@
   "SARJ434": "excessive-commentary",
   "SARJ435": "typed-error-reasons",
   "SARJ436": "no-whole-request-response-payload-in-log",
-  "SARJ437": "complex-postgres-query-requires-architecture-review"
+  "SARJ437": "complex-postgres-query-requires-architecture-review",
+  "SARJ438": "no-dunder-all"
 }
