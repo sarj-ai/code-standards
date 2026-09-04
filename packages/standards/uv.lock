@@ -263,7 +263,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "7.9.23"
+version = "7.9.24"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -1222,7 +1222,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.16.5"
+version = "0.16.6"
 source = { editable = "../sql" }
 
 [package.metadata]

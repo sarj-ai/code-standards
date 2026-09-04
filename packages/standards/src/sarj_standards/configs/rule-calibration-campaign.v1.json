@@ -749,10 +749,12 @@
       "outcome": "Renamed SARJ067 to no-provably-dead-mock-configuration and retained unused-mock-setup as a migration alias. The no-autofix rule is staged as a warning because the fleet has no positive findings to justify error promotion. Detection now requires provenance from unittest.mock or an unshadowed pytest-mock fixture, respects Python right-hand-side-before-store evaluation, treats arbitrary expressions and protocol operations as observable, and excludes generated files. Terminal never-called reasoning is limited to exact mock paths in the same straight-line block and abstains around direct configuration reads, escapes, loops, incompatible control flow, unknown assertion calls, or later effects. The UI examples are executable and the documentation names the two narrow proofs and shape-specific remediation."
     },
     {
-      "task": "rule-audit/sql/add-constraint-requires-not-valid",
+      "task": "rule-audit/sql/existing-table-check-or-foreign-key-requires-not-valid",
       "family": "sql",
-      "ruleId": "add-constraint-requires-not-valid",
-      "state": "pending"
+      "ruleId": "existing-table-check-or-foreign-key-requires-not-valid",
+      "state": "complete",
+      "evidence": "Three independent reviewers agreed the PostgreSQL safety policy is valuable but reproduced misses and misleading guidance in the statement-wide regex implementation. The final exact scan covered 141 repositories or worktrees, 1,572 tracked UTF-8 SQL files, and 9,918,485 bytes with 64 raw and 25 content-distinct findings, zero read or detector errors, and a 0.6793-second median across three runs. Manual review classified all 25 distinct findings as actionable, with zero false positives or uncertain cases. The revision retained the same total while adding three genuine IF EXISTS, multi-action, and unsafe-sibling detections and excluding three generated migrations. Fifty-one focused adversarial tests and the complete 616-test SQL suite passed. Squawk owns this policy upstream, but Standards does not yet distribute or adapt that binary end to end.",
+      "outcome": "Renamed SARJ111 to existing-table-check-or-foreign-key-requires-not-valid and retained all prior selectors as migration aliases. Replaced statement-wide regexes with quote-aware, action-level parsing for PostgreSQL ALTER TABLE variants, CHECK and foreign-key syntax, multiple actions, and clause-local NOT VALID. Fresh-table exemptions now require an unconditional empty CREATE TABLE and are revoked by population, unknown execution, or attached partitions; generated migrations, dumps, other dialects, malformed constraints, and constraint types that cannot use NOT VALID are excluded. Diagnostics point at each unsafe ADD action. The warning-stage UI now explains that NOT VALID skips the initial row scan and requires VALIDATE CONSTRAINT in a later committed migration or transaction. A separately scoped future adapter may replace the custom detector with pinned Squawk only after cross-platform packaging, suppression, location, and corpus-parity proof."
     },
     {
       "task": "rule-audit/sql/enforce-timestamptz",
