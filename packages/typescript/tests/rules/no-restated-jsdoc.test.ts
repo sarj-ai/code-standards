@@ -12,6 +12,27 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-restated-jsdoc", rule, {
   valid: [
+    { name: "preserves unary negation", code: "/** Returns !value. */\nfunction invertValue(value: boolean) { return !value; }" },
+    { name: "preserves subtraction", code: "/** Return x - y. */\nfunction subtract(x: number, y: number) { return x - y; }" },
+    { name: "preserves bitwise exclusive or", code: "/** Return x ^ y. */\nfunction combine(x: number, y: number) { return x ^ y; }" },
+    { name: "preserves a relation between signature parameters", code: "/** Return x < y. */\nfunction compare(x: number, y: number) { return x < y; }" },
+    { name: "preserves nested parameter shape documentation", code: "/** @param config.secret */\nfunction useConfig(config) { return config; }" },
+    { name: "preserves optional parameter documentation", code: "/** @param [config] */\nfunction useConfig(config) { return config; }" },
+    { name: "preserves asynchronous behavior tags", code: "/** Read user.\n * @async\n */\nfunction readUser() { return user; }" },
+    { name: "preserves a one-letter value absent from the signature", code: "/** Returns x. */\nexport function getY(y: number) { return y; }" },
+    { name: "preserves an optional parameter default", code: "/** @param [amount=0] The amount. */\nexport function formatAmount(amount: number) { return amount; }" },
+    { name: "preserves constraints also present in declaration names", code: "/** Optional user. */\nexport interface OptionalUser {}" },
+    { name: "preserves JavaScript parameter types", code: "/** @param {number} value */\nfunction convert(value) { return value; }", filename: "src/convert.js" },
+    { name: "preserves JavaScript return types", code: "/** @returns {number} */\nfunction count() { return 1; }", filename: "src/count.js" },
+    { name: "preserves non-Latin documentation", code: "/** يعيد المستخدم */\nfunction getUser() { return user; }" },
+    { name: "preserves non-Latin details mixed with signature words", code: "/** Get user بدون تخزين */\nfunction getUser() { return user; }" },
+    { name: "does not delete intervening trailing comments", code: "/** Get user. */ // Preserve audit boundary.\nfunction getUser() { return user; }" },
+    { name: "preserves negation even when every remaining word repeats the signature", code: "/** Does not cache the user. */\nexport function cacheUser(user: unknown) { return user; }" },
+    { name: "preserves required parameter constraints", code: "/** @param user The user is required. */\nexport function getUser(user: unknown) { return user; }" },
+    { name: "preserves a return sentinel contract", code: "/** @returns false */\nexport function getUser(user: unknown) { return user; }" },
+    { name: "preserves numeric behavior absent from the signature", code: "/** Get 2 users. */\nexport function getUsers() { return []; }" },
+    { name: "preserves conditional behavior", code: "/** Cache the user if the user is new. */\nexport function cacheUser(user: unknown) { return user; }" },
+    { name: "preserves quoted value spelling", code: "/** Returns 'user'. */\nexport function getUser() { return 'user'; }" },
     { name: "accepts the documented behavioral JSDoc", code: NO_RESTATED_JSDOC_DOCUMENTATION.examples[0].files[0].source },
     // One word the signature does not carry and the block earns its place.
     { code: "/** Get the user, bypassing the read replica. */\nexport function getUser(id: string) { return id; }" },

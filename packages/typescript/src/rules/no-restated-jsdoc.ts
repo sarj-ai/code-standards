@@ -15,21 +15,23 @@ type MessageIds = "restatesSignature" | "deleteBlock";
 type Options = readonly [];
 
 export const NO_RESTATED_JSDOC_DOCUMENTATION = {
-  summary: "Flag a JSDoc block whose description and tags only re-spell the signature they document.",
+  summary: "Flag JSDoc prose that appears to repeat declaration names without adding behavioral information.",
   rationale: "Signature-only JSDoc duplicates type information and drifts without helping callers.",
   remediation: "Delete the block or document behavior, constraints, failures, or context the signature cannot express.",
   category: "maintainability",
   aliases: ["jsdoc-restates-signature"],
   autofix: "suggestion",
-  limitations: ["Generated files, detached blocks, unknown tags, empty blocks, and JSDoc with information absent from the signature are excluded."],
+  limitations: ["Generated files, detached blocks, intervening comments, unknown tags, explicit JSDoc type payloads, empty blocks, and JSDoc with information absent from the signature are excluded.", "Negation, conditions, constraints, sentinel values, numeric details, and quoted text conservatively preserve the block, even when a declaration name contains the same words."],
   examples: [
     { id: "behavioral-jsdoc", title: "Document behavior absent from the signature", outcome: "no-match", files: [{ path: "src/users.ts", source: "/** Get the user while bypassing the read replica. */\nexport function getUser(id: string) { return id; }" }], focusPath: "src/users.ts", expectedCount: 0, public: true },
     { id: "signature-jsdoc", title: "Remove JSDoc that only repeats the signature", outcome: "match", files: [{ path: "src/users.ts", source: "/** Get the user by id. */\nexport function getUserById(id: string) { return id; }" }], focusPath: "src/users.ts", expectedCount: 1, public: true },
+    { id: "negated-behavior", scenarioId: "negation", title: "Keep behavior even when its words resemble the declaration", outcome: "no-match", files: [{ path: "src/users.ts", source: "/** Does not cache the user. */\nexport function cacheUser(user: unknown) { return user; }" }], focusPath: "src/users.ts", expectedCount: 0, public: true },
+    { id: "repeated-behavior-name", scenarioId: "negation", title: "Review prose that merely repeats the declaration name", outcome: "match", files: [{ path: "src/users.ts", source: "/** Cache the user. */\nexport function cacheUser(user: unknown) { return user; }" }], focusPath: "src/users.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
 const MODELLED_TAGS: ReadonlySet<string> = new Set([
-  "arg", "argument", "async", "description", "param", "return", "returns",
+  "arg", "argument", "description", "param", "return", "returns",
 ]);
 
 const PARAM_TAGS: ReadonlySet<string> = new Set(["arg", "argument", "param"]);
@@ -48,7 +50,8 @@ const STOPWORDS: ReadonlySet<string> = new Set(
    string number boolean array list promise`.split(/\s+/),
 );
 
-const WORD_RE = /[A-Za-z]+/g;
+const WORD_RE = /\p{L}+/gu;
+const BEHAVIORAL_PROSE_RE = /\b(?:not|no|never|if|when|unless|must|should|may|can|could|would|optional|required|default|true|false|null|undefined|before|after|until|once|again|only|always)\b|\d|["'`<>=+*/%&|!~^-]/i;
 
 interface JsDocTag {
   readonly name: string;
@@ -77,6 +80,7 @@ function parseJsDoc(value: string): { description: string; tags: JsDocTag[] } {
 
 /** True when every content word of `text` already appears in `known`. */
 function covered(text: string, known: ReadonlySet<string>): boolean {
+  if (BEHAVIORAL_PROSE_RE.test(text)) return false;
   const stems = new Set<string>();
   for (const token of known) stems.add(stem(token));
   return proseTokens(text).every((word) => known.has(word) || stems.has(stem(word)));
@@ -86,7 +90,7 @@ function covered(text: string, known: ReadonlySet<string>): boolean {
 function proseTokens(text: string): string[] {
   return (text.match(WORD_RE) ?? [])
     .map((word) => word.toLowerCase())
-    .filter((word) => word.length > 1 && !STOPWORDS.has(word));
+    .filter((word) => !STOPWORDS.has(word));
 }
 
 /** The declared name and parameter names of the node a JSDoc block sits above. */
@@ -159,12 +163,12 @@ export default createRule<Options, MessageIds>({
     hasSuggestions: true,
     docs: {
       description:
-        "Flag a JSDoc block whose description and tags only re-spell the signature they document.",
+        "Flag JSDoc prose that appears to repeat declaration names without adding behavioral information.",
     },
     schema: [],
     messages: {
       restatesSignature:
-        "JSDoc only re-spells the signature — delete it; if the signature still needs explanation, improve its names or types. Keep constraints, failures, and rationale.",
+        "JSDoc appears to repeat declaration names — consider removing repetition. Keep type contracts, constraints, failures, and rationale.",
       deleteBlock: "Delete the JSDoc block.",
     },
   },
@@ -189,8 +193,9 @@ export default createRule<Options, MessageIds>({
           if ([...tagNames].some((name) => !MODELLED_TAGS.has(name))) continue;
           if (isProtected(describedText)) continue;
 
-          const token = sourceCode.getTokenAfter(comment, { includeComments: false });
+          const token = sourceCode.getTokenAfter(comment, { includeComments: true });
           if (token === null || token.loc.start.line !== comment.loc.end.line + 1) continue;
+          if (token.type === "Line" || token.type === "Block") continue;
           let node = sourceCode.getNodeByRangeIndex(token.range[0]);
           let declaration: { name: string; params: string[] } | null = null;
           while (node != null && node.type !== AST_NODE_TYPES.Program) {
@@ -202,6 +207,8 @@ export default createRule<Options, MessageIds>({
 
           const paramTags = tags.filter((tag) => PARAM_TAGS.has(tag.name));
           const returnTags = tags.filter((tag) => RETURN_TAGS.has(tag.name));
+          if ([...paramTags, ...returnTags].some((tag) => /^\s*\{/.test(tag.text))) continue;
+          if (paramTags.some((tag) => /^\s*(?:\[|[A-Za-z_$][\w$]*\.)/.test(tag.text))) continue;
           if (describedText.length === 0 && paramTags.length === 0 && returnTags.length === 0) {
             continue;
           }
