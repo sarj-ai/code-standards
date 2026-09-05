@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9ee7c69568a1e40daa82dc4b4f0148805872c7ab24ed0a8c7c15dd261168a264",
-  "cliSha256": "7d0c791ce10f395f9b7e6f96cb01a1703c118d9f9d633abd373fad7bbb56744d",
+  "catalogSha256": "465ed1b87c4d24ef04dd476c418750ab29bdae53337761aa6934431852372c79",
+  "cliSha256": "27e114a3c43bfc60aaed8a4568c8970bfe97755aebd2f5a99ec09fe778becfce",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5308,7 +5308,7 @@
     "python:no-redundant-module-alias-exports": {
       "examples": [
         {
-          "expectedCount": 0,
+          "expectedCount": 1,
           "files": [
             {
               "path": "legacy/settings.py",
@@ -5317,25 +5317,25 @@
           ],
           "fixedFiles": [],
           "focusPath": "legacy/settings.py",
-          "id": "pure-module-alias",
-          "outcome": "accept",
+          "id": "current-module-replacement",
+          "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Replace the compatibility module without copying its attributes"
+          "title": "Do not replace a compatibility module at runtime"
         },
         {
-          "expectedCount": 1,
+          "expectedCount": 0,
           "files": [
             {
               "path": "legacy/settings.py",
-              "source": "import sys\n\nfrom canonical import settings as _canonical\n\n\nSettings = _canonical.Settings\nload = _canonical.load\nsys.modules[__name__] = _canonical\n"
+              "source": "from canonical.settings import (\n    Settings as Settings,\n    load as load,\n)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "legacy/settings.py",
-          "id": "self-replacing-compatibility-module",
-          "outcome": "reject",
+          "id": "explicit-compatibility-exports",
+          "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Remove bindings that the canonical module replacement supersedes"
+          "title": "Expose the supported compatibility surface explicitly"
         }
       ],
       "optionsSchemaSource": null
