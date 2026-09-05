@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "62dbf9e029148a3f5c7083c74187dd06b3ae7685afd02826df1ea88dfbbcd648",
-  "cliSha256": "610947682190aebf65b5e1d512fd06e7cf5b8da35c1888fe85f1c9f936487fa5",
+  "catalogSha256": "25166ace320d69f9d5f2733f23fa97fb18dcc0a7355fb7d03c5be6595827dafd",
+  "cliSha256": "bd41b24a59601d512fc00d36e50c6023b2635fe347835a0973aaa8ef852b107a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1068,7 +1068,7 @@
           "files": [
             {
               "path": "src/cache.ts",
-              "source": "// Serialize because the cache key is stable across deploys.\nconst key = serialize(input);\n"
+              "source": "// Serialize key only after validation.\nconst key = serialize(input);\n"
             }
           ],
           "fixedFiles": [],
@@ -1076,7 +1076,7 @@
           "id": "reason-comment",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Keep the reason the code cannot express"
+          "title": "Keep a condition the statement does not establish"
         },
         {
           "expectedCount": 1,

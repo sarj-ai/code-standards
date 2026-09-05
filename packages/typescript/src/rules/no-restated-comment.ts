@@ -1,16 +1,16 @@
 /**
- * @fileoverview no-restated-comment — a comment whose every content word is already on the line below can only go out of date silently.
+ * @fileoverview no-restated-comment — identify short comments that repeat adjacent statement identifiers.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-restated-comment.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import {
   codeTokens,
   contentTokens,
   isProtected,
-  restatableStatementBelow,
+  restatableStatementNodeBelow,
   restates,
   restatesStatementHead,
 } from "./_comments.js";
@@ -35,6 +35,7 @@ const MODALITY_RE = /\b(?:can|could|should|shall|may|might|must|will|would|canno
 const LEAD_IN_RE = /:$/;
 const EMPHASIS_RE = /\*\w[^*]*\*|`[^`]+`/;
 const NEGATION_WORD_RE = /\b(?:no|not|never|neither|nor|without|none|non)\b/i;
+const SEMANTIC_RELATION_RE = /\b(?:only|if|unless|when|while|except|each|every|any|all|before|after|until|since|again|once|twice|already|still|from|to|into|onto|back|versus|rather|instead)\b/i;
 
 const ACTION_STMT_RE = /[\w.$\])]\s*\(|^\s*(?:return|throw|await|yield)\b/;
 
@@ -45,14 +46,19 @@ const WALL_CLUSTER_MAX_LINE_GAP = 8;
 const WALL_CLUSTER_MIN_COMMENTS = 3;
 
 export const NO_RESTATED_COMMENT_DOCUMENTATION = {
-  summary: "Flag a single-line comment whose every word already appears on the statement below it.",
+  summary: "Flag short standalone comments that repeat the adjacent statement's identifiers.",
   rationale: "A comment that only repeats code adds no context and can become stale independently.",
-  remediation: "Delete the comment or replace it with the reason, constraint, or consequence absent from the code.",
+  remediation: "Remove a genuine restatement; retain conditions, constraints, rationale, and information absent from the statement.",
   category: "maintainability",
   autofix: "suggestion",
-  limitations: ["Directives, protected references, questions, multi-line prose, comments with novel content, and generated files are excluded."],
+  limitations: [
+    "Only standalone line comments of two to eight words with at least two content tokens directly above a supported single-line statement are inspected; one-word headings and sentence-ending punctuation are excluded.",
+    "Evidence comes from that statement's identifier tokens, not strings, template text, comments, or neighboring statements. Stopwords and inflection folding are heuristic, not proof of semantic equivalence.",
+    "Directives, protected references, conditions, restrictions, ordering, repetition, direction, questions, prose paragraphs, sibling-group labels, novel content, and generated files are excluded. Deletion is an optional suggestion, never an automatic fix.",
+    "The conservative sibling-group exemption includes enclosing sibling groups and declaration/type-query pairs; it can miss genuine restatements inside those groups.",
+  ],
   examples: [
-    { id: "reason-comment", title: "Keep the reason the code cannot express", outcome: "no-match", files: [{ path: "src/cache.ts", source: "// Serialize because the cache key is stable across deploys.\nconst key = serialize(input);" }], focusPath: "src/cache.ts", expectedCount: 0, public: true },
+    { id: "reason-comment", title: "Keep a condition the statement does not establish", outcome: "no-match", files: [{ path: "src/cache.ts", source: "// Serialize key only after validation.\nconst key = serialize(input);" }], focusPath: "src/cache.ts", expectedCount: 0, public: true },
     { id: "restated-comment", title: "Remove a comment that repeats the statement", outcome: "match", files: [{ path: "src/cache.ts", source: "// Serialize key\nconst key = serialize(input);" }], focusPath: "src/cache.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
@@ -61,12 +67,15 @@ export const NO_RESTATED_COMMENT_DOCUMENTATION = {
 function areAdjacentLineComments(
   a: TSESTree.Comment | undefined,
   b: TSESTree.Comment | undefined,
+  isStandalone: (comment: TSESTree.Comment) => boolean,
 ): boolean {
   return (
     a !== undefined &&
     b !== undefined &&
     a.type === "Line" &&
     b.type === "Line" &&
+    isStandalone(a) &&
+    isStandalone(b) &&
     b.loc.start.line === a.loc.end.line + 1
   );
 }
@@ -91,14 +100,13 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     hasSuggestions: true,
     docs: {
-      description:
-        "Flag a single-line comment whose every word already appears on the statement below it.",
+      description: NO_RESTATED_COMMENT_DOCUMENTATION.summary,
     },
     schema: [],
     messages: {
       deleteComment: "Delete the redundant comment.",
       restatesLineBelow:
-        "Comment restates the statement below it — delete it, or replace it with the *why*; the code already carries the *what*.",
+        "Comment repeats the adjacent statement's identifiers — consider removing it; retain any condition, constraint, or rationale absent from the code.",
     },
   },
   defaultOptions: [],
@@ -107,24 +115,38 @@ export default createRule<Options, MessageIds>({
       return {};
     }
     const sourceCode = context.sourceCode;
-    const lines = sourceCode.lines;
 
     function isStandalone(comment: TSESTree.Comment): boolean {
       const before = sourceCode.getTokenBefore(comment, { includeComments: false });
       return !before || before.loc.end.line < comment.loc.start.line;
     }
 
-    function labelsASiblingRun(comment: TSESTree.Comment): boolean {
-      const token = sourceCode.getTokenAfter(comment, { includeComments: false });
-      if (token === null) return false;
+    function labelsASiblingRun(statement: TSESTree.Node): boolean {
       for (
-        let node: TSESTree.Node | undefined | null = sourceCode.getNodeByRangeIndex(token.range[0]);
-        node != null && node.type !== AST_NODE_TYPES.Program;
+        let node: TSESTree.Node | undefined = statement;
+        node !== undefined && node.type !== AST_NODE_TYPES.Program;
         node = node.parent
       ) {
         if (headsSiblingRun(node)) return true;
       }
       return false;
+    }
+
+    function headsValueTypeGroup(statement: TSESTree.Node): boolean {
+      if (statement.type !== AST_NODE_TYPES.VariableDeclaration) return false;
+      const parent = statement.parent;
+      if (!("body" in parent) || !Array.isArray(parent.body)) return false;
+      const body: readonly TSESTree.Node[] = parent.body;
+      const next = body[body.indexOf(statement) + 1];
+      if (next?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) return false;
+      const names = new Set(statement.declarations.flatMap(({ id }) =>
+        id.type === AST_NODE_TYPES.Identifier ? [id.name] : []));
+      const tokens = sourceCode.getTokens(next);
+      return tokens.some((token, index) => {
+        const nextToken = tokens[index + 1];
+        return token.value === "typeof" && nextToken?.type === AST_TOKEN_TYPES.Identifier &&
+          names.has(nextToken.value);
+      });
     }
 
     return {
@@ -163,8 +185,8 @@ export default createRule<Options, MessageIds>({
           if (wallMembers.has(comment)) continue;
           if (!isStandalone(comment)) continue;
           if (
-            areAdjacentLineComments(comments[i - 1], comment) ||
-            areAdjacentLineComments(comment, comments[i + 1])
+            areAdjacentLineComments(comments[i - 1], comment, isStandalone) ||
+            areAdjacentLineComments(comment, comments[i + 1], isStandalone)
           ) {
             continue; // one line of a paragraph, not a label for the next statement
           }
@@ -173,22 +195,27 @@ export default createRule<Options, MessageIds>({
           if (DIRECTIVE_RE.test(body) || CODEY_RE.test(body) || BANNERISH_RE.test(body)) continue;
           if (NON_ASCII_LETTER_RE.test(body) || isProtected(body)) continue;
           if (MODALITY_RE.test(body) || LEAD_IN_RE.test(body) || EMPHASIS_RE.test(body)) continue;
-          if (NEGATION_WORD_RE.test(body)) continue;
-          if (body.split(/\s+/).length > MAX_WORDS) continue;
+          if (NEGATION_WORD_RE.test(body) || SEMANTIC_RELATION_RE.test(body)) continue;
+          const wordCount = body.split(/\s+/).length;
+          if (wordCount < 2 || wordCount > MAX_WORDS || /[.!?]$/.test(body)) continue;
 
           const tokens = contentTokens(body);
           if (tokens.length < MIN_CONTENT_TOKENS) continue;
 
-          const statement = restatableStatementBelow(comment, sourceCode);
-          if (statement === null) continue;
+          const statementNode = restatableStatementNodeBelow(comment, sourceCode);
+          if (statementNode === null) continue;
+          const statement = sourceCode.getText(statementNode);
           if (restatesStatementHead(body, statement)) continue; // `no-comment-cruft` owns it
 
-          const line = lines[comment.loc.start.line] ?? "";
-          if (!ACTION_STMT_RE.test(line)) continue;
+          if (!ACTION_STMT_RE.test(statement)) continue;
 
-          if (labelsASiblingRun(comment)) continue;
+          if (labelsASiblingRun(statementNode) || headsValueTypeGroup(statementNode)) continue;
 
-          if (restates(tokens, codeTokens(line))) {
+          const identifiers = sourceCode.getTokens(statementNode)
+            .filter((token) => token.type === AST_TOKEN_TYPES.Identifier)
+            .map((token) => token.value)
+            .join(" ");
+          if (restates(tokens, codeTokens(identifiers))) {
             const removal = wholeLineRemovalRange(sourceCode.text, comment);
             context.report({
               node: comment,

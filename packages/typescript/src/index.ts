@@ -200,7 +200,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.5",
+  version: "15.17.6",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -215,6 +215,7 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-restated-comment",
   "@sarj/prefer-millisecond-control-duration-schema",
   "@sarj/prefer-module-level-refined-schema",
   "@sarj/prefer-multi-value-zod-literal",
@@ -263,7 +264,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-production-browser-source-maps": "error",
   "@sarj/no-repeated-string-literal": "error",
   "@sarj/no-router-refresh-polling": "error",
-  "@sarj/no-restated-comment": "error",
+  "@sarj/no-restated-comment": "warn",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",
   "@sarj/no-server-env-in-client-component": "error",
@@ -360,7 +361,7 @@ const STRICT_RULES = {
   "@sarj/no-raw-fetch-outside-clients": "error",
   "@sarj/no-repeated-string-literal": "error",
   "@sarj/no-router-refresh-polling": "error",
-  "@sarj/no-restated-comment": "error",
+  "@sarj/no-restated-comment": "warn",
   "@sarj/no-restated-jsdoc": "error",
   "@sarj/no-secret-in-log": "error",
   "@sarj/no-server-env-in-client-component": "error",

@@ -101,6 +101,7 @@ class PreferMatchTypeDispatch(Rule):
         limitations=(
             "Only three or more adjacent, unguarded `isinstance` branches over the same simple name are checked.",
             "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
+            "A terminal-looking context-manager body does not prove a sibling branch terminates: exceptions can be suppressed. An unconditional return or raise after the context manager remains eligible.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
         ),
         examples=(
@@ -422,8 +423,6 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
             return True
         case ast.If(body=if_body, orelse=else_body):
             return bool(else_body) and _body_terminates(if_body) and _body_terminates(else_body)
-        case ast.With() | ast.AsyncWith():
-            return _body_terminates(last.body)
         case _:
             return False
 
