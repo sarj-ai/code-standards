@@ -230,13 +230,12 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-typescript.outputs.artifact_sha256 }}
         run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
-      - name: Publish with npm trusted publishing
-        run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
-      - name: Verify registry bytes and source-bound provenance
+      - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
           uv run --script .github/scripts/verify_registry_publication.py npm
+          --publish
           --tarball "$RUNNER_TEMP/npm-artifacts/package.tgz"
           --commit "$EXPECTED_COMMIT" --environment npm-typescript-release
 
@@ -957,12 +956,11 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
         run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
-      - name: Publish with npm trusted publishing
-        run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
-      - name: Verify registry bytes and source-bound provenance
+      - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
           uv run --script .github/scripts/verify_registry_publication.py npm
+          --publish
           --tarball "$RUNNER_TEMP/npm-artifacts/package.tgz"
           --commit "$EXPECTED_COMMIT" --environment npm-tsconfig-release
