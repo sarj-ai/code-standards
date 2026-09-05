@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-redundant-module-alias-exports",
+      "family": "python",
+      "ruleId": "no-redundant-module-alias-exports",
+      "state": "complete",
+      "evidence": "Ten independent reviews covered Python runtime identity, named imports, monkeypatching, reload and pickle behavior, Ruff overlap, static typing, false positives, stack safety, corpus matching, and release sequencing. Twenty-seven focused cases cover exact positives plus conditional, nested, annotated, chained, destructured, computed, mixed-purpose, generated, malformed, stub, and alias-mismatch exclusions. Ruff 0.15.20 with ALL has no rule for redundant forwarding assignments in a self-replacing module. The motivating 43-file consumer corpus contained 82 exact forwarding assignments in 23 reported compatibility modules and no inspected false positives; the cleaned corpus produced zero findings. Three warm runs had a 0.99 second median versus 0.96 seconds for the same runner with SARJ438.",
+      "outcome": "Stage SARJ440 as a warning without autofix before error promotion. Report once only when an otherwise-pure Python compatibility module imports one canonical module alias, copies one or more exact same-name attributes, and finally replaces sys.modules[__name__] with that alias. Exclude all mixed-purpose or ambiguous shapes. Remediate by keeping the module replacement, migrating maintained consumers to the canonical path, and deleting the redundant forwarding ladder."
+    },
+    {
       "task": "rule-audit/python/prefer-match-value-dispatch",
       "family": "python",
       "ruleId": "prefer-match-value-dispatch",

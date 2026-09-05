@@ -40,7 +40,8 @@ class NoDunderAll(Rule):
         remediation=(
             "Before deleting `__all__`, replace wildcard-import consumers with explicit imports, retain each intended "
             "binding, and prefix implementation-only bindings with `_`. Use self-aliased imports to mark intentional "
-            "re-exports to static tooling."
+            "facade re-exports to static tooling. For a whole-module compatibility alias, replace the entry in "
+            "`sys.modules` and migrate maintained consumers to the canonical path instead of copying every name."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
