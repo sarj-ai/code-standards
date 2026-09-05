@@ -43,7 +43,6 @@ _NEXT_STEPS = (
     '  extend = ".ruff-strict.toml"\n'
     "\n(or run `code-standards setup`, which writes that and the rest of the wiring)\n"
 )
-_BOOTSTRAP_TIMEOUT = timedelta(seconds=120)
 _GIT_SAFE_ENV = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
@@ -525,20 +524,13 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             command.append("--no-install")
         environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve the caller environment for uvx
         environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
-        try:
-            return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv
-                command,
-                check=False,
-                env=environment,
-                timeout=_BOOTSTRAP_TIMEOUT.total_seconds(),
-            ).returncode
-        except subprocess.TimeoutExpired:
-            print(
-                "error: resolving the requested standards release timed out; check the network and retry "
-                "(--offline only reconverges the executing bundle)",
-                file=sys.stderr,
-            )
-            return 2
+        # The child owns the update transaction, installer deadlines, and rollback.
+        # Timing out uvx here can orphan that child halfway through a valid install.
+        return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv
+            command,
+            check=False,
+            env=environment,
+        ).returncode
 
     if args.offline:
         args.no_install = True
