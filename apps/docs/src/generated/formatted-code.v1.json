@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "25166ace320d69f9d5f2733f23fa97fb18dcc0a7355fb7d03c5be6595827dafd",
-  "cliSha256": "bd41b24a59601d512fc00d36e50c6023b2635fe347835a0973aaa8ef852b107a",
+  "catalogSha256": "9ee7c69568a1e40daa82dc4b4f0148805872c7ab24ed0a8c7c15dd261168a264",
+  "cliSha256": "7d0c791ce10f395f9b7e6f96cb01a1703c118d9f9d633abd373fad7bbb56744d",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5301,6 +5301,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not prove workflow behavior with a substring"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-redundant-module-alias-exports": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "legacy/settings.py",
+              "source": "import sys\n\nfrom canonical import settings as _canonical\n\n\nsys.modules[__name__] = _canonical\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "legacy/settings.py",
+          "id": "pure-module-alias",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Replace the compatibility module without copying its attributes"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "legacy/settings.py",
+              "source": "import sys\n\nfrom canonical import settings as _canonical\n\n\nSettings = _canonical.Settings\nload = _canonical.load\nsys.modules[__name__] = _canonical\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "legacy/settings.py",
+          "id": "self-replacing-compatibility-module",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Remove bindings that the canonical module replacement supersedes"
         }
       ],
       "optionsSchemaSource": null

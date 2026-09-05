@@ -59,6 +59,7 @@ from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
 from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
 from sarj_python_lint.rules.no_redundant_literal_description import NoRedundantLiteralDescription
+from sarj_python_lint.rules.no_redundant_module_alias_exports import NoRedundantModuleAliasExports
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
 from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
@@ -204,6 +205,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RedundantDocstring.id: RedundantDocstring,
         TrailingValueNarration.id: TrailingValueNarration,
         NoRandomUuidInSql.id: NoRandomUuidInSql,
+        NoRedundantModuleAliasExports.id: NoRedundantModuleAliasExports,
         NoHiddenConstructorFallback.id: NoHiddenConstructorFallback,
         NoFileLevelEscapeHatchSuppression.id: NoFileLevelEscapeHatchSuppression,
         NoFastapiOnEvent.id: NoFastapiOnEvent,

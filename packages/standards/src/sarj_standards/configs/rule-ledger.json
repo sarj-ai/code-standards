@@ -58,6 +58,7 @@
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
       "no-raw-source-text-test-oracle",
+      "no-redundant-module-alias-exports",
       "no-repeated-structured-string-literal",
       "no-repeated-test-body",
       "no-repeated-unseeded-stdlib-random-in-test",
@@ -348,7 +349,8 @@
       "SARJ436",
       "SARJ437",
       "SARJ438",
-      "SARJ439"
+      "SARJ439",
+      "SARJ440"
     ],
     "sql": [
       "SARJ101",
