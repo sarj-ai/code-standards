@@ -39,6 +39,7 @@ def test_historical_aliases_are_documentation_only() -> None:
 
     assert aliases["no-limit-offset"] == "no-offset-pagination"
     assert aliases["no-comment-cruft"] == "no-migration-comment-cruft"
+    assert aliases["excessive-commentary"] == "no-long-migration-narration"
     assert aliases["add-constraint-not-valid"] == "existing-table-check-or-foreign-key-requires-not-valid"
     assert aliases["add-constraint-requires-not-valid"] == "existing-table-check-or-foreign-key-requires-not-valid"
     assert aliases["insert-requires-on-conflict"] == "insert-requires-replay-policy"

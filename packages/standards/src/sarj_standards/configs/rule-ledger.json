@@ -118,7 +118,6 @@
     ],
     "sql": [
       "enforce-timestamptz",
-      "excessive-commentary",
       "existing-table-check-or-foreign-key-requires-not-valid",
       "idempotent-ddl",
       "index-budget",
@@ -126,6 +125,7 @@
       "insert-requires-replay-policy",
       "no-database-triggers",
       "no-duplicate-index",
+      "no-long-migration-narration",
       "no-migration-comment-cruft",
       "no-offset-pagination",
       "no-pg-enum",
@@ -845,6 +845,13 @@
       "status": "renamed",
       "replacement": "ephemeral-execution-artifact",
       "note": "Replace sarj-ephemeral-ai-artifact with sarj-ephemeral-execution-artifact before upgrading."
+    },
+    {
+      "id": "excessive-commentary",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "no-long-migration-narration",
+      "note": "Replace sarj-excessive-commentary with sarj-no-long-migration-narration before upgrading."
     },
     {
       "id": "existing-table-check-or-fk-requires-not-valid",

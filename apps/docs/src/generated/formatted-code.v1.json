@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e719b3790748ae303139819df0cac9faf346e3c747dbf87e1341f8ccdffaae0f",
-  "cliSha256": "456df62ab3ad4a8e4c5e9063efec131e3e6b42f03e3df5a9ae05af96d796eeb6",
+  "catalogSha256": "a9575100c1fa2d6b845e4f6bafdcbef7056045d21f1732a779bcea5f49837a9c",
+  "cliSha256": "8b4be768ad457f41eb7b1111ab772bdeafbf77d6b626c08950aedda724662eb9",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7527,41 +7527,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "sql:excessive-commentary": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "-- Create the integration table used by the application.\n-- The table stores every custom integration row.\n-- The next statement defines the identifier and name.\n-- The final statement creates the table in the database.\nCREATE TABLE IF NOT EXISTS integration (id BIGINT PRIMARY KEY, name TEXT);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/001.sql",
-          "id": "ddl-narration",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Migration comments narrate the table declarations"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "-- Keep lock_timeout at 3 seconds because API-812 writes continuously.\n-- Roll back by dropping the new index concurrently.\nSET\n  lock_timeout = '3s';\n\nSELECT\n  1;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/001.sql",
-          "id": "rollback-constraint",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Rollback and locking guidance remains local"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "sql:existing-table-check-or-foreign-key-requires-not-valid": {
       "examples": [
         {
@@ -7807,6 +7772,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Two differently named indexes have the same structure"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-long-migration-narration": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Create the custom_integration table used by the application.\n-- The table stores each configured integration for an organization.\n-- The next statement defines its identifier and display name.\n-- The final statement creates those columns in the database.\nCREATE TABLE IF NOT EXISTS integration (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "ddl-narration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Migration comments narrate the table declarations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Backfill no more than 1000 rows per transaction.\n-- Keep lock_timeout at 3 seconds while API-812 writes continuously.\n-- Wait for replica lag to return below 500 ms before the next batch.\n-- Roll back by dropping the new index concurrently.\nSET\n  lock_timeout = '3s';\n\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "rollback-constraint",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Concrete operational constraints remain local"
         }
       ],
       "optionsSchemaSource": null

@@ -30,10 +30,10 @@ if TYPE_CHECKING:
 # SARJ117 one duplicate child-table index shape.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
--- This paragraph explains the first ordinary implementation step in detail.
--- It then narrates a second ordinary step already expressed by the schema.
--- It continues describing local behavior without recording a durable rule.
--- The final sentence repeats the nearby implementation instead of clarifying intent.
+-- Create the children table used by the application in this database.
+-- The table stores each child row used by the application service.
+-- The next statement defines identifiers, ownership, names, and timestamps.
+-- The final statement creates those columns and their database constraints.
 
 -- DROP TABLE legacy_children;
 CREATE TABLE IF NOT EXISTS children (
