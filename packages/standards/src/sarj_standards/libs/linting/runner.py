@@ -55,6 +55,7 @@ _SUFFIX_TO_TOOL = MappingProxyType(
     {
         ".hcl": _Tool.IAC,
         ".py": _Tool.PYTHON,
+        ".pyi": _Tool.PYTHON,
         ".sql": _Tool.SQL,
         ".tf": _Tool.IAC,
         ".tfvars": _Tool.IAC,

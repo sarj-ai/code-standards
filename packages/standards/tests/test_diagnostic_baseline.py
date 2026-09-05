@@ -20,6 +20,7 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     baseline,
 )
+from sarj_standards.libs.diagnostics.serialize import to_github, to_sarif, to_text
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.analysis import report_from_tools
 
@@ -68,6 +69,12 @@ def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) 
 
     assert [item.location.path for item in policy.diagnostics if item.code == "SARJ012"] == ["other.py"]
     assert [item.code for item in raw_again.diagnostics] == ["SARJ012"]
+    assert sum(tool.baselined_count for tool in policy.tools) == 1
+    assert sum(tool.baselined_count for tool in raw_again.tools) == 0
+    assert any(tool.get("baselinedDiagnosticCount") == 1 for tool in policy.as_dict()["tools"])
+    assert "1 existing finding(s) accepted by central diagnostic baseline" in to_text(policy)
+    assert "1 existing finding(s) accepted by central diagnostic baseline" in to_github(policy)
+    assert "baseline-notice" in to_sarif(policy)
 
 
 def test_mocked_terraform_test_can_be_ratcheted_without_hiding_new_files(tmp_path: Path) -> None:
@@ -293,6 +300,7 @@ def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp
     )
 
     assert visible.diagnostics == (new_finding,)
+    assert visible.tools[0].baselined_count == 1
 
 
 def test_baseline_init_records_todays_findings_for_every_engine(tmp_path: Path) -> None:

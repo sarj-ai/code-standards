@@ -246,6 +246,8 @@ runtime-evaluated-base-classes = [
   "typing.TypedDict",
 ]
 runtime-evaluated-decorators = [
+  "typer.Typer.command",
+  "typer.Typer.callback",
   "pydantic.dataclasses.dataclass",
   "dataclasses.dataclass",
   "fastapi.APIRouter.post",
@@ -321,6 +323,32 @@ warns-extend-require-match-for = [
 "typing.cast".msg                     = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
 "psycopg.sql.Literal".msg             = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
 "uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
+
+# BEGIN GENERATED LIBRARY POLICY
+"aioredis".msg = "LIB020: aioredis was merged into redis-py; use redis.asyncio. Replace with redis.asyncio."
+"argparse".msg = "LIB001: Standards standardizes command-line interfaces on Typer. Replace with Typer."
+"backports.cached_property".msg = "LIB018: Python 3.14 provides functools.cached_property. Replace with functools.cached_property."
+"backports.zoneinfo".msg = "LIB012: Python 3.14 provides zoneinfo. Replace with zoneinfo."
+"boto".msg = "LIB019: Boto 2 is obsolete; migrate to boto3 and review API differences. Replace with boto3."
+"cerberus".msg = "LIB007: Standards standardizes validation and serialization on Pydantic. Replace with Pydantic."
+"click".msg = "LIB002: Use Typer for typed command-line interfaces instead of direct Click APIs. Replace with Typer."
+"enum34".msg = "LIB016: Remove the obsolete enum34 backport on Python 3.14. Replace with enum."
+"flask".msg = "LIB006: Standards standardizes HTTP APIs on FastAPI; this is an architectural migration. Replace with FastAPI."
+"futures".msg = "LIB017: Remove the obsolete futures backport on Python 3.14. Replace with concurrent.futures."
+"importlib_metadata".msg = "LIB013: Python 3.14 provides importlib.metadata. Replace with importlib.metadata."
+"importlib_resources".msg = "LIB014: Python 3.14 provides importlib.resources. Replace with importlib.resources."
+"marshmallow".msg = "LIB007: Standards standardizes validation and serialization on Pydantic. Replace with Pydantic."
+"mock".msg = "LIB022: Python 3.14 provides unittest.mock. Replace with unittest.mock."
+"nose".msg = "LIB021: Nose is unmaintained; use pytest. Replace with pytest."
+"optparse".msg = "LIB001: Standards standardizes command-line interfaces on Typer. Replace with Typer."
+"pandas".msg = "LIB003: Use Polars; migration must account for its expressions and lack of a pandas index model. Replace with Polars."
+"pathlib2".msg = "LIB011: Python 3.14 provides pathlib. Replace with pathlib."
+"pkg_resources".msg = "LIB009: Do not use pkg_resources; choose the focused importlib or packaging API. Replace with importlib.metadata/importlib.resources/packaging."
+"pytz".msg = "LIB008: Use zoneinfo; explicitly review DST ambiguity, localization, and fold behavior. Replace with zoneinfo."
+"requests".msg = "LIB004: Use HTTPX; review timeout defaults, exception types, streaming, and client lifetimes. Replace with HTTPX."
+"tomli".msg = "LIB010: Python 3.14 provides tomllib. Replace with tomllib."
+"ujson".msg = "LIB005: Use orjson; its dumps function returns bytes and option semantics differ. Replace with orjson."
+# END GENERATED LIBRARY POLICY
 
 [lint.per-file-ignores]
 # Tests legitimately assert, use fixtures and magic values, and invoke the

@@ -12,10 +12,14 @@ from sarj_standards.api import Standards
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.linting.analysis import report_from_tools
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
+
+    from sarj_standards.libs.diagnostics import AnalysisReport
 
 
 PUBLIC_COMMANDS = (
@@ -55,10 +59,7 @@ def test_top_level_help_exposes_only_the_clean_public_verbs() -> None:
     result = _help()
     assert result.returncode == 0
     assert all(command in result.stdout for command in PUBLIC_COMMANDS)
-    assert (
-        "{setup,check,commit-message,validate-slack-automations,observe,fix,doctor,update,ratchet,exclude,show,maintain}"
-        in result.stdout
-    )
+    assert "Commands:" in result.stdout
 
 
 @pytest.mark.parametrize("alias", REMOVED_ALIASES)
@@ -381,6 +382,70 @@ def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
     assert status == 0
     assert seen == [()]
     assert json.loads(capsys.readouterr().out)["diagnostics"] == []
+
+
+@pytest.mark.parametrize("branch", ["main", "preview"])
+@pytest.mark.parametrize("scope", ["committed-base", "missing-revision", "--invalid-option"])
+def test_non_default_push_honors_explicit_change_scope(
+    branch: str,
+    scope: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
+        encoding="utf-8",
+    )
+    git_environment = _git_environment()
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ("git", "-c", "user.name=CI Test", "-c", "user.email=ci@example.com", *args),
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=git_environment,
+        ).stdout.strip()
+
+    _ = git("init")
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    _ = capsys.readouterr()
+    source = tmp_path / "source.py"
+    source.write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / "unchanged.py").write_text("value = 2\n", encoding="utf-8")
+    _ = git("add", ".")
+    _ = git("commit", "--no-verify", "-m", "Initial fixture")
+    base = git("rev-parse", "HEAD")
+    source.write_text("value = 3\n", encoding="utf-8")
+    _ = git("add", "source.py")
+    _ = git("commit", "--no-verify", "-m", "Change source")
+    event = tmp_path / "push.json"
+    event.write_text(
+        json.dumps({"ref": f"refs/heads/{branch}", "repository": {"default_branch": "dev"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base if scope == "committed-base" else scope)
+    seen: list[Sequence[str] | None] = []
+
+    def capture_paths(self: Standards, paths: Sequence[str] | None = None, **_kwargs: object) -> AnalysisReport:
+        seen.append(paths)
+        return report_from_tools(self.root, ())
+
+    monkeypatch.setattr(Standards, "analyze", capture_paths)
+    status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
+    document: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload = as_table(document)
+    if scope == "committed-base":
+        assert status == 0
+        assert seen == [[str(source)]]
+    else:
+        assert status == 2
+        assert seen == []
+        assert payload["exitCode"] == 2
 
 
 def test_pull_request_scope_ignores_changed_files_without_an_analyzer(

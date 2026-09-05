@@ -1375,12 +1375,12 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 "remove or correct the unknown config name in the adoption manifest",
             )
             continue
-        standard_source, application_source, target_name, kind = spec
+        standard_source, _application_source, target_name, kind = spec
         destination = destinations[kind]
         if destination is None:
             continue
         target = destination / target_name
-        source_name = application_source if adopted.profile == "application" else standard_source
+        source_name = standard_source
         expected = CONFIGS_DIR / source_name
         if not target.is_file():
             yield Finding(

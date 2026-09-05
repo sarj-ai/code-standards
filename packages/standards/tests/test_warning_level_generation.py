@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 from typing import NamedTuple
 
+import pytest
+
+from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.repository import config_generation
 
 
@@ -60,7 +64,7 @@ def test_warning_manifest_drives_plugin_presets_and_generated_configs(tmp_path: 
     assert '"@sarj/second-rule": "error"' in preset_text
     assert '"@sarj/first-rule": ["warn", { option: true }]' in strict_text
     assert '"@sarj/second-rule": "error"' in strict_text
-    assert '"@sarj/first-rule": ["warn", { option: true }]' in application_text
+    assert 'export { createConfig, default } from "./eslint.strict.mjs";' in application_text
 
 
 def test_warning_parity_check_detects_drift_in_either_direction(tmp_path: Path) -> None:
@@ -74,3 +78,39 @@ def test_warning_parity_check_detects_drift_in_either_direction(tmp_path: Path) 
         encoding="utf-8",
     )
     assert not config_generation.sync_warning_levels(tmp_path, check=True)
+
+
+def test_canonical_library_generation_is_idempotent() -> None:
+    assert config_generation.sync(check=True)
+    generated = config_generation.generated_configs()
+    strict = next(text for path, text in generated.items() if path.name == "eslint.strict.mjs")
+    assert config_generation.render_eslint_strict(strict) == strict
+    assert '"@sarj/no-restricted-library-load"' in strict
+    assert '"module": "axios"' in strict
+    assert '"@sarj/prefer-native-random-uuid": "error"' in strict
+
+
+@pytest.mark.parametrize("decorator", ["command", "callback"])
+def test_typer_annotations_remain_available_at_runtime(decorator: str) -> None:
+    source = (
+        "from __future__ import annotations\nfrom pathlib import Path\nimport typer\n"
+        f"app = typer.Typer()\n@app.{decorator}()\ndef run(path: Path) -> None:\n    print(path)\n"
+    )
+    result = subprocess.run(
+        [
+            "ruff",
+            "check",
+            "--config",
+            str(CONFIGS_DIR / "ruff.strict.toml"),
+            "--select",
+            "TC003",
+            "--stdin-filename",
+            "src/tool.py",
+            "-",
+        ],
+        input=source,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

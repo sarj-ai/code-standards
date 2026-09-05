@@ -2778,8 +2778,9 @@ def test_eslint_rejects_boolean_coordinates(tmp_path: Path) -> None:
         parse_eslint(payload, root=tmp_path)
 
 
-def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path) -> None:
-    source = tmp_path / "example.py"
+@pytest.mark.parametrize("filename", ["example.py", "example.pyi"], ids=("implementation", "stub"))
+def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path, filename: str) -> None:
+    source = tmp_path / filename
     source.write_text("value = 1\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
@@ -2795,6 +2796,7 @@ def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path) 
     assert [report.name for report in reports] == ["ruff", "basedpyright"]
     assert all(report.completion is Completion.COMPLETE for report in reports)
     assert all(argv[0] != "uv" for argv in seen)
+    assert all(report.file_count == 1 for report in reports)
 
 
 def test_python_external_tools_run_once_per_nearest_project(tmp_path: Path) -> None:

@@ -34,6 +34,42 @@ def _bundle(root: Path, *, python_pin: str = "sarj-python-lint==1.2.3") -> None:
     peers.write_text(json.dumps({"peers": {"@sarj/eslint-plugin": "9.8.7"}}), encoding="utf-8")
 
 
+def test_registry_cli_preserves_typed_retry_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[Path, int, timedelta]] = []
+
+    def wait(root: Path, *, attempts: int, delay: timedelta) -> tuple[RegistryRequirement, ...]:
+        calls.append((root, attempts, delay))
+        return ()
+
+    monkeypatch.setattr(registry_module, "wait_for_lint_config_dependencies", wait)
+
+    assert registry_module.main(["--root", str(tmp_path), "--attempts", "3", "--delay-seconds", "0.5"]) == 0
+    assert calls == [(tmp_path, 3, timedelta(seconds=0.5))]
+
+
+def test_registry_cli_preserves_failure_exit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def wait(_root: Path, *, attempts: int, delay: timedelta) -> tuple[RegistryRequirement, ...]:
+        _ = attempts, delay
+        msg = "publication unavailable"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(registry_module, "wait_for_lint_config_dependencies", wait)
+
+    assert registry_module.main(["--root", str(tmp_path)]) == 2
+
+
+@pytest.mark.parametrize("delay", ["nan", "inf", "-inf", "1e308"])
+def test_registry_cli_rejects_unrepresentable_delays(delay: str, tmp_path: Path) -> None:
+    with pytest.raises(SystemExit) as stopped:
+        registry_module.main(["--root", str(tmp_path), "--delay-seconds", delay])
+    assert stopped.value.code == 2
+
+
+def test_registry_cli_preserves_short_help(capsys: pytest.CaptureFixture[str]) -> None:
+    assert registry_module.main(["-h"]) == 0
+    assert "--delay-seconds" in capsys.readouterr().out
+
+
 def test_lint_config_requirements_read_exact_pypi_and_npm_pins(tmp_path: Path) -> None:
     _bundle(tmp_path)
 

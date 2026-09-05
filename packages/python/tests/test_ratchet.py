@@ -25,6 +25,23 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+@pytest.mark.parametrize("argv", [["--help"], ["-h"], ["--version"]], ids=("help", "short-help", "version"))
+def test_cli_help_and_version_exit_zero(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(argv) == 0
+    assert "sarj-ratchet" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--unknown"], ["--per-file-ceiling", "not-an-integer"], ["--package"]],
+    ids=("unknown-option", "invalid-integer", "missing-option-value"),
+)
+def test_cli_usage_errors_exit_two(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as failure:
+        main(argv)
+    assert failure.value.code == 2
+
+
 @pytest.mark.parametrize(
     ("line", "key"),
     [

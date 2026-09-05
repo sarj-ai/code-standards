@@ -11,7 +11,6 @@ from sarj_standards.libs.filesystem import is_link_like
 
 from . import lifecycle, manifest, scaffold, transaction
 from .configs import (
-    APPLICATION_CONFIG_NAMES,
     CONFIG_NAMES,
     KOTLIN_CONFIGS,
     MOBILE_COMPANION_CONFIGS,
@@ -158,11 +157,7 @@ def plan_sync(
     targets: list[SyncTarget] = []
     for name in selected:
         standard_source, target_name = CONFIG_NAMES[name]
-        source_name = (
-            APPLICATION_CONFIG_NAMES.get(name, standard_source)
-            if selected_profile == "application"
-            else standard_source
-        )
+        source_name = standard_source
         if name == "eslint":
             base = destination(_DestinationKind.TYPESCRIPT, typescript_dest)
         elif name in PYTHON_CONFIGS:

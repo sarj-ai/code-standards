@@ -978,7 +978,7 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
                 plan.errors.append(str(exc))
                 return
             plan.writes.append((path, updated))
-            plan.notes.append("updated the manifest to match the requested capabilities and profile")
+            plan.notes.append("updated the manifest to match the requested capabilities")
             return
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
 
@@ -1051,8 +1051,10 @@ def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
     policy = f"\n[capabilities]\ndisable = [{disabled_text}]\n"
     table = _FIRST_TOML_TABLE.search(migrated)
     if table is None:
-        return f"{migrated.rstrip()}\n{policy}"
-    return f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
+        migrated = f"{migrated.rstrip()}\n{policy}"
+    else:
+        migrated = f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
+    return _render_manifest_preserving_extensions(migrated, desired.render())
 
 
 def _without_schema_less_configs(text: str) -> str:

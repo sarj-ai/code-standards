@@ -1,9 +1,11 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["typer==0.27.2"]
+# ///
 # pyright: basic
-# ruff: file-ignore[implicit-namespace-package]
 
 from __future__ import annotations
 
-import argparse
 import base64
 from collections import defaultdict
 from dataclasses import dataclass
@@ -17,10 +19,12 @@ import sys
 import tarfile
 import tempfile
 import time
-from typing import Any, NoReturn
+from typing import Annotated, Any, NoReturn
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 import zipfile
+
+import typer
 
 
 REPOSITORY = "sarj-ai/code-standards"
@@ -347,22 +351,33 @@ def verify_npm(tarball: Path, *, commit: str, environment: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    commands = parser.add_subparsers(dest="registry", required=True)
-    pypi = commands.add_parser("pypi")
-    pypi.add_argument("--dist", type=Path, required=True)
-    pypi.add_argument("--project", action="append", required=True)
-    pypi.add_argument("--environment", required=True)
-    npm = commands.add_parser("npm")
-    npm.add_argument("--tarball", type=Path, required=True)
-    npm.add_argument("--commit", required=True)
-    npm.add_argument("--environment", required=True)
-    args = parser.parse_args(argv)
+    app = typer.Typer(
+        add_completion=False,
+        pretty_exceptions_enable=False,
+        context_settings={"help_option_names": ["-h", "--help"]},
+    )
+
+    @app.command("pypi")
+    def pypi_command(
+        dist: Annotated[Path, typer.Option("--dist")],
+        project: Annotated[list[str], typer.Option("--project")],
+        environment: Annotated[str, typer.Option("--environment")],
+    ) -> None:
+        verify_pypi(dist, tuple(project), environment)
+
+    @app.command("npm")
+    def npm_command(
+        tarball: Annotated[Path, typer.Option("--tarball")],
+        commit: Annotated[str, typer.Option("--commit")],
+        environment: Annotated[str, typer.Option("--environment")],
+    ) -> None:
+        verify_npm(tarball, commit=commit, environment=environment)
+
     try:
-        if args.registry == "pypi":
-            verify_pypi(args.dist, tuple(args.project), args.environment)
-        else:
-            verify_npm(args.tarball, commit=args.commit, environment=args.environment)
+        app(args=argv, prog_name="verify-registry-publication")
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
     except (OSError, subprocess.CalledProcessError, VerificationError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2

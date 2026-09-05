@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
+from sarj_standards import api
+from sarj_standards._meta import RUFF_STRICT
+from sarj_standards.cli.main import main
+from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.linting import library_policy
 
 
@@ -14,6 +19,92 @@ def test_catalog_has_stable_unique_ids_and_adapter_messages() -> None:
     assert len({entry.id for entry in entries}) == len(entries)
     assert library_policy.python_banned_api()["argparse"].startswith("LIB001:")
     assert {entry.name for entry in library_policy.typescript_restricted_imports()} >= {"axios", "express", "tslint"}
+
+
+def write_adoption(root: Path, profile: manifest.Profile, *, configs: tuple[str, ...] = ()) -> None:
+    adopted = manifest.Manifest(
+        version=api.__version__,
+        configs=configs,
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        profile=profile,
+    )
+    (root / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+
+@pytest.mark.parametrize("profile", ["standard", "application"], ids=("legacy-standard", "legacy-application"))
+@pytest.mark.parametrize("entry", library_policy.catalog(), ids=[entry.id for entry in library_policy.catalog()])
+def test_every_library_mapping_is_enforced_by_both_legacy_profile_names(
+    tmp_path: Path,
+    profile: manifest.Profile,
+    entry: library_policy.LibraryMapping,
+) -> None:
+    write_adoption(tmp_path, profile)
+    if entry.ecosystem == "python":
+        selected = tmp_path / "requirements.txt"
+        selected.write_text(entry.packages[0] + "\n", encoding="utf-8")
+    else:
+        selected = tmp_path / "package.json"
+        selected.write_text(json.dumps({"dependencies": {entry.packages[0]: "1"}}), encoding="utf-8")
+
+    checked = api.Standards(tmp_path).check([str(selected)])
+    analyzed = api.Standards(tmp_path).analyze([str(selected)])
+
+    assert checked.exit_code == 1
+    assert [finding.id for finding in checked.findings] == [entry.id]
+    assert analyzed.exit_code == 1
+    assert [finding.code for finding in analyzed.diagnostics if finding.source == "sarj-library-policy"] == [entry.id]
+
+
+@pytest.mark.parametrize("profile", ["standard", "application"], ids=("legacy-standard", "legacy-application"))
+def test_cli_rejects_argparse_dependency_for_both_legacy_profile_names(
+    tmp_path: Path,
+    profile: manifest.Profile,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_adoption(tmp_path, profile)
+    selected = tmp_path / "requirements.txt"
+    selected.write_text("argparse\n", encoding="utf-8")
+
+    status = main(["--root", str(tmp_path), "check", str(selected), "--format", "json"])
+
+    assert status == 1
+    assert '"code": "LIB001"' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("profile", ["standard", "application"], ids=("legacy-standard", "legacy-application"))
+def test_managed_source_analysis_rejects_argparse_import_for_both_legacy_profile_names(
+    tmp_path: Path,
+    profile: manifest.Profile,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_adoption(tmp_path, profile, configs=("ruff",))
+    (tmp_path / ".ruff-strict.toml").write_text(RUFF_STRICT.read_text(), encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[tool.ruff]\nextend = ".ruff-strict.toml"\n', encoding="utf-8")
+    selected = tmp_path / "service.py"
+    selected.write_text("import argparse\n", encoding="utf-8")
+
+    analyzed = api.Standards(tmp_path).analyze([str(selected)], external=True)
+    status = main(["--root", str(tmp_path), "check", str(selected), "--format", "json"])
+
+    assert analyzed.exit_code == 1
+    assert any("LIB001" in diagnostic.message for diagnostic in analyzed.diagnostics)
+    assert status == 1
+    assert "LIB001" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("profile", ["standard", "application"], ids=("legacy-standard", "legacy-application"))
+def test_library_policy_accepts_preferred_dependencies_for_both_legacy_profile_names(
+    tmp_path: Path,
+    profile: manifest.Profile,
+) -> None:
+    write_adoption(tmp_path, profile)
+    selected = tmp_path / "requirements.txt"
+    selected.write_text("typer\npolars\nhttpx\n", encoding="utf-8")
+
+    assert api.Standards(tmp_path).check([str(selected)]).exit_code == 0
+    assert api.Standards(tmp_path).analyze([str(selected)]).exit_code == 0
 
 
 def test_scan_reads_python_manifest_families_and_normalizes_names(tmp_path: Path) -> None:

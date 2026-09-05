@@ -310,7 +310,10 @@ def test_cli_added_level_gate_rejects_unsupported_error_stage(
             ]
         )
 
-    assert "invalid choice: 'error'" in capsys.readouterr().err
+    error = capsys.readouterr().err
+    assert "--require-added-level" in error
+    assert "'error'" in error
+    assert "'warning'" in error
 
 
 def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFixture[str]) -> None:

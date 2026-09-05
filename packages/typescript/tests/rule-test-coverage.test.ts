@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { builtinRules } from "eslint/use-at-your-own-risk";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
@@ -12,12 +13,12 @@ import plugin, { RULES } from "../src/index.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RULE_TESTS_DIR = resolve(HERE, "rules");
 
-/** Every rule name the plugin exports or wires into a preset, de-duplicated. */
+/** Every Sarj-owned rule exported or wired into a preset, de-duplicated. */
 function ruleNamesUnderTest(): string[] {
   const names = new Set(Object.keys(RULES));
   for (const preset of Object.values(plugin.configs)) {
     for (const key of Object.keys(preset.rules)) {
-      names.add(key.replace(/^@sarj\//u, ""));
+      if (key.startsWith("@sarj/")) names.add(key.slice("@sarj/".length));
     }
   }
   return [...names].sort();
@@ -124,6 +125,18 @@ describe("every shipped rule is exercised by its own tests", () => {
 
   it("has rules to check", () => {
     expect(names.length).toBeGreaterThan(0);
+  });
+
+  it("every preset rule has a known implementation owner", () => {
+    for (const preset of Object.values(plugin.configs)) {
+      for (const key of Object.keys(preset.rules)) {
+        if (key.startsWith("@sarj/")) {
+          expect(key.slice("@sarj/".length) in RULES).toBe(true);
+        } else {
+          expect(builtinRules.has(key)).toBe(true);
+        }
+      }
+    }
   });
 
   it.each(names)("%s has a test file", (name) => {

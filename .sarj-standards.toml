@@ -1,8 +1,7 @@
 schema = 4
-bundle = "7.11.2"
+bundle = "7.11.1"
 rule_profile = "all"
 
-profile = "standard"
 
 [capabilities]
 # The TypeScript package defines the ESLint preset itself, so its authored
