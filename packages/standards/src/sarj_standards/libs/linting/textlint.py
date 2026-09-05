@@ -19,6 +19,7 @@ from typing import (
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
+from yaml.tokens import ScalarToken
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.rules.contracts import (
@@ -37,6 +38,8 @@ from sarj_standards.libs.rules.contracts import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from yaml.error import Mark
 
 
 class _ShellOperands(NamedTuple):
@@ -254,9 +257,7 @@ _WALL_MAX_WORDS: Final = 18
 _WALL_MIN_MATCHED_RATIO: Final = 0.5
 _WALL_MAX_NOVEL_WORDS: Final = 2
 _WALL_GROUP_MAX_LINES: Final = 24
-_COMMENTED_CONFIG_MAX_WORDS: Final = 8
-_COMMENTED_CONFIG_RUN_MIN: Final = 1
-_COMMENTED_CONFIG_RUN_RATIO: Final = 0.5
+_COMMENTED_CONFIG_RUN_MIN: Final = 2
 _DURABLE_MARKDOWN: Final = (
     "README.md",
     "**/README.md",
@@ -351,14 +352,6 @@ _PROTECTED_RE = re.compile(
     r"intentionally|security|invariant|idempotent|race|deprecated|compatibility)\b|"
     r"\d+(?:\.\d+)?\s?(?:ms|sec|minutes?|hours?|days?|KB|MB|MiB|GiB|%|rps|qps)\b",
     re.IGNORECASE,
-)
-_CONFIG_SHAPE_RE = re.compile(
-    r"""^(?:-\s+)?(?:uses|run|name|if|env|with|image|services|steps|jobs|stages|"""
-    r"""[A-Za-z_][\w.-]*|["'][^"']+["'])\s*[:=]\s*\S""",
-    re.IGNORECASE,
-)
-_DOCKER_SHAPE_RE = re.compile(
-    r"^(?:ADD|ARG|CMD|COPY|ENTRYPOINT|ENV|EXPOSE|FROM|HEALTHCHECK|LABEL|RUN|SHELL|USER|VOLUME|WORKDIR)\s+"
 )
 _NARRATION_RE = re.compile(
     r"^(?:first|then|next|now|finally|add|build|call|check|configure|create|define|"
@@ -525,16 +518,17 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "commented-out-config": RuleMeta(
             code="SARJ301",
-            summary="commented-out config syntax",
+            blocking=False,
+            summary="unexplained disabled config blocks or adjacent alternatives",
             rationale="Disabled configuration becomes stale while version control already preserves its history.",
-            remediation="Delete disabled configuration; document a default or constraint when that information remains useful.",
+            remediation="Delete inactive settings, or explain the supported default, optional override, or constraint.",
             category=RuleCategory.MAINTAINABILITY,
             languages=frozenset({Language.CONFIG}),
-            file_patterns=("**/*.{yaml,yml,toml,jsonc,ini,cfg,conf,properties,sh,zsh,bash}",),
+            file_patterns=("**/*.{yaml,yml,toml,jsonc}",),
             examples=(
                 _public_example(
                     example_id="disabled-config-entry",
-                    title="A commented-out assignment is stale configuration",
+                    title="An unexplained alternative repeats the adjacent active key",
                     outcome=ExpectedOutcome.MATCH,
                     path="config.toml",
                     source="# timeout = 30\ntimeout = 10\n",
@@ -542,15 +536,18 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 ),
                 _public_example(
                     example_id="documented-default",
-                    title="An explicitly labeled default is documentation",
+                    title="A labeled optional override remains documentation",
                     outcome=ExpectedOutcome.NO_MATCH,
                     path="config.toml",
-                    source="# Default:\n# timeout = 30\ntimeout = 10\n",
+                    source="# Optional local override:\n# timeout = 30\ntimeout = 10\n",
                     expected_count=0,
                 ),
             ),
             limitations=(
-                "Directive, rationale, documented-example, and YAML block-scalar comments are intentionally excluded.",
+                "Only YAML, TOML, and JSONC are analyzed; other configuration dialects need dedicated syntax support.",
+                "Requires two same-indent entries or one entry repeating an immediately adjacent active key.",
+                "Explanatory comment blocks, references, directives, and multiline string payloads are preserved.",
+                "YAML detection covers scalar mapping entries, not sequence entries or collection-valued mappings.",
             ),
         ),
         "ephemeral-execution-artifact": RuleMeta(
@@ -622,6 +619,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "declarative-deployment-boundary": RuleMeta(
             code="SARJ309",
+            blocking=False,
             summary="recognized control-plane commands mutate infrastructure outside Terraform",
             rationale=(
                 "Imperative control-plane commands and plan-address allowlists split deployment ownership between "
@@ -2337,7 +2335,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
                 path,
                 line,
                 "SARJ301",
-                "Commented-out config block — delete it; version control preserves history.",
+                "Unexplained inactive configuration — delete it, or explain the supported default or optional override.",
             )
             for line in sorted(config_run_lines)
         )
@@ -2353,13 +2351,6 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
         if not body or _DIRECTIVE_RE.match(body):
             continue
         protected = bool(_PROTECTED_RE.search(body))
-        if not protected and _looks_commented_config(path, body) and not _inside_comment_run(path, lines, index):
-            findings.append(
-                Finding(
-                    path, index + 1, "SARJ301", "Commented-out config — delete it; version control preserves history."
-                )
-            )
-            continue
         if (
             not protected
             and _exact_config_restatement(path, body, lines, index)
@@ -2413,40 +2404,108 @@ def _suppresses_previous_line(lines: list[str], index: int, code: str) -> bool:
 
 
 def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
+    if path.suffix.lower() not in {".yaml", ".yml", ".toml", ".jsonc"}:
+        return set()
+    literal_lines = _config_literal_lines(path, lines)
     leaders: set[int] = set()
     index = 0
     while index < len(lines):
-        if _standalone_comment(path, lines[index]) is None:
+        first = _standalone_comment(path, lines[index])
+        if index in literal_lines or first is None or not first.body:
             index += 1
             continue
+        start = index
         run: list[tuple[int, str]] = []
-        while index < len(lines) and (parsed := _standalone_comment(path, lines[index])) is not None:
-            indent, body = parsed
-            if not (path.suffix.lower() in {".yaml", ".yml"} and _inside_yaml_block_scalar(lines, index, indent)):
-                run.append((index + 1, body))
+        while (
+            index < len(lines)
+            and index not in literal_lines
+            and (parsed := _standalone_comment(path, lines[index])) is not None
+            and parsed.indent == first.indent
+            and parsed.body
+        ):
+            run.append((index + 1, parsed.body))
             index += 1
         suppressions = {
             code.upper()
             for _line, body in run
             if (match := _SARJ_SUPPRESSION_RE.match(body)) is not None
-            for code in match.group("codes").split(",")
+            for code in (item.strip() for item in match.group("codes").split(","))
         }
         if "SARJ301" in suppressions:
             continue
-        effective = [(line, body) for line, body in run if _SARJ_SUPPRESSION_RE.match(body) is None]
+        effective = [
+            (line, body)
+            for line, body in run
+            if _SARJ_SUPPRESSION_RE.match(body) is None and not _CONFIG_TOOL_DIRECTIVE_RE.match(body)
+        ]
         if not effective:
             continue
-        if any(_DIRECTIVE_RE.match(body) for _line, body in effective):
+        if any(_PROTECTED_RE.search(body) for _line, body in effective):
             continue
-        shaped = [line for line, body in effective if _looks_commented_config(path, body)]
-        if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN and len(shaped) / len(effective) >= _COMMENTED_CONFIG_RUN_RATIO:
+        shaped = [line for line, body in effective if _commented_config_key(path, body) is not None]
+        if len(shaped) != len(effective):
+            continue
+        shaped_key = next((_commented_config_key(path, body) for line, body in effective if line in shaped), None)
+        adjacent = (
+            any(
+                0 <= neighbor < len(lines)
+                and len(lines[neighbor]) - len(lines[neighbor].lstrip()) == first.indent
+                and _standalone_comment(path, lines[neighbor]) is None
+                and _commented_config_key(path, lines[neighbor].strip()) == shaped_key
+                for neighbor in (start - 1, index)
+            )
+            if len(shaped) == 1
+            else False
+        )
+        if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN or adjacent:
             leaders.add(shaped[0])
     return leaders
+
+
+_CONFIG_TOOL_DIRECTIVE_RE = re.compile(
+    r"^(?:!|shellcheck\b|yamllint\b|prettier\b|eslint\b|renovate\b|dependabot\b)", re.IGNORECASE
+)
+_TOML_STRING_OR_COMMENT_RE = re.compile(
+    r"#[^\n]*|\"\"\"(?:\\.|(?!\"\"\").)*\"\"\"|'''(?:(?!''').)*'''|\"(?:\\.|[^\"\\])*\"|'[^'\n]*'",
+    re.DOTALL,
+)
+
+
+def _config_literal_lines(path: Path, lines: list[str]) -> set[int]:
+    source = "\n".join(lines)
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        try:
+            tokens: list[object] = list(yaml.scan(source))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+        except yaml.YAMLError:
+            return set(range(len(lines)))
+        literal_lines: set[int] = set()
+        for token in tokens:
+            if not isinstance(token, ScalarToken):
+                continue
+            start: Mark = token.start_mark  # pyright: ignore[reportAny]
+            end: Mark = token.end_mark  # pyright: ignore[reportAny]
+            if end.line > start.line:
+                literal_lines.update(range(start.line, end.line + (end.column > 0)))
+        return literal_lines
+    if path.suffix.lower() != ".toml":
+        return set()
+    try:
+        tomllib.loads(source)
+    except tomllib.TOMLDecodeError:
+        return set(range(len(lines)))
+    return {
+        line
+        for match in _TOML_STRING_OR_COMMENT_RE.finditer(source)
+        if not match.group().startswith("#") and "\n" in match.group()
+        for line in range(source.count("\n", 0, match.start()), source.count("\n", 0, match.end()) + 1)
+    }
 
 
 def _standalone_comment(path: Path, line: str) -> _StandaloneComment | None:
     stripped = line.lstrip()
     if path.suffix.lower() == ".jsonc":
+        if stripped == "*/":
+            return _StandaloneComment(len(line) - len(stripped), "")
         for marker in ("//", "/*", "*"):
             if stripped.startswith(marker):
                 body = stripped.removeprefix(marker).removesuffix("*/").strip()
@@ -2457,23 +2516,38 @@ def _standalone_comment(path: Path, line: str) -> _StandaloneComment | None:
     return _StandaloneComment(len(line) - len(stripped), stripped.removeprefix("#").strip())
 
 
-def _looks_commented_config(path: Path, body: str) -> bool:
-    if path.name.lower().startswith("dockerfile") and _DOCKER_SHAPE_RE.match(body):
-        return True
-    if path.suffix.lower() == ".toml" and body.startswith("[") and body.endswith("]"):
-        return True
-    # Reject prose-shaped text before recognizing disabled configuration.
-    if len(body.split()) > _COMMENTED_CONFIG_MAX_WORDS or ". " in body or not _CONFIG_SHAPE_RE.match(body):
-        return False
-    _key, separator, value = body.partition(":" if ":" in body else "=")
-    if not separator:
-        return False
-    compact = value.strip()
-    return bool(compact) and (
-        not any(character.isspace() for character in compact)
-        or compact.startswith(("[", "{"))
-        or (compact[0] in {'"', "'"} and compact[-1] == compact[0])
-    )
+def _commented_config_key(path: Path, body: str) -> str | None:
+    if path.suffix.lower() == ".toml":
+        try:
+            parsed: dict[str, object] = tomllib.loads(body)
+        except tomllib.TOMLDecodeError:
+            return None
+        keys: list[str] = []
+        while len(parsed) == 1:
+            key, value = next(iter(parsed.items()))
+            keys.append(key)
+            parsed = as_table(value)
+        return json.dumps(keys) if keys else None
+    if path.suffix.lower() == ".jsonc":
+        try:
+            parsed_json = as_table(_structured_config_document(".json", "{" + body.rstrip(",") + "}"))
+        except json.JSONDecodeError:
+            return None
+        return next(iter(parsed_json)) if len(parsed_json) == 1 else None
+    if re.match(r"^(?:Optional|Required|Defaults?|Examples?|Note|Usage|Format|Type):", body):
+        return None
+    if not re.match(r"^(?:[A-Za-z_][\w.-]*|\"[^\"]+\"|'[^']+'):\s+\S", body):
+        return None
+    node = _workflow_document(body)
+    if node is None:
+        return None
+    pairs: list[tuple[Node, Node]] = node.value  # pyright: ignore[reportAny]
+    if len(pairs) != 1:
+        return None
+    key, value = pairs[0]
+    if not isinstance(key, ScalarNode) or not isinstance(value, ScalarNode):
+        return None
+    return _scalar_value(key)
 
 
 def _exact_config_restatement(path: Path, body: str, lines: list[str], index: int) -> bool:
@@ -2520,12 +2594,6 @@ def _config_value(text: str) -> str:
     if len(value) >= _QUOTED_SCALAR_MIN_LENGTH and value[0] == value[-1] and value[0] in {'"', "'"}:
         value = value[1:-1]
     return " ".join(value.split()).casefold()
-
-
-def _inside_comment_run(path: Path, lines: list[str], index: int) -> bool:
-    return (index > 0 and _standalone_comment(path, lines[index - 1]) is not None) or (
-        index + 1 < len(lines) and _standalone_comment(path, lines[index + 1]) is not None
-    )
 
 
 def _inside_yaml_block_scalar(lines: list[str], index: int, indent: int) -> bool:
