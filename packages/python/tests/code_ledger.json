@@ -210,5 +210,6 @@
   "SARJ435": "typed-error-reasons",
   "SARJ436": "no-whole-request-response-payload-in-log",
   "SARJ437": "complex-postgres-query-requires-architecture-review",
-  "SARJ438": "no-dunder-all"
+  "SARJ438": "no-dunder-all",
+  "SARJ439": "prefer-match-value-dispatch"
 }

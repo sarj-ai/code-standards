@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b285d8b585254caba0cf6daf0fc6f4c7732213ff06187f2b4d44e042de20824d",
-  "cliSha256": "098315e11d08eccc29a1149fd90eedac08e2b21c2428d4a5e7dbee4e14cc356e",
+  "catalogSha256": "52237a6521f2496bc2a10ccedb36367423e3e2ee032ce1953674eb1e0ff84b7d",
+  "cliSha256": "0d730cfd76813d47694403a9c14413cce3b0cd3aaad8f2a68a0d2a503966f9c4",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6201,6 +6201,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated branches dispatch on runtime type"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-match-value-dispatch": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/migrate.py",
+              "source": "def migrate(path):\n    match path.name:\n        case \"eslint.json\":\n            return rewrite_eslint(path)\n        case \"ratchet.json\":\n            return rewrite_ratchet(path)\n        case _:\n            return rewrite(path)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/migrate.py",
+          "id": "literal-match-dispatch",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use value cases and retain the fallback"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/migrate.py",
+              "source": "_ESLINT_SUPPRESSIONS = \"eslint.json\"\n_RATCHET_SUPPRESSIONS = \"ratchet.json\"\n\n\ndef migrate(path):\n    if path.name == _ESLINT_SUPPRESSIONS:\n        migrated = rewrite_eslint(path)\n    elif path.name == _RATCHET_SUPPRESSIONS:\n        migrated = rewrite_ratchet(path)\n    else:\n        migrated = rewrite(path)\n    return migrated\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/migrate.py",
+          "id": "named-file-dispatch",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Make repeated filename dispatch explicit"
         }
       ],
       "optionsSchemaSource": null

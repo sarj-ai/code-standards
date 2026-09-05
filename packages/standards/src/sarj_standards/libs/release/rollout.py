@@ -1542,19 +1542,20 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
         msg = f"rollout channel {args.channel!r} selects no consumers"
         raise RolloutError(msg)
     version = validate_version(args.version) if args.version else latest_version(runner)
-    if args.command == "plan":
-        rollout_plan = plan(version, consumers, runner)
-        outcomes = rollout_plan.outcomes
-        print_outcomes(version, outcomes, source_sha=rollout_plan.source_sha)
-    elif args.command == "status":
-        outcomes = status(version, consumers, runner)
-        print_outcomes(version, outcomes)
-        return 0 if all(item.state in {"merged", "already-current"} for item in outcomes) else 1
-    else:
-        outcomes = apply(version, consumers, runner, dry_run=args.dry_run)
-        print_outcomes(version, outcomes)
-        if any(item.state in {"blocked", "error"} for item in outcomes):
-            return 1
+    match args.command:
+        case "plan":
+            rollout_plan = plan(version, consumers, runner)
+            outcomes = rollout_plan.outcomes
+            print_outcomes(version, outcomes, source_sha=rollout_plan.source_sha)
+        case "status":
+            outcomes = status(version, consumers, runner)
+            print_outcomes(version, outcomes)
+            return 0 if all(item.state in {"merged", "already-current"} for item in outcomes) else 1
+        case _:
+            outcomes = apply(version, consumers, runner, dry_run=args.dry_run)
+            print_outcomes(version, outcomes)
+            if any(item.state in {"blocked", "error"} for item in outcomes):
+                return 1
     return 0
 
 

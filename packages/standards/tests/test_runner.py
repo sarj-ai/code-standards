@@ -577,22 +577,23 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
         def checker(_argv: list[str]) -> int:
             return 0
 
-        if package == "sarj_python_lint":
-            registry = {
-                "no-comment-cruft": object,
-                "no-restated-comment": object,
-                "no-secret-in-log": object,
-            }
-        elif package == "sarj_sql_lint":
-            registry = {"no-comment-cruft": object, "idempotent-ddl": object}
-        elif package == "sarj_iac_lint":
-            registry = {
-                "no-comment-cruft": object,
-                "no-restated-comment": object,
-                "require-deletion-protection": object,
-            }
-        else:
-            registry = {"idempotent-ddl": object}
+        match package:
+            case "sarj_python_lint":
+                registry = {
+                    "no-comment-cruft": object,
+                    "no-restated-comment": object,
+                    "no-secret-in-log": object,
+                }
+            case "sarj_sql_lint":
+                registry = {"no-comment-cruft": object, "idempotent-ddl": object}
+            case "sarj_iac_lint":
+                registry = {
+                    "no-comment-cruft": object,
+                    "no-restated-comment": object,
+                    "require-deletion-protection": object,
+                }
+            case _:
+                registry = {"idempotent-ddl": object}
         return _LoadedTool(checker, registry)
 
     def capture_rules(

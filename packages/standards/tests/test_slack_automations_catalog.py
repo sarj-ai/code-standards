@@ -414,21 +414,22 @@ def test_catalog_rejects_broken_domain_references(tmp_path: Path, mutation: str,
     assert _is_list(capabilities)
     assert capabilities
     assert _is_table(capabilities[0])
-    if mutation == "unknown-persona":
-        capabilities[0]["personaIds"] = ["missing"]
-    elif mutation == "unused-persona":
-        bot["identityKind"] = "shared"
-        personas = bot["personas"]
-        assert _is_list(personas)
-        personas.append({"id": "unused", "displayName": "Unused", "summary": "An unused persona."})
-    elif mutation == "unknown-system":
-        capabilities[0]["connectedSystemIds"] = ["missing"]
-    elif mutation == "unused-system":
-        systems = document["systems"]
-        assert _is_list(systems)
-        systems.insert(0, {"id": "other", "displayName": "Other"})
-    else:
-        _integration(document)["consumerBotAppIds"] = ["missing"]
+    match mutation:
+        case "unknown-persona":
+            capabilities[0]["personaIds"] = ["missing"]
+        case "unused-persona":
+            bot["identityKind"] = "shared"
+            personas = bot["personas"]
+            assert _is_list(personas)
+            personas.append({"id": "unused", "displayName": "Unused", "summary": "An unused persona."})
+        case "unknown-system":
+            capabilities[0]["connectedSystemIds"] = ["missing"]
+        case "unused-system":
+            systems = document["systems"]
+            assert _is_list(systems)
+            systems.insert(0, {"id": "other", "displayName": "Other"})
+        case _:
+            _integration(document)["consumerBotAppIds"] = ["missing"]
     catalog = tmp_path / "catalog.json"
     _write(catalog, document)
 

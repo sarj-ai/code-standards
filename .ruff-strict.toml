@@ -30,77 +30,6 @@ logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire
 # warning without applying a potentially breaking rewrite.
 unfixable = ["TC001", "TC002", "TC003"]
 
-extend-select = [
-  "ANN401",
-  "RUF013",
-  "RUF022",
-  "RUF023",
-  "RUF052",
-  "TC001",
-  "TC002",
-  "TC003",
-
-  "UP041",
-  "UP045",
-  "UP046",
-  "UP047",
-  "UP049",
-
-  "FURB101",
-  "FURB103",
-  "FURB113",
-  "FURB118",
-  "FURB148",
-  "FURB152",
-  "FURB154",
-  "FURB163",
-  "FURB166",
-  "FURB171",
-  "FURB177",
-  "FURB180",
-  "FURB192",
-
-  "ASYNC100",
-  "ASYNC105",
-  "ASYNC109",
-
-  "B904",
-  "S112",
-  "TRY400",
-  "TRY401",
-
-  "ASYNC210",
-  "ASYNC220",
-  "ASYNC230",
-  "ASYNC251",
-  "PERF402",
-  "SIM117",
-
-  "PT006",
-  "PT007",
-  "PT009",
-  "PT011",
-  "PT012",
-
-  "FAST001",
-  "FAST002",
-  "FAST003",
-
-  "LOG001",
-  "LOG002",
-  "LOG007",
-  "LOG009",
-  "LOG015",
-  "G010",
-
-  "FBT001",
-  "FBT002",
-  "FBT003",
-]
-
-# The ignore list is derived from rule semantics rather than consumer
-# suppressions. Security, naming, and correctness checks remain enabled unless a
-# narrower authority owns the concern or the rule conflicts with the formatter.
 # The D/DOC block below documents the deliberate docstring policy.
 ignore = [
   # Every entry below has a durable semantic reason. Builtin-shadowing checks
@@ -363,8 +292,9 @@ warns-extend-require-match-for = [
 "**/test_*.py"            = ["ANN201", "ANN202", "S101", "S105", "S106", "S311", "INP001"]
 "**/*_test.py"            = ["S311"]
 "**/conftest.py"          = ["S101", "S105", "S106", "S311", "INP001"]
-# Standalone scripts are not importable packages, so INP001 does not apply.
-"scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
+# Standalone scripts may print and need not be importable packages. Their
+# security and exception handling require the same checks as other source.
+"scripts/**"      = ["T201", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]
 "**/cli/**/*.py"  = ["T201"]

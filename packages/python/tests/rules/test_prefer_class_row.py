@@ -61,12 +61,13 @@ def test_async_cursor_then_model_constructor_fires() -> None:
 
 @pytest.mark.parametrize("container", ["[]", "set()", "()"])
 def test_fetchall_model_comprehensions_fire(container: str) -> None:
-    if container == "[]":
-        conversion = "[Task(**row) for row in rows]"
-    elif container == "set()":
-        conversion = "{Task(**row) for row in rows}"
-    else:
-        conversion = "tuple(Task(**row) for row in rows)"
+    match container:
+        case "[]":
+            conversion = "[Task(**row) for row in rows]"
+        case "set()":
+            conversion = "{Task(**row) for row in rows}"
+        case _:
+            conversion = "tuple(Task(**row) for row in rows)"
     source = f"""
         async def load(conn):
             async with conn.cursor(row_factory=dict_row) as cursor:

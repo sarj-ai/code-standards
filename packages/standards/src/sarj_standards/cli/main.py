@@ -1371,12 +1371,13 @@ def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
         except OSError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    if args.output_format == "github":
-        payload = to_github(report, max_annotations_per_level=args.max_annotations_per_level)
-    elif args.output_format == "json":
-        payload = to_json(report)
-    else:
-        payload = {"sarif": to_sarif, "text": to_text}[args.output_format](report)
+    match args.output_format:
+        case "github":
+            payload = to_github(report, max_annotations_per_level=args.max_annotations_per_level)
+        case "json":
+            payload = to_json(report)
+        case _:
+            payload = {"sarif": to_sarif, "text": to_text}[args.output_format](report)
     if args.output is None or str(args.output) == "-":
         print(payload, end="")
     else:
@@ -3699,14 +3700,11 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             return 0
         if args.release_cmd == "typescript":
             mode = args.release_mode
-            if mode == "check":
-                release_mode = "check"
-            elif mode == "pack":
-                release_mode = "pack"
-            elif mode == "publish":
-                release_mode = "publish"
-            else:
-                return 2
+            match mode:
+                case "check" | "pack" | "publish":
+                    release_mode = mode
+                case _:
+                    return 2
             artifact = release.run_typescript_release(
                 release_mode,
                 root / "packages" / "typescript",
@@ -3735,22 +3733,11 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             )
         if args.release_cmd == "publish":
             target = args.release_target
-            if target == "typescript":
-                publish_target = "typescript"
-            elif target == "bootstrap":
-                publish_target = "bootstrap"
-            elif target == "python":
-                publish_target = "python"
-            elif target == "sql":
-                publish_target = "sql"
-            elif target == "iac":
-                publish_target = "iac"
-            elif target == "standards":
-                publish_target = "standards"
-            elif target == "tsconfig":
-                publish_target = "tsconfig"
-            else:
-                return 2
+            match target:
+                case "typescript" | "bootstrap" | "python" | "sql" | "iac" | "standards" | "tsconfig":
+                    publish_target = target
+                case _:
+                    return 2
             release.publish_target(root, publish_target)
             return 0
         return 2

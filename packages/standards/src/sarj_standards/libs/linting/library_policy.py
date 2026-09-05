@@ -474,12 +474,15 @@ def _scan_manifests(
     findings: list[Finding] = []
     for path in paths:
         dependencies: tuple[tuple[Path, Ecosystem, str], ...]
-        if path.name == "pyproject.toml":
-            dependencies = tuple((path, ecosystem, package) for ecosystem, package in _pyproject_dependencies(path))
-        elif path.name == "package.json":
-            dependencies = tuple((path, ecosystem, package) for ecosystem, package in _package_json_dependencies(path))
-        else:
-            dependencies = _requirements_dependencies(path, root, frozenset())
+        match path.name:
+            case "pyproject.toml":
+                dependencies = tuple((path, ecosystem, package) for ecosystem, package in _pyproject_dependencies(path))
+            case "package.json":
+                dependencies = tuple(
+                    (path, ecosystem, package) for ecosystem, package in _package_json_dependencies(path)
+                )
+            case _:
+                dependencies = _requirements_dependencies(path, root, frozenset())
         for source, ecosystem, package in dependencies:
             entry = package_index.get(_PackageKey(ecosystem, _normalize(package, ecosystem)))
             if entry is None or entry.id in allowed:
