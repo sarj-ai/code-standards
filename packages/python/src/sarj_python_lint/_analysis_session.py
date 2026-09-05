@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import final
 
+from sarj_python_lint._python_target import PythonTargetFacts
 from sarj_python_lint.rules._first_party import FirstPartyFacts
 
 
@@ -9,3 +10,4 @@ from sarj_python_lint.rules._first_party import FirstPartyFacts
 class AnalysisSession:
     def __init__(self) -> None:
         self.first_party = FirstPartyFacts()
+        self.python_target = PythonTargetFacts()

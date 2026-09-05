@@ -11,6 +11,17 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
 
 
+@pytest.mark.parametrize(("minimum", "expected_count"), [("3.9", 0), ("3.10", 1)])
+def test_cli_respects_project_python_support(
+    tmp_path: Path, capsys: CaptureFixture[str], minimum: str, expected_count: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(f'[project]\nrequires-python = ">={minimum}"\n')
+    path = tmp_path / "dispatch.py"
+    path.write_text(_CHAIN.format(suppression=""))
+    assert main(["check", "--rule", "prefer-match-value-dispatch", str(path)]) == 0
+    assert capsys.readouterr().out.count("SARJ439 warning:") == expected_count
+
+
 _CHAIN = (
     "if value == 'a':{suppression}\n"
     "    first()\n"

@@ -244,15 +244,17 @@ def _annotation_kind(
             if direct is not None:
                 return direct
             tail = _tail(value)
-            if tail == "Annotated":
-                first = content.elts[0] if isinstance(content, ast.Tuple) and content.elts else content
-                return _annotation_kind(first, types, seen)
-            if tail == "Optional":
-                return _annotation_kind(content, types, seen)
-            if tail == "Union":
-                elements = content.elts if isinstance(content, ast.Tuple) else [content]
-                return _compatible_union_kind(elements, types, seen)
-            return None
+            match tail:
+                case "Annotated":
+                    first = content.elts[0] if isinstance(content, ast.Tuple) and content.elts else content
+                    return _annotation_kind(first, types, seen)
+                case "Optional":
+                    return _annotation_kind(content, types, seen)
+                case "Union":
+                    elements = content.elts if isinstance(content, ast.Tuple) else [content]
+                    return _compatible_union_kind(elements, types, seen)
+                case _:
+                    return None
         case ast.BinOp(left=left, op=ast.BitOr(), right=right):
             return _compatible_union_kind([left, right], types, seen)
         case ast.Tuple(elts=elements):

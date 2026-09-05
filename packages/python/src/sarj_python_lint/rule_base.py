@@ -8,6 +8,8 @@ from pathlib import Path, PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, Final, Self
 
+from sarj_python_lint._python_target import PythonTargetFacts
+
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -242,6 +244,10 @@ class Rule(ABC):
 
     def prepare_session(self, session: AnalysisSession) -> None:
         self._analysis_session = session
+
+    def has_declared_python_support_before(self, path: Path, minimum: tuple[int, int]) -> bool:
+        facts = self._analysis_session.python_target if self._analysis_session is not None else PythonTargetFacts()
+        return facts.has_declared_support_before(path, minimum)
 
     @abstractmethod
     def check(self, path: Path, source: str) -> list[Diagnostic]:
