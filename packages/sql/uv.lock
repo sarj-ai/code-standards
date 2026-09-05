@@ -144,7 +144,7 @@ wheels = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.16.10"
+version = "0.16.11"
 source = { editable = "." }
 
 [package.dev-dependencies]
