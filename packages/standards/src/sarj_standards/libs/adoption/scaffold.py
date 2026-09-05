@@ -804,7 +804,7 @@ def _workflow_supports_mobile(path: Path, *, swift: bool, kotlin: bool) -> bool:
         manifest.as_table(raw_job)
         for raw_job in jobs.values()
         if any(
-            _run_value_executes_standards_check(command, source_checkout=source_checkout)
+            _run_value_executes_standards_check(command, source_checkout=source_checkout, root=repository)
             for command in _workflow_run_commands(raw_job)
         )
     )
@@ -1651,7 +1651,7 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
         )
         return
     path = existing[0] if existing else root / _PRECOMMIT_CONFIG_NAMES[0]
-    block = precommit_block()
+    block = precommit_block(root=root)
     if path.is_file():
         try:
             text = path.read_bytes().decode("utf-8")
@@ -1659,7 +1659,7 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
         except (OSError, UnicodeError, ValueError) as exc:
             plan.errors.append(f"cannot safely read {path}: {exc}")
             return
-        runner_prefix = launcher.repository_command()
+        runner_prefix = launcher.repository_command(root=root)
         migrated, migration_error = _migrate_official_remote_hook(text, runner_prefix)
         if migration_error is not None:
             plan.errors.append(f"cannot safely migrate {path}: {migration_error}")
@@ -1730,7 +1730,7 @@ def _plan_precommit_commit_message(root: Path, plan: Plan, *, force: bool) -> No
             )
             return
         block = _precommit_commit_message_block(
-            launcher.repository_command(),
+            launcher.repository_command(root=root),
             item_indent=_precommit_item_indent(text),
         )
         try:
@@ -1740,7 +1740,7 @@ def _plan_precommit_commit_message(root: Path, plan: Plan, *, force: bool) -> No
             return
         plan.writes.append((path, updated))
         return
-    block = _precommit_commit_message_block(launcher.repository_command())
+    block = _precommit_commit_message_block(launcher.repository_command(root=root))
     _record(plan, path, f"repos:\n{block}", force=force, reason="exists")
 
 
@@ -1974,8 +1974,8 @@ def _owned_hook_spans(text: str) -> tuple[tuple[int, int], ...]:
     return tuple((start, end) for _hook_id, start, end in textual)
 
 
-def precommit_block() -> str:
-    return _precommit_check_block(launcher.repository_command())
+def precommit_block(*, root: Path | None = None) -> str:
+    return _precommit_check_block(launcher.repository_command(root=root))
 
 
 def _match_newline_style(source: str, generated: str) -> str:
@@ -2019,13 +2019,14 @@ def _precommit_commit_message_block(runner_prefix: str, *, item_indent: int = 2)
     )
 
 
-def _precommit_commit_message_hook(_runner_prefix: str, *, hook_indent: int = 6) -> str:
+def _precommit_commit_message_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
     item = " " * hook_indent
     field = " " * (hook_indent + 2)
+    prefix = launcher.commit_message_command(runner_prefix)
     return (
         f"{item}- id: repo-standards-commit-message\n"
         f"{field}name: repo standards -- managed commit message\n"
-        f"{field}entry: {shlex.join(launcher.argv(version=manifest.adopted_version()))} commit-message\n"
+        f"{field}entry: {prefix} commit-message\n"
         f"{field}language: system\n"
         f"{field}always_run: true\n"
         f"{field}pass_filenames: true\n"
@@ -2107,7 +2108,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
             kotlin_dest=kotlin_override,
         )
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
-    runner = launcher.repository_command()
+    runner = launcher.repository_command(root=root)
     lines = [
         "# Managed by code-standards; regenerate with `code-standards show ci --output .github/workflows/standards.yml`.",
         "name: Standards",
@@ -2158,6 +2159,14 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
             "            **/uv.lock",
         )
     )
+    if launcher.mise_bootstrap_version(root) is not None:
+        lines.extend(
+            (
+                "      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4",
+                "        with:",
+                "          install: false",
+            )
+        )
     if ecosystems.typescript:
         if ecosystems.client is PackageManager.BUN:
             lines.append("      - uses: oven-sh/setup-bun@v2")
@@ -2242,11 +2251,11 @@ def standards_check_workflows(root: Path) -> tuple[Path, ...]:
     return tuple(
         path
         for path in sorted((*directory.glob("*.yml"), *directory.glob("*.yaml")))
-        if _workflow_runs_standards_check(path, source_checkout=source_checkout)
+        if _workflow_runs_standards_check(path, source_checkout=source_checkout, root=root)
     )
 
 
-def _workflow_runs_standards_check(path: Path, *, source_checkout: bool) -> bool:
+def _workflow_runs_standards_check(path: Path, *, source_checkout: bool, root: Path | None = None) -> bool:
     try:
         parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- parser boundary
             path.read_text(encoding="utf-8")
@@ -2254,12 +2263,12 @@ def _workflow_runs_standards_check(path: Path, *, source_checkout: bool) -> bool
     except OSError, yaml.YAMLError:
         return False
     return any(
-        _run_value_executes_standards_check(command, source_checkout=source_checkout)
+        _run_value_executes_standards_check(command, source_checkout=source_checkout, root=root)
         for command in _workflow_run_commands(parsed)
     )
 
 
-def _run_value_executes_standards_check(command: str, *, source_checkout: bool) -> bool:
+def _run_value_executes_standards_check(command: str, *, source_checkout: bool, root: Path | None = None) -> bool:
     logical = command.replace("\\\n", " ")
     for line in logical.splitlines():
         lexer = shlex.shlex(line, posix=True, punctuation_chars=";&|")
@@ -2269,18 +2278,20 @@ def _run_value_executes_standards_check(command: str, *, source_checkout: bool) 
             tokens = tuple(lexer)
         except ValueError:
             continue
-        if _tokens_execute_standards_check(tokens, source_checkout=source_checkout):
+        if _tokens_execute_standards_check(tokens, source_checkout=source_checkout, root=root):
             return True
     return False
 
 
-def _tokens_execute_standards_check(tokens: tuple[str, ...], *, source_checkout: bool) -> bool:
+def _tokens_execute_standards_check(
+    tokens: tuple[str, ...], *, source_checkout: bool, root: Path | None = None
+) -> bool:
     if not tokens or "--staged" in tokens or any(token in {";", "&&", "||", "|", "&"} for token in tokens):
         return False
-    prefix = launcher.repository_argv()
-    if tokens[: len(prefix)] == prefix:
-        arguments = tokens[len(prefix) :]
-        return bool(arguments) and arguments[0] == "check"
+    for prefix in (launcher.repository_argv(root=root), launcher.repository_argv()):
+        if tokens[: len(prefix)] == prefix:
+            arguments = tokens[len(prefix) :]
+            return bool(arguments) and arguments[0] == "check"
     if not source_checkout:
         return False
     try:
