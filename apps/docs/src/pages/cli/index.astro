@@ -36,26 +36,30 @@ const workflow = [
 
   <section class="command-block" aria-labelledby="shared-version-pins">
     <div>
-      <h2 id="shared-version-pins">One owner per version</h2>
+      <h2 id="shared-version-pins">One Standards version in TOML</h2>
       <p>
-        Repositories using mise can opt in to a shared bootstrap pin in one root <code>mise.toml</code>
-        or <code>.mise.toml</code>. Under <code>[tools]</code>, declare
-        <code>"pipx:sarj-standards-bootstrap"</code> with an exact <code>version</code> and
-        <code>uvx_args = "--python 3.14 --no-config"</code>. Keep that bootstrap version in this tool
-        entry only; generated hooks and CI reference the tool instead of repeating its version.
+        Generated hooks and CI invoke
+        <code>uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards</code>.
+        uvx installs and caches the lightweight bootstrap, which reads the exact <code>bundle</code>
+        version from <code>.sarj-standards.toml</code>. No mise integration or repository-local launcher
+        script is needed.
       </p>
       <p>
-        Run <code>mise exec pipx:sarj-standards-bootstrap -- code-standards doctor --repair</code>
-        to reconcile managed configuration and hooks. The Standards bundle still has one owner:
-        <code>bundle</code> in <code>.sarj-standards.toml</code>. The bootstrap selects that bundle;
-        do not add a separate mise pin for <code>code-standards</code>.
+        Run
+        <code>uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards doctor --repair</code>
+        to migrate older managed launchers and reconcile configuration and hooks. The bootstrap is
+        intentionally unpinned; the linting release remains exactly pinned in the manifest.
+      </p>
+      <p>
+        A cold cache resolves and installs the bootstrap; subsequent invocations reuse it without
+        requesting a refresh on every hook. Offline execution requires the bootstrap, the selected
+        bundle, their Python runtime, and dependencies to be cached already.
       </p>
       <p>
         A directly installed <code>repo-standards</code> dependency belongs in
         <code>pyproject.toml</code> and its resolved lockfile, not in repeated shell commands.
         Lockfile entries and generated provenance are reproducibility records, not additional
-        versions to maintain by hand. Repositories without a mise bootstrap pin retain the isolated
-        launcher.
+        versions to maintain by hand.
       </p>
     </div>
   </section>

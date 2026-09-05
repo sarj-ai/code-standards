@@ -8,11 +8,13 @@ Manifest-driven launcher for an exact Sarj Standards bundle.
 uv tool install sarj-standards-bootstrap
 ```
 
-Generated CI and hooks pin this protocol package exactly; ordinary Standards upgrades change only `.sarj-standards.toml`.
+Generated CI and hooks use this lightweight bootstrap without repeating a version pin. It reads the exact Standards bundle version from `.sarj-standards.toml`; ordinary Standards upgrades change only that manifest. No mise integration or repository-local launcher is needed.
 
 ```bash
-uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.3 code-standards check
+uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards check
 ```
+
+uvx installs and caches the bootstrap on first use, then reuses it without requesting a refresh on every hook invocation. The bootstrap itself is not version-pinned; the linting bundle is. Offline execution requires a warmed cache for both the bootstrap and the selected bundle, including their Python runtime and dependencies.
 
 The bootstrap deliberately inherits UV/PIP registry, proxy, certificate, cache, and offline environment policy. `--no-config --isolated` prevents consumer project configuration and installed tools from changing the selected bootstrap or Standards bundle.
 

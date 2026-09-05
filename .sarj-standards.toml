@@ -1,5 +1,5 @@
 schema = 4
-bundle = "7.11.3"
+bundle = "7.12.0"
 rule_profile = "all"
 
 
@@ -126,12 +126,6 @@ tsconfig = ["packages/tsconfig/package.json"]
 [[repository.version_references]]
 path = "packages/bootstrap/uv.lock"
 format = "uv-lock"
-version = "bootstrap"
-selector = "sarj-standards-bootstrap"
-
-[[repository.version_references]]
-path = "packages/standards/src/sarj_standards/libs/adoption/launcher.py"
-format = "exact-pin"
 version = "bootstrap"
 selector = "sarj-standards-bootstrap"
 

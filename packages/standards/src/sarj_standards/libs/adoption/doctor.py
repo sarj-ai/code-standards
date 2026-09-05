@@ -235,7 +235,6 @@ def _git_environment() -> dict[str, str]:
 
 def diagnose(root: Path) -> list[Finding]:
     installed = manifest.installed_versions()
-    installed[launcher.BOOTSTRAP_PACKAGE] = launcher.BOOTSTRAP_VERSION
     installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = authored_files(root)
     findings = [*_check_manifest(root)]
@@ -361,7 +360,6 @@ def authored_files(root: Path) -> tuple[Path, ...]:
 
 def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[Finding]:
     installed = manifest.installed_versions()
-    installed[launcher.BOOTSTRAP_PACKAGE] = launcher.BOOTSTRAP_VERSION
     installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = _adoption_health_files(root, selected)
     findings = [*_check_manifest(root)]
@@ -395,7 +393,7 @@ def _check_repository_launcher(root: Path) -> Iterator[Finding]:
     yield Finding(
         Level.DRIFT,
         launcher.RETIRED_REPOSITORY_LAUNCHER.as_posix(),
-        "repository-local launcher protocol 1 is retired; immutable bootstrap owns repository dispatch",
+        "repository-local launcher protocol 1 is retired; manifest-driven bootstrap owns repository dispatch",
         "doctor.launcher.retired",
         "run `code-standards setup`",
     )
@@ -500,7 +498,6 @@ def _adoption_health_files(root: Path, selected: Sequence[Path]) -> tuple[Path, 
 def _check_hook_manager(root: Path) -> Iterator[Finding]:
     try:
         adopted = manifest.load(root)
-        launcher.mise_bootstrap_pin(root)
     except OSError, TypeError, ValueError:
         # Manifest/pin diagnostics explain invalid configuration; hook selection cannot proceed.
         return
@@ -948,11 +945,22 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
 
 
 def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, str]) -> Iterator[Finding]:
-    yield from _check_mise_bootstrap_pin(root, installed)
     candidates = (path for path in files if _is_pin_site(path))
     for path in candidates:
+        original = _read(path)
+        migration = launcher.rewrite_legacy_repository_invocations(original)
+        if migration.contents != original:
+            yield Finding(
+                Level.DRIFT,
+                path.relative_to(root).as_posix(),
+                "legacy Standards launcher; the shared bootstrap selects the bundle from TOML",
+                "doctor.launcher.legacy",
+                "run `code-standards doctor --repair`",
+            )
         for match in _PIN.finditer(_read(path)):
             name = match.group("name")
+            if name == launcher.BOOTSTRAP_PACKAGE and migration.contents != original:
+                continue
             pinned = match.group("version")
             canonical = "code-standards" if name == "sarj-standards" else name
             current = installed.get(canonical)
@@ -996,31 +1004,6 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                     "doctor.version.pin",
                     "run `code-standards update`",
                 )
-
-
-def _check_mise_bootstrap_pin(root: Path, installed: Mapping[str, str]) -> Iterator[Finding]:
-    try:
-        pin = launcher.mise_bootstrap_pin(root)
-    except (OSError, ValueError) as exc:
-        yield Finding(
-            Level.DRIFT,
-            "mise.toml / .mise.toml",
-            str(exc),
-            "doctor.version.mise-config",
-            "keep one valid root mise configuration with an exact isolated bootstrap tool pin",
-        )
-        return
-    if pin is None:
-        return
-    expected = installed.get(launcher.BOOTSTRAP_PACKAGE, launcher.BOOTSTRAP_VERSION)
-    current = pin.version == expected
-    yield Finding(
-        Level.OK if current else Level.DRIFT,
-        pin.path.relative_to(root).as_posix(),
-        f"{launcher.MISE_BOOTSTRAP_TOOL} is {pin.version}; expected {expected}",
-        "doctor.version.mise-pin",
-        None if current else "run `code-standards doctor --repair`",
-    )
 
 
 def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
@@ -1188,15 +1171,9 @@ def plan_version_pin_updates(
     installed: Mapping[str, str] | None = None,
 ) -> tuple[VersionPinUpdate, ...]:
     versions = dict(manifest.installed_versions() if installed is None else installed)
-    versions.setdefault(launcher.BOOTSTRAP_PACKAGE, launcher.BOOTSTRAP_VERSION)
     versions.setdefault(_ESLINT_PLUGIN, manifest.eslint_peers()[_ESLINT_PLUGIN])
     exclusions = _doctor_exclusions(root)
     updates: list[VersionPinUpdate] = []
-    mise_update = _plan_mise_bootstrap_update(root, versions[launcher.BOOTSTRAP_PACKAGE])
-    if mise_update is not None and not any(
-        fnmatch(mise_update.path.relative_to(root).as_posix(), pattern) for pattern in exclusions
-    ):
-        updates.append(mise_update)
     for path in _walk(root):
         if not _is_pin_site(path):
             continue
@@ -1215,37 +1192,6 @@ def plan_version_pin_updates(
         if packages:
             updates.append(VersionPinUpdate(path, contents, packages))
     return tuple(updates)
-
-
-def _plan_mise_bootstrap_update(root: Path, version: str) -> VersionPinUpdate | None:
-    try:
-        pin = launcher.mise_bootstrap_pin(root)
-    except OSError, ValueError:
-        return None  # Ambiguous or malformed user configuration requires a choice.
-    if pin is None or pin.version == version or is_link_like(pin.path):
-        return None
-    original = pin.path.read_bytes().decode("utf-8")
-    document: object = tomllib.loads(original)
-    expected = dict(manifest.as_table(document))
-    tools = dict(manifest.table_field(expected, "tools"))
-    bootstrap = dict(manifest.table_field(tools, launcher.MISE_BOOTSTRAP_TOOL))
-    bootstrap["version"] = version
-    tools[launcher.MISE_BOOTSTRAP_TOOL] = bootstrap
-    expected["tools"] = tools
-    token = re.compile(rf"(?P<quote>['\"]){re.escape(pin.version)}(?P=quote)")
-    candidates: list[str] = []
-    for match in token.finditer(original):
-        quote = match.group("quote")
-        contents = f"{original[: match.start()]}{quote}{version}{quote}{original[match.end() :]}"
-        try:
-            parsed: object = tomllib.loads(contents)
-        except tomllib.TOMLDecodeError:
-            continue
-        if parsed == expected:
-            candidates.append(contents)
-    if len(candidates) != 1:
-        return None
-    return VersionPinUpdate(pin.path, candidates[0], (launcher.BOOTSTRAP_PACKAGE,))
 
 
 def _rewrite_package_eslint_pins(text: str, version: str) -> _PackageEslintPinRewrite:
@@ -1512,7 +1458,6 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
 def _check_ci_gate(root: Path) -> Iterator[Finding]:
     try:
         adopted = manifest.load(root)
-        launcher.mise_bootstrap_pin(root)
     except OSError, TypeError, ValueError:
         return
     if adopted is None:
