@@ -2,6 +2,7 @@
  * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renames.ts`.
  */
 
+import { LIBRARY_POLICY } from "./library-policy.js";
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
 import excessiveCommentary from "./rules/excessive-commentary.js";
@@ -199,15 +200,16 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.4",
+  version: "15.17.5",
 } as const;
 
-/** Rules registered for application-profile configs but intentionally absent from general presets. */
-const APPLICATION_ONLY_RULES = [
-  "no-restricted-library-load",
-  "prefer-native-random-uuid",
-  "prefer-shadcn-primitives",
-] as const;
+/** @deprecated All repositories use one policy; retained for import compatibility. */
+const APPLICATION_ONLY_RULES = [] as const;
+
+const LIBRARY_IMPORT_POLICY = ["error", {
+  paths: LIBRARY_POLICY.map(({ module, note }) => ({ name: module, message: note })),
+  patterns: LIBRARY_POLICY.map(({ module, note }) => ({ group: [`${module}/*`], message: note })),
+}] as const;
 
 /** Rules staged as non-blocking warnings while corpus adoption evidence accumulates. */
 const ADVISORY_RULES = [
@@ -229,6 +231,10 @@ const ADVISORY_RULES = [
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "no-restricted-imports": LIBRARY_IMPORT_POLICY,
+  "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
+  "@sarj/prefer-native-random-uuid": "error",
+  "@sarj/prefer-shadcn-primitives": "error",
   "@sarj/excessive-commentary": "warn",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
@@ -319,6 +325,10 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "no-restricted-imports": LIBRARY_IMPORT_POLICY,
+  "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
+  "@sarj/prefer-native-random-uuid": "error",
+  "@sarj/prefer-shadcn-primitives": "error",
   "@sarj/excessive-commentary": "warn",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",

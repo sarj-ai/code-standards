@@ -272,7 +272,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "7.11.0"
+version = "7.11.1"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -289,6 +289,7 @@ dependencies = [
     { name = "sarj-sql-lint" },
     { name = "semgrep" },
     { name = "shellcheck-py", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')" },
+    { name = "typer" },
 ]
 
 [package.dev-dependencies]
@@ -313,6 +314,7 @@ requires-dist = [
     { name = "sarj-sql-lint", editable = "../sql" },
     { name = "semgrep", specifier = "==1.175.0" },
     { name = "shellcheck-py", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32')", specifier = "==0.11.0.1" },
+    { name = "typer", specifier = "==0.27.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1222,10 +1224,14 @@ wheels = [
 
 [[package]]
 name = "sarj-iac-lint"
-version = "0.15.3"
+version = "0.15.4"
 source = { editable = "../iac" }
+dependencies = [
+    { name = "typer" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "typer", specifier = "==0.27.2" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1236,17 +1242,19 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.80.15"
+version = "0.80.16"
 source = { editable = "../python" }
 dependencies = [
     { name = "ruff" },
     { name = "sqlglot" },
+    { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "ruff", specifier = ">=0.16.5" },
     { name = "sqlglot", specifier = "==30.18.0" },
+    { name = "typer", specifier = "==0.27.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1258,10 +1266,14 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.16.11"
+version = "0.16.12"
 source = { editable = "../sql" }
+dependencies = [
+    { name = "typer" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "typer", specifier = "==0.27.2" }]
 
 [package.metadata.requires-dev]
 dev = [

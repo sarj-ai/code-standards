@@ -916,6 +916,42 @@ export function createConfig(options = {}) {
         "error",
         {
           paths: [
+            // BEGIN GENERATED LIBRARY POLICY
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "request"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "node-fetch"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "cross-fetch"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "isomorphic-fetch"},
+            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "axios"},
+            {"message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns.", "name": "moment"},
+            {"message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns.", "name": "dayjs"},
+            {"message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda.", "name": "lodash"},
+            {"message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda.", "name": "lodash-es"},
+            {"message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda.", "name": "underscore"},
+            {"message": "LIB104: Use clsx for conditional class-name composition. Replace with clsx.", "name": "classnames"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "joi"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "yup"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "superstruct"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "io-ts"},
+            {"message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod.", "name": "runtypes"},
+            {"message": "LIB106: Use jose; review key formats and async signing and verification APIs. Replace with jose.", "name": "jsonwebtoken"},
+            {"message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono.", "name": "express"},
+            {"message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono.", "name": "koa"},
+            {"message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest.", "name": "jest"},
+            {"message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest.", "name": "mocha"},
+            {"message": "LIB109: Use Vitest spies, mocks, and fake timers instead of Sinon. Replace with Vitest mocks.", "name": "sinon"},
+            {"message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty.", "name": "commander"},
+            {"message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty.", "name": "yargs"},
+            {"message": "LIB111: Use native Promise, adding p-limit or p-map only for the extensions actually needed. Replace with native Promise.", "name": "bluebird"},
+            {"message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises.", "name": "rimraf"},
+            {"message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises.", "name": "fs-extra"},
+            {"message": "LIB113: Node 22 provides global AbortController. Replace with AbortController.", "name": "abort-controller"},
+            {"message": "LIB114: Use URLSearchParams and explicitly review repeated keys, escaping, arrays, and object coercion. Replace with URLSearchParams.", "name": "querystring"},
+            {"message": "LIB115: Standards standardizes environment loading on @dotenvx/dotenvx. Replace with @dotenvx/dotenvx.", "name": "dotenv"},
+            {"message": "LIB116: Use picocolors for terminal colors. Replace with picocolors.", "name": "chalk"},
+            {"message": "LIB117: The original faker package is abandoned; use @faker-js/faker. Replace with @faker-js/faker.", "name": "faker"},
+            {"message": "LIB118: node-sass is end-of-life; use Dart Sass. Replace with sass.", "name": "node-sass"},
+            {"message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint.", "name": "tslint"},
+            // END GENERATED LIBRARY POLICY
             {
               name: "@clerk/nextjs",
               importNames: ["auth", "currentUser"],
@@ -926,7 +962,44 @@ export function createConfig(options = {}) {
               message: "Prefer an internal user-service wrapper.",
             },
           ],
-          patterns: ["*/index", "*/index.ts"],
+          patterns: [{"group": ["*/index", "*/index.ts"]},
+            // BEGIN GENERATED LIBRARY POLICY
+            {"group": ["request/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["node-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["cross-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["isomorphic-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["axios/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["moment/*"], "message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns."},
+            {"group": ["dayjs/*"], "message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns."},
+            {"group": ["lodash/*"], "message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda."},
+            {"group": ["lodash-es/*"], "message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda."},
+            {"group": ["underscore/*"], "message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda."},
+            {"group": ["classnames/*"], "message": "LIB104: Use clsx for conditional class-name composition. Replace with clsx."},
+            {"group": ["joi/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["yup/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["superstruct/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["io-ts/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["runtypes/*"], "message": "LIB105: Standards standardizes runtime validation on Zod; schemas are not drop-in compatible. Replace with zod."},
+            {"group": ["jsonwebtoken/*"], "message": "LIB106: Use jose; review key formats and async signing and verification APIs. Replace with jose."},
+            {"group": ["express/*"], "message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono."},
+            {"group": ["koa/*"], "message": "LIB107: Standards standardizes servers on Hono; Node deployments also need @hono/node-server. Replace with hono."},
+            {"group": ["jest/*"], "message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest."},
+            {"group": ["mocha/*"], "message": "LIB108: Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup. Replace with vitest."},
+            {"group": ["sinon/*"], "message": "LIB109: Use Vitest spies, mocks, and fake timers instead of Sinon. Replace with Vitest mocks."},
+            {"group": ["commander/*"], "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty."},
+            {"group": ["yargs/*"], "message": "LIB110: Standards standardizes command-line interfaces on citty. Replace with citty."},
+            {"group": ["bluebird/*"], "message": "LIB111: Use native Promise, adding p-limit or p-map only for the extensions actually needed. Replace with native Promise."},
+            {"group": ["rimraf/*"], "message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises."},
+            {"group": ["fs-extra/*"], "message": "LIB112: Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics. Replace with node:fs/promises."},
+            {"group": ["abort-controller/*"], "message": "LIB113: Node 22 provides global AbortController. Replace with AbortController."},
+            {"group": ["querystring/*"], "message": "LIB114: Use URLSearchParams and explicitly review repeated keys, escaping, arrays, and object coercion. Replace with URLSearchParams."},
+            {"group": ["dotenv/*"], "message": "LIB115: Standards standardizes environment loading on @dotenvx/dotenvx. Replace with @dotenvx/dotenvx."},
+            {"group": ["chalk/*"], "message": "LIB116: Use picocolors for terminal colors. Replace with picocolors."},
+            {"group": ["faker/*"], "message": "LIB117: The original faker package is abandoned; use @faker-js/faker. Replace with @faker-js/faker."},
+            {"group": ["node-sass/*"], "message": "LIB118: node-sass is end-of-life; use Dart Sass. Replace with sass."},
+            {"group": ["tslint/*"], "message": "LIB119: TSLint is deprecated; use ESLint with typescript-eslint. Replace with eslint."},
+            // END GENERATED LIBRARY POLICY
+          ],
         },
       ],
 
@@ -1043,33 +1116,12 @@ export function createConfig(options = {}) {
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
       "@sarj/test-phase-label-comment": "error",
-      // Both architectural rules stay enabled in the shared baseline. The
-      // fetch rule ships conservative client/service defaults; consumers can
-      // replace its `allow` list. The storage rule is intentionally inert until
-      // a consumer declares its stateless module paths, but keeping it present
-      // guarantees that the canonical config never silently omits a shipped
-      // custom rule:
+      "@sarj/no-raw-fetch-outside-clients": "error",
+      // Storage policy requires explicit stateless-module boundaries.
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
-      //   "@sarj/no-raw-fetch-outside-clients": ["error", { allow: [...] }],
       ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),
     },
   },
-
-  ...(SYNTAX_ONLY_CONFIG_FILES.length === 0
-    ? []
-    : [{
-      // Project service rejects conventional tool configs outside a tsconfig.
-      // Pass [] when the project owns them; name other exceptions explicitly.
-      files: SYNTAX_ONLY_CONFIG_FILES,
-      languageOptions: {
-        parserOptions: {
-          program: null,
-          project: false,
-          projectService: false,
-        },
-      },
-      rules: UNTYPED_RULE_OVERRIDES,
-    }]),
 
   {
     files: TEST_FILES,
@@ -1188,13 +1240,13 @@ export function createConfig(options = {}) {
           },
           format: null,
         },
-        {
+        ...(HAS_TYPE_PROJECT ? [{
           selector: "variable",
           modifiers: ["const", "global"],
           types: ["function"],
           format: ["camelCase", "PascalCase", "UPPER_CASE"],
           leadingUnderscore: "allow",
-        },
+        }] : []),
         {
           selector: "variable",
           modifiers: ["const", "global"],
@@ -1228,6 +1280,260 @@ export function createConfig(options = {}) {
       ],
     },
   },
+
+  ...(SYNTAX_ONLY_CONFIG_FILES.length === 0
+    ? []
+    : [{
+      // Keep this last so file-specific presets cannot restore typed rules.
+      // Pass [] when the project owns these configs; name exceptions explicitly.
+      files: SYNTAX_ONLY_CONFIG_FILES,
+      languageOptions: {
+        parserOptions: {
+          program: null,
+          project: false,
+          projectService: false,
+        },
+      },
+      rules: UNTYPED_RULE_OVERRIDES,
+    }]),
+
+  // BEGIN GENERATED LIBRARY POLICY
+
+  {
+    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}"],
+    rules: {
+      "@sarj/no-restricted-library-load": [
+        "error",
+        { libraries: [
+            {
+              "id": "LIB101",
+              "module": "request",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "node-fetch",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "cross-fetch",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "isomorphic-fetch",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB101",
+              "module": "axios",
+              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+              "replacement": "ky"
+            },
+            {
+              "id": "LIB102",
+              "module": "moment",
+              "note": "Standards standardizes date utilities on date-fns; migration is not API-compatible.",
+              "replacement": "date-fns"
+            },
+            {
+              "id": "LIB102",
+              "module": "dayjs",
+              "note": "Standards standardizes date utilities on date-fns; migration is not API-compatible.",
+              "replacement": "date-fns"
+            },
+            {
+              "id": "LIB103",
+              "module": "lodash",
+              "note": "Standards standardizes collection utilities on Remeda and native APIs.",
+              "replacement": "remeda"
+            },
+            {
+              "id": "LIB103",
+              "module": "lodash-es",
+              "note": "Standards standardizes collection utilities on Remeda and native APIs.",
+              "replacement": "remeda"
+            },
+            {
+              "id": "LIB103",
+              "module": "underscore",
+              "note": "Standards standardizes collection utilities on Remeda and native APIs.",
+              "replacement": "remeda"
+            },
+            {
+              "id": "LIB104",
+              "module": "classnames",
+              "note": "Use clsx for conditional class-name composition.",
+              "replacement": "clsx"
+            },
+            {
+              "id": "LIB105",
+              "module": "joi",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "yup",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "superstruct",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "io-ts",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB105",
+              "module": "runtypes",
+              "note": "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+              "replacement": "zod"
+            },
+            {
+              "id": "LIB106",
+              "module": "jsonwebtoken",
+              "note": "Use jose; review key formats and async signing and verification APIs.",
+              "replacement": "jose"
+            },
+            {
+              "id": "LIB107",
+              "module": "express",
+              "note": "Standards standardizes servers on Hono; Node deployments also need @hono/node-server.",
+              "replacement": "hono"
+            },
+            {
+              "id": "LIB107",
+              "module": "koa",
+              "note": "Standards standardizes servers on Hono; Node deployments also need @hono/node-server.",
+              "replacement": "hono"
+            },
+            {
+              "id": "LIB108",
+              "module": "jest",
+              "note": "Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup.",
+              "replacement": "vitest"
+            },
+            {
+              "id": "LIB108",
+              "module": "mocha",
+              "note": "Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup.",
+              "replacement": "vitest"
+            },
+            {
+              "id": "LIB109",
+              "module": "sinon",
+              "note": "Use Vitest spies, mocks, and fake timers instead of Sinon.",
+              "replacement": "Vitest mocks"
+            },
+            {
+              "id": "LIB110",
+              "module": "commander",
+              "note": "Standards standardizes command-line interfaces on citty.",
+              "replacement": "citty"
+            },
+            {
+              "id": "LIB110",
+              "module": "yargs",
+              "note": "Standards standardizes command-line interfaces on citty.",
+              "replacement": "citty"
+            },
+            {
+              "id": "LIB111",
+              "module": "bluebird",
+              "note": "Use native Promise, adding p-limit or p-map only for the extensions actually needed.",
+              "replacement": "native Promise"
+            },
+            {
+              "id": "LIB112",
+              "module": "rimraf",
+              "note": "Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics.",
+              "replacement": "node:fs/promises"
+            },
+            {
+              "id": "LIB112",
+              "module": "fs-extra",
+              "note": "Prefer node:fs/promises; verify recursive removal, copy, path, and error semantics.",
+              "replacement": "node:fs/promises"
+            },
+            {
+              "id": "LIB113",
+              "module": "abort-controller",
+              "note": "Node 22 provides global AbortController.",
+              "replacement": "AbortController"
+            },
+            {
+              "id": "LIB114",
+              "module": "querystring",
+              "note": "Use URLSearchParams and explicitly review repeated keys, escaping, arrays, and object coercion.",
+              "replacement": "URLSearchParams"
+            },
+            {
+              "id": "LIB115",
+              "module": "dotenv",
+              "note": "Standards standardizes environment loading on @dotenvx/dotenvx.",
+              "replacement": "@dotenvx/dotenvx"
+            },
+            {
+              "id": "LIB116",
+              "module": "chalk",
+              "note": "Use picocolors for terminal colors.",
+              "replacement": "picocolors"
+            },
+            {
+              "id": "LIB117",
+              "module": "faker",
+              "note": "The original faker package is abandoned; use @faker-js/faker.",
+              "replacement": "@faker-js/faker"
+            },
+            {
+              "id": "LIB118",
+              "module": "node-sass",
+              "note": "node-sass is end-of-life; use Dart Sass.",
+              "replacement": "sass"
+            },
+            {
+              "id": "LIB119",
+              "module": "tslint",
+              "note": "TSLint is deprecated; use ESLint with typescript-eslint.",
+              "replacement": "eslint"
+            }
+          ] },
+      ],
+      "@sarj/prefer-native-random-uuid": "error",
+      "@sarj/prefer-shadcn-primitives": "error",
+    },
+  },
+
+  {
+    files: [
+      "**/*.{test,spec,e2e}.{js,jsx,ts,tsx}",
+      "**/test/**",
+      "**/tests/**",
+      "**/__tests__/**",
+      "**/fixtures/**",
+      "**/e2e/**",
+      "**/e2e-apps/**",
+      "**/perf-regression/**",
+      "**/components/ui/**",
+      "**/components/design-system/**",
+    ],
+    rules: {
+      "@sarj/prefer-shadcn-primitives": "off",
+    },
+  },
+  // END GENERATED LIBRARY POLICY
 
   ];
 }

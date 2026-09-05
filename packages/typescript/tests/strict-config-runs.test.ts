@@ -67,6 +67,38 @@ function severity(setting: unknown): unknown {
 const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it.each(CONFIG_FACTORIES)("%s keeps syntax naming active in untyped TSX", async (_name, createConfig) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: createConfig({ projectService: false }),
+    });
+    const [result] = await eslint.lintText(
+      "export const Example = () => <div />; export interface invalid_name {}",
+      { filePath: "untyped.tsx" },
+    );
+    expect(result?.messages.filter(message => message.fatal === true)).toEqual([]);
+    expect(result?.messages.map(message => message.ruleId)).toContain("@typescript-eslint/naming-convention");
+  });
+
+  it.each(CONFIG_FACTORIES)("%s preserves an explicit syntax-only TSX override", async (_name, createConfig) => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: createConfig({
+        projectService: true,
+        syntaxOnlyConfigFiles: ["**/tooling.tsx"],
+      }),
+    });
+    const [result] = await eslint.lintText(
+      "export const Example = () => <div />;",
+      { filePath: "tooling.tsx" },
+    );
+    expect(result?.messages.filter(message => message.fatal === true)).toEqual([]);
+    const configured: unknown = await eslint.calculateConfigForFile("tooling.tsx");
+    expect(severity(rulesOf(configured)["@typescript-eslint/naming-convention"])).toBe(0);
+  });
+
   it("keeps typed diagnostics live in a nested monorepo package", async () => {
     const eslint = new ESLint({
       cwd: NESTED_MONOREPO_DIR,

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import subprocess
+import tomllib
 from typing import TYPE_CHECKING
 
 import pytest
@@ -15,6 +16,24 @@ from sarj_standards.libs.adoption.doctor import Level, check_pyright_deprecated,
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@pytest.mark.parametrize("profile", ["standard", "application"])
+def test_doctor_has_no_legacy_profile_library_policy_exclusions(tmp_path: Path, profile: manifest.Profile) -> None:
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("ruff", "eslint"),
+        python_dest=".",
+        typescript_dest=".",
+        hook_manager="none",
+        profile=profile,
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    findings = [
+        item for item in doctor.diagnose_adoption_health(tmp_path) if item.id == "doctor.profile.library-policy"
+    ]
+    assert not findings
+    assert "profile" not in tomllib.loads(adopted.render())
 
 
 @pytest.mark.parametrize(

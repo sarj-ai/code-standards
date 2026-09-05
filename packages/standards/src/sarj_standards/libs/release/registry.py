@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 from datetime import timedelta
 import json
@@ -10,7 +9,7 @@ import re
 import sys
 import time
 import tomllib
-from typing import TYPE_CHECKING, ClassVar, Literal, Protocol
+from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, Protocol
 from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -18,6 +17,7 @@ from urllib.request import Request, urlopen
 from packaging.utils import InvalidSdistFilename, InvalidWheelFilename, parse_sdist_filename, parse_wheel_filename
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field
+import typer
 
 from sarj_standards.libs.release._values import is_object_dict, is_object_list, string_object_dict
 from sarj_standards.libs.release.tags import RELEASE_TARGETS, read_manifest_version
@@ -51,12 +51,6 @@ class _PypiSimpleResponse(BaseModel):
 
 class PublicationChecker(Protocol):
     def __call__(self, requirement: RegistryRequirement, /) -> bool: ...
-
-
-class _Args(argparse.Namespace):
-    root: Path = Path()
-    attempts: int = 6
-    delay: timedelta = timedelta(seconds=10)
 
 
 _EXACT_DEPENDENCY = re.compile(r"^(?P<name>[A-Za-z0-9_.-]+)==(?P<version>[^;\s]+)$")
@@ -244,31 +238,51 @@ def wait_for_lint_config_dependencies(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=Path, required=True)
-    parser.add_argument("--attempts", type=int, default=6)
-    parser.add_argument(
-        "--delay-seconds",
-        dest="delay",
-        type=_duration_from_seconds,
-        default=timedelta(seconds=10),
+    app = typer.Typer(
+        add_completion=False,
+        pretty_exceptions_enable=False,
+        context_settings={"help_option_names": ["-h", "--help"]},
     )
-    args = parser.parse_args(argv, namespace=_Args())
+    exit_code = 0
+
+    @app.command()
+    def verify(
+        root: Annotated[Path, typer.Option("--root")],
+        attempts: Annotated[int, typer.Option("--attempts")] = 6,
+        delay_seconds: Annotated[float, typer.Option("--delay-seconds", callback=_validate_delay_seconds)] = 10,
+    ) -> None:
+        nonlocal exit_code
+        exit_code = _verify_publications(root, attempts=attempts, delay=timedelta(seconds=delay_seconds))
+
+    try:
+        app(args=None if argv is None else list(argv), prog_name="standards-registry")
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
+    return exit_code
+
+
+def _validate_delay_seconds(value: float) -> float:
+    try:
+        _ = timedelta(seconds=value)
+    except (OverflowError, ValueError) as exc:
+        msg = "must be a finite, representable duration"
+        raise typer.BadParameter(msg) from exc
+    return value
+
+
+def _verify_publications(root: Path, *, attempts: int, delay: timedelta) -> int:
     try:
         requirements = wait_for_lint_config_dependencies(
-            args.root,
-            attempts=args.attempts,
-            delay=args.delay,
+            root,
+            attempts=attempts,
+            delay=delay,
         )
     except (OSError, TypeError, ValueError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
     sys.stdout.write(f"verified {len(requirements)} exact compatibility-bundle publications\n")
     return 0
-
-
-def _duration_from_seconds(value: str) -> timedelta:
-    return timedelta(seconds=float(value))
 
 
 if __name__ == "__main__":

@@ -176,9 +176,8 @@ def _contained_path(value: str, root: Path) -> str:
 
 def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
     normalized = tuple(
-        ToolReport(
-            report.name,
-            report.completion,
+        replace(
+            report,
             diagnostics=tuple(
                 sorted(
                     (
@@ -191,12 +190,6 @@ def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisRepo
                 )
             ),
             issues=tuple(sorted(report.issues, key=lambda issue: (issue.source, issue.kind, issue.message))),
-            analyzer_id=report.analyzer_id,
-            invocation_id=report.invocation_id,
-            version=report.version,
-            duration_ms=report.duration_ms,
-            file_count=report.file_count,
-            cache_status=report.cache_status,
         )
         for report in sorted(reports, key=lambda report: report.name)
     )

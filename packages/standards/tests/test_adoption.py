@@ -103,7 +103,10 @@ def test_every_eslint_import_has_a_pinned_peer() -> None:
 
 def test_python_configs_pin_the_314_language_floor() -> None:
     for config_name in ("ruff.strict.toml", "ruff.application.toml"):
-        parsed = tomllib.loads((CONFIGS_DIR / config_name).read_text(encoding="utf-8"))
+        parsed = manifest.as_table(tomllib.loads((CONFIGS_DIR / config_name).read_text(encoding="utf-8")))
+        extended = parsed.get("extend")
+        if isinstance(extended, str):
+            parsed = manifest.as_table(tomllib.loads((CONFIGS_DIR / extended).read_text(encoding="utf-8")))
         assert parsed["target-version"] == "py314"
     pyright = (CONFIGS_DIR / "pyright.strict.json").read_text(encoding="utf-8")
     assert '"pythonVersion": "3.14"' in pyright  # sarj-noqa: SARJ402 -- exact config text is the compatibility contract
@@ -170,6 +173,10 @@ def test_python315_watch_profiles_are_advisory_and_isolated() -> None:
 @pytest.mark.parametrize("config_name", ["eslint.strict.mjs", "eslint.application.mjs"])
 def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str) -> None:
     text = (CONFIGS_DIR / config_name).read_text(encoding="utf-8")
+    if config_name == "eslint.application.mjs":
+        executable = "\n".join(line for line in text.splitlines() if not line.startswith("//"))
+        assert executable.strip() == 'export { createConfig, default } from "./eslint.strict.mjs";'
+        text = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
 
     assert "dirname(fileURLToPath(import.meta.url))" in text
     assert "export function createConfig(options = {})" in text
@@ -270,6 +277,17 @@ def test_manifest_defaults_to_standard_profile(tmp_path: Path) -> None:
     assert adopted is not None
     assert adopted.profile == "standard"
     assert adopted.verify_paths == (".",)
+
+
+@pytest.mark.parametrize("legacy_profile", ["standard", "application"])
+def test_legacy_profile_is_readable_but_not_written(tmp_path: Path, legacy_profile: str) -> None:
+    (tmp_path / manifest.MANIFEST_NAME).write_text(f'schema = 4\nbundle = "1.2.3"\nprofile = "{legacy_profile}"\n')
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.profile == legacy_profile
+    rendered = tomllib.loads(adopted.render())
+    assert "profile" not in rendered
+    assert rendered["rule_profile"] == "all"
 
 
 @pytest.mark.parametrize("section", ["capabilities", "dest", "hooks", "exclude", "ci"])
@@ -484,7 +502,7 @@ def test_setup_losslessly_rerenders_schema_three_as_schema_four(tmp_path: Path) 
     assert proc.returncode == 0, proc.stderr
     migrated = manifest.load(tmp_path)
     assert migrated is not None
-    assert migrated.profile == "application"
+    assert "profile" not in tomllib.loads(manifest_path.read_text())
     assert migrated.configs == ("ruff",)
     assert migrated.verify_paths == ("src",)
     assert migrated.hook_manager == "none"
@@ -550,7 +568,7 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
         '[hooks]\nmanager = "none"\n\n'
         '[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ012"]\n\n'
         '[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012"]\nreason = "legacy fixtures"\n\n'
-        "[consumer]\nkeep = true\n",
+        '# Keep consumer documentation intact.\n[consumer]\nkeep = true\nnotes = """\nprofile = "application"\n"""\n',
         encoding="utf-8",
     )
 
@@ -559,7 +577,10 @@ def test_setup_preserves_compatible_policy_from_the_schema_less_manifest(tmp_pat
     assert proc.returncode == 0, proc.stderr
     adopted = manifest.load(tmp_path)
     assert adopted is not None
-    assert adopted.profile == "application"
+    assert "profile" not in tomllib.loads(manifest_path.read_text())
+    consumer = manifest.table_field(manifest.as_table(tomllib.loads(manifest_path.read_text())), "consumer")
+    assert consumer["notes"] == 'profile = "application"\n'
+    assert "# Keep consumer documentation intact." in manifest_path.read_text()
     assert adopted.verify_paths == ("src",)
     assert adopted.hook_manager == "none"
     assert adopted.excluded_paths == ("generated/**",)
@@ -840,15 +861,15 @@ def test_init_migrates_the_legacy_pyright_parent_idempotently(tmp_path: Path) ->
     }
 
 
-def test_init_application_profile_selects_application_artifacts(tmp_path: Path) -> None:
+def test_legacy_setup_profile_selects_canonical_artifacts(tmp_path: Path) -> None:
     _ = _python_repo(tmp_path)
     proc = _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
     adopted = manifest.load(tmp_path)
     assert adopted is not None
-    assert adopted.profile == "application"
-    expected = CONFIGS_DIR / "ruff.application.toml"
+    assert "profile" not in tomllib.loads((tmp_path / manifest.MANIFEST_NAME).read_text())
+    expected = CONFIGS_DIR / "ruff.strict.toml"
     assert (
         tmp_path / ".ruff-strict.toml"
     ).read_bytes() == expected.read_bytes()  # sarj-noqa: SARJ402 -- generated config bytes are the adoption contract
@@ -899,20 +920,21 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
     assert adopted.ci_bootstrap == ("yarn generate",)
 
 
-def test_sync_uses_profile_recorded_in_manifest(tmp_path: Path) -> None:
+def test_sync_uses_canonical_config_with_legacy_profile(tmp_path: Path) -> None:
     _ = _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install").returncode == 0
-    expected = CONFIGS_DIR / "eslint.application.mjs"
+    expected = CONFIGS_DIR / "eslint.strict.mjs"
     assert (
         tmp_path / "eslint.strict.mjs"
     ).read_bytes() == expected.read_bytes()  # sarj-noqa: SARJ402 -- generated config bytes are the adoption contract
     assert _cli("--root", str(tmp_path), "doctor").returncode == 0
 
 
-def test_application_ruff_config_rejects_preferred_stack_import(tmp_path: Path) -> None:
+@pytest.mark.parametrize("profile", ["standard", "application"])
+def test_all_adopted_ruff_configs_reject_preferred_stack_import(tmp_path: Path, profile: str) -> None:
     pytest.importorskip("ruff", reason="ruff not installed in this env")
     _ = _python_repo(tmp_path)
-    assert _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install").returncode == 0
+    assert _cli("--root", str(tmp_path), "setup", "--profile", profile, "--no-install").returncode == 0
     probe = tmp_path / "probe.py"
     _ = probe.write_text("import argparse\n")
 

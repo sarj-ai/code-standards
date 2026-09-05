@@ -2,7 +2,7 @@
 
 # sarj-iac-lint
 
-Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly.
+Custom Terraform / IaC lint rules, pre-commit-friendly.
 
 ```bash
 uv tool install sarj-iac-lint

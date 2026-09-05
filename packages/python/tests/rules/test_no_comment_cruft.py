@@ -20,6 +20,75 @@ def _check(source: str) -> list[Diagnostic]:
 
 
 @pytest.mark.parametrize(
+    "metadata",
+    [
+        pytest.param(
+            '# /// script\n# requires-python = ">=3.12"\n# dependencies = ["typer==0.27.2"]\n# ///\n',
+            id="release-script",
+        ),
+        pytest.param('# /// script\n# dependencies = [\n#   "typer",\n# ]\n# ///\n', id="multiline-dependencies"),
+        pytest.param(
+            "# /// script\n# dependencies = []\n#\n# [tool.runner]\n# enabled = true\n# ///\n",
+            id="tool-table-and-empty-comment",
+        ),
+        pytest.param(
+            '# /// script\n# [tool.runner]\n# description = """\n# /// text\n# ///\n# more text\n# """\n# ///\n',
+            id="embedded-delimiter-in-toml-string",
+        ),
+        pytest.param("# /// script\r\n# dependencies = []\r\n# ///\r\n", id="crlf"),
+        pytest.param("# /// script\n# dependencies = []\n# ///", id="no-final-newline"),
+    ],
+)
+def test_valid_pep723_script_metadata_is_not_comment_cruft(metadata: str) -> None:
+    assert _check(metadata) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param('# /// script\n# requires-python = ">=3.12"\n# dependencies = []\n', id="unclosed"),
+        pytest.param('# /// other\n# requires-python = ">=3.12"\n# dependencies = []\n# ///\n', id="unknown-type"),
+        pytest.param(
+            '# /// script\n# requires-python = ">=3.12"\n# dependencies = []\n# invalid = [\n# ///\n',
+            id="malformed-toml",
+        ),
+        pytest.param(
+            '# /// script\n# requires-python = ">=3.12"\n#dependencies = []\n# ///\n', id="missing-comment-space"
+        ),
+        pytest.param(
+            'def run():\n    # /// script\n    # requires-python = ">=3.12"\n    # dependencies = []\n    # ///\n    pass\n',
+            id="indented-block",
+        ),
+        pytest.param(
+            '# /// script\n# requires-python = ">=3.12"\n# dependencies = []\nvalue = 1\n# ///\n',
+            id="interrupted-by-code",
+        ),
+        pytest.param(
+            '# /// script\n# requires-python = ">=3.12"\n# dependencies = []\n# ///\n# /// script\n# requires-python = ">=3.12"\n# dependencies = []\n# ///\n',
+            id="duplicate-script-blocks",
+        ),
+    ],
+)
+def test_invalid_pep723_blocks_do_not_hide_commented_out_code(source: str) -> None:
+    assert any("Commented-out code" in finding.message for finding in _check(source))
+
+
+def test_pep723_metadata_preserves_adjacent_comment_diagnostics_and_line_numbers() -> None:
+    source = "# old_value = 1\n# /// script\n# dependencies = []\n# ///\n# new_value = 2\nvalue = 3\n"
+    findings = _check(source)
+    assert [finding.line for finding in findings] == [1, 5]
+    assert all("Commented-out code" in finding.message for finding in findings)
+
+
+def test_pep723_metadata_does_not_hide_later_header_ceremony() -> None:
+    source = "# /// script\n# dependencies = []\n# ///\n# alpha\n# beta\n# gamma\n# delta\nvalue = 1\n"
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].line == 4
+    assert "preamble" in findings[0].message
+
+
+@pytest.mark.parametrize(
     "example",
     _PUBLIC_EXAMPLES,
     ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import argparse
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed local Ruff introspection only
 import sys
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, Annotated, TypeGuard
+
+import typer
 
 from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint._version import __version__
@@ -29,7 +31,8 @@ if TYPE_CHECKING:
 _DEFAULT_BASELINE_NAME = "suppression-baseline.json"
 
 
-class _Args(argparse.Namespace):
+@dataclass(frozen=True)
+class _Options:
     root: Path
     baseline: Path | None
     package: list[str]
@@ -38,19 +41,8 @@ class _Args(argparse.Namespace):
     update: bool
     allow_increase: bool
 
-    def __init__(self) -> None:
-        super().__init__()
-        self.root = Path()
-        self.baseline = None
-        self.package = []
-        self.exclude_subtree = []
-        self.per_file_ceiling = None
-        self.update = False
-        self.allow_increase = False
 
-
-def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv, namespace=_Args())
+def _run(args: _Options) -> int:
     root = args.root.resolve()
     baseline_path = args.baseline if args.baseline is not None else root / _DEFAULT_BASELINE_NAME
 
@@ -180,48 +172,68 @@ def _is_string_object_mapping(value: object) -> TypeGuard[dict[str, object]]:
     return isinstance(value, dict)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="sarj-ratchet",
-        description=(
-            "Ratchet on lint/type suppressions: per-code, per-package and per-file ceilings that may only shrink."
+@dataclass
+class _Result:
+    code: int = 0
+
+
+app = typer.Typer(
+    help="Ratchet on lint/type suppressions: per-code, per-package and per-file ceilings that may only shrink.",
+    add_completion=False,
+    no_args_is_help=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+
+def _show_version(*, value: bool) -> None:
+    if value:
+        sys.stdout.write(f"sarj-ratchet {__version__}\n")
+        raise typer.Exit
+
+
+@app.command()
+def _command(
+    context: typer.Context,
+    *,
+    root: Annotated[Path, typer.Argument(help="tree to scan (default: cwd)")] = Path(),
+    baseline: Annotated[
+        Path | None, typer.Option(help=f"baseline JSON (default: <root>/{_DEFAULT_BASELINE_NAME})")
+    ] = None,
+    package: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--package", help="package directory relative to root (repeatable; default: baseline or auto-discovered)"
         ),
+    ] = None,
+    exclude_subtree: Annotated[
+        list[str] | None, typer.Option("--exclude-subtree", help="root-relative path prefix to skip (repeatable)")
+    ] = None,
+    per_file_ceiling: Annotated[
+        int | None,
+        typer.Option(help=f"max suppressions in any one file (default: baseline or {DEFAULT_PER_FILE_CEILING})"),
+    ] = None,
+    update: Annotated[
+        bool, typer.Option("--update", help="rewrite baseline from current counts (refuses to raise a ceiling)")
+    ] = False,
+    allow_increase: Annotated[
+        bool, typer.Option("--allow-increase", help="with --update: permit ceilings to rise (requires explicit review)")
+    ] = False,
+    _version: Annotated[bool, typer.Option("--version", callback=_show_version, is_eager=True)] = False,
+) -> None:
+    context.ensure_object(_Result).code = _run(
+        _Options(root, baseline, package or [], exclude_subtree or [], per_file_ceiling, update, allow_increase)
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    parser.add_argument("root", nargs="?", type=Path, default=Path(), help="tree to scan (default: cwd)")
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        help=f"baseline JSON (default: <root>/{_DEFAULT_BASELINE_NAME})",
-    )
-    parser.add_argument(
-        "--package",
-        action="append",
-        default=[],
-        help="package directory relative to root (repeatable; default: the baseline's, else auto-discovered)",
-    )
-    parser.add_argument(
-        "--exclude-subtree",
-        action="append",
-        default=[],
-        help="root-relative path prefix to skip, e.g. generated client output (repeatable)",
-    )
-    parser.add_argument(
-        "--per-file-ceiling",
-        type=int,
-        help=f"max suppressions in any one file (default: the baseline's, else {DEFAULT_PER_FILE_CEILING})",
-    )
-    parser.add_argument(
-        "--update",
-        action="store_true",
-        help="rewrite the baseline from current counts (refuses to raise a ceiling)",
-    )
-    parser.add_argument(
-        "--allow-increase",
-        action="store_true",
-        help="with --update: permit ceilings to rise (requires explicit review)",
-    )
-    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    result = _Result()
+    try:
+        app(args=argv, prog_name="sarj-ratchet", obj=result)
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
+    return result.code
 
 
 def _update(

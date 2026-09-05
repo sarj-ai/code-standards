@@ -71,7 +71,7 @@ async function loadProfiles() {
   const cacheRoot = await mkdtemp(CACHE_PREFIX);
   const profiles = {};
   try {
-    for (const name of ["application", "strict"]) {
+    for (const name of ["strict"]) {
       const destination = join(cacheRoot, `eslint.${name}.mjs`);
       const source = await readFile(join(CONFIG_ROOT, `eslint.${name}.mjs`), "utf8");
       const localSarj = pathToFileURL(join(PACKAGE_ROOT, "dist/index.js")).href;
@@ -79,11 +79,13 @@ async function loadProfiles() {
       if (rewritten === source) throw new Error(`could not resolve local @sarj import in eslint.${name}.mjs`);
       await writeFile(destination, rewritten, "utf8");
       const module = await import(`${pathToFileURL(destination).href}?catalog=1`);
-      profiles[name === "strict" ? "standard" : name] = module.createConfig({
+      profiles.standard = module.createConfig({
         projectService: true,
         tsconfigRootDir: REPOSITORY_ROOT,
         testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"],
       });
+      // Version-one catalog labels remain compatible; both expose one policy.
+      profiles.application = profiles.standard;
     }
     return profiles;
   } finally {

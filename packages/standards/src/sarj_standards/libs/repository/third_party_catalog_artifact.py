@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -10,9 +9,10 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- pinned local 
 import sys
 import tempfile
 from types import MappingProxyType
-from typing import ClassVar, Final, Literal, NewType
+from typing import Annotated, ClassVar, Final, Literal, NewType
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+import typer
 
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
@@ -21,7 +21,8 @@ _REACT_DOCTOR_PROJECTION: Final = Path("apps/docs/scripts/project-react-doctor-r
 _MOBILE_CONFIG_ROOT: Final = Path("packages/standards/src/sarj_standards/configs")
 _RUFF_CONFIGS: Final = MappingProxyType(
     {
-        "application": Path("packages/standards/src/sarj_standards/configs/ruff.application.toml"),
+        # Version-one catalog labels are compatibility aliases, not policy selectors.
+        "application": Path("packages/standards/src/sarj_standards/configs/ruff.strict.toml"),
         "standard": Path("packages/standards/src/sarj_standards/configs/ruff.strict.toml"),
     }
 )
@@ -237,15 +238,24 @@ def sync(root: Path, *, check: bool) -> SyncResult:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="synchronize the generated third-party rule catalog")
-    parser.add_argument("--root", type=Path, default=Path.cwd())
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--check", action="store_true")
-    mode.add_argument("--sync", action="store_true")
-    args = parser.parse_args()
-    result = sync(args.root, check=args.check)  # pyright: ignore[reportAny]
-    sys.stdout.write(f"{result.message}\n")
-    return result.status
+    app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
+
+    @app.command(help="synchronize the generated third-party rule catalog")
+    def run(
+        *,
+        root: Annotated[Path, typer.Option("--root")] = Path(),
+        check: Annotated[bool, typer.Option("--check")] = False,
+        synchronize: Annotated[bool, typer.Option("--sync")] = False,
+    ) -> None:
+        if check == synchronize:
+            msg = "choose exactly one of --check or --sync"
+            raise typer.BadParameter(msg)
+        result = sync(root, check=check)
+        sys.stdout.write(f"{result.message}\n")
+        raise typer.Exit(result.status)
+
+    app()
+    return 0
 
 
 def _run(argv: tuple[str, ...], *, cwd: Path) -> str:

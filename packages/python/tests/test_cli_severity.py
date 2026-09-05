@@ -3,13 +3,13 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_python_lint.__main__ import main
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 def test_warning_is_excluded_when_baseline_records_a_blocking_error(
@@ -104,3 +104,30 @@ def test_baseline_update_requires_an_existing_parent(tmp_path: Path, capsys: pyt
     assert status == 2
     assert "baseline parent does not exist" in output.err
     assert "Traceback" not in output.err
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [[], ["check"], ["check", "missing.py"], ["unknown"]],
+    ids=("missing-command", "missing-files-and-rule", "missing-rule", "unknown-command"),
+)
+def test_cli_usage_errors_exit_two(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as failure:
+        main(argv)
+    assert failure.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--help"], ["-h"], ["--version"], ["check", "--help"]],
+    ids=("help", "short-help", "version", "check-help"),
+)
+def test_cli_help_and_version_exit_zero(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(argv) == 0
+    assert "sarj-python-lint" in capsys.readouterr().out
+
+
+def test_cli_repeated_rules_and_option_like_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "--source.py").write_text("", encoding="utf-8")
+    assert main(["check", "--rule", "no-comment-cruft", "--rule", "no-comment-cruft", "--", "--source.py"]) == 0

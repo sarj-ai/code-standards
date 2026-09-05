@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import argparse
 import base64
 from dataclasses import dataclass
 from datetime import timedelta
+from enum import StrEnum
 import json
 import os
 from pathlib import Path
@@ -15,9 +15,10 @@ import tempfile
 import time
 import tomllib
 from types import MappingProxyType
-from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Annotated, NamedTuple, Protocol, TypeGuard
 from urllib.parse import quote
 
+import typer
 import yaml
 
 from sarj_standards.libs.adoption import (
@@ -157,7 +158,8 @@ def optional_bool(table: Mapping[str, object], key: str) -> bool:
     return value
 
 
-class RolloutArgs(argparse.Namespace):
+@dataclass
+class RolloutArgs:
     registry: Path = DEFAULT_REGISTRY
     command: str = ""
     version: str | None = None
@@ -1524,23 +1526,6 @@ def print_outcomes(version: str, outcomes: Sequence[Outcome], *, source_sha: str
     )
 
 
-def parser() -> argparse.ArgumentParser:
-    result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
-    commands = result.add_subparsers(dest="command", required=True)
-    for name in ("plan", "apply", "status"):
-        command = commands.add_parser(name)
-        command.add_argument("--version", required=True)
-        command.add_argument("--channel", choices=ROLLOUT_CHANNELS, default="stable")
-        if name == "apply":
-            command.add_argument("--dry-run", action="store_true")
-    reconcile = commands.add_parser("reconcile")
-    reconcile.add_argument("--version", help="default: latest published version")
-    reconcile.add_argument("--dry-run", action="store_true")
-    reconcile.add_argument("--channel", choices=ROLLOUT_CHANNELS, default="stable")
-    return result
-
-
 def execute(args: RolloutArgs, runner: CommandRunner) -> int:
     consumers = select_channel(load_registry(args.registry), args.channel)
     if not consumers:
@@ -1564,10 +1549,75 @@ def execute(args: RolloutArgs, runner: CommandRunner) -> int:
 
 
 def main(argv: Sequence[str] | None = None, *, runner: CommandRunner | None = None) -> int:
+    app = typer.Typer(
+        add_completion=False,
+        pretty_exceptions_enable=False,
+        context_settings={"help_option_names": ["-h", "--help"]},
+    )
     args = RolloutArgs()
-    _ = parser().parse_args(argv, namespace=args)
+    exit_code = 0
+
+    @app.callback()
+    def configure(registry: Annotated[Path, typer.Option("--registry")] = DEFAULT_REGISTRY) -> None:
+        args.registry = registry
+
+    def run(command: str, version: str | None, channel: _Channel, *, dry_run: bool = False) -> None:
+        nonlocal exit_code
+        args.command = command
+        args.version = version
+        args.channel = channel.value
+        args.dry_run = dry_run
+        exit_code = _execute_cli(args, runner or SubprocessRunner())
+
+    @app.command("plan")
+    def plan_command(
+        version: Annotated[str, typer.Option("--version")],
+        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+    ) -> None:
+        run("plan", version, channel)
+
+    @app.command("apply")
+    def apply_command(
+        *,
+        version: Annotated[str, typer.Option("--version")],
+        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+        dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    ) -> None:
+        run("apply", version, channel, dry_run=dry_run)
+
+    @app.command("status")
+    def status_command(
+        version: Annotated[str, typer.Option("--version")],
+        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+    ) -> None:
+        run("status", version, channel)
+
+    @app.command("reconcile")
+    def reconcile_command(
+        *,
+        version: Annotated[str | None, typer.Option("--version", help="default: latest published version")] = None,
+        channel: Annotated[_Channel, typer.Option("--channel")] = _Channel.STABLE,
+        dry_run: Annotated[bool, typer.Option("--dry-run")] = False,
+    ) -> None:
+        run("reconcile", version, channel, dry_run=dry_run)
+
     try:
-        return execute(args, runner or SubprocessRunner())
+        app(args=None if argv is None else list(argv), prog_name="standards-rollout")
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
+    return exit_code
+
+
+class _Channel(StrEnum):
+    CANARY = "canary"
+    EARLY = "early"
+    STABLE = "stable"
+
+
+def _execute_cli(args: RolloutArgs, runner: CommandRunner) -> int:
+    try:
+        return execute(args, runner)
     except subprocess.CalledProcessError as exc:
         stdout: object = exc.stdout  # pyright: ignore[reportAny] - subprocess exception boundary
         stderr: object = exc.stderr  # pyright: ignore[reportAny] - subprocess exception boundary

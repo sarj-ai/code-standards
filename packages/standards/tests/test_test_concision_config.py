@@ -8,7 +8,7 @@ import pytest
 
 
 CONFIG_DIRECTORY = Path(__file__).parents[1] / "src/sarj_standards/configs"
-PROFILES = ("eslint.strict.mjs", "eslint.application.mjs")
+CONFIG_NAMES = ("eslint.strict.mjs", "eslint.application.mjs")
 EXPECTED_RULES = {
     "jest": {
         "prefer-to-be",
@@ -47,16 +47,25 @@ def _rules(source: str, plugin: str) -> set[str]:
     return rules
 
 
-@pytest.mark.parametrize("profile", PROFILES)
-def test_profiles_enable_only_the_reviewed_dense_test_rules(profile: str) -> None:
-    source = (CONFIG_DIRECTORY / profile).read_text(encoding="utf-8")
+def _config_source(config_name: str) -> str:
+    source = (CONFIG_DIRECTORY / config_name).read_text(encoding="utf-8")
+    if config_name == "eslint.application.mjs":
+        executable = "\n".join(line for line in source.splitlines() if not line.startswith("//"))
+        assert executable.strip() == 'export { createConfig, default } from "./eslint.strict.mjs";'
+        return (CONFIG_DIRECTORY / "eslint.strict.mjs").read_text(encoding="utf-8")
+    return source
+
+
+@pytest.mark.parametrize("config_name", CONFIG_NAMES)
+def test_configs_enable_only_the_reviewed_dense_test_rules(config_name: str) -> None:
+    source = _config_source(config_name)
     for plugin, expected in EXPECTED_RULES.items():
         assert _rules(source, plugin) == expected
 
 
-@pytest.mark.parametrize("profile", PROFILES)
-def test_framework_rules_are_explicit_and_isolated(profile: str) -> None:
-    source = (CONFIG_DIRECTORY / profile).read_text(encoding="utf-8")
+@pytest.mark.parametrize("config_name", CONFIG_NAMES)
+def test_framework_rules_are_explicit_and_isolated(config_name: str) -> None:
+    source = _config_source(config_name)
     assert 'options.testFrameworks ?? ["vitest", "node"]' in source
     assert "Unsupported test framework" in source
     assert "files: BUN_TEST_FILES" in source

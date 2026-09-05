@@ -7,7 +7,14 @@ import pytest
 
 from sarj_standards import api
 from sarj_standards.libs.adoption.lifecycle import Command, EslintSelection
-from sarj_standards.libs.adoption.manifest import ExclusionOverride, Manifest, as_table, list_field, table_field
+from sarj_standards.libs.adoption.manifest import (
+    ExclusionOverride,
+    Manifest,
+    Profile,
+    as_table,
+    list_field,
+    table_field,
+)
 from sarj_standards.libs.diagnostics import (
     ANALYSIS_SCHEMA,
     SCHEMA_URI,
@@ -106,6 +113,42 @@ def test_public_models_reject_values_that_violate_their_schema(build: Callable[[
 def test_public_models_reject_boolean_in_integer_fields(build: Callable[[], object]) -> None:
     with pytest.raises(TypeError, match="must be an integer"):
         build()
+
+
+@pytest.mark.parametrize("count", [True, False], ids=("true", "false"))
+def test_tool_report_rejects_boolean_baselined_count(count: bool) -> None:
+    with pytest.raises(TypeError, match="baselined diagnostic count must be an integer"):
+        ToolReport("fixture", Completion.COMPLETE, baselined_count=count)
+
+
+def test_tool_report_rejects_negative_baselined_count() -> None:
+    with pytest.raises(ValueError, match="baselined diagnostic count cannot be negative"):
+        ToolReport("fixture", Completion.COMPLETE, baselined_count=-1)
+
+
+def test_baselined_metadata_survives_normalization_without_changing_gate_result(tmp_path: Path) -> None:
+    original = ToolReport(
+        "fixture",
+        Completion.COMPLETE,
+        analyzer_id=AnalyzerId("fixture/analyzer"),
+        invocation_id=InvocationId("fixture/project"),
+        version="1.2.3",
+        file_count=1,
+        baselined_count=2,
+    )
+    report = report_from_tools(tmp_path, (original,))
+
+    assert report.tools == (original,)
+    assert report.exit_code == 0
+    assert report.conclusion is Conclusion.PASSED
+    assert report.tools[0].as_dict()["diagnosticCount"] == 0
+    assert report.tools[0].as_dict()["baselinedDiagnosticCount"] == 2
+    assert '"baselinedDiagnosticCount": 2' in to_json(report)
+    assert "2 existing finding(s) accepted by central diagnostic baseline" in to_text(report)
+
+
+def test_zero_baselined_count_preserves_existing_serialization() -> None:
+    assert "baselinedDiagnosticCount" not in ToolReport("fixture", Completion.COMPLETE).as_dict()
 
 
 @pytest.mark.parametrize("path", ["/absolute.py", "../escape.py", "C:\\private\\file.py", "C:relative.py"])
@@ -853,14 +896,15 @@ def test_policy_analysis_applies_manifest_scope_and_baseline_while_raw_does_not(
     }
 
 
-def test_policy_analysis_includes_application_library_policy(tmp_path: Path) -> None:
+@pytest.mark.parametrize("profile", ["standard", "application"], ids=("legacy-standard", "legacy-application"))
+def test_policy_analysis_includes_library_policy_for_both_legacy_profiles(tmp_path: Path, profile: Profile) -> None:
     (tmp_path / ".sarj-standards.toml").write_text(
         Manifest(
             api.__version__,
             (),
             ".",
             ".",
-            profile="application",
+            profile=profile,
             hook_manager="none",
         ).render(),
         encoding="utf-8",
@@ -871,7 +915,7 @@ def test_policy_analysis_includes_application_library_policy(tmp_path: Path) -> 
     raw = api.Standards(tmp_path).analyze(mode=api.AnalysisMode.RAW)
 
     assert [item.code for item in policy.diagnostics if item.source == "sarj-library-policy"] == ["LIB004"]
-    assert not [item for item in raw.diagnostics if item.source == "sarj-library-policy"]
+    assert [item.code for item in raw.diagnostics if item.source == "sarj-library-policy"] == ["LIB004"]
 
 
 def test_analysis_normalizes_public_string_enums_and_rejects_invalid_values(tmp_path: Path) -> None:

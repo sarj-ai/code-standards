@@ -1,19 +1,20 @@
-# argparse exposes no public parser-graph traversal API.
-# pyright: reportPrivateUsage=false
-
 from __future__ import annotations
 
-import argparse
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal, TypedDict, TypeGuard
+from typing import TYPE_CHECKING, Final, Literal, Protocol, TypedDict, TypeGuard, runtime_checkable
+
+from typer.core import TyperArgument, TyperCommand, TyperGroup, TyperOption
+from typer.main import get_command
 
 from sarj_standards._meta import CONFIGS_DIR, __version__
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    import typer
 
 
 SCHEMA_VERSION: Final = 1
@@ -180,21 +181,21 @@ def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
     return validate(payload)
 
 
-def build(parser: argparse.ArgumentParser) -> CliReference:
+def build(app: typer.Typer) -> CliReference:
     from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level]
 
-    root = _command(
-        parser,
-        name=parser.prog,
-        path=(),
-        summary=parser.description or "",
-    )
+    parser = get_command(app)
+    if not isinstance(parser, (TyperCommand, TyperGroup)):
+        msg = "CLI reference requires a native Typer command tree"
+        raise TypeError(msg)
+    program = parser.name or "code-standards"
+    root = _command(parser, name=program, path=(), program=program)
     return validate(
         {
             "schemaVersion": SCHEMA_VERSION,
             "version": __version__,
-            "program": parser.prog,
-            "summary": parser.description or "",
+            "program": program,
+            "summary": parser.help or "",
             "epilog": parser.epilog,
             "globalOptions": root["options"],
             "commands": root["commands"],
@@ -204,76 +205,69 @@ def build(parser: argparse.ArgumentParser) -> CliReference:
 
 
 def _command(
-    parser: argparse.ArgumentParser,
+    parser: TyperCommand | TyperGroup,
     *,
     name: str,
     path: tuple[str, ...],
-    summary: str,
+    program: str,
 ) -> ReferenceCommand:
     arguments: list[ReferenceArgument] = []
     commands: list[ReferenceCommand] = []
-    for action in parser._actions:  # ruff: ignore[private-member-access]
-        if _is_subparsers(action):
-            summaries = _subcommand_summaries(action)
-            for command_name, command_parser in action.choices.items():
-                commands.append(
-                    _command(
-                        command_parser,
-                        name=command_name,
-                        path=(*path, command_name),
-                        summary=summaries.get(command_name, ""),
-                    )
-                )
+    for action in parser.params:
+        if isinstance(action, TyperOption) and action.hidden:
             continue
+        if not isinstance(action, (TyperArgument, TyperOption)):
+            msg = f"Unsupported CLI parameter: {action.name}"
+            raise TypeError(msg)
         arguments.append(_argument(action))
+    if parser.add_help_option:
+        arguments.insert(
+            0,
+            {
+                "kind": "option",
+                "names": ["-h", "--help"],
+                "metavar": None,
+                "summary": "Show this message and exit.",
+                "choices": [],
+                "required": False,
+                "repeatable": False,
+            },
+        )
+    if isinstance(parser, TyperGroup):
+        for command_name, child in parser.commands.items():
+            if not isinstance(child, (TyperCommand, TyperGroup)):
+                msg = f"Unsupported CLI command: {command_name}"
+                raise TypeError(msg)
+            commands.append(_command(child, name=command_name, path=(*path, command_name), program=program))
     return {
         "name": name,
         "path": list(path),
-        "usage": _usage(parser.prog, arguments, commands),
-        "summary": summary,
+        "usage": _usage(" ".join((program, *path)), arguments, commands),
+        "summary": parser.help or "",
         "options": arguments,
         "commands": commands,
     }
 
 
-def _is_subparsers(
-    action: argparse.Action,
-) -> TypeGuard[argparse._SubParsersAction[argparse.ArgumentParser]]:
-    return isinstance(action, argparse._SubParsersAction)  # ruff: ignore[private-member-access]
+@runtime_checkable
+class _ChoiceType(Protocol):
+    @property
+    def choices(self) -> Iterable[object]: ...
 
 
-def _subcommand_summaries(
-    action: argparse._SubParsersAction[argparse.ArgumentParser],
-) -> dict[str, str]:
-    return {
-        choice.dest: "" if choice.help in {None, argparse.SUPPRESS} else str(choice.help)
-        for choice in action._choices_actions  # ruff: ignore[private-member-access]
-    }
-
-
-def _argument(action: argparse.Action) -> ReferenceArgument:
-    choices: Iterable[object] | None = action.choices
-    positional = not action.option_strings
+def _argument(action: TyperArgument | TyperOption) -> ReferenceArgument:
+    choices = action.type.choices if isinstance(action.type, _ChoiceType) else ()
+    positional = isinstance(action, TyperArgument)
+    flag = isinstance(action, TyperOption) and action.is_flag
     return {
         "kind": "positional" if positional else "option",
-        "names": [action.dest] if positional else list(action.option_strings),
-        "metavar": _metavar(action),
-        "summary": "" if action.help in {None, argparse.SUPPRESS} else str(action.help),
-        "choices": [] if choices is None else [str(choice) for choice in choices],
+        "names": [action.name or ""] if positional else [*action.opts, *action.secondary_opts],
+        "metavar": None if flag else action.metavar or (action.name or "").upper(),
+        "summary": action.help or "",
+        "choices": [str(choice) for choice in choices],
         "required": action.required,
-        "repeatable": action.nargs in {"+", "*"}
-        or type(action).__name__ in {"_AppendAction", "_AppendConstAction", "_CountAction"},
+        "repeatable": action.nargs == -1 or action.multiple,
     }
-
-
-def _metavar(action: argparse.Action) -> str | None:
-    if action.nargs == 0:
-        return None
-    if isinstance(action.metavar, tuple):
-        return " ".join(str(item) for item in action.metavar)
-    if action.metavar is not None:
-        return str(action.metavar)
-    return action.dest if not action.option_strings else action.dest.upper()
 
 
 def _usage(
@@ -299,11 +293,11 @@ def _usage(
     return " ".join(parts)
 
 
-def render(parser: argparse.ArgumentParser) -> str:
+def render(parser: typer.Typer) -> str:
     return json.dumps(build(parser), ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
 
 
-def sync(root: Path, parser: argparse.ArgumentParser, *, check: bool) -> ReferenceSyncResult:
+def sync(root: Path, parser: typer.Typer, *, check: bool) -> ReferenceSyncResult:
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
 
     destination = root.resolve() / _REPOSITORY_REFERENCE_PATH

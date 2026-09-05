@@ -134,7 +134,6 @@ class Manifest:
                 "# Managed by `code-standards setup`; commit this file.\n"
                 f"schema = {MANIFEST_SCHEMA}\n"
                 f'bundle = "{self.version}"\n'
-                f'profile = "{self.profile}"\n'
                 'rule_profile = "all"\n'
                 "\n"
                 "[capabilities]\n"

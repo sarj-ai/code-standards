@@ -3,24 +3,32 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeGuard
 
 import pytest
+from typer.testing import CliRunner
 
-from sarj_standards.cli.main import build_parser, main
+from sarj_standards.cli.main import build_app, main
 from sarj_standards.libs.repository import rule_lifecycle
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
 if TYPE_CHECKING:
-    import argparse
     from collections.abc import Sequence
     from pathlib import Path
 
 
 def _parse(argv: Sequence[str]) -> dict[str, object]:
-    parsed: argparse.Namespace = build_parser().parse_args(list(argv))
-    values: object = vars(parsed)
-    if not _is_object(values):
-        msg = "argparse namespace has invalid values"
-        raise TypeError(msg)
+    values: dict[str, object] = {}
+
+    def capture(args: object) -> int:
+        parsed: object = vars(args)
+        if not _is_object(parsed):
+            msg = "command arguments have invalid values"
+            raise TypeError(msg)
+        values.update(parsed)
+        return 0
+
+    result = CliRunner().invoke(build_app(capture), list(argv))
+    if result.exception is not None:
+        raise result.exception
     return values
 
 
@@ -46,6 +54,15 @@ def test_stage_warning_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "stage-warning", "python:no-print"))
 
     assert args["selector"] == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
+
+
+@pytest.mark.parametrize("profile", ["standard", "application"])
+def test_legacy_profile_is_accepted_but_not_advertised(profile: str) -> None:
+    args = _parse(("setup", "--profile", profile))
+    assert args["profile"] == profile
+    result = CliRunner().invoke(build_app(), ["setup", "--help"])
+    assert result.exit_code == 0
+    assert "--profile" not in result.output
 
 
 def test_stage_warning_prints_copy_pasteable_author_validation_steps(
