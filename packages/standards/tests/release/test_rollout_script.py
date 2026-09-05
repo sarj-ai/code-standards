@@ -139,6 +139,11 @@ class TestRegistry:
                 "text:hidden-markdown-heading",
                 id="native-text-selector",
             ),
+            pytest.param(
+                "iac:no-environment-derived-access-grant",
+                "iac:no-environment-conditional",
+                id="ledger-renamed-selector",
+            ),
         ],
     )
     def test_rollout_canonicalizes_catalogued_historical_baseline_selectors(
@@ -157,6 +162,43 @@ class TestRegistry:
         )
 
         assert selected == (expected,)
+
+    @pytest.mark.parametrize(
+        "configured",
+        [
+            pytest.param("python:prefer-one-for-required-row", id="canonical-source"),
+            pytest.param("sarj-python-lint:prefer-one-for-required-row", id="native-source"),
+        ],
+    )
+    def test_rollout_omits_ledger_removed_baseline_selectors(self, configured: str) -> None:
+        selected = rollout.rollout_baseline_rules(
+            rollout.Consumer("one", "example/one", "main", ("true",), baseline_rules=(configured,)),
+            rollout.ReactDoctorPolicy(None, None),
+            rollout.ReactDoctorPolicy(None, None),
+        )
+        assert selected == ()
+
+    def test_rollout_omits_removed_selectors_without_hiding_unknown_selectors(self) -> None:
+        selected = rollout.rollout_baseline_rules(
+            rollout.Consumer(
+                "one",
+                "example/one",
+                "main",
+                ("true",),
+                baseline_rules=(
+                    "python:prefer-one-for-required-row",
+                    "sarj-python-lint:defect-xfail-requires-explicit-strict",
+                    "python:prefer-one-for-required-rows",
+                    "python:defect-xfail-requires-explicit-strict",
+                ),
+            ),
+            rollout.ReactDoctorPolicy(None, None),
+            rollout.ReactDoctorPolicy(None, None),
+        )
+        assert selected == (
+            "python:defect-xfail-requires-explicit-strict",
+            "python:prefer-one-for-required-rows",
+        )
 
     def test_react_doctor_policy_snapshot_reads_managed_config_and_direct_pin(
         self,

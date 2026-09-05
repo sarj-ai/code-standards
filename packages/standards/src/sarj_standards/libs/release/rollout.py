@@ -29,7 +29,7 @@ from sarj_standards.libs.adoption import (
     scaffold as adoption_scaffold,
     uvtool as adoption_uvtool,
 )
-from sarj_standards.libs.repository import rule_catalog_artifact
+from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
 
 
 if TYPE_CHECKING:
@@ -1148,11 +1148,21 @@ def rollout_baseline_rules(
     after: ReactDoctorPolicy,
 ) -> tuple[str, ...]:
     catalog = rule_catalog_artifact.selector_index()
+    retired = {(entry.kind, entry.id): entry for entry in rule_ledger.load().retired}
     selectors: list[str] = []
     for selector in consumer.baseline_rules:
         source, separator, rule_id = selector.partition(":")
         normalized = f"{BASELINE_ENGINE_BY_SOURCE.get(source, source)}:{rule_id}" if separator else selector
-        selectors.append(catalog.resolve(normalized))
+        resolved = catalog.resolve(normalized)
+        if resolved not in catalog.canonical and separator:
+            engine, _, normalized_rule_id = normalized.partition(":")
+            retired_rule = retired.get((engine, normalized_rule_id))
+            if retired_rule is not None:
+                if retired_rule.status is rule_ledger.Status.REMOVED:
+                    continue
+                if retired_rule.replacement is not None:
+                    resolved = catalog.resolve(f"{engine}:{retired_rule.replacement}")
+        selectors.append(resolved)
     if before != after and (after.config is not None or after.package_pin is not None):
         selectors.append("react-doctor:*")
     return tuple(dict.fromkeys(selectors))
