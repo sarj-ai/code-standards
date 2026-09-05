@@ -983,7 +983,7 @@ def check_paths(
         if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
             continue
         path_findings: list[Finding] = []
-        if enabled_codes is None or "SARJ301" in enabled_codes:
+        if enabled_codes is None or "SARJ302" in enabled_codes:
             path_findings.extend(_artifact_findings(path, relative, source, durable_patterns))
         if enabled_codes is None or "SARJ309" in enabled_codes:
             path_findings.extend(_declarative_deployment_findings(path, relative, source))
@@ -1002,11 +1002,11 @@ def check_paths(
             path_findings.extend(_large_shell_program_findings(path, source))
         if enabled_codes is None or "SARJ305" in enabled_codes:
             path_findings.extend(_markdown_hidden_comment_findings(path, source))
-        if enabled_codes is None or "SARJ302" in enabled_codes:
+        if enabled_codes is None or "SARJ307" in enabled_codes:
             path_findings.extend(_markdown_command_argument_findings(path, relative, source))
         if enabled_codes is None or "SARJ308" in enabled_codes:
             path_findings.extend(_claude_settings_secret_permission_findings(path, relative, source))
-        if enabled_codes is None or enabled_codes.intersection({"SARJ304", "SARJ306", "SARJ307"}):
+        if enabled_codes is None or enabled_codes.intersection({"SARJ300", "SARJ301", "SARJ306"}):
             path_findings.extend(_comment_findings(path, source))
         findings.extend(
             finding
