@@ -198,6 +198,7 @@ def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
 
     assert "needs.build-tsconfig.outputs.artifact_sha256" in tsconfig_publish
     assert "verify_registry_publication.py npm" in tsconfig_publish
+    assert "--publish" in tsconfig_publish
     assert "--environment npm-tsconfig-release" in tsconfig_publish
 
 
@@ -207,6 +208,7 @@ def test_typescript_release_verifies_its_own_registry_artifact() -> None:
 
     assert "needs.build-typescript.outputs.artifact_sha256" in publish
     assert "verify_registry_publication.py npm" in publish
+    assert "--publish" in publish
     assert "--environment npm-typescript-release" in publish
     assert "needs.build-design" not in publish
     assert "@sarj/design" not in publish

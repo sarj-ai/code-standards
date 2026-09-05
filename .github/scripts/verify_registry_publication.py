@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from email.parser import BytesParser
 import hashlib
+from http import HTTPStatus
 import json
 from pathlib import Path
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- this workflow helper executes only fixed trusted tool argv.
@@ -20,6 +21,7 @@ import tarfile
 import tempfile
 import time
 from typing import Annotated, Any, NoReturn
+from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 import zipfile
@@ -350,6 +352,27 @@ def verify_npm(tarball: Path, *, commit: str, environment: str) -> None:
             return
 
 
+def publish_npm_if_missing(tarball: Path) -> None:
+    identity = _npm_identity(tarball)
+    url = f"https://registry.npmjs.org/{quote(identity.name, safe='')}/{quote(identity.version, safe='')}"
+    try:
+        _json(url)
+    except HTTPError as exc:
+        if exc.code != HTTPStatus.NOT_FOUND:
+            raise
+        subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- CI supplies the digest-verified tarball, never shell input.
+            (  # ruff: ignore[start-process-with-partial-path] -- setup-node provides trusted npm.
+                "npm",
+                "publish",
+                str(tarball),
+                "--access",
+                "public",
+                "--ignore-scripts",
+            ),
+            check=True,
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     app = typer.Typer(
         add_completion=False,
@@ -370,7 +393,11 @@ def main(argv: list[str] | None = None) -> int:
         tarball: Annotated[Path, typer.Option("--tarball")],
         commit: Annotated[str, typer.Option("--commit")],
         environment: Annotated[str, typer.Option("--environment")],
+        *,
+        publish: Annotated[bool, typer.Option("--publish")] = False,
     ) -> None:
+        if publish:
+            publish_npm_if_missing(tarball)
         verify_npm(tarball, commit=commit, environment=environment)
 
     try:

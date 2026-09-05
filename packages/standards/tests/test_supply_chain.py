@@ -183,7 +183,7 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
         "test \"$actual_name\" = '@sarj/tsconfig'" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     assert (
-        release.count("Verify registry bytes and source-bound provenance") == 2
+        release.count("Publish and verify registry bytes and source-bound provenance") == 2
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     verifier = (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         REPO_ROOT / ".github/scripts/verify_registry_publication.py"

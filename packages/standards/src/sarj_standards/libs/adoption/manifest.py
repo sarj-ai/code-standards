@@ -657,7 +657,7 @@ def _relative_file(root: Path, table: Mapping[str, object], key: str) -> str | N
 
 def installed_versions() -> dict[str, str]:
     found = {LINT_CONFIGS: adopted_version()}
-    for name in SIBLING_PACKAGES:
+    for name in (*SIBLING_PACKAGES, "ruff"):
         try:
             found[name] = version(name)
         except PackageNotFoundError:

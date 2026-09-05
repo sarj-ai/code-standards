@@ -15,6 +15,7 @@ import tomllib
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from pydantic import TypeAdapter, ValidationError
 from repo_standards.core.parser import load_manifest as load_repository_manifest
 
@@ -79,9 +80,10 @@ class _PackageEslintPinRewrite(NamedTuple):
 
 #: `sarj-python-lint==0.25.0`, `"code-standards>=0.9"`, `--from sarj-sql-lint==1.2.3`.
 _PIN = re.compile(
-    r"(?P<name>sarj-(?:python|sql|iac)-lint|sarj-standards-bootstrap|(?:code|sarj)-standards)\s*"
-    r"(?P<op>==|>=|~=)\s*"
-    r"(?P<version>[0-9][0-9A-Za-z._+\-]*)"
+    r"(?<![A-Za-z0-9._-])(?P<name>ruff|sarj-(?:python|sql|iac)-lint|sarj-standards-bootstrap|(?:code|sarj)-standards)\s*"
+    r"(?P<op>===|==|>=|~=|<=|!=|>|<)\s*"
+    r"(?P<version>[0-9][0-9A-Za-z._+*\-]*)"
+    r"(?P<constraints>(?:\s*,\s*(?:===|==|>=|~=|<=|!=|>|<)\s*[0-9][0-9A-Za-z._+*\-]*)*)"
 )
 _PREAPPROVED_ESLINT = re.compile(
     r"(?m)^(?P<prefix>[ \t]*(?:npmPreapprovedPackages|minimumReleaseAgeExclude):[^\n]*\n"
@@ -972,7 +974,7 @@ def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, 
                     f"{name} is not installed here, so the pin is unverified",
                     "doctor.version.unverified",
                 )
-            elif name == canonical and pinned == current and match.group("op") == "==":
+            elif name == canonical and _pin_accepts_installed(match, current):
                 yield Finding(Level.OK, where, "matches the installed wheel", "doctor.version.pin")
             else:
                 yield Finding(
@@ -1058,6 +1060,16 @@ def _is_pin_site(path: Path) -> bool:
     return ".github" in path.parts and "workflows" in path.parts and path.suffix.lower() in {".yml", ".yaml"}
 
 
+def _pin_accepts_installed(match: re.Match[str], current: str) -> bool:
+    if match.group("name") == "ruff":
+        specifier = f"{match.group('op')}{match.group('version')}{match.group('constraints')}"
+        try:
+            return current in SpecifierSet(specifier)
+        except InvalidSpecifier:
+            return False
+    return match.group("version") == current and match.group("op") == "==" and not match.group("constraints")
+
+
 def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinRewrite:
     changed: set[str] = set()
     text, migrated_launchers = launcher.rewrite_legacy_repository_invocations(text)
@@ -1074,11 +1086,10 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
         name = match.group("name")
         canonical = "code-standards" if name == "sarj-standards" else name
         current = installed.get(canonical) or installed.get(name)
-        if current is None or (name == canonical and match.group("version") == current and match.group("op") == "=="):
+        if current is None or (name == canonical and _pin_accepts_installed(match, current)):
             return match.group(0)
         changed.add(canonical)
-        relative_end = match.end("version") - match.start()
-        return f"{canonical}=={current}{match.group(0)[relative_end:]}"
+        return f"{canonical}=={current}"
 
     def preapproved_eslint(match: re.Match[str]) -> str:
         current = installed.get(_ESLINT_PLUGIN)
