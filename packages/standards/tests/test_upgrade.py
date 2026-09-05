@@ -15,7 +15,7 @@ from sarj_standards.libs.adoption import doctor, launcher, lifecycle, manifest, 
 from sarj_standards.libs.diagnostics import baseline
 
 
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.3 code-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
 
 
 class _LaterWriteError(OSError):
@@ -439,13 +439,16 @@ def test_upgrade_gives_a_custom_standards_workflow_full_history_for_change_scopi
     assert "      persist-credentials: false\n      fetch-depth: 0\n" in updated
 
 
-def test_upgrade_rewrites_an_outdated_bootstrap_launcher_in_a_managed_workflow(tmp_path: Path) -> None:
+@pytest.mark.parametrize("bootstrap_version", ["2.0.0", "2.0.3"])
+def test_upgrade_rewrites_a_pinned_bootstrap_launcher_in_a_managed_workflow(
+    tmp_path: Path, bootstrap_version: str
+) -> None:
     workflow = tmp_path / ".github" / "workflows" / "standards.yml"
     workflow.parent.mkdir(parents=True)
     workflow.write_text(
         "steps:\n"
         "  - run: uvx --no-config --isolated --python 3.14 "
-        "--from sarj-standards-bootstrap==2.0.0 code-standards check --format github\n",
+        f"--from sarj-standards-bootstrap=={bootstrap_version} code-standards check --format github\n",
         encoding="utf-8",
     )
 
@@ -453,14 +456,15 @@ def test_upgrade_rewrites_an_outdated_bootstrap_launcher_in_a_managed_workflow(t
 
     [updated] = [update.contents for update in updates if update.path == workflow]
     assert BOOTSTRAP_COMMAND in updated
-    assert "sarj-standards-bootstrap==2.0.0" not in updated
+    assert "sarj-standards-bootstrap==" not in updated
+    assert doctor.rewrite_version_pins(updated, {}).contents == updated
 
 
 def test_canonical_bootstrap_launcher_is_one_idempotent_version_authority() -> None:
     command = launcher.repository_command("check")
 
-    assert f"{launcher.BOOTSTRAP_PACKAGE}=={launcher.BOOTSTRAP_VERSION}" == launcher.BOOTSTRAP_SPEC
-    assert launcher.BOOTSTRAP_SPEC in command
+    assert command == f"{BOOTSTRAP_COMMAND} check"
+    assert "==" not in command
     assert doctor.rewrite_version_pins(command, {}).contents == command
 
 
@@ -714,7 +718,7 @@ def test_upgrade_migrates_python_argv_launcher_in_scripts(tmp_path: Path) -> Non
     [updated] = [update.contents for update in updates if update.path == script]
     assert '    "uvx",\n' in updated
     assert '    "--from",\n' in updated
-    assert '    "sarj-standards-bootstrap==2.0.3",\n' in updated
+    assert '    "sarj-standards-bootstrap",\n' in updated
     assert '    "code-standards",\n' in updated
     assert '    "check",\n' in updated
     assert "sarj-standards==" not in updated

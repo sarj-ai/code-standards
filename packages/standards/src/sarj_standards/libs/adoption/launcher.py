@@ -3,20 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 import re
 import shlex
-import tomllib
 from typing import Final, NamedTuple
-
-from . import manifest
 
 
 TOOL_PYTHON: Final = "3.14"
 PACKAGE: Final = "code-standards"
 COMMAND: Final = "code-standards"
 BOOTSTRAP_PACKAGE: Final = "sarj-standards-bootstrap"
-BOOTSTRAP_SPEC: Final = "sarj-standards-bootstrap==2.0.3"
-BOOTSTRAP_VERSION: Final = BOOTSTRAP_SPEC.removeprefix(f"{BOOTSTRAP_PACKAGE}==")
-MISE_BOOTSTRAP_TOOL: Final = f"pipx:{BOOTSTRAP_PACKAGE}"
-MISE_UVX_ARGS: Final = f"--python {TOOL_PYTHON} --no-config"
 RETIRED_REPOSITORY_LAUNCHER: Final = Path(".sarj/standards")
 RETIRED_LAUNCHER_PROTOCOL: Final = 1
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
@@ -24,7 +17,7 @@ _SHELL_WHITESPACE: Final = r"(?:\s|\\\r?\n)+"
 _LEGACY_REPOSITORY_INVOCATION: Final = re.compile(
     rf"\buvx{_SHELL_WHITESPACE}(?:(?!--from\b)[^\s;&|\\]+{_SHELL_WHITESPACE})*"
     rf"--from{_SHELL_WHITESPACE}['\"]?sarj-standards(?:-bootstrap)?==[^\s;&|\\'\"]+['\"]?"
-    rf"{_SHELL_WHITESPACE}sarj-standards"
+    rf"{_SHELL_WHITESPACE}(?:sarj|code)-standards"
     rf"(?:{_SHELL_WHITESPACE}--root(?:{_SHELL_WHITESPACE}|=)(?:\.|['\"]\.['\"]))?"
 )
 _REPOSITORY_LAUNCHER_INVOCATION: Final = re.compile(
@@ -56,7 +49,7 @@ _LEGACY_PYTHON_ARGV_INVOCATION: Final = re.compile(
     r"(?P=indent)['\"]3\.14['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]--from['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]sarj-standards(?:-bootstrap)?==[^'\"\r\n]+['\"],[ \t]*\r?\n"
-    r"(?P=indent)['\"]sarj-standards['\"],[ \t]*\r?\n"
+    r"(?P=indent)['\"](?:sarj|code)-standards['\"],[ \t]*\r?\n"
     r"(?:(?P=indent)['\"]--root['\"],[ \t]*\r?\n"
     r"(?P=indent)['\"]\.['\"],[ \t]*\r?\n)?"
 )
@@ -75,11 +68,6 @@ _REPOSITORY_PYTHON_ARGV_INVOCATION: Final = re.compile(
 class LegacyInvocationRewrite(NamedTuple):
     contents: str
     replacements: int
-
-
-class MiseBootstrapPin(NamedTuple):
-    path: Path
-    version: str
 
 
 def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool = False) -> tuple[str, ...]:
@@ -101,47 +89,7 @@ def argv(*, executable: str = "uvx", version: str | None = None, refresh: bool =
     )
 
 
-def mise_bootstrap_pin(root: Path) -> MiseBootstrapPin | None:
-    paths = tuple(path for name in ("mise.toml", ".mise.toml") if (path := root / name).exists())
-    if not paths:
-        return None
-    configured_tools: list[tuple[Path, dict[str, object]]] = []
-    for path in paths:
-        try:
-            document: object = tomllib.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
-            msg = f"cannot read Standards launcher configuration {path}: {exc}"
-            raise ValueError(msg) from exc
-        tools = manifest.table_field(manifest.as_table(document), "tools")
-        if MISE_BOOTSTRAP_TOOL in tools:
-            configured_tools.append((path, manifest.as_table(tools[MISE_BOOTSTRAP_TOOL])))
-    if not configured_tools:
-        return None
-    if len(paths) != 1:
-        msg = "Standards launcher requires one root mise.toml or .mise.toml, not both"
-        raise ValueError(msg)
-    path, configured = configured_tools[0]
-    if set(configured) != {"version", "uvx_args"}:
-        msg = f"{path}: {MISE_BOOTSTRAP_TOOL} must declare only version and uvx_args"
-        raise ValueError(msg)
-    version: object = configured.get("version")
-    if not isinstance(version, str) or _VERSION.fullmatch(version) is None:
-        msg = f"{path}: {MISE_BOOTSTRAP_TOOL} version must be one exact canonical X.Y.Z release"
-        raise ValueError(msg)
-    if configured.get("uvx_args") != MISE_UVX_ARGS:
-        msg = f"{path}: {MISE_BOOTSTRAP_TOOL} uvx_args must be {MISE_UVX_ARGS!r}"
-        raise ValueError(msg)
-    return MiseBootstrapPin(path, version)
-
-
-def mise_bootstrap_version(root: Path) -> str | None:
-    pin = mise_bootstrap_pin(root)
-    return None if pin is None else pin.version
-
-
-def repository_argv(*arguments: str, executable: str = "uvx", root: Path | None = None) -> tuple[str, ...]:
-    if root is not None and mise_bootstrap_version(root) is not None:
-        return ("mise", "exec", MISE_BOOTSTRAP_TOOL, "--", COMMAND, *arguments)
+def repository_argv(*arguments: str, executable: str = "uvx") -> tuple[str, ...]:
     return (
         executable,
         "--no-config",
@@ -149,24 +97,25 @@ def repository_argv(*arguments: str, executable: str = "uvx", root: Path | None 
         "--python",
         TOOL_PYTHON,
         "--from",
-        BOOTSTRAP_SPEC,
+        BOOTSTRAP_PACKAGE,
         COMMAND,
         *arguments,
     )
 
 
-def repository_command(*arguments: str, root: Path | None = None) -> str:
-    return shlex.join(repository_argv(*arguments, root=root))
-
-
-def commit_message_command(repository_prefix: str) -> str:
-    if shlex.split(repository_prefix) == ["mise", "exec", MISE_BOOTSTRAP_TOOL, "--", COMMAND]:
-        return repository_prefix
-    return shlex.join(argv(version=manifest.adopted_version()))
+def repository_command(*arguments: str) -> str:
+    return shlex.join(repository_argv(*arguments))
 
 
 def rewrite_legacy_repository_invocations(text: str) -> LegacyInvocationRewrite:
-    contents, count = _LEGACY_REPOSITORY_INVOCATION.subn(repository_command(), text)
+    contents, count = re.subn(
+        rf"\bmise{_SHELL_WHITESPACE}exec{_SHELL_WHITESPACE}pipx:sarj-standards-bootstrap"
+        rf"{_SHELL_WHITESPACE}--{_SHELL_WHITESPACE}code-standards",
+        repository_command(),
+        text,
+    )
+    contents, legacy_count = _LEGACY_REPOSITORY_INVOCATION.subn(repository_command(), contents)
+    count += legacy_count
     contents, repository_count = _REPOSITORY_LAUNCHER_INVOCATION.subn(repository_command(), contents)
     count += repository_count
     contents, bare_repository_count = _BARE_REPOSITORY_LAUNCHER_INVOCATION.subn(repository_command(), contents)

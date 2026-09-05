@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.3 code-standards"
+BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards"
 
 
 def _cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -1373,10 +1373,7 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     assert "package\\.json|pyrightconfig\\.json" in generated
     assert generated.count("id: sarj-standards-check") == 1
     assert generated.count("id: repo-standards-commit-message") == 1
-    assert (
-        "entry: uvx --no-config --isolated --python 3.14 "
-        f"--from code-standards=={__version__} code-standards commit-message"
-    ) in generated
+    assert f"entry: {BOOTSTRAP_COMMAND} commit-message" in generated
     assert "stages: [commit-msg]" in generated
     repository_manifest = (tmp_path / ".repo-standards" / "repository.toml").read_text()
     assert "schema_version = 6" in repository_manifest
@@ -1432,7 +1429,7 @@ def test_init_preserves_existing_lefthook_commit_message_commands(tmp_path: Path
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
     assert "consumer-lint {1}" in updated
-    assert updated.count("code-standards commit-message {1}") == 1
+    assert updated.count('code-standards commit-message "{1}"') == 1
     assert adoption_hooks.lefthook_runs_commit_message_check(tmp_path)
 
 

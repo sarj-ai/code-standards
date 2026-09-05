@@ -166,13 +166,13 @@ def _package_readme(
         f"# {name}",
         _string(metadata, "description"),
         f"```bash\n{_install_command(name, registry)}\n```",
-        _package_usage(name, engine, version=_string(metadata, "version")),
+        _package_usage(name, engine),
         f"[Documentation]({_homepage(metadata)}) · [Source]({_source_url(metadata)})",
     ]
     return "\n\n".join(sections) + "\n"
 
 
-def _package_usage(name: str, engine: str | None, *, version: str) -> str:
+def _package_usage(name: str, engine: str | None) -> str:
     if name == "code-standards":
         return (
             "Use it from pre-commit with a coding agent so violations are flagged and fixed before commit.\n\n"
@@ -191,12 +191,17 @@ def _package_usage(name: str, engine: str | None, *, version: str) -> str:
         )
     if name == "sarj-standards-bootstrap":
         return (
-            "Generated CI and hooks pin this protocol package exactly; ordinary Standards upgrades change only "
-            "`.sarj-standards.toml`.\n\n"
+            "Generated CI and hooks use this lightweight bootstrap without repeating a version pin. "
+            "It reads the exact Standards bundle version from `.sarj-standards.toml`; ordinary Standards "
+            "upgrades change only that manifest. No mise integration or repository-local launcher is needed.\n\n"
             "```bash\n"
             "uvx --no-config --isolated --python 3.14 --from "
-            f"sarj-standards-bootstrap=={version} code-standards check\n"
+            "sarj-standards-bootstrap code-standards check\n"
             "```\n\n"
+            "uvx installs and caches the bootstrap on first use, then reuses it without requesting a refresh "
+            "on every hook invocation. The bootstrap itself is not version-pinned; the linting bundle is. "
+            "Offline execution requires a warmed cache for both the bootstrap and the selected bundle, "
+            "including their Python runtime and dependencies.\n\n"
             "The bootstrap deliberately inherits UV/PIP registry, proxy, certificate, cache, and offline environment "
             "policy. `--no-config --isolated` prevents consumer project configuration and installed tools from "
             "changing the selected bootstrap or Standards bundle."

@@ -170,7 +170,7 @@ def test_sync_is_deterministic_and_check_then_passes(tmp_path: Path) -> None:
     assert "[Documentation](https://code-standards.sarj.ai/)" in rendered
     assert "## Rule catalog" not in rendered
     bootstrap_readme = (tmp_path / "packages/bootstrap/README.md").read_text(encoding="utf-8")
-    assert "sarj-standards-bootstrap==1.0.0 code-standards check" in bootstrap_readme
+    assert "sarj-standards-bootstrap code-standards check" in bootstrap_readme
     assert "inherits UV/PIP registry, proxy, certificate, cache, and offline environment policy" in bootstrap_readme
     security_policy = (tmp_path / ".github/SECURITY.md").read_text(encoding="utf-8")
     assert "/security/advisories/new" in security_policy

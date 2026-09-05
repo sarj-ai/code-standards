@@ -90,9 +90,7 @@ def test_init_service_applies_configs_wiring_and_manifest(tmp_path: Path) -> Non
     assert 'extend = ".ruff-strict.toml"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     assert (tmp_path / ".github" / "workflows" / "standards.yml").is_file()
     precommit = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    assert (
-        "uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap==2.0.3 code-standards"
-    ) in precommit
+    assert ("uvx --no-config --isolated --python 3.14 --from sarj-standards-bootstrap code-standards") in precommit
     assert "verbose: true" not in precommit
 
 

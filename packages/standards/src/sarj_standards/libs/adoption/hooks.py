@@ -287,7 +287,7 @@ def precommit_runs_staged_check(root: Path) -> bool:
     candidate = candidates[0]
     return (
         candidate.get("id") == "sarj-standards-check"
-        and _runs_staged_check(candidate.get("entry"), root=root)
+        and _runs_staged_check(candidate.get("entry"))
         and candidate.get("language") == "system"
         and "verbose" not in candidate
         and candidate.get("always_run") is True
@@ -298,7 +298,7 @@ def precommit_runs_staged_check(root: Path) -> bool:
     )
 
 
-def precommit_runs_commit_message_check(root: Path) -> bool:
+def precommit_runs_commit_message_check(root: Path, *, runner_prefix: str | None = None) -> bool:
     paths = [root / name for name in PRECOMMIT_NAMES if (root / name).is_file()]
     if len(paths) != 1:
         return False
@@ -322,7 +322,7 @@ def precommit_runs_commit_message_check(root: Path) -> bool:
         return False
     candidate = candidates[0]
     return (
-        _is_canonical_precommit_commit_message(candidate.get("entry"), root=root)
+        _is_canonical_precommit_commit_message(candidate.get("entry"), root=root, runner_prefix=runner_prefix)
         and candidate.get("language") == "system"
         and candidate.get("always_run") is True
         and candidate.get("pass_filenames") is True
@@ -348,7 +348,7 @@ def lefthook_runs_staged_check(root: Path) -> bool:
     return values.count(_canonical_lefthook_command(root)) == 1
 
 
-def lefthook_runs_commit_message_check(root: Path) -> bool:
+def lefthook_runs_commit_message_check(root: Path, *, runner_prefix: str | None = None) -> bool:
     path = lefthook_config(root)
     if path is None:
         return False
@@ -360,13 +360,21 @@ def lefthook_runs_commit_message_check(root: Path) -> bool:
         return False
     commit_message = manifest.as_table(manifest.as_table(parsed).get("commit-msg"))
     values = tuple(_lefthook_run_values(commit_message))
-    return values.count(_canonical_commit_message_command(path.parent)) == 1
+    commands = {_canonical_commit_message_command(path.parent, runner_prefix=runner_prefix)}
+    if runner_prefix is None and not manifest.manifest_path(root).exists():
+        commands.add(
+            _canonical_commit_message_command(
+                root, runner_prefix=shlex.join(launcher.argv(version=manifest.adopted_version()))
+            )
+        )
+    return sum(values.count(command) for command in commands) == 1
 
 
 def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- parser-safe migration keeps semantic and textual state explicit.
     root: Path,
     *,
     contents: str | None = None,
+    runner_prefix: str | None = None,
 ) -> LefthookWrite:
     path = lefthook_config(root)
     if path is None:
@@ -395,9 +403,7 @@ def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- pars
             msg = f"cannot safely wire {path.name}: expected block-style commit-msg commands or jobs"
             raise ValueError(msg)
         values = tuple(
-            value
-            for value in _lefthook_run_values_from_entries(entries)
-            if _runs_commit_message_check(value, root=root)
+            value for value in _lefthook_run_values_from_entries(entries) if _runs_commit_message_check(value)
         )
         if len(values) > 1:
             msg = f"cannot safely wire {path.name}: multiple commit-message Standards commands are active"
@@ -406,7 +412,7 @@ def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- pars
             replacement = _replace_lefthook_run(
                 text,
                 old=values[0],
-                new=_canonical_commit_message_command(root),
+                new=_canonical_commit_message_command(root, runner_prefix=runner_prefix),
             )
             if replacement is None:
                 msg = f"cannot safely wire {path.name}: commit-message Standards command is not a scalar run value"
@@ -418,7 +424,7 @@ def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- pars
             if "repo-standards-commit-message" not in entries
             else "repo-standards-commit-message-check"
         )
-        command = _canonical_commit_message_command(root)
+        command = _canonical_commit_message_command(root, runner_prefix=runner_prefix)
         updated = (
             _insert_staged_command(path, text, block_match, section_end, name, run=command)
             if layout == "commands"
@@ -430,7 +436,7 @@ def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- pars
         "\ncommit-msg:\n"
         "  commands:\n"
         "    repo-standards-commit-message:\n"
-        f"      run: {_canonical_commit_message_command(root)}\n"
+        f"      run: {_canonical_commit_message_command(root, runner_prefix=runner_prefix)}\n"
     )
     return LefthookWrite(path, f"{text}{separator}{addition}")
 
@@ -441,9 +447,7 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
         msg = "--hooks lefthook requires lefthook.yml or lefthook.yaml"
         raise ValueError(msg)
     text, layout, entries = _load_lefthook_entries(path)
-    staged_values = tuple(
-        value for value in _lefthook_run_values_from_entries(entries) if _runs_staged_check(value, root=root)
-    )
+    staged_values = tuple(value for value in _lefthook_run_values_from_entries(entries) if _runs_staged_check(value))
     if len(staged_values) > 1:
         msg = f"cannot safely wire {path.name}: multiple staged Standards commands are active"
         raise ValueError(msg)
@@ -565,7 +569,7 @@ def _insert_staged_command(
     return "".join((text[:insertion], separator, rendered, text[insertion:]))
 
 
-def _runs_staged_check(value: object, *, root: Path | None = None) -> bool:
+def _runs_staged_check(value: object) -> bool:
     if not isinstance(value, str) or re.search(r"(?:&&|\|\||[;|`]|\$\()", value):
         return False
     migrated, count = launcher.rewrite_legacy_repository_invocations(value)
@@ -575,24 +579,26 @@ def _runs_staged_check(value: object, *, root: Path | None = None) -> bool:
         tokens = shlex.split(value)
     except ValueError:
         return False
-    prefix = launcher.repository_argv(root=root)
-    if _is_standards_bootstrap_argv(tokens):
+    prefix = launcher.repository_argv()
+    if _is_exact_standards_argv(tokens):
         prefix = tuple(tokens[: len(launcher.repository_argv())])
     return tuple(tokens[: len(prefix)]) == prefix and tokens[len(prefix) : len(prefix) + 2] == ["check", "--staged"]
 
 
-def _runs_commit_message_check(value: object, *, root: Path | None = None) -> bool:
+def _runs_commit_message_check(value: object) -> bool:
     if not isinstance(value, str) or re.search(r"(?:&&|\|\||[;|`]|\$\()", value):
         return False
+    value, _ = launcher.rewrite_legacy_repository_invocations(value)
     try:
         tokens = shlex.split(value)
     except ValueError:
         return False
     prefixes = (
-        launcher.repository_argv(root=root),
         launcher.repository_argv(),
         launcher.argv(version=manifest.adopted_version()),
     )
+    if _is_exact_standards_argv(tokens):
+        prefixes = (*prefixes, tuple(tokens[: len(launcher.repository_argv())]))
     return any(
         tuple(tokens[: len(prefix)]) == prefix
         and tokens[len(prefix) :] in (["commit-message"], ["commit-message", "{1}"])
@@ -600,25 +606,29 @@ def _runs_commit_message_check(value: object, *, root: Path | None = None) -> bo
     )
 
 
-def _is_canonical_precommit_commit_message(value: object, *, root: Path | None = None) -> bool:
+def _is_canonical_precommit_commit_message(value: object, *, root: Path, runner_prefix: str | None = None) -> bool:
     if not isinstance(value, str):
         return False
     try:
         tokens = shlex.split(value)
     except ValueError:
         return False
-    prefix = launcher.commit_message_command(launcher.repository_command(root=root))
-    return tokens == [*shlex.split(prefix), "commit-message"]
+    prefix = launcher.repository_command() if runner_prefix is None else runner_prefix
+    prefixes = [shlex.split(prefix)]
+    if runner_prefix is None and not manifest.manifest_path(root).exists():
+        prefixes.append(list(launcher.argv(version=manifest.adopted_version())))
+    return any(tokens == [*candidate, "commit-message"] for candidate in prefixes)
 
 
-def _is_standards_bootstrap_argv(tokens: list[str]) -> bool:
+def _is_exact_standards_argv(tokens: list[str]) -> bool:
     prefix = launcher.repository_argv()
     if len(tokens) < len(prefix):
         return False
     candidate = tokens[: len(prefix)]
     return (
         candidate[:6] == list(prefix[:6])
-        and re.fullmatch(r"sarj-standards-bootstrap==[0-9]+\.[0-9]+\.[0-9]+", candidate[6]) is not None
+        and re.fullmatch(r"(?:sarj-standards-bootstrap|code-standards)==[0-9]+\.[0-9]+\.[0-9]+", candidate[6])
+        is not None
         and candidate[7] == launcher.COMMAND
     )
 
@@ -629,14 +639,14 @@ def _canonical_lefthook_command(root: Path | None = None) -> str:
             "uv run --no-config --project packages/standards --frozen code-standards check --staged "
             "--trust-repository-code -- {staged_files}"
         )
-    return f"{launcher.repository_command(root=root)} check --staged --trust-repository-code -- {{staged_files}}"
+    return f"{launcher.repository_command()} check --staged --trust-repository-code -- {{staged_files}}"
 
 
-def _canonical_commit_message_command(root: Path | None = None) -> str:
+def _canonical_commit_message_command(root: Path | None = None, *, runner_prefix: str | None = None) -> str:
     if root is not None and (root / "packages" / "standards" / "pyproject.toml").is_file():
         return "uv run --no-config --project packages/standards --frozen code-standards commit-message {1}"
-    prefix = launcher.commit_message_command(launcher.repository_command(root=root))
-    argument = '"{1}"' if prefix.startswith("mise exec ") else "{1}"
+    prefix = launcher.repository_command() if runner_prefix is None else runner_prefix
+    argument = '"{1}"'
     return f"{prefix} commit-message {argument}"
 
 
