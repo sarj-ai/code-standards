@@ -799,6 +799,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
         ),
         "exact-config-comment-restatement": RuleMeta(
             code="SARJ306",
+            blocking=False,
             summary="YAML or TOML comment exactly repeats the adjacent scalar assignment",
             rationale=(
                 "A comment that repeats the key and scalar value adds no information and can drift independently from "
@@ -830,7 +831,9 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 ),
             ),
             limitations=(
-                "Only an immediately adjacent standalone comment using exact `key is value` or `key equals value` wording over a simple scalar entry is checked.",
+                "Only valid authored YAML and TOML documents are analyzed; strong generated-file ownership headers, multiline literal payloads, and non-scalar entries are excluded.",
+                "Only an immediately adjacent standalone comment using `key is value` or `key equals value` wording is checked.",
+                "Key words may use prose spacing or common identifier separators; scalar spelling, case, punctuation, and internal whitespace must match.",
             ),
         ),
         "no-unsafe-command-argument-interpolation": RuleMeta(
@@ -2343,7 +2346,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
     if path.suffix.lower() in {".md", ".mdx"}:
         return []
     lines = source.splitlines()
-    wall_literal_lines = _config_comment_wall_literal_lines(path, source, lines)
+    validated_literal_lines = _validated_config_literal_lines(path, source, lines)
     generated_comment_wall = _has_generated_config_header(path, lines)
     attached: list[_AttachedComment] = []
     findings: list[Finding] = []
@@ -2370,8 +2373,15 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
         if not body or _DIRECTIVE_RE.match(body):
             continue
         protected = bool(_PROTECTED_RE.search(body))
+        unmasked_pair = (
+            validated_literal_lines is not None
+            and index not in validated_literal_lines
+            and index + 1 not in validated_literal_lines
+        )
         if (
             not protected
+            and not generated_comment_wall
+            and unmasked_pair
             and _exact_config_restatement(path, body, lines, index)
             and not _suppresses_previous_line(lines, index, "SARJ306")
         ):
@@ -2386,7 +2396,12 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
             )
             continue
         next_index = _next_content_line(lines, index + 1)
-        if generated_comment_wall or wall_literal_lines is None or index in wall_literal_lines or next_index is None:
+        if (
+            generated_comment_wall
+            or validated_literal_lines is None
+            or index in validated_literal_lines
+            or next_index is None
+        ):
             continue
         next_line = lines[next_index]
         if len(next_line) - len(next_line.lstrip()) != indent:
@@ -2521,7 +2536,7 @@ def _config_literal_lines(path: Path, lines: list[str]) -> set[int]:
     }
 
 
-def _config_comment_wall_literal_lines(path: Path, source: str, lines: list[str]) -> set[int] | None:
+def _validated_config_literal_lines(path: Path, source: str, lines: list[str]) -> set[int] | None:
     suffix = path.suffix.lower()
     if suffix in {".yaml", ".yml"}:
         try:
@@ -2634,8 +2649,6 @@ def _config_scalar_entry(path: Path, line: str) -> _ConfigScalarEntry | None:
     value = match.group("value").strip()
     if value.startswith(("[", "{")) or value in {"|", ">", "|-", "|+", ">-", ">+"} or " #" in value or "${{" in value:
         return None
-    if len(value) >= _QUOTED_SCALAR_MIN_LENGTH and value[0] == value[-1] and value[0] in {'"', "'"}:
-        value = value[1:-1]
     return _ConfigScalarEntry(match.group("key"), value)
 
 
@@ -2651,7 +2664,7 @@ def _config_value(text: str) -> str:
     value = text.strip()
     if len(value) >= _QUOTED_SCALAR_MIN_LENGTH and value[0] == value[-1] and value[0] in {'"', "'"}:
         value = value[1:-1]
-    return " ".join(value.split()).casefold()
+    return value
 
 
 def _inside_yaml_block_scalar(lines: list[str], index: int, indent: int) -> bool:
