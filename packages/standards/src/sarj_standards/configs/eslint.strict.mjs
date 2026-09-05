@@ -1102,7 +1102,7 @@ export function createConfig(options = {}) {
       "@sarj/source-coupled-test": "error",
       "@sarj/no-positional-tuple-return": "error",
       "@sarj/no-restated-comment": "warn",
-      "@sarj/no-restated-jsdoc": "error",
+      "@sarj/no-restated-jsdoc": "warn",
       "@sarj/no-trailing-value-narration": "error",
       "@sarj/no-declaration-comment-wall": "error",
       "@sarj/no-union-in-comment": "error",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "465ed1b87c4d24ef04dd476c418750ab29bdae53337761aa6934431852372c79",
-  "cliSha256": "b9f3ccd5b09236cd3a258d9c69fd3544c5d95c4efe6ff8113cdb8bff59a64c0a",
+  "catalogSha256": "dcc44a6bc433fffd4a6af6dd9986975f6072b33ee7aadd38132056adc8d251ce",
+  "cliSha256": "7eea975984395d6c0e81c83ef63dbc8ee6a632f808445d168b80cc0ab5207a71",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1112,6 +1112,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Document behavior absent from the signature"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/users.ts",
+              "source": "/** Does not cache the user. */\nexport function cacheUser(user: unknown) {\n  return user;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/users.ts",
+          "id": "negated-behavior",
+          "outcome": "accept",
+          "scenarioId": "negation",
+          "title": "Keep behavior even when its words resemble the declaration"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/users.ts",
+              "source": "/** Cache the user. */\nexport function cacheUser(user: unknown) {\n  return user;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/users.ts",
+          "id": "repeated-behavior-name",
+          "outcome": "reject",
+          "scenarioId": "negation",
+          "title": "Review prose that merely repeats the declaration name"
         },
         {
           "expectedCount": 1,

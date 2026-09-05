@@ -200,7 +200,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.6",
+  version: "15.17.7",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -216,6 +216,7 @@ const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
   "@sarj/no-restated-comment",
+  "@sarj/no-restated-jsdoc",
   "@sarj/prefer-millisecond-control-duration-schema",
   "@sarj/prefer-module-level-refined-schema",
   "@sarj/prefer-multi-value-zod-literal",
@@ -265,7 +266,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-repeated-string-literal": "error",
   "@sarj/no-router-refresh-polling": "error",
   "@sarj/no-restated-comment": "warn",
-  "@sarj/no-restated-jsdoc": "error",
+  "@sarj/no-restated-jsdoc": "warn",
   "@sarj/no-secret-in-log": "error",
   "@sarj/no-server-env-in-client-component": "error",
   "@sarj/no-select-star": "error",
@@ -362,7 +363,7 @@ const STRICT_RULES = {
   "@sarj/no-repeated-string-literal": "error",
   "@sarj/no-router-refresh-polling": "error",
   "@sarj/no-restated-comment": "warn",
-  "@sarj/no-restated-jsdoc": "error",
+  "@sarj/no-restated-jsdoc": "warn",
   "@sarj/no-secret-in-log": "error",
   "@sarj/no-server-env-in-client-component": "error",
   "@sarj/no-select-star": "error",
