@@ -165,7 +165,7 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.80.16"
+version = "0.80.17"
 source = { editable = "." }
 dependencies = [
     { name = "ruff" },

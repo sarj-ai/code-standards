@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/prefer-match-value-dispatch",
+      "family": "python",
+      "ruleId": "prefer-match-value-dispatch",
+      "state": "complete",
+      "evidence": "Ten scoped audit assignments covered Python semantics, ownership, implementation, adversarial cases, verified isolated corpora, suppression, remediation, performance, CLI behavior, and independent final review. Fifty-eight focused rule tests and five CLI tests pass. Four corpora covered 543 files and 6,242,142 bytes; all fourteen findings were structurally reviewed as appropriate manual-conversion suggestions. Warm three-run medians on 236 frozen maintained files were 1.383 seconds for parsing, 2.125 for this rule, 3.399 for SARJ080, and 4.674 for both rules.",
+      "outcome": "Ship SARJ439 as a warning without autofix. Require two or more real equality branches with a common subject and a fallback; accept literals and unambiguous module literal constants while excluding singleton comparisons, shadowed constants, duplicate values or bodies, mixed predicates, calls, and subscriptions. Bare names in patterns capture, attributes may have side effects, and fallback coverage does not prove static exhaustiveness. Eleven maintained-source and three test dispatches were manually converted with preserved fallbacks; no blanket suppressions were added."
+    },
+    {
       "task": "rule-audit/iac/no-comment-cruft",
       "family": "iac",
       "ruleId": "no-comment-cruft",

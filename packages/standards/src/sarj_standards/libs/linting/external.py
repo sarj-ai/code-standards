@@ -2231,13 +2231,14 @@ def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization 
         position = _one_based_position({"row": line, "column": column}, path, documents)
         extra = _table(result.get("extra"), "mobsfscan extra")
         severity_value = _text(extra, "severity")
-        if severity_value == "ERROR":
-            severity = Severity.ERROR
-        elif severity_value == "WARNING":
-            severity = Severity.WARNING
-        else:
-            msg = f"unsupported mobsfscan severity: {severity_value!r}"
-            raise ValueError(msg)
+        match severity_value:
+            case "ERROR":
+                severity = Severity.ERROR
+            case "WARNING":
+                severity = Severity.WARNING
+            case _:
+                msg = f"unsupported mobsfscan severity: {severity_value!r}"
+                raise ValueError(msg)
         diagnostics.append(
             Diagnostic(
                 rule,

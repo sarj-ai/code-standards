@@ -571,16 +571,17 @@ def _operation_result(
     *,
     findings: tuple[Finding, ...] = (),
 ) -> Result:
-    if exit_code == 0:
-        status = Status.CHANGED if changes else Status.OK
-    elif exit_code == 1:
-        status = Status.DRIFT
-    elif exit_code == _INVALID_EXIT:
-        status = Status.INVALID
-    elif exit_code == _INTERRUPTED_EXIT:
-        status = Status.INTERRUPTED
-    else:
-        status = Status.FAILED
+    match exit_code:
+        case 0:
+            status = Status.CHANGED if changes else Status.OK
+        case 1:
+            status = Status.DRIFT
+        case _ if exit_code == _INVALID_EXIT:
+            status = Status.INVALID
+        case _ if exit_code == _INTERRUPTED_EXIT:
+            status = Status.INTERRUPTED
+        case _:
+            status = Status.FAILED
     return Result(status, findings, changes, exit_code)
 
 

@@ -352,13 +352,14 @@ def _mobile_projections(root: Path) -> _MobileProjection:
 
 
 def _mobile_rule(*, provider: str, rule_id: str, context_label: str, context_id: str) -> _Rule:
-    if provider == "detekt":
-        family, name = rule_id.split(":", maxsplit=1)
-        docs_url = f"https://detekt.dev/docs/1.23.8/rules/{family}/#{name.lower()}"
-    elif provider == "ktlint":
-        docs_url = "https://pinterest.github.io/ktlint/1.8.0/rules/standard/"
-    else:
-        docs_url = f"https://realm.github.io/SwiftLint/{rule_id}.html"
+    match provider:
+        case "detekt":
+            family, name = rule_id.split(":", maxsplit=1)
+            docs_url = f"https://detekt.dev/docs/1.23.8/rules/{family}/#{name.lower()}"
+        case "ktlint":
+            docs_url = "https://pinterest.github.io/ktlint/1.8.0/rules/standard/"
+        case _:
+            docs_url = f"https://realm.github.io/SwiftLint/{rule_id}.html"
     context = _Context(id=context_id, label=context_label, level="error")
     return _Rule(
         key=f"{provider}:{rule_id}",

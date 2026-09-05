@@ -619,13 +619,14 @@ def build_plan(
         # target in the config sync plan built by ``plan_init``.
         if "eslint" in selected and not allow_existing_nested_eslint:
             _report_unwired_nested_eslint_configs(root, ecosystems.typescript_root, plan)
-    if plan.hook_manager == "pre-commit":
-        _plan_precommit(root, plan, force=force)
-    elif plan.hook_manager == "lefthook":
-        _plan_retire_precommit_staged_check(root, plan)
-        _plan_lefthook(root, plan)
-    else:
-        plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
+    match plan.hook_manager:
+        case "pre-commit":
+            _plan_precommit(root, plan, force=force)
+        case "lefthook":
+            _plan_retire_precommit_staged_check(root, plan)
+            _plan_lefthook(root, plan)
+        case _:
+            plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
     workflow = root / ".github" / "workflows" / "standards.yml"
     workflow_contents = github_ci_workflow(root, ecosystems=ecosystems)
     existing_gates = standards_check_workflows(root)
@@ -685,12 +686,13 @@ def build_commit_policy_plan(
         hook_manager=selected_hook_manager,
     )
     _plan_repo_commit_message_policy(root, plan)
-    if selected_hook_manager == "pre-commit":
-        _plan_precommit_commit_message(root, plan, force=force)
-    elif selected_hook_manager == "lefthook":
-        _plan_lefthook_commit_message(root, plan)
-    else:
-        plan.notes.append("commit policy files were generated without installing a Git hook manager")
+    match selected_hook_manager:
+        case "pre-commit":
+            _plan_precommit_commit_message(root, plan, force=force)
+        case "lefthook":
+            _plan_lefthook_commit_message(root, plan)
+        case _:
+            plan.notes.append("commit policy files were generated without installing a Git hook manager")
     _plan_commit_policy_workflow(root, plan, force=force)
     return plan
 
