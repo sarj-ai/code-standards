@@ -13,9 +13,9 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
-    Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated
 
 
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_MIN_ALIAS_STATEMENTS = 4
+_SYS_SOURCES = frozenset({"sys"})
 
 
 @final
@@ -31,36 +31,34 @@ class NoRedundantModuleAliasExports(Rule):
     id: str = "no-redundant-module-alias-exports"
     code: str = "SARJ440"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Do not copy names before replacing a compatibility module.",
+        summary="Do not replace the current module through `sys.modules`.",
         rationale=(
-            "A compatibility module that replaces itself in `sys.modules` already exposes the canonical module. "
-            "Copying every public attribute first duplicates the API surface and invites drift."
+            "Replacing the current module mutates import identity at runtime in a way static tools cannot model. "
+            "It makes introspection, reloads, circular imports, state, and monkeypatch behavior surprising."
         ),
         remediation=(
-            "Delete the forwarding assignments and keep the canonical module import plus the final "
-            "`sys.modules[__name__] = alias` replacement. Import the canonical path inside maintained code."
+            "Import the canonical path inside maintained code. If a compatibility module is still required, expose "
+            "its supported names with explicit same-name imports grouped by source module."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only otherwise-pure compatibility modules with a final, unconditional self-replacement are checked.",
-            "Forwarding must use exact same-name assignments such as `Thing = canonical.Thing`.",
-            "Conditional, nested, computed, annotated, chained, destructured, or mixed-purpose modules are excluded.",
+            "Only module-scope assignments through an unconditional, unshadowed stdlib `sys` import are checked.",
+            "Assignments inside functions, classes, and `TYPE_CHECKING` branches are excluded.",
+            "Literal-key registrations, child-module registrations, method calls, reads, and arbitrary registries are excluded.",
             "Generated source, malformed source, and stub files (`.pyi`) are outside this rule's scope.",
-            "No autofix is offered because attribute access can have side effects and circular imports require review.",
+            "No autofix is offered because the intended compatibility surface and identity requirements need review.",
         ),
         examples=(
             RuleExample(
-                example_id="self-replacing-compatibility-module",
-                title="Remove bindings that the canonical module replacement supersedes",
+                example_id="current-module-replacement",
+                title="Do not replace a compatibility module at runtime",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "legacy/settings.py",
                         "import sys\n\n"
                         "from canonical import settings as _canonical\n\n\n"
-                        "Settings = _canonical.Settings\n"
-                        "load = _canonical.load\n"
                         "sys.modules[__name__] = _canonical\n",
                     ),
                 ),
@@ -69,15 +67,13 @@ class NoRedundantModuleAliasExports(Rule):
                 public=True,
             ),
             RuleExample(
-                example_id="pure-module-alias",
-                title="Replace the compatibility module without copying its attributes",
+                example_id="explicit-compatibility-exports",
+                title="Expose the supported compatibility surface explicitly",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "legacy/settings.py",
-                        "import sys\n\n"
-                        "from canonical import settings as _canonical\n\n\n"
-                        "sys.modules[__name__] = _canonical\n",
+                        "from canonical.settings import (\n    Settings as Settings,\n    load as load,\n)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("legacy/settings.py"),
@@ -90,101 +86,118 @@ class NoRedundantModuleAliasExports(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix != ".py" or "sys.modules" not in source or is_generated(path, source):
+        if path.suffix != ".py" or "modules" not in source or "__name__" not in source or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        first_forward = _redundant_forward(tree)
-        if first_forward is None:
+        imports = ImportIndex.from_tree(tree, module_scope_only=True)
+        if not imports.builtin_is_unshadowed("__name__"):
             return []
-        return [
+        direct_sys_bindings = _direct_sys_bindings(tree)
+        findings = [
             Diagnostic(
                 path=path,
-                line=first_forward.lineno,
-                col=first_forward.col_offset + 1,
+                line=target.lineno,
+                col=target.col_offset + 1,
                 code=self.code,
-                severity=Severity.ERROR,
                 message=(
-                    "Delete the forwarding assignments; this compatibility module already replaces itself with "
-                    "the canonical module."
+                    "Do not replace the current module through `sys.modules[__name__]`; expose compatibility names "
+                    "with explicit imports and update maintained callers to the canonical module."
                 ),
             )
+            for statement in _module_statements(tree.body)
+            for target in _assignment_targets(statement)
+            if _is_current_module_target(target, imports, direct_sys_bindings)
         ]
+        return sorted(findings, key=lambda finding: (finding.line, finding.col, finding.code))
 
 
-def _redundant_forward(tree: ast.Module) -> ast.Assign | None:
-    body = list(tree.body)
-    if body and _is_docstring(body[0]):
-        body.pop(0)
-    while body and isinstance(body[0], ast.ImportFrom) and body[0].module == "__future__":
-        body.pop(0)
-    if len(body) < _MIN_ALIAS_STATEMENTS or not _imports_sys(body[0]):
-        return None
-    alias = _canonical_alias(body[1])
-    if alias is None or not _replaces_current_module(body[-1], alias):
-        return None
-    forwards = body[2:-1]
-    if not forwards:
-        return None
-    for statement in forwards:
-        if not _is_same_name_forward(statement, alias):
-            return None
-    return forwards[0] if isinstance(forwards[0], ast.Assign) else None
+def _direct_sys_bindings(tree: ast.Module) -> frozenset[str]:
+    bindings: set[str] = set()
+    for statement in tree.body:
+        match statement:
+            case ast.Import(names=names):
+                bindings.update(alias.asname or "sys" for alias in names if alias.name == "sys")
+            case ast.ImportFrom(module="sys", level=0, names=names):
+                bindings.update(alias.asname or "modules" for alias in names if alias.name == "modules")
+            case _:
+                pass
+    return frozenset(bindings)
 
 
-def _is_docstring(statement: ast.stmt) -> bool:
-    return (
-        isinstance(statement, ast.Expr)
-        and isinstance(statement.value, ast.Constant)
-        and isinstance(statement.value.value, str)
-    )
+def _module_statements(statements: list[ast.stmt]) -> list[ast.stmt]:
+    result: list[ast.stmt] = []
+    pending = list(reversed(statements))
+    while pending:
+        statement = pending.pop()
+        result.append(statement)
+        pending.extend(reversed(_module_control_flow_bodies(statement)))
+    return result
 
 
-def _imports_sys(statement: ast.stmt) -> bool:
-    return (
-        isinstance(statement, ast.Import)
-        and len(statement.names) == 1
-        and statement.names[0].name == "sys"
-        and (statement.names[0].asname is None)
-    )
-
-
-def _canonical_alias(statement: ast.stmt) -> str | None:
+def _module_control_flow_bodies(statement: ast.stmt) -> list[ast.stmt]:
     match statement:
-        case ast.Import(names=[ast.alias(asname=alias)]) if alias is not None:
-            return alias
-        case ast.ImportFrom(module=module, names=[ast.alias(name=name, asname=alias)]) if (
-            module is not None and name != "*" and alias is not None
-        ):
-            return alias
+        case ast.If() if _is_type_checking_guard(statement.test):
+            return list(statement.orelse)
+        case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
+            return [*statement.body, *statement.orelse]
+        case ast.With() | ast.AsyncWith():
+            return list(statement.body)
+        case ast.Try() | ast.TryStar():
+            return [
+                *statement.body,
+                *(nested for handler in statement.handlers for nested in handler.body),
+                *statement.orelse,
+                *statement.finalbody,
+            ]
+        case ast.Match():
+            return [nested for match_case in statement.cases for nested in match_case.body]
         case _:
-            return None
+            return []
 
 
-def _is_same_name_forward(statement: ast.stmt, alias: str) -> bool:
+def _assignment_targets(statement: ast.stmt) -> list[ast.expr]:
     match statement:
-        case ast.Assign(
-            targets=[ast.Name(id=target, ctx=ast.Store())],
-            value=ast.Attribute(value=ast.Name(id=owner, ctx=ast.Load()), attr=attribute, ctx=ast.Load()),
+        case ast.Assign(targets=targets):
+            return [nested for target in targets for nested in _nested_targets(target)]
+        case ast.AnnAssign(target=target):
+            return _nested_targets(target)
+        case _:
+            return []
+
+
+def _nested_targets(target: ast.expr) -> list[ast.expr]:
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return [nested for element in target.elts for nested in _nested_targets(element)]
+    return [target]
+
+
+def _is_current_module_target(
+    target: ast.expr,
+    imports: ImportIndex,
+    direct_sys_bindings: frozenset[str],
+) -> bool:
+    match target:
+        case ast.Subscript(
+            value=value,
+            slice=ast.Name(id="__name__", ctx=ast.Load()),
+            ctx=ast.Store(),
         ):
-            return owner == alias and target == attribute and target not in {"sys", "__name__", alias}
+            root = value.value if isinstance(value, ast.Attribute) else value
+            return (
+                isinstance(root, ast.Name)
+                and root.id in direct_sys_bindings
+                and imports.resolves(value, sources=_SYS_SOURCES, symbol="modules")
+            )
         case _:
             return False
 
 
-def _replaces_current_module(statement: ast.stmt, alias: str) -> bool:
-    match statement:
-        case ast.Assign(
-            targets=[
-                ast.Subscript(
-                    value=ast.Attribute(value=ast.Name(id="sys", ctx=ast.Load()), attr="modules", ctx=ast.Load()),
-                    slice=ast.Name(id="__name__", ctx=ast.Load()),
-                    ctx=ast.Store(),
-                )
-            ],
-            value=ast.Name(id=replacement, ctx=ast.Load()),
-        ):
-            return replacement == alias
-        case _:
-            return False
+def _is_type_checking_guard(node: ast.expr) -> bool:
+    return (isinstance(node, ast.Name) and node.id == "TYPE_CHECKING") or (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in {"typing", "typing_extensions"}
+        and node.attr == "TYPE_CHECKING"
+    )

@@ -23,69 +23,80 @@ def test_documentation_examples(example: RuleExample) -> None:
 
 
 @pytest.mark.parametrize(
-    "module_import",
+    ("module_import", "replacement"),
     [
-        "import canonical.settings as _canonical",
-        "from canonical import settings as _canonical",
+        ("import sys", "sys.modules[__name__] = canonical"),
+        ("import sys as runtime", "runtime.modules[__name__] = canonical"),
+        ("from sys import modules", "modules[__name__] = canonical"),
+        ("from sys import modules as loaded_modules", "loaded_modules[__name__] = canonical"),
     ],
 )
-def test_warns_once_for_exact_forwarding_ladder(module_import: str) -> None:
+def test_reports_current_module_replacement(module_import: str, replacement: str) -> None:
+    diagnostics = _check(f"{module_import}\nimport canonical\n{replacement}\n")
+    assert [(finding.code, finding.line, finding.col) for finding in diagnostics] == [("SARJ440", 3, 1)]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "if enabled:\n    sys.modules[__name__] = canonical\n",
+        "try:\n    sys.modules[__name__] = canonical\nexcept KeyError:\n    pass\n",
+        "with lock:\n    sys.modules[__name__] = canonical\n",
+        "match mode:\n    case 'replace':\n        sys.modules[__name__] = canonical\n",
+    ],
+)
+def test_reports_replacement_in_module_control_flow(body: str) -> None:
+    assert len(_check(f"import sys\nimport canonical\n{body}")) == 1
+
+
+def test_reports_each_replacement_in_source_order() -> None:
     diagnostics = _check(
-        f"import sys\n\n{module_import}\n\nThing = _canonical.Thing\nload = _canonical.load\n"
-        "sys.modules[__name__] = _canonical\n"
+        "import sys\nimport canonical\nsys.modules[__name__] = canonical\nsys.modules[__name__] = canonical\n"
     )
-    assert len(diagnostics) == 1
-    assert diagnostics[0].code == "SARJ440"
-    assert diagnostics[0].severity.value == "error"
-    assert diagnostics[0].line == 5
-    assert diagnostics[0].col == 1
+    assert [(finding.line, finding.col) for finding in diagnostics] == [(3, 1), (4, 1)]
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "sys.modules[__name__]: object = canonical",
+        "legacy = sys.modules[__name__] = canonical",
+    ],
+)
+def test_reports_annotated_and_chained_replacement(replacement: str) -> None:
+    assert len(_check(f"import sys\nimport canonical\n{replacement}\n")) == 1
 
 
 @pytest.mark.parametrize(
     "source",
     [
-        "import sys\nfrom canonical import settings as c\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Other\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing: object = c.Thing\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = Other = c.Thing\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing, Other = c.Thing\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.make()\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing.attr\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nif ready:\n    Thing = c.Thing\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nif ready:\n    sys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules[__name__] = c\nrun()\n",
-        "import sys as system\nfrom canonical import settings as c\nThing = c.Thing\nsystem.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings\nThing = settings.Thing\nsys.modules[__name__] = settings\n",
-        "import sys\nfrom canonical import *\nThing = c.Thing\nsys.modules[__name__] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules['legacy.settings'] = c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules[__name__] = other\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules[__name__] = c\ndel c\n",
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nprint(Thing)\nsys.modules[__name__] = c\n",
+        "import sys\ncurrent = sys.modules[__name__]\n",
+        "import sys\nsys.modules['legacy.settings'] = canonical\n",
+        "import sys\nsys.modules[f'{__name__}.child'] = canonical\n",
+        "import sys\nsys.modules['__name__'] = canonical\n",
+        "import registry\nregistry.modules[__name__] = canonical\n",
+        "import sys\nsys.modules[__name__].value = canonical\n",
+        "import sys\nsys.modules.setdefault(__name__, canonical)\n",
+        "import sys\nsys.modules.update({__name__: canonical})\n",
+        "import sys\nsys.modules.__setitem__(__name__, canonical)\n",
+        "import sys\ndel sys.modules[__name__]\n",
+        "import sys\nsys = registry\nsys.modules[__name__] = canonical\n",
+        "import sys\n__name__ = 'legacy.settings'\nsys.modules[__name__] = canonical\n",
+        "if enabled:\n    import sys\nsys.modules[__name__] = canonical\n",
+        "from typing import TYPE_CHECKING\nimport sys\nif TYPE_CHECKING:\n    sys.modules[__name__] = canonical\n",
+        "import typing\nimport sys\nif typing.TYPE_CHECKING:\n    sys.modules[__name__] = canonical\n",
+        "import sys\ndef replace():\n    sys.modules[__name__] = canonical\n",
+        "import sys\nclass Alias:\n    sys.modules[__name__] = canonical\n",
+        "from canonical.settings import Settings as Settings\n",
+        "# sys.modules[__name__] = canonical\n",
+        'TEXT = "sys.modules[__name__] = canonical"\n',
         "if:",
-        "# Generated file; do not edit\nimport sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules[__name__] = c\n",
+        "# Generated file; do not edit\nimport sys\nsys.modules[__name__] = canonical\n",
     ],
 )
-def test_excludes_non_pure_or_ambiguous_modules(source: str) -> None:
+def test_excludes_other_module_cache_operations_and_ambiguous_bindings(source: str) -> None:
     assert _check(source) == []
 
 
 def test_stub_files_are_excluded() -> None:
-    source = "import sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules[__name__] = c\n"
-    assert _check(source, "legacy/settings.pyi") == []
-
-
-def test_module_docstring_is_allowed() -> None:
-    source = (
-        '"""Compatibility alias."""\n'
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules[__name__] = c\n"
-    )
-    assert len(_check(source)) == 1
-
-
-def test_future_import_is_allowed() -> None:
-    source = (
-        "from __future__ import annotations\n"
-        "import sys\nfrom canonical import settings as c\nThing = c.Thing\nsys.modules[__name__] = c\n"
-    )
-    assert len(_check(source)) == 1
+    assert _check("import sys\nsys.modules[__name__] = canonical\n", "legacy/settings.pyi") == []
