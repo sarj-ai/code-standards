@@ -1513,6 +1513,296 @@ def test_collapses_repeated_config_narration(tmp_path: Path) -> None:
     assert _codes(path) == ["SARJ300"]
 
 
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "config.toml",
+            (
+                '# Set build name\nname = "build"\n# Define build image\nimage = "app"\n'
+                '# Configure deploy target\ntarget = "prod"\n# Set deploy command\ncommand = "deploy"\n'
+            ),
+        ),
+        (
+            "config.jsonc",
+            (
+                '{\n  // Set build name\n  "name": "build",\n  // Define build image\n  "image": "app",\n'
+                '  // Configure deploy target\n  "target": "prod",\n  // Set deploy command\n  "command": "deploy"\n}\n'
+            ),
+        ),
+    ],
+    ids=["toml", "jsonc"],
+)
+def test_config_wall_supports_each_parsed_config_format(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert _codes(path) == ["SARJ300"]
+
+
+def test_config_wall_ignores_narrated_shell_phases(tmp_path: Path) -> None:
+    path = tmp_path / "test-api.sh"
+    path.write_text(
+        '# Test fraud alert\necho "fraud alert"\n'
+        '# Check error response\necho "$response"\n'
+        '# Get first item\nitem="first"\n'
+        "# Install system packages\napt-get install curl\n"
+    )
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize("separator", ["\n", "---\n"], ids=["blank-line", "yaml-document"])
+def test_config_wall_does_not_cross_physical_or_document_boundaries(tmp_path: Path, separator: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set first name\nfirst_name: first\n# Set second name\nsecond_name: second\n"
+        f"{separator}"
+        "# Set third name\nthird_name: third\n# Set fourth name\nfourth_name: fourth\n"
+    )
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "workflow.yml",
+            (
+                "first:\n  # Set first name\n  first_name: first\n  # Set first image\n  first_image: app\n"
+                "second:\n  # Set second name\n  second_name: second\n  # Set second image\n  second_image: app\n"
+            ),
+        ),
+        (
+            "config.jsonc",
+            (
+                '{\n  "first": {\n    // Set first name\n    "first_name": "first",\n'
+                '    // Set first image\n    "first_image": "app"\n  },\n  "second": {\n'
+                '    // Set second name\n    "second_name": "second",\n'
+                '    // Set second image\n    "second_image": "app"\n  }\n}\n'
+            ),
+        ),
+        (
+            "config.toml",
+            (
+                '[first]\n# Set first name\nfirst_name = "first"\n# Set first image\nfirst_image = "app"\n'
+                '[second]\n# Set second name\nsecond_name = "second"\n# Set second image\nsecond_image = "app"\n'
+            ),
+        ),
+    ],
+    ids=["yaml-sibling-objects", "jsonc-sibling-objects", "toml-tables"],
+)
+def test_config_wall_does_not_cross_configuration_owners(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+def test_config_wall_keeps_same_owner_entries_together(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "service:\n"
+        "  # Set build name\n  build_name: build\n"
+        "  # Set build image\n  build_image: app\n"
+        "  # Set deploy target\n  deploy_target: prod\n"
+        "  # Set deploy command\n  deploy_command: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ300"]
+
+
+@pytest.mark.parametrize("code", ["SARJ301", "SARJ306"], ids=["different-rule", "neighbor-rule"])
+def test_only_exact_config_wall_suppression_hides_the_leader(tmp_path: Path, code: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        f"# sarj-noqa: {code}\n"
+        "# Set build name\nname: build\n"
+        "# Set build command\ncommand: build\n"
+        "# Set deploy image\nimage: deploy\n"
+        "# Set deploy target\ntarget: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ300"]
+
+
+def test_exact_config_wall_suppression_hides_the_leader(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# sarj-noqa: SARJ300\n"
+        "# Set build name\nname: build\n"
+        "# Set build command\ncommand: build\n"
+        "# Set deploy image\nimage: deploy\n"
+        "# Set deploy target\ntarget: deploy\n"
+    )
+
+    assert _codes(path) == []
+
+
+def test_exact_jsonc_config_wall_suppression_hides_the_leader(tmp_path: Path) -> None:
+    path = tmp_path / "config.jsonc"
+    path.write_text(
+        "{\n  // sarj-noqa: SARJ300\n"
+        '  // Set build name\n  "name": "build",\n'
+        '  // Set build command\n  "command": "build",\n'
+        '  // Set deploy image\n  "image": "deploy",\n'
+        '  // Set deploy target\n  "target": "deploy"\n}\n'
+    )
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize("action", ["Create", "Publish", "Validate"], ids=str.lower)
+def test_substantive_config_action_must_appear_in_adjacent_entry(tmp_path: Path, action: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        f"# {action} build name\nname: build\n"
+        f"# {action} build image\nimage: build\n"
+        f"# {action} deploy target\ntarget: deploy\n"
+        f"# {action} deploy command\ncommand: deploy\n"
+    )
+
+    assert _codes(path) == []
+
+
+def test_substantive_config_action_restatement_is_still_weak(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Validate build name\nvalidate_name: build\n"
+        "# Create build image\ncreate_image: build\n"
+        "# Publish deploy target\npublish_target: deploy\n"
+        "# Run deploy command\nrun: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ300"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "workflow.yml",
+            (
+                "template: |\n  # Set build name\n  name: build\n  # Set build image\n  image: app\n"
+                "  # Set deploy target\n  target: prod\n  # Set deploy command\n  command: deploy\n"
+            ),
+        ),
+        (
+            "config.toml",
+            (
+                'template = """\n# Set build name\nname = "build"\n# Set build image\nimage = "app"\n'
+                '# Set deploy target\ntarget = "prod"\n# Set deploy command\ncommand = "deploy"\n"""\n'
+            ),
+        ),
+    ],
+    ids=["yaml", "toml"],
+)
+def test_config_wall_ignores_comments_inside_multiline_literals(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "workflow.yml",
+            (
+                "# Code generated by SchemaTool.\n# DO NOT EDIT.\n"
+                "# Set build name\nname: build\n# Set build image\nimage: app\n"
+                "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+            ),
+        ),
+        (
+            "config.toml",
+            (
+                "# Generated by ConfigTool; do not hand-edit.\n"
+                '# Set build name\nname = "build"\n# Set build image\nimage = "app"\n'
+                '# Set deploy target\ntarget = "prod"\n# Set deploy command\ncommand = "deploy"\n'
+            ),
+        ),
+        (
+            "config.jsonc",
+            (
+                "/* Code generated by ConfigTool.\n * Do not edit.\n */\n{\n"
+                '  // Set build name\n  "name": "build",\n  // Set build image\n  "image": "app",\n'
+                '  // Set deploy target\n  "target": "prod",\n'
+                '  // Set deploy command\n  "command": "deploy"\n}\n'
+            ),
+        ),
+    ],
+    ids=["yaml", "toml", "jsonc"],
+)
+def test_config_wall_ignores_strong_generated_headers(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert "SARJ300" not in _codes(path)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "# Generated by ConfigTool.\n",
+        "# Generated values are documented here.\n# Do not edit these defaults casually.\n",
+        "# Auto-generated values are documented here; do not edit these defaults casually.\n",
+        "# Do not edit the generated identifier below.\n",
+    ],
+    ids=["no-hands-off", "generated-values", "auto-generated-values", "value-instruction"],
+)
+def test_config_wall_does_not_treat_near_generated_markers_as_file_ownership(tmp_path: Path, header: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        f"{header}\n# Set build name\nname: build\n# Set build image\nimage: app\n"
+        "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+    )
+
+    assert "SARJ300" in _codes(path)
+
+
+def test_generated_marker_inside_multiline_data_does_not_hide_authored_wall(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "template: |\n  # Code generated by ConfigTool.\n  # DO NOT EDIT.\n  payload\n"
+        "# Set build name\nname: build\n# Set build image\nimage: app\n"
+        "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+    )
+
+    assert "SARJ300" in _codes(path)
+
+
+def test_generated_header_exclusion_is_owned_only_by_config_wall(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Code generated by ConfigTool.\n# DO NOT EDIT.\n\n"
+        "# old_name: old\n# old_image: app\n\n"
+        "# Retry count is 3\nretry_count: 3\n\n"
+        "# Set build name\nname: build\n# Set build image\nimage: app\n"
+        "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ301", "SARJ306"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        ("workflow.yml", "name: [unterminated\n# Set build name\nname: build\n"),
+        ("config.toml", '# Set build name\nname = "unterminated\n'),
+        ("config.jsonc", '{ // Set build name\n "name": invalid }\n'),
+    ],
+    ids=["yaml", "toml", "jsonc"],
+)
+def test_config_wall_abstains_on_invalid_source(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert "SARJ300" not in _codes(path)
+
+
 def test_config_wall_requires_four_attached_comments(tmp_path: Path) -> None:
     path = tmp_path / "workflow.yml"
     path.write_text(
