@@ -1520,7 +1520,9 @@
       "task": "rule-audit/sql/no-duplicate-index",
       "family": "sql",
       "ruleId": "no-duplicate-index",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews approved the corrected definition identity and final-active lifecycle. The focused SARJ117 suite contains 45 passing cases; the shared SQL suite contains 823 passing cases. The frozen corpus covers 2,087 tracked UTF-8 SQL files (10,964,109 bytes), with zero SARJ117 findings, zero overlap with SARJ116, and zero scan errors. Zero live positives support noise control but do not justify promotion beyond warning.",
+      "outcome": "Retained the canonical name with a precise summary and executable examples. Identity preserves ONLY, uniqueness and NULLS mode, access method, ordered keys and INCLUDE columns, storage parameters, tablespace, and predicates. Comparisons use definitions surviving explicit DROP INDEX operations and preserve same-name IF NOT EXISTS precedence. Analysis remains local to authored production migrations, with conservative expression normalization and no inference of ALTER INDEX or implicit DROP TABLE effects."
     },
     {
       "task": "rule-audit/eslint/require-pascal-case-zod-schema-name",

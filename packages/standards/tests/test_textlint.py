@@ -1161,7 +1161,8 @@ def test_rule_examples_are_private_by_default_and_path_safe() -> None:
         ExampleFile(path=PurePosixPath("../private.toml"), source="enabled = true\n")
 
 
-def test_public_rule_examples_execute_against_the_real_checker(tmp_path: Path) -> None:
+@pytest.mark.parametrize("selected_only", [False, True], ids=["all-rules", "selected-rule"])
+def test_public_rule_examples_execute_against_the_real_checker(tmp_path: Path, *, selected_only: bool) -> None:
     for rule_id, meta in textlint.REGISTRY.items():
         for example in meta.public_examples:
             root = tmp_path / rule_id / example.example_id
@@ -1172,7 +1173,7 @@ def test_public_rule_examples_execute_against_the_real_checker(tmp_path: Path) -
                 path.write_text(example_file.source, encoding="utf-8")
                 paths.append(str(path))
 
-            findings = textlint.check_paths(paths, root=root)
+            findings = textlint.check_paths(paths, root=root, rule_ids=frozenset({rule_id}) if selected_only else None)
             codes = [finding.code for finding in findings]
             expected = [meta.code] * example.expected_count
             assert codes == expected, f"{rule_id}:{example.example_id}"
