@@ -1201,11 +1201,8 @@ export function createConfig(options = {}) {
     },
   },
 
-  // better-tailwindcss: class-string hygiene for Tailwind repos. Include plain
-  // JS/TS because class helpers and variant definitions commonly live there.
-  // these three rules only inspect literal class strings, so non-Tailwind repos
-  // simply see zero findings. Kept in its own block so the plugin is only wired
-  // where it applies.
+  // Class-value policies delegate to the installed Tailwind engine.
+  // The new policy remains a warning while consumer feedback is collected.
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     plugins: {
@@ -1217,6 +1214,7 @@ export function createConfig(options = {}) {
       "better-tailwindcss/no-deprecated-classes": "error",
       "better-tailwindcss/no-unnecessary-whitespace": "error",
       "better-tailwindcss/enforce-shorthand-classes": "error",
+      "better-tailwindcss/enforce-consistent-variable-syntax": ["warn", { syntax: "shorthand" }],
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
