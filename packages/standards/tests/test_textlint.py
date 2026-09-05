@@ -2,7 +2,9 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from sarj_standards.libs.linting import textlint
+from sarj_standards._meta import CONFIGS_DIR
+from sarj_standards.libs.linting import runner as linting_runner, textlint
+from sarj_standards.libs.rules import warning_levels
 from sarj_standards.libs.rules.contracts import (
     EvaluationCase,
     ExampleFile,
@@ -1127,6 +1129,13 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         assert {example.outcome for example in meta.public_examples} == {"match", "no-match"}
 
 
+def test_text_rule_blocking_flags_match_shipped_warning_lifecycle() -> None:
+    warning_selectors = {str(selector) for selector in warning_levels.load(CONFIGS_DIR / "rule-warning-levels.v1.json")}
+
+    for rule_id, meta in textlint.REGISTRY.items():
+        assert meta.blocking is (f"text:{rule_id}" not in warning_selectors), rule_id
+
+
 def test_mutable_github_action_is_no_longer_a_textlint_finding(tmp_path: Path) -> None:
     workflow = tmp_path / ".github/workflows/ci.yml"
     workflow.parent.mkdir(parents=True)
@@ -1181,41 +1190,170 @@ def test_public_rule_examples_execute_against_the_real_checker(tmp_path: Path, *
 
 def test_flags_commented_out_yaml(tmp_path: Path) -> None:
     path = tmp_path / "workflow.yml"
-    path.write_text("# timeout-minutes: 30\nname: CI\n")
+    path.write_text("# timeout-minutes: 30\ntimeout-minutes: 10\nname: CI\n")
     assert _codes(path) == ["SARJ301"]
 
 
 def test_flags_indented_commented_out_yaml(tmp_path: Path) -> None:
     path = tmp_path / "workflow.yml"
-    path.write_text("jobs:\n  # timeout-minutes: 30\n  build: {}")
+    path.write_text("jobs:\n  # timeout-minutes: 30\n  timeout-minutes: 10\n  build: {}")
     assert _codes(path) == ["SARJ301"]
 
 
 @pytest.mark.parametrize(
-    ("filename", "comment"),
+    ("filename", "source"),
     [
-        ("config.toml", "# timeout = 30\n"),
-        ("config.jsonc", "// timeout: 30\n"),
-        ("Makefile", "# RELEASE = true\n"),
-        ("Dockerfile", "# RUN make build\n"),
+        ("workflow.yml", "timeout: 10\n# timeout: 30\n"),
+        ("config.toml", '# "timeout" = 30\ntimeout = 10\n'),
+        ("settings.jsonc", '{\n  "debug": false,\n  // "debug": true\n}\n'),
     ],
-    ids=["toml", "jsonc", "make", "docker"],
+    ids=["active-before-yaml", "normalized-quoted-toml-key", "active-before-jsonc"],
 )
-def test_flags_commented_out_syntax_in_each_supported_config_format(
-    tmp_path: Path, filename: str, comment: str
+def test_flags_single_commented_assignment_adjacent_to_exact_active_key(
+    tmp_path: Path, filename: str, source: str
 ) -> None:
     path = tmp_path / filename
-    path.write_text(comment)
+    path.write_text(source)
+
     assert _codes(path) == ["SARJ301"]
 
 
-def test_ignores_documented_config_examples_and_docker_prose(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        ("config.toml", "# timeout = 30\ntimeout = 10\n"),
+        ("config.jsonc", '{\n  // "debug": true,\n  "debug": false\n}\n'),
+    ],
+    ids=["toml", "jsonc"],
+)
+def test_flags_commented_out_syntax_in_each_supported_config_format(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+    assert _codes(path) == ["SARJ301"]
+
+
+def test_ignores_documented_config_examples(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
     config.write_text("# Default:\n# timeout = 30\ntimeout = 10\n")
-    dockerfile = tmp_path / "Dockerfile"
-    dockerfile.write_text("# Copy workspace files\nCOPY . /app\n")
     assert _codes(config) == []
-    assert _codes(dockerfile) == []
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["service.conf", "service.ini", "service.properties", "setup.sh", "Makefile", "Dockerfile"],
+    ids=["conf", "ini", "properties", "shell", "make", "docker"],
+)
+def test_ignores_unsupported_commented_config_dialects(tmp_path: Path, filename: str) -> None:
+    path = tmp_path / filename
+    path.write_text("# timeout = 30\n# retries = 2\ntimeout = 10\n")
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# Optional:\n# timeout = 30\ntimeout = 10\n",
+        "# Example values:\n# timeout = 30\n# retries = 2\n",
+        "# Local development settings\n# timeout = 30\n# retries = 2\n",
+        "# timeout = 30\n# Local development settings\n# retries = 2\n",
+        "# timeout = 30\n# retries = 2\n# Local development settings\n",
+    ],
+    ids=["optional", "example", "prose-before", "prose-between", "prose-after"],
+)
+def test_preserves_documented_or_explained_config_blocks(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# See RFC 9110 for retry semantics\n# timeout: 30\n# retries: 2\n",
+        "# timeout: 30\n# Keep this because the upstream service is slow\n# retries: 2\n",
+        "# endpoint: https://api.example.test\nendpoint: https://backup.example.test\n",
+    ],
+    ids=["reference", "rationale", "protected-value"],
+)
+def test_preserves_protected_config_comment_blocks(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+def test_tool_directive_does_not_hide_disabled_config_block(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text("# yamllint disable rule:line-length\n# timeout-minutes: 30\n# retries: 2\nname: CI\n")
+
+    assert _codes(path) == ["SARJ301"]
+
+
+def test_config_shaped_tool_directive_is_not_reported_as_disabled_config(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text("# renovate: datasource=docker\n# timeout-minutes: 30\n# retries: 2\nname: CI\n")
+
+    findings = [finding for finding in textlint.check_paths([str(path)]) if finding.code == "SARJ301"]
+
+    assert [(finding.line, finding.code) for finding in findings] == [(2, "SARJ301")]
+
+
+def test_config_shaped_tool_directive_does_not_hide_adjacent_alternative(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text("# renovate: datasource=docker\n# timeout-minutes: 30\ntimeout-minutes: 10\n")
+
+    findings = [finding for finding in textlint.check_paths([str(path)]) if finding.code == "SARJ301"]
+
+    assert [(finding.line, finding.code) for finding in findings] == [(2, "SARJ301")]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# Optional: Add a sentence\n# description: Custom description\n",
+        "# Required: field list\n# Optional: other\n",
+    ],
+    ids=["optional-example", "required-optional-field-list"],
+)
+def test_preserves_title_cased_yaml_documentation_labels(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# timeout: 30\nname: CI\n",
+        "# timeout: 30\n",
+        "  # timeout: 30\ntimeout: 10\n",
+        "# Timeout: 30\ntimeout: 10\n",
+    ],
+    ids=["different-adjacent-key", "end-of-file", "different-indent", "different-case"],
+)
+def test_ignores_uncorroborated_single_commented_assignment(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# timeout: 30\n#\n# retries: 2\n",
+        "# timeout: 30\n  # retries: 2\n",
+    ],
+    ids=["blank-comment", "indent-change"],
+)
+def test_comment_block_boundaries_do_not_combine_ambiguous_assignments(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(source)
+
+    assert _codes(path) == []
 
 
 def test_protects_config_rationale_and_tool_directives(tmp_path: Path) -> None:
@@ -1234,10 +1372,134 @@ def test_ignores_comments_inside_yaml_block_scalars(tmp_path: Path) -> None:
     assert _codes(path) == []
 
 
+@pytest.mark.parametrize("indicator", ["|", ">"], ids=["literal", "folded"])
+def test_yaml_block_scalar_mask_ends_before_following_comment_block(tmp_path: Path, indicator: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        f"script: {indicator}\n  # timeout-minutes: 30\n  # retries: 2\n# timeout-minutes: 30\n# retries: 2\n"
+    )
+
+    findings = [finding for finding in textlint.check_paths([str(path)]) if finding.code == "SARJ301"]
+
+    assert [(finding.line, finding.code) for finding in findings] == [(4, "SARJ301")]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'template: "\n# timeout: 30\n# retries: 2\n"\n',
+        "template: '\n# timeout: 30\n# retries: 2\n'\n",
+    ],
+    ids=["double-quoted", "single-quoted"],
+)
+def test_ignores_comment_shapes_inside_multiline_yaml_strings(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'template = """\n# timeout = 30\n# retries = 2\n"""\n',
+        "template = '''\n# timeout = 30\n# retries = 2\n'''\n",
+    ],
+    ids=["basic", "literal"],
+)
+def test_ignores_comment_shapes_inside_multiline_toml_strings(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+def test_ignores_long_escaped_basic_multiline_toml_payload(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    escaped_payload = "\\\\" * 2_048 + '\\"' * 3
+    path.write_text(
+        f'template = """\n{escaped_payload}\n# timeout = 30\n# retries = 2\n"""\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == []
+
+
+def test_long_escaped_basic_multiline_toml_does_not_hide_later_disabled_settings(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    escaped_payload = "\\\\" * 2_048 + '\\"' * 3
+    path.write_text(
+        f'template = """\n{escaped_payload}\n"""\n# timeout = 30\n# retries = 2\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == ["SARJ301"]
+
+
+def test_basic_multiline_toml_backslash_continuation_masks_comment_shapes(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        'template = """continued\\\n    value\n# timeout = 30\n# retries = 2\n"""\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == []
+
+
+def test_escaped_backslash_before_toml_delimiter_does_not_hide_later_settings(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        'template = """escaped-backslash\\\\"""\n# timeout = 30\n# retries = 2\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == ["SARJ301"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'template = """\nvalue\\',
+        'template = """\n# timeout = 30\n# retries = 2\n',
+    ],
+    ids=["dangling-escape", "unclosed-triple"],
+)
+def test_malformed_basic_multiline_toml_abstains(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(source, encoding="utf-8")
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        'marker = \'"""\'\n',
+        "marker = \"'''\"\n",
+        '# delimiter text: """\n\n',
+    ],
+    ids=["double-delimiter-in-literal", "literal-delimiter-in-basic", "delimiter-in-comment"],
+)
+def test_toml_quote_mask_does_not_hide_later_comment_block(tmp_path: Path, prefix: str) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(f"{prefix}# timeout = 30\n# retries = 2\n")
+
+    assert _codes(path) == ["SARJ301"]
+
+
 def test_collapses_a_commented_out_config_block(tmp_path: Path) -> None:
     path = tmp_path / "workflow.yml"
     path.write_text("# timeout-minutes: 30\n# retries: 2\nname: CI\n")
     assert _codes(path) == ["SARJ301"]
+
+
+def test_collapses_commented_config_block_to_one_leader(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text("# timeout-minutes: 30\n# retries: 2\n# workers: 1\nname: CI\n")
+
+    findings = [finding for finding in textlint.check_paths([str(path)]) if finding.code == "SARJ301"]
+
+    assert [(finding.line, finding.code) for finding in findings] == [(1, "SARJ301")]
 
 
 def test_collapses_repeated_config_narration(tmp_path: Path) -> None:
@@ -1249,6 +1511,296 @@ def test_collapses_repeated_config_narration(tmp_path: Path) -> None:
         "# Run deploy command\ncommand: deploy\n"
     )
     assert _codes(path) == ["SARJ300"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "config.toml",
+            (
+                '# Set build name\nname = "build"\n# Define build image\nimage = "app"\n'
+                '# Configure deploy target\ntarget = "prod"\n# Set deploy command\ncommand = "deploy"\n'
+            ),
+        ),
+        (
+            "config.jsonc",
+            (
+                '{\n  // Set build name\n  "name": "build",\n  // Define build image\n  "image": "app",\n'
+                '  // Configure deploy target\n  "target": "prod",\n  // Set deploy command\n  "command": "deploy"\n}\n'
+            ),
+        ),
+    ],
+    ids=["toml", "jsonc"],
+)
+def test_config_wall_supports_each_parsed_config_format(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert _codes(path) == ["SARJ300"]
+
+
+def test_config_wall_ignores_narrated_shell_phases(tmp_path: Path) -> None:
+    path = tmp_path / "test-api.sh"
+    path.write_text(
+        '# Test fraud alert\necho "fraud alert"\n'
+        '# Check error response\necho "$response"\n'
+        '# Get first item\nitem="first"\n'
+        "# Install system packages\napt-get install curl\n"
+    )
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize("separator", ["\n", "---\n"], ids=["blank-line", "yaml-document"])
+def test_config_wall_does_not_cross_physical_or_document_boundaries(tmp_path: Path, separator: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Set first name\nfirst_name: first\n# Set second name\nsecond_name: second\n"
+        f"{separator}"
+        "# Set third name\nthird_name: third\n# Set fourth name\nfourth_name: fourth\n"
+    )
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "workflow.yml",
+            (
+                "first:\n  # Set first name\n  first_name: first\n  # Set first image\n  first_image: app\n"
+                "second:\n  # Set second name\n  second_name: second\n  # Set second image\n  second_image: app\n"
+            ),
+        ),
+        (
+            "config.jsonc",
+            (
+                '{\n  "first": {\n    // Set first name\n    "first_name": "first",\n'
+                '    // Set first image\n    "first_image": "app"\n  },\n  "second": {\n'
+                '    // Set second name\n    "second_name": "second",\n'
+                '    // Set second image\n    "second_image": "app"\n  }\n}\n'
+            ),
+        ),
+        (
+            "config.toml",
+            (
+                '[first]\n# Set first name\nfirst_name = "first"\n# Set first image\nfirst_image = "app"\n'
+                '[second]\n# Set second name\nsecond_name = "second"\n# Set second image\nsecond_image = "app"\n'
+            ),
+        ),
+    ],
+    ids=["yaml-sibling-objects", "jsonc-sibling-objects", "toml-tables"],
+)
+def test_config_wall_does_not_cross_configuration_owners(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+def test_config_wall_keeps_same_owner_entries_together(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "service:\n"
+        "  # Set build name\n  build_name: build\n"
+        "  # Set build image\n  build_image: app\n"
+        "  # Set deploy target\n  deploy_target: prod\n"
+        "  # Set deploy command\n  deploy_command: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ300"]
+
+
+@pytest.mark.parametrize("code", ["SARJ301", "SARJ306"], ids=["different-rule", "neighbor-rule"])
+def test_only_exact_config_wall_suppression_hides_the_leader(tmp_path: Path, code: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        f"# sarj-noqa: {code}\n"
+        "# Set build name\nname: build\n"
+        "# Set build command\ncommand: build\n"
+        "# Set deploy image\nimage: deploy\n"
+        "# Set deploy target\ntarget: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ300"]
+
+
+def test_exact_config_wall_suppression_hides_the_leader(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# sarj-noqa: SARJ300\n"
+        "# Set build name\nname: build\n"
+        "# Set build command\ncommand: build\n"
+        "# Set deploy image\nimage: deploy\n"
+        "# Set deploy target\ntarget: deploy\n"
+    )
+
+    assert _codes(path) == []
+
+
+def test_exact_jsonc_config_wall_suppression_hides_the_leader(tmp_path: Path) -> None:
+    path = tmp_path / "config.jsonc"
+    path.write_text(
+        "{\n  // sarj-noqa: SARJ300\n"
+        '  // Set build name\n  "name": "build",\n'
+        '  // Set build command\n  "command": "build",\n'
+        '  // Set deploy image\n  "image": "deploy",\n'
+        '  // Set deploy target\n  "target": "deploy"\n}\n'
+    )
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize("action", ["Create", "Publish", "Validate"], ids=str.lower)
+def test_substantive_config_action_must_appear_in_adjacent_entry(tmp_path: Path, action: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        f"# {action} build name\nname: build\n"
+        f"# {action} build image\nimage: build\n"
+        f"# {action} deploy target\ntarget: deploy\n"
+        f"# {action} deploy command\ncommand: deploy\n"
+    )
+
+    assert _codes(path) == []
+
+
+def test_substantive_config_action_restatement_is_still_weak(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Validate build name\nvalidate_name: build\n"
+        "# Create build image\ncreate_image: build\n"
+        "# Publish deploy target\npublish_target: deploy\n"
+        "# Run deploy command\nrun: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ300"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "workflow.yml",
+            (
+                "template: |\n  # Set build name\n  name: build\n  # Set build image\n  image: app\n"
+                "  # Set deploy target\n  target: prod\n  # Set deploy command\n  command: deploy\n"
+            ),
+        ),
+        (
+            "config.toml",
+            (
+                'template = """\n# Set build name\nname = "build"\n# Set build image\nimage = "app"\n'
+                '# Set deploy target\ntarget = "prod"\n# Set deploy command\ncommand = "deploy"\n"""\n'
+            ),
+        ),
+    ],
+    ids=["yaml", "toml"],
+)
+def test_config_wall_ignores_comments_inside_multiline_literals(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        (
+            "workflow.yml",
+            (
+                "# Code generated by SchemaTool.\n# DO NOT EDIT.\n"
+                "# Set build name\nname: build\n# Set build image\nimage: app\n"
+                "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+            ),
+        ),
+        (
+            "config.toml",
+            (
+                "# Generated by ConfigTool; do not hand-edit.\n"
+                '# Set build name\nname = "build"\n# Set build image\nimage = "app"\n'
+                '# Set deploy target\ntarget = "prod"\n# Set deploy command\ncommand = "deploy"\n'
+            ),
+        ),
+        (
+            "config.jsonc",
+            (
+                "/* Code generated by ConfigTool.\n * Do not edit.\n */\n{\n"
+                '  // Set build name\n  "name": "build",\n  // Set build image\n  "image": "app",\n'
+                '  // Set deploy target\n  "target": "prod",\n'
+                '  // Set deploy command\n  "command": "deploy"\n}\n'
+            ),
+        ),
+    ],
+    ids=["yaml", "toml", "jsonc"],
+)
+def test_config_wall_ignores_strong_generated_headers(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert "SARJ300" not in _codes(path)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "# Generated by ConfigTool.\n",
+        "# Generated values are documented here.\n# Do not edit these defaults casually.\n",
+        "# Auto-generated values are documented here; do not edit these defaults casually.\n",
+        "# Do not edit the generated identifier below.\n",
+    ],
+    ids=["no-hands-off", "generated-values", "auto-generated-values", "value-instruction"],
+)
+def test_config_wall_does_not_treat_near_generated_markers_as_file_ownership(tmp_path: Path, header: str) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        f"{header}\n# Set build name\nname: build\n# Set build image\nimage: app\n"
+        "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+    )
+
+    assert "SARJ300" in _codes(path)
+
+
+def test_generated_marker_inside_multiline_data_does_not_hide_authored_wall(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "template: |\n  # Code generated by ConfigTool.\n  # DO NOT EDIT.\n  payload\n"
+        "# Set build name\nname: build\n# Set build image\nimage: app\n"
+        "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+    )
+
+    assert "SARJ300" in _codes(path)
+
+
+def test_generated_header_exclusion_is_owned_only_by_config_wall(tmp_path: Path) -> None:
+    path = tmp_path / "workflow.yml"
+    path.write_text(
+        "# Code generated by ConfigTool.\n# DO NOT EDIT.\n\n"
+        "# old_name: old\n# old_image: app\n\n"
+        "# Retry count is 3\nretry_count: 3\n\n"
+        "# Set build name\nname: build\n# Set build image\nimage: app\n"
+        "# Set deploy target\ntarget: prod\n# Set deploy command\ncommand: deploy\n"
+    )
+
+    assert _codes(path) == ["SARJ301", "SARJ306"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "source"),
+    [
+        ("workflow.yml", "name: [unterminated\n# Set build name\nname: build\n"),
+        ("config.toml", '# Set build name\nname = "unterminated\n'),
+        ("config.jsonc", '{ // Set build name\n "name": invalid }\n'),
+    ],
+    ids=["yaml", "toml", "jsonc"],
+)
+def test_config_wall_abstains_on_invalid_source(tmp_path: Path, filename: str, source: str) -> None:
+    path = tmp_path / filename
+    path.write_text(source)
+
+    assert "SARJ300" not in _codes(path)
 
 
 def test_config_wall_requires_four_attached_comments(tmp_path: Path) -> None:
@@ -1371,11 +1923,48 @@ def test_config_wall_protects_high_signal_comments(tmp_path: Path, protected_com
 
 def test_flags_jsonc_block_comment_and_toml_section(tmp_path: Path) -> None:
     jsonc = tmp_path / "settings.jsonc"
-    jsonc.write_text('/* "debug": true */\n{}\n')
+    jsonc.write_text('{\n  /* "debug": true */\n  "debug": false\n}\n')
     toml = tmp_path / "settings.toml"
     toml.write_text("# [debug]\n# enabled = true\n")
     assert _codes(jsonc) == ["SARJ301"]
     assert _codes(toml) == ["SARJ301"]
+
+
+def test_flags_multiline_jsonc_block_with_two_properties(tmp_path: Path) -> None:
+    path = tmp_path / "settings.jsonc"
+    path.write_text('/*\n * "debug": true,\n * "retries": 2\n */\n{}\n')
+
+    assert _codes(path) == ["SARJ301"]
+
+
+def test_preserves_explanatory_prose_inside_jsonc_block_comment(tmp_path: Path) -> None:
+    path = tmp_path / "settings.jsonc"
+    path.write_text('/*\n * Optional settings:\n * "debug": true,\n * "retries": 2\n */\n{}\n')
+
+    assert _codes(path) == []
+
+
+def test_jsonc_requires_quoted_property_syntax(tmp_path: Path) -> None:
+    path = tmp_path / "settings.jsonc"
+    path.write_text("{\n  // debug: true\n  // retries: 2\n}\n")
+
+    assert _codes(path) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "# timeout: 30\n# retries: 2\n",
+        "# timeout = bare prose\n# retries = also prose\n",
+        "# [debug]\n# enabled:\n",
+    ],
+    ids=["yaml-separators", "invalid-bare-values", "malformed-table-body"],
+)
+def test_toml_requires_parseable_commented_config(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "settings.toml"
+    path.write_text(source)
+
+    assert _codes(path) == []
 
 
 def test_manifest_can_exclude_documented_template_config(tmp_path: Path) -> None:
@@ -1531,11 +2120,29 @@ def test_markdown_suppression_examples_do_not_suppress_real_findings(tmp_path: P
     assert _codes(path, root=tmp_path) == ["SARJ302"]
 
 
-def test_established_text_rules_remain_blocking(tmp_path: Path) -> None:
+def test_commented_out_config_is_warning_only(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     path = tmp_path / "config.toml"
-    path.write_text("# timeout = 30\n")
+    path.write_text("# timeout = 30\ntimeout = 10\n")
+    monkeypatch.chdir(tmp_path)
 
-    assert textlint.run([str(path)]) == 1
+    finding = next(item for item in textlint.check_paths([path.name]) if item.code == "SARJ301")
+
+    assert "SARJ301 warning:" in finding.render()
+    assert textlint.run([path.name]) == 0
+    assert "SARJ301 warning:" in capsys.readouterr().out
+
+
+def test_shared_runner_preserves_commented_out_config_warning_exit(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text("# timeout = 30\ntimeout = 10\n")
+    monkeypatch.chdir(tmp_path)
+
+    assert linting_runner.run([path.name]) == 0
+    assert "SARJ301 warning:" in capsys.readouterr().out
 
 
 def test_flags_change_diary_inside_readme(tmp_path: Path) -> None:
@@ -1679,10 +2286,16 @@ def test_indented_markdown_code_does_not_create_artifact_headings(tmp_path: Path
 
 def test_matching_sarj_suppression_is_code_specific(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
-    config.write_text("# sarj-noqa: SARJ301\n# timeout = 30\n", encoding="utf-8")
+    config.write_text(
+        "# sarj-noqa: SARJ301\n# timeout = 30\n# retries = 2\n",
+        encoding="utf-8",
+    )
     assert _codes(config) == []
 
-    config.write_text("# sarj-noqa: SARJ999\n# timeout = 30\n", encoding="utf-8")
+    config.write_text(
+        "# sarj-noqa: SARJ999\n# timeout = 30\n# retries = 2\n",
+        encoding="utf-8",
+    )
     assert _codes(config) == ["SARJ301"]
 
 

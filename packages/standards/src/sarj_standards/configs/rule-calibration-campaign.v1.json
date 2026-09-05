@@ -860,13 +860,17 @@
       "task": "rule-audit/text/commented-out-config",
       "family": "text",
       "ruleId": "commented-out-config",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three reviewers approved the bounded warning contract after adversarial regressions and 312 text-rule tests, including native warning exits, escaped TOML payloads, and a text-registry lifecycle consistency invariant. A 77-entry local inventory covered 1,743 tracked candidate files and 9,758,446 bytes, with seven unavailable-repository or read errors; available repository revisions were recorded privately. Findings fell from 149 raw and 90 content-distinct to six raw and three content-distinct. Every retained match was inspected: three uncertain unlabeled-setting prompts, zero confirmed actionable findings, and zero demonstrated false positives. This is not zero-noise or promotion evidence. Four preloaded-corpus timings measured 6.249 to 8.112 seconds incremental analysis overhead against the detector-disabled baseline.",
+      "outcome": "Kept SARJ301 and its canonical name stable, clarified its summary and executable UI examples, and retained warning severity. Analysis now requires two same-indent entries or an immediately adjacent same-key active alternative in YAML, TOML, or JSONC. Explanatory blocks, protected references, exact suppressions, and multiline scalar payloads are preserved. Ambiguous reference-config and shell dialects are out of scope; YAML sequence and collection-valued mappings remain conservative false negatives. No autofix or SARJ420 changes."
     },
     {
       "task": "rule-audit/text/config-comment-wall",
       "family": "text",
       "ruleId": "config-comment-wall",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviewers inspected the warning contract, examples, ownership boundaries, exact suppressions, and neighboring-rule interactions. All seven original corpus findings were inspected and classified as false positives from shell test phases or operational narration. Calibration scanned 1,743 tracked candidate files and 9,758,446 bytes across a 77-entry local inventory, with seven unavailable-repository or read errors and zero retained findings. All 343 text-rule tests passed after review fixes, including seeded positives, a non-vacuous rationale example, explicit generated ownership, malformed documents, multiline literals, and substantive action near misses; Ruff and BasedPyright also passed. Zero retained corpus findings support warning-only rollout, not promotion.",
+      "outcome": "Kept the canonical config-comment-wall name and staged SARJ300 as a warning. Restricted analysis to valid YAML, TOML, and JSONC; excluded literal payloads, explicitly generated do-not-edit files, and shell or ambiguous config dialects; split clusters at blank lines, YAML document markers, TOML table headers, and owner dedentation; required substantive action verbs to occur in the adjacent entry; and honored exact local suppressions in each supported comment syntax. The UI now contrasts repeated narration with a four-entry cluster containing real operational rationale. No autofix, SARJ301 semantic change, or SARJ420 change was introduced."
     },
     {
       "task": "rule-audit/text/declarative-deployment-boundary",

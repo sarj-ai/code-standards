@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a76ff187ea854c5c08fd361390584afc40a8a2178a0b43dba6c66379b7414e26",
-  "cliSha256": "64e15318332d03eac750edc88d61cbaef38197d7bb3b4297ba59714185aa56aa",
+  "catalogSha256": "43ab066d9e6bc5d8be7037cc4570b70f80b66eb335a8c314bccc2f1fdbfc89ab",
+  "cliSha256": "4d84f9edf694cbfa7be8f2b6f45138371a5d7afa46c724f7fa19f84a5ce279c0",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8141,14 +8141,14 @@
           "id": "disabled-config-entry",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A commented-out assignment is stale configuration"
+          "title": "An unexplained alternative repeats the adjacent active key"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "config.toml",
-              "source": "# Default:\n# timeout = 30\ntimeout = 10\n"
+              "source": "# Optional local override:\n# timeout = 30\ntimeout = 10\n"
             }
           ],
           "fixedFiles": [],
@@ -8156,13 +8156,28 @@
           "id": "documented-default",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "An explicitly labeled default is documentation"
+          "title": "A labeled optional override remains documentation"
         }
       ],
       "optionsSchemaSource": null
     },
     "text:config-comment-wall": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "workflow.yml",
+              "source": "# Keep one worker because uploads race.\nconcurrency: 1\n# Retain three retries because the upstream API is eventually consistent.\nretries: 3\n# Set build name\nname: build\n# Set build image\nimage: app\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "workflow.yml",
+          "id": "config-rationale",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Rationales keep a mixed comment cluster useful"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -8177,21 +8192,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated comments restate adjacent entries"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "workflow.yml",
-              "source": "name: build\nrun: make build\nimage: app\ncommand: deploy\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "workflow.yml",
-          "id": "self-explanatory-config",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Clear entries need no narration"
         }
       ],
       "optionsSchemaSource": null
