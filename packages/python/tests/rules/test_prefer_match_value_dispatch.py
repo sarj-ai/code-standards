@@ -170,3 +170,210 @@ def test_multiline_test_is_supported() -> None:
 @pytest.mark.parametrize("source", ["if:", "# Generated file; do not edit\n" + _ladder()])
 def test_invalid_and_generated_sources_are_excluded(source: str) -> None:
     assert _check(source) == []
+
+
+def _siblings(first: str = "suffix in {'.yaml', '.yml'}", last: str = "suffix == '.jsonc' and valid") -> str:
+    return (
+        f"def parse(suffix, valid):\n    if {first}:\n        return 1\n"
+        f"    if suffix == '.toml':\n        return 2\n    if {last}:\n        return 3\n    return None\n"
+    )
+
+
+@pytest.mark.parametrize("container", ["{'.yaml', '.yml'}", "('.yaml', '.yml')", "['.yaml', '.yml']"])
+def test_grouped_terminal_dispatch(container: str) -> None:
+    assert len(_check(_siblings(f"suffix in {container}"))) == 1
+
+
+def test_grouped_ladder_dispatch() -> None:
+    source = (
+        _siblings()
+        .replace("    if suffix ==", "    elif suffix ==")
+        .replace("    return None", "    else:\n        return None")
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        "suffix in ()",
+        "suffix in ('.yaml',)",
+        "suffix in OPTIONS",
+        "suffix in (*OPTIONS, '.yml')",
+        "suffix in {True, None}",
+        "suffix in {'.yaml', '.toml'}",
+        "suffix in {'.yaml', '.yaml'}",
+        "suffix == '.yaml' or suffix == '.yml'",
+        "other in {'.yaml', '.yml'}",
+        "suffix in ('a', 'b', 'c', 'd', 'e', 'f', 'g')",
+        "ready and suffix == '.yaml'",
+    ],
+)
+def test_grouped_dispatch_near_misses(first: str) -> None:
+    assert _check(_siblings(first)) == []
+
+
+@pytest.mark.parametrize(
+    "last", ["valid and suffix == '.jsonc'", "suffix == '.jsonc' or valid", "suffix == '.jsonc' and (valid := check())"]
+)
+def test_unsafe_final_guards(last: str) -> None:
+    assert _check(_siblings(last=last)) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("return 1", "run()"),
+        ("return 2", "return 1"),
+        ("    return None\n", ""),
+        ("    if suffix == '.toml':", "    suffix = update()\n    if suffix == '.toml':"),
+        ("suffix", "path.suffix"),
+    ],
+)
+def test_terminal_dispatch_boundaries(old: str, new: str) -> None:
+    assert _check(_siblings().replace(old, new)) == []
+
+
+def test_mixed_predicates_with_identical_returns_are_not_dispatch() -> None:
+    assert (
+        _check(
+            "def stop(stripped, suffix, line, indent):\n    if not stripped or (suffix in {'.yaml', '.yml'} and stripped in {'---', '...'}):\n        return True\n    if suffix == '.toml' and valid(stripped):\n        return True\n    if comment(line) is None and len(line) < indent:\n        return True\n    return False\n"
+        )
+        == []
+    )
+
+
+def test_terminal_dispatch_keeps_try_except_body() -> None:
+    source = _siblings().replace(
+        "        return 1",
+        "        try:\n            validate()\n        except ValueError:\n            return None\n        return 1",
+    )
+    assert len(_check(source)) == 1
+
+
+def test_mixed_sibling_sequence_has_no_eligible_suffix() -> None:
+    assert _check(_siblings().replace("    if suffix in", "    if ready:\n        return 0\n    if suffix in")) == []
+
+
+def test_membership_and_pattern_matching_are_not_safe_automatic_rewrites() -> None:
+    class UnhashableEqual:
+        def __hash__(self) -> int:
+            raise TypeError
+
+        def __eq__(self, other: object) -> bool:
+            return other == ".yaml"
+
+    def make_value() -> object:
+        return UnhashableEqual()
+
+    value = make_value()
+    with pytest.raises(TypeError):
+        _ = value in {".yaml", ".yml"}
+    match value:
+        case ".yaml" | ".yml":
+            matched = True
+        case _:
+            matched = False
+    assert matched
+
+
+def test_set_membership_invokes_hash_but_literal_pattern_does_not() -> None:
+    calls: list[str] = []
+
+    class HashObserved:
+        def __hash__(self) -> int:
+            calls.append("hash")
+            return hash(".yaml")
+
+        def __eq__(self, other: object) -> bool:
+            calls.append("eq")
+            return other == ".yaml"
+
+    def make_value() -> object:
+        return HashObserved()
+
+    value = make_value()
+    assert value in {".yaml", ".yml"}
+    assert "hash" in calls
+    calls.clear()
+    match value:
+        case ".yaml" | ".yml":
+            matched = True
+        case _:
+            matched = False
+    assert matched
+    assert calls == ["eq"]
+
+
+def test_two_separate_terminal_sequences_have_one_finding_each() -> None:
+    assert len(_check(_siblings() + _siblings().replace("def parse", "def other"))) == 2
+
+
+def test_expanded_mixed_ladder_has_no_eligible_suffix() -> None:
+    source = (
+        _siblings()
+        .replace("    if suffix ==", "    elif suffix ==")
+        .replace("    return None", "    else:\n        return None")
+    )
+    source = source.replace("    if suffix in", "    if ready:\n        return 0\n    elif suffix in")
+    assert _check(source) == []
+
+
+def test_exact_parser_dispatch_shape() -> None:
+    source = """
+def literal_lines(path, source, lines):
+    suffix = path.suffix.lower()
+    if suffix in {".yaml", ".yml"}:
+        try:
+            list(yaml.compose_all(source))
+        except yaml.YAMLError:
+            return None
+        return _config_literal_lines(path, lines)
+    if suffix == ".toml":
+        try:
+            tomllib.loads(source)
+        except tomllib.TOMLDecodeError:
+            return None
+        return _config_literal_lines(path, lines)
+    if suffix == ".jsonc" and _structured_config_document(suffix, source) is not None:
+        return set()
+    return None
+"""
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].line == 4
+
+
+def test_terminal_raise_dispatch() -> None:
+    assert (
+        len(_check(_siblings().replace("return 1", "raise FirstError").replace("return None", "raise Unsupported")))
+        == 1
+    )
+
+
+def test_two_terminal_siblings_remain_below_expansion_threshold() -> None:
+    assert (
+        _check(
+            "def parse(value):\n    if value == 'a':\n        return 1\n    if value == 'b':\n        return 2\n    return None\n"
+        )
+        == []
+    )
+
+
+def test_warning_rule_has_no_automatic_fix() -> None:
+    assert PreferMatchValueDispatch.documentation is not None
+    assert PreferMatchValueDispatch.documentation.autofix.value == "none"
+
+
+def test_with_suppressed_raise_is_not_a_terminal_branch() -> None:
+    source = _siblings().replace("        return 1", "        with suppress(Exception):\n            raise FirstError")
+    assert _check(source) == []
+
+
+def test_three_plain_equality_terminal_siblings_are_supported() -> None:
+    assert len(_check(_siblings("suffix == '.yaml'", "suffix == '.jsonc'"))) == 1
+
+
+def test_numeric_module_constant_overlap_is_excluded_in_siblings() -> None:
+    source = "FIRST = 1\nSECOND = 1.0\n" + _siblings("suffix == FIRST", "suffix == SECOND")
+    assert _check(source) == []

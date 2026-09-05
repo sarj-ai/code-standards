@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f0285b3b0afb99422035ddfd361a618396a6c7fb0b674e5ab68140a3568a973d",
-  "cliSha256": "5bfa2362afac06427c6369d9a97cc0f74c0d4fff6ee948b426034a23c802ee62",
+  "catalogSha256": "62dbf9e029148a3f5c7083c74187dd06b3ae7685afd02826df1ea88dfbbcd648",
+  "cliSha256": "610947682190aebf65b5e1d512fd06e7cf5b8da35c1888fe85f1c9f936487fa5",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6207,6 +6207,36 @@
     },
     "python:prefer-match-value-dispatch": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/formats.py",
+              "source": "def parse_config(suffix: str, source: str, jsonc_is_valid: bool):\n    match suffix:\n        case \".yaml\" | \".yml\":\n            return (\"yaml\", source)\n        case \".toml\":\n            return (\"toml\", source)\n        case \".jsonc\" if jsonc_is_valid:\n            return (\"jsonc\", source)\n        case _:\n            return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/formats.py",
+          "id": "grouped-suffix-match-with-guard",
+          "outcome": "accept",
+          "scenarioId": "grouped-terminal-dispatch",
+          "title": "Retain grouped alternatives, the guard, and the fallback"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/formats.py",
+              "source": "def parse_config(suffix: str, source: str, jsonc_is_valid: bool):\n    if suffix in {\".yaml\", \".yml\"}:\n        return (\"yaml\", source)\n    if suffix == \".toml\":\n        return (\"toml\", source)\n    if suffix == \".jsonc\" and jsonc_is_valid:\n        return (\"jsonc\", source)\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/formats.py",
+          "id": "grouped-terminal-suffix-dispatch",
+          "outcome": "reject",
+          "scenarioId": "grouped-terminal-dispatch",
+          "title": "Group terminal format dispatch under one subject"
+        },
         {
           "expectedCount": 0,
           "files": [

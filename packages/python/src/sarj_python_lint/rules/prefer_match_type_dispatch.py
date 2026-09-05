@@ -101,6 +101,7 @@ class PreferMatchTypeDispatch(Rule):
         limitations=(
             "Only three or more adjacent, unguarded `isinstance` branches over the same simple name are checked.",
             "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
+            "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
         ),
         examples=(
             RuleExample(
@@ -185,6 +186,8 @@ class PreferMatchTypeDispatch(Rule):
                 unsafe_bindings=unsafe_bindings,
             )
         )
+        if findings and self.has_declared_python_support_before(path, (3, 10)):
+            return []
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings
 

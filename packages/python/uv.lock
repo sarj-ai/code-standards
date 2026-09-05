@@ -165,9 +165,10 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "0.80.17"
+version = "0.81.0"
 source = { editable = "." }
 dependencies = [
+    { name = "packaging" },
     { name = "ruff" },
     { name = "sqlglot" },
     { name = "typer" },
@@ -182,6 +183,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "packaging", specifier = "==26.3" },
     { name = "ruff", specifier = ">=0.16.5" },
     { name = "sqlglot", specifier = "==30.18.0" },
     { name = "typer", specifier = "==0.27.2" },

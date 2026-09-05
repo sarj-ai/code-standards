@@ -1974,21 +1974,22 @@ def _shell_assertion_reads_iac(tokens: Sequence[str], path_names: set[str]) -> b
         return False
     command = _shell_command(tokens[0])
     redirected = [tokens[index + 1] for index, item in enumerate(tokens[:-1]) if item == "<"]
-    if command in {"grep", "rg"}:
-        operands, explicit_pattern = _shell_operands(
-            tokens[1:], _GREP_VALUE_OPTIONS, {"--regexp", "-e", "--file", "-f"}
-        )
-        inputs = operands if explicit_pattern else operands[1:]
-    elif command == "sed":
-        operands, explicit_pattern = _shell_operands(
-            tokens[1:], _SED_VALUE_OPTIONS, {"--expression", "-e", "--file", "-f"}
-        )
-        inputs = operands if explicit_pattern else operands[1:]
-    elif command == "awk":
-        operands, explicit_pattern = _shell_operands(tokens[1:], _AWK_VALUE_OPTIONS, {"--file", "-f"})
-        inputs = operands if explicit_pattern else operands[1:]
-    else:
-        return False
+    match command:
+        case "grep" | "rg":
+            operands, explicit_pattern = _shell_operands(
+                tokens[1:], _GREP_VALUE_OPTIONS, {"--regexp", "-e", "--file", "-f"}
+            )
+            inputs = operands if explicit_pattern else operands[1:]
+        case "sed":
+            operands, explicit_pattern = _shell_operands(
+                tokens[1:], _SED_VALUE_OPTIONS, {"--expression", "-e", "--file", "-f"}
+            )
+            inputs = operands if explicit_pattern else operands[1:]
+        case "awk":
+            operands, explicit_pattern = _shell_operands(tokens[1:], _AWK_VALUE_OPTIONS, {"--file", "-f"})
+            inputs = operands if explicit_pattern else operands[1:]
+        case _:
+            return False
     return _shell_has_iac_path([*inputs, *redirected], path_names)
 
 
@@ -2538,21 +2539,23 @@ def _config_literal_lines(path: Path, lines: list[str]) -> set[int]:
 
 def _validated_config_literal_lines(path: Path, source: str, lines: list[str]) -> set[int] | None:
     suffix = path.suffix.lower()
-    if suffix in {".yaml", ".yml"}:
-        try:
-            list(yaml.compose_all(source))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-        except yaml.YAMLError:
+    match suffix:
+        case ".yaml" | ".yml":
+            try:
+                list(yaml.compose_all(source))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            except yaml.YAMLError:
+                return None
+            return _config_literal_lines(path, lines)
+        case ".toml":
+            try:
+                tomllib.loads(source)
+            except tomllib.TOMLDecodeError:
+                return None
+            return _config_literal_lines(path, lines)
+        case ".jsonc" if _structured_config_document(suffix, source) is not None:
+            return set()
+        case _:
             return None
-        return _config_literal_lines(path, lines)
-    if suffix == ".toml":
-        try:
-            tomllib.loads(source)
-        except tomllib.TOMLDecodeError:
-            return None
-        return _config_literal_lines(path, lines)
-    if suffix == ".jsonc" and _structured_config_document(suffix, source) is not None:
-        return set()
-    return None
 
 
 def _has_generated_config_header(path: Path, lines: list[str]) -> bool:

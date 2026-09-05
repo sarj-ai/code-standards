@@ -232,20 +232,22 @@ def test_mobile_capabilities_run_only_for_mobile_files(tmp_path: Path) -> None:
         command = tuple(argv)
         seen.append(command)
         executable = command[0]
-        if executable == "swiftformat":
-            return ProcessOutput(0, "", "")
-        if executable in {"swiftlint", "ktlint"}:
-            return ProcessOutput(0, "[]", "")
-        if executable == "detekt":
-            detekt_reports.append(_write_detekt_report(command))
-            return ProcessOutput(0, "stdout is not the Detekt protocol", "")
-        if executable == "semgrep":
-            return ProcessOutput(
-                0,
-                json.dumps({"errors": [], "paths": {"scanned": [str(swift), str(kotlin)]}, "results": []}),
-                "",
-            )
-        raise AssertionError(command)
+        match executable:
+            case "swiftformat":
+                return ProcessOutput(0, "", "")
+            case "swiftlint" | "ktlint":
+                return ProcessOutput(0, "[]", "")
+            case "detekt":
+                detekt_reports.append(_write_detekt_report(command))
+                return ProcessOutput(0, "stdout is not the Detekt protocol", "")
+            case "semgrep":
+                return ProcessOutput(
+                    0,
+                    json.dumps({"errors": [], "paths": {"scanned": [str(swift), str(kotlin)]}, "results": []}),
+                    "",
+                )
+            case _:
+                raise AssertionError(command)
 
     reports = analyze_external(
         [str(swift), str(kotlin)],

@@ -30,13 +30,15 @@ def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: P
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
         manifest = argv[-1]
-        if manifest == "packages/typescript/package.json":
-            return ProcessResult(0, '+  "version": "9.12.0"\n')
-        if manifest == "packages/bootstrap/pyproject.toml":
-            return ProcessResult(0, '+version = "1.0.0"\n')
-        if manifest == "packages/python/pyproject.toml":
-            return ProcessResult(0, '+description = "version unchanged"\n')
-        return ProcessResult(0, "")
+        match manifest:
+            case "packages/typescript/package.json":
+                return ProcessResult(0, '+  "version": "9.12.0"\n')
+            case "packages/bootstrap/pyproject.toml":
+                return ProcessResult(0, '+version = "1.0.0"\n')
+            case "packages/python/pyproject.toml":
+                return ProcessResult(0, '+description = "version unchanged"\n')
+            case _:
+                return ProcessResult(0, "")
 
     changed = changed_release_targets(tmp_path, before="before", after="after", runner=runner)
 
