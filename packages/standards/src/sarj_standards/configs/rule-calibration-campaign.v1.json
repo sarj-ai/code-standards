@@ -890,7 +890,9 @@
       "task": "rule-audit/text/exact-config-comment-restatement",
       "family": "text",
       "ruleId": "exact-config-comment-restatement",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviewers reproduced false positives in valid TOML multiline payloads, case-sensitive scalar values, and values with distinct internal whitespace; malformed YAML and TOML also emitted before validation. The final detector passed 64 focused SARJ300, SARJ301, and SARJ306 interaction cases, including exact positives, rationale and compound-comment negatives, exact suppressions, generated ownership, literal payloads, malformed documents, and scalar spelling near misses. A 77-entry local inventory covered 896 tracked YAML and TOML files and 6,221,586 bytes, with three unavailable-repository or read errors and zero retained SARJ306 findings; the combined config-comment scan completed in 10.618 seconds. Zero retained corpus findings support warning-only rollout, not promotion.",
+      "outcome": "Kept the canonical exact-config-comment-restatement name and staged SARJ306 as a warning. The detector now shares one validated literal context with SARJ300, abstains on parse failure or masked comment/candidate lines, preserves case and internal whitespace when comparing scalar values, and excludes files with a strong generated and do-not-edit ownership header. Prose-to-identifier key normalization and exact local suppressions remain. SARJ301 behavior, SARJ300 generated-file behavior, autofix policy, and SARJ420 were unchanged."
     },
     {
       "task": "rule-audit/text/hidden-markdown-heading",
