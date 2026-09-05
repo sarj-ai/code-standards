@@ -438,7 +438,12 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       .filter(([, setting]) => severityOf(setting) === 1)
       .map(([rule]) => rule);
     expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
-    expect(warnings.toSorted()).toEqual([...ADVISORY_RULES]);
+    expect(warnings.toSorted()).toEqual([
+      ...ADVISORY_RULES,
+      "better-tailwindcss/enforce-consistent-important-position",
+      "better-tailwindcss/enforce-consistent-variable-syntax",
+      "better-tailwindcss/no-concatenated-classes",
+    ].toSorted());
 
     // Component identifiers are PascalCase, while component filenames remain
     // kebab-case under the shared filename policy.
