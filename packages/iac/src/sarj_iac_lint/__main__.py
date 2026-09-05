@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import argparse
 from collections import Counter
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
 import sys
 import tempfile
+from typing import Annotated
+
+import typer
 
 from sarj_iac_lint import __version__
 from sarj_iac_lint.rule_base import Diagnostic, is_suppressed
@@ -159,84 +162,93 @@ def _atomic_write_text(path: Path, text: str) -> None:
         raise
 
 
-class _Args(argparse.Namespace):
-    cmd: str | None
-    rule: list[str]
-    files: list[Path]
-    exit_zero: bool
-    baseline: Path | None
-    update_baseline: Path | None
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.cmd = None
-        self.rule = []
-        self.files = []
-        self.exit_zero = False
-        self.baseline = None
-        self.update_baseline = None
+@dataclass
+class _Result:
+    code: int = 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="sarj-iac-lint",
-        description="Custom Terraform / IaC lint rules.",
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = parser.add_subparsers(dest="cmd", required=True)
-
-    check_p = sub.add_parser("check", help="Run rules over files.")
-    check_p.add_argument("--rule", action="append", required=True, help="Rule ID.")
-    check_p.add_argument("--exit-zero", action="store_true", help="Report but exit 0.")
-    check_p.add_argument(
-        "--baseline",
-        type=Path,
-        help="Per-file shrink-only baseline JSON: {path: {CODE: count}}. Diags up to the baselined count are suppressed.",
-    )
-    check_p.add_argument(
-        "--update-baseline",
-        type=Path,
-        help="Write the current per-file diagnostic counts to this JSON and exit 0.",
-    )
-    check_p.add_argument("files", nargs="+", type=Path)
-
-    sub.add_parser("list-rules", help="List available rule IDs.")
-
-    args = parser.parse_args(argv, namespace=_Args())
-
-    if args.cmd == "list-rules":
-        for rid, cls in sorted(REGISTRY.items()):
-            inst = cls()
-            sys.stdout.write(f"{inst.code:8}  {rid:34}  {inst.description}\n")
-        return 0
-
+def _run_check(
+    rule: list[str], files: list[Path], baseline: Path | None, update_baseline: Path | None, *, exit_zero: bool
+) -> int:
     try:
-        diags = analyze(args.rule, args.files)
+        diags = analyze(rule, files)
     except ValueError as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
-    if args.update_baseline is not None:
+    if update_baseline is not None:
         counts = baseline_counts(diags)
         try:
-            _atomic_write_text(args.update_baseline, json.dumps(counts, indent=2, sort_keys=True) + "\n")
+            _atomic_write_text(update_baseline, json.dumps(counts, indent=2, sort_keys=True) + "\n")
         except OSError as exc:
-            sys.stderr.write(f"error: cannot write baseline {args.update_baseline}: {exc}\n")
+            sys.stderr.write(f"error: cannot write baseline {update_baseline}: {exc}\n")
             return 2
-        sys.stdout.write(
-            f"baseline written: {args.update_baseline} ({len(diags)} diagnostics over {len(counts)} files)\n"
-        )
+        sys.stdout.write(f"baseline written: {update_baseline} ({len(diags)} diagnostics over {len(counts)} files)\n")
         return 0
-    if args.baseline is not None:
+    if baseline is not None:
         try:
-            diags = apply_baseline(diags, read_baseline(args.baseline))
+            diags = apply_baseline(diags, read_baseline(baseline))
         except (OSError, ValueError) as exc:
-            sys.stderr.write(f"error: invalid baseline {args.baseline}: {exc}\n")
+            sys.stderr.write(f"error: invalid baseline {baseline}: {exc}\n")
             return 2
     for d in diags:
         sys.stdout.write(d.format() + "\n")
-    if args.exit_zero:
+    if exit_zero:
         return 0
     return 1 if diags else 0
+
+
+app = typer.Typer(
+    help="Custom Terraform / IaC lint rules.",
+    add_completion=False,
+    no_args_is_help=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+
+def _show_version(*, value: bool) -> None:
+    if value:
+        sys.stdout.write(f"sarj-iac-lint {__version__}\n")
+        raise typer.Exit
+
+
+@app.callback()
+def _root(
+    *, _version: Annotated[bool, typer.Option("--version", callback=_show_version, is_eager=True)] = False
+) -> None:
+    pass
+
+
+@app.command("list-rules", help="List available rule IDs.")
+def _list_rules() -> None:
+    for rid, cls in sorted(REGISTRY.items()):
+        inst = cls()
+        sys.stdout.write(f"{inst.code:8}  {rid:34}  {inst.description}\n")
+
+
+@app.command("check", help="Run rules over files.")
+def _check_command(
+    context: typer.Context,
+    files: Annotated[list[Path], typer.Argument()],
+    rule: Annotated[list[str], typer.Option("--rule", help="Rule ID.")],
+    baseline: Annotated[Path | None, typer.Option(help="Per-file shrink-only baseline JSON.")] = None,
+    update_baseline: Annotated[
+        Path | None, typer.Option(help="Write current diagnostic counts to JSON and exit 0.")
+    ] = None,
+    *,
+    exit_zero: Annotated[bool, typer.Option("--exit-zero", help="Report but exit 0.")] = False,
+) -> None:
+    context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline, exit_zero=exit_zero)
+
+
+def main(argv: list[str] | None = None) -> int:
+    result = _Result()
+    try:
+        app(args=argv, prog_name="sarj-iac-lint", obj=result)
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
+    return result.code
 
 
 if __name__ == "__main__":

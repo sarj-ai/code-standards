@@ -29,7 +29,7 @@ const uniformPolicy = firstProviderRule !== undefined
   && allProviderRules.every(
     (rule) => thirdPartyRulePolicySignature(rule) === thirdPartyRulePolicySignature(firstProviderRule),
   );
-const profileLabel: Record<ThirdPartyProfile, string> = { application: 'Application', standard: 'Strict' };
+const profileLabel: Record<ThirdPartyProfile, string> = { application: 'Legacy application alias', standard: 'Legacy standard alias' };
 const fixLabel = (rule: ThirdPartyRule) => {
   if (rule.autofix === 'always' || rule.autofix === 'available') return 'Fix';
   if (rule.autofix === 'sometimes') return 'Conditional';
@@ -54,7 +54,7 @@ const displayPolicies = (rule: ThirdPartyRule) => {
   const application = rule.profiles.find((profile) => profile.name === 'application');
   const standard = rule.profiles.find((profile) => profile.name === 'standard');
   if (application && standard && sameContexts(application.contexts, standard.contexts)) {
-    return [{ label: 'Both profiles', groups: displayContextGroups(application.name, application.contexts) }];
+    return [{ label: 'All repositories', groups: displayContextGroups(application.name, application.contexts) }];
   }
   return rule.profiles.map((profile) => ({
     label: profileLabel[profile.name],

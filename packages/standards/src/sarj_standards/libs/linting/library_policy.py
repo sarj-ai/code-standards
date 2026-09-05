@@ -67,7 +67,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "argparse,optparse",
         "Typer",
-        "The application profile standardizes command-line interfaces on Typer.",
+        "Standards standardizes command-line interfaces on Typer.",
     ),
     _mapping(
         "LIB002",
@@ -107,7 +107,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "flask",
         "FastAPI",
-        "The application profile standardizes HTTP APIs on FastAPI; this is an architectural migration.",
+        "Standards standardizes HTTP APIs on FastAPI; this is an architectural migration.",
     ),
     _mapping(
         "LIB007",
@@ -115,7 +115,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "marshmallow,cerberus",
         "Pydantic",
-        "The application profile standardizes validation and serialization on Pydantic.",
+        "Standards standardizes validation and serialization on Pydantic.",
     ),
     _mapping(
         "LIB008",
@@ -223,7 +223,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "request,node-fetch,cross-fetch,isomorphic-fetch,axios",
         "ky",
-        "The application profile standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+        "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
     ),
     _mapping(
         "LIB102",
@@ -231,7 +231,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "moment,dayjs",
         "date-fns",
-        "The application profile standardizes date utilities on date-fns; migration is not API-compatible.",
+        "Standards standardizes date utilities on date-fns; migration is not API-compatible.",
     ),
     _mapping(
         "LIB103",
@@ -239,7 +239,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "lodash,lodash-es,underscore",
         "remeda",
-        "The application profile standardizes collection utilities on Remeda and native APIs.",
+        "Standards standardizes collection utilities on Remeda and native APIs.",
     ),
     _mapping(
         "LIB104",
@@ -255,7 +255,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "joi,yup,superstruct,io-ts,runtypes",
         "zod",
-        "The application profile standardizes runtime validation on Zod; schemas are not drop-in compatible.",
+        "Standards standardizes runtime validation on Zod; schemas are not drop-in compatible.",
     ),
     _mapping(
         "LIB106",
@@ -271,7 +271,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "express,koa",
         "hono",
-        "The application profile standardizes servers on Hono; Node deployments also need @hono/node-server.",
+        "Standards standardizes servers on Hono; Node deployments also need @hono/node-server.",
     ),
     _mapping(
         "LIB108",
@@ -279,7 +279,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "jest,mocha",
         "vitest",
-        "The application profile standardizes tests on Vitest; review globals, timers, mocks, and environment setup.",
+        "Standards standardizes tests on Vitest; review globals, timers, mocks, and environment setup.",
     ),
     _mapping(
         "LIB109",
@@ -295,7 +295,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "commander,yargs",
         "citty",
-        "The application profile standardizes command-line interfaces on citty.",
+        "Standards standardizes command-line interfaces on citty.",
     ),
     _mapping(
         "LIB111",
@@ -335,7 +335,7 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "dotenv",
         "@dotenvx/dotenvx",
-        "The application profile standardizes environment loading on @dotenvx/dotenvx.",
+        "Standards standardizes environment loading on @dotenvx/dotenvx.",
     ),
     _mapping("LIB116", "typescript", "preferred-stack", "chalk", "picocolors", "Use picocolors for terminal colors."),
     _mapping(
@@ -474,12 +474,15 @@ def _scan_manifests(
     findings: list[Finding] = []
     for path in paths:
         dependencies: tuple[tuple[Path, Ecosystem, str], ...]
-        if path.name == "pyproject.toml":
-            dependencies = tuple((path, ecosystem, package) for ecosystem, package in _pyproject_dependencies(path))
-        elif path.name == "package.json":
-            dependencies = tuple((path, ecosystem, package) for ecosystem, package in _package_json_dependencies(path))
-        else:
-            dependencies = _requirements_dependencies(path, root, frozenset())
+        match path.name:
+            case "pyproject.toml":
+                dependencies = tuple((path, ecosystem, package) for ecosystem, package in _pyproject_dependencies(path))
+            case "package.json":
+                dependencies = tuple(
+                    (path, ecosystem, package) for ecosystem, package in _package_json_dependencies(path)
+                )
+            case _:
+                dependencies = _requirements_dependencies(path, root, frozenset())
         for source, ecosystem, package in dependencies:
             entry = package_index.get(_PackageKey(ecosystem, _normalize(package, ecosystem)))
             if entry is None or entry.id in allowed:

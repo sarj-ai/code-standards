@@ -138,6 +138,7 @@
         "name": { "type": "string", "minLength": 1 },
         "completion": { "enum": ["complete", "partial", "failed"] },
         "diagnosticCount": { "type": "integer", "minimum": 0 },
+        "baselinedDiagnosticCount": { "type": "integer", "minimum": 0 },
         "issueCount": { "type": "integer", "minimum": 0 },
         "analyzerId": { "type": "string", "minLength": 1 },
         "invocationId": { "type": "string", "minLength": 1 },

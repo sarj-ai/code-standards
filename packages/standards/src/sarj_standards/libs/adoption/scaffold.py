@@ -619,13 +619,14 @@ def build_plan(
         # target in the config sync plan built by ``plan_init``.
         if "eslint" in selected and not allow_existing_nested_eslint:
             _report_unwired_nested_eslint_configs(root, ecosystems.typescript_root, plan)
-    if plan.hook_manager == "pre-commit":
-        _plan_precommit(root, plan, force=force)
-    elif plan.hook_manager == "lefthook":
-        _plan_retire_precommit_staged_check(root, plan)
-        _plan_lefthook(root, plan)
-    else:
-        plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
+    match plan.hook_manager:
+        case "pre-commit":
+            _plan_precommit(root, plan, force=force)
+        case "lefthook":
+            _plan_retire_precommit_staged_check(root, plan)
+            _plan_lefthook(root, plan)
+        case _:
+            plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
     workflow = root / ".github" / "workflows" / "standards.yml"
     workflow_contents = github_ci_workflow(root, ecosystems=ecosystems)
     existing_gates = standards_check_workflows(root)
@@ -685,12 +686,13 @@ def build_commit_policy_plan(
         hook_manager=selected_hook_manager,
     )
     _plan_repo_commit_message_policy(root, plan)
-    if selected_hook_manager == "pre-commit":
-        _plan_precommit_commit_message(root, plan, force=force)
-    elif selected_hook_manager == "lefthook":
-        _plan_lefthook_commit_message(root, plan)
-    else:
-        plan.notes.append("commit policy files were generated without installing a Git hook manager")
+    match selected_hook_manager:
+        case "pre-commit":
+            _plan_precommit_commit_message(root, plan, force=force)
+        case "lefthook":
+            _plan_lefthook_commit_message(root, plan)
+        case _:
+            plan.notes.append("commit policy files were generated without installing a Git hook manager")
     _plan_commit_policy_workflow(root, plan, force=force)
     return plan
 
@@ -978,7 +980,7 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
                 plan.errors.append(str(exc))
                 return
             plan.writes.append((path, updated))
-            plan.notes.append("updated the manifest to match the requested capabilities and profile")
+            plan.notes.append("updated the manifest to match the requested capabilities")
             return
     _record(plan, path, contents, force=force, reason="already declares an adopted version")
 
@@ -1051,8 +1053,10 @@ def _migrate_schema_less_manifest(text: str, desired: manifest.Manifest) -> str:
     policy = f"\n[capabilities]\ndisable = [{disabled_text}]\n"
     table = _FIRST_TOML_TABLE.search(migrated)
     if table is None:
-        return f"{migrated.rstrip()}\n{policy}"
-    return f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
+        migrated = f"{migrated.rstrip()}\n{policy}"
+    else:
+        migrated = f"{migrated[: table.start()].rstrip()}\n{policy}\n{migrated[table.start() :]}"
+    return _render_manifest_preserving_extensions(migrated, desired.render())
 
 
 def _without_schema_less_configs(text: str) -> str:

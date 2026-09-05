@@ -207,11 +207,7 @@ class Standards:
                     exit_code=_INVALID_EXIT,
                 )
             try:
-                policy_findings = (
-                    check_selected_library_policy(self.root, selected)
-                    if adopted is not None and adopted.profile == "application"
-                    else ()
-                )
+                policy_findings = check_selected_library_policy(self.root, selected)
             except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
                 return Result(
                     Status.INVALID,
@@ -291,7 +287,7 @@ class Standards:
             grouped=selected_groups,
             rule_selection=rule_selection,
         )
-        if adopted is not None and adopted.profile == "application" and rule_selection is None:
+        if rule_selection is None:
             try:
                 policy = _filter_tool_report(_policy_report(self.root, active_selected), selection_policy)
             except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
@@ -310,7 +306,7 @@ class Standards:
                 )
             )
         routed = _routed_for_selection(selected_groups, rule_selection)
-        if adopted is not None and adopted.profile == "application":
+        if rule_selection is None:
             routed.update(
                 item
                 for item in active_selected
@@ -545,7 +541,7 @@ def _verify(root: Path) -> int:
         policy=policy,
     ):
         return 1
-    if adopted is not None and adopted.profile == "application" and check_library_policy(root):
+    if check_library_policy(root):
         return 1
     return execute(verification_commands(detect(root)))
 
@@ -575,16 +571,17 @@ def _operation_result(
     *,
     findings: tuple[Finding, ...] = (),
 ) -> Result:
-    if exit_code == 0:
-        status = Status.CHANGED if changes else Status.OK
-    elif exit_code == 1:
-        status = Status.DRIFT
-    elif exit_code == _INVALID_EXIT:
-        status = Status.INVALID
-    elif exit_code == _INTERRUPTED_EXIT:
-        status = Status.INTERRUPTED
-    else:
-        status = Status.FAILED
+    match exit_code:
+        case 0:
+            status = Status.CHANGED if changes else Status.OK
+        case 1:
+            status = Status.DRIFT
+        case _ if exit_code == _INVALID_EXIT:
+            status = Status.INVALID
+        case _ if exit_code == _INTERRUPTED_EXIT:
+            status = Status.INTERRUPTED
+        case _:
+            status = Status.FAILED
     return Result(status, findings, changes, exit_code)
 
 
@@ -616,21 +613,15 @@ def _without_baselined_diagnostics(
         remaining[fingerprint] = budget - 1
         return False
 
-    tools = tuple(
-        ToolReport(
-            item.name,
-            item.completion,
-            diagnostics=tuple(diagnostic for diagnostic in item.diagnostics if active(diagnostic)),
-            issues=item.issues,
-            analyzer_id=item.analyzer_id,
-            invocation_id=item.invocation_id,
-            version=item.version,
-            duration_ms=item.duration_ms,
-            file_count=item.file_count,
-            cache_status=item.cache_status,
+    def filter_tool(item: ToolReport) -> ToolReport:
+        diagnostics = tuple(diagnostic for diagnostic in item.diagnostics if active(diagnostic))
+        return replace(
+            item,
+            diagnostics=diagnostics,
+            baselined_count=item.baselined_count + len(item.diagnostics) - len(diagnostics),
         )
-        for item in report.tools
-    )
+
+    tools = tuple(filter_tool(item) for item in report.tools)
     return report_from_tools(report.root, tools)
 
 

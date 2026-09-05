@@ -136,22 +136,21 @@ def test_application_configs_have_no_generation_drift() -> None:
 @pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
 def test_ruff_combines_aliased_imports(config: Path) -> None:
     parsed = manifest.as_table(tomllib.loads(config.read_text(encoding="utf-8")))
+    if config == RUFF_APPLICATION:
+        assert parsed == {"extend": RUFF_STRICT.name}
+        parsed = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text(encoding="utf-8")))
     lint = manifest.table_field(parsed, "lint")
     isort = manifest.table_field(lint, "isort")
     assert isort["combine-as-imports"] is True
 
 
-def test_application_configs_are_standalone_supersets() -> None:
-    application_ruff = RUFF_APPLICATION.read_text()
-    application_eslint = ESLINT_APPLICATION.read_text()
-    assert application_ruff.startswith(RUFF_STRICT.read_text().split("[lint.per-file-ignores]", 1)[0])
-    assert len(application_eslint) >= len(ESLINT_STRICT.read_text())
-    assert "Generated application-profile library policy" in application_ruff
-    assert "Generated application-profile library policy" in application_eslint
+def test_legacy_ruff_config_aliases_have_identical_enforcement() -> None:
+    assert tomllib.loads(RUFF_APPLICATION.read_text()) == {"extend": RUFF_STRICT.name}
+    assert 'export { createConfig, default } from "./eslint.strict.mjs";' in ESLINT_APPLICATION.read_text()
 
 
-def test_application_configs_enforce_catalog_without_changing_standard_profile() -> None:
-    application_ruff = manifest.as_table(tomllib.loads(RUFF_APPLICATION.read_text()))
+def test_all_managed_configs_enforce_library_catalog() -> None:
+    application_ruff = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text()))
     application_lint = manifest.table_field(application_ruff, "lint")
     application_tidy = manifest.table_field(application_lint, "flake8-tidy-imports")
     application_bans = manifest.table_field(application_tidy, "banned-api")
@@ -161,10 +160,10 @@ def test_application_configs_enforce_catalog_without_changing_standard_profile()
     standard_bans = manifest.table_field(standard_tidy, "banned-api")
     assert "argparse" in application_bans
     assert "pandas" in application_bans
-    assert "argparse" not in standard_bans
-    assert "pandas" not in standard_bans
+    assert "argparse" in standard_bans
+    assert "pandas" in standard_bans
 
-    application_eslint = ESLINT_APPLICATION.read_text()
+    application_eslint = ESLINT_STRICT.read_text()
     standard_eslint = ESLINT_STRICT.read_text()
     assert '"name": "axios"' in application_eslint
     assert '"name": "lodash"' in application_eslint
@@ -173,9 +172,9 @@ def test_application_configs_enforce_catalog_without_changing_standard_profile()
     assert '"@sarj/no-restricted-library-load"' in application_eslint
     assert '"@sarj/prefer-native-random-uuid": "error"' in application_eslint
     assert '"module": "axios"' in application_eslint
-    assert '"name": "axios"' not in standard_eslint
-    assert '"name": "lodash"' not in standard_eslint
-    assert '"@sarj/no-restricted-library-load"' not in standard_eslint
+    assert '"name": "axios"' in standard_eslint
+    assert '"name": "lodash"' in standard_eslint
+    assert '"@sarj/no-restricted-library-load"' in standard_eslint
 
 
 def test_ruff_config_is_valid_toml() -> None:
@@ -210,6 +209,9 @@ def test_requested_ruff_families_remain_globally_enabled() -> None:
 @pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
 def test_sarj_rule_complements_ruff_dunder_all_validation(config: Path) -> None:
     parsed = manifest.as_table(tomllib.loads(config.read_text(encoding="utf-8")))
+    if config == RUFF_APPLICATION:
+        assert parsed == {"extend": RUFF_STRICT.name}
+        parsed = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text(encoding="utf-8")))
     lint = manifest.table_field(parsed, "lint")
     assert {"F822", "RUF022"}.isdisjoint(manifest.list_field(lint, "ignore"))
 
@@ -309,6 +311,9 @@ def test_ruff_requires_match_for_broad_builtin_warning_categories(tmp_path: Path
 @pytest.mark.parametrize("config", [RUFF_STRICT, RUFF_APPLICATION])
 def test_s311_is_owned_by_sarj410_in_every_supported_python_test_path(config: Path) -> None:
     data = manifest.as_table(tomllib.loads(config.read_text(encoding="utf-8")))
+    if config == RUFF_APPLICATION:
+        assert data == {"extend": RUFF_STRICT.name}
+        data = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text(encoding="utf-8")))
     lint = manifest.table_field(data, "lint")
     per_file = manifest.table_field(lint, "per-file-ignores")
     patterns = {

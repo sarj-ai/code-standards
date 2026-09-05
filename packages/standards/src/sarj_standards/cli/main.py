@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import argparse
+from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import StrEnum
 from functools import lru_cache
@@ -14,29 +14,27 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository co
 import sys
 import tempfile
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final, NoReturn, TypeIs
+from typing import TYPE_CHECKING, Annotated, Final, NoReturn, TypeIs
 
 from packaging.version import InvalidVersion, Version
 from pydantic import TypeAdapter, ValidationError
 from repo_standards.core.commit_message import check_local_commit_message_file
+import typer
 
 from sarj_standards import __version__
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption import manifest
-from sarj_standards.libs.adoption.configs import (
-    APPLICATION_CONFIG_NAMES,
-    CONFIG_NAMES,
-)
+from sarj_standards.libs.adoption.configs import CONFIG_NAMES
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.rules import RuleSelector
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from sarj_standards.libs.adoption import service
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic
     from sarj_standards.libs.repository import rule_catalog_artifact
-    from sarj_standards.libs.rules import RuleSelector
 
 
 _NEXT_STEPS = (
@@ -97,10 +95,11 @@ class _EvaluationScope(StrEnum):
     EFFECTIVE = "effective"
 
 
-class _Args(argparse.Namespace):
+@dataclass
+class _Args:
     cmd: str = ""
     dest: str = "."
-    only: list[str]
+    only: list[str] = field(default_factory=list)
     force: bool = False
     check: bool = False
     dry_run: bool = False
@@ -108,16 +107,16 @@ class _Args(argparse.Namespace):
     typescript_dest: str | None = None
     swift_dest: str | None = None
     kotlin_dest: str | None = None
-    configs: list[str]
+    configs: list[str] = field(default_factory=list)
     name: str = ""
-    files: list[str]
+    files: list[str] = field(default_factory=list)
     repo_cmd: str = ""
-    repo_only: list[str]
+    repo_only: list[str] = field(default_factory=list)
     commits: str | None = None
     policy_dest: str | None = None
     private_refs_file: str | None = None
     quiet: bool = False
-    roots: list[Path]
+    roots: list[Path] = field(default_factory=list)
     include_text: Path | None = None
     rules_cmd: str = ""
     rule_category: str = ""
@@ -139,8 +138,8 @@ class _Args(argparse.Namespace):
     tag: str = ""
     lockfile: Path | None = None
     minimum_age: timedelta | None = None
-    release_exclude: list[str]
-    release_exclude_file: list[Path]
+    release_exclude: list[str] = field(default_factory=list)
+    release_exclude_file: list[Path] = field(default_factory=list)
     output: Path | None = None
     external: bool = False
     trust: str = "safe"
@@ -149,8 +148,8 @@ class _Args(argparse.Namespace):
     after: str = ""
     github_output: Path | None = None
     release_target: str = ""
-    release_targets: list[str]
-    wheels: list[Path]
+    release_targets: list[str] = field(default_factory=list)
+    wheels: list[Path] = field(default_factory=list)
     hooks: manifest.HookManager | None = None
     show_cmd: str = ""
     catalog_cmd: str = ""
@@ -165,37 +164,19 @@ class _Args(argparse.Namespace):
     delay_seconds: timedelta = timedelta(seconds=10)
     ratchet_cmd: str = ""
     baseline_cmd: str = ""
-    selected_rules: list[RuleSelector]
+    selected_rules: list[RuleSelector] = field(default_factory=list)
     corpus_manifest: Path | None = None
     private_overlay: Path | None = None
     selector: RuleSelector | None = None
     evaluation_scope: _EvaluationScope = _EvaluationScope.CORPUS
+    required_added_level: str | None = None
     baseline: Path | None = None
-    baseline_rules: list[str]
+    baseline_rules: list[str] = field(default_factory=list)
     react_doctor_triggered: bool = False
-    package: list[str]
-    exclude_subtree: list[str]
+    package: list[str] = field(default_factory=list)
+    exclude_subtree: list[str] = field(default_factory=list)
     allow_increase: bool = False
     slack_catalog: Path = Path()
-
-    def __init__(self) -> None:
-        super().__init__()
-        # `None` and `[]` mean the same thing for a list of choices, so these
-        # default to empty rather than nullable; argparse replaces them when the
-        # flag is given.
-        self.files = []
-        self.only = []
-        self.configs = []
-        self.repo_only = []
-        self.roots = []
-        self.release_exclude = []
-        self.baseline_rules = []
-        self.release_exclude_file = []
-        self.release_targets = []
-        self.wheels = []
-        self.package = []
-        self.exclude_subtree = []
-        self.selected_rules = []
 
 
 def cmd_sync(args: _Args, *, next_steps: bool = True) -> int:
@@ -243,7 +224,7 @@ def _parse_rule_selector(value: str) -> RuleSelector:
     try:
         return RuleSelector.parse(value)
     except ValueError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
+        raise typer.BadParameter(str(exc)) from exc
 
 
 def _render_sync(result: service.SyncResult) -> None:
@@ -283,12 +264,7 @@ def cmd_list() -> int:
 
 
 def cmd_path(args: _Args) -> int:
-    standard_src_name, _ = CONFIG_NAMES[args.name]
-    src_name = (
-        APPLICATION_CONFIG_NAMES.get(args.name, standard_src_name)
-        if args.profile == "application"
-        else standard_src_name
-    )
+    src_name, _ = CONFIG_NAMES[args.name]
     print(CONFIGS_DIR / src_name)
     return 0
 
@@ -864,12 +840,6 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
         print(f"error: invalid standards manifest: {exc}", file=sys.stderr)
         return 2
     profile = args.profile or (adopted.profile if adopted is not None else "standard")
-    if profile != "application":
-        if args.output_format == "json":
-            print(json.dumps({"profile": profile, "findings": []}))
-        elif not args.quiet:
-            print("library policy skipped (standard profile)")
-        return 0
     try:
         findings = (
             library_policy.scan(root) if selected_paths is None else library_policy.scan_paths(root, selected_paths)
@@ -949,9 +919,6 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged an
                 return _emit_analysis_report(args, root, _machine_input_error(root, str(exc)))
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    elif (root / ".git").exists() and external.is_non_default_github_push():
-        args.files = []
-        pull_request_scoped = True
     elif (root / ".git").exists() and (base := external.change_scope_base()):
         try:
             changed_names = _changed_file_names(root, base)
@@ -971,6 +938,9 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged an
                 )
             print(f"error: cannot read pull-request changes: {exc}", file=sys.stderr)
             return 2
+    elif (root / ".git").exists() and external.is_non_default_github_push():
+        args.files = []
+        pull_request_scoped = True
     if len(args.files) == 1 and Path(args.files[0]).resolve() == root:
         args.files = []
         repository_wide = True
@@ -1401,12 +1371,13 @@ def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
         except OSError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    if args.output_format == "github":
-        payload = to_github(report, max_annotations_per_level=args.max_annotations_per_level)
-    elif args.output_format == "json":
-        payload = to_json(report)
-    else:
-        payload = {"sarif": to_sarif, "text": to_text}[args.output_format](report)
+    match args.output_format:
+        case "github":
+            payload = to_github(report, max_annotations_per_level=args.max_annotations_per_level)
+        case "json":
+            payload = to_json(report)
+        case _:
+            payload = {"sarif": to_sarif, "text": to_text}[args.output_format](report)
     if args.output is None or str(args.output) == "-":
         print(payload, end="")
     else:
@@ -2245,15 +2216,27 @@ def cmd_commit_message(args: _Args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
-    args = build_parser().parse_args(raw_argv, namespace=_Args())
+    status: int | None = None
+
+    def dispatch(args: _Args) -> int:
+        nonlocal status
+        status = _dispatch(args)
+        return status
+
     try:
-        return _dispatch(args)
+        try:
+            build_app(dispatch)(raw_argv, prog_name="code-standards")
+        except SystemExit as exc:
+            if status is None or exc.code != 0:
+                raise
     except KeyboardInterrupt:
         print("error: interrupted", file=sys.stderr)
         return 130
     except (OSError, TypeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    else:
+        return status if status is not None else 0
 
 
 def _root_option_first(argv: list[str]) -> list[str]:
@@ -2301,288 +2284,1330 @@ def _dispatch(args: _Args) -> int:
             return cmd_baseline(args)
         case "maintain":
             return _cmd_repo(args)
-        case _:  # argparse enforces `required=True`, so this is unreachable
+        case _:  # Typer requires a registered command before dispatch.
             return 2
 
 
-def build_parser() -> argparse.ArgumentParser:  # ruff: ignore[too-many-locals] -- parser sections mirror public verbs.
-    parser = argparse.ArgumentParser(
-        prog="code-standards",
-        description=f"Adopt, check, fix, diagnose, and update sarj-ai standards (v{__version__}).",
+class _ChoiceDoctorOutputFormat(StrEnum):
+    VALUE_0 = "text"
+    VALUE_1 = "json"
+
+
+class _ChoiceSetupHooks(StrEnum):
+    VALUE_0 = "pre-commit"
+    VALUE_1 = "lefthook"
+    VALUE_2 = "none"
+
+
+class _ChoiceSetupProfile(StrEnum):
+    VALUE_0 = "standard"
+    VALUE_1 = "application"
+
+
+class _ChoiceSetupOnly(StrEnum):
+    VALUE_0 = "detekt"
+    VALUE_1 = "eslint"
+    VALUE_2 = "ktlint"
+    VALUE_3 = "markdownlint"
+    VALUE_4 = "mobile-security"
+    VALUE_5 = "pyright"
+    VALUE_6 = "ruff"
+    VALUE_7 = "shellcheck"
+    VALUE_8 = "swiftformat"
+    VALUE_9 = "swiftlint"
+    VALUE_10 = "taplo"
+    VALUE_11 = "yamllint"
+
+
+class _ChoiceCheckOutputFormat(StrEnum):
+    VALUE_0 = "text"
+    VALUE_1 = "json"
+    VALUE_2 = "sarif"
+    VALUE_3 = "github"
+
+
+class _ChoiceObserveOutputFormat(StrEnum):
+    VALUE_0 = "text"
+    VALUE_1 = "json"
+    VALUE_2 = "sarif"
+    VALUE_3 = "github"
+
+
+class _ChoiceExcludeAddExcludeKind(StrEnum):
+    VALUE_0 = "path"
+    VALUE_1 = "rule"
+
+
+class _ChoiceExcludeRemoveExcludeKind(StrEnum):
+    VALUE_0 = "path"
+    VALUE_1 = "rule"
+
+
+class _ChoiceShowConfigName(StrEnum):
+    VALUE_0 = "detekt"
+    VALUE_1 = "eslint"
+    VALUE_2 = "ktlint"
+    VALUE_3 = "markdownlint"
+    VALUE_4 = "mobile-security"
+    VALUE_5 = "pyright"
+    VALUE_6 = "ruff"
+    VALUE_7 = "shellcheck"
+    VALUE_8 = "swiftformat"
+    VALUE_9 = "swiftlint"
+    VALUE_10 = "taplo"
+    VALUE_11 = "yamllint"
+
+
+class _ChoiceShowConfigProfile(StrEnum):
+    VALUE_0 = "standard"
+    VALUE_1 = "application"
+
+
+class _ChoiceMaintainReleaseCreateTagsReleaseTargets(StrEnum):
+    VALUE_0 = "typescript"
+    VALUE_1 = "bootstrap"
+    VALUE_2 = "python"
+    VALUE_3 = "sql"
+    VALUE_4 = "iac"
+    VALUE_5 = "standards"
+    VALUE_6 = "tsconfig"
+
+
+class _ChoiceMaintainReleaseTypescriptReleaseMode(StrEnum):
+    VALUE_0 = "check"
+    VALUE_1 = "pack"
+    VALUE_2 = "publish"
+
+
+class _ChoiceMaintainReleasePublishReleaseTarget(StrEnum):
+    VALUE_0 = "typescript"
+    VALUE_1 = "bootstrap"
+    VALUE_2 = "python"
+    VALUE_3 = "sql"
+    VALUE_4 = "iac"
+    VALUE_5 = "standards"
+    VALUE_6 = "tsconfig"
+
+
+class _ChoiceMaintainCheckRepoOnly(StrEnum):
+    VALUE_0 = "ci-history"
+    VALUE_1 = "file-conventions"
+    VALUE_2 = "private-refs"
+    VALUE_3 = "versions"
+
+
+class _ChoiceMaintainRulesNewRuleCategory(StrEnum):
+    VALUE_0 = "architecture"
+    VALUE_1 = "correctness"
+    VALUE_2 = "maintainability"
+    VALUE_3 = "performance"
+    VALUE_4 = "security"
+    VALUE_5 = "style"
+    VALUE_6 = "testing"
+
+
+class _ChoiceMaintainRulesChangesOutputFormat(StrEnum):
+    VALUE_0 = "json"
+    VALUE_1 = "text"
+
+
+class _ChoiceMaintainRulesChangesRequiredAddedLevel(StrEnum):
+    VALUE_0 = "warning"
+
+
+class _ChoiceMaintainRulesEvaluateOutputFormat(StrEnum):
+    VALUE_0 = "json"
+    VALUE_1 = "text"
+
+
+def _version_option(*, value: bool) -> None:
+    if value:
+        print(f"code-standards {__version__}")
+        raise typer.Exit
+
+
+def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
+    app = typer.Typer(
+        name="code-standards",
+        help=f"Adopt, check, fix, diagnose, and update sarj-ai standards (v{__version__}).",
         epilog="Start with `code-standards setup`, then use `code-standards check`.",
-    )
-    parser.add_argument("--version", action="version", version=f"code-standards {__version__}")
-    parser.add_argument(
-        "--root",
-        dest="dest",
-        default=".",
-        help="repository root shared by the selected command (default: current directory)",
-    )
-    sub = parser.add_subparsers(
-        dest="cmd",
-        required=True,
-        metavar=(
-            "{setup,check,commit-message,validate-slack-automations,observe,fix,doctor,"
-            "update,ratchet,exclude,show,maintain}"
-        ),
-        title="commands",
+        no_args_is_help=False,
+        add_completion=False,
+        rich_markup_mode=None,
+        pretty_exceptions_enable=False,
+        context_settings={"help_option_names": ["-h", "--help"]},
     )
 
-    commit_message = sub.add_parser(
-        "commit-message",
-        help="enforce [(i/N) ][TICKET] type(scope)!: description with safe mechanical fixes",
-        description=(
-            "Validate one Git commit message as [(i/N) ][TICKET] type(scope)!: description. "
-            "Example: feat(api): add retry budget. Safe fixes change only header case and spacing."
-        ),
-    )
-    commit_message.add_argument(
-        "message_file",
-        type=Path,
-        metavar="COMMIT_MSG_FILE",
-        help="Git commit-message file supplied by the commit-msg hook",
-    )
+    @app.callback()
+    def root(
+        ctx: typer.Context,
+        *,
+        dest: Annotated[
+            str,
+            typer.Option("--root", help="repository root shared by the selected command (default: current directory)"),
+        ] = ".",
+        _version: Annotated[bool, typer.Option("--version", callback=_version_option, is_eager=True)] = False,
+    ) -> None:
+        ctx.obj = dest
 
-    p_doctor = sub.add_parser(
-        "doctor",
-        help="diagnose adoption health and optionally repair safe drift",
-    )
-    p_doctor.add_argument(
-        "--format",
-        dest="output_format",
-        choices=("text", "json"),
-        default="text",
-        help="output format (default: text)",
-    )
-    p_doctor.add_argument(
-        "--repair",
-        action="store_true",
-        help="transactionally repair safe drift with the executing bundle, then re-diagnose",
-    )
-    p_doctor.add_argument(
-        "--no-install",
-        action="store_true",
-        help="with --repair, update configuration without installing dependencies or hooks",
-    )
+    group_baseline = typer.Typer(no_args_is_help=False, help="grandfather today's findings so only new ones fail")
+    app.add_typer(group_baseline, name="baseline")
+    group_ratchet = typer.Typer(no_args_is_help=False, help="keep the Python suppression budget from growing")
+    app.add_typer(group_ratchet, name="ratchet")
+    group_exclude = typer.Typer(no_args_is_help=False, help="inspect or change explicit path and rule exclusions")
+    app.add_typer(group_exclude, name="exclude")
+    group_show = typer.Typer(no_args_is_help=False, help="print read-only package and adoption information")
+    app.add_typer(group_show, name="show")
+    group_maintain = typer.Typer(no_args_is_help=False, help="repository policy, hooks, rule ledgers, and releases")
+    app.add_typer(group_maintain, name="maintain")
+    group_maintain_release = typer.Typer(no_args_is_help=False, help="validate and build publishable release artifacts")
+    group_maintain.add_typer(group_maintain_release, name="release")
+    group_maintain_docs = typer.Typer(no_args_is_help=False, help="check or synchronize source-derived documentation")
+    group_maintain.add_typer(group_maintain_docs, name="docs")
+    group_maintain_hooks = typer.Typer(no_args_is_help=False, help="manage the pinned repository hooks")
+    group_maintain.add_typer(group_maintain_hooks, name="hooks")
+    group_maintain_rules = typer.Typer(no_args_is_help=False, help="inspect live custom rules")
+    group_maintain.add_typer(group_maintain_rules, name="rules")
+    group_maintain_catalog = typer.Typer(no_args_is_help=False, help="maintain the source-derived public rule catalog")
+    group_maintain.add_typer(group_maintain_catalog, name="catalog")
+    group_maintain_cli_reference = typer.Typer(no_args_is_help=False, help="maintain the source-derived CLI reference")
+    group_maintain.add_typer(group_maintain_cli_reference, name="cli-reference")
 
-    setup = sub.add_parser("setup", help="adopt or converge the repository in one idempotent operation")
-    setup.add_argument(
-        "--hooks",
-        choices=manifest.HOOK_MANAGERS,
-        help="hook manager (default: detect Lefthook, otherwise pre-commit)",
-    )
-    setup.add_argument(
-        "--python-dest",
-        help="the directory that owns pyproject.toml (default: detected)",
-    )
-    setup.add_argument(
-        "--typescript-dest",
-        help="the directory that owns the npm lockfile (default: detected)",
-    )
-    setup.add_argument(
-        "--swift-dest",
-        help="the directory that owns one reviewed Swift project (default: mobile project detection)",
-    )
-    setup.add_argument(
-        "--kotlin-dest",
-        help="the directory that owns one reviewed Android/KMP project (default: detected)",
-    )
-    setup.add_argument("--dry-run", action="store_true", help="print the complete plan without writing")
-    setup.add_argument(
-        "--force",
-        action="store_true",
-        help="replace conflicting generated lint configuration after review",
-    )
-    setup.add_argument(
-        "--profile",
-        choices=manifest.PROFILES,
-        help="policy profile to adopt (default: existing value, otherwise standard)",
-    )
-    setup.add_argument(
-        "--no-install", action="store_true", help="write wiring without installing dependencies or hooks"
-    )
-    setup.add_argument(
-        "--commit-policy-only",
-        action="store_true",
-        help="adopt only commit-message and PR-history policy without changing language tooling",
-    )
-    setup.add_argument(
-        "--config",
-        dest="only",
-        action="append",
-        choices=sorted(CONFIG_NAMES),
-        default=[],
-        help="select one config explicitly (repeatable)",
-    )
-
-    p_check = sub.add_parser(
-        "check",
-        help="run the complete quality gate or check selected paths",
-    )
-    p_check.add_argument(
-        "--trust-repository-code",
-        action="store_true",
-        help="allow executable repository ESLint configuration (generated hooks and CI set this explicitly)",
-    )
-    p_check.add_argument(
-        "--staged",
-        action="store_true",
-        help="run custom rules on hook-supplied paths, or discover staged files when none are supplied",
-    )
-    p_check.add_argument(
-        "--format",
-        dest="output_format",
-        choices=("text", "json", "sarif", "github"),
-        default="text",
-    )
-    p_check.add_argument("--output", type=Path, help="write JSON or SARIF atomically to PATH")
-    p_check.add_argument(
-        "--max-annotations-per-level",
-        dest="max_annotations_per_level",
-        type=int,
-        choices=range(11),
-        default=10,
-    )
-    p_check.add_argument(
-        "files",
-        nargs="*",
-        help="selected paths; when omitted, check the complete repository",
-    )
-
-    validate_slack = sub.add_parser(
-        "validate-slack-automations",
-        help="validate a versioned Slack automation catalog",
-    )
-    validate_slack.add_argument("slack_catalog", type=Path, metavar="PATH")
-
-    observe = sub.add_parser(
-        "observe",
-        help="report warning-stage findings with exit 0; invalid input or execution still exits 2",
-        description="Report selected warning-stage findings with exit 0; invalid input or execution still exits 2.",
-    )
-    observe.add_argument(
-        "--rule",
-        dest="selected_rules",
-        action="append",
-        type=_parse_rule_selector,
-        required=True,
-        help="canonical ENGINE:ID selector (repeatable)",
-    )
-    observe.add_argument(
-        "--format",
-        dest="output_format",
-        choices=("text", "json", "sarif", "github"),
-        default="text",
-    )
-    observe.add_argument("--output", type=Path)
-    observe.add_argument(
-        "--trust-repository-code",
-        action="store_true",
-        help="allow repository ESLint configuration to execute",
-    )
-    observe.add_argument(
-        "--max-annotations-per-level",
-        type=int,
-        default=10,
-    )
-    observe.add_argument("files", nargs="*", help="selected paths; defaults to adopted verification paths")
-
-    fix = sub.add_parser("fix", help="apply safe formatting and lint fixes")
-    fix.add_argument("--staged", action="store_true", help="fix only files staged in Git")
-    fix.add_argument("files", nargs="*", help="selected paths; when omitted, fix the complete repository")
-
-    update = sub.add_parser("update", help="upgrade to the latest published coherent Standards bundle")
-    update.add_argument("--check", action="store_true", help="preview without writing; exit 1 when changes exist")
-    update.add_argument(
-        "--offline",
-        action="store_true",
-        help="reconverge the executing bundle and skip every network-dependent install; does not resolve latest",
-    )
-    update.add_argument(
-        "--to",
-        dest="target_version",
-        metavar="VERSION",
-        help="resolve and apply exactly this immutable coherent bundle version",
-    )
-    update.add_argument("--no-install", action="store_true", help="do not install dependencies or hooks")
-
-    baseline_parser = sub.add_parser(
-        "baseline",
-        help="grandfather today's findings so only new ones fail",
-    )
-    baseline_commands = baseline_parser.add_subparsers(dest="baseline_cmd", required=True)
-    for name, help_text in (
-        ("init", "record the first diagnostic baseline"),
-        ("update", "re-record the diagnostic baseline after reviewed cleanup"),
-    ):
-        command = baseline_commands.add_parser(name, help=help_text)
-        command.add_argument(
-            "--output",
-            type=Path,
-            help=f"baseline JSON (default: {_DEFAULT_DIAGNOSTIC_BASELINE})",
+    @app.command("commit-message", help="enforce [(i/N) ][TICKET] type(scope)!: description with safe mechanical fixes")
+    def command_commit_message(
+        ctx: typer.Context,
+        *,
+        message_file: Annotated[
+            Path,
+            typer.Argument(help="Git commit-message file supplied by the commit-msg hook", metavar="COMMIT_MSG_FILE"),
+        ],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="commit-message",
+                message_file=message_file,
+            )
         )
-        command.add_argument(
-            "--trust-repository-code",
-            action="store_true",
-            help="run repository-local analyzers that execute project code",
+
+    @app.command("doctor", help="diagnose adoption health and optionally repair safe drift")
+    def command_doctor(
+        ctx: typer.Context,
+        *,
+        output_format: Annotated[
+            _ChoiceDoctorOutputFormat, typer.Option("--format", help="output format (default: text)")
+        ] = _ChoiceDoctorOutputFormat.VALUE_0,
+        repair: Annotated[
+            bool,
+            typer.Option(
+                "--repair",
+                help="transactionally repair safe drift with the executing bundle, then re-diagnose",
+            ),
+        ] = False,
+        no_install: Annotated[
+            bool,
+            typer.Option(
+                "--no-install",
+                help="with --repair, update configuration without installing dependencies or hooks",
+            ),
+        ] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="doctor",
+                output_format=output_format.value,
+                repair=repair,
+                no_install=no_install,
+            )
         )
-        if name == "update":
-            command.add_argument(
+
+    @app.command("setup", help="adopt or converge the repository in one idempotent operation")
+    def command_setup(
+        ctx: typer.Context,
+        *,
+        hooks: Annotated[
+            _ChoiceSetupHooks | None,
+            typer.Option("--hooks", help="hook manager (default: detect Lefthook, otherwise pre-commit)"),
+        ] = None,
+        python_dest: Annotated[
+            str | None, typer.Option("--python-dest", help="the directory that owns pyproject.toml (default: detected)")
+        ] = None,
+        typescript_dest: Annotated[
+            str | None,
+            typer.Option("--typescript-dest", help="the directory that owns the npm lockfile (default: detected)"),
+        ] = None,
+        swift_dest: Annotated[
+            str | None,
+            typer.Option(
+                "--swift-dest",
+                help="the directory that owns one reviewed Swift project (default: mobile project detection)",
+            ),
+        ] = None,
+        kotlin_dest: Annotated[
+            str | None,
+            typer.Option(
+                "--kotlin-dest", help="the directory that owns one reviewed Android/KMP project (default: detected)"
+            ),
+        ] = None,
+        dry_run: Annotated[bool, typer.Option("--dry-run", help="print the complete plan without writing")] = False,
+        force: Annotated[
+            bool,
+            typer.Option("--force", help="replace conflicting generated lint configuration after review"),
+        ] = False,
+        profile: Annotated[_ChoiceSetupProfile | None, typer.Option("--profile", hidden=True)] = None,
+        no_install: Annotated[
+            bool,
+            typer.Option("--no-install", help="write wiring without installing dependencies or hooks"),
+        ] = False,
+        commit_policy_only: Annotated[
+            bool,
+            typer.Option(
+                "--commit-policy-only",
+                help="adopt only commit-message and PR-history policy without changing language tooling",
+            ),
+        ] = False,
+        only: Annotated[
+            list[_ChoiceSetupOnly] | None, typer.Option("--config", help="select one config explicitly (repeatable)")
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="setup",
+                hooks=hooks.value if hooks is not None else None,
+                python_dest=python_dest if python_dest is not None else None,
+                typescript_dest=typescript_dest if typescript_dest is not None else None,
+                swift_dest=swift_dest if swift_dest is not None else None,
+                kotlin_dest=kotlin_dest if kotlin_dest is not None else None,
+                dry_run=dry_run,
+                force=force,
+                profile=profile.value if profile is not None else None,
+                no_install=no_install,
+                commit_policy_only=commit_policy_only,
+                only=[item.value for item in only] if only is not None else [],
+            )
+        )
+
+    @app.command("check", help="run the complete quality gate or check selected paths")
+    def command_check(
+        ctx: typer.Context,
+        *,
+        trust_repository_code: Annotated[
+            bool,
+            typer.Option(
+                "--trust-repository-code",
+                help="allow executable repository ESLint configuration (generated hooks and CI set this explicitly)",
+            ),
+        ] = False,
+        staged: Annotated[
+            bool,
+            typer.Option(
+                "--staged",
+                help="run custom rules on hook-supplied paths, or discover staged files when none are supplied",
+            ),
+        ] = False,
+        output_format: Annotated[_ChoiceCheckOutputFormat, typer.Option("--format")] = _ChoiceCheckOutputFormat.VALUE_0,
+        output: Annotated[Path | None, typer.Option("--output", help="write JSON or SARIF atomically to PATH")] = None,
+        max_annotations_per_level: Annotated[int, typer.Option("--max-annotations-per-level", min=0, max=10)] = 10,
+        files: Annotated[
+            list[str] | None, typer.Argument(help="selected paths; when omitted, check the complete repository")
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="check",
+                trust_repository_code=trust_repository_code,
+                staged=staged,
+                output_format=output_format.value,
+                output=output if output is not None else None,
+                max_annotations_per_level=max_annotations_per_level,
+                files=files if files is not None else [],
+            )
+        )
+
+    @app.command("validate-slack-automations", help="validate a versioned Slack automation catalog")
+    def command_validate_slack_automations(
+        ctx: typer.Context,
+        *,
+        slack_catalog: Annotated[Path, typer.Argument(metavar="PATH")],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="validate-slack-automations",
+                slack_catalog=slack_catalog,
+            )
+        )
+
+    @app.command("observe", help="report warning-stage findings with exit 0; invalid input or execution still exits 2")
+    def command_observe(
+        ctx: typer.Context,
+        *,
+        selected_rules: Annotated[
+            list[RuleSelector],
+            typer.Option("--rule", parser=_parse_rule_selector, help="canonical ENGINE:ID selector (repeatable)"),
+        ],
+        output_format: Annotated[
+            _ChoiceObserveOutputFormat, typer.Option("--format")
+        ] = _ChoiceObserveOutputFormat.VALUE_0,
+        output: Annotated[Path | None, typer.Option("--output")] = None,
+        trust_repository_code: Annotated[
+            bool,
+            typer.Option("--trust-repository-code", help="allow repository ESLint configuration to execute"),
+        ] = False,
+        max_annotations_per_level: Annotated[int, typer.Option("--max-annotations-per-level")] = 10,
+        files: Annotated[
+            list[str] | None, typer.Argument(help="selected paths; defaults to adopted verification paths")
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="observe",
+                selected_rules=selected_rules,
+                output_format=output_format.value,
+                output=output if output is not None else None,
+                trust_repository_code=trust_repository_code,
+                max_annotations_per_level=max_annotations_per_level,
+                files=files if files is not None else [],
+            )
+        )
+
+    @app.command("fix", help="apply safe formatting and lint fixes")
+    def command_fix(
+        ctx: typer.Context,
+        *,
+        staged: Annotated[bool, typer.Option("--staged", help="fix only files staged in Git")] = False,
+        files: Annotated[
+            list[str] | None, typer.Argument(help="selected paths; when omitted, fix the complete repository")
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="fix",
+                staged=staged,
+                files=files if files is not None else [],
+            )
+        )
+
+    @app.command("update", help="upgrade to the latest published coherent Standards bundle")
+    def command_update(
+        ctx: typer.Context,
+        *,
+        check: Annotated[
+            bool, typer.Option("--check", help="preview without writing; exit 1 when changes exist")
+        ] = False,
+        offline: Annotated[
+            bool,
+            typer.Option(
+                "--offline",
+                help="reconverge the executing bundle and skip every network-dependent install; does not resolve latest",
+            ),
+        ] = False,
+        target_version: Annotated[
+            str | None,
+            typer.Option(
+                "--to", help="resolve and apply exactly this immutable coherent bundle version", metavar="VERSION"
+            ),
+        ] = None,
+        no_install: Annotated[bool, typer.Option("--no-install", help="do not install dependencies or hooks")] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="update",
+                check=check,
+                offline=offline,
+                target_version=target_version if target_version is not None else None,
+                no_install=no_install,
+            )
+        )
+
+    @group_baseline.command("init", help="record the first diagnostic baseline")
+    def command_baseline_init(
+        ctx: typer.Context,
+        *,
+        output: Annotated[
+            Path | None, typer.Option("--output", help="baseline JSON (default: diagnostic-baseline.json)")
+        ] = None,
+        trust_repository_code: Annotated[
+            bool,
+            typer.Option("--trust-repository-code", help="run repository-local analyzers that execute project code"),
+        ] = False,
+        files: Annotated[
+            list[str] | None, typer.Argument(help="paths to analyze (default: the whole repository)")
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="baseline",
+                baseline_cmd="init",
+                output=output if output is not None else None,
+                trust_repository_code=trust_repository_code,
+                files=files if files is not None else [],
+            )
+        )
+
+    @group_baseline.command("update", help="re-record the diagnostic baseline after reviewed cleanup")
+    def command_baseline_update(
+        ctx: typer.Context,
+        *,
+        output: Annotated[
+            Path | None, typer.Option("--output", help="baseline JSON (default: diagnostic-baseline.json)")
+        ] = None,
+        trust_repository_code: Annotated[
+            bool,
+            typer.Option("--trust-repository-code", help="run repository-local analyzers that execute project code"),
+        ] = False,
+        baseline_rules: Annotated[
+            list[str] | None,
+            typer.Option(
                 "--rule",
-                action="append",
-                dest="baseline_rules",
-                default=[],
                 help="replace debt only for this newly promoted rule (repeatable; source:RULE is also accepted)",
+            ),
+        ] = None,
+        files: Annotated[
+            list[str] | None, typer.Argument(help="paths to analyze (default: the whole repository)")
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="baseline",
+                baseline_cmd="update",
+                output=output if output is not None else None,
+                trust_repository_code=trust_repository_code,
+                baseline_rules=baseline_rules if baseline_rules is not None else [],
+                files=files if files is not None else [],
             )
-        command.add_argument("files", nargs="*", help="paths to analyze (default: the whole repository)")
-
-    ratchet = sub.add_parser("ratchet", help="keep the Python suppression budget from growing")
-    ratchet_commands = ratchet.add_subparsers(dest="ratchet_cmd", required=True)
-    for name, help_text in (
-        ("init", "create the first suppression budget"),
-        ("check", "fail when suppression debt grows"),
-        ("status", "show current suppression debt and available reductions"),
-        ("update", "lock in reviewed suppression-budget changes"),
-    ):
-        command = ratchet_commands.add_parser(name, help=help_text)
-        command.add_argument("--baseline", type=Path, help="budget JSON (default: suppression-baseline.json)")
-        command.add_argument("--package", action="append", default=[], help="Python package root (repeatable)")
-        command.add_argument(
-            "--exclude-subtree",
-            action="append",
-            default=[],
-            help="generated or vendored subtree to persistently exclude (repeatable)",
         )
-        if name == "update":
-            command.add_argument(
-                "--allow-increase",
-                action="store_true",
-                help="permit a reviewed increase in suppression debt",
+
+    @group_ratchet.command("init", help="create the first suppression budget")
+    def command_ratchet_init(
+        ctx: typer.Context,
+        *,
+        baseline: Annotated[
+            Path | None, typer.Option("--baseline", help="budget JSON (default: suppression-baseline.json)")
+        ] = None,
+        package: Annotated[list[str] | None, typer.Option("--package", help="Python package root (repeatable)")] = None,
+        exclude_subtree: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--exclude-subtree", help="generated or vendored subtree to persistently exclude (repeatable)"
+            ),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="ratchet",
+                ratchet_cmd="init",
+                baseline=baseline if baseline is not None else None,
+                package=package if package is not None else [],
+                exclude_subtree=exclude_subtree if exclude_subtree is not None else [],
             )
+        )
 
-    exclude = sub.add_parser("exclude", help="inspect or change explicit path and rule exclusions")
-    exclude_commands = exclude.add_subparsers(dest="exclude_cmd", required=True)
-    exclude_commands.add_parser("list", help="list the complete denylist")
-    for action in ("add", "remove"):
-        mutation = exclude_commands.add_parser(action, help=f"{action} one exact denylist entry")
-        mutation.add_argument("exclude_kind", choices=("path", "rule"), metavar="{path,rule}")
-        mutation.add_argument("value", help="repository-relative glob or canonical engine:rule selector")
+    @group_ratchet.command("check", help="fail when suppression debt grows")
+    def command_ratchet_check(
+        ctx: typer.Context,
+        *,
+        baseline: Annotated[
+            Path | None, typer.Option("--baseline", help="budget JSON (default: suppression-baseline.json)")
+        ] = None,
+        package: Annotated[list[str] | None, typer.Option("--package", help="Python package root (repeatable)")] = None,
+        exclude_subtree: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--exclude-subtree", help="generated or vendored subtree to persistently exclude (repeatable)"
+            ),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="ratchet",
+                ratchet_cmd="check",
+                baseline=baseline if baseline is not None else None,
+                package=package if package is not None else [],
+                exclude_subtree=exclude_subtree if exclude_subtree is not None else [],
+            )
+        )
 
-    show = sub.add_parser("show", help="print read-only package and adoption information")
-    show_commands = show.add_subparsers(dest="show_cmd", required=True)
-    show_commands.add_parser("state", help="print detected adoption state as JSON")
-    show_commands.add_parser("configs", help="list bundled configurations")
-    config = show_commands.add_parser("config", help="print one bundled configuration path")
-    config.add_argument("name", choices=sorted(CONFIG_NAMES))
-    config.add_argument("--profile", choices=manifest.PROFILES, default="standard")
-    show_commands.add_parser("peers", help="show tested ESLint peer dependencies and install command")
-    show_commands.add_parser("rules", help="print the machine-readable custom-rule inventory")
-    ci = show_commands.add_parser("ci", help="print a complete versioned GitHub Actions standards workflow")
-    ci.add_argument("--output", type=Path, help="write a managed workflow inside the repository")
+    @group_ratchet.command("status", help="show current suppression debt and available reductions")
+    def command_ratchet_status(
+        ctx: typer.Context,
+        *,
+        baseline: Annotated[
+            Path | None, typer.Option("--baseline", help="budget JSON (default: suppression-baseline.json)")
+        ] = None,
+        package: Annotated[list[str] | None, typer.Option("--package", help="Python package root (repeatable)")] = None,
+        exclude_subtree: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--exclude-subtree", help="generated or vendored subtree to persistently exclude (repeatable)"
+            ),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="ratchet",
+                ratchet_cmd="status",
+                baseline=baseline if baseline is not None else None,
+                package=package if package is not None else [],
+                exclude_subtree=exclude_subtree if exclude_subtree is not None else [],
+            )
+        )
 
-    _add_repo_parsers(sub.add_parser("maintain", help="repository policy, hooks, rule ledgers, and releases"))
+    @group_ratchet.command("update", help="lock in reviewed suppression-budget changes")
+    def command_ratchet_update(
+        ctx: typer.Context,
+        *,
+        baseline: Annotated[
+            Path | None, typer.Option("--baseline", help="budget JSON (default: suppression-baseline.json)")
+        ] = None,
+        package: Annotated[list[str] | None, typer.Option("--package", help="Python package root (repeatable)")] = None,
+        exclude_subtree: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--exclude-subtree", help="generated or vendored subtree to persistently exclude (repeatable)"
+            ),
+        ] = None,
+        allow_increase: Annotated[
+            bool, typer.Option("--allow-increase", help="permit a reviewed increase in suppression debt")
+        ] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="ratchet",
+                ratchet_cmd="update",
+                baseline=baseline if baseline is not None else None,
+                package=package if package is not None else [],
+                exclude_subtree=exclude_subtree if exclude_subtree is not None else [],
+                allow_increase=allow_increase,
+            )
+        )
 
-    return parser
+    @group_exclude.command("list", help="list the complete denylist")
+    def command_exclude_list(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="exclude",
+                exclude_cmd="list",
+            )
+        )
+
+    @group_exclude.command("add", help="add one exact denylist entry")
+    def command_exclude_add(
+        ctx: typer.Context,
+        *,
+        exclude_kind: Annotated[_ChoiceExcludeAddExcludeKind, typer.Argument(metavar="{path,rule}")],
+        value: Annotated[str, typer.Argument(help="repository-relative glob or canonical engine:rule selector")],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="exclude",
+                exclude_cmd="add",
+                exclude_kind=exclude_kind.value,
+                value=value,
+            )
+        )
+
+    @group_exclude.command("remove", help="remove one exact denylist entry")
+    def command_exclude_remove(
+        ctx: typer.Context,
+        *,
+        exclude_kind: Annotated[_ChoiceExcludeRemoveExcludeKind, typer.Argument(metavar="{path,rule}")],
+        value: Annotated[str, typer.Argument(help="repository-relative glob or canonical engine:rule selector")],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="exclude",
+                exclude_cmd="remove",
+                exclude_kind=exclude_kind.value,
+                value=value,
+            )
+        )
+
+    @group_show.command("state", help="print detected adoption state as JSON")
+    def command_show_state(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="show",
+                show_cmd="state",
+            )
+        )
+
+    @group_show.command("configs", help="list bundled configurations")
+    def command_show_configs(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="show",
+                show_cmd="configs",
+            )
+        )
+
+    @group_show.command("config", help="print one bundled configuration path")
+    def command_show_config(
+        ctx: typer.Context,
+        *,
+        name: Annotated[_ChoiceShowConfigName, typer.Argument()],
+        profile: Annotated[
+            _ChoiceShowConfigProfile, typer.Option("--profile", hidden=True)
+        ] = _ChoiceShowConfigProfile.VALUE_0,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="show",
+                show_cmd="config",
+                name=name.value,
+                profile=profile.value,
+            )
+        )
+
+    @group_show.command("peers", help="show tested ESLint peer dependencies and install command")
+    def command_show_peers(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="show",
+                show_cmd="peers",
+            )
+        )
+
+    @group_show.command("rules", help="print the machine-readable custom-rule inventory")
+    def command_show_rules(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="show",
+                show_cmd="rules",
+            )
+        )
+
+    @group_show.command("ci", help="print a complete versioned GitHub Actions standards workflow")
+    def command_show_ci(
+        ctx: typer.Context,
+        *,
+        output: Annotated[
+            Path | None, typer.Option("--output", help="write a managed workflow inside the repository")
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="show",
+                show_cmd="ci",
+                output=output if output is not None else None,
+            )
+        )
+
+    @group_maintain.command("setup", help="install every standards development environment and repository hook")
+    def command_maintain_setup(
+        ctx: typer.Context,
+        *,
+        check: Annotated[
+            bool, typer.Option("--check", help="print the deterministic setup plan without executing it")
+        ] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="setup",
+                check=check,
+            )
+        )
+
+    @group_maintain_release.command("check-tag", help="require a release tag to match its package manifest")
+    def command_maintain_release_check_tag(
+        ctx: typer.Context,
+        *,
+        tag: Annotated[str, typer.Argument()],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="check-tag",
+                tag=tag,
+            )
+        )
+
+    @group_maintain_release.command("verify-tags", help="verify all manifest release tags on origin")
+    def command_maintain_release_verify_tags(
+        ctx: typer.Context,
+        *,
+        release_commit: Annotated[
+            str | None,
+            typer.Option(
+                "--commit",
+                help="also require existing tags to match this publishing commit or an unchanged package tree",
+            ),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="verify-tags",
+                release_commit=release_commit or "",
+            )
+        )
+
+    @group_maintain_release.command("create-tags", help="create and push manifest release tags")
+    def command_maintain_release_create_tags(
+        ctx: typer.Context,
+        *,
+        release_targets: Annotated[list[_ChoiceMaintainReleaseCreateTagsReleaseTargets], typer.Argument()],
+        release_commit: Annotated[str, typer.Option("--commit", help="exact commit that was published")],
+        attempts: Annotated[int, typer.Option("--attempts")] = 6,
+        delay_seconds: Annotated[float, typer.Option("--delay-seconds")] = 10.0,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="create-tags",
+                release_targets=[item.value for item in release_targets],
+                release_commit=release_commit,
+                attempts=attempts,
+                delay_seconds=timedelta(seconds=delay_seconds),
+            )
+        )
+
+    @group_maintain_release.command("changes", help="emit package version changes between Git revisions")
+    def command_maintain_release_changes(
+        ctx: typer.Context,
+        *,
+        before: Annotated[str, typer.Option("--before")],
+        after: Annotated[str, typer.Option("--after")],
+        github_output: Annotated[Path, typer.Option("--github-output")],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="changes",
+                before=before,
+                after=after,
+                github_output=github_output,
+            )
+        )
+
+    @group_maintain_release.command("causality", help="require every publishable package change to bump its version")
+    def command_maintain_release_causality(
+        ctx: typer.Context,
+        *,
+        before: Annotated[str, typer.Option("--before")],
+        after: Annotated[str, typer.Option("--after")],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="causality",
+                before=before,
+                after=after,
+            )
+        )
+
+    @group_maintain_release.command("lock-age", help="enforce npm lockfile minimum release age")
+    def command_maintain_release_lock_age(
+        ctx: typer.Context,
+        *,
+        lockfile: Annotated[Path, typer.Argument()],
+        minimum_age: Annotated[int | None, typer.Option("--minimum-days")] = None,
+        release_exclude: Annotated[list[str] | None, typer.Option("--exclude")] = None,
+        release_exclude_file: Annotated[
+            list[Path] | None,
+            typer.Option("--exclude-file", help="line-oriented exact package@version exceptions (repeatable)"),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="lock-age",
+                lockfile=lockfile,
+                minimum_age=timedelta(days=minimum_age) if minimum_age is not None else None,
+                release_exclude=release_exclude if release_exclude is not None else [],
+                release_exclude_file=release_exclude_file if release_exclude_file is not None else [],
+            )
+        )
+
+    @group_maintain_release.command("typescript", help="check, pack, or publish the TypeScript package")
+    def command_maintain_release_typescript(
+        ctx: typer.Context,
+        *,
+        release_mode: Annotated[_ChoiceMaintainReleaseTypescriptReleaseMode, typer.Argument()],
+        output: Annotated[Path | None, typer.Option("--output", help="artifact directory (required for pack)")] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="typescript",
+                release_mode=release_mode.value,
+                output=output if output is not None else None,
+            )
+        )
+
+    @group_maintain_release.command("verify-wheel", help="require non-empty license text in built Python wheels")
+    def command_maintain_release_verify_wheel(
+        ctx: typer.Context,
+        *,
+        wheels: Annotated[list[Path], typer.Argument()],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="verify-wheel",
+                wheels=wheels,
+            )
+        )
+
+    @group_maintain_release.command(
+        "verify-publications", help="wait for every exact sibling publication required by Standards"
+    )
+    def command_maintain_release_verify_publications(
+        ctx: typer.Context,
+        *,
+        attempts: Annotated[int, typer.Option("--attempts")] = 6,
+        delay_seconds: Annotated[float, typer.Option("--delay-seconds")] = 10.0,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="verify-publications",
+                attempts=attempts,
+                delay_seconds=timedelta(seconds=delay_seconds),
+            )
+        )
+
+    @group_maintain_release.command("publish", help="build and publish one package through its native client")
+    def command_maintain_release_publish(
+        ctx: typer.Context,
+        *,
+        release_target: Annotated[_ChoiceMaintainReleasePublishReleaseTarget, typer.Argument()],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="release",
+                release_cmd="publish",
+                release_target=release_target.value,
+            )
+        )
+
+    @group_maintain.command("check", help="run repository policy gates")
+    def command_maintain_check(
+        ctx: typer.Context,
+        *,
+        repo_only: Annotated[list[_ChoiceMaintainCheckRepoOnly] | None, typer.Option("--only")] = None,
+        commits: Annotated[
+            str | None, typer.Option("--commits", help="also inspect commit messages in this revision range")
+        ] = None,
+        policy_dest: Annotated[
+            str | None, typer.Option("--policy-root", help="trusted repository policy root (default: --root)")
+        ] = None,
+        private_refs_file: Annotated[
+            str | None,
+            typer.Option("--private-refs-file", help="private-reference TOML outside the scanned repository"),
+        ] = None,
+        quiet: Annotated[bool, typer.Option("--quiet", help="hide finding details")] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="check",
+                repo_only=[item.value for item in repo_only] if repo_only is not None else [],
+                commits=commits if commits is not None else None,
+                policy_dest=policy_dest if policy_dest is not None else None,
+                private_refs_file=private_refs_file if private_refs_file is not None else None,
+                quiet=quiet,
+            )
+        )
+
+    @group_maintain.command("sync-ledger", help="synchronize the rule compatibility ledger")
+    def command_maintain_sync_ledger(
+        ctx: typer.Context,
+        *,
+        check: Annotated[bool, typer.Option("--check", help="report drift without writing")] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="sync-ledger",
+                check=check,
+            )
+        )
+
+    @group_maintain_docs.command("check", help="")
+    def command_maintain_docs_check(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="docs",
+                docs_cmd="check",
+            )
+        )
+
+    @group_maintain_docs.command("sync", help="")
+    def command_maintain_docs_sync(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="docs",
+                docs_cmd="sync",
+            )
+        )
+
+    @group_maintain.command("comment-corpus", help="extract comments for calibration")
+    def command_maintain_comment_corpus(
+        ctx: typer.Context,
+        *,
+        roots: Annotated[list[Path], typer.Argument()],
+        include_text: Annotated[
+            Path | None,
+            typer.Option(
+                "--include-text",
+                help="write sensitive comment text to a new owner-readable file",
+                metavar="PRIVATE_JSONL",
+            ),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="comment-corpus",
+                roots=roots,
+                include_text=include_text if include_text is not None else None,
+            )
+        )
+
+    @group_maintain_hooks.command("install", help="install Lefthook")
+    def command_maintain_hooks_install(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="hooks",
+                hooks_cmd="install",
+            )
+        )
+
+    @group_maintain_rules.command("manifest", help="print the shipped rule inventory")
+    def command_maintain_rules_manifest(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="manifest",
+            )
+        )
+
+    @group_maintain_rules.command("check", help="verify the shipped rule inventory matches live registries")
+    def command_maintain_rules_check(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="check",
+            )
+        )
+
+    @group_maintain_rules.command("sync", help="update the shipped rule inventory from live registries")
+    def command_maintain_rules_sync(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="sync",
+            )
+        )
+
+    @group_maintain_rules.command("new", help="plan or create author-owned rule and test skeletons")
+    def command_maintain_rules_new(
+        ctx: typer.Context,
+        *,
+        selector: Annotated[
+            RuleSelector, typer.Argument(parser=_parse_rule_selector, help="canonical ENGINE:ID selector")
+        ],
+        rule_category: Annotated[_ChoiceMaintainRulesNewRuleCategory, typer.Option("--category")],
+        rule_summary: Annotated[str, typer.Option("--summary")],
+        apply_rule: Annotated[bool, typer.Option("--apply", help="create the planned files")] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="new",
+                selector=selector,
+                rule_category=rule_category.value,
+                rule_summary=rule_summary,
+                apply_rule=apply_rule,
+            )
+        )
+
+    @group_maintain_rules.command("stage-warning", help="prepare one registered rule for warning-first publication")
+    def command_maintain_rules_stage_warning(
+        ctx: typer.Context,
+        *,
+        selector: Annotated[
+            RuleSelector, typer.Argument(parser=_parse_rule_selector, help="canonical ENGINE:ID selector")
+        ],
+        check: Annotated[bool, typer.Option("--check", help="report required staging without writing")] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="stage-warning",
+                selector=selector,
+                check=check,
+            )
+        )
+
+    @group_maintain_rules.command(
+        "prepare", help="validate and prepare one registered rule for warning-first publication"
+    )
+    def command_maintain_rules_prepare(
+        ctx: typer.Context,
+        *,
+        selector: Annotated[
+            RuleSelector, typer.Argument(parser=_parse_rule_selector, help="canonical ENGINE:ID selector")
+        ],
+        check: Annotated[bool, typer.Option("--check", help="report required preparation without writing")] = False,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="prepare",
+                selector=selector,
+                check=check,
+            )
+        )
+
+    @group_maintain_rules.command("verify", help="validate one registered rule's authored files and public examples")
+    def command_maintain_rules_verify(
+        ctx: typer.Context,
+        *,
+        selector: Annotated[
+            RuleSelector, typer.Argument(parser=_parse_rule_selector, help="canonical ENGINE:ID selector")
+        ],
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="verify",
+                selector=selector,
+            )
+        )
+
+    @group_maintain_rules.command("changes", help="compare rule inventory and policy between two Git revisions")
+    def command_maintain_rules_changes(
+        ctx: typer.Context,
+        *,
+        before: Annotated[str, typer.Option("--before")],
+        after: Annotated[str, typer.Option("--after")],
+        output_format: Annotated[
+            _ChoiceMaintainRulesChangesOutputFormat, typer.Option("--format")
+        ] = _ChoiceMaintainRulesChangesOutputFormat.VALUE_1,
+        required_added_level: Annotated[
+            _ChoiceMaintainRulesChangesRequiredAddedLevel | None,
+            typer.Option("--require-added-level", help="fail when an added rule does not start at this level"),
+        ] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="changes",
+                before=before,
+                after=after,
+                output_format=output_format.value,
+                required_added_level=required_added_level.value if required_added_level is not None else None,
+            )
+        )
+
+    @group_maintain_rules.command(
+        "evaluate", help="calibrate selected custom rules; findings exit 1 and invalid input or execution exits 2"
+    )
+    def command_maintain_rules_evaluate(
+        ctx: typer.Context,
+        *,
+        selected_rules: Annotated[
+            list[RuleSelector],
+            typer.Option("--rule", parser=_parse_rule_selector, help="canonical ENGINE:ID selector (repeatable)"),
+        ],
+        corpus_manifest: Annotated[
+            Path | None,
+            typer.Option(
+                "--corpus-manifest", help="evaluate immutable repositories declared by a public corpus manifest"
+            ),
+        ] = None,
+        private_overlay: Annotated[
+            Path | None,
+            typer.Option(
+                "--private-overlay", help="merge an owner-readable private corpus overlay (requires --corpus-manifest)"
+            ),
+        ] = None,
+        evaluation_scope: Annotated[
+            _EvaluationScope,
+            typer.Option(
+                "--scope", help="corpus ignores baselines/rule exclusions; effective applies adopted repository policy"
+            ),
+        ] = _EvaluationScope.CORPUS,
+        output_format: Annotated[
+            _ChoiceMaintainRulesEvaluateOutputFormat, typer.Option("--format")
+        ] = _ChoiceMaintainRulesEvaluateOutputFormat.VALUE_0,
+        output: Annotated[Path | None, typer.Option("--output")] = None,
+        trust_repository_code: Annotated[
+            bool,
+            typer.Option("--trust-repository-code", help="allow executable repository ESLint configuration"),
+        ] = False,
+        files: Annotated[list[str] | None, typer.Argument()] = None,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="rules",
+                rules_cmd="evaluate",
+                selected_rules=selected_rules,
+                corpus_manifest=corpus_manifest if corpus_manifest is not None else None,
+                private_overlay=private_overlay if private_overlay is not None else None,
+                evaluation_scope=evaluation_scope,
+                output_format=output_format.value,
+                output=output if output is not None else None,
+                trust_repository_code=trust_repository_code,
+                files=files if files is not None else [],
+            )
+        )
+
+    @group_maintain_catalog.command("check", help="verify the public catalog matches every live rule")
+    def command_maintain_catalog_check(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="catalog",
+                catalog_cmd="check",
+            )
+        )
+
+    @group_maintain_catalog.command("sync", help="update the public catalog from source-owned rule metadata")
+    def command_maintain_catalog_sync(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="catalog",
+                catalog_cmd="sync",
+            )
+        )
+
+    @group_maintain_cli_reference.command("check", help="verify the shipped reference matches the parser graph")
+    def command_maintain_cli_reference_check(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="cli-reference",
+                reference_cmd="check",
+            )
+        )
+
+    @group_maintain_cli_reference.command("sync", help="update the shipped reference from the parser graph")
+    def command_maintain_cli_reference_sync(
+        ctx: typer.Context,
+    ) -> int:
+        return handler(
+            _Args(
+                dest=_command_root(ctx),
+                cmd="maintain",
+                repo_cmd="cli-reference",
+                reference_cmd="sync",
+            )
+        )
+
+    return app
+
+
+def _command_root(ctx: typer.Context) -> str:
+    value = ctx.find_object(str)
+    if not isinstance(value, str):
+        msg = "CLI root context is missing"
+        raise TypeError(msg)
+    return value
 
 
 def _cmd_repo(args: _Args) -> int:
@@ -2675,14 +3700,11 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             return 0
         if args.release_cmd == "typescript":
             mode = args.release_mode
-            if mode == "check":
-                release_mode = "check"
-            elif mode == "pack":
-                release_mode = "pack"
-            elif mode == "publish":
-                release_mode = "publish"
-            else:
-                return 2
+            match mode:
+                case "check" | "pack" | "publish":
+                    release_mode = mode
+                case _:
+                    return 2
             artifact = release.run_typescript_release(
                 release_mode,
                 root / "packages" / "typescript",
@@ -2711,22 +3733,11 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             )
         if args.release_cmd == "publish":
             target = args.release_target
-            if target == "typescript":
-                publish_target = "typescript"
-            elif target == "bootstrap":
-                publish_target = "bootstrap"
-            elif target == "python":
-                publish_target = "python"
-            elif target == "sql":
-                publish_target = "sql"
-            elif target == "iac":
-                publish_target = "iac"
-            elif target == "standards":
-                publish_target = "standards"
-            elif target == "tsconfig":
-                publish_target = "tsconfig"
-            else:
-                return 2
+            match target:
+                case "typescript" | "bootstrap" | "python" | "sql" | "iac" | "standards" | "tsconfig":
+                    publish_target = target
+                case _:
+                    return 2
             release.publish_target(root, publish_target)
             return 0
         return 2
@@ -2796,7 +3807,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
             except (OSError, TypeError, ValueError, ProcessFailureError) as exc:
                 print(f"error: cannot compare rule revisions: {exc}", file=sys.stderr)
                 return 2
-            raw_required_level: object = args.required_added_level  # pyright: ignore[reportAny] -- argparse Namespace is untyped.
+            raw_required_level = args.required_added_level
             required_added_level: rule_changes.RuleLevel | None = "warning" if raw_required_level == "warning" else None
             if required_added_level is not None:
                 invalid = rule_changes.added_rules_at_other_levels(
@@ -2822,7 +3833,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
         if args.rules_cmd == "new":
             from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
 
-            if args.selector is None:  # pragma: no cover - argparse requires the positional value
+            if args.selector is None:  # pragma: no cover - Typer requires the positional value
                 msg = "new requires a rule selector"
                 raise TypeError(msg)
             try:
@@ -2839,7 +3850,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
         if args.rules_cmd == "verify":
             from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
 
-            if args.selector is None:  # pragma: no cover - argparse requires the positional value
+            if args.selector is None:  # pragma: no cover - Typer requires the positional value
                 msg = "verify requires a rule selector"
                 raise TypeError(msg)
             try:
@@ -2852,7 +3863,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
         if args.rules_cmd in {"stage-warning", "prepare"}:
             from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level]
 
-            if args.selector is None:  # pragma: no cover - argparse requires the positional value
+            if args.selector is None:  # pragma: no cover - Typer requires the positional value
                 msg = f"{args.rules_cmd} requires a rule selector"
                 raise TypeError(msg)
             if args.rules_cmd == "prepare":
@@ -2889,9 +3900,7 @@ def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy 
     if args.repo_cmd == "cli-reference":
         from sarj_standards.libs.repository import cli_reference_artifact  # ruff: ignore[import-outside-top-level]
 
-        result = cli_reference_artifact.sync(
-            _resolve_dest(args.dest), build_parser(), check=args.reference_cmd == "check"
-        )
+        result = cli_reference_artifact.sync(_resolve_dest(args.dest), build_app(), check=args.reference_cmd == "check")
         print(result.message)
         return result.status
     return 2
@@ -2905,208 +3914,6 @@ def _rule_author_next_steps(selector: RuleSelector) -> str:
         "after committing the result:\n"
         "  code-standards --root . maintain rules changes --before origin/main --after HEAD"
     )
-
-
-def _add_repo_parsers(repo: argparse.ArgumentParser) -> None:  # ruff: ignore[too-many-locals] -- argparse requires one variable per subparser.
-    commands = repo.add_subparsers(dest="repo_cmd", required=True)
-    setup = commands.add_parser("setup", help="install every standards development environment and repository hook")
-    setup.add_argument("--check", action="store_true", help="print the deterministic setup plan without executing it")
-    release = commands.add_parser("release", help="validate and build publishable release artifacts")
-    release_commands = release.add_subparsers(dest="release_cmd", required=True)
-    tag = release_commands.add_parser("check-tag", help="require a release tag to match its package manifest")
-    tag.add_argument("tag")
-    verify_tags = release_commands.add_parser("verify-tags", help="verify all manifest release tags on origin")
-    verify_tags.add_argument(
-        "--commit",
-        dest="release_commit",
-        help="also require existing tags to match this publishing commit or an unchanged package tree",
-    )
-    create_tags = release_commands.add_parser("create-tags", help="create and push manifest release tags")
-    create_tags.add_argument(
-        "release_targets",
-        nargs="+",
-        choices=("typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig"),
-    )
-    create_tags.add_argument("--commit", dest="release_commit", required=True, help="exact commit that was published")
-    create_tags.add_argument("--attempts", type=int, default=6)
-    create_tags.add_argument(
-        "--delay-seconds",
-        type=lambda value: timedelta(seconds=float(value)),
-        default=timedelta(seconds=10),
-    )
-    changes = release_commands.add_parser("changes", help="emit package version changes between Git revisions")
-    changes.add_argument("--before", required=True)
-    changes.add_argument("--after", required=True)
-    changes.add_argument("--github-output", type=Path, required=True)
-    causality = release_commands.add_parser(
-        "causality",
-        help="require every publishable package change to bump its version",
-    )
-    causality.add_argument("--before", required=True)
-    causality.add_argument("--after", required=True)
-    age = release_commands.add_parser("lock-age", help="enforce npm lockfile minimum release age")
-    age.add_argument("lockfile", type=Path)
-    age.add_argument("--minimum-days", dest="minimum_age", type=lambda value: timedelta(days=int(value)))
-    age.add_argument("--exclude", dest="release_exclude", action="append", default=[])
-    age.add_argument(
-        "--exclude-file",
-        dest="release_exclude_file",
-        action="append",
-        type=Path,
-        default=[],
-        help="line-oriented exact package@version exceptions (repeatable)",
-    )
-    typescript = release_commands.add_parser("typescript", help="check, pack, or publish the TypeScript package")
-    typescript.add_argument("release_mode", choices=("check", "pack", "publish"))
-    typescript.add_argument("--output", type=Path, help="artifact directory (required for pack)")
-    verify_wheel = release_commands.add_parser(
-        "verify-wheel", help="require non-empty license text in built Python wheels"
-    )
-    verify_wheel.add_argument("wheels", nargs="+", type=Path)
-    publications = release_commands.add_parser(
-        "verify-publications", help="wait for every exact sibling publication required by Standards"
-    )
-    publications.add_argument("--attempts", type=int, default=6)
-    publications.add_argument(
-        "--delay-seconds",
-        type=lambda value: timedelta(seconds=float(value)),
-        default=timedelta(seconds=10),
-    )
-    publish = release_commands.add_parser("publish", help="build and publish one package through its native client")
-    publish.add_argument(
-        "release_target",
-        choices=("typescript", "bootstrap", "python", "sql", "iac", "standards", "tsconfig"),
-    )
-    check = commands.add_parser("check", help="run repository policy gates")
-    check.add_argument(
-        "--only",
-        dest="repo_only",
-        action="append",
-        choices=("ci-history", "file-conventions", "private-refs", "versions"),
-        default=[],
-    )
-    check.add_argument("--commits", help="also inspect commit messages in this revision range")
-    check.add_argument(
-        "--policy-root",
-        dest="policy_dest",
-        help="trusted repository policy root (default: --root)",
-    )
-    check.add_argument("--private-refs-file", help="private-reference TOML outside the scanned repository")
-    check.add_argument("--quiet", action="store_true", help="hide finding details")
-    ledger = commands.add_parser("sync-ledger", help="synchronize the rule compatibility ledger")
-    ledger.add_argument("--check", action="store_true", help="report drift without writing")
-    docs = commands.add_parser("docs", help="check or synchronize source-derived documentation")
-    docs_commands = docs.add_subparsers(dest="docs_cmd", required=True)
-    for action in ("check", "sync"):
-        docs_commands.add_parser(action)
-    corpus = commands.add_parser("comment-corpus", help="extract comments for calibration")
-    corpus.add_argument("roots", nargs="+", type=Path)
-    corpus.add_argument(
-        "--include-text",
-        type=Path,
-        metavar="PRIVATE_JSONL",
-        help="write sensitive comment text to a new owner-readable file",
-    )
-    hook_commands = commands.add_parser("hooks", help="manage the pinned repository hooks").add_subparsers(
-        dest="hooks_cmd", required=True
-    )
-    hook_commands.add_parser("install", help="install Lefthook")
-    rule_commands = commands.add_parser("rules", help="inspect live custom rules").add_subparsers(
-        dest="rules_cmd", required=True
-    )
-    rule_commands.add_parser("manifest", help="print the shipped rule inventory")
-    rule_commands.add_parser("check", help="verify the shipped rule inventory matches live registries")
-    rule_commands.add_parser("sync", help="update the shipped rule inventory from live registries")
-    rule_new = rule_commands.add_parser("new", help="plan or create author-owned rule and test skeletons")
-    rule_new.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
-    rule_new.add_argument(
-        "--category",
-        dest="rule_category",
-        choices=("architecture", "correctness", "maintainability", "performance", "security", "style", "testing"),
-        required=True,
-    )
-    rule_new.add_argument("--summary", dest="rule_summary", required=True)
-    rule_new.add_argument("--apply", dest="apply_rule", action="store_true", help="create the planned files")
-    stage_warning = rule_commands.add_parser(
-        "stage-warning", help="prepare one registered rule for warning-first publication"
-    )
-    stage_warning.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
-    stage_warning.add_argument("--check", action="store_true", help="report required staging without writing")
-    prepare_rule = rule_commands.add_parser(
-        "prepare", help="validate and prepare one registered rule for warning-first publication"
-    )
-    prepare_rule.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
-    prepare_rule.add_argument("--check", action="store_true", help="report required preparation without writing")
-    verify_rule = rule_commands.add_parser(
-        "verify", help="validate one registered rule's authored files and public examples"
-    )
-    verify_rule.add_argument("selector", type=_parse_rule_selector, help="canonical ENGINE:ID selector")
-    rule_changes = rule_commands.add_parser(
-        "changes", help="compare rule inventory and policy between two Git revisions"
-    )
-    rule_changes.add_argument("--before", required=True)
-    rule_changes.add_argument("--after", required=True)
-    rule_changes.add_argument("--format", dest="output_format", choices=("json", "text"), default="text")
-    rule_changes.add_argument(
-        "--require-added-level",
-        dest="required_added_level",
-        choices=("warning",),
-        help="fail when an added rule does not start at this level",
-    )
-    rule_evaluate = rule_commands.add_parser(
-        "evaluate",
-        help="calibrate selected custom rules; findings exit 1 and invalid input or execution exits 2",
-        description="Calibrate selected custom rules; findings exit 1 and invalid input or execution exits 2.",
-    )
-    rule_evaluate.add_argument(
-        "--rule",
-        dest="selected_rules",
-        action="append",
-        type=_parse_rule_selector,
-        required=True,
-        help="canonical ENGINE:ID selector (repeatable)",
-    )
-    rule_evaluate.add_argument(
-        "--corpus-manifest",
-        type=Path,
-        help="evaluate immutable repositories declared by a public corpus manifest",
-    )
-    rule_evaluate.add_argument(
-        "--private-overlay",
-        type=Path,
-        help="merge an owner-readable private corpus overlay (requires --corpus-manifest)",
-    )
-    rule_evaluate.add_argument(
-        "--scope",
-        dest="evaluation_scope",
-        type=_EvaluationScope,
-        choices=tuple(_EvaluationScope),
-        default=_EvaluationScope.CORPUS,
-        help="corpus ignores baselines/rule exclusions; effective applies adopted repository policy",
-    )
-    rule_evaluate.add_argument(
-        "--format",
-        dest="output_format",
-        choices=("json", "text"),
-        default="json",
-    )
-    rule_evaluate.add_argument("--output", type=Path)
-    rule_evaluate.add_argument(
-        "--trust-repository-code",
-        action="store_true",
-        help="allow executable repository ESLint configuration",
-    )
-    rule_evaluate.add_argument("files", nargs="*")
-    catalog_commands = commands.add_parser(
-        "catalog", help="maintain the source-derived public rule catalog"
-    ).add_subparsers(dest="catalog_cmd", required=True)
-    catalog_commands.add_parser("check", help="verify the public catalog matches every live rule")
-    catalog_commands.add_parser("sync", help="update the public catalog from source-owned rule metadata")
-    reference_commands = commands.add_parser(
-        "cli-reference", help="maintain the source-derived CLI reference"
-    ).add_subparsers(dest="reference_cmd", required=True)
-    reference_commands.add_parser("check", help="verify the shipped reference matches the parser graph")
-    reference_commands.add_parser("sync", help="update the shipped reference from the parser graph")
 
 
 if __name__ == "__main__":

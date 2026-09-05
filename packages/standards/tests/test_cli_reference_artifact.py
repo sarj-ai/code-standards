@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TypeGuard
 
-from sarj_standards.cli.main import build_parser
+from sarj_standards.cli.main import build_app
 from sarj_standards.libs.repository import cli_reference_artifact
 
 
@@ -15,9 +15,18 @@ def _is_object_list(value: object) -> TypeGuard[list[dict[str, object]]]:
 
 
 def test_shipped_reference_matches_parser_graph() -> None:
-    result = cli_reference_artifact.sync(ROOT, build_parser(), check=True)
+    result = cli_reference_artifact.sync(ROOT, build_app(), check=True)
 
     assert result.status == 0, result.message
+
+
+def test_reference_omits_legacy_profile_options() -> None:
+    reference = cli_reference_artifact.build(build_app())
+    setup = next(command for command in reference["commands"] if command["name"] == "setup")
+    show = next(command for command in reference["commands"] if command["name"] == "show")
+    config = next(command for command in show["commands"] if command["name"] == "config")
+    for command in (setup, config):
+        assert all("--profile" not in option["names"] for option in command["options"])
 
 
 def test_reference_contains_nested_commands_and_arguments() -> None:

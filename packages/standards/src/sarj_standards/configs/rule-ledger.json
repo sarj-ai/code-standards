@@ -82,6 +82,7 @@
       "prefer-library-fake",
       "prefer-match-assert-never",
       "prefer-match-type-dispatch",
+      "prefer-match-value-dispatch",
       "prefer-module-level-constant",
       "prefer-namedtuple-over-tuple-return",
       "prefer-nominal-id-types",
@@ -346,7 +347,8 @@
       "SARJ435",
       "SARJ436",
       "SARJ437",
-      "SARJ438"
+      "SARJ438",
+      "SARJ439"
     ],
     "sql": [
       "SARJ101",

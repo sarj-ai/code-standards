@@ -1492,12 +1492,13 @@ def _merge_cluster(
     entry = clusters.get(key, (*pos, set[str](), set[str](), set[str](), set[str](), False))
     line, col, seen, eq_seen, ne_seen, in_seen, was_closed = entry
     line, col = min((line, col), pos)
-    if operator == _EQ:
-        eq_seen |= set(literals)
-    elif operator == _NE:
-        ne_seen |= set(literals)
-    else:
-        in_seen |= set(literals)
+    match operator:
+        case "==":
+            eq_seen |= set(literals)
+        case "!=":
+            ne_seen |= set(literals)
+        case _:
+            in_seen |= set(literals)
     clusters[key] = (line, col, seen | set(literals), eq_seen, ne_seen, in_seen, was_closed or closed)
 
 

@@ -374,6 +374,7 @@ class ToolReport:
     duration_ms: int | None = None
     file_count: int | None = None
     cache_status: CacheStatus = CacheStatus.DISABLED
+    baselined_count: int = 0
 
     def __post_init__(self) -> None:
         _require_text(self.name, "tool name")
@@ -400,6 +401,10 @@ class ToolReport:
                     msg = f"{label} cannot be negative"
                     raise ValueError(msg)
         _require_instance(self.cache_status, CacheStatus, "cache status")
+        _require_int(self.baselined_count, "baselined diagnostic count")
+        if self.baselined_count < 0:
+            msg = "baselined diagnostic count cannot be negative"
+            raise ValueError(msg)
 
     def as_dict(self) -> dict[str, object]:
         result: dict[str, object] = {
@@ -415,6 +420,8 @@ class ToolReport:
             result["version"] = self.version
         if self.file_count is not None:
             result["fileCount"] = self.file_count
+        if self.baselined_count:
+            result["baselinedDiagnosticCount"] = self.baselined_count
         return result
 
 

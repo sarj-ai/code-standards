@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-import argparse
+from dataclasses import dataclass
 from pathlib import Path
 import sys
+from typing import Annotated
+
+import typer
 
 from sarj_sql_lint import __version__
 from sarj_sql_lint.rule_base import Diagnostic, clear_path_caches, is_suppressed
@@ -83,45 +86,69 @@ def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     return _check(rule_ids, paths)
 
 
-class _Args(argparse.Namespace):
-    cmd: str | None
-    rule: list[str]
-    files: list[Path]
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.cmd = None
-        self.rule = []
-        self.files = []
+@dataclass
+class _Result:
+    code: int = 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="sarj-sql-lint", description="Custom SQL lint rules.")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+app = typer.Typer(
+    help="Custom SQL lint rules.",
+    add_completion=False,
+    no_args_is_help=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
 
-    check_p = sub.add_parser("check", help="Run rules over .sql files.")
-    check_p.add_argument("--rule", action="append", required=True, help="Rule ID (repeat for multiple).")
-    check_p.add_argument("files", nargs="+", type=Path)
 
-    sub.add_parser("list-rules", help="List available rule IDs.")
+def _show_version(*, value: bool) -> None:
+    if value:
+        sys.stdout.write(f"sarj-sql-lint {__version__}\n")
+        raise typer.Exit
 
-    args = parser.parse_args(argv, namespace=_Args())
 
-    if args.cmd == "list-rules":
-        for rid, cls in sorted(REGISTRY.items()):
-            inst = cls()
-            sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
-        return 0
+@app.callback()
+def _root(
+    *,
+    _version: Annotated[bool, typer.Option("--version", callback=_show_version, is_eager=True)] = False,
+) -> None:
+    pass
 
+
+@app.command("list-rules", help="List available rule IDs.")
+def _list_rules() -> None:
+    for rid, cls in sorted(REGISTRY.items()):
+        inst = cls()
+        sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
+
+
+@app.command("check", help="Run rules over .sql files.")
+def _check_command(
+    context: typer.Context,
+    files: Annotated[list[Path], typer.Argument(parser=Path)],
+    rule: Annotated[list[str], typer.Option("--rule", help="Rule ID (repeat for multiple).")],
+) -> None:
+    context.ensure_object(_Result).code = _run_check(rule, files)
+
+
+def _run_check(rule: list[str], files: list[Path]) -> int:
     try:
-        diags = analyze(args.rule, args.files)
+        diags = analyze(rule, files)
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
     for d in diags:
         sys.stdout.write(d.format() + "\n")
     return 1 if diags else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    result = _Result()
+    try:
+        app(args=argv, prog_name="sarj-sql-lint", obj=result)
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
+    return result.code
 
 
 if __name__ == "__main__":

@@ -62,6 +62,59 @@ def test_shell_files_route_to_shellcheck_and_text(tmp_path: Path) -> None:
     assert grouped.text == [str(zsh), str(shell)]
 
 
+@pytest.mark.parametrize("filename", ["service.py", "service.pyi"], ids=("implementation", "stub"))
+def test_python_sources_route_from_explicit_directory_and_staged_inputs(tmp_path: Path, filename: str) -> None:
+    source = tmp_path / filename
+    source.write_text("def parse(value: str) -> int: ...\n", encoding="utf-8")
+
+    assert runner.group_paths([str(source)]).python == [str(source)]
+    assert runner.group_paths([str(tmp_path)]).python == [str(source)]
+    assert runner.accepts_hook_path(source, root=tmp_path)
+
+
+@pytest.mark.parametrize("directory", ["vendor", ".venv", ".agents/skills/tool"], ids=("vendor", "venv", "skill"))
+def test_stub_discovery_and_staged_routing_preserve_excluded_trees(tmp_path: Path, directory: str) -> None:
+    source = tmp_path / directory / "service.pyi"
+    source.parent.mkdir(parents=True)
+    source.write_text("def parse(value: str) -> int: ...\n", encoding="utf-8")
+
+    assert not runner.group_paths([str(tmp_path)]).python
+    assert not runner.accepts_hook_path(source, root=tmp_path)
+
+
+def test_generated_stub_is_not_explicitly_routed_or_staged(tmp_path: Path) -> None:
+    source = tmp_path / "service.pyi"
+    source.write_text("# AUTO-GENERATED; DO NOT EDIT\ndef parse(value: str) -> int: ...\n", encoding="utf-8")
+
+    assert not runner.group_paths([str(source)]).python
+    assert not runner.accepts_hook_path(source, root=tmp_path)
+
+
+def test_stub_selects_native_python_checker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = tmp_path / "service.pyi"
+    source.write_text("def parse(value: str) -> int: ...\n", encoding="utf-8")
+    seen: list[tuple[str, list[str]]] = []
+
+    def load_tool(package: str) -> _LoadedTool:
+        def checker(argv: list[str]) -> int:
+            seen.append((package, argv))
+            return 1
+
+        return _LoadedTool(checker, {"example-rule": object})
+
+    monkeypatch.setattr(runner, "_load_tool", load_tool)
+
+    assert runner.run([str(source)]) == 1
+    assert seen == [("sarj_python_lint", ["check", "--rule", "example-rule", "--", str(source)])]
+
+
+def test_valid_stub_keeps_native_rule_stub_exceptions(tmp_path: Path) -> None:
+    source = tmp_path / "service.pyi"
+    source.write_text('__all__ = ["parse"]\n\ndef parse(value: str) -> int: ...\n', encoding="utf-8")
+
+    assert runner.run([str(source)]) == 0
+
+
 def test_directory_walk_prunes_ignored_directories(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -524,22 +577,23 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
         def checker(_argv: list[str]) -> int:
             return 0
 
-        if package == "sarj_python_lint":
-            registry = {
-                "no-comment-cruft": object,
-                "no-restated-comment": object,
-                "no-secret-in-log": object,
-            }
-        elif package == "sarj_sql_lint":
-            registry = {"no-comment-cruft": object, "idempotent-ddl": object}
-        elif package == "sarj_iac_lint":
-            registry = {
-                "no-comment-cruft": object,
-                "no-restated-comment": object,
-                "require-deletion-protection": object,
-            }
-        else:
-            registry = {"idempotent-ddl": object}
+        match package:
+            case "sarj_python_lint":
+                registry = {
+                    "no-comment-cruft": object,
+                    "no-restated-comment": object,
+                    "no-secret-in-log": object,
+                }
+            case "sarj_sql_lint":
+                registry = {"no-comment-cruft": object, "idempotent-ddl": object}
+            case "sarj_iac_lint":
+                registry = {
+                    "no-comment-cruft": object,
+                    "no-restated-comment": object,
+                    "require-deletion-protection": object,
+                }
+            case _:
+                registry = {"idempotent-ddl": object}
         return _LoadedTool(checker, registry)
 
     def capture_rules(

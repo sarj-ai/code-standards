@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 _RUFF_APPLICATION: Final = CONFIGS_DIR / "ruff.application.toml"
 _ESLINT_APPLICATION: Final = CONFIGS_DIR / "eslint.application.mjs"
+_RUFF_ALIAS: Final = '# Compatibility alias; all repositories use the same policy.\nextend = "ruff.strict.toml"\n'
+_ESLINT_ALIAS: Final = '// Compatibility alias; all repositories use the same policy.\nexport { createConfig, default } from "./eslint.strict.mjs";\n'
 _RUFF_MARKER: Final = "[lint.per-file-ignores]"
 _ESLINT_MARKER: Final = "          paths: [\n"
 _ESLINT_PATTERNS_MARKER: Final = '          patterns: ["*/index", "*/index.ts"],\n'
@@ -29,12 +31,13 @@ _ADVISORY_END: Final = "] as const;"
 _RULE_LEVEL = re.compile(r'(?m)^(?P<prefix>\s+"@sarj/(?P<rule>[a-z0-9-]+)":\s*)(?P<array>\[?)"(?:warn|error)"')
 
 
-def render_ruff_application() -> str:
+def render_ruff_strict() -> str:
     standard = (CONFIGS_DIR / "ruff.strict.toml").read_text(encoding="utf-8")
+    standard = _without_generated_policy(standard)
     entries = "".join(
         f"{json.dumps(name)}.msg = {json.dumps(message)}\n" for name, message in sorted(_python_bans().items())
     )
-    addition = f"# Generated application-profile library policy. Edit the catalog, not this file.\n{entries}\n"
+    addition = f"# BEGIN GENERATED LIBRARY POLICY\n{entries}# END GENERATED LIBRARY POLICY\n\n"
     if _RUFF_MARKER not in standard:
         msg = f"ruff.strict.toml is missing generation marker {_RUFF_MARKER!r}"
         raise ValueError(msg)
@@ -45,14 +48,13 @@ def _python_bans() -> Mapping[str, str]:
     return library_policy.python_banned_api()
 
 
-def render_eslint_application(standard: str | None = None) -> str:
+def render_eslint_strict(standard: str | None = None) -> str:
     if standard is None:
         standard = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
+    standard = _without_generated_policy(standard)
     bans = _typescript_bans()
     entries = "".join(f"            {json.dumps(dict(entry), sort_keys=True)},\n" for entry in bans)
-    addition = (
-        f"            // Generated application-profile library policy. Edit the catalog, not this file.\n{entries}"
-    )
+    addition = f"            // BEGIN GENERATED LIBRARY POLICY\n{entries}            // END GENERATED LIBRARY POLICY\n"
     if _ESLINT_MARKER not in standard:
         msg = "eslint.strict.mjs is missing the no-restricted-imports generation marker"
         raise ValueError(msg)
@@ -60,14 +62,16 @@ def render_eslint_application(standard: str | None = None) -> str:
     patterns = [
         {
             "group": [f"{name}/*"],
-            "message": entry.get("message", "Use the application profile's preferred library."),
+            "message": entry.get("message", "Use the preferred library."),
         }
         for entry in bans
         if isinstance(name := entry.get("name"), str)
     ]
     pattern_lines = "".join(f"            {json.dumps(pattern, sort_keys=True)},\n" for pattern in patterns)
     pattern_block = (
-        f'          patterns: [\n            {{"group": ["*/index", "*/index.ts"]}},\n{pattern_lines}          ],\n'
+        f'          patterns: [{{"group": ["*/index", "*/index.ts"]}},\n'
+        f"            // BEGIN GENERATED LIBRARY POLICY\n{pattern_lines}            // END GENERATED LIBRARY POLICY\n"
+        "          ],\n"
     )
     if _ESLINT_PATTERNS_MARKER not in with_paths:
         msg = "eslint.strict.mjs is missing the no-restricted-imports patterns generation marker"
@@ -76,6 +80,7 @@ def render_eslint_application(standard: str | None = None) -> str:
     runtime_policy = json.dumps(_typescript_runtime_bans(), indent=2, sort_keys=True)
     indented_runtime_policy = runtime_policy.replace("\n", "\n          ")
     application_block = (
+        "  // BEGIN GENERATED LIBRARY POLICY\n"
         "\n  {\n"
         '    files: ["**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}"],\n'
         "    rules: {\n"
@@ -104,15 +109,29 @@ def render_eslint_application(standard: str | None = None) -> str:
         '      "@sarj/prefer-shadcn-primitives": "off",\n'
         "    },\n"
         "  },\n"
+        "  // END GENERATED LIBRARY POLICY\n"
     )
     if _ESLINT_CONFIG_END not in with_static_policy:
-        msg = "eslint.strict.mjs is missing its application-rule generation marker"
+        msg = "eslint.strict.mjs is missing its library-rule generation marker"
         raise ValueError(msg)
     return with_static_policy.replace(
         _ESLINT_CONFIG_END,
         application_block + _ESLINT_CONFIG_END,
         1,
     )
+
+
+def _without_generated_policy(source: str) -> str:
+    source = re.sub(
+        r"(?m)^[ \t]*(?:#|//) BEGIN GENERATED LIBRARY POLICY\n.*?^[ \t]*(?:#|//) END GENERATED LIBRARY POLICY\n",
+        "",
+        source,
+        flags=re.DOTALL,
+    )
+    source = source.replace("\n\n[lint.per-file-ignores]", "\n[lint.per-file-ignores]")
+    for prefix in ('"*/index", "*/index.ts"', '{"group": ["*/index", "*/index.ts"]}'):
+        source = source.replace(f"          patterns: [{prefix},\n          ],\n", _ESLINT_PATTERNS_MARKER)
+    return source
 
 
 def _typescript_bans() -> Sequence[Mapping[str, object]]:
@@ -139,10 +158,21 @@ def _typescript_runtime_bans() -> list[dict[str, str]]:
 
 
 def generated_configs() -> Mapping[Path, str]:
-    return {
-        _RUFF_APPLICATION: render_ruff_application(),
-        _ESLINT_APPLICATION: render_eslint_application(),
+    ruff = render_ruff_strict()
+    configs = {
+        CONFIGS_DIR / "ruff.strict.toml": ruff,
+        CONFIGS_DIR / "eslint.strict.mjs": render_eslint_strict(),
+        _RUFF_APPLICATION: _RUFF_ALIAS,
+        _ESLINT_APPLICATION: _ESLINT_ALIAS,
     }
+    repository = CONFIGS_DIR.parents[4]
+    if (repository / _TYPESCRIPT_PRESET).is_file():
+        configs[repository / ".ruff-strict.toml"] = ruff
+        configs[repository / "packages/typescript/src/library-policy.ts"] = (
+            "// Generated from the Standards library catalog.\n"
+            f"export const LIBRARY_POLICY = {json.dumps(_typescript_runtime_bans(), indent=2, sort_keys=True)} as const;\n"
+        )
+    return configs
 
 
 def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
@@ -157,11 +187,10 @@ def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
     strict = strict_path.read_text(encoding="utf-8")
     rendered_preset = _render_typescript_preset(preset, warnings)
     rendered_strict = _render_rule_levels(strict, warnings, label="eslint.strict.mjs")
-    application = render_eslint_application(rendered_strict)
     return {
         preset_path: rendered_preset,
         strict_path: rendered_strict,
-        repository / _ESLINT_APPLICATION_REPO: application,
+        repository / _ESLINT_APPLICATION_REPO: _ESLINT_ALIAS,
     }
 
 

@@ -45,6 +45,14 @@ def to_sarif(report: AnalysisReport) -> str:
                                 "properties": {"disposition": item.disposition.value},
                             }
                             for item in report.coverage
+                        ]
+                        + [
+                            {
+                                "descriptor": {"id": "baseline-notice"},
+                                "message": {"text": line},
+                                "level": "note",
+                            }
+                            for line in _baseline_lines(report)
                         ],
                     }
                 ],
@@ -58,6 +66,7 @@ def to_text(report: AnalysisReport) -> str:
     lines = [_text_diagnostic(item) for item in report.diagnostics]
     lines.extend(f"{issue.source}: {issue.kind}: {issue.message}" for issue in report.issues)
     lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
+    lines.extend(_baseline_lines(report))
     lines.append(_summary(report))
     return "\n".join(lines) + "\n"
 
@@ -100,6 +109,7 @@ def to_github(report: AnalysisReport, *, max_annotations_per_level: int = _GITHU
             "use JSON or SARIF for the complete report"
         )
     lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
+    lines.extend(_baseline_lines(report))
     lines.append(_summary(report))
     return "\n".join(lines) + "\n"
 
@@ -173,6 +183,14 @@ def _summary(report: AnalysisReport) -> str:
         f"code-standards: {counts[Severity.ERROR]} error(s), {counts[Severity.WARNING]} warning(s), "
         f"{counts[Severity.INFO]} notice(s), {len(report.issues)} execution issue(s)"
     )
+
+
+def _baseline_lines(report: AnalysisReport) -> list[str]:
+    return [
+        f"code-standards baseline: {tool.name}: {tool.baselined_count} existing finding(s) accepted by central diagnostic baseline"
+        for tool in report.tools
+        if tool.baselined_count
+    ]
 
 
 def _coverage_line(source: str, reason: str, file_count: int) -> str:

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pytest
+
 from sarj_iac_lint.__main__ import main, read_baseline
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    import pytest
 
 
 _RULE = "no-environment-conditional"
@@ -95,3 +95,43 @@ def test_an_unreadable_baseline_is_an_operator_error(tmp_path: Path, capsys: pyt
 
     assert main(["check", "--rule", _RULE, "--baseline", str(broken), str(src)]) == 2
     assert "invalid baseline" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [[], ["check"], ["check", "missing.tf"], ["unknown"]],
+    ids=("missing-command", "missing-files-and-rule", "missing-rule", "unknown-command"),
+)
+def test_cli_usage_errors_exit_two(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as failure:
+        main(argv)
+    assert failure.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [["--help"], ["-h"], ["--version"], ["check", "--help"]],
+    ids=("help", "short-help", "version", "check-help"),
+)
+def test_cli_help_and_version_exit_zero(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(argv) == 0
+    assert "sarj-iac-lint" in capsys.readouterr().out
+
+
+def test_cli_repeated_rules_and_option_like_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "--source.tf").write_text("", encoding="utf-8")
+    assert (
+        main(
+            [
+                "check",
+                "--rule",
+                "require-deletion-protection",
+                "--rule",
+                "require-deletion-protection",
+                "--",
+                "--source.tf",
+            ]
+        )
+        == 0
+    )

@@ -1,7 +1,7 @@
 [project]
 name = "sarj-iac-lint"
-version = "0.15.3"
-description = "Custom Terraform / IaC lint rules — stdlib, pre-commit-friendly."
+version = "0.15.4"
+description = "Custom Terraform / IaC lint rules, pre-commit-friendly."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
 license = "MIT"
@@ -15,7 +15,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = []
+dependencies = ["typer==0.27.2"]
 
 [project.scripts]
 sarj-iac-lint = "sarj_iac_lint.__main__:main"

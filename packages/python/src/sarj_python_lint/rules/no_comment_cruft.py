@@ -4,6 +4,7 @@ import ast
 from pathlib import PurePosixPath
 import re
 import tokenize
+import tomllib
 from typing import TYPE_CHECKING, ClassVar, override
 
 from sarj_python_lint.rule_base import (
@@ -226,6 +227,27 @@ _CODING_COOKIE_RE = re.compile(r"coding[:=]\s*[-_.a-zA-Z0-9]+")
 
 # Only `>>>` arms a doctest block.
 _DOCTEST_PROMPT = ">>>"
+
+_SCRIPT_METADATA_RE = re.compile(r"^# /// script\n(?P<content>(?:#(?: .*)?\n)+)# ///(?=\n|$)", re.MULTILINE)
+
+
+def _script_metadata_lines(source: str, standalone: Sequence[PositionedComment]) -> frozenset[int]:
+    normalized = "\n".join(source.splitlines())
+    matches = list(_SCRIPT_METADATA_RE.finditer(normalized))
+    if len(matches) != 1:
+        return frozenset()
+    match = matches[0]
+    first = normalized.count("\n", 0, match.start()) + 1
+    lines = frozenset(range(first, first + match.group().count("\n") + 1))
+    top_level = {line for line, col, _ in standalone if col == 0}
+    if not lines <= top_level:
+        return frozenset()
+    content = "\n".join(line[2:] if line.startswith("# ") else "" for line in match.group("content").splitlines())
+    try:
+        tomllib.loads(content)
+    except tomllib.TOMLDecodeError:
+        return frozenset()
+    return lines
 
 
 def _is_coding_cookie(body: str) -> bool:
@@ -499,6 +521,8 @@ class NoCommentCruft(Rule):
             standalone, first_code_line = standalone_comments(source)
         except tokenize.TokenError, IndentationError, SyntaxError:
             return []
+        skip = _script_metadata_lines(source, standalone)
+        standalone = [comment for comment in standalone if comment.line not in skip]
         diags: dict[int, Diagnostic] = {}
         by_line = {line: (col, body) for line, col, body in standalone}
         skip = _doctest_block_lines(standalone) | _illustration_block_lines(standalone)

@@ -14,10 +14,10 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import plugin, {
-  APPLICATION_ONLY_RULES,
   RENAMED_RULES,
   RETIRED_RULES,
   RULES,
@@ -55,7 +55,7 @@ function warnIfHistoryIsMissing(log: string, recorded: number): void {
  * Matching over the raw file text does not work here, and the reason is exactly
  * the drift these tests exist to catch: the per-repo opt-ins are documented in
  * eslint.strict.mjs as commented-out example blocks containing the literal text
- * `"@sarj/no-raw-fetch-outside-clients": [...]`. A raw-text regex counts those
+ * `"@sarj/no-storage-in-stateless-modules": [...]`. A raw-text regex counts those
  * as live references, which (a) makes PER_REPO_OPT_IN dead code and (b) lets any
  * future rule pass BOTH assertions while only ever appearing in a comment.
  *
@@ -186,8 +186,6 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     // with that documentation, or the exemption is just a way to hide drift.
     const PER_REPO_OPT_IN = new Set([
       "no-storage-in-stateless-modules", // inert without `modules`
-      "no-raw-fetch-outside-clients", // needs a repo-specific `allow` list
-      ...APPLICATION_ONLY_RULES, // wired by eslint.application.mjs, not the standard profile
     ]);
 
     const unwired = Object.keys(RULES)
@@ -198,9 +196,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     // The opt-outs must actually be documented, not silently listed here. Now
     // that referencedRuleNames() ignores comments this is a genuinely separate
     // claim from being wired: "mentioned in the file" vs "configured".
-    for (const name of [...PER_REPO_OPT_IN].filter(
-      (candidate) => !APPLICATION_ONLY_RULES.includes(candidate as (typeof APPLICATION_ONLY_RULES)[number]),
-    )) {
+    for (const name of PER_REPO_OPT_IN) {
       expect(documented).toContain(name);
     }
 
@@ -211,6 +207,26 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
       referenced.has(name),
     );
     expect(redundant).toEqual([]);
+  });
+
+  it.each([
+    { filename: "/repo/src/routes/handler.ts", expected: ["@sarj/no-raw-fetch-outside-clients"] },
+    { filename: "/repo/src/clients/http-client.ts", expected: [] },
+    { filename: "/repo/src/routes/handler.test.ts", expected: [] },
+  ])("enforces the managed fetch default for $filename", ({ filename, expected }) => {
+    const severity = baseSeverities(readFileSync(STRICT_CONFIG_PATH, "utf8"))
+      .get("no-raw-fetch-outside-clients");
+    if (severity !== "error") throw new Error("Managed fetch policy must be enabled at error");
+    const messages = new Linter({ cwd: "/repo" }).verify(
+      "const response = fetch('https://example.com/data');",
+      {
+        files: ["**/*.ts"],
+        plugins: { "@sarj": plugin },
+        rules: { "@sarj/no-raw-fetch-outside-clients": severity },
+      },
+      { filename },
+    );
+    expect(messages.map(message => message.ruleId)).toEqual(expected);
   });
 
   /**

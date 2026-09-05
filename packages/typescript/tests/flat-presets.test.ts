@@ -14,7 +14,7 @@
  * lighter path a TypeScript repo can take with one npm package and no Python.
  */
 
-import { ESLint, type Linter } from "eslint";
+import { ESLint, Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
 import plugin, {
@@ -41,7 +41,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
     // A preset that resolved to nothing would pass "did not throw" while
     // enforcing nothing, which is the same silence the eslintrc shape produced.
     expect(configured.length).toBeGreaterThan(40);
-    expect(configured.every((rule) => rule.startsWith("@sarj/"))).toBe(true);
+    expect(configured.every((rule) => rule.startsWith("@sarj/") || rule === "no-restricted-imports")).toBe(true);
   });
 
   it.each(PRESETS)("%s declares plugins as an object, not an array", (name) => {
@@ -61,7 +61,7 @@ describe("configs.recommended / configs.strict are flat config", () => {
     ]);
   });
 
-  it("strict wires every general-profile rule the plugin ships", () => {
+  it("strict wires every rule the plugin ships", () => {
     // `recommended` deliberately omits some (strict-only architectural rules,
     // and ones that need per-repo options to mean anything), but `strict` is
     // the "every shipped rule" preset -- a rule missing from it is a rule
@@ -72,10 +72,8 @@ describe("configs.recommended / configs.strict are flat config", () => {
     // wiring one would report the same defect twice under two names. That they
     // stay resolvable, deprecated and out of both presets is asserted in
     // `rule-docs.test.ts`.
-    const applicationOnly = new Set<string>(APPLICATION_ONLY_RULES);
     const known = Object.entries(plugin.rules)
       .filter(([, rule]) => rule.meta.deprecated === undefined)
-      .filter(([rule]) => !applicationOnly.has(rule))
       .map(([rule]) => `@sarj/${rule}`);
     const missing = known.filter((rule) => !(rule in STRICT_RULES));
     expect(missing).toEqual([]);
@@ -87,11 +85,25 @@ describe("configs.recommended / configs.strict are flat config", () => {
     expect(wiredAliases).toEqual([]);
   });
 
-  it("keeps application-profile rules out of both general presets", () => {
-    for (const rule of APPLICATION_ONLY_RULES) {
-      expect(`@sarj/${rule}` in RECOMMENDED_RULES).toBe(false);
-      expect(`@sarj/${rule}` in STRICT_RULES).toBe(false);
-    }
+  it("keeps legacy profile metadata empty and library policy effective", () => {
+    expect(APPLICATION_ONLY_RULES).toEqual([]);
+    expect(STRICT_RULES["@sarj/no-restricted-library-load"][1].libraries.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ["import client from 'axios';", "no-restricted-imports"],
+    ["const client = import('axios');", "@sarj/no-restricted-library-load"],
+    ["const client = require('axios/lib/client');", "@sarj/no-restricted-library-load"],
+    ["import client from 'ky';", null],
+  ])("enforces the native library policy for %s", (source, expected) => {
+    const messages = new Linter().verify(source, {
+      plugins: { "@sarj": plugin },
+      rules: {
+        "no-restricted-imports": STRICT_RULES["no-restricted-imports"],
+        "@sarj/no-restricted-library-load": STRICT_RULES["@sarj/no-restricted-library-load"],
+      },
+    });
+    expect(messages.map(message => message.ruleId)).toEqual(expected === null ? [] : [expected]);
   });
 
   it("recommended is a subset of strict, never the other way round", () => {

@@ -51,8 +51,8 @@ MOBILE_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyTyp
 )
 APPLICATION_CONFIG_NAMES: Final[Mapping[str, str]] = MappingProxyType(
     {
-        "ruff": "ruff.application.toml",
-        "eslint": "eslint.application.mjs",
+        "ruff": "ruff.strict.toml",
+        "eslint": "eslint.strict.mjs",
     }
 )
 PYTHON_CONFIGS: Final = frozenset({"ruff", "pyright"})

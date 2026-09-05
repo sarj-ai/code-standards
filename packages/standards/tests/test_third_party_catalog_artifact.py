@@ -81,6 +81,10 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
 
     providers = [_object(value) for value in _array(payload["providers"])]
     rules = [_object(value) for value in _array(payload["rules"])]
+    for rule in rules:
+        profiles = [_object(value) for value in _array(rule["profiles"])]
+        assert {profile["name"] for profile in profiles} == {"application", "standard"}
+        assert profiles[0]["contexts"] == profiles[1]["contexts"]
     provider_ids = {value["id"] for value in providers}
     assert {value["provider"] for value in rules} <= provider_ids
     assert {value["engine"] for value in providers} == {

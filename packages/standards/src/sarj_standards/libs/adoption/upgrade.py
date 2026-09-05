@@ -199,14 +199,14 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         if spec is None:
             msg = f"manifest declares unknown config {name!r}"
             raise ValueError(msg)
-        standard, application, target_name, kind = spec
+        standard, _application, target_name, kind = spec
         destination = destinations[kind]
         try:
             destination.relative_to(root.resolve())
         except ValueError as exc:
             msg = f"manifest destination for {name} escapes repository root"
             raise ValueError(msg) from exc
-        source = CONFIGS_DIR / (application if adopted.profile == "application" else standard)
+        source = CONFIGS_DIR / standard
         target = destination / target_name
         if not target.is_file() or target.read_bytes() != source.read_bytes():
             targets = (target, *_identical_config_mirrors(root, target))

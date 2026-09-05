@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-import argparse
 import ast
 from collections import Counter
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import sys
 from types import MappingProxyType
-from typing import NamedTuple
+from typing import Annotated, NamedTuple
+
+import typer
 
 from sarj_python_lint import __version__
 from sarj_python_lint._analysis_session import AnalysisSession
@@ -236,24 +238,9 @@ def _docstring_owner_locations(source: str) -> dict[int, _OwnerLocation]:
     return owners
 
 
-class _Args(argparse.Namespace):
-    cmd: str | None
-    rule: list[str]
-    # `explain` takes exactly one rule, so it cannot share `--rule`'s list slot
-    # without widening the type and losing the check on every `check` call site.
-    which: str
-    files: list[Path]
-    baseline: Path | None
-    update_baseline: Path | None
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.cmd = None
-        self.rule = []
-        self.which = ""
-        self.files = []
-        self.baseline = None
-        self.update_baseline = None
+@dataclass
+class _Result:
+    code: int = 0
 
 
 def _explain(wanted: str) -> int:
@@ -328,77 +315,97 @@ def _apply_baseline(
     return out
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="sarj-python-lint",
-        description="Custom Python lint rules.",
-    )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
-    sub = parser.add_subparsers(dest="cmd", required=True)
-
-    check_p = sub.add_parser("check", help="Run rules over files.")
-    check_p.add_argument(
-        "--rule",
-        action="append",
-        required=True,
-        help="Rule ID (repeat for multiple).",
-    )
-    check_p.add_argument(
-        "--baseline",
-        type=Path,
-        help="Per-file shrink-only baseline JSON: {path: {CODE: count}}. Diags up to the baselined count are suppressed.",
-    )
-    check_p.add_argument(
-        "--update-baseline",
-        type=Path,
-        help="Write the current per-file diagnostic counts to this JSON and exit 0.",
-    )
-    check_p.add_argument("files", nargs="+", type=Path)
-
-    sub.add_parser("list-rules", help="List available rule IDs.")
-
-    explain_p = sub.add_parser("explain", help="Print one rule's summary and the links to its examples and evidence.")
-    explain_p.add_argument("which", metavar="rule", help="Rule ID or SARJ code.")
-
-    args = parser.parse_args(argv, namespace=_Args())
-
-    if args.cmd == "list-rules":
-        for rid, cls in sorted(REGISTRY.items()):
-            inst = cls()
-            sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
-        return 0
-
-    if args.cmd == "explain":
-        return _explain(args.which)
-
+def _run_check(rule: list[str], files: list[Path], baseline: Path | None, update_baseline: Path | None) -> int:
     try:
-        diags = analyze(args.rule, args.files)
+        diags = analyze(rule, files)
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
-    if args.update_baseline is not None:
+    if update_baseline is not None:
         counts = _baseline_counts(diags)
         blocking = sum(d.severity is Severity.ERROR for d in diags)
         warnings = len(diags) - blocking
         try:
-            atomic_write_text(args.update_baseline, json.dumps(counts, indent=2, sort_keys=True) + "\n")
+            atomic_write_text(update_baseline, json.dumps(counts, indent=2, sort_keys=True) + "\n")
         except OSError as exc:
-            sys.stderr.write(f"error: cannot write baseline {args.update_baseline}: {exc}\n")
+            sys.stderr.write(f"error: cannot write baseline {update_baseline}: {exc}\n")
             return 2
         sys.stdout.write(
-            f"baseline written: {args.update_baseline} "
+            f"baseline written: {update_baseline} "
             f"({blocking} blocking diagnostics over {len(counts)} files; {warnings} warnings excluded)\n"
         )
         return 0
-    if args.baseline is not None:
+    if baseline is not None:
         try:
-            diags = _apply_baseline(diags, _read_baseline(args.baseline))
+            diags = _apply_baseline(diags, _read_baseline(baseline))
         except (OSError, ValueError) as exc:
-            sys.stderr.write(f"error: invalid baseline {args.baseline}: {exc}\n")
+            sys.stderr.write(f"error: invalid baseline {baseline}: {exc}\n")
             return 2
     for d in diags:
         sys.stdout.write(d.format() + "\n")
     return 1 if any(d.severity is Severity.ERROR for d in diags) else 0
+
+
+app = typer.Typer(
+    help="Custom Python lint rules.",
+    add_completion=False,
+    no_args_is_help=False,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+
+def _show_version(*, value: bool) -> None:
+    if value:
+        sys.stdout.write(f"sarj-python-lint {__version__}\n")
+        raise typer.Exit
+
+
+@app.callback()
+def _root(
+    *,
+    _version: Annotated[bool, typer.Option("--version", callback=_show_version, is_eager=True)] = False,
+) -> None:
+    pass
+
+
+@app.command("list-rules", help="List available rule IDs.")
+def _list_rules() -> None:
+    for rid, cls in sorted(REGISTRY.items()):
+        inst = cls()
+        sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
+
+
+@app.command("explain", help="Print one rule's summary and the links to its examples and evidence.")
+def _explain_command(
+    context: typer.Context, which: Annotated[str, typer.Argument(metavar="rule", help="Rule ID or SARJ code.")]
+) -> None:
+    context.ensure_object(_Result).code = _explain(which)
+
+
+@app.command("check", help="Run rules over files.")
+def _check_command(
+    context: typer.Context,
+    files: Annotated[list[Path], typer.Argument()],
+    rule: Annotated[list[str], typer.Option("--rule", help="Rule ID (repeat for multiple).")],
+    baseline: Annotated[
+        Path | None, typer.Option(help="Per-file shrink-only baseline JSON: {path: {CODE: count}}.")
+    ] = None,
+    update_baseline: Annotated[
+        Path | None, typer.Option(help="Write current per-file diagnostic counts to JSON and exit 0.")
+    ] = None,
+) -> None:
+    context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline)
+
+
+def main(argv: list[str] | None = None) -> int:
+    result = _Result()
+    try:
+        app(args=argv, prog_name="sarj-python-lint", obj=result)
+    except SystemExit as exc:
+        if exc.code != 0:
+            raise
+    return result.code
 
 
 if __name__ == "__main__":

@@ -92,6 +92,7 @@ from sarj_python_lint.rules.prefer_immutable_module_constant import (
 from sarj_python_lint.rules.prefer_library_fake import PreferLibraryFake
 from sarj_python_lint.rules.prefer_match_assert_never import PreferMatchAssertNever
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
+from sarj_python_lint.rules.prefer_match_value_dispatch import PreferMatchValueDispatch
 from sarj_python_lint.rules.prefer_module_level_constant import (
     PreferModuleLevelConstant,
 )
@@ -218,6 +219,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequirePortForService.id: RequirePortForService,
         PreferNonNullableCollection.id: PreferNonNullableCollection,
         PreferMatchTypeDispatch.id: PreferMatchTypeDispatch,
+        PreferMatchValueDispatch.id: PreferMatchValueDispatch,
         PreferWalrusRegexMatch.id: PreferWalrusRegexMatch,
         PreferWalrusComprehensionFilter.id: PreferWalrusComprehensionFilter,
         PreferWalrusStreamLoop.id: PreferWalrusStreamLoop,

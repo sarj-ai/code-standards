@@ -30,77 +30,6 @@ logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire
 # warning without applying a potentially breaking rewrite.
 unfixable = ["TC001", "TC002", "TC003"]
 
-extend-select = [
-  "ANN401",
-  "RUF013",
-  "RUF022",
-  "RUF023",
-  "RUF052",
-  "TC001",
-  "TC002",
-  "TC003",
-
-  "UP041",
-  "UP045",
-  "UP046",
-  "UP047",
-  "UP049",
-
-  "FURB101",
-  "FURB103",
-  "FURB113",
-  "FURB118",
-  "FURB148",
-  "FURB152",
-  "FURB154",
-  "FURB163",
-  "FURB166",
-  "FURB171",
-  "FURB177",
-  "FURB180",
-  "FURB192",
-
-  "ASYNC100",
-  "ASYNC105",
-  "ASYNC109",
-
-  "B904",
-  "S112",
-  "TRY400",
-  "TRY401",
-
-  "ASYNC210",
-  "ASYNC220",
-  "ASYNC230",
-  "ASYNC251",
-  "PERF402",
-  "SIM117",
-
-  "PT006",
-  "PT007",
-  "PT009",
-  "PT011",
-  "PT012",
-
-  "FAST001",
-  "FAST002",
-  "FAST003",
-
-  "LOG001",
-  "LOG002",
-  "LOG007",
-  "LOG009",
-  "LOG015",
-  "G010",
-
-  "FBT001",
-  "FBT002",
-  "FBT003",
-]
-
-# The ignore list is derived from rule semantics rather than consumer
-# suppressions. Security, naming, and correctness checks remain enabled unless a
-# narrower authority owns the concern or the rule conflicts with the formatter.
 # The D/DOC block below documents the deliberate docstring policy.
 ignore = [
   # Every entry below has a durable semantic reason. Builtin-shadowing checks
@@ -246,6 +175,8 @@ runtime-evaluated-base-classes = [
   "typing.TypedDict",
 ]
 runtime-evaluated-decorators = [
+  "typer.Typer.command",
+  "typer.Typer.callback",
   "pydantic.dataclasses.dataclass",
   "dataclasses.dataclass",
   "fastapi.APIRouter.post",
@@ -322,6 +253,32 @@ warns-extend-require-match-for = [
 "psycopg.sql.Literal".msg             = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
 "uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
 
+# BEGIN GENERATED LIBRARY POLICY
+"aioredis".msg = "LIB020: aioredis was merged into redis-py; use redis.asyncio. Replace with redis.asyncio."
+"argparse".msg = "LIB001: Standards standardizes command-line interfaces on Typer. Replace with Typer."
+"backports.cached_property".msg = "LIB018: Python 3.14 provides functools.cached_property. Replace with functools.cached_property."
+"backports.zoneinfo".msg = "LIB012: Python 3.14 provides zoneinfo. Replace with zoneinfo."
+"boto".msg = "LIB019: Boto 2 is obsolete; migrate to boto3 and review API differences. Replace with boto3."
+"cerberus".msg = "LIB007: Standards standardizes validation and serialization on Pydantic. Replace with Pydantic."
+"click".msg = "LIB002: Use Typer for typed command-line interfaces instead of direct Click APIs. Replace with Typer."
+"enum34".msg = "LIB016: Remove the obsolete enum34 backport on Python 3.14. Replace with enum."
+"flask".msg = "LIB006: Standards standardizes HTTP APIs on FastAPI; this is an architectural migration. Replace with FastAPI."
+"futures".msg = "LIB017: Remove the obsolete futures backport on Python 3.14. Replace with concurrent.futures."
+"importlib_metadata".msg = "LIB013: Python 3.14 provides importlib.metadata. Replace with importlib.metadata."
+"importlib_resources".msg = "LIB014: Python 3.14 provides importlib.resources. Replace with importlib.resources."
+"marshmallow".msg = "LIB007: Standards standardizes validation and serialization on Pydantic. Replace with Pydantic."
+"mock".msg = "LIB022: Python 3.14 provides unittest.mock. Replace with unittest.mock."
+"nose".msg = "LIB021: Nose is unmaintained; use pytest. Replace with pytest."
+"optparse".msg = "LIB001: Standards standardizes command-line interfaces on Typer. Replace with Typer."
+"pandas".msg = "LIB003: Use Polars; migration must account for its expressions and lack of a pandas index model. Replace with Polars."
+"pathlib2".msg = "LIB011: Python 3.14 provides pathlib. Replace with pathlib."
+"pkg_resources".msg = "LIB009: Do not use pkg_resources; choose the focused importlib or packaging API. Replace with importlib.metadata/importlib.resources/packaging."
+"pytz".msg = "LIB008: Use zoneinfo; explicitly review DST ambiguity, localization, and fold behavior. Replace with zoneinfo."
+"requests".msg = "LIB004: Use HTTPX; review timeout defaults, exception types, streaming, and client lifetimes. Replace with HTTPX."
+"tomli".msg = "LIB010: Python 3.14 provides tomllib. Replace with tomllib."
+"ujson".msg = "LIB005: Use orjson; its dumps function returns bytes and option semantics differ. Replace with orjson."
+# END GENERATED LIBRARY POLICY
+
 [lint.per-file-ignores]
 # Tests legitimately assert, use fixtures and magic values, and invoke the
 # binary under test. Scope those exemptions to test paths so assertion and
@@ -335,8 +292,9 @@ warns-extend-require-match-for = [
 "**/test_*.py"            = ["ANN201", "ANN202", "S101", "S105", "S106", "S311", "INP001"]
 "**/*_test.py"            = ["S311"]
 "**/conftest.py"          = ["S101", "S105", "S106", "S311", "INP001"]
-# Standalone scripts are not importable packages, so INP001 does not apply.
-"scripts/**"      = ["T201", "S", "BLE001", "TRY002", "INP001"]
+# Standalone scripts may print and need not be importable packages. Their
+# security and exception handling require the same checks as other source.
+"scripts/**"      = ["T201", "INP001"]
 # CLI entrypoints print to stdout — that's their job, not stray debug output.
 "**/__main__.py"  = ["T201"]
 "**/cli/**/*.py"  = ["T201"]
