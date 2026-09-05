@@ -5,6 +5,7 @@ import json
 from typing import TYPE_CHECKING, Self
 
 import pytest
+from rich.text import Text
 
 from sarj_standards.libs.release import registry as registry_module
 from sarj_standards.libs.release.registry import (
@@ -65,9 +66,17 @@ def test_registry_cli_rejects_unrepresentable_delays(delay: str, tmp_path: Path)
     assert stopped.value.code == 2
 
 
-def test_registry_cli_preserves_short_help(capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("force_color", [False, True])
+def test_registry_cli_preserves_short_help(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, *, force_color: bool
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    if force_color:
+        monkeypatch.setenv("FORCE_COLOR", "1")
+    else:
+        monkeypatch.delenv("FORCE_COLOR", raising=False)
     assert registry_module.main(["-h"]) == 0
-    assert "--delay-seconds" in capsys.readouterr().out
+    assert "--delay-seconds" in Text.from_ansi(capsys.readouterr().out).plain
 
 
 def test_lint_config_requirements_read_exact_pypi_and_npm_pins(tmp_path: Path) -> None:
