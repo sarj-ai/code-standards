@@ -14,7 +14,7 @@ from sarj_sql_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_sql_lint.rules._index_analysis import authored_secondary_indexes
+from sarj_sql_lint.rules._index_analysis import IndexDefinition, IndexSignature, authored_indexes, index_namespace_key
 
 
 if TYPE_CHECKING:
@@ -27,30 +27,34 @@ _TABLE_INDEX_LIMIT = 3
 
 @final
 class IndexBudget(Rule):
-    id = "index-budget"
+    id = "excess-migration-index-requires-justification"
     code = "SARJ116"
     documentation = RuleDocumentation(
-        summary="Limit secondary indexes in one authored migration unless each excess index has structured evidence.",
+        summary="Require a structured local justification for excess explicit indexes in an authored migration.",
         rationale=(
-            "Every secondary index adds write amplification, storage, vacuum work, and planner surface; bursts of indexes "
+            "Every explicit index adds write amplification, storage, vacuum work, and planner surface; bursts of indexes "
             "often encode unmeasured read paths in the transactional database."
         ),
         remediation=(
-            "Keep at most three secondary indexes per table and eight per migration, or place an exact "
+            "Keep at most three explicit indexes per table and eight per migration, or place an exact "
             "`index-justification: app-read: ...; evidence: URL`/`ticket: ABC-123` or "
-            "`index-justification: referential-action: ...` comment immediately above each excess index."
+            "`index-justification: referential-action: ...` comment immediately above each excess index. "
+            "For `CREATE UNIQUE INDEX` only, `index-justification: uniqueness-constraint: ...; ticket: ABC-123` "
+            "is also accepted."
         ),
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
+        aliases=("index-budget",),
         limitations=(
-            "Only authored migrations are checked; dumps, fixtures, and recognized generator-owned migrations are excluded.",
-            "CREATE UNIQUE INDEX is excluded because it may back a uniqueness constraint.",
-            "The warning budgets index statements in one file; it does not estimate workload selectivity or fleet-wide index count.",
+            "Only authored production migrations are checked; tests, dumps, fixtures, and recognized generator-owned migrations are excluded.",
+            "Duplicate index shapes and same-name replacement statements do not consume this budget; SARJ117 reports structural duplicates.",
+            "Index declarations inside dollar-quoted stored or anonymous program bodies are not inferred.",
+            "The warning budgets distinct explicit index definitions in one file; it does not estimate workload selectivity or fleet-wide index count.",
         ),
         examples=(
             RuleExample(
                 example_id="unjustified-index-burst",
-                title="A fourth secondary index has no read-path evidence",
+                title="A fourth explicit index has no local justification",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.sql(
@@ -64,8 +68,8 @@ class IndexBudget(Rule):
                 public=True,
             ),
             RuleExample(
-                example_id="measured-index-burst",
-                title="An excess application-read index carries durable evidence",
+                example_id="justified-index-burst",
+                title="An excess index names its application read and durable ticket",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(
@@ -86,10 +90,22 @@ class IndexBudget(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        indexes = authored_secondary_indexes(path, source)
+        indexes = authored_indexes(path, source)
         table_positions: Counter[str] = Counter()
         findings: list[Diagnostic] = []
-        for total_position, index in enumerate(indexes, start=1):
+        seen_names: set[str] = set()
+        seen_signatures: set[IndexSignature] = set()
+        distinct_indexes: list[IndexDefinition] = []
+        for index in indexes:
+            namespace_key = index_namespace_key(index)
+            has_reused_name = namespace_key is not None and namespace_key in seen_names
+            if has_reused_name or index.signature in seen_signatures:
+                continue
+            if namespace_key is not None:
+                seen_names.add(namespace_key)
+            seen_signatures.add(index.signature)
+            distinct_indexes.append(index)
+        for total_position, index in enumerate(distinct_indexes, start=1):
             table_positions[index.table] += 1
             exceeds_total = total_position > _MIGRATION_INDEX_LIMIT
             exceeds_table = table_positions[index.table] > _TABLE_INDEX_LIMIT
@@ -97,18 +113,21 @@ class IndexBudget(Rule):
                 continue
             limits: list[str] = []
             if exceeds_table:
-                limits.append(f"three for table `{index.table}`")
+                limits.append(f"Index {table_positions[index.table]} for table `{index.table}` exceeds limit 3")
             if exceeds_total:
-                limits.append("eight in one migration")
+                lead = "distinct" if limits else "Distinct"
+                limits.append(f"{lead} index {total_position} in this migration exceeds limit 8")
+            accepted_kinds = "app-read or referential-action"
+            if index.unique:
+                accepted_kinds += ", or uniqueness-constraint"
             findings.append(
                 Diagnostic(
                     path,
                     index.line,
                     index.column,
                     self.code,
-                    "Secondary-index budget exceeded ("
-                    + " and ".join(limits)
-                    + "). Remove the index or add an exact local app-read or referential-action justification.",
+                    "; ".join(limits)
+                    + f". Remove the index or immediately precede it with an exact {accepted_kinds} justification.",
                 )
             )
         return findings

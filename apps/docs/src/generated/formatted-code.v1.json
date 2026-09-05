@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a9575100c1fa2d6b845e4f6bafdcbef7056045d21f1732a779bcea5f49837a9c",
-  "cliSha256": "8b4be768ad457f41eb7b1111ab772bdeafbf77d6b626c08950aedda724662eb9",
+  "catalogSha256": "b285d8b585254caba0cf6daf0fc6f4c7732213ff06187f2b4d44e042de20824d",
+  "cliSha256": "5492575e341ee80c1b961d21654bd0e9b9f02965eb754b13001ede9a03d8155a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7527,6 +7527,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "sql:excess-migration-index-requires-justification": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/004_indexes.sql",
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\n-- index-justification: app-read: event delivery queue; ticket: APP-812\nCREATE INDEX d_idx ON event (d);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_indexes.sql",
+          "id": "justified-index-burst",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An excess index names its application read and durable ticket"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/004_indexes.sql",
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\nCREATE INDEX d_idx ON event (d);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_indexes.sql",
+          "id": "unjustified-index-burst",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A fourth explicit index has no local justification"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "sql:existing-table-check-or-foreign-key-requires-not-valid": {
       "examples": [
         {
@@ -7597,41 +7632,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Table creation that fails on replay"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "sql:index-budget": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "migrations/004_indexes.sql",
-              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\n-- index-justification: app-read: event delivery queue; ticket: APP-812\nCREATE INDEX d_idx ON event (d);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/004_indexes.sql",
-          "id": "measured-index-burst",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "An excess application-read index carries durable evidence"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "migrations/004_indexes.sql",
-              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\nCREATE INDEX d_idx ON event (d);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/004_indexes.sql",
-          "id": "unjustified-index-burst",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A fourth secondary index has no read-path evidence"
         }
       ],
       "optionsSchemaSource": null
@@ -7756,7 +7756,7 @@
           "id": "distinct-index-predicates",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Partial indexes with different predicates remain distinct"
+          "title": "Different partial-index predicates remain distinct"
         },
         {
           "expectedCount": 1,
@@ -7771,7 +7771,7 @@
           "id": "duplicate-index-shape",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Two differently named indexes have the same structure"
+          "title": "Two active indexes repeat the same normalized definition"
         }
       ],
       "optionsSchemaSource": null

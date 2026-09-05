@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_sql_lint.rules._index_analysis import parse_indexes
 from sarj_sql_lint.rules.no_duplicate_index import NoDuplicateIndex
 
 
@@ -105,5 +106,193 @@ def test_comments_and_strings_do_not_form_duplicate_indexes() -> None:
 -- CREATE INDEX fake_idx ON event(owner_id);
 SELECT 'CREATE INDEX fake_idx ON event(owner_id)';
 CREATE INDEX real_idx ON event(owner_id);
+"""
+    assert _check(source) == []
+
+
+def test_shared_parser_supports_quoted_and_unnamed_indexes() -> None:
+    source = """
+CREATE INDEX ON "audit" . "Event Log"("owner id");
+CREATE INDEX ON "audit"."Event Log"("owner id");
+"""
+    assert [finding.line for finding in _check(source)] == [3]
+
+
+def test_shared_parser_ignores_stored_routine_body_text() -> None:
+    source = """
+CREATE PROCEDURE build_indexes() LANGUAGE plpgsql AS $body$
+BEGIN
+  CREATE INDEX first_idx ON event(owner_id);
+  CREATE INDEX second_idx ON event(owner_id);
+END
+$body$;
+"""
+    assert _check(source) == []
+
+
+def test_dollar_quoted_predicate_semicolon_does_not_truncate_signature() -> None:
+    source = """
+CREATE INDEX first_idx ON event(owner_id) WHERE value = $q$x;y$q$;
+CREATE INDEX second_idx ON event(owner_id) WHERE value = $q$x;z$q$;
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("delimiter", ["$$", "$q$"])
+def test_dollar_quoted_predicate_body_case_is_preserved(delimiter: str) -> None:
+    source = (
+        f"CREATE INDEX first_idx ON event(owner_id) WHERE status = {delimiter}Open{delimiter};\n"
+        f"CREATE INDEX second_idx ON event(owner_id) WHERE status = {delimiter}open{delimiter};\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("key", ["field$tag$Open$tag$", "field$$Open$$"])
+def test_dollar_delimiter_text_inside_unquoted_identifier_is_not_a_literal(key: str) -> None:
+    source = f"CREATE INDEX first_idx ON event({key});\nCREATE INDEX second_idx ON event({key.lower()});\n"
+    assert [finding.line for finding in _check(source)] == [2]
+
+
+@pytest.mark.parametrize("predicate", ["(active", "active)", '"unterminated'])
+def test_unbalanced_partial_index_predicate_is_not_treated_as_an_index(predicate: str) -> None:
+    source = f"CREATE INDEX first_idx ON event(owner_id) WHERE {predicate};\n"
+    if predicate != '"unterminated':
+        source += f"CREATE INDEX second_idx ON event(owner_id) WHERE {predicate};\n"
+    assert parse_indexes(source) == ()
+    assert _check(source) == []
+
+
+def test_create_index_text_inside_quoted_identifier_is_not_an_operation() -> None:
+    source = """SELECT "CREATE INDEX fake_a ON event(owner_id);";
+SELECT "CREATE INDEX fake_b ON event(owner_id);";
+"""
+    assert parse_indexes(source) == ()
+    assert _check(source) == []
+
+
+def test_drop_index_text_inside_quoted_identifier_does_not_clear_active_index() -> None:
+    source = """CREATE INDEX old_idx ON event(owner_id);
+SELECT "DROP INDEX old_idx;";
+CREATE INDEX new_idx ON event(owner_id);
+"""
+    assert [finding.line for finding in _check(source)] == [3]
+
+
+def test_unreserved_clause_word_can_be_a_predicate_identifier() -> None:
+    source = "\n".join(f"CREATE INDEX index_{column} ON event({column}) WHERE include;" for column in "abcd")
+    assert len(_check(source)) == 0
+
+
+def test_quoted_access_method_case_is_preserved() -> None:
+    source = """
+CREATE INDEX first_idx ON event USING "MyMethod" (owner_id);
+CREATE INDEX second_idx ON event USING "mymethod" (owner_id);
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "definitions",
+    [
+        (
+            "CREATE INDEX first_idx ON ONLY event(owner_id);",
+            "CREATE INDEX second_idx ON event(owner_id);",
+        ),
+        (
+            "CREATE INDEX first_idx ON event(owner_id) WITH (fillfactor = 70);",
+            "CREATE INDEX second_idx ON event(owner_id) WITH (fillfactor = 80);",
+        ),
+        (
+            "CREATE INDEX first_idx ON event(owner_id) TABLESPACE fast;",
+            "CREATE INDEX second_idx ON event(owner_id) TABLESPACE slow;",
+        ),
+        (
+            "CREATE UNIQUE INDEX first_idx ON event(owner_id) NULLS DISTINCT;",
+            "CREATE UNIQUE INDEX second_idx ON event(owner_id) NULLS NOT DISTINCT;",
+        ),
+    ],
+    ids=["only-partitions", "storage-parameters", "tablespace", "nulls-mode"],
+)
+def test_material_index_options_distinguish_signatures(definitions: tuple[str, str]) -> None:
+    assert _check("\n".join(definitions)) == []
+
+
+def test_explicit_default_nulls_distinct_matches_implicit_unique_default() -> None:
+    source = """
+CREATE UNIQUE INDEX first_idx ON event(owner_id);
+CREATE UNIQUE INDEX second_idx ON event(owner_id) NULLS DISTINCT;
+"""
+    assert [finding.line for finding in _check(source)] == [3]
+
+
+def test_drop_removes_index_from_duplicate_comparison() -> None:
+    source = """
+CREATE INDEX old_idx ON event(owner_id);
+DROP INDEX old_idx;
+CREATE INDEX new_idx ON event(owner_id);
+"""
+    assert _check(source) == []
+
+
+def test_same_name_idempotent_create_preserves_existing_definition() -> None:
+    source = (
+        "CREATE INDEX original ON event(owner_id);\n"
+        "CREATE INDEX IF NOT EXISTS original ON event(created_at);\n"
+        "CREATE INDEX duplicate ON event(owner_id);\n"
+    )
+    assert [finding.line for finding in _check(source)] == [3]
+
+
+def test_create_before_drop_leaves_only_the_replacement_active() -> None:
+    source = """
+CREATE INDEX old_idx ON event(owner_id);
+CREATE INDEX new_idx ON event(owner_id);
+DROP INDEX old_idx;
+"""
+    assert _check(source) == []
+
+
+def test_transient_duplicate_dropped_before_migration_end_is_not_reported() -> None:
+    source = """
+CREATE INDEX durable_idx ON event(owner_id);
+CREATE INDEX transient_idx ON event(owner_id);
+DROP INDEX transient_idx;
+"""
+    assert _check(source) == []
+
+
+def test_only_surviving_duplicate_pair_is_reported() -> None:
+    source = """
+CREATE INDEX first_idx ON event(owner_id);
+CREATE INDEX transient_idx ON event(owner_id);
+CREATE INDEX last_idx ON event(owner_id);
+DROP INDEX transient_idx;
+"""
+    assert [finding.line for finding in _check(source)] == [4]
+
+
+def test_schema_qualified_drop_removes_only_matching_index() -> None:
+    source = """
+CREATE INDEX old_idx ON one.event(owner_id);
+CREATE INDEX old_idx ON two.event(owner_id);
+DROP INDEX one.old_idx;
+CREATE INDEX new_idx ON one.event(owner_id);
+"""
+    assert _check(source) == []
+
+
+def test_quoted_clause_words_and_parentheses_preserve_duplicate_signature() -> None:
+    source = """
+CREATE INDEX first_idx ON event("a)b") INCLUDE ("where") WHERE "include";
+CREATE INDEX second_idx ON event("a)b") INCLUDE ("where") WHERE "include";
+"""
+    assert [finding.line for finding in _check(source)] == [3]
+
+
+def test_quoted_comma_and_semicolon_index_name_can_be_dropped() -> None:
+    source = """
+CREATE INDEX "a,b;index" ON event(owner_id);
+DROP INDEX "a,b;index";
+CREATE INDEX replacement ON event(owner_id);
 """
     assert _check(source) == []

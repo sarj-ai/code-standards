@@ -46,9 +46,10 @@ CREATE TABLE IF NOT EXISTS children (
 );
 CREATE INDEX idx_orders_total ON orders (total);
 CREATE INDEX IF NOT EXISTS children_name_a ON children (name);
-CREATE INDEX IF NOT EXISTS children_name_b ON children (name);
+CREATE INDEX IF NOT EXISTS children_owner ON children (owner_id);
 CREATE INDEX IF NOT EXISTS children_payload ON children (payload);
 CREATE INDEX IF NOT EXISTS children_created ON children (created_at);
+CREATE INDEX IF NOT EXISTS children_name_b ON children (name);
 ALTER TABLE accounts ADD CONSTRAINT chk_name CHECK (name <> '');
 INSERT INTO children (id) VALUES ('a');
 SELECT * FROM children LIMIT 10 OFFSET 100;

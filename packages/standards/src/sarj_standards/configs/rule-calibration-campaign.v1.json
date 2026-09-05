@@ -1509,10 +1509,12 @@
       "outcome": "Narrowed the warning to oversized unattached file-header JSDoc that narrates module layout or change history. Durable protocol, runtime, algorithm, and declaration documentation remains accepted."
     },
     {
-      "task": "rule-audit/sql/index-budget",
+      "task": "rule-audit/sql/excess-migration-index-requires-justification",
       "family": "sql",
-      "ruleId": "index-budget",
-      "state": "pending"
+      "ruleId": "excess-migration-index-requires-justification",
+      "state": "complete",
+      "evidence": "Three independent reviews reproduced test-path leakage, ordinary and stored-routine dollar-body false positives, quoted and unnamed identifier gaps, explicit non-PostgreSQL leakage, malformed suffix acceptance, schema-namespace bypasses, DROP/recreate duplicate noise, and SARJ117 overlap. The final exact absolute-path scan covered 2,087 tracked UTF-8 SQL files (10,964,109 bytes) across 142 local repositories and worktrees with zero errors: 276 raw findings collapsed to 93 content-distinct warning prompts across 36 files, with zero SARJ117 overlap. Review classified 34 as historical squash/bootstrap debt appropriate for consumer baselines and the remaining 59 as legitimate index-review prompts; syntax cannot prove workload value, so the rule remains warning-only.",
+      "outcome": "Renamed SARJ116 to describe its observable justification contract and retained index-budget as an alias. The shared PostgreSQL index scanner now recognizes quoted, qualified, and unnamed indexes; excludes tests, generated sources, explicit other dialects, dollar-quoted program text, and malformed clause order; and makes SARJ117 lifecycle-aware across DROP INDEX. The budget counts distinct explicit unique and non-unique index shapes, keeps schema namespaces separate, suppresses duplicate and replacement noise, and accepts exact application-read, referential-action, or uniqueness-constraint justification immediately above each excess index."
     },
     {
       "task": "rule-audit/sql/no-duplicate-index",

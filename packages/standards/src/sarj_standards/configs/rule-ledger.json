@@ -118,9 +118,9 @@
     ],
     "sql": [
       "enforce-timestamptz",
+      "excess-migration-index-requires-justification",
       "existing-table-check-or-foreign-key-requires-not-valid",
       "idempotent-ddl",
-      "index-budget",
       "index-concurrently",
       "insert-requires-replay-policy",
       "no-database-triggers",
@@ -887,6 +887,13 @@
       "status": "renamed",
       "replacement": "store-get-delegates-to-bulk-read",
       "note": "Replace sarj-get-delegates-to-get-many with sarj-store-get-delegates-to-bulk-read before upgrading."
+    },
+    {
+      "id": "index-budget",
+      "kind": "sql",
+      "status": "renamed",
+      "replacement": "excess-migration-index-requires-justification",
+      "note": "Replace sarj-index-budget with sarj-excess-migration-index-requires-justification before upgrading."
     },
     {
       "id": "inefficient-string-concat-in-loop",

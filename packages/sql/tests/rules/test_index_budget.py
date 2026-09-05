@@ -84,9 +84,188 @@ def test_justification_is_local_to_the_immediately_following_index() -> None:
     assert len(_check(source)) == 1
 
 
-def test_unique_indexes_do_not_consume_the_secondary_index_budget() -> None:
+def test_explicit_unique_indexes_consume_the_physical_index_budget() -> None:
     source = "\n".join(f"CREATE UNIQUE INDEX event_{column}_key ON event({column});" for column in "abcdefghi")
+    assert [finding.line for finding in _check(source)] == [4, 5, 6, 7, 8, 9]
+
+
+def test_uniqueness_justification_applies_only_to_unique_index() -> None:
+    prefix = "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\nCREATE INDEX c_idx ON event(c);\n"
+    comment = "-- index-justification: uniqueness-constraint: external account identity; ticket: APP-812\n"
+    assert _check(f"{prefix}{comment}CREATE UNIQUE INDEX d_idx ON event(d);\n") == []
+    [finding] = _check(f"{prefix}{comment}CREATE INDEX d_idx ON event(d);\n")
+    assert "uniqueness-constraint" not in finding.message
+
+
+def test_unique_index_diagnostic_offers_uniqueness_justification() -> None:
+    source = (
+        "CREATE UNIQUE INDEX a_idx ON event(a);\n"
+        "CREATE UNIQUE INDEX b_idx ON event(b);\n"
+        "CREATE UNIQUE INDEX c_idx ON event(c);\n"
+        "CREATE UNIQUE INDEX d_idx ON event(d);\n"
+    )
+    [finding] = _check(source)
+    assert "uniqueness-constraint" in finding.message
+
+
+def test_exact_table_and_file_boundaries_are_allowed() -> None:
+    source = "\n".join(f"CREATE INDEX table_{i}_idx ON table_{i}(owner_id);" for i in range(1, 9))
     assert _check(source) == []
+
+
+def test_duplicate_shapes_and_same_name_replacements_do_not_consume_budget() -> None:
+    source = """
+CREATE INDEX event_a_idx ON event(a);
+CREATE INDEX duplicate_a_idx ON event(a);
+CREATE INDEX event_b_idx ON event(b);
+CREATE INDEX event_c_idx ON event(c);
+DROP INDEX event_a_idx;
+CREATE INDEX event_a_idx ON event(a, created_at);
+"""
+    assert _check(source) == []
+
+
+def test_supports_quoted_qualified_identifiers_and_unnamed_indexes() -> None:
+    source = """
+CREATE INDEX "event a" ON "audit" . "Event Log"("owner id");
+CREATE INDEX "event b" ON "audit"."Event Log"("created at");
+CREATE INDEX ON "audit"."Event Log"("updated at");
+CREATE INDEX "event d" ON "audit"."Event Log"("deleted at");
+"""
+    assert [finding.line for finding in _check(source)] == [5]
+
+
+def test_each_unnamed_index_consumes_the_budget() -> None:
+    source = "\n".join(f"CREATE INDEX ON event(column_{position});" for position in range(1, 5))
+    assert [finding.line for finding in _check(source)] == [4]
+
+
+def test_equivalent_quoted_lowercase_table_cannot_bypass_per_table_budget() -> None:
+    source = """
+CREATE INDEX event_a ON event(a);
+CREATE INDEX event_b ON event(b);
+CREATE INDEX event_c ON event(c);
+CREATE INDEX event_d ON "event"(d);
+"""
+    assert [finding.line for finding in _check(source)] == [5]
+
+
+def test_same_index_name_in_distinct_schemas_does_not_hide_table_budget() -> None:
+    source = """
+CREATE INDEX idx_status ON one.event(a);
+CREATE INDEX idx_status ON two.event(a);
+CREATE INDEX two_b ON two.event(b);
+CREATE INDEX two_c ON two.event(c);
+CREATE INDEX two_d ON two.event(d);
+"""
+    assert [finding.line for finding in _check(source)] == [6]
+
+
+def test_ignores_create_index_text_in_stored_routine_bodies() -> None:
+    source = """
+CREATE FUNCTION build_indexes() RETURNS void AS $fn$
+BEGIN
+  CREATE INDEX body_a ON event(a);
+  CREATE INDEX body_b ON event(b);
+  CREATE INDEX body_c ON event(c);
+  CREATE INDEX body_d ON event(d);
+END
+$fn$ LANGUAGE plpgsql;
+"""
+    assert _check(source) == []
+
+
+def test_comment_before_anonymous_program_body_remains_irrelevant() -> None:
+    source = """
+-- CREATE FUNCTION fake() RETURNS void AS
+DO $fn$
+BEGIN
+  CREATE INDEX body_a ON event(a);
+  CREATE INDEX body_b ON event(b);
+  CREATE INDEX body_c ON event(c);
+  CREATE INDEX body_d ON event(d);
+END
+$fn$;
+"""
+    assert _check(source) == []
+
+
+def test_does_not_infer_indexes_from_anonymous_program_body() -> None:
+    source = """
+DO $fn$
+BEGIN
+  CREATE INDEX body_a ON event(a);
+  CREATE INDEX body_b ON event(b);
+  CREATE INDEX body_c ON event(c);
+  CREATE INDEX body_d ON event(d);
+END
+$fn$;
+"""
+    assert _check(source) == []
+
+
+def test_ordinary_dollar_quoted_literal_cannot_create_indexes() -> None:
+    source = """
+COMMENT ON TABLE event IS $tag$
+CREATE INDEX body_a ON event(a);
+CREATE INDEX body_b ON event(b);
+CREATE INDEX body_c ON event(c);
+CREATE INDEX body_d ON event(d);
+$tag$;
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "INCLUDE (payload) INCLUDE (created_at)",
+        "WITH (fillfactor = 80) WITH (deduplicate_items = on)",
+        "NULLS DISTINCT NULLS NOT DISTINCT",
+        "TABLESPACE fast TABLESPACE slow",
+    ],
+)
+def test_repeated_index_clauses_do_not_consume_budget(suffix: str) -> None:
+    source = "\n".join(f"CREATE INDEX event_{column}_idx ON event({column}) {suffix};" for column in "abcdef")
+    assert _check(source) == []
+
+
+def test_clause_words_and_parentheses_inside_quoted_identifiers_are_data() -> None:
+    source = "\n".join(
+        f'CREATE INDEX event_{column}_idx ON event("{column})value") INCLUDE ("where") WHERE "include";'
+        for column in "abcdef"
+    )
+    assert [finding.line for finding in _check(source)] == [4, 5, 6]
+
+
+def test_unreserved_clause_word_in_predicate_does_not_hide_index() -> None:
+    source = "\n".join(f"CREATE INDEX event_{column}_idx ON event({column}) WHERE include;" for column in "abcd")
+    assert [finding.line for finding in _check(source)] == [4]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "sqlite"])
+def test_explicit_non_postgres_dialects_are_excluded(dialect: str) -> None:
+    source = f"-- dialect: {dialect}\n" + "\n".join(
+        f"CREATE INDEX event_{column}_idx ON event({column});" for column in "abcdef"
+    )
+    assert _check(source) == []
+
+
+def test_malformed_create_index_tail_does_not_consume_budget() -> None:
+    source = "\n".join(f"CREATE INDEX event_{column}_idx ON event({column}) THIS IS NOT SQL;" for column in "abcdef")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param(Path("tests/migrations/001.sql"), id="tests-directory"),
+        pytest.param(Path("__tests__/migrations/001.sql"), id="dunder-tests-directory"),
+    ],
+)
+def test_test_migrations_are_excluded(path: Path) -> None:
+    source = "\n".join(f"CREATE INDEX event_{column}_idx ON event({column});" for column in "abcdef")
+    assert _check(source, path) == []
 
 
 @pytest.mark.parametrize(
