@@ -1414,6 +1414,63 @@ def test_ignores_comment_shapes_inside_multiline_toml_strings(tmp_path: Path, so
     assert _codes(path) == []
 
 
+def test_ignores_long_escaped_basic_multiline_toml_payload(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    escaped_payload = "\\\\" * 2_048 + '\\"' * 3
+    path.write_text(
+        f'template = """\n{escaped_payload}\n# timeout = 30\n# retries = 2\n"""\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == []
+
+
+def test_long_escaped_basic_multiline_toml_does_not_hide_later_disabled_settings(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    escaped_payload = "\\\\" * 2_048 + '\\"' * 3
+    path.write_text(
+        f'template = """\n{escaped_payload}\n"""\n# timeout = 30\n# retries = 2\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == ["SARJ301"]
+
+
+def test_basic_multiline_toml_backslash_continuation_masks_comment_shapes(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        'template = """continued\\\n    value\n# timeout = 30\n# retries = 2\n"""\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == []
+
+
+def test_escaped_backslash_before_toml_delimiter_does_not_hide_later_settings(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(
+        'template = """escaped-backslash\\\\"""\n# timeout = 30\n# retries = 2\n',
+        encoding="utf-8",
+    )
+
+    assert _codes(path) == ["SARJ301"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'template = """\nvalue\\',
+        'template = """\n# timeout = 30\n# retries = 2\n',
+    ],
+    ids=["dangling-escape", "unclosed-triple"],
+)
+def test_malformed_basic_multiline_toml_abstains(tmp_path: Path, source: str) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(source, encoding="utf-8")
+
+    assert _codes(path) == []
+
+
 @pytest.mark.parametrize(
     "prefix",
     [

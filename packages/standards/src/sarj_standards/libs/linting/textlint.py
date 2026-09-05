@@ -2466,7 +2466,7 @@ _CONFIG_TOOL_DIRECTIVE_RE = re.compile(
     r"^(?:!|shellcheck\b|yamllint\b|prettier\b|eslint\b|renovate\b|dependabot\b)", re.IGNORECASE
 )
 _TOML_STRING_OR_COMMENT_RE = re.compile(
-    r"#[^\n]*|\"\"\"(?:\\.|(?!\"\"\").)*\"\"\"|'''(?:(?!''').)*'''|\"(?:\\.|[^\"\\])*\"|'[^'\n]*'",
+    r"#[^\n]*|\"\"\"(?:\\.|(?!\"\"\")[^\\])*\"\"\"|'''(?:(?!''').)*'''|\"(?:\\.|[^\"\\])*\"|'[^'\n]*'",
     re.DOTALL,
 )
 
