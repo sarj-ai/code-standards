@@ -1493,10 +1493,12 @@
       "state": "pending"
     },
     {
-      "task": "rule-audit/sql/excessive-commentary",
+      "task": "rule-audit/sql/no-long-migration-narration",
       "family": "sql",
-      "ruleId": "excessive-commentary",
-      "state": "pending"
+      "ruleId": "no-long-migration-narration",
+      "state": "complete",
+      "evidence": "Three independent reviews reproduced generated-migration, test-scope, dollar-body, inline-grouping, directive, weak-anchor, and absolute-threshold defects. Fleet calibration scanned 2,087 tracked UTF-8 SQL files (10,964,109 bytes) across 142 local checkouts with zero errors: the old heuristic produced 17 content-distinct findings at 29.4% reviewed precision, while the narrowed implementation-narration grammar produced zero findings.",
+      "outcome": "Renamed the warning to match its narrow contract and retained the old selector as an alias. It now reports only long contiguous standalone or block-comment runs that explicitly narrate nearby DDL, while excluding generated/test SQL, dollar-quoted bodies, inline comments, directives, durable references, lists, and operational constraints."
     },
     {
       "task": "rule-audit/eslint/excessive-commentary",
