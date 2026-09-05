@@ -12,6 +12,28 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-restated-comment", rule, {
   valid: [
+    { name: "keeps a value and inferred-type group label", code: "// number branding\nconst numberSchema = z.number().brand<42>();\ntype NumberSchema = z.infer<typeof numberSchema>;\nassertEqual<NumberSchema, number>();" },
+    { name: "keeps a symbol and type-query group label", code: "// symbol branding\nconst MyBrand: unique symbol = Symbol('hello');\ntype MyBrand = typeof MyBrand;\nassertEqual<MyBrand, symbol>();" },
+    { name: "keeps a camel-case one-word heading", code: "/// bigInt\nconst bigIntSchema = z.bigint();\ntest('bigInt', () => parse(bigIntSchema));" },
+    { name: "keeps a type-table heading", code: "// $ZodPromise\nz.promise(z.string()) satisfies z.core.$ZodPromise;" },
+    { name: "keeps punctuated branch-label prose", code: "// Token lists.\nreturn areEqualTokenLists(left, right);" },
+    { name: "conservatively keeps labels within sibling test groups", code: "test('decode', async () => {\n// Async decode\nconst decodedResult = await decodeAsync(input);\nexpect(decodedResult).toEqual(input);\n});\ntest('encode', () => {});" },
+    { name: "conservatively keeps labels within sibling type-test groups", code: "test('brands', () => {\n// number branding\nconst numberSchema = z.number().brand();\ntype NumberSchema = typeof numberSchema;\n});\ntest('other', () => {});" },
+    { name: "conservatively excludes enclosing function sibling groups", code: "function first() {\n// Serialize key\nreturn serialize(key);\n}\nfunction second() {}" },
+    { name: "conservatively excludes enclosing block sibling groups", code: "if (ready) {\n// Serialize key\nreturn serialize(key);\n}\nif (other) {}" },
+    { name: "keeps restriction prose", code: "// Serialize only key\nconst key = serialize(input);" },
+    { name: "keeps conditional prose", code: "// Serialize key if cached\nconst key = serialize(cache);" },
+    { name: "keeps ordering prose", code: "// Cleanup after send\nreturn sendAfterCleanup();" },
+    { name: "keeps repetition prose", code: "// Serialize key again\nconst key = serialize(input);" },
+    { name: "keeps source direction", code: "// Serialize key from payload\nconst payload = serialize(key);" },
+    { name: "keeps destination direction", code: "// Serialize key to payload\nconst key = serialize(payload);" },
+    { name: "keeps per-item restrictions", code: "// Serialize every key\nconst key = serialize(input);" },
+    { name: "keeps an immediate sibling group label", code: "// Serialize key\nconst key = serialize(input);\nconst value = transform(input);" },
+    { name: "ignores a neighboring statement as evidence", code: "// hashed user\nrun(); const hashedUser = value;" },
+    { name: "ignores literal payload as evidence", code: "// serialized values\nrecord(\"serialized values\");" },
+    { name: "ignores template text as evidence", code: "// serialized values\nrecord(`serialized values`);" },
+    { name: "ignores inline comment text as evidence", code: "// payload key\nconst result = transform(input /* payload key */);" },
+    { name: "ignores a trailing block comment as evidence", code: "// issue path length\nreturn fn(value); /* issue path length */" },
     { name: "accepts the documented reason comment", code: NO_RESTATED_COMMENT_DOCUMENTATION.examples[0].files[0].source },
     { name: "accepts the result of the deletion suggestion", code: "const key = serialize(input);" },
     // One unmatched word means the comment carries something the code does not.
@@ -84,6 +106,24 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
   ],
   invalid: [
+    { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow", suggestions: 1 }] },
+    {
+      name: "uses identifiers inside template interpolations but not template text",
+      code: "// serialized values\nreturn `${serializeValues(input)}`;",
+      errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
+    },
+    {
+      name: "does not treat a preceding trailing comment as a paragraph",
+      code: "run(); // trace\n// Serialize key\nconst key = serialize(input);",
+      output: null,
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "run(); // trace\nconst key = serialize(input);" }] }],
+    },
+    {
+      name: "does not treat a trailing comment as a prose paragraph",
+      code: "// Serialize key\nconst key = serialize(input); // trace",
+      output: null,
+      errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const key = serialize(input); // trace" }] }],
+    },
     {
       name: "offers whole-line deletion without applying an autofix",
       code: NO_RESTATED_COMMENT_DOCUMENTATION.examples[1].files[0].source,

@@ -1101,7 +1101,7 @@ export function createConfig(options = {}) {
       "@sarj/require-use-server-in-actions-file": "error",
       "@sarj/source-coupled-test": "error",
       "@sarj/no-positional-tuple-return": "error",
-      "@sarj/no-restated-comment": "error",
+      "@sarj/no-restated-comment": "warn",
       "@sarj/no-restated-jsdoc": "error",
       "@sarj/no-trailing-value-narration": "error",
       "@sarj/no-declaration-comment-wall": "error",

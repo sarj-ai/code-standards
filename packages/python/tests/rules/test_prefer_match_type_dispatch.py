@@ -14,6 +14,53 @@ def _check(source: str, path: str = "python/app/parser.py") -> list[Diagnostic]:
     return PreferMatchTypeDispatch().check(Path(path), source)
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "with suppress(ValueError):\n    raise ValueError",
+        "with suppress(ValueError):\n    return parse_value()",
+        "with suppress(ValueError):\n    with managed():\n        return 1",
+        "if ready:\n    with suppress(ValueError):\n        raise ValueError\nelse:\n    return 1",
+    ],
+)
+def test_context_manager_branch_can_fall_through(body: str) -> None:
+    branch = "\n".join(f"        {line}" for line in body.splitlines())
+    source = (
+        "from contextlib import suppress\n"
+        "def classify(value):\n    if isinstance(value, bool):\n"
+        f"{branch}\n"
+        "    if isinstance(value, int):\n        return 'int'\n"
+        "    if isinstance(value, str):\n        return 'str'\n"
+        "    return 'fallback'\n"
+    )
+    assert PreferMatchTypeDispatch().check(Path("app/classify.py"), source) == []
+
+
+@pytest.mark.parametrize("terminal", ["raise ValueError", "return await parse_value()"])
+def test_async_context_manager_branch_can_fall_through(terminal: str) -> None:
+    source = (
+        "async def classify(value):\n    if isinstance(value, bool):\n"
+        f"        async with managed():\n            {terminal}\n"
+        "    if isinstance(value, int):\n        return 'int'\n"
+        "    if isinstance(value, str):\n        return 'str'\n"
+        "    return 'fallback'\n"
+    )
+    assert PreferMatchTypeDispatch().check(Path("app/classify.py"), source) == []
+
+
+@pytest.mark.parametrize("with_statement", ["with managed():", "async with managed():"])
+def test_outer_return_after_context_manager_still_terminates(with_statement: str) -> None:
+    source = (
+        "async def classify(value):\n    if isinstance(value, bool):\n"
+        f"        {with_statement}\n            process(value)\n        return 'bool'\n"
+        "    if isinstance(value, int):\n        return 'int'\n"
+        "    if isinstance(value, str):\n        return 'str'\n"
+    )
+    findings = PreferMatchTypeDispatch().check(Path("app/classify.py"), source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ080"
+
+
 _PUBLIC_EXAMPLES = PreferMatchTypeDispatch.public_examples()
 
 

@@ -162,6 +162,11 @@ export function normalizeToken(word: string): string {
  * the comment could be *labelling* rather than restating.
  */
 export function restatableStatementBelow(comment: TSESTree.Comment, sourceCode: StatementReader): string | null {
+  const node = restatableStatementNodeBelow(comment, sourceCode);
+  return node === null ? null : sourceCode.getText(node);
+}
+
+export function restatableStatementNodeBelow(comment: TSESTree.Comment, sourceCode: StatementReader): TSESTree.Node | null {
   const token = sourceCode.getTokenAfter(comment, { includeComments: false });
   if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return null;
   for (
@@ -176,7 +181,7 @@ export function restatableStatementBelow(comment: TSESTree.Comment, sourceCode: 
     if (node.type === AST_NODE_TYPES.VariableDeclaration && isTrivialInitializer(node)) {
       return null;
     }
-    return sourceCode.getText(node);
+    return node;
   }
   return null;
 }
