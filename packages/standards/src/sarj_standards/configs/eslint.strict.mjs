@@ -402,80 +402,6 @@ if (missingUnicornRules.length > 0) {
 // instead of silently weakening the strict configuration on newer ESLint.
 const compatibleReact = fixupPluginRules(react);
 
-export function withTailwindClassFragmentCompatibility(plugin) {
-  const upstream = plugin.rules["no-concatenated-classes"];
-  const typeWrappers = new Set(["TSAsExpression", "TSTypeAssertion", "TSNonNullExpression", "TSSatisfiesExpression"]);
-  const completeConditionalTemplate = (expression) => {
-    let node = expression;
-    while (typeWrappers.has(node.type)) node = node.expression;
-    if (node.type !== "TemplateLiteral" || node.expressions.length !== 1) return false;
-    const conditional = node.expressions[0];
-    if (conditional.type !== "ConditionalExpression") return false;
-    const alternatives = [conditional.consequent, conditional.alternate];
-    if (!alternatives.every((branch) => branch.type === "Literal" && typeof branch.value === "string")) return false;
-    const before = node.quasis[0].value.cooked;
-    const after = node.quasis[1].value.cooked;
-    if (before === null || after === null) return false;
-    const joinsLeft = /\S$/.test(before);
-    const joinsRight = /^\S/.test(after);
-    return alternatives.every(({ value }) => value === ""
-      ? !(joinsLeft && joinsRight)
-      : (!joinsLeft || /^\s/.test(value)) && (!joinsRight || /\s$/.test(value)));
-  };
-  return {
-    ...plugin,
-    rules: {
-      ...plugin.rules,
-      "no-concatenated-classes": {
-        ...upstream,
-        meta: {
-          ...upstream.meta,
-          type: "suggestion",
-          docs: {
-            ...upstream.meta.docs,
-            description: "Prefer complete class names instead of assembling fragments in class values and helpers.",
-          },
-        },
-        create(context) {
-          const reportedExpressions = new Set();
-          const emit = (descriptor) => context.report({
-            ...descriptor,
-            message: "Select complete class names rather than assembling fragments; use literals or a lookup map.",
-          });
-          const report = (descriptor) => {
-            const loc = descriptor.loc?.start ?? descriptor.loc;
-            if (loc === undefined) return emit(descriptor);
-            const sourceCode = context.sourceCode;
-            let node = sourceCode.getNodeByRangeIndex(sourceCode.getIndexFromLoc(loc));
-            let expression;
-            while (node !== null && node !== undefined) {
-              const parent = node.parent;
-              if (parent?.type === "MemberExpression" && parent.computed && parent.property === node) return;
-              const concatenates = node.type === "TemplateLiteral" ||
-                (node.type === "BinaryExpression" && node.operator === "+");
-              if (concatenates && (expression === undefined || node.left === expression ||
-                node.right === expression || node.expressions?.includes(expression))) {
-                expression = node;
-              } else if (typeWrappers.has(node.type) && node.expression === expression) {
-                expression = node;
-              }
-              node = parent;
-            }
-            if (expression !== undefined) {
-              if (completeConditionalTemplate(expression) || reportedExpressions.has(expression)) return;
-              reportedExpressions.add(expression);
-            }
-            emit(descriptor);
-          };
-          return upstream.create(Object.create(context, { report: { value: report } }));
-        },
-      },
-    },
-  };
-}
-
-const compatibleTailwindcss = withTailwindClassFragmentCompatibility(betterTailwindcss);
-
 // Build output is not authored code, and this config had NO `ignores` at all —
 // the single string "ignores" in the whole file was a word in a comment. ESLint
 // 9/10 ignore only `node_modules/` and `.git/` by default, so `eslint .` in an
@@ -1276,11 +1202,11 @@ export function createConfig(options = {}) {
   },
 
   // Class-value policies delegate to the installed Tailwind engine.
-  // New policies remain warnings while consumer feedback is collected.
+  // The new policy remains a warning while consumer feedback is collected.
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     plugins: {
-      "better-tailwindcss": compatibleTailwindcss,
+      "better-tailwindcss": betterTailwindcss,
     },
     rules: {
       "better-tailwindcss/no-conflicting-classes": "error",
@@ -1288,9 +1214,7 @@ export function createConfig(options = {}) {
       "better-tailwindcss/no-deprecated-classes": "error",
       "better-tailwindcss/no-unnecessary-whitespace": "error",
       "better-tailwindcss/enforce-shorthand-classes": "error",
-      "better-tailwindcss/no-concatenated-classes": ["warn", { variables: [] }],
       "better-tailwindcss/enforce-consistent-variable-syntax": ["warn", { syntax: "shorthand" }],
-      "better-tailwindcss/enforce-consistent-important-position": "warn",
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
