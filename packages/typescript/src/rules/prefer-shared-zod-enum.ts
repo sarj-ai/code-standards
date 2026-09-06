@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -18,7 +18,7 @@ export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
   rationale: "Inline or repeated literal domains hide a reusable contract and allow equivalent fields to drift independently.",
   remediation: "Declare a module-level named Zod enum schema and reuse it at each field or contract site.",
   category: "maintainability",
-  limitations: ["Only direct z.enum calls with string-literal arrays are inspected; computed domains require review."],
+  limitations: ["Only direct z.enum calls with string-literal arrays are inspected; computed domains require review. Equal values do not prove a shared business domain: retain local schemas when ownership, error customization, or future evolution differs, and review initialization order before extraction."],
   examples: [
     { id: "shared-provider", title: "Reuse a named enum schema", outcome: "no-match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const ProviderSchema = z.enum(['agy', 'claude', 'sol']); const JobSchema = z.object({ provider: ProviderSchema }); const StatusSchema = z.object({ provider: ProviderSchema.optional() });" }], focusPath: "src/provider.ts", expectedCount: 0, public: true },
     { id: "inline-provider", title: "Do not inline enum domains in object fields", outcome: "match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) });" }], focusPath: "src/provider.ts", expectedCount: 1, public: true },
@@ -77,7 +77,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
-    const zodBindings = new Set<string>();
+    const zodBindings = new Set<TSESLint.Scope.Variable>();
+    const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
+      ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
     const seen = new Set<string>();
     return {
       ImportDeclaration(node): void {
@@ -89,7 +91,10 @@ export default createRule<Options, MessageIds>({
             (specifier.type === AST_NODE_TYPES.ImportSpecifier &&
               specifier.imported.type === AST_NODE_TYPES.Identifier &&
               specifier.imported.name === "z")
-          ) zodBindings.add(specifier.local.name);
+          ) {
+            const binding = bindingOf(specifier.local);
+            if (binding !== null) zodBindings.add(binding);
+          }
         }
       },
       CallExpression(node): void {
@@ -97,10 +102,11 @@ export default createRule<Options, MessageIds>({
           node.callee.type !== AST_NODE_TYPES.MemberExpression ||
           node.callee.computed ||
           node.callee.object.type !== AST_NODE_TYPES.Identifier ||
-          !zodBindings.has(node.callee.object.name) ||
           node.callee.property.type !== AST_NODE_TYPES.Identifier ||
           node.callee.property.name !== "enum"
         ) return;
+        const binding = bindingOf(node.callee.object);
+        if (binding === null || !zodBindings.has(binding)) return;
         const domain = literalDomain(node);
         if (domain === null) return;
         const key = JSON.stringify(domain);

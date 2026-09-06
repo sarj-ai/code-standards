@@ -14,13 +14,14 @@ type MessageIds = "storeInsertRequiresOnConflict";
 type Options = readonly [];
 
 export const STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION = {
-  summary: "Require embedded inserts in explicitly replayable callables to carry conflict handling.",
-  rationale: "A callable named as an enqueue, seed, migration, schedule, ensure, or upsert promises replay safety.",
-  remediation: "Add an appropriate `ON CONFLICT` action or supported replay-safe insert form.",
+  summary: "Review conflict handling for embedded inserts in replay-named callables.",
+  rationale: "Names such as seed, enqueue, or upsert suggest that repeated execution deserves a conflict-policy review, but do not prove a replay contract.",
+  remediation: "Choose conflict handling appropriate to the schema and SQL dialect, or document why this insertion must fail on a duplicate.",
   category: "correctness",
+  limitations: ["Only the nearest statically named callable is considered; top-level inserts and anonymous callbacks are excluded. Recognized conflict syntax does not prove idempotence or concurrency safety: WHERE NOT EXISTS can race, and INSERT OR REPLACE can delete an existing row. Review unique constraints and dialect semantics manually."],
   examples: [
-    { id: "conflict-safe-insert", title: "Handle a replayed insert", outcome: "no-match", files: [{ path: "src/store.ts", source: "db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT(id) DO NOTHING`).run();" }], focusPath: "src/store.ts", expectedCount: 0, public: true },
-    { id: "bare-insert", title: "Do not issue a replay-unsafe insert", outcome: "match", files: [{ path: "src/store.ts", source: "db.prepare(`INSERT INTO runs (id) VALUES (?)`).run();" }], focusPath: "src/store.ts", expectedCount: 1, public: true },
+    { id: "conflict-safe-insert", title: "Review the conflict policy for a replayed insert", outcome: "no-match", files: [{ path: "src/store.ts", source: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT(id) DO NOTHING`).run(); }" }], focusPath: "src/store.ts", expectedCount: 0, public: true },
+    { id: "bare-insert", title: "Review a bare insert in a replay-named callable", outcome: "match", files: [{ path: "src/store.ts", source: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?)`).run(); }" }], focusPath: "src/store.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -28,7 +29,7 @@ export const STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION = {
 const INSERT_WRITE =
   /\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w."'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b/i;
 
-/** Matches supported replay-safe insert forms. */
+/** Matches conflict-policy syntax without proving replay safety. */
 const CONFLICT_HANDLED = /\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b|\bINSERT\b[\s\S]*?\bSELECT\b[\s\S]*?\bWHERE\s+NOT\s+EXISTS\b/i;
 
 const REPLAY_CONTRACT_NAME = /(?:enqueue|ensure|migrate|recordOnce|schedule|seed|upsert|getOrCreate|createIfAbsent|insertIfAbsent)/i;
@@ -43,7 +44,7 @@ function owningCallableName(node: TSESTree.Node): string | null {
       return current.id?.name ?? null;
     }
     if (current.type === "MethodDefinition") {
-      return current.key.type === "Identifier" ? current.key.name : null;
+      return !current.computed && current.key.type === "Identifier" ? current.key.name : null;
     }
     if (
       (current.type === "ArrowFunctionExpression" ||
@@ -57,9 +58,14 @@ function owningCallableName(node: TSESTree.Node): string | null {
       (current.type === "ArrowFunctionExpression" ||
         current.type === "FunctionExpression") &&
       current.parent.type === "Property" &&
+      !current.parent.computed &&
       current.parent.key.type === "Identifier"
     ) {
       return current.parent.key.name;
+    }
+    if (current.type === "ArrowFunctionExpression" || current.type === "FunctionExpression") {
+      const parent = current.parent;
+      return parent.type === "MethodDefinition" && !parent.computed && parent.key.type === "Identifier" ? parent.key.name : null;
     }
   }
   return null;
@@ -74,12 +80,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Require embedded inserts in explicitly replayable callables to carry conflict handling.",
+        "Review conflict handling for embedded inserts in replay-named callables.",
     },
     schema: [],
     messages: {
       storeInsertRequiresOnConflict:
-        "This INSERT is not replay-safe: a cron re-run or queue redelivery duplicates the row (or fails the handler on a unique-constraint violation). Add `ON CONFLICT (...) DO UPDATE` / `DO NOTHING` (or `INSERT OR IGNORE`).",
+        "This INSERT is inside a replay-named callable without recognized conflict handling. Review duplicate execution, unique constraints, and the appropriate conflict policy for your SQL dialect.",
     },
   },
   defaultOptions: [],
@@ -92,7 +98,7 @@ export default createRule<Options, MessageIds>({
         return;
       }
       const owner = owningCallableName(node);
-      if (owner !== null && !REPLAY_CONTRACT_NAME.test(owner)) {
+      if (owner === null || !REPLAY_CONTRACT_NAME.test(owner)) {
         return;
       }
       context.report({ node, messageId: "storeInsertRequiresOnConflict" });

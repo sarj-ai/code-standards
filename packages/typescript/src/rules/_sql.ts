@@ -7,12 +7,35 @@ import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint
 
 /** Mask SQL values and comments without changing text or line lengths. */
 export function stripSqlNoise(text: string): string {
-  const out = [...text];
+  return scanSqlNoise(text);
+}
+
+export function sqlSingleQuotedRanges(text: string): readonly (readonly [number, number])[] {
+  const ranges: Array<readonly [number, number]> = [];
+  scanSqlNoise(text, (start, end) => ranges.push([start, end]));
+  return ranges;
+}
+
+function scanSqlNoise(text: string, onSingleQuoted?: (start: number, end: number) => void): string {
+  const out = text.split("");
   const n = text.length;
   let i = 0;
   while (i < n) {
     const ch = text[i];
+    if (ch === "$" && !/[\w$]/u.test(text[i - 1] ?? "")) {
+      const delimiter = /^\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$/u.exec(text.slice(i))?.[0];
+      if (delimiter !== undefined) {
+        const closing = text.indexOf(delimiter, i + delimiter.length);
+        const end = closing < 0 ? n : closing + delimiter.length;
+        while (i < end) {
+          if (text[i] !== "\n") out[i] = " ";
+          i += 1;
+        }
+        continue;
+      }
+    }
     if (ch === "'" || ch === '"') {
+      const start = i;
       out[i] = " ";
       i += 1;
       while (i < n) {
@@ -26,6 +49,7 @@ export function stripSqlNoise(text: string): string {
           }
           out[i] = " ";
           i += 1;
+          if (ch === "'") onSingleQuoted?.(start, i);
           break;
         }
         if (c !== "\n") {
@@ -46,16 +70,19 @@ export function stripSqlNoise(text: string): string {
       out[i] = " ";
       out[i + 1] = " ";
       i += 2;
-      while (i < n && !(text[i] === "*" && text[i + 1] === "/")) {
+      let depth = 1;
+      while (i < n && depth > 0) {
+        if ((text[i] === "/" && text[i + 1] === "*") || (text[i] === "*" && text[i + 1] === "/")) {
+          depth += text[i] === "/" ? 1 : -1;
+          out[i] = " ";
+          out[i + 1] = " ";
+          i += 2;
+          continue;
+        }
         if (text[i] !== "\n") {
           out[i] = " ";
         }
         i += 1;
-      }
-      if (i < n) {
-        out[i] = " ";
-        out[i + 1] = " ";
-        i += 2;
       }
       continue;
     }

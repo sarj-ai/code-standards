@@ -16,7 +16,7 @@ export const PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION = {
   rationale: "Recreating immutable lookup data on every call wastes allocations and obscures its constant nature.",
   remediation: "Declare immutable literal collections and non-stateful regular expressions once at module scope.",
   category: "performance",
-  limitations: ["Collections that are small, mutated, escape the function, or depend on local values are not reported."],
+  limitations: ["Small collections, observed direct or nested mutations, nested aliases, direct escapes, and dependencies on local values are excluded. Directly invoked function expressions are excluded rather than assuming they run repeatedly. Callback effects and indirect escapes are not analyzed interprocedurally; review those before hoisting."],
   examples: [
     { id: "hoisted-collection", title: "Hoist a constant collection", outcome: "no-match", files: [{ path: "src/keys.ts", source: "const KEYS = ['a', 'b', 'c'] as const; function isAllowed(key: string) { return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 0, public: true },
     { id: "local-collection", title: "Do not recreate a constant collection", outcome: "match", files: [{ path: "src/keys.ts", source: "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 1, public: true },
@@ -262,14 +262,18 @@ const NON_RETAINING_BUILTINS: ReadonlyMap<string, ReadonlySet<string>> = new Map
 );
 
 function isSafeRead(identifier: TSESTree.Identifier): boolean {
-  const parent = identifier.parent;
+  let parent = identifier.parent;
 
   if (parent.type === AST_NODE_TYPES.MemberExpression) {
     if (parent.object !== identifier) {
       // `foo[X]` — the binding is used as a key, which is a plain read.
       return true;
     }
+    while (parent.parent.type === AST_NODE_TYPES.MemberExpression && parent.parent.object === parent) {
+      parent = parent.parent;
+    }
     const grandparent = parent.parent;
+    if (grandparent.type === AST_NODE_TYPES.VariableDeclarator || grandparent.type === AST_NODE_TYPES.SpreadElement) return false;
     // `X.a = 1`, `X[0] = 1`, `X.a += 1`
     if (
       grandparent.type === AST_NODE_TYPES.AssignmentExpression &&
@@ -290,17 +294,16 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
     }
     // `X.push(...)`, `X.sort()`, ...
     if (
-      !parent.computed &&
-      parent.property.type === AST_NODE_TYPES.Identifier &&
-      MUTATING_METHODS.has(parent.property.name) &&
       grandparent.type === AST_NODE_TYPES.CallExpression &&
-      grandparent.callee === parent
+      grandparent.callee === parent &&
+      (parent.computed
+        ? parent.property.type !== AST_NODE_TYPES.Literal || typeof parent.property.value !== "string" || MUTATING_METHODS.has(parent.property.value)
+        : parent.property.type === AST_NODE_TYPES.Identifier && MUTATING_METHODS.has(parent.property.name))
     ) {
       return false;
     }
-    // Everything else through a member expression — `X.length`, `X.includes(v)`,
-    // `X[i]`, `X.get(k)`, even `arr.map(X.has)` — reads a property of the
-    // binding without handing the binding itself out, so it cannot mutate it.
+    // Other member reads retain the existing heuristic; this is not an
+    // interprocedural proof that callbacks or returned children cannot mutate.
     return true;
   }
 
@@ -458,9 +461,16 @@ export default createRule<Options, MessageIds>({
         if (node.id.type !== AST_NODE_TYPES.Identifier || node.init === null) {
           return;
         }
-        if (enclosingFunction(node) === null) {
+        const owner = enclosingFunction(node);
+        if (owner === null) {
           return;
         }
+        let expression = owner;
+        while (expression.parent !== undefined && unwrap(expression.parent) === expression) {
+          expression = expression.parent;
+        }
+        if (expression.parent?.type === AST_NODE_TYPES.CallExpression &&
+          expression.parent.callee === expression) return;
 
         const candidate = classify(node.init, checkRegex);
         if (candidate === null) {

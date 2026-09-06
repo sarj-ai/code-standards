@@ -20,6 +20,10 @@ const IMPORT = 'import { z } from "zod";\n';
 
 RULE_TESTER.run("prefer-module-level-schema", rule, {
   valid: [
+    { name: "does not assume every Zod namespace function constructs a schema", code: `${IMPORT}function build() { return z.object({id: z.string(), name: z.string({error: z.getErrorMap()})}); }` },
+    { name: "preserves eager time-dependent defaults", code: `${IMPORT}function build() { return z.object({id: z.string(), created: z.number().default(Date.now())}); }` },
+    { name: "preserves namespace construction-time calls", code: `${IMPORT}import * as policy from './policy'; function build() { return z.object({id: z.string(), count: z.number().max(policy.currentLimit())}); }` },
+    { name: "preserves construction-time allocation", code: `${IMPORT}function build() { return z.object({id: z.string(), created: z.date().default(new Date())}); }` },
     { name: "public no-match example", filename: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[0].focusPath, code: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[0].files[0].source },
     // The target state — declared once, at module scope.
     {
@@ -216,6 +220,7 @@ RULE_TESTER.run("prefer-module-level-schema", rule, {
   ],
 
   invalid: [
+    { name: "retains deferred time-dependent defaults", code: `${IMPORT}function build() { return z.object({id: z.string(), created: z.number().default(() => Date.now())}); }`, errors: [{ messageId: "hoistSchema" }] },
     { name: "public match example", filename: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[1].focusPath, code: PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "hoistSchema" }] },
     // The core case: rebuilt on every call, uses nothing the function owns.
     {

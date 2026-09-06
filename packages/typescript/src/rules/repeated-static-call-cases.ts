@@ -14,12 +14,12 @@ type Options = readonly [];
 type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
 
 export const REPEATED_STATIC_CALL_CASES_DOCUMENTATION = {
-  summary: "Report three or more consecutive literal call assertions that should be independently named test cases.",
-  rationale: "Copy-pasted cases obscure the input table and stop later cases from being reported after the first failure.",
-  remediation: "Replace the repeated assertions with a named `test.each` or `it.each` table.",
+  summary: "Review three or more consecutive static-input call assertions as potential named cases.",
+  rationale: "Copy-pasted cases obscure the input table, and a thrown assertion can stop later cases from being reported.",
+  remediation: "If the calls are independent, use the runner's named parameterized cases or subtests. Preserve ordered state-transition scenarios as one test.",
   category: "testing",
   filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**", "**/__tests__/**"],
-  limitations: ["Only consecutive top-level assertions with direct calls and entirely static inputs and expected values are reported."],
+  limitations: ["Only consecutive top-level assertions with direct calls and static inputs and expected values are checked. Test-local callees and fixtures are excluded; imported or outer functions can still be stateful, so manual independence review is required. Not every runner supports test.each."],
   examples: [
     { id: "parameterized", title: "Name each case", outcome: "no-match", files: [{ path: "src/parser.test.ts", source: "test.each([['a', true], ['b', false], ['c', true]])('parses %s', (input, expected) => { expect(parse(input)).toBe(expected); });" }], focusPath: "src/parser.test.ts", expectedCount: 0, public: true },
     { id: "repeated", title: "Do not repeat literal cases", outcome: "match", files: [{ path: "src/parser.test.ts", source: "test('parses', () => { expect(parse('a')).toBe(true); expect(parse('b')).toBe(false); expect(parse('c')).toBe(true); });" }], focusPath: "src/parser.test.ts", expectedCount: 1, public: true },
@@ -112,7 +112,7 @@ function staticShape(node: TSESTree.Node): string {
   }
 }
 
-function assertionShape(statement: TSESTree.Statement, context: Context): AssertionShape | null {
+function assertionShape(statement: TSESTree.Statement, context: Context, callback: FunctionNode): AssertionShape | null {
   if (statement.type !== AST_NODE_TYPES.ExpressionStatement || statement.expression.type !== AST_NODE_TYPES.CallExpression) return null;
   const matcherCall = statement.expression;
   if (matcherCall.callee.type !== AST_NODE_TYPES.MemberExpression || matcherCall.callee.computed || matcherCall.callee.property.type !== AST_NODE_TYPES.Identifier || matcherCall.arguments.length !== 1) return null;
@@ -124,6 +124,10 @@ function assertionShape(statement: TSESTree.Statement, context: Context): Assert
   const expected = matcherCall.arguments[0];
   if (observed?.type !== AST_NODE_TYPES.CallExpression || observed.callee.type !== AST_NODE_TYPES.Identifier || observed.arguments.length === 0 || observed.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement || !isStatic(arg)) || expected?.type === AST_NODE_TYPES.SpreadElement || expected === undefined || !isStatic(expected)) return null;
   const skeleton = `${observed.callee.name}/${observed.arguments.map((item) => staticShape(item)).join(",")}/${chain.modifiers.join(".")}/${matcher}/${staticShape(expected)}`;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(observed.callee), observed.callee.name);
+  if (binding?.defs.some((definition) =>
+    definition.node.range[0] >= callback.range[0] && definition.node.range[1] <= callback.range[1],
+  )) return null;
   const values = [...observed.arguments, expected].map((item) => context.sourceCode.getText(item)).join("\u0000");
   return { statement, skeleton, values };
 }
@@ -145,9 +149,9 @@ export default createRule<Options, MessageIds>({
   documentation: REPEATED_STATIC_CALL_CASES_DOCUMENTATION,
   meta: {
     type: "suggestion",
-    docs: { description: "Report three or more consecutive literal call assertions that should be independently named test cases." },
+    docs: { description: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.summary },
     schema: [],
-    messages: { repeatedStaticCallCases: "These {{count}} consecutive assertions repeat the same call with static cases. Use a named `test.each` or `it.each` table so every case is independently reported." },
+    messages: { repeatedStaticCallCases: "These {{count}} consecutive assertions repeat a call with static inputs. If independent, use named parameterized cases or subtests; preserve ordered scenarios as one test." },
   },
   defaultOptions: [],
   create(context) {
@@ -182,7 +186,7 @@ export default createRule<Options, MessageIds>({
           run = [];
         };
         for (const statement of node.body.body) {
-          const shape = assertionShape(statement, context);
+          const shape = assertionShape(statement, context, node);
           if (shape === null || (run.length > 0 && run[0]?.skeleton !== shape.skeleton)) flush();
           if (shape !== null) run.push(shape);
         }

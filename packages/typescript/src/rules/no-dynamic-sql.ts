@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-dynamic-sql — a runtime value interpolated into statement text is SQL injection, and it defeats the prepared-statement cache.
+ * @fileoverview no-dynamic-sql — bind runtime values separately from SQL string literals.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-dynamic-sql.test.ts
  */
@@ -7,7 +7,7 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { stripSqlNoise } from "./_sql.js";
+import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
 
 type MessageIds = "dynamicSql";
 
@@ -24,8 +24,9 @@ export const NO_DYNAMIC_SQL_DOCUMENTATION = {
   remediation: "Use SQL placeholders and pass runtime values through the driver's binding API.",
   category: "security",
   limitations: [
-    "The rule reports only visibly quoted runtime values; dynamic identifiers and unquoted fragments require provenance that syntax-only linting cannot prove.",
-    "Static fragments and parameterizing tagged templates are exempt.",
+    "Only single-quoted SQL values are inspected. Double-quoted identifiers, comments, dollar strings, and unquoted fragments are excluded; this is not a general SQL injection detector.",
+    "Literal fragments, legacy uppercase fragment names, and parameterizing tagged templates are exempt; uppercase spelling does not prove a value is static.",
+    "The bounded lexer recognizes doubled quotes, comments, and PostgreSQL dollar strings; dialect-specific escape modes and SQL generated through other APIs require separate security review.",
   ],
   examples: [
     {
@@ -83,20 +84,26 @@ function isStaticFragment(expression: TSESTree.Expression): boolean {
 function runtimeInterpolations(
   template: TSESTree.TemplateLiteral,
 ): TSESTree.Expression[] {
+  const parts = template.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw);
+  const ranges = sqlSingleQuotedRanges(parts.join(RUNTIME_MARKER));
+  let offset = 0;
   return template.expressions.filter(
-    (expression, index) =>
-      !isStaticFragment(expression) &&
-      endsWithSqlQuote(template.quasis[index]?.value.raw ?? "") &&
-      startsWithSqlQuote(template.quasis[index + 1]?.value.raw ?? ""),
+    (expression, index) => {
+      offset += (parts[index]?.length ?? 0);
+      const inValue = ranges.some(([start, end]) => start < offset && offset < end);
+      offset += RUNTIME_MARKER.length;
+      return inValue && !isStaticFragment(expression) &&
+        endsWithSqlQuote(parts[index] ?? "") && startsWithSqlQuote(parts[index + 1] ?? "");
+    },
   );
 }
 
 function endsWithSqlQuote(text: string): boolean {
-  return /['"]\s*$/u.test(text);
+  return /'\s*$/u.test(text);
 }
 
 function startsWithSqlQuote(text: string): boolean {
-  return /^\s*['"]/u.test(text);
+  return /^\s*'/u.test(text);
 }
 
 function staticLiteralText(node: TSESTree.Expression): string | undefined {
@@ -127,7 +134,13 @@ function runtimeConcatOperands(node: TSESTree.Node): TSESTree.Expression[] {
   if (!hasStringLiteral) {
     return [];
   }
+  const parts = operands.map((operand) => staticLiteralText(operand) ?? RUNTIME_MARKER);
+  const ranges = sqlSingleQuotedRanges(parts.join(""));
+  let offset = 0;
   return operands.filter((operand, index) => {
+    const inValue = ranges.some(([start, end]) => start < offset && offset < end);
+    offset += parts[index]?.length ?? 0;
+    if (!inValue) return false;
     if (isStaticFragment(operand)) return false;
     const before = operands[index - 1];
     const after = operands[index + 1];

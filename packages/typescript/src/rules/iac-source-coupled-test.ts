@@ -15,8 +15,8 @@ export const IAC_SOURCE_COUPLED_TEST_DOCUMENTATION = {
   remediation: "Parse rendered plan JSON, query the provider, or exercise the deployed runtime contract.",
   category: "testing",
   limitations: [
-    "The rule follows lexical aliases, source-path collections, awaited reads, and common text operations; interprocedural flows remain unreported.",
-    "The warning-stage rule remains suppressible for calibration; promotion may make the locked policy non-suppressible.",
+    "The rule follows stable lexical bindings and static source paths. Reassigned bindings, dynamic paths, unknown path wrappers, iterator pipelines, and interprocedural flows remain unreported.",
+    "When raw representation is genuinely the contract, use an exact line suppression explaining that contract.",
   ],
   examples: [
     {

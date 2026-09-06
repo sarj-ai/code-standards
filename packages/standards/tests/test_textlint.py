@@ -14,7 +14,32 @@ from sarj_standards.libs.rules.contracts import (
 )
 
 
+@pytest.mark.parametrize(
+    ("name", "caveat"),
+    [
+        ("large-shell-program", "physical lines"),
+        ("no-wildcard-secret-read-permission", "cloud IAM permissions are not audited"),
+    ],
+)
+def test_advisory_metadata_describes_its_evidence_boundary(name: str, caveat: str) -> None:
+    assert caveat in " ".join(textlint.REGISTRY[name].limitations)
+
+
 SHELL_IAC_EVALUATION_CASES = (
+    EvaluationCase(
+        "literal-heredoc-is-data",
+        Language.CONFIG,
+        "cat <<'DOC'\ngrep resource main.tf\nDOC\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
+    EvaluationCase(
+        "longer-variable-is-not-tainted",
+        Language.CONFIG,
+        'source=$(cat main.tf)\ntest "$source_metadata" = ok\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath("tests/policy.test.sh"),
+    ),
     EvaluationCase(
         "grep-pattern-looks-like-terraform-path",
         Language.CONFIG,
@@ -269,6 +294,48 @@ EXACT_CONFIG_RESTATEMENT_CASES = (
 )
 
 COMMAND_ARGUMENT_CASES = (
+    EvaluationCase(
+        "query-keyword-in-script-name-is-not-sql",
+        Language.MARKDOWN,
+        '```bash\nscripts/update.sh "$ARGUMENTS"\n```\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/commands/update.md"),
+    ),
+    EvaluationCase(
+        "comment-heredoc-does-not-hide-following-command",
+        Language.MARKDOWN,
+        "```bash\n# Example: cat <<'DOC'\nscripts/run.sh $ARGUMENTS\n```\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/commands/run.md"),
+    ),
+    EvaluationCase(
+        "unquoted-heredoc-still-expands-arguments",
+        Language.MARKDOWN,
+        "```bash\ncat <<DOC\n$ARGUMENTS\nDOC\n```\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".claude/commands/run.md"),
+    ),
+    EvaluationCase(
+        "quoted-argument-before-semicolon",
+        Language.MARKDOWN,
+        '```bash\nscripts/run.sh "$ARGUMENTS";\n```\n',
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/commands/run.md"),
+    ),
+    EvaluationCase(
+        "shell-comment-is-not-interpolation",
+        Language.MARKDOWN,
+        "```bash\n# Pass $ARGUMENTS to the wrapper.\n```\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/commands/run.md"),
+    ),
+    EvaluationCase(
+        "quoted-heredoc-is-not-interpolation",
+        Language.MARKDOWN,
+        "```bash\ncat <<'DOC'\n$ARGUMENTS\nDOC\n```\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".claude/commands/run.md"),
+    ),
     EvaluationCase(
         "unquoted-shell-argument",
         Language.MARKDOWN,
@@ -2057,6 +2124,23 @@ def test_flags_named_ai_execution_artifacts(tmp_path: Path, filename: str) -> No
     path = tmp_path / filename
     path.write_text("# Temporary execution record\n")
     assert _codes(path, root=tmp_path) == ["SARJ302"]
+
+
+@pytest.mark.parametrize("filename", ["FIX-BRIEF.md", "docs/backups/README.md", "bugs-found.md"])
+def test_artifact_path_alone_does_not_classify_durable_content(tmp_path: Path, filename: str) -> None:
+    path = tmp_path / filename
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "# Maintained operations guide\n\nCurrent deployment commands and recovery contracts.\n", encoding="utf-8"
+    )
+    assert _codes(path, root=tmp_path) == []
+
+
+def test_artifact_message_does_not_infer_authorship(tmp_path: Path) -> None:
+    path = tmp_path / "FIX-BRIEF.md"
+    path.write_text("# Temporary execution record\n", encoding="utf-8")
+    [finding] = textlint.check_paths([str(path)], root=tmp_path)
+    assert "AI" not in finding.message
 
 
 def test_new_artifact_rule_blocks(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:

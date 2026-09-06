@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/source-coupled-test.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -51,12 +51,12 @@ const EXPECT_MODIFIERS = new Set(["not", "rejects", "resolves"]);
 const ASSERT_MATCHERS = new Set(["deepEqual", "doesNotMatch", "equal", "match", "notDeepEqual", "notEqual", "notStrictEqual", "ok", "strictEqual"]);
 
 interface LexicalScope {
-  readonly collections: Set<string>;
-  readonly declared: Set<string>;
-  readonly fsObjects: Set<string>;
-  readonly fsReaders: Set<string>;
-  readonly paths: Set<string>;
-  readonly rawOrigins: Map<string, Set<string>>;
+  readonly collections: Set<TSESLint.Scope.Variable>;
+  readonly declared: Set<TSESLint.Scope.Variable>;
+  readonly fsObjects: Set<TSESLint.Scope.Variable>;
+  readonly fsReaders: Set<TSESLint.Scope.Variable>;
+  readonly paths: Set<TSESLint.Scope.Variable>;
+  readonly rawOrigins: Map<TSESLint.Scope.Variable, Set<string>>;
 }
 
 export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
@@ -65,7 +65,7 @@ export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
   remediation: "Parse the artifact, execute its validator, or assert on another runtime contract.",
   category: "testing",
   limitations: [
-    "The rule follows lexical aliases, source-path collections, awaited reads, and common text operations; interprocedural flows remain unreported.",
+    "The rule follows stable lexical bindings, static source paths, awaited reads, and common text operations. Reassigned bindings, dynamic paths, unknown path wrappers, iterator pipelines, and interprocedural flows remain unreported.",
     "When raw representation is genuinely the contract (for example a golden or compatibility sentinel), use an exact line suppression with the reason.",
   ],
   examples: [
@@ -111,6 +111,11 @@ function stringValue(node: TSESTree.Node): string | null {
   const current = unwrap(node);
   if (current.type === AST_NODE_TYPES.Literal && typeof current.value === "string") return current.value;
   if (current.type === AST_NODE_TYPES.TemplateLiteral && current.expressions.length === 0) return current.quasis[0]?.value.cooked ?? null;
+  if (current.type === AST_NODE_TYPES.BinaryExpression && current.operator === "+") {
+    const left = stringValue(current.left);
+    const right = stringValue(current.right);
+    return left === null || right === null ? null : left + right;
+  }
   return null;
 }
 
@@ -155,14 +160,19 @@ export function createSourceCoupledRule(
     const scopes: LexicalScope[] = [newScope()];
     const reportedOrigins = new Set<string>();
     const currentScope = (): LexicalScope => scopes.at(-1) ?? scopes[0]!;
-    const visible = (kind: "collections" | "fsObjects" | "fsReaders" | "paths", name: string): boolean => {
+    const bindingOf = (node: TSESTree.Identifier) => ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+    const visible = (kind: "collections" | "fsObjects" | "fsReaders" | "paths", node: TSESTree.Identifier): boolean => {
+      const name = bindingOf(node);
+      if (name === null || name.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
       for (let index = scopes.length - 1; index >= 0; index--) {
         const scope = scopes[index]!;
         if (scope.declared.has(name)) return scope[kind].has(name);
       }
       return false;
     };
-    const visibleRawOrigins = (name: string): Set<string> => {
+    const visibleRawOrigins = (node: TSESTree.Identifier): Set<string> => {
+      const name = bindingOf(node);
+      if (name === null || name.references.some((reference) => reference.isWrite() && reference.init !== true)) return new Set();
       for (let index = scopes.length - 1; index >= 0; index--) {
         const scope = scopes[index]!;
         if (scope.declared.has(name)) return scope.rawOrigins.get(name) ?? new Set();
@@ -173,15 +183,17 @@ export function createSourceCoupledRule(
       const current = unwrap(node);
       const value = stringValue(current);
       if (value !== null) return sourceSuffixRe.test(value);
-      if (current.type === AST_NODE_TYPES.Identifier) return visible("paths", current.name);
-      if (current.type === AST_NODE_TYPES.BinaryExpression && current.operator === "+") {
-        return sourcePath(current.left) || sourcePath(current.right);
-      }
-      if (current.type === AST_NODE_TYPES.TemplateLiteral) return current.expressions.some(sourcePath);
+      if (current.type === AST_NODE_TYPES.Identifier) return visible("paths", current);
       if (current.type === AST_NODE_TYPES.CallExpression || current.type === AST_NODE_TYPES.NewExpression) {
-        return current.arguments.some((argument) => argument.type !== AST_NODE_TYPES.SpreadElement && sourcePath(argument));
+        const callee = current.callee;
+        const first = current.arguments[0];
+        if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) return false;
+        if (current.type === AST_NODE_TYPES.NewExpression && callee.type === AST_NODE_TYPES.Identifier && callee.name === "URL" && (bindingOf(callee)?.defs.length ?? 0) === 0) return sourcePath(first);
+        if (callee.type === AST_NODE_TYPES.Identifier && bindingOf(callee)?.defs.some((definition) =>
+          definition.node.type === AST_NODE_TYPES.ImportSpecifier && definition.node.imported.type === AST_NODE_TYPES.Identifier &&
+          definition.node.imported.name === "fileURLToPath" && definition.node.parent.type === AST_NODE_TYPES.ImportDeclaration &&
+          ["node:url", "url"].includes(String(definition.node.parent.source.value)))) return sourcePath(first);
       }
-      if (current.type === AST_NODE_TYPES.MemberExpression) return sourcePath(current.object);
       return false;
     };
     const rawRead = (node: TSESTree.Node): boolean => {
@@ -189,16 +201,16 @@ export function createSourceCoupledRule(
       if (current.type !== AST_NODE_TYPES.CallExpression || current.arguments.length === 0) return false;
       const callee = unwrap(current.callee);
       if (callee.type === AST_NODE_TYPES.Identifier) {
-        return visible("fsReaders", callee.name) && sourcePath(current.arguments[0] as TSESTree.Node);
+        return visible("fsReaders", callee) && sourcePath(current.arguments[0] as TSESTree.Node);
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
       const name = staticMemberName(callee);
       const object = unwrap(callee.object);
-      return name !== null && FS_READERS.has(name) && object.type === AST_NODE_TYPES.Identifier && visible("fsObjects", object.name) && sourcePath(current.arguments[0] as TSESTree.Node);
+      return name !== null && FS_READERS.has(name) && object.type === AST_NODE_TYPES.Identifier && visible("fsObjects", object) && sourcePath(current.arguments[0] as TSESTree.Node);
     };
     const rawOrigins = (node: TSESTree.Node): Set<string> => {
       const current = unwrap(node);
-      if (current.type === AST_NODE_TYPES.Identifier) return visibleRawOrigins(current.name);
+      if (current.type === AST_NODE_TYPES.Identifier) return visibleRawOrigins(current);
       if (rawRead(current)) return new Set([`${current.range[0]}:${current.range[1]}`]);
       if (current.type === AST_NODE_TYPES.BinaryExpression && current.operator === "+") return new Set([...rawOrigins(current.left), ...rawOrigins(current.right)]);
       if (current.type === AST_NODE_TYPES.MemberExpression && staticMemberName(current) === "length") return rawOrigins(current.object);
@@ -239,18 +251,9 @@ export function createSourceCoupledRule(
       if (receiver.type !== AST_NODE_TYPES.Identifier || receiver.name !== "assert" || !ASSERT_MATCHERS.has(matcher)) return new Set();
       return new Set(node.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
     };
-    const rawRegexExtractionOrigins = (node: TSESTree.CallExpression): Set<string> => {
-      const callee = unwrap(node.callee);
-      if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        staticMemberName(callee) !== "matchAll" ||
-        node.arguments.length !== 1
-      ) return new Set();
-      const argument = node.arguments[0];
-      if (argument?.type !== AST_NODE_TYPES.Literal || !(argument.value instanceof RegExp)) return new Set();
-      return rawOrigins(callee.object);
-    };
-    const declare = (name: string, state: { collection?: boolean; fsObject?: boolean; fsReader?: boolean; path?: boolean; rawOrigins?: Set<string> }): void => {
+    const declare = (node: TSESTree.Identifier, state: { collection?: boolean; fsObject?: boolean; fsReader?: boolean; path?: boolean; rawOrigins?: Set<string> }): void => {
+      const name = bindingOf(node);
+      if (name === null) return;
       const scope = currentScope();
       scope.declared.add(name);
       scope.collections.delete(name);
@@ -270,18 +273,8 @@ export function createSourceCoupledRule(
       const current = unwrap(node);
       return current.type === AST_NODE_TYPES.ArrayExpression && current.elements.length > 0 && current.elements.every((element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && sourcePath(element));
     };
-    const declaredNames = (node: TSESTree.Node): string[] => {
-      const current = unwrap(node);
-      if (current.type === AST_NODE_TYPES.Identifier) return [current.name];
-      if (current.type === AST_NODE_TYPES.AssignmentPattern) return declaredNames(current.left);
-      if (current.type === AST_NODE_TYPES.RestElement) return declaredNames(current.argument);
-      if (current.type === AST_NODE_TYPES.ArrayPattern) return current.elements.flatMap((element) => element === null ? [] : declaredNames(element));
-      if (current.type === AST_NODE_TYPES.ObjectPattern) return current.properties.flatMap((property) => property.type === AST_NODE_TYPES.RestElement ? declaredNames(property.argument) : declaredNames(property.value));
-      return [];
-    };
-    const enterFunction = (node: TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression): void => {
+    const enterFunction = (): void => {
       scopes.push(newScope());
-      for (const parameter of node.params) for (const name of declaredNames(parameter)) declare(name, {});
     };
     const exitFunction = (): void => { scopes.pop(); };
 
@@ -292,9 +285,9 @@ export function createSourceCoupledRule(
         for (const specifier of node.specifiers) {
           if (specifier.type === AST_NODE_TYPES.ImportSpecifier) {
             const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
-            if (FS_READERS.has(imported)) declare(specifier.local.name, { fsReader: true });
+            if (FS_READERS.has(imported)) declare(specifier.local, { fsReader: true });
           } else {
-            declare(specifier.local.name, { fsObject: true });
+            declare(specifier.local, { fsObject: true });
           }
         }
       },
@@ -303,35 +296,34 @@ export function createSourceCoupledRule(
       VariableDeclarator(node): void {
         if (node.init === null) return;
         const required = requireSource(node.init);
+        const initializer = unwrap(node.init);
+        if (required !== null && initializer.type === AST_NODE_TYPES.CallExpression && initializer.callee.type === AST_NODE_TYPES.Identifier && (bindingOf(initializer.callee)?.defs.length ?? 0) > 0) return;
         if (required !== null && FS_MODULES.has(required) && node.id.type === AST_NODE_TYPES.Identifier) {
-          declare(node.id.name, { fsObject: true });
+          declare(node.id, { fsObject: true });
           return;
         }
         if (node.id.type === AST_NODE_TYPES.ObjectPattern && required !== null && FS_MODULES.has(required)) {
           for (const property of node.id.properties) {
             if (property.type !== AST_NODE_TYPES.Property || property.value.type !== AST_NODE_TYPES.Identifier) continue;
             const key = property.key.type === AST_NODE_TYPES.Identifier ? property.key.name : property.key.type === AST_NODE_TYPES.Literal ? String(property.key.value) : "";
-            if (FS_READERS.has(key)) declare(property.value.name, { fsReader: true });
+            if (FS_READERS.has(key)) declare(property.value, { fsReader: true });
           }
           return;
         }
         if (node.id.type !== AST_NODE_TYPES.Identifier) return;
-        declare(node.id.name, { collection: sourceCollection(node.init), path: sourcePath(node.init), rawOrigins: rawOrigins(node.init) });
+        declare(node.id, { collection: sourceCollection(node.init), path: sourcePath(node.init), rawOrigins: rawOrigins(node.init) });
       },
       AssignmentExpression(node): void {
-        if (node.left.type === AST_NODE_TYPES.Identifier) declare(node.left.name, { path: sourcePath(node.right), rawOrigins: rawOrigins(node.right) });
+        if (node.left.type === AST_NODE_TYPES.Identifier) declare(node.left, {});
       },
       ForOfStatement(node): void {
         const right = unwrap(node.right);
-        const collection = right.type === AST_NODE_TYPES.Identifier && visible("collections", right.name);
+        const collection = right.type === AST_NODE_TYPES.Identifier && visible("collections", right);
         const left = node.left.type === AST_NODE_TYPES.VariableDeclaration ? node.left.declarations[0]?.id : node.left;
-        if (collection && left?.type === AST_NODE_TYPES.Identifier) declare(left.name, { path: true });
+        if (collection && left?.type === AST_NODE_TYPES.Identifier) declare(left, { path: true });
       },
       CallExpression(node): void {
-        const origins = new Set([
-          ...rawAssertionOrigins(node),
-          ...rawRegexExtractionOrigins(node),
-        ]);
+        const origins = rawAssertionOrigins(node);
         if (origins.size === 0 || [...origins].every((origin) => reportedOrigins.has(origin))) return;
         for (const origin of origins) reportedOrigins.add(origin);
         context.report({ node, messageId: "rawSourceOracle" });

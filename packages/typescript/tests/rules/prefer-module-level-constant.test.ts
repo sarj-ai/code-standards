@@ -18,6 +18,12 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-module-level-constant", rule, {
   valid: [
+    { name: "does not call a module IIFE allocation repeated work", code: "const encode = (() => { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; })();" },
+    { name: "excludes a directly invoked typed function expression", code: "const encode = ((function () { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; }) as () => unknown)();" },
+    { name: "preserves nested property mutation per invocation", code: "function f() { const values = {a: {count: 0}, b: 1, c: 2}; values.a.count++; return values.a.count; }" },
+    { name: "preserves nested array mutation per invocation", code: "function f() { const values = [[1], [2], [3]]; values[0].push(4); return values[0].length; }" },
+    { name: "preserves computed mutator calls", code: "function f() { const values = [1, 2, 3]; values['push'](4); return values.length; }" },
+    { name: "preserves escaped nested mutable values", code: "function f() { const values = {a: {count: 0}, b: 1, c: 2}; const child = values.a; child.count++; return child.count; }" },
     { name: "public no-match example", filename: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].focusPath, code: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].files[0].source },
     // Already at module scope — the target state.
     { code: 'const KEYS = ["a", "b", "c"];\nfunction f(k: string) { return KEYS.includes(k); }' },

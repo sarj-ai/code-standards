@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-schema-for-api-payload.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -15,12 +15,17 @@ type MessageIds = "unparsedJsonAccess";
 export const PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION = {
   summary: "Require Zod (or similar) schema validation on `response.json()` / `JSON.parse()` results before property access.",
   rationale: "External JSON is untrusted at runtime even when its expected TypeScript shape is known statically.",
-  remediation: "Parse the payload through a schema or establish a recognized runtime validation guard before reading fields.",
+  remediation: "For external payloads, parse through a schema or establish runtime validation before reading fields. Review validator implementations separately rather than recursively requiring another schema.",
   category: "correctness",
-  limitations: ["Test fixtures, generated clients, local JSON files, and recognized validation guards are excluded."],
+  limitations: [
+    "A JSON.parse call alone does not prove external input; exact native JSON stringify/parse round trips are excluded. Validator implementations and other non-network parsing can still require manual review rather than a schema rewrite.",
+    "JSON.parse must resolve to the global JSON object. json() receivers require an unshadowed global Request/Response annotation or construction, or stable local aliases of global fetch results; imported, inferred and unknown response types are deliberately not inferred.",
+    "Named validators remain conventions, not proof of their implementation. Their exemptions are confined to a valid branch or a preceding same-block validation statement; ignored predicate results and deferred callbacks do not validate later reads.",
+    "Test fixtures, generated clients and recognized local-file reads are excluded. This is bounded local analysis, not a general control-flow or mutation proof.",
+  ],
   examples: [
-    { id: "validated-payload", title: "Validate before property access", outcome: "no-match", files: [{ path: "src/client.ts", source: "async function load(response) { const body = UserSchema.parse(await response.json()); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
-    { id: "unvalidated-payload", title: "Do not trust response JSON directly", outcome: "match", files: [{ path: "src/client.ts", source: "async function load(response) { const body = await response.json(); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
+    { id: "validated-payload", title: "Validate before property access", outcome: "no-match", files: [{ path: "src/client.ts", source: "async function load(response: Response) { const body = UserSchema.parse(await response.json()); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
+    { id: "unvalidated-payload", title: "Do not trust response JSON directly", outcome: "match", files: [{ path: "src/client.ts", source: "async function load(response: Response) { const body = await response.json(); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 type Options = readonly [];
@@ -73,6 +78,7 @@ const isSchemaParseReference = (
 /** Match optionally awaited `.json()` calls and non-local `JSON.parse()` calls. */
 const isRawPayloadSource = (
   node: TSESTree.Node | null | undefined,
+  context: Ctx,
   isKnownLocalText?: (candidate: TSESTree.Node | null | undefined) => boolean,
 ): boolean => {
   let current = unwrap(node);
@@ -92,25 +98,55 @@ const isRawPayloadSource = (
     return false;
   }
   if (property.name === "json") {
-    return true;
+    return !callee.computed && current.arguments.length === 0 && isResponseSource(callee.object, context);
   }
   // Promise methods preserve taint unless their callback is a schema parser.
   if (PROMISE_CHAIN_METHODS.has(property.name)) {
     return (
       !current.arguments.some(isSchemaParseReference) &&
-      isRawPayloadSource(callee.object)
+      isRawPayloadSource(callee.object, context, isKnownLocalText)
     );
   }
   // Other `.parse()` calls may be the requested schema validation.
   const object = unwrap(callee.object);
+  const input = unwrap(current.arguments[0]);
+  if (
+    input?.type === AST_NODE_TYPES.CallExpression &&
+    input.arguments.length === 1 &&
+    input.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !input.callee.computed &&
+    input.callee.object.type === AST_NODE_TYPES.Identifier &&
+    input.callee.object.name === "JSON" &&
+    input.callee.property.type === AST_NODE_TYPES.Identifier &&
+    input.callee.property.name === "stringify" &&
+    (ASTUtils.findVariable(context.sourceCode.getScope(input.callee.object), "JSON")?.defs.length ?? 0) === 0
+  ) return false;
   return (
     property.name === "parse" &&
     object !== null &&
     object.type === AST_NODE_TYPES.Identifier &&
     object.name === "JSON" &&
+    (ASTUtils.findVariable(context.sourceCode.getScope(object), "JSON")?.defs.length ?? 0) === 0 &&
     !isLocalFileRead(current.arguments[0]) &&
     isKnownLocalText?.(current.arguments[0]) !== true
   );
+};
+
+const isResponseSource = (node: TSESTree.Node, context: Ctx, seen = new Set<TSESTree.Node>()): boolean => {
+  let current = unwrap(node);
+  if (current?.type === AST_NODE_TYPES.AwaitExpression) current = unwrap(current.argument);
+  if (current === null || seen.has(current)) return false;
+  seen.add(current);
+  const isGlobal = (identifier: TSESTree.Identifier): boolean => (ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name)?.defs.length ?? 0) === 0;
+  if (current.type === AST_NODE_TYPES.CallExpression) return current.callee.type === AST_NODE_TYPES.Identifier && current.callee.name === "fetch" && isGlobal(current.callee);
+  if (current.type === AST_NODE_TYPES.NewExpression) return current.callee.type === AST_NODE_TYPES.Identifier && ["Request", "Response"].includes(current.callee.name) && isGlobal(current.callee);
+  if (current.type !== AST_NODE_TYPES.Identifier) return false;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);
+  if (binding?.defs.length !== 1 || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+  const definition = binding.defs[0];
+  const annotation = definition?.name.type === AST_NODE_TYPES.Identifier ? definition.name.typeAnnotation?.typeAnnotation : undefined;
+  if (annotation?.type === AST_NODE_TYPES.TSTypeReference && annotation.typeName.type === AST_NODE_TYPES.Identifier && ["Request", "Response"].includes(annotation.typeName.name) && isGlobal(annotation.typeName)) return true;
+  return definition?.type === "Variable" && definition.parent.kind === "const" && definition.node.init !== null && isResponseSource(definition.node.init, context, seen);
 };
 
 /** Filesystem readers whose result is repo-local text, not a peer's payload. */
@@ -632,7 +668,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       unparsedJsonAccess:
-        "Property access on an unvalidated payload (`response.json()` / `JSON.parse()`) without a schema parse. Pipe through `XSchema.parse(...)` (Zod) before reading fields.",
+        "Review property access on parsed JSON without a recognized validation boundary. For external payloads, validate before reading fields; validator implementations need manual review, not a recursive schema rewrite.",
     },
   },
   defaultOptions: [],
@@ -649,6 +685,41 @@ export default createRule<Options, MessageIds>({
     const unvalidatedVariables = new Set<Scope.Variable>();
     const aliasGroups = new Map<Scope.Variable, Set<Scope.Variable>>();
     const localFileTextVariables = new Set<Scope.Variable>();
+    const namedGuards = new Map<Scope.Variable, TSESTree.CallExpression[]>();
+
+    const guardDominates = (use: TSESTree.Node, call: TSESTree.CallExpression): boolean => {
+      if (context.sourceCode.getScope(use).variableScope !== context.sourceCode.getScope(call).variableScope) return false;
+      let guard: TSESTree.Node = call;
+      let positive = true;
+      while (guard.parent.type === AST_NODE_TYPES.UnaryExpression && guard.parent.operator === "!") {
+        positive = !positive;
+        guard = guard.parent;
+      }
+      while (positive && guard.parent.type === AST_NODE_TYPES.LogicalExpression && guard.parent.operator === "&&") guard = guard.parent;
+      const branch = guard.parent;
+      if (branch.type === AST_NODE_TYPES.IfStatement && branch.test === guard) {
+        if (positive && nodeWithin(use, branch.consequent)) return true;
+        if (!positive && branch.alternate !== null && nodeWithin(use, branch.alternate)) return true;
+        const terminal = branch.consequent.type === AST_NODE_TYPES.BlockStatement ? branch.consequent.body.at(-1) : branch.consequent;
+        if (!positive && (terminal?.type === AST_NODE_TYPES.ThrowStatement || terminal?.type === AST_NODE_TYPES.ReturnStatement)) {
+          let statement = use;
+          while (statement.parent !== undefined && statement.parent !== branch.parent && statement.parent.type !== AST_NODE_TYPES.Program) {
+            if (statement.type === AST_NODE_TYPES.FunctionDeclaration || statement.type === AST_NODE_TYPES.FunctionExpression || statement.type === AST_NODE_TYPES.ArrowFunctionExpression) return false;
+            statement = statement.parent;
+          }
+          return statement.parent === branch.parent && statement.range[0] > branch.range[1];
+        }
+      }
+      if (branch.type === AST_NODE_TYPES.ConditionalExpression && branch.test === guard) return nodeWithin(use, positive ? branch.consequent : branch.alternate);
+      if (positive && branch.type === AST_NODE_TYPES.WhileStatement && branch.test === guard) return nodeWithin(use, branch.body);
+      if (call.parent.type !== AST_NODE_TYPES.ExpressionStatement || call.callee.type !== AST_NODE_TYPES.Identifier || /^(?:is|has)[A-Z]/u.test(call.callee.name)) return false;
+      let statement = use;
+      while (statement.parent !== undefined && statement.parent !== call.parent.parent && statement.parent.type !== AST_NODE_TYPES.Program) {
+        if (statement.type === AST_NODE_TYPES.FunctionDeclaration || statement.type === AST_NODE_TYPES.FunctionExpression || statement.type === AST_NODE_TYPES.ArrowFunctionExpression) return false;
+        statement = statement.parent;
+      }
+      return statement.parent === call.parent.parent && statement.range[0] > call.parent.range[1];
+    };
 
     /** Resolve a same-scope binding already proven to hold repository-local file text. */
     const localFileTextRef = (
@@ -683,6 +754,7 @@ export default createRule<Options, MessageIds>({
     /** Stop tracking one binding without changing aliases of its previous value. */
     const clearBinding = (variable: Scope.Variable): void => {
       unvalidatedVariables.delete(variable);
+      namedGuards.delete(variable);
       const group = aliasGroups.get(variable);
       aliasGroups.delete(variable);
       group?.delete(variable);
@@ -727,12 +799,26 @@ export default createRule<Options, MessageIds>({
       declarator: TSESTree.VariableDeclarator,
     ): boolean => {
       const declared = context.sourceCode.getDeclaredVariables(declarator);
+      const statement = declarator.parent;
+      const block = statement.parent;
+      const followsRejectingGuard = (identifier: TSESTree.Identifier): boolean => {
+        if (block.type !== AST_NODE_TYPES.BlockStatement && block.type !== AST_NODE_TYPES.Program) return false;
+        if (context.sourceCode.getScope(identifier).variableScope !== context.sourceCode.getScope(declarator).variableScope) return false;
+        return block.body.some((candidate) => {
+          if (candidate.type !== AST_NODE_TYPES.IfStatement || candidate.range[1] >= identifier.range[0] || bindingValidationPolarity(candidate.test, identifier.name) !== "valid-when-false") return false;
+          const terminal = candidate.consequent.type === AST_NODE_TYPES.BlockStatement ? candidate.consequent.body.at(-1) : candidate.consequent;
+          return terminal?.type === AST_NODE_TYPES.ThrowStatement || terminal?.type === AST_NODE_TYPES.ReturnStatement;
+        });
+      };
       return (
         declared.length > 0 &&
         declared.every((variable) =>
-          variable.references.some((reference) =>
-            isValidationRead(reference.identifier),
-          ),
+          variable.references.some((reference) => isValidationRead(reference.identifier)) && variable.references.every((reference) => {
+            const identifier = reference.identifier;
+            if (reference.init === true) return true;
+            if (reference.isWrite() || identifier.type !== AST_NODE_TYPES.Identifier) return false;
+            return isValidationRead(identifier) || isUseWithinValidatedBranch(identifier, identifier.name) || followsRejectingGuard(identifier);
+          }),
         )
       );
     };
@@ -746,7 +832,7 @@ export default createRule<Options, MessageIds>({
       if (variable === undefined) return;
       const localText = (candidate: TSESTree.Node | null | undefined): boolean =>
         localFileTextRef(candidate, scope) !== null;
-      if (isRawPayloadSource(declarator.init, localText)) {
+      if (isRawPayloadSource(declarator.init, context, localText)) {
         trackRawBinding(variable);
         return;
       }
@@ -774,6 +860,7 @@ export default createRule<Options, MessageIds>({
           if (
             isRawPayloadSource(
               node.init,
+              context,
               (candidate): boolean => localFileTextRef(candidate, scope) !== null,
             )
           ) {
@@ -796,7 +883,7 @@ export default createRule<Options, MessageIds>({
           const isLocalText = (candidate: TSESTree.Node | null | undefined): boolean =>
             localFileTextRef(candidate, scope) !== null;
           updateLocalFileText(variable, node.right, scope);
-          if (isRawPayloadSource(node.right, isLocalText)) {
+          if (isRawPayloadSource(node.right, context, isLocalText)) {
             trackRawBinding(variable);
           } else {
             const source = unvalidatedVariableRef(node.right, scope, unvalidatedVariables);
@@ -813,6 +900,7 @@ export default createRule<Options, MessageIds>({
           if (
             isRawPayloadSource(
               node.right,
+              context,
               (candidate): boolean => localFileTextRef(candidate, scope) !== null,
             )
           ) {
@@ -843,7 +931,13 @@ export default createRule<Options, MessageIds>({
             continue;
           }
           const variable = findVariable(scope, unwrapped.name);
-          if (variable !== null) clearAliasGroup(variable);
+          if (variable !== null) {
+            for (const alias of aliasGroups.get(variable) ?? [variable]) {
+              const guards = namedGuards.get(alias) ?? [];
+              guards.push(node);
+              namedGuards.set(alias, guards);
+            }
+          }
         }
       },
       MemberExpression(node): void {
@@ -855,6 +949,7 @@ export default createRule<Options, MessageIds>({
         if (
           isRawPayloadSource(
             obj,
+            context,
             (candidate): boolean => localFileTextRef(candidate, scope) !== null,
           )
         ) {
@@ -879,6 +974,7 @@ export default createRule<Options, MessageIds>({
             ? unvalidatedVariableRef(obj, scope, unvalidatedVariables)
             : null;
         if (variable !== null && obj?.type === AST_NODE_TYPES.Identifier) {
+          if (namedGuards.get(variable)?.some((call) => guardDominates(node, call))) return;
           if (isUseWithinValidatedBranch(node, obj.name)) {
             return;
           }

@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-sleep-in-test-body.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -13,14 +13,14 @@ type MessageIds = "noSleepInTestBody";
 type Options = readonly [];
 
 export const NO_SLEEP_IN_TEST_BODY_DOCUMENTATION = {
-  summary: "Disallow a fixed timed sleep directly in a test body; it flakes under CI load. Synchronize on the signal or use fake timers.",
+  summary: "Avoid fixed timed sleeps directly in test bodies; synchronize on observable behavior or use controlled timers.",
   rationale: "Wall-clock delays make test correctness depend on scheduler and machine speed.",
-  remediation: "Await the observable signal or advance deterministic fake timers.",
+  remediation: "Await the observable signal, or advance fake timers when supported and restore real timers in finally or a teardown hook.",
   category: "testing",
   filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**", "**/__tests__/**"],
-  limitations: ["Only fixed nonzero sleeps directly inside test and per-test hook callbacks are checked; nested fakes and parameterized delays are excluded."],
+  limitations: ["Only fixed nonzero sleeps directly inside test and per-test hook callbacks are checked; nested fakes, parameterized delays, local helper bindings, and Promise executors with additional work or rejection callbacks are excluded."],
   examples: [
-    { id: "fake-timer", title: "Advance time deterministically", outcome: "no-match", files: [{ path: "src/retry.test.ts", source: "it('retries', async () => { vi.useFakeTimers(); const result = retry(); await vi.advanceTimersByTimeAsync(50); await result; });" }], focusPath: "src/retry.test.ts", expectedCount: 0, public: true },
+    { id: "fake-timer", title: "Advance controlled time and restore real timers", outcome: "no-match", files: [{ path: "src/retry.test.ts", source: "it('retries', async () => { vi.useFakeTimers(); try { const result = retry(); await vi.advanceTimersByTimeAsync(50); await result; } finally { vi.useRealTimers(); } });" }], focusPath: "src/retry.test.ts", expectedCount: 0, public: true },
     { id: "fixed-sleep", title: "Do not wait for wall-clock time", outcome: "match", files: [{ path: "src/retry.test.ts", source: "it('retries', async () => { await sleep(50); expect(done()).toBe(true); });" }], focusPath: "src/retry.test.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
@@ -46,17 +46,6 @@ function isNonzeroNumericLiteral(node: TSESTree.Node | undefined): boolean {
   return node?.type === AST_NODE_TYPES.Literal && typeof node.value === "number" && node.value !== 0;
 }
 
-/** True when `node` is `setTimeout(<anything>, <nonzero literal>)`. */
-function isTimedSetTimeout(node: TSESTree.Node): boolean {
-  return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier &&
-    node.callee.name === "setTimeout" &&
-    node.arguments.length >= 2 &&
-    isNonzeroNumericLiteral(node.arguments[1])
-  );
-}
-
 /**
  * True when `node` is `new Promise((r) => setTimeout(r, n))` — including the
  * block-bodied `{ setTimeout(r, n); }` spelling.
@@ -73,11 +62,21 @@ function isPromiseSleep(node: TSESTree.NewExpression): boolean {
     return false;
   }
   const body = executor.body;
-  if (body.type !== AST_NODE_TYPES.BlockStatement) {
-    return isTimedSetTimeout(body);
-  }
-  return body.body.some(
-    (stmt) => stmt.type === AST_NODE_TYPES.ExpressionStatement && isTimedSetTimeout(stmt.expression),
+  const resolve = executor.params[0];
+  if (executor.params.length !== 1 || resolve?.type !== AST_NODE_TYPES.Identifier || resolve.name === "setTimeout") return false;
+  const statement = body.type === AST_NODE_TYPES.BlockStatement && body.body.length === 1 ? body.body[0] : null;
+  const timer = body.type !== AST_NODE_TYPES.BlockStatement ? body : statement?.type === AST_NODE_TYPES.ExpressionStatement ? statement.expression : null;
+  return timer?.type === AST_NODE_TYPES.CallExpression && isTimedSetTimeout(timer) &&
+    timer.arguments[0]?.type === AST_NODE_TYPES.Identifier && timer.arguments[0].name === resolve.name;
+}
+
+function isTimedSetTimeout(node: TSESTree.Node): boolean {
+  return (
+    node.type === AST_NODE_TYPES.CallExpression &&
+    node.callee.type === AST_NODE_TYPES.Identifier &&
+    node.callee.name === "setTimeout" &&
+    node.arguments.length >= 2 &&
+    isNonzeroNumericLiteral(node.arguments[1])
   );
 }
 
@@ -155,12 +154,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow a fixed timed sleep directly in a test body; it flakes under CI load. Synchronize on the signal or use fake timers.",
+        "Avoid fixed timed sleeps directly in test bodies; synchronize on observable behavior or use controlled timers.",
     },
     schema: [],
     messages: {
       noSleepInTestBody:
-        "A fixed sleep in a test body asserts on wall-clock time and flakes under CI load. Await the promise the code returns, or drive time with `vi.useFakeTimers()` + `await vi.advanceTimersByTimeAsync(ms)`.",
+        "A fixed sleep depends on wall-clock timing and can be flaky under load. Await observable completion or use controlled fake timers, restoring real timers afterward.",
     },
   },
   defaultOptions: [],
@@ -181,11 +180,17 @@ export default createRule<Options, MessageIds>({
     return {
       NewExpression(node: TSESTree.NewExpression): void {
         if (isPromiseSleep(node)) {
+          const constructor = ASTUtils.findVariable(context.sourceCode.getScope(node), "Promise");
+          const timer = ASTUtils.findVariable(context.sourceCode.getScope(node), "setTimeout");
+          if ((constructor?.defs.length ?? 0) > 0 || (timer?.defs.length ?? 0) > 0) return;
           report(node);
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
         if (isHelperSleep(node)) {
+          if (node.callee.type !== AST_NODE_TYPES.Identifier) return;
+          const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.callee.name);
+          if (variable?.defs.some((definition) => definition.type !== "ImportBinding")) return;
           report(node);
         }
       },

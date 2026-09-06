@@ -4,10 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-silent-promise-catch.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
+import { isZodModule } from "./_zod.js";
 
 type MessageIds = "silentCatch";
 type Options = readonly [];
@@ -17,7 +18,7 @@ export const NO_SILENT_PROMISE_CATCH_DOCUMENTATION = {
   rationale: "A swallowed rejection hides failures and gives callers an indistinguishable fallback value.",
   remediation: "Log, rethrow, or explicitly recover from the rejection; explain intentional teardown suppression.",
   category: "correctness",
-  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded."],
+  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded.", "Recognized imported Zod construction chains and their stable local aliases are excluded. Other untyped catch-like APIs are not proven to be Promises."],
   examples: [
     { id: "reported-rejection", title: "Report the rejection", outcome: "no-match", files: [{ path: "src/load.ts", source: "load().catch((error) => logger.error({ error }, 'load failed'));" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
     { id: "silent-rejection", title: "Do not swallow the rejection", outcome: "match", files: [{ path: "src/load.ts", source: "load().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
@@ -31,6 +32,16 @@ const BODY_PARSE_METHODS: ReadonlySet<string> = new Set([
   "formData",
   "json",
   "text",
+]);
+
+const ZOD_CONSTRUCTORS: ReadonlySet<string> = new Set([
+  "any", "array", "bigint", "boolean", "custom", "date", "enum", "literal",
+  "map", "never", "null", "number", "object", "record", "set", "string",
+  "tuple", "undefined", "union", "unknown",
+]);
+const ZOD_CHAIN_METHODS: ReadonlySet<string> = new Set([
+  "array", "catch", "default", "describe", "max", "min", "nullable", "nullish",
+  "optional", "readonly", "refine", "superRefine", "transform",
 ]);
 
 /** True for a standard Fetch body parser — the receiver of a parse-fallback catch. */
@@ -162,6 +173,31 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
+    function isZodSchema(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+      if (seen.has(node)) return false;
+      seen.add(node);
+      if (node.type === AST_NODE_TYPES.Identifier) {
+        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+        if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+        const [definition] = binding.defs;
+        return binding.defs.length === 1 && definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init !== null && isZodSchema(definition.node.init, seen);
+      }
+      if (node.type !== AST_NODE_TYPES.CallExpression || node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        node.callee.computed || node.callee.property.type !== AST_NODE_TYPES.Identifier) return false;
+      const { object, property } = node.callee;
+      if (object.type === AST_NODE_TYPES.Identifier && ZOD_CONSTRUCTORS.has(property.name)) {
+        const binding = ASTUtils.findVariable(context.sourceCode.getScope(object), object.name);
+        if (binding?.defs.some((definition) => {
+          const specifier = definition.node;
+          return (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier || specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
+            (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === "z")) &&
+            specifier.parent.type === AST_NODE_TYPES.ImportDeclaration && isZodModule(String(specifier.parent.source.value));
+        })) return true;
+      }
+      return ZOD_CHAIN_METHODS.has(property.name) && isZodSchema(object, seen);
+    }
+
     const hasExplanatoryComment = (
       call: TSESTree.CallExpression,
       handler: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression,
@@ -205,6 +241,7 @@ export default createRule<Options, MessageIds>({
         const method = node.callee.property.name;
         const handlerIndex = method === "catch" ? 0 : method === "then" ? 1 : null;
         if (handlerIndex === null) return;
+        if (method === "catch" && isZodSchema(node.callee.object)) return;
 
         if (isBodyParseCall(node.callee.object)) {
           return;

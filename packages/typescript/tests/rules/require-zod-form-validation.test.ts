@@ -13,6 +13,8 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("require-zod-form-validation", rule, {
   valid: [
+    { name: "native numeric coercion is validated after preprocessing", code: "UserSchema.parse({ count: Number(formData.get('count')) });" },
+    { name: "native string coercion is validated after preprocessing", code: "UserSchema.parse({ name: String(formData.get('name')) });" },
     { name: "accepts the documented validated value", code: REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "ignores FormData reads in test files",
@@ -93,6 +95,9 @@ RULE_TESTER.run("require-zod-form-validation", rule, {
     },
   ],
   invalid: [
+    { name: "shadowed coercion can consume before validation", code: "function submit(Number) { UserSchema.parse(Number(formData.get('count'))); }", errors: [{ messageId: "missingZodValidation" }] },
+    { name: "sink runs before enclosing validation", code: "UserSchema.parse(send(formData.get('name')));", errors: [{ messageId: "missingZodValidation" }] },
+    { name: "delayed raw binding is consumed before enclosing parse", code: "const raw = formData.get('name'); UserSchema.parse(send(raw));", errors: [{ messageId: "missingZodValidation" }] },
     { name: "reports the documented raw value", code: REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "missingZodValidation" }] },
     {
       name: "reports a production action read",

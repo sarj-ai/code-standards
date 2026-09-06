@@ -16,6 +16,9 @@ const TEST_FILE = "/repo/src/parser.test.ts";
 
 RULE_TESTER.run("repeated-static-call-cases", rule, {
   valid: [
+    { name: "preserves an ordered stateful closure scenario", filename: TEST_FILE, code: "test('sum', () => { let n = 0; const add = x => n += x; expect(add(1)).toBe(1); expect(add(2)).toBe(3); expect(add(3)).toBe(6); });" },
+    { name: "preserves a test-local function declaration", filename: TEST_FILE, code: "test('sum', () => { let n = 0; function add(x) { return n += x; } expect(add(1)).toBe(1); expect(add(2)).toBe(3); expect(add(3)).toBe(6); });" },
+    { name: "preserves a callback parameter fixture", filename: TEST_FILE, code: "test('sum', (add) => { expect(add(1)).toBe(1); expect(add(2)).toBe(3); expect(add(3)).toBe(6); });" },
     { name: "public no-match example", filename: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[0].focusPath, code: REPEATED_STATIC_CALL_CASES_DOCUMENTATION.examples[0].files[0].source },
     { name: "requires three cases", filename: TEST_FILE, code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('b')).toBe(2); });" },
     { name: "requires varying cases", filename: TEST_FILE, code: "test('x', () => { expect(parse('a')).toBe(1); expect(parse('a')).toBe(1); expect(parse('a')).toBe(1); });" },

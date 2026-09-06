@@ -14,12 +14,14 @@ type Options = readonly [];
 export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
   summary: "Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.",
   rationale: "A createHash-update-digest chain allocates mutable streaming state for a single in-memory value; Node's built-in hash function expresses the one-shot operation directly and can use its optimized fast path.",
-  remediation: "Import hash from node:crypto and replace a single-update chain with hash(algorithm, value, encoding). Keep createHash for streams or multiple incremental updates.",
+  remediation: "On a supported Node runtime, consider hash(algorithm, value, encoding). Preserve the output encoding explicitly: digest() returns a Buffer, while hash defaults to hex. Keep createHash for streams or multiple updates.",
   category: "performance",
   limitations: [
     "Only bindings and inline calls with statically proven provenance from crypto or node:crypto are analyzed; arbitrary assignments and dynamic module specifiers are excluded.",
     "Only a literal algorithm with exactly one update call is reported; streaming and incremental hashes remain valid.",
+    "Runtime support and output encoding require manual review; no autofix or guaranteed speedup is promised.",
   ],
+  references: ["https://nodejs.org/api/crypto.html#cryptohashalgorithm-data-options"],
   examples: [
     { id: "one-shot-hash", title: "Use Node's one-shot hash API", outcome: "no-match", files: [{ path: "case.ts", source: "import { hash } from 'node:crypto'; export const digest = hash('sha256', 'value', 'hex');" }], focusPath: "case.ts", expectedCount: 0, public: true },
     { id: "mutable-one-shot-chain", title: "Avoid mutable state for one value", outcome: "match", files: [{ path: "case.ts", source: "import { createHash } from 'node:crypto'; export const digest = createHash('sha256').update('value').digest('hex');" }], focusPath: "case.ts", expectedCount: 1, public: true },

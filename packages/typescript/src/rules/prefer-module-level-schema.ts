@@ -14,10 +14,10 @@ type MessageIds = "hoistSchema";
 
 export const PREFER_MODULE_LEVEL_SCHEMA_DOCUMENTATION = {
   summary: "Declare a Zod schema at module scope when it closes over nothing in the enclosing function",
-  rationale: "A closed schema created inside a function is rebuilt on every call and cannot be reused or exported for inference.",
+  rationale: "A schema created inside a function is rebuilt on each call. Module scope can enable reuse across callers; local schemas already support local type inference.",
   remediation: "Move the closed schema declaration to module scope and reference it from the function.",
   category: "performance",
-  limitations: ["Schemas that depend on local state or are wrapped in a recognized memoization helper are excluded."],
+  limitations: ["Schemas that depend on local state or are wrapped in a recognized memoization helper are excluded.", "Eager calls outside the recognized Zod construction chain and new expressions are excluded. This is manual guidance, not a purity proof: review getters, callback effects, schema identity, error customization, and module initialization order before moving construction."],
   examples: [
     { id: "module-schema", title: "Declare the schema once", outcome: "no-match", files: [{ path: "src/handler.ts", source: "import { z } from 'zod'; const ZBody = z.object({ id: z.string(), name: z.string() }); export function handle(raw: unknown) { return ZBody.parse(raw); }" }], focusPath: "src/handler.ts", expectedCount: 0, public: true },
     { id: "local-schema", title: "Do not rebuild a closed schema", outcome: "match", files: [{ path: "src/handler.ts", source: "import { z } from 'zod'; export function handle(raw: unknown) { const ZBody = z.object({ id: z.string(), name: z.string() }); return ZBody.parse(raw); }" }], focusPath: "src/handler.ts", expectedCount: 1, public: true },
@@ -45,6 +45,14 @@ const DEFAULT_FACTORIES: readonly string[] = [
 ];
 
 const DEFAULT_MIN_PROPERTIES = 2;
+
+const CONSTRUCTION_FACTORIES: ReadonlySet<string> = new Set([
+  ...DEFAULT_FACTORIES,
+  "any", "array", "bigint", "boolean", "custom", "date", "enum", "instanceof",
+  "lazy", "literal", "map", "nan", "nativeEnum", "never", "null", "nullable",
+  "nullish", "number", "optional", "preprocess", "promise", "set", "string",
+  "symbol", "undefined", "unknown", "void",
+]);
 
 /** Wrappers that already pay the construction cost exactly once. */
 const MEMO_CALLEES: ReadonlySet<string> = new Set([
@@ -159,6 +167,7 @@ function outermostEnclosingFunction(
 function subtreeSome(
   root: TSESTree.Node,
   predicate: (node: TSESTree.Node) => boolean,
+  skipDeferredFunctions = false,
 ): boolean {
   let found = false;
   const visit = (value: unknown): void => {
@@ -175,6 +184,7 @@ function subtreeSome(
     if (typeof candidate.type !== "string") {
       return;
     }
+    if (skipDeferredFunctions && FUNCTION_TYPES.has(candidate.type)) return;
     if (predicate(candidate as TSESTree.Node)) {
       found = true;
       return;
@@ -303,6 +313,21 @@ export default createRule<Options, MessageIds>({
         node.callee.object.type === AST_NODE_TYPES.Identifier &&
         zodNamespaces.has(node.callee.object.name)
       );
+    }
+
+    function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
+      const callee = node.callee;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
+        callee.property.type !== AST_NODE_TYPES.Identifier || TERMINAL_METHODS.has(callee.property.name)) return false;
+      if (callee.object.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(callee.object);
+      return isZodCall(node) && CONSTRUCTION_FACTORIES.has(callee.property.name);
+    }
+
+    function hasEagerComputation(node: TSESTree.Node): boolean {
+      return subtreeSome(node, (inner) =>
+        inner.type === AST_NODE_TYPES.NewExpression ||
+        inner.type === AST_NODE_TYPES.TaggedTemplateExpression ||
+        (inner.type === AST_NODE_TYPES.CallExpression && !isSchemaConstruction(inner)), true);
     }
 
     function isCovered(node: TSESTree.CallExpression): boolean {
@@ -506,6 +531,7 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const outermost = outermostSchemaExpression(expression);
+        if (hasEagerComputation(outermost)) return;
         if (
           outermost !== expression &&
           (readsReceiver(outermost) ||

@@ -13,6 +13,11 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, source
 
 RULE_TESTER.run("prefer-node-fs-promises", rule, {
   valid: [
+    { name: "does not treat reassigned namespace as fs", code: "let fs = require('node:fs'); fs = custom; fs.readFileSync('x');" },
+    { name: "does not inherit an imported namespace through shadowing", code: "import fs from 'node:fs'; function run(fs) { return fs.readFileSync(); }" },
+    { name: "does not inherit a loaded namespace through shadowing", code: "const fs = require('node:fs'); function run(fs) { return fs.readFileSync(); }" },
+    { name: "does not treat injected require as a Node loader", code: "function run(require) { const fs = require('node:fs'); return fs.readFileSync(); }" },
+    { name: "does not treat injected process as a Node loader", code: "function run(process) { const fs = process.getBuiltinModule('node:fs'); return fs.readFileSync(); }" },
     PREFER_NODE_FS_PROMISES_DOCUMENTATION.examples[0].files[0].source,
     "import { createReadStream } from 'node:fs'; createReadStream('x');",
     "import * as fs from 'node:fs'; fs.createReadStream('x');",

@@ -18,6 +18,9 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-non-nullable-collection", rule, {
   valid: [
+    { name: "negating a guard reverses its meaning", code: "interface Input { items: string[] | null } function f({items}: Input) { if (!(items === null || items.length === 0)) return 'present'; return items; }" },
+    { name: "an escaping input can preserve its null state", code: "interface Input { items: string[] | null } function f(input: Input) { observe(input); return (input.items ?? []).length; }" },
+    { name: "reversed less than comparison is not an empty check", code: "interface Input { items: string[] | null } function f({items}: Input) { if (items === null || 0 <= items.length) return 'present'; return items; }" },
     { name: "public no-match example", filename: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[0].focusPath, code: PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION.examples[0].files[0].source },
     "interface Input { organizationIds: OrganizationId[]; }",
     "type Response = { items: Array<string> };",

@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-enum — a TypeScript `enum` emits runtime code, defaults to numbers, and does not tree-shake.
+ * @fileoverview no-enum — prefer literal unions or explicit constant objects for finite domains.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-enum.test.ts
  */
@@ -19,10 +19,12 @@ type Options = readonly [
 export const NO_ENUM_DOCUMENTATION = {
   summary: "Disallow TypeScript `enum`; use string-literal unions or `as const` objects instead.",
   rationale:
-    "TypeScript enums emit runtime objects and numeric enums accept values outside their declared members, adding behavior where a type-only model is sufficient.",
+    "Literal unions keep type-only domains explicit, while constant objects make runtime values deliberate. This policy also avoids compiler-dependent const-enum inlining contracts.",
   remediation:
-    "Replace the enum with a string-literal union or an `as const` object and derive its value type from that object.",
+    "Use a literal union or an `as const` object after checking runtime member access, numeric reverse mappings, serialized values, and public consumers.",
   category: "maintainability",
+  limitations: ["This is an explicit style policy for regular and const enums, not a claim that every enum emits an object. Generated files and configured exclusions are preserved; migration is manual."],
+  references: ["https://www.typescriptlang.org/docs/handbook/enums.html"],
   examples: [
     {
       id: "string-literal-union",

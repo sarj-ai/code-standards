@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-hand-rolled-sleep.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
@@ -26,6 +26,7 @@ export const NO_HAND_ROLLED_SLEEP_DOCUMENTATION = {
   category: "correctness",
   limitations: [
     "The rule skips tests, scripts, generated files, and client modules by default, and supports explicit path exemptions.",
+    "Locally shadowed constructors/timers and value-returning timers are excluded. Only recognized browser markers are excluded; choose a runtime-compatible cancellation API for other browser modules.",
   ],
   examples: [
     {
@@ -234,6 +235,27 @@ export default createRule<Options, MessageIds>({
 
     const checkClientModules = optionsArg?.checkClientModules ?? false;
 
+    const bindingOf = (identifier: TSESTree.Identifier) => ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+    const isGlobal = (identifier: TSESTree.Identifier): boolean => (bindingOf(identifier)?.defs.length ?? 0) === 0;
+    const isBuiltinTimer = (callee: TSESTree.Node): boolean => {
+      if (!isSetTimeoutCallee(callee)) return false;
+      if (callee.type === AST_NODE_TYPES.MemberExpression && callee.object.type === AST_NODE_TYPES.Identifier) return isGlobal(callee.object);
+      if (callee.type !== AST_NODE_TYPES.Identifier) return false;
+      const binding = bindingOf(callee);
+      return binding === null || binding.defs.length === 0 || binding.defs.every((definition) =>
+        definition.node.type === AST_NODE_TYPES.ImportSpecifier &&
+        definition.node.imported.type === AST_NODE_TYPES.Identifier && definition.node.imported.name === "setTimeout" &&
+        definition.node.parent.type === AST_NODE_TYPES.ImportDeclaration &&
+        ["node:timers", "timers"].includes(String(definition.node.parent.source.value)));
+    };
+    const settlesParameter = (callback: TSESTree.Node, executor: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression, index: number): boolean => {
+      const parameter = executor.params[index];
+      if (parameter?.type !== AST_NODE_TYPES.Identifier) return false;
+      const callee = callback.type === AST_NODE_TYPES.Identifier ? callback :
+        callback.type === AST_NODE_TYPES.ArrowFunctionExpression || callback.type === AST_NODE_TYPES.FunctionExpression ? soleCall(callback)?.callee : null;
+      return callee?.type === AST_NODE_TYPES.Identifier && bindingOf(callee) === bindingOf(parameter);
+    };
+
     function isClientModule(): boolean {
       if (/\.[cm]?[jt]sx$/.test(filename)) {
         return true;
@@ -269,7 +291,7 @@ export default createRule<Options, MessageIds>({
 
     return {
       NewExpression(node: TSESTree.NewExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.Identifier || node.callee.name !== "Promise") {
+        if (node.callee.type !== AST_NODE_TYPES.Identifier || node.callee.name !== "Promise" || !isGlobal(node.callee)) {
           return;
         }
         const executor = node.arguments[0];
@@ -280,7 +302,7 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const call = soleCall(executor);
-        if (call === null || !isSetTimeoutCallee(call.callee)) {
+        if (call === null || !isBuiltinTimer(call.callee)) {
           return;
         }
         const [callback, delay] = call.arguments;
@@ -289,7 +311,7 @@ export default createRule<Options, MessageIds>({
         }
 
         const resolveName = parameterName(executor, 0);
-        if (resolveName !== null && settlesWithoutValue(callback, resolveName)) {
+        if (resolveName !== null && call.arguments.length === 2 && settlesWithoutValue(callback, resolveName) && settlesParameter(callback, executor, 0)) {
           if (reportsSleepHere()) {
             context.report({ node, messageId: "handRolledSleep" });
           }
@@ -300,6 +322,7 @@ export default createRule<Options, MessageIds>({
         if (
           rejectName !== null &&
           isRaceArm(node) &&
+          settlesParameter(callback, executor, 1) &&
           rejectsInCallback(callback, rejectName)
         ) {
           context.report({ node, messageId: "handRolledTimeoutRace" });

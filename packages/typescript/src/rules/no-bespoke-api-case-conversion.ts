@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-bespoke-api-case-conversion.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -14,15 +14,15 @@ type Options = readonly [];
 
 export const NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION = {
   summary:
-    "Disallow hand-written snake_case/camelCase object-key translation at a proven API adapter boundary.",
+    "Review direct snake_case/camelCase mirror mappings on explicitly API-typed adapter values.",
   rationale:
-    "A second, hand-maintained representation of an API wire contract drifts from the generated client and makes backend field renames compile successfully while failing at runtime.",
+    "Duplicating wire-name translation can drift from an API client contract. When the SDK owns application-facing names, centralizing conversion avoids maintaining another mirror by hand.",
   remediation:
     "Move wire-name ownership and case conversion into the generated SDK/model layer; keep application adapters on the generated typed surface.",
   category: "architecture",
   autofix: "none",
   limitations: [
-    "Only files named adapter/adapters that import an API, client, SDK, contract, or generated module are checked.",
+    "Only adapter/adapters files and receivers explicitly annotated with a scope-resolved type imported from an API/client/SDK/contract/generated module are checked. Unrelated imports, local type shadows, reassigned receivers and inferred receiver types are excluded.",
     "Only object properties that directly translate the same identifier between snake_case and lowerCamelCase are reported.",
     "Quoted/computed protocol keys, generated/vendor code, tests, fixtures, and indirect conversions are intentionally excluded.",
   ],
@@ -111,7 +111,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       noBespokeApiCaseConversion:
-        "This API adapter manually translates `{{wireName}}` and `{{applicationName}}`; make the generated SDK/model layer own wire-name conversion.",
+        "This API-typed adapter value mirrors `{{wireName}}` and `{{applicationName}}`. If the SDK owns application-facing names, move this conversion to its model boundary.",
     },
   },
   defaultOptions: [],
@@ -126,18 +126,33 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
-    const provenApiBoundary = context.sourceCode.ast.body.some(
-      (statement) =>
-        statement.type === AST_NODE_TYPES.ImportDeclaration &&
-        API_BOUNDARY_IMPORT_RE.test(statement.source.value),
-    );
-    if (!provenApiBoundary) return {};
+    const hasApiReceiver = (value: TSESTree.Node): boolean => {
+      let current = value;
+      while (true) {
+        if (current.type === AST_NODE_TYPES.MemberExpression) current = current.object;
+        else if (current.type === AST_NODE_TYPES.TSAsExpression || current.type === AST_NODE_TYPES.TSNonNullExpression || current.type === AST_NODE_TYPES.TSTypeAssertion) current = current.expression;
+        else break;
+      }
+      if (current.type !== AST_NODE_TYPES.Identifier) return false;
+      const binding = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);
+      if (binding?.defs.length !== 1 || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+      const identifier = binding.defs[0]?.name;
+      if (identifier?.type !== AST_NODE_TYPES.Identifier) return false;
+      const annotation = identifier.typeAnnotation?.typeAnnotation;
+      if (annotation?.type !== AST_NODE_TYPES.TSTypeReference) return false;
+      let typeName = annotation.typeName;
+      while (typeName.type === AST_NODE_TYPES.TSQualifiedName) typeName = typeName.left;
+      if (typeName.type !== AST_NODE_TYPES.Identifier) return false;
+      const typeBinding = ASTUtils.findVariable(context.sourceCode.getScope(typeName), typeName.name);
+      return typeBinding?.defs.length === 1 && typeBinding.defs[0]?.type === "ImportBinding" && typeBinding.defs[0].parent.type === AST_NODE_TYPES.ImportDeclaration && API_BOUNDARY_IMPORT_RE.test(typeBinding.defs[0].parent.source.value);
+    };
     return {
       Property(node: TSESTree.Property): void {
         if (node.computed || node.method || node.shorthand) return;
         const key = propertyName(node.key);
         const value = memberName(node.value);
         if (key === null || value === null || !isDirectCaseTranslation(key, value)) return;
+        if (!hasApiReceiver(node.value)) return;
         const wireName = SNAKE_CASE_RE.test(key) ? key : value;
         const applicationName = wireName === key ? value : key;
         context.report({

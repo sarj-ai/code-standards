@@ -17,6 +17,10 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("require-interface-for-exported-class", rule, {
   valid: [
+    { filename: "src/store.js", code: "export class Store { read() { return 1; } }" },
+    { filename: "src/store.jsx", code: "export class Store { read() { return 1; } }" },
+    { filename: "src/store.mjs", code: "export class Store { read() { return 1; } }" },
+    { filename: "src/store.cjs", code: "export class Store { read() { return 1; } }" },
     REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION.examples[0].files[0]
       .source,
     "export abstract class ArtifactStore { abstract read(id: string): Promise<Uint8Array>; }",

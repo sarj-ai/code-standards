@@ -17,6 +17,9 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
   valid: [
+    { name: "does not infer replay contracts at module scope", code: "db.prepare('INSERT INTO events(id) VALUES (?)').run();" },
+    { name: "does not inherit replay names through anonymous callbacks", code: "function seed() { register(() => db.prepare('INSERT INTO events(id) VALUES (?)').run()); }" },
+    { name: "does not mistake computed method names for replay contracts", code: "class Writer { [seed]() { db.prepare('INSERT INTO events(id) VALUES (?)').run(); } }" },
     { name: "accepts the documented conflict-safe insert", code: STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows an ordinary create contract",
@@ -124,67 +127,69 @@ RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
     },
     {
       name: "reports SQLite INSERT OR ABORT",
-      code: "db.prepare(`INSERT OR ABORT INTO t (a) VALUES (?)`).run();",
+      code: "function seed() { db.prepare(`INSERT OR ABORT INTO t (a) VALUES (?)`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports a bare VALUES insert",
-      code: "db.prepare(`INSERT INTO runs (id, status) VALUES (?1, ?2)`).run();",
+      code: "function seed() { db.prepare(`INSERT INTO runs (id, status) VALUES (?1, ?2)`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports a bare insert with a RETURNING tail",
-      code: "db.prepare(`INSERT INTO datasets (id, memory_mb)\n  VALUES (?, ?)\n  RETURNING id, memory_mb`).first();",
+      code: "function seed() { db.prepare(`INSERT INTO datasets (id, memory_mb)\n  VALUES (?, ?)\n  RETURNING id, memory_mb`).first(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports a bare INSERT SELECT",
-      code: "db.prepare(`INSERT INTO archive (id) SELECT id FROM runs WHERE done = 1`).run();",
+      code: "function seed() { db.prepare(`INSERT INTO archive (id) SELECT id FROM runs WHERE done = 1`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports interpolated column and value lists",
-      code: "db.prepare(`INSERT INTO runs (${cols}) VALUES ${rows}`).run();",
+      code: "function seed() { db.prepare(`INSERT INTO runs (${cols}) VALUES ${rows}`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "does not accept ON CONFLICT inside a quoted value",
-      code: "db.prepare(`INSERT INTO notes (id, body) VALUES (?, 'ON CONFLICT DO NOTHING')`).run();",
+      code: "function seed() { db.prepare(`INSERT INTO notes (id, body) VALUES (?, 'ON CONFLICT DO NOTHING')`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "does not accept a conflict clause inside a line comment",
-      code: "db.prepare(`INSERT INTO runs (id) VALUES (?)\\n-- ON CONFLICT(id) DO NOTHING`).run();",
+      code: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?)\\n-- ON CONFLICT(id) DO NOTHING`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "does not accept a conflict clause inside a block comment",
-      code: "db.prepare(`INSERT INTO runs (id) VALUES (?) /* ON CONFLICT(id) DO NOTHING */`).run();",
+      code: "function seed() { db.prepare(`INSERT INTO runs (id) VALUES (?) /* ON CONFLICT(id) DO NOTHING */`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports a joined fragment array once",
       code: [
+        "function seed() {",
         "const sql = [",
         "  'INSERT INTO ratings (path, email)',",
         "  'VALUES (?, ?)',",
         "].join(' ');",
+        "}",
       ].join("\n"),
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports a plain string literal",
-      code: "db.prepare('INSERT INTO runs (id) VALUES (?)').run();",
+      code: "function seed() { db.prepare('INSERT INTO runs (id) VALUES (?)').run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports a bare DEFAULT VALUES insert",
-      code: "db.prepare(`INSERT INTO runs DEFAULT VALUES`).run();",
+      code: "function seed() { db.prepare(`INSERT INTO runs DEFAULT VALUES`).run(); }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
     {
       name: "reports a bare tagged template insert",
-      code: "sql`INSERT INTO runs (id) VALUES (${id})`;",
+      code: "function seed() { sql`INSERT INTO runs (id) VALUES (${id})`; }",
       errors: [{ messageId: "storeInsertRequiresOnConflict" }],
     },
   ],

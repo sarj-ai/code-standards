@@ -38,7 +38,7 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
       files: [{
         path: "src/schema.ts",
         source:
-          "import { z } from 'zod'; export const Version = z.literal([1, 2, 3]);",
+          "import { z } from 'zod/v4'; export const Version = z.literal([1, 2, 3]);",
       }],
       focusPath: "src/schema.ts",
       expectedCount: 0,
@@ -51,7 +51,7 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
       files: [{
         path: "src/schema.ts",
         source:
-          "import { z } from 'zod'; export const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);",
+          "import { z } from 'zod/v4'; export const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);",
       }],
       focusPath: "src/schema.ts",
       expectedCount: 1,

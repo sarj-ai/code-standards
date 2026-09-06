@@ -17,6 +17,9 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-insecure-random-id", rule, {
   valid: [
+    { name: "sampling does not inherit enclosing token function name", code: "function createToken() { const jitter = Math.random(); return crypto.randomUUID(); }" },
+    { name: "branch sampling does not produce the returned token", code: "function createToken() { if (Math.random() < 0.5) observe(); return crypto.randomUUID(); }" },
+    { name: "local Math is not the native random source", code: "function createToken(Math) { return Math.random(); }" },
     { code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[0].files[0].source },
     // Bare `Math.random()` for jitter — not an identifier.
     { code: "const jitter = Math.random() * 100;" },

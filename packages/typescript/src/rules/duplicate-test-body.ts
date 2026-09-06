@@ -36,10 +36,11 @@ export const DUPLICATE_TEST_BODY_DOCUMENTATION = {
   rationale:
     "Copy-pasted test bodies hide the cases that differ and allow equivalent assertions to drift independently.",
   remediation:
-    "Move the varying inputs and expected values into a case table consumed by `test.each(...)` or `it.each(...)`.",
+    "Consider a case table with one named test or subtest per case; preserve setup lifetime, test modifiers, and each case's assertions rather than deleting coverage.",
   category: "testing",
   limitations: [
     "The rule compares substantial sibling tests within one suite and skips inline snapshots and materially different comments.",
+    "Matching normalized body shapes do not prove runtime equivalence or independent setup; parameterization is a manual review, not an automatic deletion.",
   ],
   examples: [
     {
@@ -275,6 +276,10 @@ function isDuplicateTestFrameworkIdentifier(
   const variable = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
   if (variable === null || variable.defs.length === 0) return true;
   return variable.defs.some((definition) => {
+    if (definition.node.type === AST_NODE_TYPES.ImportDefaultSpecifier) return definition.node.parent.source.value === "node:test";
+    if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return false;
+    const imported = definition.node.imported;
+    if (!TEST_CALLERS.has(imported.type === AST_NODE_TYPES.Identifier ? imported.name : String(imported.value))) return false;
     let current: TSESTree.Node | null | undefined = definition.node;
     while (current != null && current.type !== AST_NODE_TYPES.ImportDeclaration) current = current.parent;
     return current?.type === AST_NODE_TYPES.ImportDeclaration &&

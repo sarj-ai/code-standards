@@ -8,6 +8,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
+import { sqlTextOf, stripSqlNoise } from "./_sql.js";
 
 type MessageIds = "storageInStatelessModule";
 
@@ -31,7 +32,7 @@ export const NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION = {
   rationale: "Private storage in a stateless workflow creates another source of truth that can silently diverge.",
   remediation: "Read from the system of record or derive state from an artifact the workflow already produces.",
   category: "architecture",
-  limitations: ["The rule is disabled until module path patterns are configured, recognizes only configured storage method names, and requires storage-like receiver evidence for the overloaded `put` method."],
+  limitations: ["This opt-in architectural policy requires configured module paths and storage method names. Overloaded `put` requires storage-like receiver evidence; `prepare` requires SQL-shaped literal text or a conventional database receiver for dynamic text. These syntax heuristics do not prove database provenance or identify the system of record."],
   examples: [
     { id: "system-of-record", title: "Read from the system of record", outcome: "no-match", files: [{ path: "src/engineer-digest/post.ts", source: "const issues = await linear.listIssues();" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 0, public: true },
     { id: "private-storage", title: "Do not write private state in a stateless module", outcome: "match", files: [{ path: "src/engineer-digest/post.ts", source: "await kv.put('digest:last', timestamp);" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 1, public: true },
@@ -78,6 +79,17 @@ function storageMethodName(
   // receiver evidence before treating this ambiguous name as storage access.
   if (name === "put" && !isStorageLikeReceiver(callee.object)) {
     return null;
+  }
+  if (name === "prepare") {
+    const argument = node.arguments[0];
+    const text = argument === undefined ? null : sqlTextOf(argument);
+    if (text !== null) {
+      if (!/^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu.test(stripSqlNoise(text))) return null;
+    } else {
+      const receiver = callee.object;
+      const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression && !receiver.computed && receiver.property.type === AST_NODE_TYPES.Identifier ? receiver.property.name : "";
+      if (!/^(?:db|database|connection)$/iu.test(receiverName)) return null;
+    }
   }
   return name;
 }

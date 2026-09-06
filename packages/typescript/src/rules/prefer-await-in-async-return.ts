@@ -24,12 +24,12 @@ export const PREFER_AWAIT_IN_ASYNC_RETURN_DOCUMENTATION = {
   rationale:
     "Mixing a directly returned Promise callback into otherwise async control flow makes sequencing and failures harder to read.",
   remediation:
-    "Await the Promise, then return the transformed value with ordinary async statements.",
+    "Consider awaiting the Promise and returning the transformed value with ordinary async statements. Preserve catch boundaries, callback behavior, and observable scheduling when rewriting manually.",
   category: "maintainability",
   since: "15.6.3",
   limitations: [
     "Only a single directly returned `.then` call with an inline callback is checked.",
-    "The receiver must be proven Promise-like by TypeScript; untyped files and larger chains are intentionally ignored.",
+    "The receiver must be proven Promise-like by TypeScript; an earlier chain can still produce that receiver. Untyped receivers, rejection handlers and named callbacks are excluded. This is not the upstream return-await policy and no scheduling equivalence is promised.",
     "Direct loader callbacks passed to resolved `React.lazy` and `next/dynamic` imports are excluded because returning the module Promise is their framework contract.",
   ],
   examples: [

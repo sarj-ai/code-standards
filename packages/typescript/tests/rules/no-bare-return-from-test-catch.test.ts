@@ -14,6 +14,9 @@ const TEST_FILE = "/repo/src/codec.test.ts";
 
 RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
   valid: [
+    { name: "preserves negated caught-error assertion", filename: TEST_FILE, code: "test('rejects', () => { try { run(); } catch (error) { expect(error).not.toBeNull(); return; } expect.fail('must reject'); });" },
+    { name: "preserves asserted rejection return", filename: TEST_FILE, code: "test('rejects', () => { try { run(); } catch (error) { expect(error).toBeInstanceOf(Error); return; } expect.fail('must reject'); });" },
+    { name: "preserves imported assertion alias", filename: TEST_FILE, code: "import {expect as verify} from 'vitest'; test('rejects', () => { try { run(); } catch (error) { verify(error.message).toBe('bad'); return; } verify.fail('must reject'); });" },
     { name: "public no-match example", filename: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[0].focusPath, code: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[0].files[0].source },
     { name: "requires a later assertion", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { return; } cleanup(); });" },
     { name: "allows returned values", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch { return fallback; } expect(done).toBe(true); });" },
@@ -30,6 +33,10 @@ RULE_TESTER.run("no-bare-return-from-test-catch", rule, {
     { name: "ignores generated headers", filename: TEST_FILE, code: "// @generated\ntest('x', () => { try { run(); } catch { return; } expect(done).toBe(true); });" },
   ],
   invalid: [
+    { name: "property name is not caught error reference", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { expect(result.error).toBe(true); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
+    { name: "bare expect construction is not assertion", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { expect(error); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
+    { name: "unrelated assertion does not validate error", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { expect(true).toBe(true); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
+    { name: "conditional assertion does not dominate return", filename: TEST_FILE, code: "test('x', () => { try { run(); } catch (error) { if (flag) expect(error).toBeDefined(); return; } expect(done).toBe(true); });", errors: [{messageId: "bareReturnFromTestCatch"}] },
     { name: "public match example", filename: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[1].focusPath, code: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "bareReturnFromTestCatch", type: "ReturnStatement" }] },
     { name: "supports imported aliases and modifiers", filename: TEST_FILE, code: "import { test as check, expect as verify } from 'vitest'; check.only('x', () => { try { run(); } catch { return; } verify(done).toBe(true); });", errors: [{ messageId: "bareReturnFromTestCatch" }] },
     { name: "supports assertions nested in later control flow", filename: TEST_FILE, code: "it('x', () => { try { run(); } catch { if (optional) return; } if (ready) { expect(done).toBe(true); } });", errors: [{ messageId: "bareReturnFromTestCatch" }] },

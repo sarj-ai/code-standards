@@ -21,6 +21,13 @@ const TEST_FILE = "/repo/src/tests/dummy.test.ts";
 
 RULE_TESTER.run("no-tautological-expect", rule, {
   valid: [
+    { filename: TEST_FILE, code: "expect(/x/).toBe(/x/);" },
+    { filename: TEST_FILE, code: "expect(null).toBeUndefined();" },
+    { filename: TEST_FILE, code: "expect([]).toBeFalsy();" },
+    { filename: TEST_FILE, code: "expect(1).toBeNaN();" },
+    { filename: TEST_FILE, code: "expect(false).toBeTruthy();" },
+    { filename: TEST_FILE, code: "expect(+1n).toBe(+1n);" },
+    { filename: TEST_FILE, code: "function check(expect) { expect(true).toBe(true); }" },
     {
       name: "allows determinism assertions on call results",
       filename: TEST_FILE,
@@ -192,9 +199,9 @@ RULE_TESTER.run("no-tautological-expect", rule, {
       errors: [{ messageId: "tautologicalMatcher" }],
     },
     {
-      name: "reports toBeUndefined on a literal",
+      name: "reports toBeFalsy on null",
       filename: TEST_FILE,
-      code: "it('works', () => { expect(null).toBeUndefined(); });",
+      code: "it('works', () => { expect(null).toBeFalsy(); });",
       errors: [{ messageId: "tautologicalMatcher" }],
     },
     {
@@ -210,15 +217,15 @@ RULE_TESTER.run("no-tautological-expect", rule, {
       errors: [{ messageId: "tautologicalMatcher" }],
     },
     {
-      name: "reports toBeFalsy on a literal",
+      name: "reports toBeFalsy on zero",
       filename: TEST_FILE,
-      code: "it('works', () => { expect([]).toBeFalsy(); });",
+      code: "it('works', () => { expect(0).toBeFalsy(); });",
       errors: [{ messageId: "tautologicalMatcher" }],
     },
     {
-      name: "reports toBeNaN on a literal",
+      name: "reports toBeTruthy on an array",
       filename: TEST_FILE,
-      code: "it('works', () => { expect(1).toBeNaN(); });",
+      code: "it('works', () => { expect([1]).toBeTruthy(); });",
       errors: [{ messageId: "tautologicalMatcher" }],
     },
     {

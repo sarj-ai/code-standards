@@ -20,6 +20,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-immutable-module-constant", rule, {
   valid: [
+    "const VALUES = [1, 2, 3]; let alias = VALUES; alias.push(4);",
+    "const VALUES = [1, 2, 3]; var alias = VALUES; alias[0] = 4;",
     PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION.examples[0].files[0].source,
     "const VALUES = [1, 2, 3] as const satisfies readonly number[];",
     "const VALUES: readonly number[] = [1, 2, 3];",

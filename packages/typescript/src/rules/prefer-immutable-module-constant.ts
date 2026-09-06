@@ -21,7 +21,7 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
     "Expose literals with `as const` or a readonly type, and expose Set or Map values through ReadonlySet or ReadonlyMap.",
   category: "correctness",
   limitations: [
-    "The rule skips generated files, test files, JavaScript files, and collections that are deliberately mutated in their declaring module.",
+    "Generated, test and JavaScript files are skipped. Private constants with observed direct or alias mutation are excluded; exported mutable collections remain advisory candidates. Reassigned aliases are conservatively followed, not flow-proven.",
   ],
   examples: [
     {
@@ -268,7 +268,7 @@ export default createRule<Options, MessageIds>({
     }
     const exportedNames = new Set<string>();
     const typeAliases = new Map<string, TSESTree.Node>();
-    const mutatesThroughConstAlias = (root: Scope.Variable): boolean => {
+    const mutatesThroughAlias = (root: Scope.Variable): boolean => {
       const pending = [root];
       const seen = new Set<Scope.Variable>();
       while (pending.length > 0) {
@@ -284,8 +284,7 @@ export default createRule<Options, MessageIds>({
             declarator.type !== AST_NODE_TYPES.VariableDeclarator ||
             declarator.init !== identifier ||
             declarator.id.type !== AST_NODE_TYPES.Identifier ||
-            declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
-            declarator.parent.kind !== "const"
+            declarator.parent.type !== AST_NODE_TYPES.VariableDeclaration
           ) {
             continue;
           }
@@ -353,7 +352,7 @@ export default createRule<Options, MessageIds>({
         }
         const variable = sourceCode.getDeclaredVariables(node)[0];
         if (!directlyExported && !exportedNames.has(node.id.name) &&
-          variable !== undefined && mutatesThroughConstAlias(variable)
+          variable !== undefined && mutatesThroughAlias(variable)
         ) {
           return;
         }

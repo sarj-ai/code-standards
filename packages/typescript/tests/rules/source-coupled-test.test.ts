@@ -15,6 +15,13 @@ const FS_OBJECT = "import fs from 'node:fs';";
 
 TESTER.run("source-coupled-test", rule, {
   valid: [
+    { name: "does not infer iterator-pipeline assertion dataflow", filename: "/repo/config.test.ts", code: `${NAMED_FS} import { fileURLToPath } from 'node:url'; test('raw', () => { const source = readFileSync(fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)), 'utf8'); const values = source.matchAll(/NEXT_PUBLIC_ENVIRONMENT/g).map((match) => match[0]).toArray(); expect(values).toEqual(['dev']); });` },
+    { name: "does not leak block-local source provenance", filename: "/repo/policy.test.ts", code: `${NAMED_FS} const source = 'runtime'; { const source = readFileSync('workflow.yml', 'utf8'); } expect(source).toContain('x');` },
+    { name: "checks the complete concatenated path suffix", filename: "/repo/policy.test.ts", code: `${NAMED_FS} expect(readFileSync('workflow.yml' + '.log', 'utf8')).toContain('x');` },
+    { name: "does not infer an arbitrary path factory", filename: "/repo/policy.test.ts", code: `${NAMED_FS} expect(readFileSync(logPathFor('workflow.yml'), 'utf8')).toContain('x');` },
+    { name: "does not overlook uninitialized shadow bindings", filename: "/repo/policy.test.ts", code: `${NAMED_FS} const source = readFileSync('workflow.yml', 'utf8'); { let source; expect(source).toContain('x'); }` },
+    { name: "does not infer a custom require loader", filename: "/repo/policy.test.ts", code: `function run(require) { const {readFileSync} = require('fs'); expect(readFileSync('workflow.yml', 'utf8')).toContain('x'); }` },
+    { name: "does not call regex extraction an assertion", filename: "/repo/policy.test.ts", code: `${NAMED_FS} const source = readFileSync('workflow.yml', 'utf8'); consume(source.matchAll(/x/g));` },
     { filename: "/repo/policy.test.ts", code: `${NAMED_FS} test('parsed', () => { const parsed = JSON.parse(readFileSync('policy.json', 'utf8')); expect(validate(parsed)).toEqual([]); });` },
     { filename: "/repo/render.test.ts", code: "test('render', () => { expect(render()).toContain('hello'); });" },
     { filename: "/repo/policy.test.ts", code: `${NAMED_FS} test('validator', () => { const source = readFileSync('main.tf', 'utf8'); expect(validate(source)).toEqual([]); });` },
@@ -26,6 +33,8 @@ TESTER.run("source-coupled-test", rule, {
     { filename: "/repo/config.test.ts", code: `${NAMED_FS} import { parse } from 'jsonc-parser'; test('parsed', () => { const config = parse(readFileSync('wrangler.jsonc', 'utf8')); expect(validate(config)).toEqual([]); });` },
   ],
   invalid: [
+    { name: "keeps outer raw provenance after an unrelated block shadow", filename: "/repo/policy.test.ts", code: `${NAMED_FS} const source = readFileSync('workflow.yml', 'utf8'); { const source = 'runtime'; } expect(source).toContain('x');`, errors: [{ messageId: "rawSourceOracle" }] },
+    { name: "retains direct regex extraction assertions", filename: "/repo/policy.test.ts", code: `${NAMED_FS} const source = readFileSync('workflow.yml', 'utf8'); expect(source.matchAll(/x/g)).toEqual([]);`, errors: [{ messageId: "rawSourceOracle" }] },
     { filename: "/repo/policy.test.ts", code: `${NAMED_FS} test('raw', () => { const source = readFileSync('workflow.yml', 'utf8'); expect(source).toMatch(/permissions/); });`, errors: [{ messageId: "rawSourceOracle" }] },
     { filename: "/repo/policy.test.mjs", code: `${FS_OBJECT} test('raw', () => { const source = fs.readFileSync(new URL('./workflow.yml', import.meta.url), 'utf8'); assert.match(source, /permissions:/); });`, errors: [{ messageId: "rawSourceOracle" }] },
     { filename: "/repo/policy.test.ts", code: `${NAMED_FS} test('raw', () => { expect(readFileSync('workflow.yml', 'utf8').trim().includes('permissions')).toBe(true); });`, errors: [{ messageId: "rawSourceOracle" }] },
@@ -52,12 +61,6 @@ TESTER.run("source-coupled-test", rule, {
       name: "reports a direct raw JSONC assertion",
       filename: "/repo/config.test.ts",
       code: `${NAMED_FS} test('raw', () => { const source = readFileSync('wrangler.jsonc', 'utf8'); expect(source).toMatch(/NEXT_PUBLIC_ENVIRONMENT/); });`,
-      errors: [{ messageId: "rawSourceOracle" }],
-    },
-    {
-      name: "reports regex extraction from raw JSONC before array transforms",
-      filename: "/repo/config.test.ts",
-      code: `${NAMED_FS} import { fileURLToPath } from 'node:url'; test('raw', () => { const source = readFileSync(fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)), 'utf8'); const values = source.matchAll(/NEXT_PUBLIC_ENVIRONMENT/g).map((match) => match[0]).toArray(); expect(values).toEqual(['dev']); });`,
       errors: [{ messageId: "rawSourceOracle" }],
     },
   ],

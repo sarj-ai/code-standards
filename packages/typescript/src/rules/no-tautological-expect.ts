@@ -1,10 +1,10 @@
 /**
- * @fileoverview no-tautological-expect — an assertion whose operands are all literals decided its outcome before the code ran, so it can never fail.
+ * @fileoverview no-tautological-expect — supported literal-only assertions that are known to pass.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-tautological-expect.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -14,13 +14,13 @@ type Options = readonly [];
 
 export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
   summary:
-    "Disallow an assertion whose operands are all literals; its outcome is fixed before the code runs, so it can never fail.",
+    "Disallow supported literal-only assertions that are statically known to pass.",
   rationale:
     "An assertion determined entirely by literals does not observe the code under test and can keep passing after that code is removed.",
   remediation: "Assert on a value produced by the behavior under test, or remove the assertion.",
   category: "testing",
   limitations: [
-    "Only direct supported `expect` matcher calls in recognized test files are inspected.",
+    "Only direct supported `expect` matcher calls in recognized test files are inspected. Local expect bindings, regular expressions, and unsupported coercions are excluded; failing constant assertions are not tautologies.",
   ],
   examples: [
     {
@@ -66,11 +66,11 @@ const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
 function isLiteral(node: TSESTree.Node): boolean {
   switch (node.type) {
     case AST_NODE_TYPES.Literal:
-      return true;
+      return !("regex" in node);
     case AST_NODE_TYPES.TemplateLiteral:
       return node.expressions.length === 0;
     case AST_NODE_TYPES.UnaryExpression:
-      return NUMERIC_SIGNS.has(node.operator) && isLiteral(node.argument);
+      return NUMERIC_SIGNS.has(node.operator) && node.argument.type === AST_NODE_TYPES.Literal && typeof node.argument.value === "number";
     case AST_NODE_TYPES.ArrayExpression:
       return node.elements.every((element) => element !== null && isLiteral(element));
     case AST_NODE_TYPES.ObjectExpression:
@@ -87,6 +87,30 @@ function isLiteral(node: TSESTree.Node): boolean {
 
 function isStructuralLiteral(node: TSESTree.Node): boolean {
   return node.type === AST_NODE_TYPES.ArrayExpression || node.type === AST_NODE_TYPES.ObjectExpression;
+}
+
+function passesZeroArgumentMatcher(node: TSESTree.Node, matcher: string): boolean {
+  let value: unknown;
+  switch (node.type) {
+    case AST_NODE_TYPES.Literal: value = node.value; break;
+    case AST_NODE_TYPES.TemplateLiteral: value = node.quasis[0]?.value.cooked; break;
+    case AST_NODE_TYPES.UnaryExpression:
+      if (node.argument.type !== AST_NODE_TYPES.Literal || typeof node.argument.value !== "number") return false;
+      value = node.operator === "-" ? -node.argument.value : node.argument.value;
+      break;
+    case AST_NODE_TYPES.ArrayExpression:
+    case AST_NODE_TYPES.ObjectExpression: value = {}; break;
+    default: return false;
+  }
+  switch (matcher) {
+    case "toBeDefined": return value !== undefined;
+    case "toBeUndefined": return value === undefined;
+    case "toBeNull": return value === null;
+    case "toBeTruthy": return Boolean(value);
+    case "toBeFalsy": return !value;
+    case "toBeNaN": return typeof value === "number" && Number.isNaN(value);
+    default: return false;
+  }
 }
 
 /** The `expect(<single argument>)` call a matcher hangs directly off, if any. */
@@ -110,14 +134,14 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow an assertion whose operands are all literals; its outcome is fixed before the code runs, so it can never fail.",
+        "Disallow supported literal-only assertions that are statically known to pass.",
     },
     schema: [],
     messages: {
       tautologicalComparison:
-        "`expect({{operand}}).{{matcher}}({{operand}})` compares a literal with an identical literal — it passes even if the code under test is deleted. Assert on a value the code produced, or delete the test.",
+        "`expect({{operand}}).{{matcher}}({{operand}})` compares an identical literal and does not observe behavior. Assert on a produced value or remove only the redundant assertion, preserving other coverage.",
       tautologicalMatcher:
-        "`expect({{operand}}).{{matcher}}()` asserts on a literal, so its outcome is fixed before the code runs. Assert on a value the code produced, or delete the test.",
+        "`expect({{operand}}).{{matcher}}()` is statically known to pass. Assert on a produced value or remove only the redundant assertion, preserving other coverage.",
     },
   },
   defaultOptions: [],
@@ -142,11 +166,22 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const matcher = callee.property.name;
+        if (callee.object.type !== AST_NODE_TYPES.CallExpression || callee.object.callee.type !== AST_NODE_TYPES.Identifier) return;
+        const expectIdentifier = callee.object.callee;
+        const variable = ASTUtils.findVariable(context.sourceCode.getScope(expectIdentifier), expectIdentifier.name);
+        if (variable !== null && variable.defs.some((definition) => {
+          if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
+          const declaration = definition.node.parent;
+          const imported = definition.node.imported;
+          return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
+            !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
+            (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
+        })) return;
         const operand = expectOperand(callee);
         if (operand === null || !isLiteral(operand)) {
           return;
         }
-        if (ZERO_ARG_MATCHERS.has(matcher) && node.arguments.length === 0) {
+        if (ZERO_ARG_MATCHERS.has(matcher) && node.arguments.length === 0 && passesZeroArgumentMatcher(operand, matcher)) {
           context.report({
             node,
             messageId: "tautologicalMatcher",

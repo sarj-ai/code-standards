@@ -1,5 +1,5 @@
 /**
- * @fileoverview prefer-non-nullable-collection — report only when local control flow proves a nullish array is just an empty array.
+ * @fileoverview prefer-non-nullable-collection — review nullish arrays with empty defaults or shared null-or-empty guards.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-non-nullable-collection.test.ts
  */
@@ -12,11 +12,11 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "preferNonNullableCollection";
 
 export const PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION = {
-  summary: "Suggest non-null arrays only when local control flow proves the nullish state is equivalent to an empty collection.",
+  summary: "Suggest reviewing nullish arrays that use local empty-array defaults or a shared null-or-empty guard.",
   rationale: "A redundant nullish collection state spreads defaults and guards through consumers without carrying information.",
   remediation: "Use a non-null collection type and normalize omitted input to an empty collection at the boundary.",
   category: "maintainability",
-  limitations: ["The rule requires local evidence that nullish and empty values are treated identically and skips exported wire shapes."],
+  limitations: ["Recognized defaults and guards are manual modeling prompts, not proof of equivalence for every caller or later use. Exported wire shapes and unknown object escapes are excluded; preserve meaningful null states and boundary compatibility."],
   examples: [
     { id: "non-null-array", title: "Model an always-present collection", outcome: "no-match", files: [{ path: "src/search.ts", source: "interface Input { items: string[] } function search({ items }: Input) { return items.length; }" }], focusPath: "src/search.ts", expectedCount: 0, public: true },
     { id: "defaulted-nullish-array", title: "Do not retain a redundant nullish state", outcome: "match", files: [{ path: "src/search.ts", source: "interface Input { items: string[] | undefined } function search({ items = [] }: Input) { return items.length; }" }], focusPath: "src/search.ts", expectedCount: 1, public: true },
@@ -132,37 +132,6 @@ function sameAccess(
   );
 }
 
-function isNullGuard(node: TSESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
-  if (
-    node.type === AST_NODE_TYPES.UnaryExpression &&
-    node.operator === "!" &&
-    (sameAccess(node.argument, access) || optionalMemberLengthOf(node.argument, access))
-  ) return true;
-  if (node.type !== AST_NODE_TYPES.BinaryExpression || !["==", "==="].includes(node.operator)) {
-    return false;
-  }
-  const nullish = (value: TSESTree.Node): boolean =>
-    value.type === AST_NODE_TYPES.Literal && value.value === null ||
-    value.type === AST_NODE_TYPES.Identifier && value.name === "undefined";
-  return sameAccess(node.left, access) && nullish(node.right) ||
-    sameAccess(node.right, access) && nullish(node.left);
-}
-
-function isEmptyGuard(node: TSESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
-  if (
-    node.type === AST_NODE_TYPES.UnaryExpression &&
-    node.operator === "!" &&
-    memberLengthOf(node.argument, access)
-  ) return true;
-  if (node.type !== AST_NODE_TYPES.BinaryExpression || !["==", "===", "<="].includes(node.operator)) {
-    return false;
-  }
-  const zero = (value: TSESTree.Node): boolean =>
-    value.type === AST_NODE_TYPES.Literal && value.value === 0;
-  return memberLengthOf(node.left, access) && zero(node.right) ||
-    memberLengthOf(node.right, access) && zero(node.left);
-}
-
 function memberLengthOf(
   node: TSESTree.Node,
   access: Parameters<typeof sameAccess>[1],
@@ -206,10 +175,43 @@ function hasEquivalentLeadingGuard(
         first.consequent.body[0]?.type === AST_NODE_TYPES.ThrowStatement);
   if (!terminating) return false;
   if (contains(first.consequent, visitorKeys, (node) => sameAccess(node, access))) return false;
+  if (first.test.type === AST_NODE_TYPES.UnaryExpression && first.test.operator === "!" &&
+      optionalMemberLengthOf(first.test.argument, access)) return true;
   return (
-    contains(first.test, visitorKeys, (node) => isNullGuard(node, access)) &&
-    contains(first.test, visitorKeys, (node) => isEmptyGuard(node, access))
+    first.test.type === AST_NODE_TYPES.LogicalExpression && first.test.operator === "||" &&
+    isNullGuard(first.test.left, access) && isEmptyGuard(first.test.right, access)
   );
+}
+
+function isNullGuard(node: TSESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
+  if (
+    node.type === AST_NODE_TYPES.UnaryExpression &&
+    node.operator === "!" &&
+    (sameAccess(node.argument, access) || optionalMemberLengthOf(node.argument, access))
+  ) return true;
+  if (node.type !== AST_NODE_TYPES.BinaryExpression || !["==", "==="].includes(node.operator)) {
+    return false;
+  }
+  const nullish = (value: TSESTree.Node): boolean =>
+    value.type === AST_NODE_TYPES.Literal && value.value === null ||
+    value.type === AST_NODE_TYPES.Identifier && value.name === "undefined";
+  return sameAccess(node.left, access) && nullish(node.right) ||
+    sameAccess(node.right, access) && nullish(node.left);
+}
+
+function isEmptyGuard(node: TSESTree.Node, access: Parameters<typeof sameAccess>[1]): boolean {
+  if (
+    node.type === AST_NODE_TYPES.UnaryExpression &&
+    node.operator === "!" &&
+    memberLengthOf(node.argument, access)
+  ) return true;
+  if (node.type !== AST_NODE_TYPES.BinaryExpression || !["==", "===", "<="].includes(node.operator)) {
+    return false;
+  }
+  const zero = (value: TSESTree.Node): boolean =>
+    value.type === AST_NODE_TYPES.Literal && value.value === 0;
+  return memberLengthOf(node.left, access) && zero(node.right) ||
+    node.operator !== "<=" && memberLengthOf(node.right, access) && zero(node.left);
 }
 
 function contains(
@@ -287,7 +289,7 @@ function memberIsOnlyCoalesced(
       parent.property.type === AST_NODE_TYPES.Identifier &&
       parent.property.name === property
     ) return [parent];
-    return [];
+    return parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === reference.identifier ? [] : [null];
   });
   return accesses.length > 0 && accesses.every((access) => access !== null && directlyCoalesced(access));
 }
@@ -299,12 +301,12 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Suggest non-null arrays only when local control flow proves the nullish state is equivalent to an empty collection.",
+        "Suggest reviewing nullish arrays that use local empty-array defaults or a shared null-or-empty guard.",
     },
     schema: [],
     messages: {
       preferNonNullableCollection:
-        "`{{name}}` is locally treated exactly like `[]`; make it a non-null array and normalize omitted input at the boundary.",
+        "`{{name}}` uses an empty-array default or shared null-or-empty guard; consider a non-null array after checking that the nullish state carries no separate meaning.",
     },
   },
   defaultOptions: [],

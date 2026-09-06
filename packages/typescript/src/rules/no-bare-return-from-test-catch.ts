@@ -15,7 +15,7 @@ type Context = Readonly<TSESLint.RuleContext<MessageIds, Options>>;
 
 export const NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION = {
   summary: "Disallow a bare return from a test catch block when it skips a later assertion.",
-  rationale: "The caught failure turns into a passing test without executing the assertion that follows it.",
+  rationale: "An unasserted catch return can swallow a failure and skip later assertions; the complete test result also depends on other assertions and hooks.",
   remediation: "Rethrow the error, assert on it, or use the runner's explicit skip mechanism when the capability is optional.",
   category: "testing",
   filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**", "**/__tests__/**"],
@@ -113,7 +113,7 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: { description: "Disallow a bare return from a test catch block when it skips a later assertion." },
     schema: [],
-    messages: { bareReturnFromTestCatch: "This bare return turns the caught failure into a passing test and skips a later assertion. Rethrow, assert on the error, or explicitly skip the test." },
+    messages: { bareReturnFromTestCatch: "This bare return can swallow the caught failure and skips a later assertion. Rethrow, assert on the error, or explicitly skip the test." },
   },
   defaultOptions: [],
   create(context) {
@@ -129,6 +129,23 @@ export default createRule<Options, MessageIds>({
           if (current === null || current === undefined) break;
         }
         if (catchClause === null || catchClause.parent.finalizer !== null) return;
+        const parameter = catchClause.param;
+        if (parameter?.type === AST_NODE_TYPES.Identifier && node.parent === catchClause.body) {
+          const errorBinding = ASTUtils.findVariable(context.sourceCode.getScope(parameter), parameter.name);
+          const assertedError = catchClause.body.body.some((statement) => {
+            if (statement.range[1] >= node.range[0] || statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
+            const expression = statement.expression;
+            if (expression.type !== AST_NODE_TYPES.CallExpression || !isAssertion(expression, context)) return false;
+            const root = rootIdentifier(expression.callee);
+            if (root === null) return false;
+            const assertionName = importedName(root, context, ASSERTION_MODULES);
+            let operand = expression.callee.type === AST_NODE_TYPES.MemberExpression ? expression.callee.object : null;
+            if (operand?.type === AST_NODE_TYPES.MemberExpression && staticMemberName(operand) === "not") operand = operand.object;
+            if (assertionName !== "assert" && (assertionName !== "expect" || operand?.type !== AST_NODE_TYPES.CallExpression || operand.callee !== root)) return false;
+            return walkOwnScope(expression, (current) => current.type === AST_NODE_TYPES.Identifier && errorBinding?.references.some((reference) => reference.identifier === current) === true);
+          });
+          if (assertedError) return;
+        }
         if (walkOwnScope(catchClause.body, (current) => current.type === AST_NODE_TYPES.ThrowStatement || isExplicitSkip(current, context))) return;
         if (!walkOwnScope(owner.body, (current) => current.range[0] > node.range[1] && isAssertion(current, context))) return;
         context.report({ node, messageId: "bareReturnFromTestCatch" });

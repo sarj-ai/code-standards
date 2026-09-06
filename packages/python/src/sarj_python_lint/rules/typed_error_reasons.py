@@ -32,23 +32,54 @@ class TypedErrorReasons(Rule):
     id = "typed-error-reasons"
     code = "SARJ435"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Exception aggregates presentation strings instead of typed error reasons.",
+        summary="Review joined exception strings for fixed reason identities versus dynamic context.",
         rationale=(
-            "A collection of rendered sentences has no stable identity for API clients, UI formatting, telemetry, "
-            "or exhaustive handling; consumers must display or parse text that should be presentation-only."
+            "Fixed reason identities benefit from stable codes for API clients, UI formatting, telemetry, and "
+            "exhaustive handling. Open-ended values such as file paths remain typed context, not an enum domain."
         ),
         remediation=(
-            "Replace `list[str]` with a nominal reason type: usually a record containing a `StrEnum` code and typed "
-            "context. Format that structure only at the presentation boundary."
+            "If the strings are fixed reason identities, use a `StrEnum` code with typed context. Keep dynamic "
+            "paths and messages as typed context; format presentation separately."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only an Error/Exception subclass whose direct Error/Exception base is visible in the class declaration is checked.",
-            "The constructor must have exactly one non-self parameter, annotated exactly `list[str]`, and join that same parameter inside `super().__init__(...)`.",
+            "The class name and a direct base name must end in Error or Exception; this naming convention does not prove exception inheritance or resolve shadowed bases.",
+            "The constructor must have exactly one non-self parameter and no variadic parameters, annotated exactly `list[str]`, and a literal string separator must join it inside `super().__init__(...)`.",
+            "This warning requests manual review; joining strings does not prove a finite reason domain, so contextual string lists may also match and must not automatically become enums.",
             "Formatting delegated to another function, legacy `typing.List`, mixed constructor context, tests, and generated files are intentionally not inferred.",
         ),
         examples=(
+            RuleExample(
+                example_id="dynamic-context-review",
+                title="Review a contextual list without converting paths to enum values",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/errors.py",
+                        "class MissingFilesError(Exception):\n    def __init__(self, paths: list[str]) -> None:\n        super().__init__(', '.join(paths))\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/errors.py"),
+                expected_count=1,
+                public=True,
+                scenario="dynamic-context",
+            ),
+            RuleExample(
+                example_id="dynamic-context-kept-typed",
+                title="Keep arbitrary paths as typed context without an enum",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/errors.py",
+                        "class MissingFilesError(Exception):\n    def __init__(self, paths: list[str]) -> None:\n        self.paths = paths\n        super().__init__('Files are missing')\n\ndef render_error(error: MissingFilesError) -> str:\n    return ', '.join(error.paths)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/errors.py"),
+                expected_count=0,
+                public=True,
+                scenario="dynamic-context",
+            ),
             RuleExample(
                 example_id="rendered-reason-list",
                 title="An exception renders raw reason strings",
@@ -135,8 +166,9 @@ class TypedErrorReasons(Rule):
                     code=self.code,
                     severity=Severity.WARNING,
                     message=(
-                        f"`{error_class.name}` joins `{parameter.arg}: list[str]` into its message; carry nominal "
-                        "reason codes with typed context and format them at the presentation boundary"
+                        f"`{error_class.name}` joins `{parameter.arg}: list[str]` into its message; if these are "
+                        "fixed reason identities, carry typed codes. Keep dynamic context such as paths or messages "
+                        "as typed context and format presentation separately"
                     ),
                 )
             )
@@ -156,6 +188,8 @@ def _tail(node: ast.expr) -> str:
 
 
 def _sole_string_list_parameter(function: ast.FunctionDef) -> ast.arg | None:
+    if function.args.vararg is not None or function.args.kwarg is not None:
+        return None
     parameters = [
         argument
         for argument in (
@@ -221,6 +255,8 @@ def _joins_parameter(node: ast.AST, parameter: str) -> TypeGuard[ast.Call]:
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "join"
+        and isinstance(node.func.value, ast.Constant)
+        and isinstance(node.func.value.value, str)
         and len(node.args) == 1
         and not node.keywords
         and isinstance(node.args[0], ast.Name)

@@ -17,6 +17,8 @@ const adapter = (body: string): string =>
 
 RULE_TESTER.run("no-bespoke-api-case-conversion", rule, {
   valid: [
+    { name: "unrelated API import does not establish receiver provenance", filename: "/repo/src/user-adapter.ts", code: adapter("const raw = { display_name: 'local' }; const value = { displayName: raw.display_name };") },
+    { name: "local type shadow does not inherit imported contract", filename: "/repo/src/user-adapter.ts", code: adapter("function read() { type Contract = { display_name: string }; const raw: Contract = { display_name: 'local' }; return { displayName: raw.display_name }; }") },
     {
       name: "accepts the documented generated-client surface",
       filename: NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION.examples[0].focusPath,
@@ -73,19 +75,19 @@ RULE_TESTER.run("no-bespoke-api-case-conversion", rule, {
     {
       name: "reports a write conversion",
       filename: "/repo/src/integration-adapters.ts",
-      code: adapter("const wire = { owner_organization_id: draft.ownerOrganizationId };"),
+      code: adapter("declare const draft: Contract; const wire = { owner_organization_id: draft.ownerOrganizationId };"),
       errors: [ERROR],
     },
     {
       name: "reports each independently maintained mapping",
       filename: "/repo/src/api.adapter.ts",
-      code: adapter("const value = { isSecret: raw.is_secret, updatedAt: raw.updated_at };"),
+      code: adapter("declare const raw: Contract; const value = { isSecret: raw.is_secret, updatedAt: raw.updated_at };"),
       errors: [ERROR, ERROR],
     },
     {
       name: "recognizes nested member reads",
       filename: "/repo/src/user-adapter.ts",
-      code: adapter("const value = { retryIntervalSeconds: raw.settings.retry_interval_seconds };"),
+      code: adapter("declare const raw: Contract; const value = { retryIntervalSeconds: raw.settings.retry_interval_seconds };"),
       errors: [ERROR],
     },
   ],

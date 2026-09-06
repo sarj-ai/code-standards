@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-insecure-random-id.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -17,7 +17,7 @@ export const NO_INSECURE_RANDOM_ID_DOCUMENTATION = {
   rationale: "Math.random is predictable and lacks the entropy required for security-sensitive values.",
   remediation: "Generate the value with crypto.randomUUID or crypto.getRandomValues.",
   category: "security",
-  limitations: ["Ambiguous identifiers and test files are excluded to avoid flagging sampling and fixture data."],
+  limitations: ["Names select security-sensitive bindings heuristically; they do not prove sensitivity. Sampling in unrelated bindings or branch tests, locally shadowed Math objects, ambiguous identifiers and test files are excluded. This is not interprocedural data-flow analysis."],
   examples: [
     { id: "cryptographic-id", title: "Use the Web Crypto API", outcome: "no-match", files: [{ path: "src/session.ts", source: "const sessionToken = crypto.randomUUID();" }], focusPath: "src/session.ts", expectedCount: 0, public: true },
     { id: "predictable-token", title: "Do not derive a token from Math.random", outcome: "match", files: [{ path: "src/session.ts", source: "const sessionToken = Math.random();" }], focusPath: "src/session.ts", expectedCount: 1, public: true },
@@ -105,6 +105,7 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
       if (directBinding && parent.id.type === "Identifier") {
         names.push(parent.id.name);
       }
+      return names;
     }
 
     if (parent.type === "Property" && parent.value === current) {
@@ -150,7 +151,7 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
       return names;
     }
 
-    if (parent.type === "ExpressionStatement") {
+    if (parent.type === "ExpressionStatement" || parent.type === "IfStatement" || parent.type === "ForStatement" || parent.type === "WhileStatement" || parent.type === "DoWhileStatement" || parent.type === "FunctionExpression" || parent.type === "ArrowFunctionExpression") {
       return names;
     }
 
@@ -276,6 +277,7 @@ export default createRule<Options, MessageIds>({
         if (!isMathRandomCall(node)) {
           return;
         }
+        if ((ASTUtils.findVariable(context.sourceCode.getScope(node), "Math")?.defs.length ?? 0) > 0) return;
 
         const names = findEnclosingNames(node);
 
