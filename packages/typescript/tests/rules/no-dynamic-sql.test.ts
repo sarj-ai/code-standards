@@ -17,6 +17,12 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-dynamic-sql", rule, {
   valid: [
+    { name: "ignores quoted interpolation in nested PostgreSQL comments", code: "db.query(`SELECT id FROM users /* outer /* inner */ '${note}' */`);" },
+    { name: "does not prescribe value bindings for quoted identifiers", code: 'db.query(`SELECT "${column}" FROM users`);' },
+    { name: "ignores quoted interpolation in SQL line comments", code: "db.query(`SELECT id FROM users -- '${note}'`);" },
+    { name: "ignores quoted interpolation in SQL block comments", code: "db.query(`SELECT id FROM users /* '${note}' */`);" },
+    { name: "ignores quoted interpolation inside dollar strings", code: "db.query(`SELECT $$ '${note}' $$ FROM users`);" },
+    { name: "does not prescribe value bindings for concatenated identifiers", code: 'db.query(\'SELECT "\' + column + \'" FROM users\');' },
     {
       name: "accepts a question-mark placeholder bound separately",
       code: NO_DYNAMIC_SQL_DOCUMENTATION.examples[0].files[0].source,
@@ -109,6 +115,7 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     },
   ],
   invalid: [
+    { name: "recognizes a value after a quoted identifier and dollar string", code: 'db.query(`SELECT "id", $$ literal $$ FROM users WHERE name = \'${name}\'`);', errors: [{ messageId: "dynamicSql" }] },
     {
       name: "reports a runtime concatenation inside a quoted value",
       code: "db.prepare(\"select id from users where role = '\" + userId + \"'\");",

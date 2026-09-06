@@ -17,6 +17,9 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-silent-promise-catch", rule, {
   valid: [
+    { name: "preserves Zod fallback factories", code: "import { z } from 'zod'; z.string().catch(() => '');" },
+    { name: "preserves a bound Zod schema fallback", code: "import { z as schema } from 'zod'; const value = schema.number(); value.catch(() => 0);" },
+    { name: "preserves namespace Zod schema fallback", code: "import * as z from 'zod'; z.array(z.string()).catch(() => []);" },
     { name: "accepts the documented reported rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows a cancelled optional web-share action",
@@ -160,6 +163,9 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     },
   ],
   invalid: [
+    { name: "does not exempt a shadowed Zod name", code: "import { z } from 'zod'; function run(z) { z.string().catch(() => null); }", errors: [{ messageId: "silentCatch" }] },
+    { name: "does not exempt Zod async parsing rejections", code: "import { z } from 'zod'; z.string().parseAsync(input).catch(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "does not exempt reassigned schema bindings", code: "import { z } from 'zod'; let value = z.string(); value = load(); value.catch(() => null);", errors: [{ messageId: "silentCatch" }] },
     { name: "reports the documented silent rejection", code: NO_SILENT_PROMISE_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "silentCatch" }] },
     {
       name: "reports a silent catch followed only by finally",

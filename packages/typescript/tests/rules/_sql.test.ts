@@ -5,7 +5,7 @@ import { type TSESTree } from "@typescript-eslint/utils";
 import { Linter } from "eslint";
 import { describe, expect, it } from "vitest";
 
-import { createSqlListener, sqlTextOf, stripSqlNoise } from "../../src/rules/_sql.js";
+import { createSqlListener, sqlSingleQuotedRanges, sqlTextOf, stripSqlNoise } from "../../src/rules/_sql.js";
 
 const RULE_ID = "probe/sql";
 
@@ -82,6 +82,28 @@ describe("sqlTextOf reconstructs the shapes TypeScript SQL actually takes", () =
 });
 
 describe("stripSqlNoise masks values and comments, in one left-to-right pass", () => {
+  it("masks nested block comments without swallowing subsequent SQL", () => {
+    const sql = "SELECT /* outer /* inner */ hidden */ id FROM users";
+    expect(stripSqlNoise(sql)).toBe("SELECT " + " ".repeat("/* outer /* inner */ hidden */".length) + " id FROM users");
+  });
+  it("preserves UTF-16 offsets and newlines across dollar-quoted Unicode", () => {
+    const sql = "SELECT $body$😀\n* FROM$body$, id FROM users";
+    const masked = stripSqlNoise(sql);
+    expect(masked.length).toBe(sql.length);
+    expect(masked.indexOf("\n")).toBe(sql.indexOf("\n"));
+    expect(masked.indexOf(", id")).toBe(sql.indexOf(", id"));
+    expect(masked).not.toContain("*");
+  });
+
+  it("does not mask numbered parameters or dollar-containing identifiers", () => {
+    const sql = "SELECT price$tag$ FROM users WHERE id = $1";
+    expect(stripSqlNoise(sql)).toBe(sql);
+  });
+
+  it("identifies only single-quoted values outside other SQL noise", () => {
+    const sql = `SELECT "'identifier'", $$'dollar'$$, 'value' -- 'comment'`;
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual(["'value'"]);
+  });
   it.each([
     ["WHERE p = 'on conflict'", "WHERE p =              "],
     ["SELECT '*' FROM t", "SELECT     FROM t"],

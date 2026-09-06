@@ -70,6 +70,7 @@ export const PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION = {
     "Composite object/record/tuple/union schemas are owned by prefer-module-level-schema.",
     "Schemas that depend on function-local or mutable state, localized text, receiver state, lazy construction, or recognized memoization are excluded.",
     "Literal string z.enum domains are owned by prefer-shared-zod-enum.",
+    "Eager calls outside recognized Zod construction chains and new expressions are excluded. This is manual guidance, not a purity proof: review getters, callback effects, error customization, schema identity, and module initialization order before moving construction.",
   ],
   examples: [
     {
@@ -122,6 +123,7 @@ function collectReferences(
 function subtreeSome(
   root: TSESTree.Node,
   predicate: (node: TSESTree.Node) => boolean,
+  skipDeferredFunctions = false,
 ): boolean {
   let found = false;
   const visit = (value: unknown): void => {
@@ -132,6 +134,7 @@ function subtreeSome(
     }
     const candidate = value as Partial<TSESTree.Node> & Record<string, unknown>;
     if (typeof candidate.type !== "string") return;
+    if (skipDeferredFunctions && FUNCTION_TYPES.has(candidate.type)) return;
     if (predicate(candidate as TSESTree.Node)) {
       found = true;
       return;
@@ -298,6 +301,21 @@ export default createRule<Options, MessageIds>({
       return null;
     }
 
+    function isSchemaConstruction(node: TSESTree.CallExpression): boolean {
+      const callee = node.callee;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
+        callee.property.type !== AST_NODE_TYPES.Identifier || NON_SCHEMA_TERMINALS.has(callee.property.name)) return false;
+      if (callee.object.type === AST_NODE_TYPES.CallExpression) return isSchemaConstruction(callee.object);
+      return factoryName(node, FACTORIES) !== null || factoryName(node, COMPOSITE_FACTORIES) !== null;
+    }
+
+    function hasEagerComputation(node: TSESTree.Node): boolean {
+      return subtreeSome(node, (inner) =>
+        inner.type === AST_NODE_TYPES.NewExpression ||
+        inner.type === AST_NODE_TYPES.TaggedTemplateExpression ||
+        (inner.type === AST_NODE_TYPES.CallExpression && !isSchemaConstruction(inner)), true);
+    }
+
     function isSharedEnumDomain(
       node: TSESTree.CallExpression,
       factory: string,
@@ -418,6 +436,7 @@ export default createRule<Options, MessageIds>({
         if (enclosing === undefined) return;
         const expression = schemaExpression(node);
         if (
+          hasEagerComputation(expression) ||
           readsReceiver(expression) ||
           buildsLocalizedText(expression) ||
           !closesOverNothing(expression, enclosing)

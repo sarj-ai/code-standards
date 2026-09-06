@@ -13,6 +13,8 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, source
 
 RULE_TESTER.run("prefer-shared-zod-enum", rule, {
   valid: [
+    { name: "does not treat shadowed Zod as an imported schema builder", code: "import { z } from 'zod'; function build(z) { return z.enum(['a', 'b']); }" },
+    { name: "does not inherit imported namespace across nested blocks", code: "import * as schema from 'zod'; { const schema = otherBuilder; schema.enum(['a', 'b']); }" },
     PREFER_SHARED_ZOD_ENUM_DOCUMENTATION.examples[0].files[0].source,
     "const z = builder; z.enum(['a', 'b']); z.enum(['a', 'b']);",
     "import { z } from 'zod'; z.enum(values); z.enum(values);",

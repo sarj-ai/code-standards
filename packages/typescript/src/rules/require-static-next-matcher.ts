@@ -16,6 +16,8 @@ export const REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION = {
   rationale: "Next.js must statically analyze matcher values at build time; computed values are ignored.",
   remediation: "Write matcher strings, arrays, and object fields as literals in the exported config.",
   category: "correctness",
+  limitations: ["Only directly exported matcher configuration in middleware/proxy entry files is inspected. Literal matcher validity is left to Next.js; this rule checks static syntax, not the complete framework schema."],
+  references: ["https://nextjs.org/docs/app/api-reference/file-conventions/proxy"],
   examples: [
     { id: "literal-matcher", title: "Use a literal matcher", outcome: "no-match", files: [{ path: "src/middleware.ts", source: 'export const config = { matcher: "/api/:path*" };' }], focusPath: "src/middleware.ts", expectedCount: 0, public: true },
     { id: "computed-matcher", title: "Do not compute the matcher", outcome: "match", files: [{ path: "src/middleware.ts", source: 'const matcher = "/api/:path*"; export const config = { matcher };' }], focusPath: "src/middleware.ts", expectedCount: 1, public: true },
@@ -83,7 +85,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       dynamicMatcher:
-        "Next.js matcher values must contain only literal arrays and objects. Calls, identifiers, concatenation, interpolated templates, and spreads are not statically analyzable and fail the production build.",
+        "Keep Next.js matcher strings, arrays and object fields literal in the exported config. Dynamic values such as variables are not supported by its build-time static analysis and can be ignored.",
     },
   },
   defaultOptions: [],

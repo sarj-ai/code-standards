@@ -46,6 +46,8 @@ it("rejects malformed module patterns instead of silently disabling itself", () 
 
 RULE_TESTER.run("no-storage-in-stateless-modules", rule, {
   valid: [
+    { name: "does not classify non-SQL prepare as storage", filename: STATELESS_MODULE_FILENAME, options: STATELESS_MODULE_OPTIONS, code: "dough.prepare('bread');" },
+    { name: "does not classify data preparation by receiver spelling", filename: STATELESS_MODULE_FILENAME, options: STATELESS_MODULE_OPTIONS, code: "db.prepare('application data');" },
     {
       name: "ignores storage doubles in test files",
       filename: "/repo/src/engineer-digest/post.test.ts",

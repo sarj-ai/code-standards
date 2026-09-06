@@ -7,3 +7,8 @@ export class RuntimePrivate {
   #load() { return 1; }
   run() { return this.#load(); }
 }
+
+export class ReorderedPrivate {
+  run() { return this.load(); }
+  private load() { return 1; }
+}

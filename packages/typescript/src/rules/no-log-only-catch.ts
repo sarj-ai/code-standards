@@ -169,6 +169,46 @@ export default createRule<Options, MessageIds>({
     const filename = context.filename;
     const sourceCode = context.sourceCode;
 
+    function hasCoercionValidation(node: TSESTree.CatchClause): boolean {
+      const owner = node.parent;
+      const statement = owner.block.body[0];
+      if (node.body.body.length !== 0 || owner.finalizer !== null || owner.block.body.length !== 1 ||
+          statement?.type !== AST_NODE_TYPES.ExpressionStatement ||
+          statement.expression.type !== AST_NODE_TYPES.AssignmentExpression || statement.expression.operator !== "=") return false;
+      const { left, right } = statement.expression;
+      if (left.type !== AST_NODE_TYPES.MemberExpression || left.computed || left.object.type !== AST_NODE_TYPES.Identifier ||
+          right.type !== AST_NODE_TYPES.CallExpression || right.optional || right.callee.type !== AST_NODE_TYPES.Identifier ||
+          !["String", "Number", "Boolean", "BigInt"].includes(right.callee.name) || right.arguments.length !== 1) return false;
+      const argument = right.arguments[0];
+      if (argument === undefined || sourceCode.getText(left) !== sourceCode.getText(argument)) return false;
+      const global = ASTUtils.findVariable(sourceCode.getScope(right.callee), right.callee.name);
+      if (global !== null && global.defs.length > 0) return false;
+      const root = ASTUtils.findVariable(sourceCode.getScope(left.object), left.object.name);
+      if (root === null || root.references.some((reference) => reference.isWrite() && !reference.init)) return false;
+      let current: TSESTree.Node = owner;
+      let slot = statementSlot(current);
+      while (slot === null && current.parent !== undefined && !FUNCTION_TYPES.has(current.parent.type)) {
+        current = current.parent;
+        slot = statementSlot(current);
+      }
+      let next = slot?.list[slot.index + 1];
+      let target = sourceCode.getText(left);
+      if (next?.type === AST_NODE_TYPES.VariableDeclaration && next.kind === "const" && next.declarations.length === 1) {
+        const alias = next.declarations[0];
+        if (alias?.id.type !== AST_NODE_TYPES.Identifier || alias.init === null || sourceCode.getText(alias.init) !== target) return false;
+        target = alias.id.name;
+        next = slot?.list[slot.index + 2];
+      }
+      if (next?.type !== AST_NODE_TYPES.IfStatement) return false;
+      let condition = next.test;
+      while (condition.type === AST_NODE_TYPES.LogicalExpression && condition.operator === "&&") condition = condition.left;
+      if (condition.type !== AST_NODE_TYPES.BinaryExpression || !["==", "==="].includes(condition.operator)) return false;
+      const test = condition.left;
+      return test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "typeof" &&
+        sourceCode.getText(test.argument) === target &&
+        condition.right.type === AST_NODE_TYPES.Literal && condition.right.value === right.callee.name.toLowerCase();
+    }
+
     /** True when a statement is exactly a bare logging call, e.g. `console.error(err);`. */
     function isLoggingCallStatement(statement: TSESTree.Statement): boolean {
       if (statement.type !== "ExpressionStatement") {
@@ -214,23 +254,17 @@ export default createRule<Options, MessageIds>({
         const isDocumented =
           sourceCode.getCommentsInside(node.body).length > 0 || hasAdjacentRationale(node);
 
-        if (statements.length === 0) {
-          if (isDocumented) {
-            return;
-          }
-          // The recovery can live outside the catch, where no comment can
-          // describe it better than the code already does.
-          if (
-            fallbackFollowsTry(node.parent) ||
-            seededFallbackHandled(node.parent, sourceCode.getScope(node))
-          ) {
-            return;
-          }
-          context.report({ node, messageId: "emptyCatch" });
+        if (
+          isDocumented ||
+          hasCoercionValidation(node) ||
+          fallbackFollowsTry(node.parent) ||
+          seededFallbackHandled(node.parent, sourceCode.getScope(node))
+        ) {
           return;
         }
 
-        if (isDocumented) {
+        if (statements.length === 0) {
+          context.report({ node, messageId: "emptyCatch" });
           return;
         }
 

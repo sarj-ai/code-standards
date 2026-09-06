@@ -14,6 +14,8 @@ const FS_IMPORT = "import { readFileSync } from 'node:fs';";
 
 TESTER.run("iac-source-coupled-test", rule, {
   valid: [
+    { name: "does not leak IaC block-local provenance", filename: "/repo/policy.test.ts", code: `${FS_IMPORT} const source = 'runtime'; { const source = readFileSync('main.tf', 'utf8'); } expect(source).toContain('resource');` },
+    { name: "checks the complete IaC path suffix", filename: "/repo/policy.test.ts", code: `${FS_IMPORT} expect(readFileSync('main.tf' + '.log', 'utf8')).toContain('resource');` },
     { filename: "/repo/policy.test.ts", code: `${FS_IMPORT} test('plan', () => { const plan = JSON.parse(readFileSync('plan.json', 'utf8')); expect(validate(plan)).toEqual([]); });` },
     { filename: "/repo/policy.test.ts", code: "test('runtime', () => { expect(probeDeployment()).toEqual({ healthy: true }); });" },
     { filename: "/repo/policy.test.ts", code: `${FS_IMPORT} test('other source', () => { const source = readFileSync('workflow.yml', 'utf8'); expect(source).toContain('permissions:'); });` },

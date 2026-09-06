@@ -3,7 +3,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-sql-access-class.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -74,13 +74,14 @@ const DATABASE_NAMES = /^(?:db|database|connection|pool|prisma|query|transaction
 export const REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION = {
   summary: "Keep SQL reads and writes inside a class that receives its database dependency.",
   rationale:
-    "Free-function database access hides connection ownership and makes transaction, retry, observability, and test boundaries inconsistent.",
+    "An injected repository class is the preferred ownership boundary for database access under this architectural policy; free functions can also express explicit dependencies.",
   remediation:
     "Move the query into a repository or store class and inject the pool, connection, transaction, or typed database binding through its constructor.",
   category: "architecture",
   limitations: [
     "The rule recognizes conventional database receiver names, Cloudflare DB bindings, direct pool.query calls, explicit query-builder terminals, and Prisma-style model delegates; unusually named or heavily aliased clients require architectural review.",
     "Query construction without a recognized execution terminal is intentionally not reported.",
+    "Stable local Map, WeakMap, and URLSearchParams instances are excluded. Other conventional receiver names are heuristics, not proof of a database API.",
     "Constructor injection inherited from a base class or transformed through a wrapper is not inferred by this syntax-only rule.",
   ],
   examples: [
@@ -350,6 +351,19 @@ export default createRule<Options, MessageIds>({
       isGeneratedFile(context.filename, context.sourceCode.text)
     )
       return {};
+    function knownNonDatabase(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {
+      if (seen.has(node)) return false;
+      seen.add(node);
+      if (node.type === AST_NODE_TYPES.Identifier) {
+        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+        if (binding?.defs.length !== 1 || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+        const definition = binding.defs[0];
+        return definition?.type === "Variable" && definition.node.init !== null && knownNonDatabase(definition.node.init, seen);
+      }
+      return node.type === AST_NODE_TYPES.NewExpression && node.callee.type === AST_NODE_TYPES.Identifier &&
+        ["Map", "WeakMap", "URLSearchParams"].includes(node.callee.name) &&
+        (ASTUtils.findVariable(context.sourceCode.getScope(node.callee), node.callee.name)?.defs.length ?? 0) === 0;
+    }
     return {
       CallExpression(node): void {
         if (
@@ -357,6 +371,7 @@ export default createRule<Options, MessageIds>({
         )
           return;
         const method = memberName(node.callee);
+        if (knownNonDatabase(node.callee.object)) return;
         if (
           method === null ||
           !isDatabaseOperation(method, node.callee.object)

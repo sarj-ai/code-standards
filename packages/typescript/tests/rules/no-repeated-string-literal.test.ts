@@ -19,6 +19,19 @@ const COLUMNS = "id, ashby_candidate_id, dataset_id, status, expires_at";
 
 RULE_TESTER.run("no-repeated-string-literal", rule, {
   valid: [
+    {
+      name: "preserves repeated multiline prompt prose",
+      code: "function a() { return 'You are a triage bot.\\nAnswer in one sentence.\\nBe terse.'; } function b() { return 'You are a triage bot.\\nAnswer in one sentence.\\nBe terse.'; }",
+    },
+    {
+      name: "newlines do not turn prose into structured identifiers",
+      code: "function a() { return `Please check your details.\nThen retry this operation.`; } function b() { return `Please check your details.\nThen retry this operation.`; }",
+    },
+    {
+      name: "expression-wrapped JSX attributes remain styling scaffolding",
+      filename: "/repo/src/view.tsx",
+      code: "function A() { return <div id={'a_long_structured_identifier_that_is_more_than_forty_characters'} />; } function B() { return <div id={'a_long_structured_identifier_that_is_more_than_forty_characters'} />; }",
+    },
     { name: "accepts the documented shared constant", code: NO_REPEATED_STRING_LITERAL_DOCUMENTATION.examples[0].files[0].source },
     // Tagged templates are invocations whose tags define their meaning.
     {
@@ -182,18 +195,6 @@ RULE_TESTER.run("no-repeated-string-literal", rule, {
         `function read() { return \`SELECT ${COLUMNS} FROM candidates WHERE id = ?\`; }`,
         `function readAll() { return \`SELECT ${COLUMNS} FROM candidates WHERE id = ?\`; }`,
         `function readOne() { return \`SELECT ${COLUMNS} FROM candidates WHERE id = ?\`; }`,
-      ].join("\n"),
-      errors: [
-        { messageId: "noRepeatedStringLiteral" },
-        { messageId: "noRepeatedStringLiteral" },
-      ],
-    },
-    // A repeated multi-line prompt template.
-    {
-      code: [
-        "function a() { return 'You are a triage bot.\\nAnswer in one sentence.\\nBe terse.'; }",
-        "function b() { return 'You are a triage bot.\\nAnswer in one sentence.\\nBe terse.'; }",
-        "function c() { return 'You are a triage bot.\\nAnswer in one sentence.\\nBe terse.'; }",
       ].join("\n"),
       errors: [
         { messageId: "noRepeatedStringLiteral" },

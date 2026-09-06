@@ -19,6 +19,25 @@ def _check(source: str, path: str = "svc.py") -> list[Diagnostic]:
     return Stepdown().check(Path(path), source)
 
 
+@pytest.mark.parametrize("decorator", ["final", "override", "classmethod", "staticmethod"])
+def test_shadowed_decorator_is_a_definition_order_barrier(decorator: str) -> None:
+    source = f"""
+def {decorator}(function):
+    function()
+    return function
+def _helper():
+    return 1
+@{decorator}
+def caller():
+    return _helper()
+"""
+    assert _check(source) == []
+
+
+def test_lambda_walrus_binding_does_not_reference_module_helper() -> None:
+    assert _check("def _helper(): return 1\ndef caller(): return lambda: ((_helper := lambda: 2), _helper())\n") == []
+
+
 _PUBLIC_EXAMPLES = Stepdown.public_examples()
 
 

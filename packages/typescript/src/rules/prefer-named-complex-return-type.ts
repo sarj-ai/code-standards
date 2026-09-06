@@ -15,11 +15,11 @@ type Options = [];
 export const PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION = {
   summary: "Prefer a named contract for structurally complex function return types.",
   rationale: "A large inline return annotation hides a reusable domain concept and makes signatures difficult to scan.",
-  remediation: "Extract the return annotation to a named type or interface and reference that contract from the signature.",
+  remediation: "Name the complex nested shape while preserving its generic wrappers and type parameters; reference the named contract from the return annotation.",
   category: "maintainability",
   limitations: [
     "Only explicit object types with at least three members and unions with at least three object variants are reported.",
-    "Generic wrappers such as Promise and Readonly are unwrapped one level at a time; inferred return types are outside this rule.",
+    "Any single-argument generic wrapper is traversed to find nested shapes, not assumed semantically transparent. Inferred return types are outside this rule; extraction is manual and must preserve locally bound type parameters.",
   ],
   examples: [
     { id: "named-result", title: "Name a multi-state result", outcome: "no-match", files: [{ path: "src/queue.ts", source: "type ClaimResult = { state: 'idle' } | { state: 'waiting'; retryAt: number } | { state: 'claimed'; id: string }; export function claim(): ClaimResult { return { state: 'idle' }; }" }], focusPath: "src/queue.ts", expectedCount: 0, public: true },

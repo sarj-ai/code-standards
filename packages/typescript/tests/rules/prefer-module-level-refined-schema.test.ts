@@ -22,6 +22,9 @@ const ERROR = { messageId: "hoistRefinedSchema" as const };
 
 RULE_TESTER.run("prefer-module-level-refined-schema", rule, {
   valid: [
+    { name: "preserves eager time-dependent scalar defaults", code: `${ZOD_IMPORT}function build() { return z.number().default(Date.now()); }` },
+    { name: "preserves namespace refinement arguments", code: `${ZOD_IMPORT}import * as policy from './policy'; function build() { return z.number().max(policy.currentLimit()); }` },
+    { name: "preserves construction-time scalar allocation", code: `${ZOD_IMPORT}function build() { return z.date().default(new Date()); }` },
     {
       name: "public no-match example",
       filename:
@@ -77,6 +80,7 @@ RULE_TESTER.run("prefer-module-level-refined-schema", rule, {
     },
   ],
   invalid: [
+    { name: "retains deferred scalar defaults", code: `${ZOD_IMPORT}function build() { return z.number().default(() => Date.now()); }`, errors: [ERROR] },
     {
       name: "public match example",
       filename:

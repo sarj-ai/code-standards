@@ -17,6 +17,9 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-select-star", rule, {
   valid: [
+    { name: "ignores stars in PostgreSQL dollar strings", code: "db.query(`SELECT $$ * FROM $$`);" },
+    { name: "ignores stars in tagged dollar strings", code: "db.query(`SELECT $body$ * FROM $body$`);" },
+    { name: "preserves Unicode offsets while masking SQL values", code: "db.query(`SELECT '😀' AS emoji, '*' FROM users`);" },
     { name: "accepts the documented projection", code: NO_SELECT_STAR_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows explicit projections",
@@ -75,6 +78,7 @@ RULE_TESTER.run("no-select-star", rule, {
     },
   ],
   invalid: [
+    { name: "retains a wildcard following a dollar-quoted literal", code: "db.query(`SELECT $$ literal $$, * FROM users`);", errors: [{ messageId: "noSelectStar" }] },
     { name: "reports the documented wildcard", code: NO_SELECT_STAR_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSelectStar" }] },
     {
       name: "rejects a bare projection star",

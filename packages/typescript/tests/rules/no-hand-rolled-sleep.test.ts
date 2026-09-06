@@ -19,6 +19,11 @@ const SERVER = "/repo/src/lib/queue.ts";
 
 RULE_TESTER.run("no-hand-rolled-sleep", rule, {
   valid: [
+    { name: "preserves injected timer semantics", code: "function wait(setTimeout) { return new Promise(resolve => setTimeout(resolve, 100)); }", filename: SERVER },
+    { name: "preserves injected Promise constructor", code: "function wait(Promise) { return new Promise(resolve => setTimeout(resolve, 100)); }", filename: SERVER },
+    { name: "preserves shadowed global receiver", code: "function wait(globalThis) { return new Promise(resolve => globalThis.setTimeout(resolve, 100)); }", filename: SERVER },
+    { name: "preserves timer fulfillment value", code: "new Promise(resolve => setTimeout(resolve, 100, 42));", filename: SERVER },
+    { name: "does not confuse nested callback parameter with resolve", code: "new Promise(resolve => setTimeout(resolve => resolve(), 100));", filename: SERVER },
     {
       name: "accepts the cancellable Node timer",
       code: NO_HAND_ROLLED_SLEEP_DOCUMENTATION.examples[0].files[0].source,

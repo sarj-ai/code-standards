@@ -40,9 +40,9 @@ export const NO_REPEATED_STRING_LITERAL_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-/** True when the literal carries structure that rules out coincidental equality. */
+/** Recognized query, identifier, or route shapes; equality alone is not intent. */
 function isStructured(value: string): boolean {
-  return value.includes("\n") || SQL_KEYWORD_RE.test(value) || IDENTIFIER_RE.test(value) || URL_PATH_RE.test(value);
+  return SQL_KEYWORD_RE.test(value) || IDENTIFIER_RE.test(value) || URL_PATH_RE.test(value);
 }
 
 function preview(value: string): string {
@@ -88,6 +88,7 @@ function isScaffolding(node: TSESTree.Node): boolean {
     parent.type === AST_NODE_TYPES.ExportAllDeclaration ||
     parent.type === AST_NODE_TYPES.TSImportType ||
     parent.type === AST_NODE_TYPES.JSXAttribute ||
+    (parent.type === AST_NODE_TYPES.JSXExpressionContainer && parent.parent.type === AST_NODE_TYPES.JSXAttribute) ||
     parent.type === AST_NODE_TYPES.TSLiteralType ||
     isNonComputedPropertyKey ||
     isRequireSource

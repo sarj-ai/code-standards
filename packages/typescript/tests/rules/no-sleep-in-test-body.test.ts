@@ -19,6 +19,14 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 RULE_TESTER.run("no-sleep-in-test-body", rule, {
   valid: [
+    { filename: TEST_FILE, code: "test('operation', async () => { await new Promise((resolve, reject) => { start(resolve); setTimeout(reject, 50); }); });" },
+    { filename: TEST_FILE, code: "test('operation', async () => { await new Promise((resolve) => { start(resolve); setTimeout(resolve, 50); }); });" },
+    { filename: TEST_FILE, code: "test('deadline', async () => { await new Promise((resolve, reject) => setTimeout(reject, 50)); });" },
+    { filename: TEST_FILE, code: "test('fixture', async ({wait}) => { await wait(10); });" },
+    { filename: TEST_FILE, code: "test('local helper', async () => { const sleep = verifyEvent; await sleep(10); });" },
+    { filename: TEST_FILE, code: "test('custom constructor', async (Promise) => { await new Promise((resolve) => setTimeout(resolve, 50)); });" },
+    { filename: TEST_FILE, code: "test('custom timer', async (setTimeout) => { await new Promise((resolve) => setTimeout(resolve, 50)); });" },
+    { filename: TEST_FILE, code: "test('resolver named timer', async () => { await new Promise((setTimeout) => setTimeout(setTimeout, 50)); });" },
     { name: "accepts the documented fake timer", filename: NO_SLEEP_IN_TEST_BODY_DOCUMENTATION.examples[0].focusPath, code: NO_SLEEP_IN_TEST_BODY_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows a Promise sleep inside a nested latency fake",

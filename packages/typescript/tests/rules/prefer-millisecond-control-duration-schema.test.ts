@@ -16,6 +16,9 @@ const zod = (code: string): string => `import { z } from "zod";\n${code}`;
 
 RULE_TESTER.run("prefer-millisecond-control-duration-schema", rule, {
   valid: [
+    { name: "preserves nonnumeric feature flags", code: zod("const Schema = z.object({ timeoutSeconds: z.boolean() });") },
+    { name: "preserves unrelated string contracts", code: zod("const Schema = z.object({ timeoutSeconds: z.string().optional() });") },
+    { name: "does not infer an unknown schema alias", code: zod("const Schema = z.object({ timeoutSeconds: customSchema });") },
     {
       name: "accepts the documented millisecond field",
       filename: PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION.examples[0].focusPath,

@@ -17,6 +17,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("require-sql-access-class", rule, {
   valid: [
+    { name: "does not classify a Map lookup as SQL", code: "const db = new Map(); function lookup(key) { return db.get(key); }" },
+    { name: "does not classify URL query parsing as SQL", code: "const query = new URLSearchParams(); query.get('id');" },
     REQUIRE_SQL_ACCESS_CLASS_DOCUMENTATION.examples[0].files[0].source,
     "export class D1Repository { constructor(readonly env: { DB: D1Database }) {} find() { return this.env.DB.prepare('SELECT 1').first(); } }",
     "export class AssignedRepository { readonly database: Database.Database; constructor(connection: Database.Database) { this.database = connection; } find() { return this.database.prepare('SELECT 1').get(); } }",

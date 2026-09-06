@@ -21,6 +21,8 @@ const FILENAME = "src/user.test.ts";
 
 RULE_TESTER.run("prefer-whole-object-assertion", rule, {
   valid: [
+    { name: "preserves a locally supplied custom expect", filename: FILENAME, code: "function check(expect: CustomAssertion) { expect(obj.a).toBe(1); expect(obj.b).toBe(2); }" },
+    { name: "preserves a non-runner imported expect", filename: FILENAME, code: "import { expect } from './custom'; expect(obj.a).toBe(1); expect(obj.b).toBe(2);" },
     { name: "accepts the documented whole-object assertion", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[0].files[0].source },
     // Already the combined form.
     { filename: FILENAME, code: `expect(obj).toMatchObject({ a: 1, b: 2 });` },

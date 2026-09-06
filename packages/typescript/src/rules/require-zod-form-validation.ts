@@ -26,6 +26,7 @@ export const REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION = {
   limitations: [
     "Tests are excluded; imported schema-shaped names are trusted when their implementation is outside the linted file.",
     "Delayed raw-value use is accepted only after an unconditional successful parse in the same block; safeParse remains valid when the raw binding has no unvalidated consumer.",
+    "An enclosing parse does not validate an earlier call or deferred callback that consumes its input. Direct object/array construction, unshadowed Object.fromEntries and native Number/String/Boolean coercion remain supported; arbitrary preprocessing needs an explicitly reviewed boundary.",
   ],
   examples: [
     { id: "validated-form-value", title: "Validate the form value", outcome: "no-match", files: [{ path: "src/action.ts", source: "const input = UserSchema.parse({ name: formData.get('name') });" }], focusPath: "src/action.ts", expectedCount: 0, public: true },
@@ -195,6 +196,15 @@ export default createRule<Options, MessageIds>({
       let parent: TSESTree.Node | null | undefined = node.parent;
       while (parent !== null && parent !== undefined) {
         if (isZodParseCall(parent)) return parent as TSESTree.CallExpression;
+        if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee.type === AST_NODE_TYPES.Identifier && ["Number", "String", "Boolean"].includes(parent.callee.name) && parent.arguments.length === 1 && (resolvedBinding(parent.callee)?.defs.length ?? 0) === 0) {
+          parent = parent.parent;
+          continue;
+        }
+        if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee.type === AST_NODE_TYPES.MemberExpression && !parent.callee.computed && parent.callee.object.type === AST_NODE_TYPES.Identifier && parent.callee.object.name === "Object" && parent.callee.property.type === AST_NODE_TYPES.Identifier && parent.callee.property.name === "fromEntries" && (resolvedBinding(parent.callee.object)?.defs.length ?? 0) === 0) {
+          parent = parent.parent;
+          continue;
+        }
+        if (parent.type === AST_NODE_TYPES.CallExpression || parent.type === AST_NODE_TYPES.NewExpression || parent.type === AST_NODE_TYPES.TaggedTemplateExpression || parent.type === AST_NODE_TYPES.ArrowFunctionExpression || parent.type === AST_NODE_TYPES.FunctionExpression || parent.type === AST_NODE_TYPES.FunctionDeclaration) return null;
         parent = parent.parent;
       }
       return null;

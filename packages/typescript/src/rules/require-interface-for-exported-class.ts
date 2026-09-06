@@ -21,11 +21,13 @@ interface ClassBinding {
 export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
   summary: "Require exported concrete classes with public behavior to declare a contract.",
   rationale:
-    "Consumers coupled only to a concrete class cannot substitute implementations or state the supported public capability independently of implementation details.",
+    "An explicit contract names the intended public capability separately from implementation details. TypeScript already supports structural compatibility; this is an architecture policy, not a prerequisite for substitution.",
   remediation:
     "Declare a focused interface and add an implements clause, or inherit from an intentional base contract.",
   category: "architecture",
   limitations: [
+    "JavaScript files are excluded because implements is TypeScript syntax; imported framework base contracts still require manual policy review.",
+    "An exported injected service may also receive require-port-for-service: its service-boundary error and this general exported-contract warning intentionally enforce distinct policy scopes.",
     "The warning-stage rule checks module-level class declarations and direct class-expression values exported directly, through local export specifiers, or through a default identifier; re-exports and expressions wrapped in other calls require review.",
     "An extends clause satisfies the contract only when its target is a locally declared abstract class; imported base-class contracts require an explicit implements clause.",
     "Static factories and data-only classes without public instance methods are outside the contract requirement.",
@@ -128,6 +130,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
+      /\.(?:js|jsx|mjs|cjs)$/iu.test(context.filename) ||
       isTestFile(context.filename) ||
       isStoryFile(context.filename) ||
       isGeneratedFile(context.filename, context.sourceCode.text)

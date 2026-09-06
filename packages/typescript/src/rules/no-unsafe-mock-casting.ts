@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-unsafe-mock-casting — a cast to `vi.Mock` / `jest.Mock` asserts a mock that may not exist; `vi.mocked()` checks it.
+ * @fileoverview no-unsafe-mock-casting — use framework type helpers for already mocked values, not broad mock casts.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-unsafe-mock-casting.test.ts
  */
@@ -36,15 +36,16 @@ const MOCK_MODULES: ReadonlySet<string> = new Set([
 export const NO_UNSAFE_MOCK_CASTING_DOCUMENTATION = {
   summary: "Disallow casting to mock types like `jest.Mock` or `vi.Mock`. Use `vi.mocked()` or `jest.mocked()` instead.",
   rationale: "A type assertion can claim an unmocked value is a mock and bypass checking between the original callable and the mock API.",
-  remediation: "Use the test framework's `mocked` helper to obtain the typed mock reference.",
+  remediation: "Create the mock or spy first, then use the framework's mocked helper to preserve the original value's type. The helper does not create or verify a runtime mock.",
   category: "testing",
-  limitations: ["Only mock types imported from Vitest or Jest modules are inspected."],
+  limitations: ["Only mock types imported from Vitest or Jest modules are inspected. mocked is a type helper, not runtime validation or a replacement for mock setup."],
+  references: ["https://vitest.dev/api/vi.html#vi-mocked"],
   examples: [
     {
       id: "typed-mock-helper",
       title: "Use the framework helper",
       outcome: "no-match",
-      files: [{ path: "src/client.test.ts", source: "const m = vi.mocked(myFn);" }],
+      files: [{ path: "src/client.test.ts", source: "import { vi } from 'vitest'; const client = { read: () => 'value' }; vi.spyOn(client, 'read'); const m = vi.mocked(client.read);" }],
       focusPath: "src/client.test.ts",
       expectedCount: 0,
       public: true,
@@ -73,7 +74,7 @@ export default createRule<[], MessageIds>({
     schema: [],
     messages: {
       unsafeMockCast:
-        "Do not cast to a Mock type. Use `vi.mocked(fn)` or `jest.mocked(fn)` instead to preserve type safety.",
+        "Avoid a broad Mock cast. After creating the mock or spy, use `vi.mocked(fn)` or `jest.mocked(fn)` to retain its original type; the helper does not create a runtime mock.",
     },
   },
   defaultOptions: [],

@@ -34,7 +34,7 @@ _SELF_NAMES = frozenset({"self", "cls"})
 
 # These decorators preserve an ordinary callable definition and do not register
 # it through user code at definition time. Unknown decorators are movement barriers.
-_ORDER_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod", "final", "override"})
+_ORDER_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod"})
 
 #: A repeated singledispatch implementation name cannot identify one movable target.
 _DISCARD_NAME = "_"
@@ -65,6 +65,7 @@ class Stepdown(Rule):
         limitations=(
             "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
             "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
+            "Only bare builtin classmethod/staticmethod decorators without any visible rebinding are treated as transparent; other decorators remain ordering barriers.",
         ),
         examples=(
             RuleExample(
@@ -108,11 +109,14 @@ class Stepdown(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        diags = _check_module_scope(path, tree, self.code)
+        transparent = _unshadowed_builtin_decorators(tree)
+        diags = _check_module_scope(path, tree, self.code, transparent)
         classes = [node for node in _walk(tree) if isinstance(node, ast.ClassDef)]
         family_external = _family_external_refs(classes)
         for cls in classes:
-            diags.extend(_check_class_scope(path, cls, self.code, family_external.get(id(cls), frozenset())))
+            diags.extend(
+                _check_class_scope(path, cls, self.code, family_external.get(id(cls), frozenset()), transparent)
+            )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
@@ -121,7 +125,7 @@ def _last_by_name[DefT: _Def](defs: Sequence[DefT]) -> dict[str, DefT]:
     return {definition.name: definition for definition in defs}
 
 
-def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnostic]:
+def _check_module_scope(path: Path, tree: ast.Module, code: str, transparent: frozenset[str]) -> list[Diagnostic]:
     defs = [n for n in tree.body if isinstance(n, _SCOPE_NODES)]
     counts = Counter(d.name for d in defs)
     unique_defs = {name: d for d in defs if counts[name := d.name] == 1}
@@ -156,15 +160,19 @@ def _check_module_scope(path: Path, tree: ast.Module, code: str) -> list[Diagnos
     for name, d in unique_defs.items():
         if not isinstance(d, _DEF_NODES) or not _is_private_helper_name(name):
             continue
-        if name in pinned or name in shadowed or _has_order_sensitive_decorator(d):
+        if name in pinned or name in shadowed or _has_order_sensitive_decorator(d, transparent):
             continue
         diags.extend(
-            _flag_if_above_single_caller(path, code, name, node=d, graph=graph, defs=all_defs, ref_lines=ref_lines)
+            _flag_if_above_single_caller(
+                path, code, name, node=d, graph=graph, defs=all_defs, ref_lines=ref_lines, transparent=transparent
+            )
         )
     return diags
 
 
-def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_callers: frozenset[str]) -> list[Diagnostic]:
+def _check_class_scope(
+    path: Path, cls: ast.ClassDef, code: str, external_callers: frozenset[str], transparent: frozenset[str]
+) -> list[Diagnostic]:
     methods = [n for n in cls.body if isinstance(n, _DEF_NODES)]
     counts = Counter(m.name for m in methods)
     unique = {name: m for m in methods if counts[name := m.name] == 1}
@@ -197,10 +205,17 @@ def _check_class_scope(path: Path, cls: ast.ClassDef, code: str, external_caller
     for name, m in unique.items():
         if not _is_private_helper_name(name):
             continue
-        if name in pinned or name in shadowed or name in external_callers or _has_order_sensitive_decorator(m):
+        if (
+            name in pinned
+            or name in shadowed
+            or name in external_callers
+            or _has_order_sensitive_decorator(m, transparent)
+        ):
             continue
         diags.extend(
-            _flag_if_above_single_caller(path, code, name, node=m, graph=graph, defs=all_methods, ref_lines=ref_lines)
+            _flag_if_above_single_caller(
+                path, code, name, node=m, graph=graph, defs=all_methods, ref_lines=ref_lines, transparent=transparent
+            )
         )
     return diags
 
@@ -214,6 +229,7 @@ def _flag_if_above_single_caller(
     graph: dict[str, set[str]],
     defs: Mapping[str, ast.stmt],
     ref_lines: dict[tuple[str, str], int],
+    transparent: frozenset[str],
 ) -> list[Diagnostic]:
     callers = [c for c, callees in graph.items() if name in callees]
     if len(callers) != 1:
@@ -224,7 +240,9 @@ def _flag_if_above_single_caller(
     if isinstance(defs[caller], ast.ClassDef):
         return []
     caller_node = defs[caller]
-    if isinstance(caller_node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _has_order_sensitive_decorator(caller_node):
+    if isinstance(caller_node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _has_order_sensitive_decorator(
+        caller_node, transparent
+    ):
         return []
     if _reaches(graph, name, caller):
         return []
@@ -338,15 +356,38 @@ def _is_private_helper_name(name: str) -> bool:
     return not (name.startswith("__") and name.endswith("__"))
 
 
-def _has_order_sensitive_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    for decorator in node.decorator_list:
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        match target:
-            case ast.Name(id=name) | ast.Attribute(attr=name) if name in _ORDER_TRANSPARENT_DECORATORS:
-                continue
+def _unshadowed_builtin_decorators(tree: ast.Module) -> frozenset[str]:
+    bound: set[str] = set()
+    for node in _walk(tree):
+        match node:
+            case ast.ImportFrom(names=names) if any(alias.name == "*" for alias in names):
+                return frozenset()
+            case (
+                ast.Name(id=name, ctx=ast.Store() | ast.Del())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ClassDef(name=name)
+            ):
+                bound.add(name)
+            case ast.alias(name=name, asname=asname):
+                bound.add(asname or name.split(".")[0])
+            case (
+                ast.ExceptHandler(name=str() as name)
+                | ast.MatchAs(name=str() as name)
+                | ast.MatchStar(name=str() as name)
+                | ast.MatchMapping(rest=str() as name)
+            ):
+                bound.add(name)
             case _:
-                return True
-    return False
+                pass
+    return _ORDER_TRANSPARENT_DECORATORS - bound
+
+
+def _has_order_sensitive_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef, transparent: frozenset[str]) -> bool:
+    return any(
+        not isinstance(decorator, ast.Name) or decorator.id not in transparent for decorator in node.decorator_list
+    )
 
 
 def _deferred_body(node: ast.stmt) -> list[ast.stmt]:
@@ -626,7 +667,18 @@ def _direct_scope_bindings(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[
 
 
 def _lambda_bindings(node: ast.Lambda) -> set[str]:
-    return _argument_names(node.args)
+    bound = _argument_names(node.args)
+    stack: list[ast.AST] = [node.body]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, ast.Lambda):
+            stack.extend(current.args.defaults)
+            stack.extend(default for default in current.args.kw_defaults if default is not None)
+            continue
+        if isinstance(current, ast.NamedExpr):
+            bound.update(_target_names(current.target))
+        stack.extend(_child_nodes(current))
+    return bound
 
 
 def _argument_names(args: ast.arguments) -> set[str]:

@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -170,6 +170,15 @@ export default createRule<Options, MessageIds>({
         return null;
       }
       const actual = expectCall.arguments[0];
+      const variable = ASTUtils.findVariable(sourceCode.getScope(expectCall.callee), expectCall.callee.name);
+      if (variable !== null && variable.defs.some((definition) => {
+        if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
+        const declaration = definition.node.parent;
+        const imported = definition.node.imported;
+        return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
+          !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
+          (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
+      })) return null;
       if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
         return null;
       }

@@ -15,6 +15,28 @@ def _check(source: str, path: str = "app/errors.py") -> list[Diagnostic]:
     return TypedErrorReasons().check(Path(path), source)
 
 
+def test_custom_join_receiver_is_not_proven_string_rendering() -> None:
+    assert (
+        _check(
+            "class BatchError(Exception):\n def __init__(self, reasons: list[str]) -> None:\n  super().__init__(worker.join(reasons))\n"
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("extra", [", *args", ", **kwargs"])
+def test_additional_constructor_context_is_out_of_scope(extra: str) -> None:
+    source = f"class BatchError(Exception):\n def __init__(self, reasons: list[str]{extra}) -> None:\n  super().__init__('; '.join(reasons))\n"
+    assert _check(source) == []
+
+
+def test_contextual_strings_receive_conditional_review_not_an_enum_requirement() -> None:
+    source = "class MissingFilesError(Exception):\n def __init__(self, paths: list[str]) -> None:\n  super().__init__(', '.join(paths))\n"
+    [diagnostic] = _check(source)
+    assert "fixed reason identities" in diagnostic.message
+    assert "dynamic context" in diagnostic.message
+
+
 _PUBLIC_EXAMPLES = TypedErrorReasons.public_examples()
 
 

@@ -1,8 +1,9 @@
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { STEPDOWN_DOCUMENTATION } from "../../src/rules/stepdown.js";
+import { ErasedPrivate, ReorderedPrivate } from "../fixtures/private-member-reflection.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -159,9 +160,9 @@ RULE_TESTER.run("stepdown", rule, {
       errors: DEEP_CHAIN_SIZE - 1,
     },
     {
-      name: "moves a private helper below its public interface method caller",
+      name: "reports private helper ordering without rewriting reflected method order",
       code: "class Service { private load() { return 1; } public run() { return this.load(); } }",
-      output: "class Service { public run() { return this.load(); } private load() { return 1; } }",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {
@@ -182,7 +183,7 @@ RULE_TESTER.run("stepdown", rule, {
     {
       name: "self recursion does not hide a private method's sole external caller",
       code: "class Service { private walk(n: number): number { return n <= 0 ? 0 : this.walk(n - 1); } private run() { return this.walk(2); } }",
-      output: "class Service { private run() { return this.walk(2); } private walk(n: number): number { return n <= 0 ? 0 : this.walk(n - 1); } }",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "walk", caller: "run" } }],
     },
     {
@@ -198,7 +199,7 @@ RULE_TESTER.run("stepdown", rule, {
     {
       name: "resolves a class expression through its outer const binding",
       code: "const Service = class { private static load() { return 1; } private static run() { return Service.load(); } };",
-      output: "const Service = class { private static run() { return Service.load(); } private static load() { return 1; } };",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {
@@ -214,32 +215,38 @@ RULE_TESTER.run("stepdown", rule, {
     {
       name: "reports an explicitly private method above its sole private caller",
       code: "class Service {\n  private load() { return 1; }\n  private run() { return this.load(); }\n}",
-      output: "class Service {\n  private run() { return this.load(); }\n  private load() { return 1; }\n}",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {
       name: "reports a hash-private method above its sole private caller",
       code: "class Service { #load() { return 1; } private run() { return this.#load(); } }",
-      output: "class Service { private run() { return this.#load(); } #load() { return 1; } }",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "#load", caller: "run" } }],
     },
     {
       name: "reports a hash-private helper above a hash-private caller",
       code: "class Service { #load() { return 1; } #run() { return this.#load(); } }",
-      output: "class Service { #run() { return this.#load(); } #load() { return 1; } }",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "#load", caller: "#run" } }],
     },
     {
       name: "reports a private static helper called through the class binding",
       code: "class Service { private static load() { return 1; } private static run() { return Service.load(); } }",
-      output: "class Service { private static run() { return Service.load(); } private static load() { return 1; } }",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
     {
       name: "reports a helper called by a parameter default",
       code: "class Service { private load() { return 1; } private run(value = this.load()) { return value; } }",
-      output: "class Service { private run(value = this.load()) { return value; } private load() { return 1; } }",
+      output: null,
       errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
     },
   ],
+});
+
+it("method reordering changes observable prototype key order", () => {
+  expect(new ErasedPrivate().run()).toBe(new ReorderedPrivate().run());
+  expect(Object.getOwnPropertyNames(ErasedPrivate.prototype)).toEqual(["constructor", "load", "run"]);
+  expect(Object.getOwnPropertyNames(ReorderedPrivate.prototype)).toEqual(["constructor", "run", "load"]);
 });

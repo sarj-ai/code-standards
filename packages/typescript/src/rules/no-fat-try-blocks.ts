@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-fat-try-blocks — a `try` holding more than three throwing statements catches failures its handler was never written for.
+ * @fileoverview no-fat-try-blocks — review broad recovery scopes using a bounded operation-count heuristic.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-fat-try-blocks.test.ts
  */
@@ -16,19 +16,19 @@ export interface RuleOptions {
 type Options = readonly [RuleOptions?];
 
 export const NO_FAT_TRY_BLOCKS_DOCUMENTATION = {
-  summary: "Disallow `try` blocks containing more than three top-level operations that can throw.",
+  summary: "Review try blocks exceeding the configured count of syntactically selected operations.",
   rationale:
     "A broad `try` block obscures which operation failed and encourages one catch clause to recover from unrelated errors.",
   remediation:
     "Keep only the operations that share one recovery policy inside the `try` block and move other work outside it.",
   category: "correctness",
   limitations: [
-    "The rule uses syntax to identify throwing operations and exempts generated files, finally blocks, rethrows, and terminal error boundaries.",
+    "The default threshold is three selected top-level operations, not a proof of every possible throw. A shared recovery policy may legitimately cover several operations; generated files, catchless finally blocks, rethrows, and terminal error boundaries are excluded.",
   ],
   examples: [
     {
       id: "focused-try-block",
-      title: "A try block contains three throwing operations",
+      title: "Three selected operations stay within the default threshold",
       outcome: "no-match",
       files: [{
         path: "src/load.ts",
@@ -40,7 +40,7 @@ export const NO_FAT_TRY_BLOCKS_DOCUMENTATION = {
     },
     {
       id: "broad-try-block",
-      title: "A try block contains four throwing operations",
+      title: "Review whether four selected operations share one recovery policy",
       outcome: "match",
       files: [{
         path: "src/load.ts",
@@ -485,7 +485,7 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "problem",
     docs: {
-      description: "Disallow `try` blocks containing more than three top-level operations that can throw.",
+      description: "Review try blocks exceeding the configured count of syntactically selected operations.",
     },
     schema: [
       {
@@ -498,7 +498,7 @@ export default createRule<Options, MessageIds>({
     ],
     messages: {
       fatTryBlock:
-        "This `try` block has {{count}} statements that can throw (max {{max}}). Isolate the throwing statement(s); move non-throwing work outside the `try`.",
+        "This `try` block has {{count}} syntactically selected operations (max {{max}}). Review whether they share one recovery policy; move unrelated work outside the boundary.",
     },
   },
   defaultOptions: [{ max: MAX_TRY_BODY_STATEMENTS }],

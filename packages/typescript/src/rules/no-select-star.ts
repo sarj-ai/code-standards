@@ -14,11 +14,11 @@ type MessageIds = "noSelectStar";
 type Options = readonly [];
 
 export const NO_SELECT_STAR_DOCUMENTATION = {
-  summary: "Disallow SELECT * in embedded SQL; it over-fetches and leaves the row contract implicit, so a schema change breaks row parsing silently.",
+  summary: "Prefer explicit column projections over SELECT * in embedded SQL.",
   rationale: "Wildcard projections couple row shape and query cost to unrelated schema changes.",
   remediation: "List every required column explicitly in the projection.",
   category: "correctness",
-  limitations: ["Only statically visible embedded SQL is checked; function arguments such as COUNT(*) and stars inside EXISTS are excluded."],
+  limitations: ["Only statically visible embedded SQL is checked; quoted strings (including PostgreSQL dollar strings), comments, function arguments such as COUNT(*), and stars inside EXISTS are excluded. This is a bounded lexical scan, not a complete SQL parser."],
   examples: [
     { id: "explicit-projection", title: "Select the required columns", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id, status FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
     { id: "wildcard-projection", title: "Do not select every column", outcome: "match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT * FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
@@ -79,7 +79,7 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow SELECT * in embedded SQL; it over-fetches and leaves the row contract implicit, so a schema change breaks row parsing silently.",
+        "Prefer explicit column projections over SELECT * in embedded SQL.",
     },
     schema: [],
     messages: {

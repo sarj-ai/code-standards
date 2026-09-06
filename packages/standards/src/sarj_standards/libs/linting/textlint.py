@@ -56,6 +56,7 @@ class _WorkflowAction(NamedTuple):
 class _HeredocSpec(NamedTuple):
     delimiter: str
     strip_tabs: bool
+    literal: bool
 
 
 class _TextPolicy(NamedTuple):
@@ -324,6 +325,10 @@ _ARTIFACT_SELF_DESCRIPTION_RE = re.compile(
     r"\b(?:investigation|audit|execution) log\b|\bchange diary\b|\bpoint-in-time (?:audit|report)\b",
     re.IGNORECASE,
 )
+_EXECUTION_RECORD_HEADING_RE = re.compile(
+    r"^#{1,6}\s+(?:temporary execution record|fix brief|end[- ]to[- ]end[- ]plan)\s*$|^#{1,6}\s+bugs found during\b",
+    re.IGNORECASE | re.MULTILINE,
+)
 _AI_GENERATION_RE = re.compile(
     r"generated with \[(?:claude|chatgpt|codex)|generated (?:with|by) (?:claude|chatgpt|codex)|"
     r"co-authored-by:\s*(?:claude|chatgpt|codex)",
@@ -389,8 +394,10 @@ _SHELL_SHEBANG_RE: Final = re.compile(
     rb"^#!\s*(?:/usr/bin/env(?:\s+-S)?\s+|/(?:usr/)?bin/)(?P<shell>bash|busybox|dash|ksh|sh|zsh)(?:\s|$)"
 )
 _LARGE_SHELL_SUBSTANTIVE_LINES: Final = 200
-_QUERY_TOKEN_RE: Final = re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|logQl)\b", re.IGNORECASE)
-_QUOTED_ARGUMENT_RE: Final = re.compile(r'(?<!\S)"\$ARGUMENTS"(?!\S)')
+_QUERY_TOKEN_RE: Final = re.compile(
+    r"(?<![\w./-])(?:SELECT|INSERT|UPDATE|DELETE|WHERE|FROM|logQl)(?![\w./-])", re.IGNORECASE
+)
+_QUOTED_ARGUMENT_RE: Final = re.compile(r'(?<![^\s;|&()<>])"\$ARGUMENTS"(?=$|[\s;|&()<>])')
 _MAX_MARKDOWN_FENCE_INDENT: Final = 3
 _MIN_MARKDOWN_FENCE_LENGTH: Final = 3
 _SECRET_READ_PERMISSION_PREFIXES: Final = (
@@ -599,6 +606,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "Short artifacts with neutral names and no execution-log headings are intentionally not inferred from prose alone.",
+                "Suspicious filenames and backup paths require execution-record evidence in prose; paths alone do not establish an artifact, and authorship is not inferred.",
             ),
         ),
         "iac-source-coupled-test": RuleMeta(
@@ -631,6 +639,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "The scanner tokenizes shell quoting, comments, pipelines, direct command substitutions, and local variable flows; sourced helpers and eval remain unreported.",
+                "Heredoc bodies are data rather than independent shell commands. Variable references use complete names; local tracking does not prove all branch or alias behavior.",
                 "Only test-named shell files or shell files below a tests directory are checked.",
             ),
         ),
@@ -871,14 +880,15 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             limitations=(
                 "Only fenced executable examples in .claude/commands Markdown are checked.",
                 "A standalone quoted shell argument is accepted on the assumption that the called wrapper validates or parameterizes it.",
+                "Shell comments and quoted-delimiter heredoc data are excluded. SQL keyword context is lexical, not proof of an execution sink; keywords embedded in path/name tokens are ignored.",
             ),
         ),
         "no-wildcard-secret-read-permission": RuleMeta(
             code="SARJ308",
             summary="Claude settings grant wildcard access to secret values",
             rationale=(
-                "A wildcard allow entry for a secret-read command lets an agent retrieve every secret visible to the "
-                "developer's cloud credentials without a per-command approval boundary."
+                "A wildcard allow entry can preapprove secret-value reads beyond the particular command reviewed. "
+                "Its reach depends on the wildcard position, command arguments, and available credentials."
             ),
             remediation=(
                 "Remove the wildcard permission. Allow a narrowly scoped wrapper that validates an explicit secret "
@@ -898,7 +908,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 ),
                 _public_example(
                     example_id="narrow-secret-wrapper",
-                    title="Allow a validating project wrapper instead",
+                    title="A wrapper requires a separate review of its validation",
                     outcome=ExpectedOutcome.NO_MATCH,
                     path=".claude/settings.json",
                     source='{"permissions":{"allow":["Bash(make pull-development-secrets)"]}}\n',
@@ -907,6 +917,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "Only literal wildcard allow entries for recognized cloud secret-value commands in Claude settings JSON are checked.",
+                "A clean wrapper name does not prove validation; alternate command forms and cloud IAM permissions are not audited by this rule.",
             ),
         ),
         "large-shell-program": RuleMeta(
@@ -943,6 +954,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "Blank lines, comment-only lines, the shebang, and heredoc bodies do not count toward the threshold.",
+                "The count uses physical lines, not program complexity; continuations and multiline quoted data can count. Migration is a manual architecture decision, not an equivalent automatic translation.",
                 "Embedded shell in YAML, Makefiles, and Dockerfiles is intentionally outside this advisory.",
             ),
             blocking=False,
@@ -1338,6 +1350,7 @@ def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
         delimiter: list[str] = []
         word_started = False
         word_quote: str | None = None
+        literal = False
         while cursor < len(line):
             character = line[cursor]
             if word_quote is not None:
@@ -1354,10 +1367,12 @@ def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
             if character in {"'", '"'}:
                 word_started = True
                 word_quote = character
+                literal = True
                 cursor += 1
                 continue
             if character == "\\" and cursor + 1 < len(line):
                 word_started = True
+                literal = True
                 cursor += 1
                 delimiter.append(line[cursor])
                 cursor += 1
@@ -1369,7 +1384,7 @@ def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
             cursor += 1
 
         if word_started and word_quote is None:
-            specs.append(_HeredocSpec("".join(delimiter), strip_tabs))
+            specs.append(_HeredocSpec("".join(delimiter), strip_tabs, literal))
         index = max(cursor, index + 2)
     return specs
 
@@ -1842,7 +1857,7 @@ def _shell_iac_source_findings(path: Path, relative: str, source: str) -> list[F
     findings: list[Finding] = []
     tainted: set[str] = set()
     path_names: set[str] = set()
-    for logical_line in _shell_logical_lines(source):
+    for logical_line in _shell_logical_lines(_shell_without_heredoc_bodies(source)):
         number = logical_line.line
         tokens = _shell_tokens(logical_line.command)
         if not tokens:
@@ -2073,8 +2088,8 @@ def _shell_read_target(tokens: Sequence[str]) -> str | None:
 
 
 def _shell_uses_variable(tokens: Sequence[str], name: str) -> bool:
-    patterns = {f"${name}", f"${{{name}}}"}
-    return any(token in patterns or any(pattern in token for pattern in patterns) for token in tokens)
+    pattern = re.compile(rf"\$(?:{re.escape(name)}(?![A-Za-z0-9_])|\{{{re.escape(name)}\}})")
+    return any(pattern.search(token) for token in tokens)
 
 
 def _artifact_findings(
@@ -2087,7 +2102,10 @@ def _artifact_findings(
         return []
     if path.name.lower() == "changelog.md":
         return []
-    if any(part.lower() in {"_backups", "backups"} for part in path.parts):
+    source_lines = _markdown_prose_lines(source)
+    prose = "\n".join(source_lines)
+    content_evidence = bool(_ARTIFACT_SELF_DESCRIPTION_RE.search(prose) or _EXECUTION_RECORD_HEADING_RE.search(prose))
+    if content_evidence and any(part.lower() in {"_backups", "backups"} for part in path.parts):
         return [
             Finding(
                 path,
@@ -2097,17 +2115,17 @@ def _artifact_findings(
             )
         ]
     durable = any(fnmatch(relative, pattern) for pattern in durable_patterns)
-    if _STRONG_ARTIFACT_NAME_RE.search(path.stem) or (not durable and _ARTIFACT_NAME_RE.search(path.stem)):
+    if content_evidence and (
+        _STRONG_ARTIFACT_NAME_RE.search(path.stem) or (not durable and _ARTIFACT_NAME_RE.search(path.stem))
+    ):
         return [
             Finding(
                 path,
                 1,
                 "SARJ302",
-                "Ephemeral AI work artifact — move durable knowledge into README/docs/ADR and delete the execution brief or report.",
+                "Execution artifact — move durable knowledge into README/docs/ADR and delete the execution brief or report.",
             )
         ]
-    source_lines = _markdown_prose_lines(source)
-    prose = "\n".join(source_lines)
     headings = [
         number for number, line in enumerate(source_lines, start=1) if _EPHEMERAL_HEADING_RE.match(line.strip())
     ]
@@ -2118,7 +2136,7 @@ def _artifact_findings(
                 path,
                 headings[0],
                 "SARJ302",
-                "Chronological AI execution log — keep current usage/design facts; remove passes, change diary, and session narration.",
+                "Chronological execution log — keep current usage/design facts; remove passes, change diary, and session narration.",
             )
         ]
     if _large_artifact(prose, path, source_lines):
@@ -2146,6 +2164,7 @@ def _markdown_command_argument_findings(path: Path, relative: str, source: str) 
         return []
     findings: list[Finding] = []
     fence: tuple[str, int, str] | None = None
+    pending: list[_HeredocSpec] = []
     for line_number, line in enumerate(source.splitlines(), start=1):
         stripped = line.lstrip(" ") if len(line) - len(line.lstrip(" ")) <= _MAX_MARKDOWN_FENCE_INDENT else ""
         marker = stripped[:1]
@@ -2156,16 +2175,31 @@ def _markdown_command_argument_findings(path: Path, relative: str, source: str) 
             info = stripped[marker_length:].strip().split(maxsplit=1)
             language = info[0].casefold() if info else ""
             fence = (marker, marker_length, language)
+            pending = []
             continue
         fence_marker, fence_length, language = fence
         if marker == fence_marker and marker_length >= fence_length and not stripped[marker_length:].strip():
             fence = None
             continue
-        if language not in _QUERY_LANGUAGE_NAMES | _SHELL_LANGUAGE_NAMES or not _COMMAND_ARGUMENT_RE.search(line):
+        executable_line = line
+        if language in _SHELL_LANGUAGE_NAMES:
+            if pending:
+                current = pending[0]
+                if (line.lstrip("\t") if current.strip_tabs else line) == current.delimiter:
+                    pending.pop(0)
+                    continue
+                if current.literal:
+                    continue
+            else:
+                pending.extend(_shell_heredoc_specs(line))
+                executable_line = _shell_without_comments(line)
+        if language not in _QUERY_LANGUAGE_NAMES | _SHELL_LANGUAGE_NAMES or not _COMMAND_ARGUMENT_RE.search(
+            executable_line
+        ):
             continue
-        unsafe = language in _QUERY_LANGUAGE_NAMES or bool(_QUERY_TOKEN_RE.search(line))
+        unsafe = language in _QUERY_LANGUAGE_NAMES or bool(_QUERY_TOKEN_RE.search(executable_line))
         if not unsafe:
-            without_safe_arguments = _QUOTED_ARGUMENT_RE.sub("", line)
+            without_safe_arguments = _QUOTED_ARGUMENT_RE.sub("", executable_line)
             unsafe = bool(_COMMAND_ARGUMENT_RE.search(without_safe_arguments))
         if unsafe:
             findings.append(
@@ -2177,6 +2211,27 @@ def _markdown_command_argument_findings(path: Path, relative: str, source: str) 
                 )
             )
     return findings
+
+
+def _shell_without_comments(line: str) -> str:
+    quote: str | None = None
+    escaped = False
+    for index, character in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote is not None:
+            if character == quote:
+                quote = None
+            continue
+        if character in {"'", '"'}:
+            quote = character
+        elif character == "#" and (index == 0 or line[index - 1].isspace() or line[index - 1] in ";|&("):
+            return line[:index]
+    return line
 
 
 def _claude_settings_secret_permission_findings(path: Path, relative: str, source: str) -> list[Finding]:

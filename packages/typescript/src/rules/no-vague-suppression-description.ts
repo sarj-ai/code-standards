@@ -24,7 +24,7 @@ export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
   limitations: [
     "Only ESLint disable comments and TypeScript expect-error directives are checked.",
     "The rule uses a small anchored vocabulary and does not score prose quality generally.",
-    "Generated files and descriptions containing any concrete context are excluded.",
+    "Generated files and descriptions outside that exact vocabulary are excluded; an unflagged reason is not proof of a justified suppression. Missing descriptions remain owned by the upstream description requirement.",
   ],
   examples: [
     {
@@ -35,7 +35,7 @@ export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
         {
           path: "src/adapter.ts",
           source:
-            "// @ts-expect-error -- vendor types omit the runtime requestId field\nreturn response.requestId;",
+            "function requestId(response: object) {\n  // @ts-expect-error -- vendor types omit the runtime requestId field\n  return response.requestId;\n}",
         },
       ],
       focusPath: "src/adapter.ts",
@@ -49,7 +49,8 @@ export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
       files: [
         {
           path: "src/adapter.ts",
-          source: "// @ts-expect-error -- false positive\nreturn response.requestId;",
+          source:
+            "function requestId(response: object) {\n  // @ts-expect-error -- false positive\n  return response.requestId;\n}",
         },
       ],
       focusPath: "src/adapter.ts",

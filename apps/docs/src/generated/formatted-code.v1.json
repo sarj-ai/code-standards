@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ff9a996ea50a75ba858f414d3c7e3e739d2bb06f9185e265f3cb8f40685cbd29",
-  "cliSha256": "f4a2e6648019874b445dd529ae7c8ffef89b83efec4d6c7b4902a1223a0569f1",
+  "catalogSha256": "0d2dbdb430477cd9e8ff8fbb3637dcc2fec8019fbe5b8805ade6b77835ce9d99",
+  "cliSha256": "566c70dfd0b158fadc080b7785063b52953f68cd568fd7a4b7ceb5ab29091467",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -551,7 +551,7 @@
           "id": "broad-try-block",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A try block contains four throwing operations"
+          "title": "Review whether four selected operations share one recovery policy"
         },
         {
           "expectedCount": 0,
@@ -566,7 +566,7 @@
           "id": "focused-try-block",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "A try block contains three throwing operations"
+          "title": "Three selected operations stay within the default threshold"
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"max\": { \"minimum\": 1, \"type\": \"integer\" } },\n  \"type\": \"object\"\n}\n"
@@ -1413,7 +1413,7 @@
           "files": [
             {
               "path": "src/retry.test.ts",
-              "source": "it(\"retries\", async () => {\n  vi.useFakeTimers();\n  const result = retry();\n  await vi.advanceTimersByTimeAsync(50);\n  await result;\n});\n"
+              "source": "it(\"retries\", async () => {\n  vi.useFakeTimers();\n  try {\n    const result = retry();\n    await vi.advanceTimersByTimeAsync(50);\n    await result;\n  } finally {\n    vi.useRealTimers();\n  }\n});\n"
             }
           ],
           "fixedFiles": [],
@@ -1421,7 +1421,7 @@
           "id": "fake-timer",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Advance time deterministically"
+          "title": "Advance controlled time and restore real timers"
         },
         {
           "expectedCount": 1,
@@ -1743,7 +1743,7 @@
           "files": [
             {
               "path": "src/client.test.ts",
-              "source": "const m = vi.mocked(myFn);\n"
+              "source": "import { vi } from \"vitest\";\nconst client = { read: () => \"value\" };\nvi.spyOn(client, \"read\");\nconst m = vi.mocked(client.read);\n"
             }
           ],
           "fixedFiles": [],
@@ -1763,7 +1763,7 @@
           "files": [
             {
               "path": "src/adapter.ts",
-              "source": "// @ts-expect-error -- vendor types omit the runtime requestId field\nreturn response.requestId;\n"
+              "source": "function requestId(response: object) {\n  // @ts-expect-error -- vendor types omit the runtime requestId field\n  return response.requestId;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1778,7 +1778,7 @@
           "files": [
             {
               "path": "src/adapter.ts",
-              "source": "// @ts-expect-error -- false positive\nreturn response.requestId;\n"
+              "source": "function requestId(response: object) {\n  // @ts-expect-error -- false positive\n  return response.requestId;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -2043,7 +2043,7 @@
           "files": [
             {
               "path": "src/request.ts",
-              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1) });\n"
+              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({\n  timeoutMs: z.number().int().min(1000).max(300000).default(30000),\n});\n"
             }
           ],
           "fixedFiles": [],
@@ -2058,7 +2058,7 @@
           "files": [
             {
               "path": "src/request.ts",
-              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1) });\n"
+              "source": "import { z } from \"zod\";\nexport const RequestSchema = z.object({\n  timeout_seconds: z.number().int().min(1).max(300).default(30),\n});\n"
             }
           ],
           "fixedFiles": [],
@@ -2183,7 +2183,7 @@
           "files": [
             {
               "path": "src/schema.ts",
-              "source": "import { z } from \"zod\";\nexport const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);\n"
+              "source": "import { z } from \"zod/v4\";\nexport const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);\n"
             }
           ],
           "fixedFiles": [],
@@ -2198,7 +2198,7 @@
           "files": [
             {
               "path": "src/schema.ts",
-              "source": "import { z } from \"zod\";\nexport const Version = z.literal([1, 2, 3]);\n"
+              "source": "import { z } from \"zod/v4\";\nexport const Version = z.literal([1, 2, 3]);\n"
             }
           ],
           "fixedFiles": [],
@@ -2463,7 +2463,7 @@
           "files": [
             {
               "path": "src/client.ts",
-              "source": "async function load(response) {\n  const body = await response.json();\n  return body.id;\n}\n"
+              "source": "async function load(response: Response) {\n  const body = await response.json();\n  return body.id;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -2478,7 +2478,7 @@
           "files": [
             {
               "path": "src/client.ts",
-              "source": "async function load(response) {\n  const body = UserSchema.parse(await response.json());\n  return body.id;\n}\n"
+              "source": "async function load(response: Response) {\n  const body = UserSchema.parse(await response.json());\n  return body.id;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3233,7 +3233,7 @@
           "files": [
             {
               "path": "src/store.ts",
-              "source": "db.prepare(`INSERT INTO runs (id) VALUES (?)`).run();\n"
+              "source": "function seed() {\n  db.prepare(`INSERT INTO runs (id) VALUES (?)`).run();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3241,14 +3241,14 @@
           "id": "bare-insert",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not issue a replay-unsafe insert"
+          "title": "Review a bare insert in a replay-named callable"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "src/store.ts",
-              "source": "db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT(id) DO NOTHING`).run();\n"
+              "source": "function seed() {\n  db.prepare(`INSERT INTO runs (id) VALUES (?) ON CONFLICT(id) DO NOTHING`).run();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3256,7 +3256,7 @@
           "id": "conflict-safe-insert",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Handle a replayed insert"
+          "title": "Review the conflict policy for a replayed insert"
         }
       ],
       "optionsSchemaSource": null
@@ -7570,6 +7570,36 @@
     "python:typed-error-reasons": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class MissingFilesError(Exception):\n    def __init__(self, paths: list[str]) -> None:\n        self.paths = paths\n        super().__init__(\"Files are missing\")\n\n\ndef render_error(error: MissingFilesError) -> str:\n    return \", \".join(error.paths)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "dynamic-context-kept-typed",
+          "outcome": "accept",
+          "scenarioId": "dynamic-context",
+          "title": "Keep arbitrary paths as typed context without an enum"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "class MissingFilesError(Exception):\n    def __init__(self, paths: list[str]) -> None:\n        super().__init__(\", \".join(paths))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "dynamic-context-review",
+          "outcome": "reject",
+          "scenarioId": "dynamic-context",
+          "title": "Review a contextual list without converting paths to enum values"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -8591,7 +8621,7 @@
           "id": "narrow-secret-wrapper",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Allow a validating project wrapper instead"
+          "title": "A wrapper requires a separate review of its validation"
         },
         {
           "expectedCount": 1,

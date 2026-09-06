@@ -27,7 +27,7 @@ export const PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION = {
   category: "correctness",
   autofix: "none",
   limitations: [
-    "Only direct identifier keys in application-owned z.object/z.strictObject schemas are checked.",
+    "Only direct identifier keys with recognizable numeric Zod leaves in application-owned z.object/z.strictObject schemas are checked; aliases and transformations are not inferred.",
     "The rule covers control timings such as timeout, delay, interval, backoff, TTL, lease, heartbeat, debounce, and throttle; observed durations and business-domain periods are excluded.",
     "Quoted/computed protocol keys, generated/vendor code, tests, fixtures, and non-Zod schemas are excluded.",
   ],
@@ -39,7 +39,7 @@ export const PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION = {
       files: [
         {
           path: "src/request.ts",
-          source: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1) });",
+          source: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeoutMs: z.number().int().min(1000).max(300000).default(30000) });",
         },
       ],
       focusPath: "src/request.ts",
@@ -53,7 +53,7 @@ export const PREFER_MILLISECOND_CONTROL_DURATION_SCHEMA_DOCUMENTATION = {
       files: [
         {
           path: "src/request.ts",
-          source: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1) });",
+          source: "import { z } from 'zod';\nexport const RequestSchema = z.object({ timeout_seconds: z.number().int().min(1).max(300).default(30) });",
         },
       ],
       focusPath: "src/request.ts",
@@ -95,6 +95,7 @@ export default createRule<Options, MessageIds>({
 
     const zodNamespaces = new Set<TSESLint.Scope.Variable>();
     const objectFactories = new Set<TSESLint.Scope.Variable>();
+    const numberFactories = new Set<TSESLint.Scope.Variable>();
 
     function binding(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
       return ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
@@ -124,10 +125,30 @@ export default createRule<Options, MessageIds>({
       return variable !== null && zodNamespaces.has(variable);
     }
 
+    function isNumericSchema(node: TSESTree.Node): boolean {
+      if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+      const callee = node.callee;
+      if (callee.type === AST_NODE_TYPES.Identifier) {
+        const variable = binding(callee);
+        return variable !== null && numberFactories.has(variable);
+      }
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed ||
+          callee.property.type !== AST_NODE_TYPES.Identifier) return false;
+      if (callee.object.type === AST_NODE_TYPES.Identifier) {
+        const variable = binding(callee.object);
+        return callee.property.name === "number" && variable !== null && zodNamespaces.has(variable);
+      }
+      return ["int", "min", "max", "positive", "nonnegative", "finite", "multipleOf", "optional", "nullable", "nullish", "default", "describe", "brand", "readonly"].includes(callee.property.name) &&
+        isNumericSchema(callee.object);
+    }
+
     return {
       ImportDeclaration(node: TSESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) return;
         for (const specifier of node.specifiers) {
+          if (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.imported.type === AST_NODE_TYPES.Identifier && specifier.imported.name === "number") {
+            record(numberFactories, specifier.local);
+          }
           if (
             specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
             specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
@@ -150,7 +171,7 @@ export default createRule<Options, MessageIds>({
         const shape = node.arguments[0];
         if (shape?.type !== AST_NODE_TYPES.ObjectExpression) return;
         for (const member of shape.properties) {
-          if (member.type !== AST_NODE_TYPES.Property) continue;
+          if (member.type !== AST_NODE_TYPES.Property || !isNumericSchema(member.value)) continue;
           const key = directIdentifierKey(member);
           if (
             key === null ||

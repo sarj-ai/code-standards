@@ -23,7 +23,7 @@ type Options = readonly [];
 export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
   summary:
     "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
-  rationale: "Wrapping a TypeScript enum preserves its emitted runtime object and duplicates the schema's value definition across two constructs.",
+  rationale: "The project prefers literal-first schema definitions. nativeEnum also accepts plain enum-like objects, so this is an explicit declaration policy, not proof that every call duplicates a TypeScript enum's runtime object.",
   remediation: "Pass string literals directly to `z.enum` and derive the TypeScript type with `z.infer`.",
   category: "maintainability",
   autofix: "none",

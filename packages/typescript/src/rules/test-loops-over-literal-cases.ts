@@ -18,7 +18,7 @@ export const TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION = {
   remediation: "Create one named parameterized test or runner-aware subtest for each literal case.",
   category: "testing",
   filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**"],
-  limitations: ["Only inline literal for-of cases containing framework assertions are reported."],
+  limitations: ["Only inline literal for-of cases containing framework assertions are reported. References to setup or parameters owned by the enclosing test, and loops followed by statements in the same or enclosing block, are excluded because they can belong to an ordered scenario. External helper purity is not inferred."],
   examples: [
     { id: "parameterized-cases", title: "Use a parameterized test", outcome: "no-match", files: [{ path: "src/parser.test.ts", source: "test.each(['a', 'b'])('parses %s', (value) => { expect(parse(value)).toBe(value); });" }], focusPath: "src/parser.test.ts", expectedCount: 0, public: true },
     { id: "looped-cases", title: "Do not hide cases in a loop", outcome: "match", files: [{ path: "src/parser.test.ts", source: "test('parses', () => { for (const value of ['a', 'b']) { expect(parse(value)).toBe(value); } });" }], focusPath: "src/parser.test.ts", expectedCount: 1, public: true },
@@ -208,7 +208,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       literalCaseLoop:
-        "This loop asserts over {{count}} inline cases, but the runner sees one test and stops at the first failure. Create one named test or subtest per case; use `test.each(...)` or `it.each(...)` where supported.",
+        "This loop asserts over {{count}} inline cases in one test; a thrown assertion may prevent later cases from running. Create one named test or subtest per independent case; use `test.each(...)` or `it.each(...)` where supported.",
     },
   },
   defaultOptions: [],
@@ -237,6 +237,9 @@ export default createRule<Options, MessageIds>({
         if (enclosing === null || !isTestBody(enclosing, isFrameworkTest)) {
           return;
         }
+        for (let current: TSESTree.Node | undefined = node; current !== undefined && current !== enclosing; current = current.parent) {
+          if (current.parent?.type === AST_NODE_TYPES.BlockStatement && current.parent.body.at(-1) !== current) return;
+        }
         const cases = unwrapExpression(node.right);
         const callbackParameters = new Set(
           enclosing.params.flatMap((parameter) => parameter.type === AST_NODE_TYPES.Identifier ? [parameter.name] : []),
@@ -254,6 +257,17 @@ export default createRule<Options, MessageIds>({
         ) {
           return;
         }
+        const capturesSetup = walkOwnScope(node.body, (current) => {
+          if (current.type !== AST_NODE_TYPES.Identifier) return false;
+          const variable = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);
+          if (variable === null || !variable.references.some((reference) => reference.identifier === current)) return false;
+          return variable.defs.some((definition) => {
+            const declaration = definition.name;
+            return declaration.range[0] >= enclosing.range[0] && declaration.range[1] <= enclosing.range[1] &&
+              (declaration.range[0] < node.range[0] || declaration.range[1] > node.range[1]);
+          });
+        });
+        if (capturesSetup) return;
         context.report({
           node,
           messageId: "literalCaseLoop",

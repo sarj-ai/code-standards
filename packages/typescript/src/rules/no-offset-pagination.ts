@@ -14,11 +14,11 @@ type MessageIds = "noOffsetPagination";
 type Options = readonly [];
 
 export const NO_OFFSET_PAGINATION_DOCUMENTATION = {
-  summary: "Disallow OFFSET pagination in embedded SQL; it is O(N) per page and drops or repeats rows under concurrent writes. Use a keyset cursor.",
+  summary: "Prefer keyset pagination for embedded SQL queries using OFFSET.",
   rationale: "Offset pagination scans skipped rows and shifts page boundaries under concurrent writes.",
-  remediation: "Page with a stable ordered key and a cursor predicate.",
+  remediation: "Consider a keyset cursor that preserves the query's complete ordering, tie-breakers, and filters.",
   category: "performance",
-  limitations: ["Only embedded SQL is inspected; test files and non-pagination OFFSET syntax are excluded."],
+  limitations: ["A SELECT/FROM query shape or adjacent LIMIT/OFFSET fragment is required. Isolated OFFSET fragments and test files are excluded; this lexical context does not prove a database execution sink. Performance and concurrent-write behavior depend on indexes, ordering, isolation, and dialect; bounded pages and random page access can justify OFFSET."],
   examples: [
     { id: "keyset-pagination", title: "Page from a stable cursor", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id FROM runs WHERE id > ? ORDER BY id LIMIT ?`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
     { id: "offset-pagination", title: "Do not page by offset", outcome: "match", files: [{ path: "src/runs.ts", source: "db.query(`SELECT id FROM runs ORDER BY id LIMIT ? OFFSET ?`);" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
@@ -30,6 +30,7 @@ const OFFSET_PAGINATION = /\bOFFSET\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)
 
 /** Cheap substring gate; noise-stripping can only ever remove keywords, never add them. */
 const OFFSET_GATE = /offset/i;
+const PAGINATION_CONTEXT = /\bSELECT\b[\s\S]*\bFROM\b[\s\S]*\bOFFSET\b|\bLIMIT\s+(?:%s|%\(\w+\)s|\?\d*|:\w+|@\w+|\$\d+|\d+)\s+OFFSET\b/i;
 
 export default createRule<Options, MessageIds>({
   name: "no-offset-pagination",
@@ -38,12 +39,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow OFFSET pagination in embedded SQL; it is O(N) per page and drops or repeats rows under concurrent writes. Use a keyset cursor.",
+        "Prefer keyset pagination for embedded SQL queries using OFFSET.",
     },
     schema: [],
     messages: {
       noOffsetPagination:
-        "OFFSET pagination scans and discards every skipped row (O(N) per page) and shifts under concurrent inserts, so rows get repeated or missed. Use a keyset cursor: `WHERE id > ? ORDER BY id LIMIT ?`.",
+        "Review OFFSET pagination for large or changing result sets. If a keyset cursor fits the access pattern, preserve the query's complete ordering, tie-breakers, and filters; bounded pages or random page access may justify OFFSET.",
     },
   },
   defaultOptions: [],
@@ -52,7 +53,7 @@ export default createRule<Options, MessageIds>({
       return {};
     }
     return createSqlListener((sql: string, node: TSESTree.Node): void => {
-      if (!OFFSET_PAGINATION.test(sql)) {
+      if (!PAGINATION_CONTEXT.test(sql) || !OFFSET_PAGINATION.test(sql)) {
         return;
       }
       context.report({ node, messageId: "noOffsetPagination" });

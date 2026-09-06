@@ -14,6 +14,11 @@ const TEST_FILE = "/repo/src/parser.test.ts";
 
 RULE_TESTER.run("test-loops-over-literal-cases", rule, {
   valid: [
+    { name: "preserves aggregate checks after an enclosing conditional", filename: TEST_FILE, code: "test('upserts', async () => { if (enabled) { for (const value of ['first', 'last']) { await save(value); expect(await read()).toBe(value); } } expect(await count()).toBe(1); });" },
+    { name: "preserves an aggregate assertion after database writes", filename: TEST_FILE, code: "test('upserts', async () => { for (const value of ['first', 'last']) { await save(value); expect(await read()).toBe(value); } expect(await count()).toBe(1); });" },
+    { name: "preserves cumulative object method mutations", filename: TEST_FILE, code: "test('queue', () => { const queue=makeQueue(); for (const n of [1,2]) {queue.push(n); expect(queue.size).toBe(n);} });" },
+    { name: "preserves captured state inside local closure", filename: TEST_FILE, code: "test('sequence', () => { let count=0; const next=()=>++count; for (const n of [1,2]) {expect(next()).toBe(n);} });" },
+    { name: "preserves injected shared fixture", filename: TEST_FILE, code: "test('queue', ({queue}) => {for (const n of [1,2]) {queue.push(n); expect(queue.size).toBe(n);} });" },
     { name: "public no-match example", filename: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION.examples[0].focusPath, code: TEST_LOOPS_OVER_LITERAL_CASES_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows a single inline case",

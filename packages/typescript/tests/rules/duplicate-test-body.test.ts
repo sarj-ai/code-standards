@@ -14,6 +14,7 @@ const TEST_FILE = "/repo/src/user.test.ts";
 
 RULE_TESTER.run("duplicate-test-body", rule, {
   valid: [
+    { name: "does not treat imported describe alias as test", filename: TEST_FILE, code: "import {describe as test} from 'vitest'; test('a', () => {seed('a'); run('a'); cleanup('a');}); test('b', () => {seed('b'); run('b'); cleanup('b');});" },
     {
       name: "allows fewer than three statements",
       filename: TEST_FILE,
@@ -137,6 +138,7 @@ test('two', () => { const x = parse('b'); save(x); cleanup(x); });`,
     },
   ],
   invalid: [
+    { name: "preserves default node test ownership", filename: TEST_FILE, code: "import test from 'node:test'; test('a', () => {seed('a'); run('a'); cleanup('a');}); test('b', () => {seed('b'); run('b'); cleanup('b');});", errors: [{messageId: "duplicateTestBody"}] },
     {
       name: "reports the later sibling whose body differs only by case literals",
       filename: TEST_FILE,

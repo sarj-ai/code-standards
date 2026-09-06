@@ -730,7 +730,9 @@
       "task": "rule-audit/python/stepdown",
       "family": "python",
       "ruleId": "stepdown",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews and 466 focused Python/text cases cover admitted regressions. A bounded frozen eight-source corpus visits 877 files and 7,197,145 bytes in nine fresh-process batches: 91 helper-order policy findings and nine raw command/query interpolation findings remain in both versions. Installed public packages and capped private inventories are not full fleet coverage; zero matches for other owners are not positive detection evidence.",
+      "outcome": "Require unshadowed builtin classmethod/staticmethod decorators before treating them as transparent, and keep lambda-local walrus bindings local. Retain caller-first private-helper policy and no autofix; local analysis does not prove whole-program sole use. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/python/replay-contract-insert-requires-duplicate-policy",
@@ -892,7 +894,9 @@
       "task": "rule-audit/text/ephemeral-execution-artifact",
       "family": "text",
       "ruleId": "ephemeral-execution-artifact",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews and 466 focused Python/text cases cover admitted regressions. A bounded frozen eight-source corpus visits 877 files and 7,197,145 bytes in nine fresh-process batches: 91 helper-order policy findings and nine raw command/query interpolation findings remain in both versions. Installed public packages and capped private inventories are not full fleet coverage; zero matches for other owners are not positive detection evidence.",
+      "outcome": "Require prose evidence alongside path evidence and remove authorship attribution. Preserve durable references; filename-only repository policy remains outside this semantic owner. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/text/exact-config-comment-restatement",
@@ -906,31 +910,41 @@
       "task": "rule-audit/text/hidden-markdown-heading",
       "family": "text",
       "ruleId": "hidden-markdown-heading",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews inspected the closed standalone HTML-comment scanner, exclusions, tests and visible-versus-hidden examples. All 350 text-lint tests pass on the unchanged source. The bounded text corpus had no retained findings for this owner; fixtures provide positive evidence.",
+      "outcome": "Retain the exact hidden ATX-heading policy without deletion fixes. Intentional author templates may use an explicit exception. This is not a complete CommonMark or MDX parser and does not replace rendered-heading lint."
     },
     {
       "task": "rule-audit/text/iac-source-coupled-test",
       "family": "text",
       "ruleId": "iac-source-coupled-test",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews and 466 focused Python/text cases cover admitted regressions. A bounded frozen eight-source corpus visits 877 files and 7,197,145 bytes in nine fresh-process batches: 91 helper-order policy findings and nine raw command/query interpolation findings remain in both versions. Installed public packages and capped private inventories are not full fleet coverage; zero matches for other owners are not positive detection evidence.",
+      "outcome": "Exclude literal heredoc data and distinguish complete shell variable tokens from longer names. Preserve bounded source-oracle analysis without general shell dataflow claims. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/text/large-shell-program",
       "family": "text",
       "ruleId": "large-shell-program",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews and 466 focused Python/text cases cover admitted regressions. A bounded frozen eight-source corpus visits 877 files and 7,197,145 bytes in nine fresh-process batches: 91 helper-order policy findings and nine raw command/query interpolation findings remain in both versions. Installed public packages and capped private inventories are not full fleet coverage; zero matches for other owners are not positive detection evidence.",
+      "outcome": "Clarify physical nonblank/noncomment line counting rather than semantic complexity. Keep decomposition a manual policy decision. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/text/no-unsafe-command-argument-interpolation",
       "family": "text",
       "ruleId": "no-unsafe-command-argument-interpolation",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews and 466 focused Python/text cases cover admitted regressions. A bounded frozen eight-source corpus visits 877 files and 7,197,145 bytes in nine fresh-process batches: 91 helper-order policy findings and nine raw command/query interpolation findings remain in both versions. Installed public packages and capped private inventories are not full fleet coverage; zero matches for other owners are not positive detection evidence.",
+      "outcome": "Preserve correctly quoted argv, comments and quoted heredoc data; retain expansion in unquoted heredocs. Exclude SQL keywords embedded in script paths and document lexical query limitations. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/text/no-wildcard-secret-read-permission",
       "family": "text",
       "ruleId": "no-wildcard-secret-read-permission",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews and 466 focused Python/text cases cover admitted regressions. A bounded frozen eight-source corpus visits 877 files and 7,197,145 bytes in nine fresh-process batches: 91 helper-order policy findings and nine raw command/query interpolation findings remain in both versions. Installed public packages and capped private inventories are not full fleet coverage; zero matches for other owners are not positive detection evidence.",
+      "outcome": "Document argument and credential scope. Wrapper names do not establish input validation and this rule does not audit cloud IAM permissions. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/text/workflow-embedded-program",
@@ -944,7 +958,9 @@
       "task": "rule-audit/eslint/duplicate-test-body",
       "family": "typescript",
       "ruleId": "duplicate-test-body",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 26 focused tests pass within the 412-case integrated batch. Four corpus findings were inspected as structurally repeated case bodies; runtime independence remains a manual decision. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Preserve named node:test subtests and runner-specific tables. Exclude describe aliases from test identity and do not equate normalized shape with independent runtime state. Preserve existing error severity at user request; case independence and readability remain manual decisions."
     },
     {
       "task": "rule-audit/eslint/enforce-file-structure",
@@ -956,25 +972,33 @@
       "task": "rule-audit/eslint/iac-source-coupled-test",
       "family": "typescript",
       "ruleId": "iac-source-coupled-test",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. No retained matches; shared lexical/path regression fixtures include nested scope collisions and non-source suffix concatenation.",
+      "outcome": "Reuse binding-aware source oracle detection for IaC and preserve exact documented representation contracts. Do not infer dynamic path or iterator dataflow."
     },
     {
       "task": "rule-audit/eslint/interface-contract-members-private",
       "family": "typescript",
       "ruleId": "interface-contract-members-private",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted resolved inherited-interface membership, unknown-contract abstention and overload grouping. All 19 focused typed cases pass within a 121-case unchanged-owner batch. This type-aware owner was excluded from the untyped corpus; no corpus precision claim is made.",
+      "outcome": "Retain advisory interface-surface guidance without privatizing fixes. TypeScript implements does not make a contract exact; framework hooks and multiple interfaces require manual architecture decisions. Modern private syntax remains a separate owner."
     },
     {
       "task": "rule-audit/eslint/no-bare-return-from-test-catch",
       "family": "typescript",
       "ruleId": "no-bare-return-from-test-catch",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 25 focused tests pass within the 412-case integrated batch. The pinned corpus has zero findings; focused regressions are the positive and negative evidence. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Preserve completed caught-error assertions, including a single negation modifier, before a direct return. Do not claim every return guarantees a passing test."
     },
     {
       "task": "rule-audit/eslint/no-bespoke-api-case-conversion",
       "family": "typescript",
       "ruleId": "no-bespoke-api-case-conversion",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent implementation, test and metadata reviews accepted the provenance repairs; 243 focused cases pass. Pinned isolated calibration covered 2,970 visits (2,963 analyzed files), 17,790,175 bytes, seven oversized skips and batches capped at 250. Representative maintained consumers and installed public packages, not full upstream repositories or fleet-wide coverage. Findings changed from payload 11 to 10, form 1 to 1, conversion 80 to 0, random ID 0 to 0; every retained finding was inspected. Payload findings include validator copies, manually reviewed boundaries and non-consumer edit targets; the form finding already documents local validation. Removed conversion matches lack sufficient provenance, not proof all were wrong. Combined load-sensitive runtime was 70.10 seconds versus baseline 19.24 with concurrent builds; peak 590.5 versus 626.6 MiB. These are not controlled overhead or optimization claims.",
+      "outcome": "Retain warning. Require resolved imported API type provenance and preserve shadowed, unrelated and unknown type boundaries; do not infer API ownership from spelling."
     },
     {
       "task": "rule-audit/eslint/no-client-side-data-fetching",
@@ -1020,19 +1044,25 @@
       "task": "rule-audit/eslint/no-dynamic-sql",
       "family": "typescript",
       "ruleId": "no-dynamic-sql",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. No live matches; quote-context positive and negative fixtures cover identifiers, comments, dollar strings and runtime values.",
+      "outcome": "Inspect only single-quoted value fragments at recognized execution calls. Share the UTF-16-preserving bounded SQL lexer, excluding identifiers/comments/dollar strings. This is not a complete dialect parser or injection detector."
     },
     {
       "task": "rule-audit/eslint/no-enum",
       "family": "typescript",
       "ruleId": "no-enum",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Retain explicit enum prohibition while documenting const-enum compiler behavior, wire contracts, reverse maps and exact compatibility-fixture exceptions; no universal runtime-cost claim. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/no-fat-try-blocks",
       "family": "typescript",
       "ruleId": "no-fat-try-blocks",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Describe selected failure-bearing operations and configurable threshold; preserve cohesive recovery boundaries during manual review. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/no-generic-single-export-module",
@@ -1046,7 +1076,9 @@
       "task": "rule-audit/eslint/no-hand-rolled-sleep",
       "family": "typescript",
       "ruleId": "no-hand-rolled-sleep",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. No live matches; fixtures verify injected timers/Promise constructors, resolver identity, settlement and timer result arguments.",
+      "outcome": "Require actual unshadowed timer/Promise bindings and recognized settlement shape. Preserve injected and value-returning timers; use runtime-compatible cancellation rather than mechanical Node-only replacement."
     },
     {
       "task": "rule-audit/eslint/no-hand-rolled-spinner",
@@ -1060,13 +1092,17 @@
       "task": "rule-audit/eslint/no-impossible-zod-literal-bounds",
       "family": "typescript",
       "ruleId": "no-impossible-zod-literal-bounds",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted finite same-chain bounds, import identity and transform/unknown-chain abstention. All 36 focused cases pass within a 121-case unchanged-owner batch, including equal-inclusive and contradictory-exclusive boundaries. No corpus findings; tests provide positive evidence.",
+      "outcome": "Retain bounded contradiction detection without guessing a corrected endpoint. Discrete integer domains and transformed schemas are not a complete constraint solver; runtime schema validation remains complementary."
     },
     {
       "task": "rule-audit/eslint/no-insecure-random-id",
       "family": "typescript",
       "ruleId": "no-insecure-random-id",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent implementation, test and metadata reviews accepted the provenance repairs; 243 focused cases pass. Pinned isolated calibration covered 2,970 visits (2,963 analyzed files), 17,790,175 bytes, seven oversized skips and batches capped at 250. Representative maintained consumers and installed public packages, not full upstream repositories or fleet-wide coverage. Findings changed from payload 11 to 10, form 1 to 1, conversion 80 to 0, random ID 0 to 0; every retained finding was inspected. Payload findings include validator copies, manually reviewed boundaries and non-consumer edit targets; the form finding already documents local validation. Removed conversion matches lack sufficient provenance, not proof all were wrong. Combined load-sensitive runtime was 70.10 seconds versus baseline 19.24 with concurrent builds; peak 590.5 versus 626.6 MiB. These are not controlled overhead or optimization claims.",
+      "outcome": "Retain existing severity. Resolve native Math before diagnosing Math.random, and stop enclosing-name inference at unrelated declarations, branch tests and function boundaries. Names remain a documented sensitivity heuristic, not interprocedural proof. No automatic replacement."
     },
     {
       "task": "rule-audit/eslint/no-json-stringify-error",
@@ -1080,19 +1116,25 @@
       "task": "rule-audit/eslint/no-log-only-catch",
       "family": "typescript",
       "ruleId": "no-log-only-catch",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 60 focused tests pass within the 412-case integrated batch. The corpus decreased from 20 to eight findings after bounded coercion-validation recovery was recognized. Remaining best-effort recovery cases are manual policy review, not eight proven correctness defects. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Preserve existing error severity at user request. Treat recognized external fallback equally with and without logging; preserve a stable native coercion assignment followed by a matching type check, including one immediate const alias. No general validation or exception-flow proof is claimed."
     },
     {
       "task": "rule-audit/eslint/no-long-comment",
       "family": "typescript",
       "ruleId": "no-long-comment",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews retained the unusually large unstructured-JSDoc boundary and technical, structured and API-documentation exclusions. All 36 focused cases pass within a 121-case unchanged-owner batch. No corpus findings; paired fixtures provide positive evidence.",
+      "outcome": "Keep warning-only concision guidance and no deletion suggestion. Eight sentences or 120 words is not proof that rationale is useless; preserve substantive constraints and do not expand to arbitrary multiline prose."
     },
     {
       "task": "rule-audit/eslint/no-offset-pagination",
       "family": "typescript",
       "ruleId": "no-offset-pagination",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. Both retained matches inspected: real ordered SQL pagination requiring manual access-pattern review.",
+      "outcome": "Require query-shaped context, not arbitrary OFFSET prose. Preserve existing error severity and describe complete ordering, tie-breakers, filters, workload and dialect rather than prescribing an id-only cursor."
     },
     {
       "task": "rule-audit/eslint/no-positional-tuple-return",
@@ -1130,7 +1172,9 @@
       "task": "rule-audit/eslint/no-repeated-string-literal",
       "family": "typescript",
       "ruleId": "no-repeated-string-literal",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 31 focused tests pass within the 412-case integrated batch. The pinned corpus has zero findings; paired regressions preserve multiline prose and JSX expression attributes. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Newlines alone do not establish a structured value. Retain recognized SQL, identifier and route shapes, while keeping tagged templates and JSX attribute scaffolding outside this owner."
     },
     {
       "task": "rule-audit/eslint/no-restated-comment",
@@ -1176,7 +1220,9 @@
       "task": "rule-audit/eslint/no-select-star",
       "family": "typescript",
       "ruleId": "no-select-star",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. No live matches; fixtures cover dollar strings, nested block comments, actual projections and existing COUNT/EXISTS exclusions.",
+      "outcome": "Keep explicit projection policy with bounded SQL masking; preserve source offsets and avoid claiming every wildcard necessarily breaks parsing."
     },
     {
       "task": "rule-audit/eslint/no-sentinel-return-on-catch",
@@ -1190,25 +1236,33 @@
       "task": "rule-audit/eslint/no-server-env-in-client-component",
       "family": "typescript",
       "ruleId": "no-server-env-in-client-component",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted actual directive-prologue detection, conventional module boundaries and type-only exemptions. All nine focused cases pass within a 121-case unchanged-owner batch. No corpus findings; fixtures supply positive and negative evidence.",
+      "outcome": "Retain the conventional direct client/server boundary. Names do not prove secret contents or transitive import behavior; intentional ownership exceptions remain possible and framework server-only/build controls remain the stronger transitive owner."
     },
     {
       "task": "rule-audit/eslint/no-silent-promise-catch",
       "family": "typescript",
       "ruleId": "no-silent-promise-catch",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. All three retained matches inspected: optional filesystem/config probes and best-effort UI readiness, requiring intentional-recovery review.",
+      "outcome": "Exclude recognized imported Zod construction chains and stable aliases without exempting Promise-returning parseAsync. Preserve existing error severity; other untyped catch APIs and downstream recovery are not fully inferred."
     },
     {
       "task": "rule-audit/eslint/no-sleep-in-test-body",
       "family": "typescript",
       "ruleId": "no-sleep-in-test-body",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 38 focused tests pass within the 412-case integrated batch. The pinned corpus has zero findings; focused regressions cover local helpers and rejection guards. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Recognize bounded native timer sleeps, preserve local helper meanings and deadline/rejection behavior, and restore fake timers in the public example."
     },
     {
       "task": "rule-audit/eslint/no-storage-in-stateless-modules",
       "family": "typescript",
       "ruleId": "no-storage-in-stateless-modules",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. No live matches with default options because this rule is opt-in; configured-path/method behavior is covered by focused positive and negative fixtures.",
+      "outcome": "Keep the explicit stateless-module policy. Require SQL-shaped literal text or conventional database receiver evidence for overloaded prepare calls; this does not prove storage provenance or the system of record."
     },
     {
       "task": "rule-audit/eslint/no-string-concat-in-loop",
@@ -1222,7 +1276,9 @@
       "task": "rule-audit/eslint/no-tautological-expect",
       "family": "typescript",
       "ruleId": "no-tautological-expect",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 45 focused tests pass within the 412-case integrated batch. All four public corpus findings compare identical literal values and do not observe behavior. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Report only supported proven-passing literal assertions with recognized expect ownership. Preserve failing sentinels and remove only the redundant assertion, not the whole test."
     },
     {
       "task": "rule-audit/eslint/no-trailing-value-narration",
@@ -1268,13 +1324,17 @@
       "task": "rule-audit/eslint/no-unsafe-mock-casting",
       "family": "typescript",
       "ruleId": "no-unsafe-mock-casting",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Explain that vi.mocked provides typing rather than runtime mock creation or validation; demonstrate an actual spy before typed mock use. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/no-vague-suppression-description",
       "family": "typescript",
       "ruleId": "no-vague-suppression-description",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Document exact generic-vocabulary matching rather than proof of explanation quality; wrap public examples in valid function declarations. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/no-zod-native-enum",
@@ -1288,7 +1348,9 @@
       "task": "rule-audit/eslint/prefer-await-in-async-return",
       "family": "typescript",
       "ruleId": "prefer-await-in-async-return",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Describe receiver-chain Promise evidence and manual catch/scheduling review, not universal await equivalence. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/prefer-constant-time-secret-compare",
@@ -1318,7 +1380,9 @@
       "task": "rule-audit/eslint/prefer-immutable-module-constant",
       "family": "typescript",
       "ruleId": "prefer-immutable-module-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and metadata reviews accepted focused precision repairs. Pinned representative local-consumer and installed-public-package corpus: 2,970 visits, 2,963 analyzed files, 17,790,175 bytes, seven oversized skips, 16 fresh batches capped at 250. Not every registered consumer or full upstream repositories. All 188 retained declaration sites inspected, not sampled: metadata/configuration/service objects, arrays, lookup collections and shared empty values. None establishes a runtime mutation defect; escaped or mutable-typed consumers and API compatibility remain unproven. Combined timing was load-sensitive under concurrent checks: hoisting 19.35 seconds versus baseline 19.24; peak 664.0 versus 626.6 MiB. The separate immutable batch measured 33.81 seconds. No controlled overhead or optimization claim.",
+      "outcome": "Preserve existing error severity. Preserve reassigned let/var aliases rather than transferring mutation evidence across changing bindings. Readonly conversion remains manual API policy; do not claim declaration inspection proves immutability or compatibility."
     },
     {
       "task": "rule-audit/eslint/prefer-input-group-search",
@@ -1332,19 +1396,25 @@
       "task": "rule-audit/eslint/prefer-millisecond-control-duration-schema",
       "family": "typescript",
       "ruleId": "prefer-millisecond-control-duration-schema",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 20 focused tests pass within the 412-case integrated batch. Corpus findings decreased from four to three after nonnumeric or unproven leaves were excluded. Retained findings are numeric control-duration contract migrations. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Require a recognizable numeric Zod leaf; preserve boolean/string/custom contracts and unknown transformations. The public example scales bounds and defaults, and migration remains manual to preserve wire compatibility."
     },
     {
       "task": "rule-audit/eslint/prefer-module-level-constant",
       "family": "typescript",
       "ruleId": "prefer-module-level-constant",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and metadata reviews accepted focused precision repairs. Pinned representative local-consumer and installed-public-package corpus: 2,970 visits, 2,963 analyzed files, 17,790,175 bytes, seven oversized skips, 16 fresh batches capped at 250. Not every registered consumer or full upstream repositories. 532 to 524 findings; deterministic 50-position sample plus major clusters inspected. Forty-nine sampled cases were manual hoist candidates; one direct-IIFE false positive was reproduced and excluded. Most findings are duplicated public locale tables, not independent cases. Combined timing was load-sensitive under concurrent checks: hoisting 19.35 seconds versus baseline 19.24; peak 664.0 versus 626.6 MiB. The separate immutable batch measured 33.81 seconds. No controlled overhead or optimization claim.",
+      "outcome": "Preserve existing error severity. Exclude direct immediate invocation, nested mutations and aliases. Moving allocation changes identity and initialization timing; callback/getter effects and invocation frequency remain manual, not a purity proof."
     },
     {
       "task": "rule-audit/eslint/prefer-module-level-schema",
       "family": "typescript",
       "ruleId": "prefer-module-level-schema",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and metadata reviews accepted focused precision repairs. Pinned representative local-consumer and installed-public-package corpus: 2,970 visits, 2,963 analyzed files, 17,790,175 bytes, seven oversized skips, 16 fresh batches capped at 250. Not every registered consumer or full upstream repositories. Zero corpus findings before and after; focused positive/negative fixtures supply evidence, not a corpus-effectiveness claim. Combined timing was load-sensitive under concurrent checks: hoisting 19.35 seconds versus baseline 19.24; peak 664.0 versus 626.6 MiB. The separate immutable batch measured 33.81 seconds. No controlled overhead or optimization claim.",
+      "outcome": "Preserve existing error severity. Preserve per-call construction involving eager non-Zod calls, new expressions and tagged templates. Local schemas already support inference; module reuse requires review of initialization, identity and domain customization."
     },
     {
       "task": "rule-audit/eslint/prefer-native-random-uuid",
@@ -1358,7 +1428,9 @@
       "task": "rule-audit/eslint/prefer-non-nullable-collection",
       "family": "typescript",
       "ruleId": "prefer-non-nullable-collection",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 37 focused tests pass within the 412-case integrated batch. The pinned corpus has zero findings; regressions reproduce reversed guard polarity, object escape and reversed length comparison. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Preserve existing error severity at user request. Recognized defaults and direct null-or-empty guards are modeling prompts, not equivalence proof. Preserve meaningful null states and compatibility; exclude unknown object escapes."
     },
     {
       "task": "rule-audit/eslint/prefer-nullish-filter-predicate",
@@ -1372,7 +1444,9 @@
       "task": "rule-audit/eslint/prefer-schema-for-api-payload",
       "family": "typescript",
       "ruleId": "prefer-schema-for-api-payload",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent implementation, test and metadata reviews accepted the provenance repairs; 243 focused cases pass. Pinned isolated calibration covered 2,970 visits (2,963 analyzed files), 17,790,175 bytes, seven oversized skips and batches capped at 250. Representative maintained consumers and installed public packages, not full upstream repositories or fleet-wide coverage. Findings changed from payload 11 to 10, form 1 to 1, conversion 80 to 0, random ID 0 to 0; every retained finding was inspected. Payload findings include validator copies, manually reviewed boundaries and non-consumer edit targets; the form finding already documents local validation. Removed conversion matches lack sufficient provenance, not proof all were wrong. Combined load-sensitive runtime was 70.10 seconds versus baseline 19.24 with concurrent builds; peak 590.5 versus 626.6 MiB. These are not controlled overhead or optimization claims.",
+      "outcome": "Preserve existing error severity and conditional boundary advice. Limit JSON receiver inference to stable native fetch/Request/Response evidence, respect local dominating guards and native coercion/JSON roundtrips. Validator implementations and non-network reads require manual architecture review, not recursive validation."
     },
     {
       "task": "rule-audit/eslint/prefer-semantic-colors",
@@ -1403,8 +1477,8 @@
       "family": "typescript",
       "ruleId": "prefer-whole-object-assertion",
       "state": "complete",
-      "evidence": "Three independent source, test, UI and candidate reviews confirmed unsafe missing-property and observable-read rewrites. All 134 focused cases across the safety batch pass. The pinned isolated survey covered 2,963 analyzed files, seven oversized exclusions and 17,790,175 bytes in 16 fresh-process batches of at most 250 files. It used five private consumers and installed public Zod, TypeScript and ESLint, not complete upstream repositories; four type-required rules were excluded. Both baseline and candidate emitted 1,942 combined findings from 80 rules, including 47 whole-object findings. Every whole-object finding was inspected: five concrete unsafe presence rewrites, two observable-object manual-review cases, and 40 reasonable advisory candidates, not proven equivalent transformations. Aggregate batch time was 19.242 seconds before and 19.193 seconds after, with 626.6 and 662.2 MiB peak RSS; these single load-sensitive runs are not controlled performance guarantees.",
-      "outcome": "Retain the compatible rule name, stage this judgment-heavy rule as a warning, and remove automatic assertion merging. Recommend manual grouping only when property presence, identity, getter and proxy reads preserve intended semantics. Array recommendations remain manual. Remove the UI automatic-fix claim without treating shorter tests as proof of equivalent assertions."
+      "evidence": "Three independent source, test, UI and candidate reviews confirmed unsafe missing-property and observable-read rewrites. All 134 focused cases across the safety batch pass. The pinned isolated survey covered 2,963 analyzed files, seven oversized exclusions and 17,790,175 bytes in 16 fresh-process batches of at most 250 files. It used five private consumers and installed public Zod, TypeScript and ESLint, not complete upstream repositories; four type-required rules were excluded. Both baseline and candidate emitted 1,942 combined findings from 80 rules, including 47 whole-object findings. Every whole-object finding was inspected: five concrete unsafe presence rewrites, two observable-object manual-review cases, and 40 reasonable advisory candidates, not proven equivalent transformations. Aggregate batch time was 19.242 seconds before and 19.193 seconds after, with 626.6 and 662.2 MiB peak RSS; these single load-sensitive runs are not controlled performance guarantees. Follow-up assertion-helper binding regressions pass all 74 owner cases within the 412-case concision batch; the same 47 corpus findings remain advisory.",
+      "outcome": "Retain the compatible rule name, stage this judgment-heavy rule as a warning, and remove automatic assertion merging. Recommend manual grouping only when property presence, identity, getter and proxy reads preserve intended semantics. Array recommendations remain manual. Remove the UI automatic-fix claim without treating shorter tests as proof of equivalent assertions. Follow-up matching resolves assertion helpers by their imported binding, not spelling alone."
     },
     {
       "task": "rule-audit/eslint/prefer-zod-infer",
@@ -1418,7 +1492,9 @@
       "task": "rule-audit/eslint/repeated-static-call-cases",
       "family": "typescript",
       "ruleId": "repeated-static-call-cases",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 26 focused tests pass within the 412-case integrated batch. All seven corpus findings were inspected as simple input tables without observed ordered state; advice remains manual. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Exclude test-local captured values and preserve ordered scenarios. Runner-specific named subtests are alternatives to table helpers, not universal API requirements. Preserve existing error severity at user request; case independence and readability remain manual decisions."
     },
     {
       "task": "rule-audit/eslint/require-assert-never",
@@ -1448,7 +1524,9 @@
       "task": "rule-audit/eslint/require-static-next-matcher",
       "family": "typescript",
       "ruleId": "require-static-next-matcher",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Describe framework-ignored dynamic matcher values rather than universal build failure; leave matcher syntax validity to Next. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/require-use-form-default-values",
@@ -1470,49 +1548,65 @@
       "task": "rule-audit/eslint/require-zod-form-validation",
       "family": "typescript",
       "ruleId": "require-zod-form-validation",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent implementation, test and metadata reviews accepted the provenance repairs; 243 focused cases pass. Pinned isolated calibration covered 2,970 visits (2,963 analyzed files), 17,790,175 bytes, seven oversized skips and batches capped at 250. Representative maintained consumers and installed public packages, not full upstream repositories or fleet-wide coverage. Findings changed from payload 11 to 10, form 1 to 1, conversion 80 to 0, random ID 0 to 0; every retained finding was inspected. Payload findings include validator copies, manually reviewed boundaries and non-consumer edit targets; the form finding already documents local validation. Removed conversion matches lack sufficient provenance, not proof all were wrong. Combined load-sensitive runtime was 70.10 seconds versus baseline 19.24 with concurrent builds; peak 590.5 versus 626.6 MiB. These are not controlled overhead or optimization claims.",
+      "outcome": "Preserve existing error severity. Require resolved global/native FormData provenance and preserve shadowed constructors; existing manual normalization can remain an explicit reviewed boundary."
     },
     {
       "task": "rule-audit/eslint/source-coupled-test",
       "family": "typescript",
       "ruleId": "source-coupled-test",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. Two baseline eager extraction findings removed; no retained matches. Direct assertion fixtures remain positive while unsupported iterator pipelines deliberately abstain.",
+      "outcome": "Use resolved lexical bindings and static exact source paths, excluding reassigned aliases, unknown path wrappers and extraction without an assertion. Keep exact justified raw-representation exceptions."
     },
     {
       "task": "rule-audit/eslint/stepdown",
       "family": "typescript",
       "ruleId": "stepdown",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. 412 unchanged matches; deterministic 50-location sample plus major clusters inspected, all manual ordering candidates, with source/build duplicates.",
+      "outcome": "Remove class reordering autofixes; retain report-only same-scope caller guidance at the existing error severity. Review reflection, temporal dead zones, eager callers and module cycles manually."
     },
     {
       "task": "rule-audit/eslint/store-insert-requires-on-conflict",
       "family": "typescript",
       "ruleId": "store-insert-requires-on-conflict",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. No retained matches; fixtures distinguish top-level inserts, anonymous callbacks, computed callable names and replay-named owners.",
+      "outcome": "Restrict reports to the nearest statically replay-named callable. Describe manual conflict-policy review, not proven idempotence: WHERE NOT EXISTS can race and INSERT OR REPLACE can delete rows."
     },
     {
       "task": "rule-audit/eslint/test-loops-over-literal-cases",
       "family": "typescript",
       "ruleId": "test-loops-over-literal-cases",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded repair; 30 focused tests pass within the 412-case integrated batch. Corpus findings decreased from 18 to seven after captured per-test state and aggregate post-loop assertions were excluded; all retained cases were inspected as manual independent-input table opportunities. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
+      "outcome": "Preserve ordered and stateful scenarios; use named cases or subtests only where independent. Describe thrown assertions rather than claiming soft assertions always stop execution. Preserve existing error severity at user request and retain assertions following the loop in any enclosing test block."
     },
     {
       "task": "rule-audit/eslint/test-phase-label-comment",
       "family": "typescript",
       "ruleId": "test-phase-label-comment",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted exact bare-label grammar, test scope, adjacent-prose protection and isolated whole-line removal. All 21 focused cases pass within a 121-case unchanged-owner batch, including CRLF and neighboring-code preservation. No corpus findings; fixtures supply positive evidence.",
+      "outcome": "Retain the requested narrow style policy. Do not expand into behavioral prose or claim every heading is meaningless; neighboring comment owners retain distinct scopes."
     },
     {
       "task": "rule-audit/eslint/prefer-named-complex-return-type",
       "family": "typescript",
       "ruleId": "prefer-named-complex-return-type",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Describe nested generic object return shapes and preserve function-local type parameters during manual type extraction. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/prefer-module-level-refined-schema",
       "family": "typescript",
       "ruleId": "prefer-module-level-refined-schema",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and metadata reviews accepted focused precision repairs. Pinned representative local-consumer and installed-public-package corpus: 2,970 visits, 2,963 analyzed files, 17,790,175 bytes, seven oversized skips, 16 fresh batches capped at 250. Not every registered consumer or full upstream repositories. All 49 retained findings inspected: fixed schemas and local array wrappers are manual extraction candidates. Combined timing was load-sensitive under concurrent checks: hoisting 19.35 seconds versus baseline 19.24; peak 664.0 versus 626.6 MiB. The separate immutable batch measured 33.81 seconds. No controlled overhead or optimization claim.",
+      "outcome": "Retain warning. Abstain from eager external construction effects; callbacks, getters, local error customization and initialization order remain manual compatibility concerns."
     },
     {
       "task": "rule-audit/eslint/prefer-multi-value-zod-literal",
@@ -1534,19 +1628,25 @@
       "task": "rule-audit/eslint/prefer-node-fs-promises",
       "family": "typescript",
       "ruleId": "prefer-node-fs-promises",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and metadata reviews accepted focused precision repairs. Pinned representative local-consumer and installed-public-package corpus: 2,970 visits, 2,963 analyzed files, 17,790,175 bytes, seven oversized skips, 16 fresh batches capped at 250. Not every registered consumer or full upstream repositories. All 24 retained findings inspected, primarily startup, CLI and synchronous upstream APIs. These are manual policy candidates, not 24 established performance defects. Combined timing was load-sensitive under concurrent checks: hoisting 19.35 seconds versus baseline 19.24; peak 664.0 versus 626.6 MiB. The separate immutable batch measured 33.81 seconds. No controlled overhead or optimization claim.",
+      "outcome": "Retain warning. Resolve actual node:fs bindings and preserve shadowed names. Async conversion requires a supported Node runtime and asynchronous caller contract; synchronous startup or required framework APIs may remain intentional."
     },
     {
       "task": "rule-audit/eslint/prefer-node-crypto-hash",
       "family": "typescript",
       "ruleId": "prefer-node-crypto-hash",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Document supported runtime and encoding requirements, including Buffer versus hexadecimal output; retain the bounded one-shot policy. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/prefer-shared-zod-enum",
       "family": "typescript",
       "ruleId": "prefer-shared-zod-enum",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and metadata reviews accepted focused precision repairs. Pinned representative local-consumer and installed-public-package corpus: 2,970 visits, 2,963 analyzed files, 17,790,175 bytes, seven oversized skips, 16 fresh batches capped at 250. Not every registered consumer or full upstream repositories. All 59 retained findings inspected, including repeated finite vocabularies and a benchmark. Combined timing was load-sensitive under concurrent checks: hoisting 19.35 seconds versus baseline 19.24; peak 664.0 versus 626.6 MiB. The separate immutable batch measured 33.81 seconds. No controlled overhead or optimization claim.",
+      "outcome": "Retain warning. Resolve imported Zod binding identity, not spelling. Equal values do not establish one business domain; error customization and domain ownership require manual review."
     },
     {
       "task": "rule-audit/eslint/prefer-switch-for-repeated-equality",
@@ -1560,13 +1660,17 @@
       "task": "rule-audit/eslint/require-interface-for-exported-class",
       "family": "typescript",
       "ruleId": "require-interface-for-exported-class",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
+      "outcome": "Exclude JavaScript where implements syntax is unavailable. Retain explicit exported-contract policy and intentional overlap with injected-service enforcement; imported framework contracts need manual review. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/eslint/require-sql-access-class",
       "family": "typescript",
       "ruleId": "require-sql-access-class",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. All 12 retained matches inspected: real SQL operations in free functions with explicit DB arguments, not hidden-dependency correctness defects.",
+      "outcome": "Exclude stable native Map/WeakMap/URLSearchParams bindings. Retain warning-level class ownership preference and state conventional database names are heuristic; free functions can also inject dependencies."
     },
     {
       "task": "rule-audit/eslint/sole-export-matches-filename",
@@ -1594,7 +1698,9 @@
       "task": "rule-audit/python/typed-error-reasons",
       "family": "python",
       "ruleId": "typed-error-reasons",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews and 466 focused Python/text cases cover admitted regressions. A bounded frozen eight-source corpus visits 877 files and 7,197,145 bytes in nine fresh-process batches: 91 helper-order policy findings and nine raw command/query interpolation findings remain in both versions. Installed public packages and capped private inventories are not full fleet coverage; zero matches for other owners are not positive detection evidence.",
+      "outcome": "Require literal-string join receivers and document suffix-based exception-name inference. Review fixed reason identities for codes or StrEnum while preserving dynamic paths/messages as typed context and separate formatting; no automatic enum conversion. Preserve existing severity; no promotion or new autofix."
     },
     {
       "task": "rule-audit/sql/no-long-migration-narration",
