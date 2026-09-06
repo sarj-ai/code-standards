@@ -1292,6 +1292,59 @@ def test_current_bundle_blocks_unresolved_retired_rule_debt(monkeypatch: pytest.
     assert upgrade.apply(plan, install=False) == 2
 
 
+def test_upgrade_removes_retired_ratchet_budget_with_source_suppression(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    source = tmp_path / "service.py"
+    source.write_text("import logging  # sarj-noqa: SARJ052 -- SDK log bridge\n", encoding="utf-8")
+    budget = tmp_path / "suppression-baseline.json"
+    budget.write_text(
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": 1, "noqa:F401": 1}, "packages": {"backend": 2}}\n',
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert {path for path, _ in plan.suppression_writes} == {source, budget}
+    assert upgrade.unsafe_retired_findings(plan) == []
+    assert upgrade.apply(plan, install=False) == 0
+    assert source.read_text(encoding="utf-8") == "import logging\n"
+    assert json.loads(budget.read_text(encoding="utf-8")) == {
+        "schema_version": 1,
+        "codes": {"noqa:F401": 1},
+        "packages": {"backend": 2},
+    }
+    assert not [finding for finding in doctor.diagnose(tmp_path) if finding.id == "doctor.rule.retired"]
+
+
+@pytest.mark.parametrize("failure", ["concurrent-edit", "postflight"])
+def test_ratchet_migration_preserves_source_and_budget_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: str
+) -> None:
+    _outdated_python_repo(tmp_path)
+    source = tmp_path / "service.py"
+    original_source = "import logging  # sarj-noqa: SARJ052 -- SDK log bridge\n"
+    source.write_text(original_source, encoding="utf-8")
+    budget = tmp_path / "suppression-baseline.json"
+    original_budget = '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": 1}}\n'
+    budget.write_text(original_budget, encoding="utf-8")
+    plan = upgrade.build_plan(tmp_path)
+
+    def drift(_root: Path) -> list[doctor.Finding]:
+        return [doctor.Finding(doctor.Level.DRIFT, "test", "forced postflight failure")]
+
+    if failure == "concurrent-edit":
+        original_budget += "\n"
+        budget.write_text(original_budget, encoding="utf-8")
+        expected_status = 2
+    else:
+        monkeypatch.setattr(doctor, "diagnose", drift)
+        expected_status = 1
+
+    assert upgrade.apply(plan, install=False) == expected_status
+    assert source.read_text(encoding="utf-8") == original_source
+    assert budget.read_text(encoding="utf-8") == original_budget
+
+
 def test_upgrade_transactionally_migrates_retired_source_suppressions(tmp_path: Path) -> None:
     _outdated_python_repo(tmp_path)
     source = tmp_path / "service.ts"

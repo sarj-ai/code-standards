@@ -31,6 +31,7 @@ _ESLINT_SEGMENT = r"[A-Za-z0-9][A-Za-z0-9_-]*"
 _ESLINT_ID: Final = re.compile(rf"^(?:{_ESLINT_SEGMENT}|@?{_ESLINT_SEGMENT}(?:/{_ESLINT_SEGMENT})+)$")
 _SARJ_CODE: Final = re.compile(r"^SARJ\d+$")
 _ESLINT_SUPPRESSIONS: Final = "eslint-suppressions.json"
+_RATCHET_SUPPRESSIONS: Final = "suppression-baseline.json"
 _ESLINT_CONFIG_NAMES: Final = re.compile(r"^eslint\.config\.(?:[cm]?[jt]s)$")
 _PROPERTY_KEY_OFFSET: Final = 2
 _JAVASCRIPT_CLOSING: Final = MappingProxyType({"(": ")", "[": "]", "{": "}"})
@@ -89,7 +90,7 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
     codes = {entry.id: _replacement(entry, active) for entry in retired if entry.kind == ledger.CODE}
     rewrites: list[Rewrite] = []
     for path in files:
-        if not supports(path) and path.name != _ESLINT_SUPPRESSIONS:
+        if not supports(path) and path.name not in {_ESLINT_SUPPRESSIONS, _RATCHET_SUPPRESSIONS}:
             continue
         try:
             original = path.read_bytes().decode("utf-8")
@@ -97,11 +98,13 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
             continue
         if "sarj-doctor-ignore-retired-rules" in original:
             continue
-        migrated = (
-            _rewrite_eslint_suppressions(original, eslint)
-            if path.name == _ESLINT_SUPPRESSIONS
-            else _rewrite(path, original, eslint, codes)
-        )
+        match path.name:
+            case "eslint-suppressions.json":
+                migrated = _rewrite_eslint_suppressions(original, eslint)
+            case "suppression-baseline.json":
+                migrated = _rewrite_ratchet_suppressions(original, codes)
+            case _:
+                migrated = _rewrite(path, original, eslint, codes)
         if migrated != original:
             rewrites.append(Rewrite(path, migrated))
     return tuple(rewrites)
@@ -193,6 +196,42 @@ def _rewrite_eslint_suppressions(text: str, retired: dict[str, str | None]) -> s
 
 class _DuplicateKeyError(ValueError):
     """A JSON object repeated a key and therefore has no lossless object model."""
+
+
+def _rewrite_ratchet_suppressions(text: str, retired: dict[str, str | None]) -> str:
+    bom = "\ufeff" if text.startswith("\ufeff") else ""
+    payload = text.removeprefix("\ufeff")
+    try:
+        parsed: object = json.loads(  # pyright: ignore[reportAny] -- untyped stdlib boundary
+            payload, object_pairs_hook=_unique_object
+        )
+    except _DuplicateKeyError, json.JSONDecodeError:
+        return text
+    if not isinstance(parsed, _JsonObject):
+        return text
+    version = parsed.values.get("schema_version")
+    budgets = parsed.values.get("codes")
+    if type(version) is not int or version != 1 or not isinstance(budgets, _JsonObject):
+        return text
+    if any(type(count) is not int or count < 0 for count in budgets.values.values()):
+        return text
+    removed = {f"sarj-noqa:{code}" for code, replacement in retired.items() if replacement is None}
+    obsolete = removed.intersection(budgets.values)
+    if not obsolete:
+        return text
+    for key in obsolete:
+        del budgets.values[key]
+    line_ending = "\r\n" if "\r\n" in payload else "\n"
+    trailing = line_ending if payload.endswith(("\n", "\r")) else ""
+    rendered = json.dumps(parsed.values, default=_json_object_values, ensure_ascii=False, indent=2)
+    rendered = rendered.replace("\n", line_ending)
+    return f"{bom}{rendered}{trailing}"
+
+
+def _json_object_values(value: object) -> dict[str, object]:
+    if isinstance(value, _JsonObject):
+        return value.values
+    raise TypeError(type(value).__name__)
 
 
 @dataclass(frozen=True, slots=True)

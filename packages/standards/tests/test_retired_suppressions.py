@@ -1,3 +1,4 @@
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -7,6 +8,60 @@ from sarj_standards.libs.adoption import doctor, retired_suppressions
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@pytest.mark.parametrize(("bom", "newline", "trailing"), [("", "\n", True), ("\ufeff", "\r\n", False)])
+def test_removes_only_retired_ratchet_code_budgets(tmp_path: Path, bom: str, newline: str, trailing: bool) -> None:
+    target = tmp_path / "suppression-baseline.json"
+    document: dict[str, object] = {
+        "schema_version": 1,
+        "_comment": "Retain reviewed ceilings and metadata",
+        "codes": {"sarj-noqa:SARJ052": 1, "sarj-noqa:SARJ096": 2, "noqa:F401": 1},
+        "packages_scanned": ["backend"],
+        "packages": {"backend": 4},
+        "files": {"per_file_ceiling": 10, "exceptions": {}},
+    }
+    source = bom + json.dumps(document, indent=2).replace("\n", newline) + (newline if trailing else "")
+    target.write_text(source, encoding="utf-8", newline="")
+
+    rewrites = retired_suppressions.plan((target,))
+
+    expected = source.replace(f'    "sarj-noqa:SARJ052": 1,{newline}', "")
+    assert rewrites == (retired_suppressions.Rewrite(target, expected),)
+    target.write_text(expected, encoding="utf-8", newline="")
+    assert retired_suppressions.plan((target,)) == ()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '{"schema_version": 2, "codes": {"sarj-noqa:SARJ052": 1}}',
+        '{"schema_version": true, "codes": {"sarj-noqa:SARJ052": 1}}',
+        '{"codes": {"sarj-noqa:SARJ052": 1}}',
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": true}}',
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": -1}}',
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": "1"}}',
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": 1, "noqa:F401": []}}',
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": 1, "sarj-noqa:SARJ052": 2}}',
+        '{"schema_version": 1, "codes": {}, "codes": {"sarj-noqa:SARJ052": 1}}',
+        '{"schema_version": 1, "codes": {"noqa:SARJ052": 1, "sarj-noqa:SARJ052-extra": 1}}',
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ208": 1}}',
+        '{"schema_version": 1, "codes": ["sarj-noqa:SARJ052"]}',
+        '{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": 1}',
+    ],
+)
+def test_preserves_unsupported_or_ambiguous_ratchet_baselines(tmp_path: Path, source: str) -> None:
+    target = tmp_path / "suppression-baseline.json"
+    target.write_text(source, encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == ()
+
+
+def test_does_not_rewrite_a_ratchet_shaped_unrelated_json_file(tmp_path: Path) -> None:
+    target = tmp_path / "fixture.json"
+    target.write_text('{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": 1}}', encoding="utf-8")
+
+    assert retired_suppressions.plan((target,)) == ()
 
 
 @pytest.mark.parametrize(
