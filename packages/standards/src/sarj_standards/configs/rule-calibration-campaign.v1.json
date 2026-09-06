@@ -1064,7 +1064,9 @@
       "task": "rule-audit/eslint/no-json-stringify-error",
       "family": "typescript",
       "ruleId": "no-json-stringify-error",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted stable binding, native-global, and custom-replacer boundaries; 64 focused cases pass. The pinned eight-source local corpus parsed 2,963 files without rule errors and produced zero findings for this rule; zero positives do not justify promotion.",
+      "outcome": "Retain the accurate selector and manual diagnostic. Respect shadowing and reassignment, preserve custom serializer contracts, and narrow unknown catch values in the public example. Catch bindings are not runtime proof of Error instances."
     },
     {
       "task": "rule-audit/eslint/no-log-only-catch",
@@ -1100,7 +1102,9 @@
       "task": "rule-audit/eslint/no-raw-env",
       "family": "typescript",
       "ruleId": "no-raw-env",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted process binding identity and AST-based boundary markers; 44 focused cases pass. All 24 findings in the pinned eight-source local corpus are actual raw reads, with portability and configuration ownership remaining application policy judgments.",
+      "outcome": "Retain the selector and existing policy severity. Exclude injected process objects; recognize actual validation calls rather than comments or string contents. Document boundary and write exemptions as policy, not proof that every export is validated."
     },
     {
       "task": "rule-audit/eslint/no-raw-fetch-outside-clients",
@@ -1146,7 +1150,9 @@
       "task": "rule-audit/eslint/no-secret-in-log",
       "family": "typescript",
       "ruleId": "no-secret-in-log",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviewers accepted the final key/value delta; 152 focused cases pass. The pinned eight-source local corpus produced zero findings for this rule with no crashes. Regression cases cover secret values under neutral keys and explicitly named redaction values under secret keys.",
+      "outcome": "Retain the accurate selector without autofix. Inspect recognizable values as well as keys, apply existing redaction markers consistently, and recommend omission, allowlisted context, or approved redaction instead of arbitrary truncation. Name-based exemptions are not proof of secrecy."
     },
     {
       "task": "rule-audit/eslint/no-select-star",
@@ -1256,7 +1262,9 @@
       "task": "rule-audit/eslint/prefer-constant-time-secret-compare",
       "family": "typescript",
       "ruleId": "prefer-constant-time-secret-compare",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded security-token qualifier; 55 focused cases pass. Inspecting all 22 original corpus findings identified parser-token identity comparisons, all removed by the qualifier. The pinned corpus has zero remaining findings for this rule; retain warning-first policy rather than infer fleet readiness.",
+      "outcome": "Retain the accurate selector. Ambiguous bare, expected, first, and last token names no longer establish a credential; explicit authentication and secret names remain covered. Advice requires a runtime-supported timing-safe primitive and compatible operand lengths, not a nonexistent universal Web Crypto method."
     },
     {
       "task": "rule-audit/eslint/prefer-discriminated-union",
@@ -1374,7 +1382,9 @@
       "task": "rule-audit/eslint/require-fetch-timeout",
       "family": "typescript",
       "ruleId": "require-fetch-timeout",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted native Request signal propagation and stable aliases; 42 focused cases pass. All three corpus findings were inspected and lack an explicit abort signal. The eight pinned local sources parsed without rule errors.",
+      "outcome": "Retain the established selector while clarifying that an abort signal does not prove a deadline. Preserve signals carried by a proven native Request when an additional init object is passed; do not infer custom Request semantics."
     },
     {
       "task": "rule-audit/eslint/require-port-for-service",

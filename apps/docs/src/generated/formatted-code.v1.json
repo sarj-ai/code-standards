@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "086a857ac2369e8e1b7cf89277b672383fa53109062dfc0259dda59400cdd01a",
-  "cliSha256": "3c12501256dfffc76f3aff832a603d3baf47e1828a561801a16441d8e673de96",
+  "catalogSha256": "f3786bc46f8d4245fc925e9134c507c1f18ecf2ef52b5b01c6e465ad65f064d5",
+  "cliSha256": "aca5bb44230be9615c31f62b9c7ce9f664cbe83944005d2ed4cf301521702fb9",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -753,7 +753,7 @@
           "files": [
             {
               "path": "src/report.ts",
-              "source": "try {\n  f();\n} catch (err) {\n  JSON.stringify({ error: err.message });\n}\n"
+              "source": "try {\n  f();\n} catch (err) {\n  JSON.stringify({ error: err instanceof Error ? err.message : String(err) });\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -761,7 +761,7 @@
           "id": "explicit-error-message",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Serialize an enumerable error field"
+          "title": "Narrow an unknown catch value before selecting fields"
         },
         {
           "expectedCount": 1,
@@ -1253,7 +1253,7 @@
           "files": [
             {
               "path": "src/auth.ts",
-              "source": "logger.info(\"auth\", { tokenPrefix });\n"
+              "source": "logger.info(\"auth\", { requestId });\n"
             }
           ],
           "fixedFiles": [],
@@ -1261,7 +1261,7 @@
           "id": "redacted-secret",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Log an explicitly redacted value"
+          "title": "Log non-sensitive context instead of the secret"
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"logFunctions\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" },\n    \"loggerNames\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" }\n  },\n  \"type\": \"object\"\n}\n"
@@ -1868,7 +1868,7 @@
           "files": [
             {
               "path": "src/auth.ts",
-              "source": "if (await constantTimeEqual(presentedToken, expectedToken)) {\n  allow();\n}\n"
+              "source": "if (await constantTimeEqual(presentedAccessToken, expectedAccessToken)) {\n  allow();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1883,7 +1883,7 @@
           "files": [
             {
               "path": "src/auth.ts",
-              "source": "if (presentedToken === expectedToken) {\n  allow();\n}\n"
+              "source": "if (presentedAccessToken === expectedAccessToken) {\n  allow();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1891,7 +1891,7 @@
           "id": "secret-equality",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not compare secrets with equality"
+          "title": "Do not compare authentication tokens with equality"
         }
       ],
       "optionsSchemaSource": null
