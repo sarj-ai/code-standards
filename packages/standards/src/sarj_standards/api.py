@@ -8,7 +8,7 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- latest updates execute a fixed uvx argv.
 from typing import TYPE_CHECKING
 
-from ._meta import __version__ as __version__  # ruff: ignore[useless-import-alias] -- public API re-export.
+from ._meta import __version__ as __version__
 from .libs.adoption import launcher
 from .libs.adoption.doctor import Finding as DoctorFinding, Level as DoctorLevel, diagnose
 from .libs.adoption.lifecycle import (
@@ -28,29 +28,29 @@ from .libs.adoption.service import (
     plan_sync,
 )
 from .libs.diagnostics import (
-    AnalysisReport as AnalysisReport,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Completion as Completion,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Conclusion as Conclusion,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    AnalysisReport as AnalysisReport,
+    Completion as Completion,
+    Conclusion as Conclusion,
     CoverageDisposition,
-    CoverageNotice as CoverageNotice,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Diagnostic as Diagnostic,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    ExecutionIssue as ExecutionIssue,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Fix as Fix,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    FixSafety as FixSafety,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Location as Location,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Position as Position,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Region as Region,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    RelatedLocation as RelatedLocation,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    Severity as Severity,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    CoverageNotice as CoverageNotice,
+    Diagnostic as Diagnostic,
+    ExecutionIssue as ExecutionIssue,
+    Fix as Fix,
+    FixSafety as FixSafety,
+    Location as Location,
+    Position as Position,
+    Region as Region,
+    RelatedLocation as RelatedLocation,
+    Severity as Severity,
     SourceDocument,
-    TextEdit as TextEdit,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    ToolReport as ToolReport,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    TrustMode as TrustMode,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    TextEdit as TextEdit,
+    ToolReport as ToolReport,
+    TrustMode as TrustMode,
     baseline as diagnostic_baseline,
-    to_github as to_github,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    to_json as to_json,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    to_sarif as to_sarif,  # ruff: ignore[useless-import-alias] -- public API re-export.
-    to_text as to_text,  # ruff: ignore[useless-import-alias] -- public API re-export.
+    to_github as to_github,
+    to_json as to_json,
+    to_sarif as to_sarif,
+    to_text as to_text,
 )
 from .libs.filesystem import is_link_like
 from .libs.linting.analysis import analyze as analyze_paths, report_from_tools

@@ -135,6 +135,11 @@ ignore = [
   # would not improve code structure.
   "E501",
 
+  # PLC0414 conflicts with Python's explicit public re-export marker:
+  # `from module import Name as Name`. F401 still rejects genuinely unused
+  # imports, while I001 and combine-as-imports enforce concise grouping.
+  "PLC0414",
+
   # RUF001 rejects legitimate characters in multilingual user-facing text.
   # `allowed-confusables` cannot express a whole writing system safely, so this
   # shared policy does not treat non-ASCII product copy as suspicious by default.
