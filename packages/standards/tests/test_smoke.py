@@ -144,6 +144,40 @@ def test_ruff_combines_aliased_imports(config: Path) -> None:
     assert isort["combine-as-imports"] is True
 
 
+def test_ruff_accepts_explicit_public_reexports_without_weakening_f401(tmp_path: Path) -> None:
+    parsed = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text(encoding="utf-8")))
+    lint = manifest.table_field(parsed, "lint")
+    ignored = set(manifest.list_field(lint, "ignore"))
+    assert "PLC0414" in ignored
+    assert {"F401", "I001"}.isdisjoint(ignored)
+
+    source = tmp_path / "exports.py"
+    source.write_text(
+        "from example import Public as Public\nfrom unused import value\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "--no-cache",
+            "--output-format",
+            "json",
+            "--config",
+            str(RUFF_STRICT),
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert result.stdout.count('"code": "F401"') == 1
+    assert '"code": "PLC0414"' not in result.stdout
+
+
 def test_legacy_ruff_config_aliases_have_identical_enforcement() -> None:
     assert tomllib.loads(RUFF_APPLICATION.read_text()) == {"extend": RUFF_STRICT.name}
     assert 'export { createConfig, default } from "./eslint.strict.mjs";' in ESLINT_APPLICATION.read_text()
