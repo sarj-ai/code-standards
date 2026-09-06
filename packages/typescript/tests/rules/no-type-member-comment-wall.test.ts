@@ -14,6 +14,22 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-type-member-comment-wall", rule, {
   valid: [
+    {
+      name: "preserves fixed boolean contracts",
+      code: "interface Flags {\n// Enabled is false.\nenabled: boolean;\n// Active is true.\nactive: boolean;\n// Ready is false.\nready: boolean;\n}",
+    },
+    {
+      name: "preserves negated member behavior",
+      code: "interface Flags {\n// Not enabled.\nenabled: boolean;\n// Not active.\nactive: boolean;\n// Not ready.\nready: boolean;\n}",
+    },
+    {
+      name: "preserves requirements absent from optional members",
+      code: "interface Request {\n// Required host.\nhost?: string;\n// Required port.\nport?: number;\n// Required user.\nuser?: string;\n}",
+    },
+    {
+      name: "preserves conditional member contracts",
+      code: "interface Flags {\n// Enabled if active.\nenabled: boolean;\n// Active when ready.\nactive: boolean;\n// Ready unless enabled.\nready: boolean;\n}",
+    },
     // No member comments at all — 79% of the OSS corpus.
     { code: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION.examples[0].files[0].source },
     {

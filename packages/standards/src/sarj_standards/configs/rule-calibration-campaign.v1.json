@@ -1206,25 +1206,33 @@
       "task": "rule-audit/eslint/no-trailing-value-narration",
       "family": "typescript",
       "ruleId": "no-trailing-value-narration",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted attached numeric-owner and unit-contract boundaries. The four comment-owner suites pass 219 focused tests; the pinned eight-source corpus parsed 2,963 files without rule errors and has zero findings for this owner.",
+      "outcome": "Stage as warning. Remove narration only for a matching literal numeric initializer and same-unit aliases; preserve cross-unit explanations, computed targets, expressions, calls, operators, Unicode and meaningful prose. No numeric evaluation or unit conversion is inferred."
     },
     {
       "task": "rule-audit/eslint/no-type-member-comment-wall",
       "family": "typescript",
       "ruleId": "no-type-member-comment-wall",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted preservation of negation, modal requirements, conditions and fixed-value contracts. The four comment-owner suites pass 219 focused tests; zero findings for this owner in the eight-source pinned corpus do not establish promotion readiness.",
+      "outcome": "Stage as warning without autofix. Retain the selector and configured density thresholds while describing apparent repetition as a review heuristic, not proof that comments carry no contract."
     },
     {
       "task": "rule-audit/eslint/no-typed-doc-sections",
       "family": "typescript",
       "ruleId": "no-typed-doc-sections",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews covered parameter correspondence, Unicode, operators, optional defaults and type payloads; 219 combined comment-owner tests pass. The sole pinned corpus finding was inspected in a public schema constructor: repetitive tags are separable from the durable discriminator contract, which must remain.",
+      "outcome": "Stage as warning and preserve narrative contracts. Require direct adjacent signature evidence, matching parameter names and genuinely repetitive payloads instead of treating meaningful punctuation or unfamiliar words as disposable."
     },
     {
       "task": "rule-audit/eslint/no-union-in-comment",
       "family": "typescript",
       "ruleId": "no-union-in-comment",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted direct comment ownership and unknown-builder abstention. The four comment-owner suites pass 219 focused tests; the pinned eight-source corpus has zero findings for this owner and no scan errors.",
+      "outcome": "Stage as warning. Remove whole-source substring exemptions and avoid inferring supported schemas from unknown builder names. Preserve broad string contracts and document only statically recognized finite alternatives."
     },
     {
       "task": "rule-audit/eslint/no-unnecessary-use-client",
