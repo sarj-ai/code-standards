@@ -227,6 +227,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
       { filename },
     );
     expect(messages.map(message => message.ruleId)).toEqual(expected);
+    expect(messages.every(message => message.severity === 2)).toBe(true);
   });
 
   /**

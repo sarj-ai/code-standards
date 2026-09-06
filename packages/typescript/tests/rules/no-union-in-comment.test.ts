@@ -14,6 +14,10 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-union-in-comment", rule, {
   valid: [
+    { name: "does not infer a return type from a local builder name", code: "function text() { return 42; }\nconst row = { kind: text(), // 'aa' | 'bb'\n};" },
+    { name: "does not infer schema behavior from an unknown builder", code: "const row = { kind: text('kind').notNull(), // 'aa' | 'bb'\n};" },
+    { name: "does not attach an inner comment to an outer string declaration", code: "const kind: string = load({\n  count: 1, // 'aa' | 'bb'\n});" },
+    { name: "does not attach a comment inside a call to its outer declaration", code: "const kind: string = load(\n  value, // 'aa' | 'bb'\n);" },
     {
       name: "allows unquoted value lists because they are indistinguishable from prose",
       code: "interface R { kind: string; // one of: draft, sent, paid\n}",
@@ -119,17 +123,8 @@ RULE_TESTER.run("no-union-in-comment", rule, {
       code: "const kind: string = load(); // 'aa' | 'bb'\n",
       errors: [{ messageId: "unionInComment" }],
     },
-    // A schema row, where the type lives in the column builder. The separator
-    // the row ends on belongs to the object, so resolving it must step back.
-    {
-      code: "const t = pgTable('t', {\n  kind: text('kind').notNull(), // 'aa' | 'bb'\n});",
-      errors: [{ messageId: "unionInComment" }],
-    },
-    // A default spells ONE of the values; the other two are still nowhere.
-    {
-      code: "const t = pgTable('t', {\n  kind: varchar('kind').default('aa'), // 'aa' | 'bb' | 'cc'\n});",
-      errors: [{ messageId: "unionInComment" }],
-    },
+    { name: "a broad string member is not constrained by additional literals", code: "interface R { kind: string | 'aa' | 'bb'; // 'aa' | 'bb'\n}", errors: [{ messageId: "unionInComment" }] },
+    { name: "initializer contents do not constrain an explicit string annotation", code: "const kind: string = 'aa|bb'; // 'aa' | 'bb'\n", errors: [{ messageId: "unionInComment" }] },
     // A block comment says it the same way.
     {
       code: "interface R {\n  kind: string; /* 'aa' | 'bb' */\n}",

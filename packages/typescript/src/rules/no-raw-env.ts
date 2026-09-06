@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-raw-env.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -17,7 +17,7 @@ export const NO_RAW_ENV_DOCUMENTATION = {
   rationale: "Raw environment reads are untyped and defer invalid configuration failures until use.",
   remediation: "Validate environment values at startup and import the typed configuration object.",
   category: "correctness",
-  limitations: ["Host markers, assignment targets, tests, scripts, build config, and validated boundaries are excluded."],
+  limitations: ["Host markers, assignment targets, tests, scripts, build config, and recognized validation-boundary files are policy exemptions. A validation call does not prove every export is validated; assignment-target exemptions also include compound writes that read the previous value."],
   examples: [
     { id: "validated-environment", title: "Read validated configuration", outcome: "no-match", files: [{ path: "src/database.ts", source: "import { env } from './env.js'; const url = env.DATABASE_URL;" }], focusPath: "src/database.ts", expectedCount: 0, public: true },
     { id: "raw-environment-read", title: "Do not read raw configuration", outcome: "match", files: [{ path: "src/database.ts", source: "const url = process.env.DATABASE_URL;" }], focusPath: "src/database.ts", expectedCount: 1, public: true },
@@ -30,16 +30,6 @@ const CONFIG_FILE_RE = /(^|[\\/])[\w.-]+\.config\.[cm]?[jt]sx?$/;
 /** Exempt only boundary-named modules that contain a validation marker. */
 const ENV_BOUNDARY_FILE_RE =
   /(^|[\\/])(?:env|client-env|server-env|client-settings|server-settings)\.[cm]?[jt]sx?$/;
-
-const ENV_VALIDATION_MARKER_RE =
-  /\bcreateEnv\s*\(|\bz\.object\s*\(|\.(?:safeParse|parse)\s*\(/;
-
-function isValidatedEnvBoundary(filename: string, sourceText: string): boolean {
-  return (
-    ENV_BOUNDARY_FILE_RE.test(filename.replaceAll("\\", "/")) &&
-    ENV_VALIDATION_MARKER_RE.test(sourceText)
-  );
-}
 
 /** True for the `process.env` member node (dotted or as the base of `process.env[key]`). */
 function isProcessEnv(node: TSESTree.MemberExpression): boolean {
@@ -134,24 +124,36 @@ export default createRule<Options, MessageIds>({
     if (
       isTestFile(filename) ||
       isScriptFile(filename) ||
-      CONFIG_FILE_RE.test(filename.replaceAll("\\", "/")) ||
-      isValidatedEnvBoundary(filename, context.sourceCode.text)
+      CONFIG_FILE_RE.test(filename.replaceAll("\\", "/"))
     ) {
       return {};
     }
+    const reads: TSESTree.MemberExpression[] = [];
+    const boundaryFile = ENV_BOUNDARY_FILE_RE.test(filename.replaceAll("\\", "/"));
+    let hasValidationCall = false;
     return {
+      CallExpression(node: TSESTree.CallExpression): void {
+        if (!boundaryFile) return;
+        const callee = node.callee;
+        if ((callee.type === "Identifier" && callee.name === "createEnv") || (callee.type === "MemberExpression" && !callee.computed && callee.property.type === "Identifier" && (["parse", "safeParse"].includes(callee.property.name) || (callee.property.name === "object" && callee.object.type === "Identifier" && callee.object.name === "z")))) hasValidationCall = true;
+      },
       MemberExpression(node: TSESTree.MemberExpression): void {
+        if (isProcessEnv(node) && node.object.type === "Identifier") {
+          const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), node.object.name);
+          if (binding !== null && binding.defs.length > 0 && !binding.defs.every((definition) => definition.type === "ImportBinding" && definition.parent.type === "ImportDeclaration" && ["node:process", "process"].includes(definition.parent.source.value) && ["ImportDefaultSpecifier", "ImportNamespaceSpecifier"].includes(definition.node.type))) return;
+        }
         if (
           (isProcessEnv(node) || isImportMetaEnv(node)) &&
           !isExemptVariableAccess(node) &&
           !isWriteTarget(node) &&
           !isWholeEnvSpread(node)
         ) {
-          context.report({
-            node,
-            messageId: "noRawEnv",
-          });
+          reads.push(node);
         }
+      },
+      "Program:exit"(): void {
+        if (boundaryFile && hasValidationCall) return;
+        for (const node of reads) context.report({ node, messageId: "noRawEnv" });
       },
     };
   },

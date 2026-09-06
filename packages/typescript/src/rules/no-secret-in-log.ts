@@ -27,11 +27,11 @@ type Options = readonly [LoggingOptions?];
 export const NO_SECRET_IN_LOG_DOCUMENTATION = {
   summary: "Disallow passing a secret-named value or a raw request/response blob to a logging call; both leak to log sinks. Redact or omit.",
   rationale: "Logs are widely retained and distributed, so credentials and raw bodies can become durable data leaks.",
-  remediation: "Omit the value or log an explicitly redacted, truncated, or derived non-sensitive field.",
+  remediation: "Omit the value, log allowlisted non-sensitive context, or use an approved redactor; truncation alone is not a safety guarantee.",
   category: "security",
-  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers."],
+  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers. Name-based exemptions are policy heuristics, not proof that a value is safely redacted."],
   examples: [
-    { id: "redacted-secret", title: "Log an explicitly redacted value", outcome: "no-match", files: [{ path: "src/auth.ts", source: "logger.info('auth', { tokenPrefix });" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
+    { id: "redacted-secret", title: "Log non-sensitive context instead of the secret", outcome: "no-match", files: [{ path: "src/auth.ts", source: "logger.info('auth', { requestId });" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
     { id: "logged-secret", title: "Do not send a secret to logs", outcome: "match", files: [{ path: "src/auth.ts", source: "logger.error('auth failed', { token });" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
@@ -87,13 +87,16 @@ const WHOLE_TOKEN_REDACTION_MARKERS: ReadonlySet<string> = new Set(["tag"]);
 
 /** True if the name names a raw secret and is not a redacted derivative. */
 function isSecretKeyword(name: string): boolean {
-  if (REDACTION_RE.test(name)) {
-    return false;
-  }
-  if (tokenize(name).some((tok) => WHOLE_TOKEN_REDACTION_MARKERS.has(tok))) {
-    return false;
-  }
-  return isSecretName(name, LOG_INNOCUOUS_WORDS);
+  return !hasRedactionMarker(name) && isSecretName(name, LOG_INNOCUOUS_WORDS);
+}
+
+function hasRedactionMarker(name: string): boolean {
+  return REDACTION_RE.test(name) || tokenize(name).some((tok) => WHOLE_TOKEN_REDACTION_MARKERS.has(tok));
+}
+
+function valueName(node: TSESTree.Node): string | null {
+  if (node.type === "Identifier") return node.name;
+  return node.type === "MemberExpression" && !node.computed && node.property.type === "Identifier" ? node.property.name : null;
 }
 
 function isRawSecretValue(prop: TSESTree.Property): boolean {
@@ -224,9 +227,9 @@ export default createRule<Options, MessageIds>({
     ],
     messages: {
       noSecretInLog:
-        "Secret `{{name}}` passed to a logging call leaks it to log sinks. Redact (e.g. `{{name}}Prefix: {{name}}.slice(0, 6)`) or omit it.",
+        "Secret-like `{{name}}` passed to a logging call. Omit it or use an approved redactor; a prefix can expose an entire short secret.",
       noRawBodyInLog:
-        "Raw `{{name}}` passed to a logging call. Request/response blobs carry PII and often echo credentials back, and log sinks have no retention policy. Log a derived value instead (a status, `{{name}}.id`, a length, a truncated issue list) or pass it through a redactor (`redact({{name}})`).",
+        "Raw `{{name}}` passed to a logging call. Request/response bodies can contain personal data or credentials. Log allowlisted non-sensitive context or use an approved redactor.",
     },
   },
   defaultOptions: [{}],
@@ -236,14 +239,7 @@ export default createRule<Options, MessageIds>({
     const blobArmApplies = !isTestFile(context.filename);
 
     function reportSecretArgument(arg: TSESTree.Node): boolean {
-      const name =
-        arg.type === "Identifier"
-          ? arg.name
-          : arg.type === "MemberExpression" &&
-              !arg.computed &&
-              arg.property.type === "Identifier"
-            ? arg.property.name
-            : null;
+      const name = valueName(arg);
       if (name === null || !isSecretKeyword(name)) {
         return false;
       }
@@ -253,10 +249,13 @@ export default createRule<Options, MessageIds>({
 
     function reportSecretProperty(prop: TSESTree.Property): boolean {
       const keyName = propertyKeyName(prop);
-      if (keyName === null || !isSecretKeyword(keyName) || !isRawSecretValue(prop)) {
+      const value = valueName(prop.value);
+      if (value !== null && hasRedactionMarker(value)) return false;
+      const name = value !== null && isSecretKeyword(value) ? value : keyName;
+      if (name === null || !isSecretKeyword(name) || !isRawSecretValue(prop)) {
         return false;
       }
-      context.report({ node: prop, messageId: "noSecretInLog", data: { name: keyName } });
+      context.report({ node: prop, messageId: "noSecretInLog", data: { name } });
       return true;
     }
 

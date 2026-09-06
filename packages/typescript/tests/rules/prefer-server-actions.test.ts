@@ -15,6 +15,24 @@ const GATEWAY_BASE_PATH = [{ basePath: "/gateway" }] as const;
 
 RULE_TESTER.run("prefer-server-actions", rule, {
   valid: [
+    {name: "external Axios instance is not same-origin", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; const partner=axios.create({baseURL:'https://partner.example'}); partner.post('/api/orders',data);`},
+    {name: "per-call Axios baseURL overrides origin", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; axios.post('/api/orders',data,{baseURL:'https://partner.example'});`},
+    {name: "direct Axios config can target external baseURL", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; axios({url:'/api/orders',method:'POST',baseURL:'https://partner.example'});`},
+    {name: "unknown Axios request options do not prove origin", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; axios.delete('/api/orders',options);`},
+    {name: "mutated Axios member loses transport proof", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; axios.delete=removeCache; axios.delete('/api/items');`},
+    {name: "escaped Axios instance loses transport proof", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; const api=axios.create(); configure(api); api.delete('/api/items');`},
+    {name: "member receiver writes lose transport proof", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; let api=axios.create(); api=cache; api.delete('/api/items');`},
+    { filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}api.post('/api/orders', order);` },
+    { filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}axios.put('/api/orders/1');` },
+    { filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}request({method:'DELETE',url:'/api/orders/1'});` },
+    { filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import {axios} from './custom'; axios.delete('/api/orders');` },
+    { filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}import axios from 'axios'; function act(axios){axios.delete('/api/orders');}` },
+    {name: "Map keys are not HTTP mutations", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}const cache=new Map(); cache.delete('/api/items');`},
+    {name: "reassigned URL does not retain initializer provenance", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}let url='/api/items'; url='https://other.example/items'; fetch(url,{method:'POST'});`},
+    {name: "reassigned method does not retain initializer provenance", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}let method='POST'; method='GET'; fetch('/api/items',{method});`},
+    {name: "mutated config does not retain initializer provenance", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}const init={method:'POST'}; init.method='GET'; fetch('/api/items',init);`},
+    {name: "later method property determines request", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}fetch('/api/items',{method:'POST',method:'GET'});`},
+    {name: "spread configuration may override mutation", filename: NEXT_CLIENT_MODULE, code: `${USE_CLIENT}fetch('/api/items',{method:'POST',...options});`},
     { name: "public no-match example", filename: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[0].focusPath, code: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "ignores Angular modules because they cannot use Server Actions",
@@ -236,30 +254,30 @@ RULE_TESTER.run("prefer-server-actions", rule, {
     },
     // Branch 2: axios/custom-wrapper member call (no handler arg).
     {
-      code: `${USE_CLIENT}api.post('/api/orders', { total: 1 });`,
+      code: `${USE_CLIENT}import api from 'axios'; api.post('/api/orders', { total: 1 });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
       name: "flags member mutations whose payload is an identifier",
-      code: `${USE_CLIENT}api.post('/api/orders', order);`,
+      code: `${USE_CLIENT}import axios from 'axios'; const api=axios.create(); api.post('/api/orders', order);`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      code: `${USE_CLIENT}axios.put('/api/orders/1');`,
+      code: `${USE_CLIENT}import axios from 'axios'; axios.put('/api/orders/1');`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     // Branch 3: direct axios config object.
     {
-      code: `${USE_CLIENT}axios({ method: 'post', url: '/api/orders' });`,
+      code: `${USE_CLIENT}import axios from 'axios'; axios({ method: 'post', url: '/api/orders' });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
       // request({ method, url }) direct-config form.
-      code: `${USE_CLIENT}request({ method: 'DELETE', url: '/api/orders/1' });`,
+      code: `${USE_CLIENT}import request from 'axios'; request({ method: 'DELETE', url: '/api/orders/1' });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
@@ -270,7 +288,7 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      code: `${USE_CLIENT}const cfg = { method: 'post', url: '/api/orders' }; axios(cfg);`,
+      code: `${USE_CLIENT}import axios from 'axios'; const cfg = { method: 'post', url: '/api/orders' }; axios(cfg);`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
@@ -290,14 +308,14 @@ RULE_TESTER.run("prefer-server-actions", rule, {
     },
     {
       name: "reports dynamic templates under a configured Next base path",
-      code: `${USE_CLIENT}api.delete(\`/gateway/api/users/\${id}\`);`,
+      code: `${USE_CLIENT}import api from 'axios'; api.delete(\`/gateway/api/users/\${id}\`);`,
       filename: NEXT_CLIENT_MODULE,
       options: GATEWAY_BASE_PATH,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
       name: "reports nested configured base paths",
-      code: `${USE_CLIENT}axios({ method: 'patch', url: '/global/show/api/tickets/1' });`,
+      code: `${USE_CLIENT}import axios from 'axios'; axios({ method: 'patch', url: '/global/show/api/tickets/1' });`,
       filename: NEXT_CLIENT_MODULE,
       options: [{ basePath: "/global/show" }],
       errors: [{ messageId: "preferServerAction" }],

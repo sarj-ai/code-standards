@@ -113,6 +113,21 @@ describe("configs.recommended / configs.strict are flat config", () => {
     expect(extra).toEqual([]);
   });
 
+  it("keeps managed fetch error strict-only without expanding recommended activation", () => {
+    expect(RECOMMENDED_RULES).not.toHaveProperty("@sarj/no-raw-fetch-outside-clients");
+    expect(STRICT_RULES["@sarj/no-raw-fetch-outside-clients"]).toBe("error");
+  });
+
+  it.each([
+    "@sarj/no-trailing-value-narration",
+    "@sarj/no-type-member-comment-wall",
+    "@sarj/no-typed-doc-sections",
+    "@sarj/no-union-in-comment",
+  ])("preserves error enforcement for %s", (rule) => {
+    expect(RECOMMENDED_RULES[rule]).toBe("error");
+    expect(STRICT_RULES[rule]).toBe("error");
+  });
+
   it("strict is at least as strict as recommended, rule for rule", () => {
     const severityOf = (value: unknown): unknown =>
       Array.isArray(value) ? value[0] : value;

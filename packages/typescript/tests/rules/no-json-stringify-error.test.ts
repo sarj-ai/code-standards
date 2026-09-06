@@ -17,6 +17,12 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-json-stringify-error", rule, {
   valid: [
+    { name: "respects explicit error-field replacers", code: "try { f(); } catch (err) { JSON.stringify(err, ['message', 'stack']); }" },
+    { name: "respects custom replacer functions", code: "try { f(); } catch (err) { JSON.stringify(err, serializeError); }" },
+    { name: "does not inherit a shadowed catch binding", code: "try { f(); } catch (err) { function encode(err: string) { return JSON.stringify(err); } }" },
+    { name: "does not assume an injected JSON API is native", code: "function encode(JSON) { return JSON.stringify(new Error('x')); }" },
+    { name: "does not assume an injected constructor is native", code: "function encode(Error) { return JSON.stringify(new Error('x')); }" },
+    { name: "does not treat a reassigned catch binding as a proven error", code: "try { f(); } catch (err) { err = { status: 'failed' }; JSON.stringify(err); }" },
     { name: "allows the documented explicit error field", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[0].files[0].source },
     { name: "allows non-error objects", code: "JSON.stringify(user);" },
     {

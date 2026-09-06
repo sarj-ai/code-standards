@@ -13,6 +13,14 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, source
 
 RULE_TESTER.run("sole-export-matches-filename", rule, {
   valid: [
+    { name: "does not call an export sole alongside destructured bindings", filename: "src/items.ts", code: "export function build() {} export const {first, second} = pair;" },
+    { name: "does not overlook array export patterns", filename: "src/items.ts", code: "export function build() {} export const [first, ...rest] = values;" },
+    { name: "private helper prefix is preserved", filename: "src/_build-record.ts", code: "export function buildRecord() {}" },
+    { name: "Next client instrumentation has a fixed export contract", filename: "src/instrumentation-client.ts", code: "export function onRouterTransitionStart() {}" },
+    { name: "Astro collections have a framework-owned config filename", filename: "src/content.config.ts", code: "import { defineCollection } from 'astro:content'; export const collections = { posts: defineCollection({}) };" },
+    {filename: "app/error.tsx", code: "'use client'; export default function ErrorBoundary(){return null;}"},
+    {filename: "/repo/src/app/orders/global-error.tsx", code: "'use client'; export default function GlobalBoundary(){return null;}"},
+    {filename: "C:\\repo\\app\\orders\\error.tsx", code: "'use client'; export default function Boundary(){return null;}"},
     { filename: "src/artifact-store.ts", code: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.examples[0].files[0].source },
     { filename: "src/oauth-client.server.ts", code: "export class OAuthClient {}" },
     { filename: "src/artifacts.ts", code: "export class ArtifactStore {} export const version = 1;" },
@@ -28,6 +36,11 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { filename: "src/provider-contract.ts", code: "export const ProviderSchema = {}; export type Provider = string;" },
   ],
   invalid: [
+    { name: "private helper mismatches retain the prefix", filename: "src/_record.ts", code: "export function buildRecord() {}", errors: [{ messageId: "matchSoleExport", data: { exported: "buildRecord", expected: "_build-record" } }] },
+    { name: "instrumentation filename does not exempt unrelated exports", filename: "src/instrumentation-client.ts", code: "export function trackChanges() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "Astro import outside content config does not exempt a mirror filename", filename: "src/services/content.config.ts", code: "import { defineCollection } from 'astro:content'; export const collections = {};", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "content config without Astro provenance remains ordinary code", filename: "src/content.config.ts", code: "export const collections = {};", errors: [{ messageId: "matchSoleExport" }] },
+    {filename: "src/error.ts", code: "export class DomainFailure {}", errors: [{messageId: "matchSoleExport"}]},
     {
       filename: "src/artifacts.ts",
       code: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.examples[1].files[0].source,

@@ -17,6 +17,9 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
   valid: [
+    { name: "does not confuse parser-token identity with authentication", code: "if (firstToken === lastToken || token !== startToken || currentToken !== finalToken) advance();" },
+    { name: "does not confuse token navigation metadata with secret bytes", code: "if (firstTokenLine === secondTokenLine || tokenBefore === commentList[index - 1]) advance();" },
+    { name: "leaves ambiguous token names to typed or domain-specific analysis", code: "if (token === expectedToken) consume();" },
     { name: "public no-match example", filename: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[0].focusPath, code: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows identity checks against a camelCase marker ending in Token",
@@ -86,18 +89,18 @@ RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
     { name: "public match example", filename: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].focusPath, code: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
     // The sentinel prefix list must stay narrow: a live credential still fires.
     {
-      name: "reports a runtime API-key comparison and prescribes equal-length digest comparison",
+      name: "requires a runtime-supported primitive without prescribing a nonexistent WebCrypto method",
       code: "if (req.headers.apiKey === env.apiKey) { allow(); }",
       errors: [
         {
           message:
-            "`===` on secret `apiKey` short-circuits on the first differing byte and leaks it through timing. Compare constant-time instead (`crypto.subtle.timingSafeEqual` over equal-length SHA-256 digests).",
+            "`===` on secret-like `apiKey` is not guaranteed constant-time. Use a constant-time comparison primitive supported by the target runtime and handle its input-length requirements.",
         },
       ],
     },
     // The live shape: an admin bearer token compared with `===`.
     {
-      code: "if (presented === expectedToken) { await next(); }",
+      code: "if (presented === expectedAccessToken) { await next(); }",
       errors: [{ messageId: "preferConstantTimeSecretCompare" }],
     },
     // SCREAMING_SNAKE secrets. These regressed once: the ALL-CAPS carve-out for
@@ -145,7 +148,7 @@ RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
     },
     // Loose equality is no better.
     {
-      code: "if (token == suppliedToken) { allow(); }",
+      code: "if (token == suppliedAccessToken) { allow(); }",
       errors: [{ messageId: "preferConstantTimeSecretCompare" }],
     },
     {
@@ -164,7 +167,7 @@ RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
     },
     // A leading flag word does not make it metadata — the trailing token rules.
     {
-      code: "if (validToken === presentedToken) { allow(); }",
+      code: "if (validToken === presentedAccessToken) { allow(); }",
       errors: [{ messageId: "preferConstantTimeSecretCompare" }],
     },
     // `tokenHash` gates access, unlike a bare content hash.

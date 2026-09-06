@@ -12,6 +12,10 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("require-use-form-default-values", rule, {
   valid: [
+    "import { useForm } from 'react-hook-form'; useForm({ ...options });",
+    "import { useForm } from 'react-hook-form'; useForm({ [key]: options });",
+    "import { useForm } from 'react-hook-form'; useForm({ values: {name:'Ada'} });",
+    "import { useForm } from 'react-hook-form'; useForm({ 'values': currentValues });",
     "import { useForm } from 'react-hook-form'; useForm({ defaultValues: { name: '' } });",
     "import { useForm as makeForm } from 'react-hook-form'; makeForm({ 'defaultValues': defaults });",
     "import { useForm } from './forms'; useForm();",

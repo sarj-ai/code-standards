@@ -13,21 +13,21 @@ type Options = readonly [];
 type ScopeVariable = NonNullable<ReturnType<typeof ASTUtils.findVariable>>;
 
 export const REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION = {
-  summary: "react-hook-form useForm call without defaultValues",
+  summary: "react-hook-form useForm call without explicit initial or reactive values",
   rationale:
     "Without an explicit initial value, fields can change from uncontrolled to controlled as data arrives, reset behavior becomes ambiguous, and the form's initial shape no longer documents the values users can edit.",
   remediation:
-    "Pass an object with a defaultValues property to useForm; use empty strings, nulls, or schema-appropriate values deliberately for every controlled field.",
+    "Provide defaultValues for initial state, or values when reactive external state owns initialization; choose schema-appropriate values for controlled fields.",
   category: "correctness",
   limitations: [
-    "Only direct calls to a scope-resolved useForm value imported from react-hook-form are checked; wrapper hooks and computed option objects are intentionally not inferred.",
+    "Only direct calls to a scope-resolved useForm value imported from react-hook-form are checked; reactive values are accepted, while wrapper hooks, spreads and computed option objects are intentionally not inferred.",
   ],
   examples: [
     {
       id: "form-with-initial-values",
       title: "Give the form an explicit initial shape",
       outcome: "no-match",
-      files: [{ path: "profile-form.tsx", source: "import { useForm } from 'react-hook-form';\nconst form = useForm({ defaultValues: { name: '' } });\n" }],
+      files: [{ path: "profile-form.tsx", source: "'use client'; import { useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm({ defaultValues: { name: '' } }); return <input {...form.register('name')} />; }" }],
       focusPath: "profile-form.tsx",
       expectedCount: 0,
       public: true,
@@ -36,7 +36,7 @@ export const REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION = {
       id: "form-without-initial-values",
       title: "Do not leave form initialization implicit",
       outcome: "match",
-      files: [{ path: "profile-form.tsx", source: "import { useForm } from 'react-hook-form';\nconst form = useForm({ mode: 'onChange' });\n" }],
+      files: [{ path: "profile-form.tsx", source: "'use client'; import { useForm } from 'react-hook-form'; function ProfileForm() { const form = useForm({ mode: 'onChange' }); return <input {...form.register('name')} />; }" }],
       focusPath: "profile-form.tsx",
       expectedCount: 1,
       public: true,
@@ -44,15 +44,14 @@ export const REQUIRE_USE_FORM_DEFAULT_VALUES_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function hasDefaultValues(options: TSESTree.CallExpressionArgument | undefined): boolean {
+function hasInitializationOrUnknownOptions(options: TSESTree.CallExpressionArgument | undefined): boolean {
   return (
     options?.type === "ObjectExpression" &&
     options.properties.some(
       (property) =>
-        property.type === "Property" &&
-        !property.computed &&
-        ((property.key.type === "Identifier" && property.key.name === "defaultValues") ||
-          (property.key.type === "Literal" && property.key.value === "defaultValues")),
+        property.type === "SpreadElement" || property.computed ||
+        ((property.key.type === "Identifier" && ["defaultValues", "values"].includes(property.key.name)) ||
+          (property.key.type === "Literal" && ["defaultValues", "values"].includes(String(property.key.value)))),
     )
   );
 }
@@ -66,7 +65,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       requireUseFormDefaultValues:
-        "Pass explicit defaultValues to useForm so fields have a stable initial shape and reset behavior.",
+        "Provide defaultValues or reactive values to useForm so controlled fields have an explicit initial shape.",
     },
   },
   defaultOptions: [],
@@ -92,7 +91,7 @@ export default createRule<Options, MessageIds>({
           !variable ||
           !importedHooks.has(variable) ||
           (options !== undefined && options.type !== "ObjectExpression") ||
-          hasDefaultValues(options)
+          hasInitializationOrUnknownOptions(options)
         ) return;
         context.report({ node, messageId: "requireUseFormDefaultValues" });
       },

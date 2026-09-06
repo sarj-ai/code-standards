@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "086a857ac2369e8e1b7cf89277b672383fa53109062dfc0259dda59400cdd01a",
-  "cliSha256": "aca5bb44230be9615c31f62b9c7ce9f664cbe83944005d2ed4cf301521702fb9",
+  "catalogSha256": "489fb89cb70cdfbac5941d511636ebc329f9ce710f51ae3a20592e4130a0ec4c",
+  "cliSha256": "da462633ab8a9977a47bf08a8feebd9f3fa5381d21773a5abdf9e88473476346",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -753,7 +753,7 @@
           "files": [
             {
               "path": "src/report.ts",
-              "source": "try {\n  f();\n} catch (err) {\n  JSON.stringify({ error: err.message });\n}\n"
+              "source": "try {\n  f();\n} catch (err) {\n  JSON.stringify({ error: err instanceof Error ? err.message : String(err) });\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -761,7 +761,7 @@
           "id": "explicit-error-message",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Serialize an enumerable error field"
+          "title": "Narrow an unknown catch value before selecting fields"
         },
         {
           "expectedCount": 1,
@@ -1203,7 +1203,7 @@
           "files": [
             {
               "path": "src/status.tsx",
-              "source": "import { useRouter } from \"next/navigation\";\nconst router = useRouter();\nsetInterval(() => fetchStatus(), POLLING_INTERVAL_MS);\n"
+              "source": "\"use client\";\nimport { useEffect } from \"react\";\nfunction Status() {\n  useEffect(() => {\n    const timer = setInterval(() => fetchStatus(), POLLING_INTERVAL_MS);\n    return () => clearInterval(timer);\n  }, []);\n  return null;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1211,14 +1211,14 @@
           "id": "poll-named-action",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Poll a named action"
+          "title": "Poll a named resource"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "src/status.tsx",
-              "source": "import { useRouter } from \"next/navigation\";\nconst router = useRouter();\nsetInterval(() => router.refresh(), POLLING_INTERVAL_MS);\n"
+              "source": "\"use client\";\nimport { useEffect } from \"react\";\nimport { useRouter } from \"next/navigation\";\nfunction Status() {\n  const router = useRouter();\n  useEffect(() => {\n    const timer = setInterval(() => router.refresh(), POLLING_INTERVAL_MS);\n    return () => clearInterval(timer);\n  }, [router]);\n  return null;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1253,7 +1253,7 @@
           "files": [
             {
               "path": "src/auth.ts",
-              "source": "logger.info(\"auth\", { tokenPrefix });\n"
+              "source": "logger.info(\"auth\", { requestId });\n"
             }
           ],
           "fixedFiles": [],
@@ -1261,7 +1261,7 @@
           "id": "redacted-secret",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Log an explicitly redacted value"
+          "title": "Log non-sensitive context instead of the secret"
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"logFunctions\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" },\n    \"loggerNames\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" }\n  },\n  \"type\": \"object\"\n}\n"
@@ -1868,7 +1868,7 @@
           "files": [
             {
               "path": "src/auth.ts",
-              "source": "if (await constantTimeEqual(presentedToken, expectedToken)) {\n  allow();\n}\n"
+              "source": "if (await constantTimeEqual(presentedAccessToken, expectedAccessToken)) {\n  allow();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1883,7 +1883,7 @@
           "files": [
             {
               "path": "src/auth.ts",
-              "source": "if (presentedToken === expectedToken) {\n  allow();\n}\n"
+              "source": "if (presentedAccessToken === expectedAccessToken) {\n  allow();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1891,7 +1891,7 @@
           "id": "secret-equality",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not compare secrets with equality"
+          "title": "Do not compare authentication tokens with equality"
         }
       ],
       "optionsSchemaSource": null
@@ -3028,7 +3028,7 @@
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "import { useForm } from \"react-hook-form\";\nconst form = useForm({ defaultValues: { name: \"\" } });\n"
+              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ defaultValues: { name: \"\" } });\n  return <input {...form.register(\"name\")} />;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3043,7 +3043,7 @@
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "import { useForm } from \"react-hook-form\";\nconst form = useForm({ mode: \"onChange\" });\n"
+              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ mode: \"onChange\" });\n  return <input {...form.register(\"name\")} />;\n}\n"
             }
           ],
           "fixedFiles": [],
