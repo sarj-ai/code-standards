@@ -1112,7 +1112,7 @@ export function createConfig(options = {}) {
       "@sarj/no-typed-doc-sections": "error",
       "@sarj/require-port-for-service": "error",
       "@sarj/no-unsafe-mock-casting": "error",
-      "@sarj/prefer-whole-object-assertion": "error",
+      "@sarj/prefer-whole-object-assertion": "warn",
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
       "@sarj/test-phase-label-comment": "error",

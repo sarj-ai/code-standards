@@ -200,7 +200,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.7",
+  version: "15.17.8",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -227,6 +227,7 @@ const ADVISORY_RULES = [
   "@sarj/prefer-nullish-filter-predicate",
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
+  "@sarj/prefer-whole-object-assertion",
   "@sarj/require-interface-for-exported-class",
   "@sarj/require-sql-access-class",
   "@sarj/sole-export-matches-filename",
@@ -306,7 +307,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-switch-for-repeated-equality": "warn",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
-  "@sarj/prefer-whole-object-assertion": "error",
+  "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",
@@ -404,7 +405,7 @@ const STRICT_RULES = {
   "@sarj/prefer-switch-for-repeated-equality": "warn",
   "@sarj/prefer-semantic-colors": ["error", { requireSemanticTokens: true }],
   "@sarj/prefer-server-actions": "error",
-  "@sarj/prefer-whole-object-assertion": "error",
+  "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
   "@sarj/require-assert-never": "error",

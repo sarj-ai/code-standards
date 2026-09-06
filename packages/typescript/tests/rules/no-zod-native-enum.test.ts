@@ -2,7 +2,8 @@ import { join } from "node:path";
 
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import rule, {
   NO_ZOD_NATIVE_ENUM_DOCUMENTATION,
@@ -12,6 +13,14 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+it("preserves the public enum keys rather than rewriting them to values", () => {
+  const original = z.nativeEnum({ Active: "active", Inactive: "inactive" });
+  const replacement = z.enum(["active", "inactive"]);
+  expect(original.enum).toEqual({ Active: "active", Inactive: "inactive" });
+  expect(replacement.enum).toEqual({ active: "active", inactive: "inactive" });
+  expect(rule.meta.fixable).toBeUndefined();
+});
 
 const RULE_TESTER = new RuleTester({
   languageOptions: {
@@ -119,27 +128,27 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
       errors: [{ messageId: "nativeEnum" }],
     },
     {
-      name: "fixes an inline string-valued object",
+      name: "reports without rewriting an inline string-valued object",
       code: NO_ZOD_NATIVE_ENUM_DOCUMENTATION.examples[1].files[0].source,
-      output: NO_ZOD_NATIVE_ENUM_DOCUMENTATION.examples[1].fixedFiles[0].source,
+      output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
-      name: "fixes an as-const object",
+      name: "reports without rewriting an as-const object",
       code: withZod("const S = z.nativeEnum({ A: 'a', B: 'b' } as const);"),
-      output: withZod("const S = z.enum(['a', 'b']);"),
+      output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
-      name: "fixes an object wrapped by satisfies",
+      name: "reports without rewriting an object wrapped by satisfies",
       code: withZod("const S = z.nativeEnum({ A: 'a', B: 'b' } satisfies Record<string, string>);"),
-      output: withZod("const S = z.enum(['a', 'b']);"),
+      output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
-      name: "deduplicates values in the fix",
+      name: "preserves duplicate values for manual migration",
       code: withZod('const S = z.nativeEnum({ A: "x", B: "x", C: "y" });'),
-      output: withZod('const S = z.enum(["x", "y"]);'),
+      output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {
@@ -221,9 +230,9 @@ RULE_TESTER.run("no-zod-native-enum", rule, {
       errors: [{ messageId: "nativeEnum" }],
     },
     {
-      name: "fixes nativeEnum inside a chained schema",
+      name: "reports without rewriting nativeEnum inside a chained schema",
       code: withZod('const S = z.object({ s: z.nativeEnum({ A: "a" }).optional() });'),
-      output: withZod('const S = z.object({ s: z.enum(["a"]).optional() });'),
+      output: null,
       errors: [{ messageId: "nativeEnum" }],
     },
     {

@@ -1,6 +1,7 @@
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import rule, {
   PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
@@ -10,6 +11,16 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+it("does not automatically change the public schema and validation error contracts", () => {
+  const original = z.union([z.literal(1), z.literal(2)]);
+  const replacement = z.literal([1, 2]);
+  expect(original.options).toHaveLength(2);
+  expect("options" in replacement).toBe(false);
+  expect(original.safeParse(3).error?.issues[0]?.code).toBe("invalid_union");
+  expect(replacement.safeParse(3).error?.issues[0]?.code).toBe("invalid_value");
+  expect(rule.meta.fixable).toBeUndefined();
+});
 
 const RULE_TESTER = new RuleTester({
   languageOptions: {
@@ -63,34 +74,34 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
       code: PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[1].files[0]
         .source.replace("from 'zod'", "from 'zod/v4'"),
       output:
-        "import { z } from 'zod/v4'; export const Version = z.literal([1, 2, 3]);",
+        null,
       errors: [ERROR],
     },
     {
-      name: "fixes the motivating numeric domain",
+      name: "reports without rewriting the motivating numeric domain",
       code: "import { z } from 'zod/v4'; export const AllowedConcurrencySchema = z.union([z.literal(2), z.literal(8), z.literal(16), z.literal(32), z.literal(128), z.literal(256)]);",
       output:
-        "import { z } from 'zod/v4'; export const AllowedConcurrencySchema = z.literal([2, 8, 16, 32, 128, 256]);",
+        null,
       errors: [ERROR],
     },
     {
-      name: "fixes a two-arm numeric union",
+      name: "reports without rewriting a two-arm numeric union",
       code: "import { z } from 'zod/v4'; export const V = z.union([z.literal(1), z.literal(2)]);",
       output:
-        "import { z } from 'zod/v4'; export const V = z.literal([1, 2]);",
+        null,
       errors: [ERROR],
     },
     {
-      name: "fixes every supported primitive syntax",
+      name: "reports without rewriting every supported primitive syntax",
       code: "import { z } from 'zod/v4'; export const V = z.union([z.literal(-1), z.literal(2n), z.literal(true), z.literal(null), z.literal(undefined), z.literal(`x`)]);",
       output:
-        "import { z } from 'zod/v4'; export const V = z.literal([-1, 2n, true, null, undefined, `x`]);",
+        null,
       errors: [ERROR],
     },
     {
       name: "supports an explicit version for bare Zod imports",
       code: "import { z } from 'zod'; export const V = z.union([z.literal(1), z.literal(2)]);",
-      output: "import { z } from 'zod'; export const V = z.literal([1, 2]);",
+      output: null,
       options: [{ zodMajorVersion: 4 }],
       errors: [ERROR],
     },
@@ -98,7 +109,7 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
       name: "recognizes the explicit Zod 4 mini entrypoint",
       code: "import * as schema from 'zod/v4-mini'; export const V = schema.union([schema.literal(false), schema.literal(true)]);",
       output:
-        "import * as schema from 'zod/v4-mini'; export const V = schema.literal([false, true]);",
+        null,
       errors: [ERROR],
     },
     {

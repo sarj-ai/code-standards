@@ -358,9 +358,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       code: `expect(config.tts.model).toBe("eleven");
 expect(config.tts.voice).toBe("sarah");
 expect(config.stt.model).toBe("nova");`,
-      output: `expect(config).toMatchObject({ tts: { model: "eleven", voice: "sarah" }, stt: { model: "nova" } });
-
-`,
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
     {
@@ -376,10 +374,10 @@ expect(config.stt.model).toBe("nova");`,
       name: "combines undefined property assertions",
       filename: "/repo/src/user.test.ts",
       code: `expect(user.name).toBe("Ada");\nexpect(user.deletedAt).toBeUndefined();`,
-      output: `expect(user).toMatchObject({ name: "Ada", deletedAt: undefined });\n`,
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-    { name: "fixes the documented member assertion run", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[1].files[0].source, output: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[1].fixedFiles[0].source, errors: [{ messageId: "combineAssertions" }] },
+    { name: "reports the documented member assertion run without rewriting it", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[1].files[0].source, output: null, errors: [{ messageId: "combineAssertions" }] },
     // The surviving true positive: the exact shape the fixer can rewrite
     // without changing what the test asserts.
     {
@@ -388,10 +386,7 @@ expect(config.stt.model).toBe("nova");`,
         expect(obj.a).toBe(1);
         expect(obj.b).toBe(2);
       `,
-      output: `
-        expect(obj).toMatchObject({ a: 1, b: 2 });
-        
-      `,
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
     // Boundary: mixed mergeable matchers and mixed literal kinds still merge,
@@ -405,12 +400,7 @@ expect(config.stt.model).toBe("nova");`,
         expect(user.active).toStrictEqual(true);
         expect(user.deletedAt).toBeNull();
       `,
-      output: `
-        expect(user).toMatchObject({ id: 1, name: "ada", active: true, deletedAt: null });
-        
-        
-        
-      `,
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
     // Boundary: a nested but still pure receiver stays in scope.
@@ -420,10 +410,7 @@ expect(config.stt.model).toBe("nova");`,
         expect(res.body.user.id).toBe(1);
         expect(res.body.user.name).toBe("ada");
       `,
-      output: `
-        expect(res.body.user).toMatchObject({ id: 1, name: "ada" });
-        
-      `,
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
     {
@@ -434,7 +421,7 @@ expect(config.stt.model).toBe("nova");`,
         expect(registry["user"].active).toBe(true);
       `,
       output:
-        "\n        expect(registry[\"user\"]).toMatchObject({ id: 1, active: true });\n        \n      ",
+        null,
       errors: [{ messageId: "combineAssertions" }],
     },
     {
@@ -445,7 +432,7 @@ expect(config.stt.model).toBe("nova");`,
         expect(obj.toString).toBe("custom");
       `,
       output:
-        "\n        expect(obj).toMatchObject({ constructor: null, toString: \"custom\" });\n        \n      ",
+        null,
       errors: [{ messageId: "combineAssertions" }],
     },
     // Array-indexed run: different message, deliberately no fix, because
@@ -483,7 +470,7 @@ expect(config.stt.model).toBe("nova");`,
   expect(obj.a).toBe(1);
   expect(obj.b).toBe(2);
 });`,
-      output: 'it("returns the user", () => {\n  expect(obj).toMatchObject({ a: 1, b: 2 });\n  \n});',
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
     {
@@ -507,7 +494,7 @@ expect(config.stt.model).toBe("nova");`,
         expect(this.a).toBe(1);
         expect(this.b).toBe(2);
       `,
-      output: "\n        expect(this).toMatchObject({ a: 1, b: 2 });\n        \n      ",
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
     // A template literal with no substitutions is a string literal written with
@@ -515,7 +502,7 @@ expect(config.stt.model).toBe("nova");`,
     {
       filename: FILENAME,
       code: "\n        expect(obj.a).toBe(`x`);\n        expect(obj.b).toBe(`y`);\n      ",
-      output: "\n        expect(obj).toMatchObject({ a: `x`, b: `y` });\n        \n      ",
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
     // A negative number parses as a unary expression rather than a literal, and
@@ -526,7 +513,7 @@ expect(config.stt.model).toBe("nova");`,
         expect(point.x).toBe(-1);
         expect(point.y).toBe(+2);
       `,
-      output: "\n        expect(point).toMatchObject({ x: -1, y: +2 });\n        \n      ",
+      output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
   ],
@@ -558,6 +545,23 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
   ] as unknown as Linter.Config[];
 
   const fix = (code: string): string => linter.verifyAndFix(code, config, FILENAME).output;
+
+  it("preserves absent-property semantics instead of adding a presence assertion", () => {
+    const user: { name: string; missing?: string } = { name: "Ada" };
+    expect(user.missing).toBeUndefined();
+    expect(() => expect(user).toMatchObject({ name: "Ada", missing: undefined })).toThrow();
+    const code = `expect(user.name).toBe("Ada");\nexpect(user.missing).toBeUndefined();`;
+    expect(fix(code)).toBe(code);
+  });
+
+  it("does not rewrite repeated reads of an observable getter", () => {
+    const code = `let reads = 0;
+      const user = { get child() { return { id: ++reads, name: String(reads) }; } };
+      expect(user.child.id).toBe(1);
+      expect(user.child.name).toBe("2");`;
+    expect(fix(code)).toBe(code);
+    expect(rule.meta.fixable).toBeUndefined();
+  });
 
   it("leaves substring, length and ordering matchers alone", () => {
     const code = `expect(o.name).toContain("ab");\nexpect(o.items).toHaveLength(3);\nexpect(o.n).toBeGreaterThan(5);\n`;
@@ -613,9 +617,9 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
       expect(fix(code)).toBe(code);
     });
 
-    it("breaks the run rather than poisoning it, so the rest still merges", () => {
+    it("preserves the entire run when it includes a prototype assertion", () => {
       expect(fix(`expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\nexpect(o.c).toBe(3);\n`)).toBe(
-        `expect(o.__proto__).toBe(null);\nexpect(o).toMatchObject({ b: 2, c: 3 });\n\n`,
+        `expect(o.__proto__).toBe(null);\nexpect(o.b).toBe(2);\nexpect(o.c).toBe(3);\n`,
       );
     });
   });
@@ -641,16 +645,16 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
       expect(fix(code)).toBe(code);
     });
 
-    it("still fixes when the comment sits outside the span", () => {
+    it("preserves the source when comments sit outside the span", () => {
       expect(fix(`// setup\nexpect(o.a).toBe(1);\nexpect(o.b).toBe(2); // done\n`)).toBe(
-        `// setup\nexpect(o).toMatchObject({ a: 1, b: 2 });\n // done\n`,
+        `// setup\nexpect(o.a).toBe(1);\nexpect(o.b).toBe(2); // done\n`,
       );
     });
   });
 
-  it("still merges the runs it can merge exactly", () => {
+  it("leaves ordinary property runs available for manual review", () => {
     expect(fix(`expect(o.a).toBe(1);\nexpect(o.b).toBe(2);\n`)).toBe(
-      `expect(o).toMatchObject({ a: 1, b: 2 });\n\n`,
+      `expect(o.a).toBe(1);\nexpect(o.b).toBe(2);\n`,
     );
   });
 });
