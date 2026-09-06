@@ -1,17 +1,49 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import * as tsParser from "@typescript-eslint/parser";
+import { Linter } from "eslint";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, {
   NO_TYPED_DOC_SECTIONS_DOCUMENTATION,
 } from "../../src/rules/no-typed-doc-sections.js";
+import restatedJsdoc from "../../src/rules/no-restated-jsdoc.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
+it.each([
+  "/** @param value مطلوب */\nfunction f(value: string): void {}",
+  "/** @param [value=ready] */\nfunction f(value: string): void {}",
+  "/** @param missing */\nfunction f(value: string): void {}",
+  "/** @returns 'string' */\nfunction f(): string { return 'string'; }",
+])("preserves a contract with both JSDoc rules enabled: %s", (source) => {
+  const findings = new Linter().verify(source, [{
+    files: ["**/*.ts"],
+    languageOptions: { parser: tsParser },
+    plugins: { sarj: { rules: { typed: rule, restated: restatedJsdoc } } },
+    rules: { "sarj/typed": "warn", "sarj/restated": "warn" },
+  }], { filename: "src/contracts.ts" });
+  expect(findings).toEqual([]);
+});
+
 new RuleTester().run("no-typed-doc-sections", rule, {
   valid: [
+    { name: "preserves explicit types that differ from the signature", code: "/** @param value {unused}\n * @returns {string}\n */\nfunction f(value: number): number { return value; }" },
+    { name: "preserves a narrower explicit parameter type", code: "/** @param {string} value */\nfunction f(value: unknown): void {}" },
+    { name: "preserves optional parameter defaults", code: "/** @param [value=ready] */\nfunction f(value: string): void {}" },
+    { name: "preserves nested parameter documentation", code: "/** @param options.value */\nfunction f(options: { value: string }): void {}" },
+    { name: "requires the documented parameter to exist", code: "/** @param missing */\nfunction f(value: string): void {}" },
+    { name: "associates the comment with the adjacent overload only", code: "/** @param value */\nfunction f(name: string): void;\nfunction f(value: number): void;\nfunction f(value: string | number): void {}" },
+    { name: "does not borrow an outer function signature", code: "function outer(value: string): void {\n/** @param value */\nconst x = 1;\n}" },
+    { name: "preserves a previous statement's trailing comment", code: "const x = 1; /** @param value */\nfunction f(value: string): void {}" },
+    { name: "preserves quoted return values", code: "/** @returns 'string' */\nfunction f(): string { return 'string'; }" },
+    { name: "preserves arithmetic parameter contracts", code: "/** @param value -value */\nfunction f(value: number): void {}" },
+    { name: "preserves Unicode parameter meaning", code: "/** @param value مطلوب */\nfunction f(value: string): void {}" },
+    { name: "preserves numeric return contracts", code: "/** @returns 0 */\nfunction f(): number { return 0; }" },
+    { name: "preserves parameter comparisons", code: "/** @param value <= value */\nfunction f(value: number): void {}" },
+    { name: "preserves malformed parameter payloads", code: "/** @param ??? */\nfunction f(value: number): void {}" },
     {
       name: "preserves behavioral documentation",
       code: NO_TYPED_DOC_SECTIONS_DOCUMENTATION.examples[0].files[0].source,
@@ -74,6 +106,7 @@ new RuleTester().run("no-typed-doc-sections", rule, {
     },
   ],
   invalid: [
+    { name: "reports an exact primitive parameter type repetition", code: "/** @param {string} value */\nfunction f(value: string): void {}", errors: [{ messageId: "typedSection" }] },
     {
       name: "flags a description-free parameter tag",
       code: "/** @param id */\nexport function fetchValue(id: string): number { return 1; }",

@@ -429,6 +429,20 @@ RULE_TESTER.run("no-raw-fetch-outside-clients", rule, {
 
 describe("ownership with prefer-server-actions", () => {
   it.each([
+    "let method='POST'; method='GET'; fetch('/api/items',{method});",
+    "let url='/api/items'; url='https://other.example/items'; fetch(url,{method:'POST'});",
+    "const init={method:'POST'}; init.method='GET'; fetch('/api/items',init);",
+    "fetch('/api/items',{method:'POST',method:'GET'});",
+    "fetch('/api/items',{method:'POST',...options});",
+  ])("retains client ownership when mutation proof is absent: %s", (source) => {
+    const messages = new Linter().verify(`'use client'; ${source}`, {
+      files: ["**/*.tsx"], languageOptions: {parser: tsParser},
+      plugins: {sarj: {rules: {"no-raw-fetch-outside-clients": rule as never, "prefer-server-actions": preferServerActions as never}}},
+      rules: {"sarj/no-raw-fetch-outside-clients": "error", "sarj/prefer-server-actions": "error"},
+    } as never, "app/ui/actions.tsx");
+    expect(messages.map(({ruleId}) => ruleId)).toEqual(["sarj/no-raw-fetch-outside-clients"]);
+  });
+  it.each([
     ["/api/items", {}],
     ["/demo/api/items", { basePath: "/demo" }],
   ])("emits one diagnostic for %s", (url, options) => {

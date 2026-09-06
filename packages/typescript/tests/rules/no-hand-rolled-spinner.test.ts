@@ -20,6 +20,8 @@ const COMPONENT = "/repo/src/components/loading-state.tsx";
 
 RULE_TESTER.run("no-hand-rolled-spinner", rule, {
   valid: [
+    { name: "later spread can replace spinner classes", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" {...props} />', filename: COMPONENT },
+    { name: "last className wins", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" className="static" />', filename: COMPONENT },
     { name: "accepts the documented shared spinner", code: NO_HAND_ROLLED_SPINNER_DOCUMENTATION.examples[0].files[0].source, filename: COMPONENT },
     {
       name: "accepts the design-system spinner",
@@ -83,6 +85,7 @@ RULE_TESTER.run("no-hand-rolled-spinner", rule, {
     },
   ],
   invalid: [
+    { name: "later explicit className overrides a spread", code: '<div {...props} className="animate-spin rounded-full border-2 border-t-transparent" />', filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
     { name: "reports the documented border-ring spinner", code: NO_HAND_ROLLED_SPINNER_DOCUMENTATION.examples[1].files[0].source, filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
     {
       name: "rejects a div border-ring spinner",

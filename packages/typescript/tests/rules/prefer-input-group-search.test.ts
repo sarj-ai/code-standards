@@ -24,6 +24,10 @@ const IMPORTS = `
 
 RULE_TESTER.run("prefer-input-group-search", rule, {
   valid: [
+    { name: "parameters shadow imported visual controls", code: `${IMPORTS}function Other(Input, Search) { return <div><Search /><Input /></div>; }` },
+    { name: "opposite conditional branches cannot form one field", code: `${IMPORTS}<div>{open ? <Search /> : <Input />}</div>` },
+    { name: "an interactive component icon is not decoration", code: `${IMPORTS}<div><Button onClick={submit}><Search /></Button><Input /></div>` },
+    { name: "icon itself has an action", code: `${IMPORTS}<div><Search onClick={submit} /><Input /></div>` },
     {
       name: "does not prescribe an optional primitive without local adoption evidence",
       code: `import { Search } from "lucide-react"; import { Input } from "@/components/ui/input"; <div><Search /><Input /></div>`,
@@ -79,6 +83,7 @@ RULE_TESTER.run("prefer-input-group-search", rule, {
     },
   ],
   invalid: [
+    { name: "one conditional branch can contain a complete field", code: `${IMPORTS}<div>{open ? <span><Search /><Input /></span> : null}</div>`, errors: [{ messageId: "preferInputGroup" }] },
     {
       name: "recognizes official lucide search aliases",
       code: `import { SearchIcon } from "lucide-react"; import { Input } from "@/components/ui/input"; import { InputGroup } from "@/components/ui/input-group"; <div><SearchIcon /><Input /></div>`,

@@ -17,6 +17,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-secret-in-log", rule, {
   valid: [
+    { name: "respects an explicitly redacted property value", code: "logger.info('auth', { token: redactedToken });" },
+    { name: "respects a redacted member value under a secret key", code: "logger.info('auth', { token: result.maskedToken });" },
     { name: "accepts the documented redaction", code: NO_SECRET_IN_LOG_DOCUMENTATION.examples[0].files[0].source },
     // Innocuous trailing token: usage counter, not the secret.
     { code: 'logger.info("usage", { tokenCount });' },
@@ -186,6 +188,8 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     },
   ],
   invalid: [
+    { name: "detects a secret value under an innocuous key", code: "logger.info('auth', { value: token });", errors: [{ messageId: "noSecretInLog" }] },
+    { name: "detects a secret member value under an innocuous key", code: "logger.info('auth', { value: request.apiKey });", errors: [{ messageId: "noSecretInLog" }] },
     {
       name: "rejects a directly parsed response body",
       code: 'console.error("request failed", await response.text());',

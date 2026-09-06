@@ -23,6 +23,7 @@ export const PREFER_SEMANTIC_COLORS_DOCUMENTATION = {
   remediation: "Replace raw palette and literal colors with the closest semantic design-system token or CSS variable.",
   category: "style",
   limitations: [
+    "Class-composition helper objects use literal keys as class fragments; cva/tv configuration objects retain value traversal. Computed keys are not resolved. URL payloads are not color literals.",
     "Email, PDF, video-rendering, print-only, icon artwork, masks, gradients, stories, and explicitly configured non-token projects have targeted exclusions.",
     "Opaque-foreground checks are opt-in and require both a same-variant semantic background class and its package-local declared foreground token.",
   ],
@@ -574,7 +575,7 @@ export default createRule<Options, MessageIds>({
     };
 
     // Recurse through class fragments but leave calls to the CallExpression visitor.
-    const checkClassNode = (node: TSESTree.Node | null): void => {
+    const checkClassNode = (node: TSESTree.Node | null, objectKeys = false): void => {
       if (node === null) return;
       switch (node.type) {
         case AST_NODE_TYPES.Literal:
@@ -585,20 +586,28 @@ export default createRule<Options, MessageIds>({
           break;
         case AST_NODE_TYPES.ArrayExpression:
           for (const element of node.elements) {
-            if (element !== null && element.type !== AST_NODE_TYPES.SpreadElement) checkClassNode(element);
+            if (element !== null && element.type !== AST_NODE_TYPES.SpreadElement) checkClassNode(element, objectKeys);
           }
           break;
         case AST_NODE_TYPES.ObjectExpression:
           for (const property of node.properties) {
-            if (property.type === AST_NODE_TYPES.Property) checkClassNode(property.value);
+            if (property.type !== AST_NODE_TYPES.Property) continue;
+            if (objectKeys) {
+              if (property.value.type === AST_NODE_TYPES.Literal && !property.value.value && !("regex" in property.value)) continue;
+              if (!property.computed && property.key.type === AST_NODE_TYPES.Literal) {
+                checkClassNode(property.key);
+              }
+            } else {
+              checkClassNode(property.value);
+            }
           }
           break;
         case AST_NODE_TYPES.ConditionalExpression:
-          checkClassNode(node.consequent);
-          checkClassNode(node.alternate);
+          checkClassNode(node.consequent, objectKeys);
+          checkClassNode(node.alternate, objectKeys);
           break;
         case AST_NODE_TYPES.LogicalExpression:
-          checkClassNode(node.right);
+          checkClassNode(node.right, objectKeys);
           break;
         default:
           break;
@@ -609,7 +618,7 @@ export default createRule<Options, MessageIds>({
       if (
         node.type === AST_NODE_TYPES.Literal &&
         typeof node.value === "string" &&
-        RAW_COLOR_VALUE_RE.test(node.value) &&
+        RAW_COLOR_VALUE_RE.test(node.value.replace(/url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)/giu, "")) &&
         !CSS_VAR_REFERENCE_RE.test(node.value)
       ) {
         report(node, "inlineColor", { value: node.value });
@@ -638,7 +647,9 @@ export default createRule<Options, MessageIds>({
         }
         if (node.callee.type === AST_NODE_TYPES.Identifier && CLASS_FNS.has(node.callee.name)) {
           for (const arg of node.arguments) {
-            if (arg.type !== AST_NODE_TYPES.SpreadElement) checkClassNode(arg);
+            if (arg.type !== AST_NODE_TYPES.SpreadElement) {
+              checkClassNode(arg, node.callee.name !== "cva" && node.callee.name !== "tv");
+            }
           }
         }
       },

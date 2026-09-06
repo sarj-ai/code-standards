@@ -23,6 +23,10 @@ const ASSUME_AVAILABLE = [{ assumeAvailable: true }] as const;
 
 RULE_TESTER.run("prefer-shadcn-primitives", rule, {
   valid: [
+    { name: "native multi-select has no equivalent Select contract", code: "<select multiple />", options: ASSUME_AVAILABLE },
+    { name: "dynamic multiple cannot prove single selection", code: "<select multiple={isMultiple} />", options: ASSUME_AVAILABLE },
+    { name: "hidden controls do not need visual primitives", code: "<><button hidden>Save</button><select hidden={true} /><textarea hidden={hidden} /></>", options: ASSUME_AVAILABLE },
+    { name: "a hidden ancestor hides its raw control", code: "<div hidden><button>Save</button></div>", options: ASSUME_AVAILABLE },
     { name: "public no-match example", filename: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[0].focusPath, code: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "accepts shared primitives",
@@ -110,6 +114,7 @@ RULE_TESTER.run("prefer-shadcn-primitives", rule, {
     },
   ],
   invalid: [
+    { name: "explicit false preserves single select and visibility", code: "<select multiple={false} hidden={false} />", options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
     { name: "public match example", filename: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[1].focusPath, code: PREFER_SHADCN_PRIMITIVES_DOCUMENTATION.examples[1].files[0].source, options: ASSUME_AVAILABLE, errors: [{ messageId: "preferShadcnPrimitive" }] },
     {
       name: "rejects a raw button",

@@ -12,6 +12,7 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-raw-env", rule, {
   valid: [
+    { name: "does not confuse injected config with Node process", code: "function read(process: {env: {KEY: string}}) { return process.env.KEY; }" },
     { name: "accepts the documented validated environment", code: NO_RAW_ENV_DOCUMENTATION.examples[0].files[0].source },
     // Reading from a validated env module is the prescribed pattern.
     { code: "import { env } from '@/env'; const url = env.DATABASE_URL;" },
@@ -133,6 +134,8 @@ RULE_TESTER.run("no-raw-env", rule, {
     },
   ],
   invalid: [
+    { name: "does not treat a comment as environment validation", filename: "src/env.ts", code: "// z.object({ KEY: z.string() }).parse(process.env)\nexport const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
+    { name: "does not treat string payload as environment validation", filename: "src/env.ts", code: "const example = 'z.object({}).parse(process.env)'; export const key = process.env.KEY;", errors: [{messageId: "noRawEnv"}] },
     { name: "reports the documented raw environment read", code: NO_RAW_ENV_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noRawEnv" }] },
     {
       code: "const url = process.env.DATABASE_URL;",

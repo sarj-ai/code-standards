@@ -19,6 +19,12 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-semantic-colors", rule, {
   valid: [
+    { name: "false class helper condition emits no class", code: "clsx({ 'bg-red-500': false });" },
+    { name: "null class helper condition emits no class", code: "clsx({ 'bg-red-500': null });" },
+    { name: "zero class helper condition emits no class", code: "clsx({ 'bg-red-500': 0 });" },
+    { name: "empty class helper condition emits no class", code: "clsx({ 'bg-red-500': '' });" },
+    { name: "class helper conditions are not class fragments", code: "clsx({ 'text-primary': 'text-red-500' });" },
+    { name: "URL fragment is not a color", code: '<div style={{ fill: "url(#abc)", background: "url(image.svg#abcdef)" }} />' },
     { name: "public no-match example", filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].focusPath, code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows Radix semantic steps outside Tailwind's palette scale",
@@ -97,6 +103,7 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
     { code: `const COLOR_MAP = { connectivity: "bg-red-500", flow: "bg-blue-500" };` },
   ],
   invalid: [
+    { name: "URL followed by a real color remains checked", code: '<div style={{ background: "url(#abc) #ff0000" }} />', errors: [{ messageId: "inlineColor" }] },
     { name: "public match example", filename: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].focusPath, code: PREFER_SEMANTIC_COLORS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "rawPalette" }] },
     {
       code: `const x = <div className="text-red-500" />;`,
@@ -159,7 +166,7 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
     },
     {
       name: "recurses through class arrays and conditional branches",
-      code: `const x = cn([active ? "bg-red-500" : "bg-blue-500", { warning: "text-amber-500" }]);`,
+      code: `const x = cn([active ? "bg-red-500" : "bg-blue-500", { "text-amber-500": warning }]);`,
       errors: [
         { messageId: "rawPalette" },
         { messageId: "rawPalette" },

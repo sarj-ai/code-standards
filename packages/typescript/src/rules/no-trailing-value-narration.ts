@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-trailing-value-narration.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { trailingCommentRemovalRange } from "./_comment-edits.js";
@@ -21,7 +21,7 @@ export const NO_TRAILING_VALUE_NARRATION_DOCUMENTATION = {
   category: "maintainability",
   autofix: "suggestion",
   aliases: ["trailing-value-narration"],
-  limitations: ["Only trailing comments with numeric values and recognized unit words are inspected."],
+  limitations: ["Only attached declaration, property, or assignment values containing numeric tokens and comments with recognized unit words are inspected. Deletion requires a numeric literal and the same unit on its owner. Constraints, additional prose, unknown expressions on unit-bearing owners, and cross-unit annotations are preserved; conversions are not evaluated."],
   examples: [
     {
       id: "explain-constraint",
@@ -46,7 +46,7 @@ export const NO_TRAILING_VALUE_NARRATION_DOCUMENTATION = {
 
 // A number that is not part of an identifier or a dotted member path.
 const NUMBER_RE = /(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])/g;
-const WORD_RE = /[A-Za-z]+(?:'[a-z]+)?|\d+(?:\.\d+)?/g;
+const WORD_RE = /[\p{L}\p{M}]+(?:'[\p{L}\p{M}]+)?|\d+(?:\.\d+)?/gu;
 
 // Words that name the unit rather than the quantity — the one thing the code
 // does not say, and the reason the fix is a *name*, not a deletion.
@@ -68,9 +68,9 @@ const DIRECTIVE_RE =
 const UNIT_NAME_SUFFIX_RE =
   /(?:_(?:NS|US|MS|S|SEC|SECS|SECOND|SECONDS|MIN|MINS|MINUTE|MINUTES|HOUR|HOURS|DAY|DAYS|BYTE|BYTES|KB|MB|GB|HZ|KHZ|MHZ|PX)|(?:Ns|Us|Ms|Sec|Secs|Second|Seconds|Min|Mins|Minute|Minutes|Hour|Hours|Day|Days|Byte|Bytes|Kb|Mb|Gb|Hz|Khz|Mhz|Px))$/u;
 
-function narratesValue(body: string, code: string): boolean {
+function narratesValue(body: string, code: string, codeNumbers: ReadonlySet<string>): boolean {
   if (body.length === 0 || DIRECTIVE_RE.test(body) || hasExternalReference(body)) return false;
-  const codeNumbers = numbersIn(code);
+  if (/[^\p{L}\p{M}\p{N}\s.,:()_]/u.test(body)) return false;
   if (codeNumbers.size === 0) return false;
   const words = (body.match(WORD_RE) ?? []).map((word) => word.toLowerCase());
   if (words.length === 0) return false;
@@ -97,8 +97,23 @@ function numbersIn(text: string): Set<string> {
   return new Set(text.match(NUMBER_RE) ?? []);
 }
 
-function nameAlreadyCarriesUnit(code: string): boolean {
-  return (code.match(/[A-Za-z_$][\w$]*/gu) ?? []).some((identifier) => UNIT_NAME_SUFFIX_RE.test(identifier));
+function canonicalUnit(word: string): string {
+  switch (word) {
+    case "milliseconds": return "ms";
+    case "sec": case "secs": case "second": case "seconds": return "s";
+    case "mins": case "minute": case "minutes": return "min";
+    case "hr": case "hrs": case "hours": return "hour";
+    case "days": return "day";
+    case "bytes": return "byte";
+    default: return word;
+  }
+}
+
+function identifierUnit(node: TSESTree.Node): string | null {
+  if (node.type === "MemberExpression" && !node.computed) return identifierUnit(node.property);
+  if (node.type !== "Identifier") return null;
+  const suffix = UNIT_NAME_SUFFIX_RE.exec(node.name)?.[0];
+  return suffix === undefined ? null : canonicalUnit(suffix.replace(/^_/u, "").toLowerCase());
 }
 
 export default createRule<Options, MessageIds>({
@@ -116,7 +131,7 @@ export default createRule<Options, MessageIds>({
       deleteNarration:
         "Trailing comment restates the literal and the identifier already names its unit — delete the comment so it cannot drift.",
       narratesValue:
-        "Trailing comment restates the literal on this line — put the unit in the name (STALE_TIME_MS) so it cannot drift.",
+        "Consider putting the unit in the name if this comment only narrates the value; keep conversion details and constraints.",
       removeNarration: "Delete the redundant trailing narration.",
     },
   },
@@ -148,15 +163,49 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
+    function attachedValue(comment: TSESTree.Comment): { name: TSESTree.Node; value: TSESTree.Node } | null {
+      let token = sourceCode.getTokenBefore(comment);
+      if (token?.value === ";" || token?.value === ",") token = sourceCode.getTokenBefore(token);
+      if (token === null) return null;
+      let node = sourceCode.getNodeByRangeIndex(token.range[0]);
+      while (node !== null && node.type !== "Program") {
+        if (node.range[1] <= comment.range[0]) {
+          if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && node.init !== null) {
+            return { name: node.id, value: node.init };
+          }
+          if (node.type === "Property" && !node.computed && node.kind === "init" && node.parent.type === "ObjectExpression") {
+            return { name: node.key, value: node.value };
+          }
+          if (node.type === "PropertyDefinition" && !node.computed && node.value !== null) {
+            return { name: node.key, value: node.value };
+          }
+          if (node.type === "AssignmentExpression" && node.operator === "=") {
+            if (node.left.type !== "Identifier" && (node.left.type !== "MemberExpression" || node.left.computed)) return null;
+            return { name: node.left, value: node.right };
+          }
+        }
+        node = node.parent ?? null;
+      }
+      return null;
+    }
+
     return {
       Program(): void {
         for (const comment of sourceCode.getAllComments()) {
           if (!isTrailing(comment) || isInsideBrackets(comment)) continue;
-          const line = sourceCode.lines[comment.loc.start.line - 1] ?? "";
-          const code = line.slice(0, comment.loc.start.column);
+          const attached = attachedValue(comment);
+          if (attached === null) continue;
+          const code = `${sourceCode.getText(attached.name)} ${sourceCode.getText(attached.value)}`;
+          const codeNumbers = new Set(sourceCode.getTokens(attached.value)
+            .filter((token) => token.type === AST_TOKEN_TYPES.Numeric)
+            .flatMap((token) => [...numbersIn(token.value)]));
           const body = comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim();
-          if (narratesValue(body, code)) {
-            const canDelete = nameAlreadyCarriesUnit(code);
+          if (narratesValue(body, code, codeNumbers)) {
+            const namedUnit = identifierUnit(attached.name);
+            if (namedUnit !== null && (attached.value.type !== "Literal" || typeof attached.value.value !== "number")) continue;
+            const units = (body.match(WORD_RE) ?? []).map((word) => word.toLowerCase()).filter((word) => UNIT_WORDS.has(word));
+            if (namedUnit !== null && !units.every((word) => canonicalUnit(word) === namedUnit)) continue;
+            const canDelete = namedUnit !== null;
             const removal = canDelete
               ? trailingCommentRemovalRange(sourceCode.text, comment)
               : null;

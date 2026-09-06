@@ -4,9 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-dangerously-allow-svg.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
-
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { exportedNextConfigProperty } from "./_exported-next-config-property.js";
 
 type MessageIds = "noDangerouslyAllowSvg";
 type Options = readonly [];
@@ -21,7 +20,7 @@ export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
     "Keep dangerouslyAllowSVG disabled. If SVG delivery is unavoidable, use a separately reviewed asset path with restrictive Content-Disposition and Content-Security-Policy headers.",
   category: "security",
   limitations: [
-    "Only a literal true assigned to dangerouslyAllowSVG in a next.config source file is reported; computed or imported configuration is intentionally not inferred.",
+    "Only a literal true in the effective images property of a directly exported object, unescaped const alias, or isolated module.exports object is reported. Wrappers, factories, spreads, computed keys and mutations are not inferred.",
   ],
   examples: [
     {
@@ -45,12 +44,6 @@ export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function propertyName(node: TSESTree.Property): string | null {
-  if (!node.computed && node.key.type === "Identifier") return node.key.name;
-  if (node.key.type === "Literal" && typeof node.key.value === "string") return node.key.value;
-  return null;
-}
-
 export default createRule<Options, MessageIds>({
   name: "no-dangerously-allow-svg",
   documentation: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION,
@@ -67,9 +60,10 @@ export default createRule<Options, MessageIds>({
   create(context) {
     if (!NEXT_CONFIG_RE.test(context.filename.replaceAll("\\", "/"))) return {};
     return {
-      Property(node): void {
+      "Program:exit"(): void {
+        const node = exportedNextConfigProperty(context.sourceCode, ["images", "dangerouslyAllowSVG"]);
         if (
-          propertyName(node) === "dangerouslyAllowSVG" &&
+          node !== null &&
           node.value.type === "Literal" &&
           node.value.value === true
         ) {

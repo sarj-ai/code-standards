@@ -14,10 +14,10 @@ type Options = readonly [];
 
 export const NO_UNION_IN_COMMENT_DOCUMENTATION = {
   summary: "Flag a comment that lists a `string` field's allowed values instead of the type listing them.",
-  rationale: "A comment cannot prevent callers from supplying strings outside the listed set, and the list can drift from runtime behavior.",
-  remediation: "Move the allowed values into a string-literal union and remove the redundant comment.",
-  category: "correctness",
-  limitations: ["Only bare quoted-value lists attached to supported string declarations and schema-builder fields are inspected."],
+  rationale: "A broad string annotation does not express a closed set documented beside it.",
+  remediation: "If the list is exhaustive, express it as a string-literal union; keep examples and runtime constraints documented separately.",
+  category: "maintainability",
+  limitations: ["Only bare quoted-value lists directly attached to explicitly annotated string declarations are inspected. Unknown schema builders and runtime validation are not inferred."],
   examples: [
     {
       id: "literal-union",
@@ -51,10 +51,6 @@ const LEAD_IN_RE =
 const UNION_BODY_RE = new RegExp(String.raw`^${LITERAL}(?:\s*[|,/]\s*${LITERAL})+\.?$`);
 const LITERAL_G = new RegExp(LITERAL, "g");
 
-const STRING_BUILDERS: ReadonlySet<string> = new Set([
-  "char", "citext", "longtext", "mediumtext", "string", "text", "tinytext", "varchar",
-]);
-
 /** True when a type annotation is an unconstrained `string` after all. */
 function isBareString(node: TSESTree.TypeNode | undefined): boolean {
   if (node === undefined) return false;
@@ -81,12 +77,6 @@ function targetOf(node: TSESTree.Node): Target | null {
       if (name === null || !isBareString(node.typeAnnotation?.typeAnnotation)) return null;
       return { node, name };
     }
-    case AST_NODE_TYPES.Property: {
-      const name = node.computed || node.shorthand ? null : nameOf(node.key);
-      const callee = rootCallee(node.value);
-      if (name === null || callee === null || !STRING_BUILDERS.has(callee)) return null;
-      return { node, name };
-    }
     case AST_NODE_TYPES.VariableDeclarator: {
       if (node.id.type !== AST_NODE_TYPES.Identifier) return null;
       if (!isBareString(node.id.typeAnnotation?.typeAnnotation)) return null;
@@ -101,26 +91,6 @@ function targetOf(node: TSESTree.Node): Target | null {
 interface Target {
   readonly node: TSESTree.Node;
   readonly name: string;
-}
-
-/** The identifier a call chain hangs off: `text("k").notNull()` -> `text`. */
-function rootCallee(node: TSESTree.Node | null | undefined): string | null {
-  let current: TSESTree.Node | null | undefined = node;
-  for (let hops = 0; current != null && hops < 12; hops += 1) {
-    switch (current.type) {
-      case AST_NODE_TYPES.CallExpression:
-        current = current.callee;
-        break;
-      case AST_NODE_TYPES.MemberExpression:
-        current = current.object;
-        break;
-      case AST_NODE_TYPES.Identifier:
-        return current.name;
-      default:
-        return null;
-    }
-  }
-  return null;
 }
 
 function nameOf(key: TSESTree.Node): string | null {
@@ -152,7 +122,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       unionInComment:
-        'This comment is a type — `{{name}}` still accepts every string, so the set it lists is enforced by nobody. Make it a string-literal union ("{{first}}" | …) and delete the comment.',
+        'The annotation for `{{name}}` accepts arbitrary strings. If this list is exhaustive, express it as a string-literal union ("{{first}}" | …); retain separate runtime constraints or examples.',
     },
   },
   defaultOptions: [],
@@ -184,7 +154,11 @@ export default createRule<Options, MessageIds>({
         node = node.parent
       ) {
         const target = targetOf(node);
-        if (target !== null) return target;
+        if (target !== null) {
+          const follows = target.node.range[1] <= comment.range[0] && target.node.loc.end.line === comment.loc.start.line;
+          const precedes = comment.range[1] <= target.node.range[0] && comment.loc.end.line + 1 === target.node.loc.start.line;
+          return follows || precedes ? target : null;
+        }
       }
       return null;
     }
@@ -198,10 +172,6 @@ export default createRule<Options, MessageIds>({
           if (literals === null) continue;
           const target = annotated(comment);
           if (target === null) continue;
-          // A declaration that already spells every value HAS the type; the
-          // comment beside it is a restatement, which is a different defect.
-          const declaration = sourceCode.getText(target.node);
-          if (literals.every((literal) => declaration.includes(literal))) continue;
           context.report({
             node: comment,
             messageId: "unionInComment",

@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-json-stringify-error.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import type { Scope, SourceCode } from "@typescript-eslint/utils/ts-eslint";
@@ -13,13 +13,13 @@ type MessageIds = "noJsonStringifyError";
 type Options = readonly [];
 
 export const NO_JSON_STRINGIFY_ERROR_DOCUMENTATION = {
-  summary: "Disallow `JSON.stringify` on an Error value; it yields `{}` because `message`/`stack` are non-enumerable.",
+  summary: "Avoid generic JSON serialization that can omit native Error details.",
   rationale: "Native Error details are non-enumerable, so generic JSON serialization discards diagnostic information.",
   remediation: "Serialize explicit error fields or use an error-aware serializer.",
   category: "correctness",
-  limitations: ["The rule uses local catch-binding and constructor provenance rather than type information."],
+  limitations: ["The rule uses stable local catch bindings and unshadowed built-in constructors, not runtime type information. Custom replacers are left to their serializer contract; a catch value is not guaranteed to be an Error."],
   examples: [
-    { id: "explicit-error-message", title: "Serialize an enumerable error field", outcome: "no-match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err.message }); }" }], focusPath: "src/report.ts", expectedCount: 0, public: true },
+    { id: "explicit-error-message", title: "Narrow an unknown catch value before selecting fields", outcome: "no-match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err instanceof Error ? err.message : String(err) }); }" }], focusPath: "src/report.ts", expectedCount: 0, public: true },
     { id: "stringified-error", title: "Do not stringify an Error object", outcome: "match", files: [{ path: "src/report.ts", source: "try { f(); } catch (err) { JSON.stringify({ error: err }); }" }], focusPath: "src/report.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
@@ -60,40 +60,23 @@ function identifierIsProvenError(
   identifier: TSESTree.Identifier,
   scope: Scope.Scope,
 ): boolean {
-  if (isCatchBinding(scope, identifier.name)) return true;
-  let current: Scope.Scope | null = scope;
-  while (current !== null && !current.set.has(identifier.name)) {
-    current = current.upper;
-  }
-  const variable = current?.set.get(identifier.name);
-  if (variable === undefined || variable.defs.length !== 1) return false;
+  const variable = ASTUtils.findVariable(scope, identifier.name);
+  if (variable === null || variable.defs.length !== 1 || variable.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
   const definition = variable.defs[0];
+  if (definition?.type === "CatchClause") return true;
   if (definition?.type !== "Variable") return false;
   const initializer = definition.node.init;
   return (
     initializer?.type === "NewExpression" &&
     initializer.callee.type === "Identifier" &&
     BUILTIN_ERROR_CONSTRUCTORS.has(initializer.callee.name) &&
-    variable.references.every(
-      (reference) => !reference.isWrite() || reference.init === true,
-    )
+    isGlobalIdentifier(initializer.callee.name, scope)
   );
 }
 
-function isCatchBinding(scope: Scope.Scope, name: string): boolean {
-  let current: Scope.Scope | null = scope;
-  while (current) {
-    const variable = current.set.get(name);
-    if (variable) {
-      for (const def of variable.defs) {
-        if (def.type === "CatchClause") {
-          return true;
-        }
-      }
-    }
-    current = current.upper;
-  }
-  return false;
+function isGlobalIdentifier(name: string, scope: Scope.Scope): boolean {
+  const binding = ASTUtils.findVariable(scope, name);
+  return binding === null || binding.defs.length === 0;
 }
 
 function positiveErrorSubject(
@@ -284,7 +267,7 @@ function expressionSuggestsError(
     expression.type === "NewExpression" &&
     expression.callee.type === "Identifier"
   ) {
-    return BUILTIN_ERROR_CONSTRUCTORS.has(expression.callee.name);
+    return BUILTIN_ERROR_CONSTRUCTORS.has(expression.callee.name) && isGlobalIdentifier(expression.callee.name, scope);
   }
   return (
     expression.type === "MemberExpression" &&
@@ -325,12 +308,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow `JSON.stringify` on an Error value; it yields `{}` because `message`/`stack` are non-enumerable.",
+        "Avoid generic JSON serialization that can omit native Error details.",
     },
     schema: [],
     messages: {
       noJsonStringifyError:
-        "`JSON.stringify` on an Error yields `{}` because `message`/`stack` are non-enumerable. Log `err.message` / `err.stack`, or use a proper error serializer.",
+        "Generic `JSON.stringify` can omit non-enumerable Error details such as message and stack. Serialize explicit fields or use an error-aware serializer.",
     },
   },
   defaultOptions: [],
@@ -347,6 +330,9 @@ export default createRule<Options, MessageIds>({
         }
 
         const scope = context.sourceCode.getScope(firstArg);
+        if (!isGlobalIdentifier("JSON", scope)) return;
+        const replacer = node.arguments[1];
+        if (replacer !== undefined && !(replacer.type === "Literal" && replacer.value === null) && !(replacer.type === "Identifier" && replacer.name === "undefined" && isGlobalIdentifier("undefined", scope))) return;
         const unsafeValue = directLiteralValues(firstArg).find(
           (value) =>
             expressionSuggestsError(value, scope) &&

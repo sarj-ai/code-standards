@@ -19,7 +19,8 @@ export const SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION = {
   category: "maintainability",
   limitations: [
     "Framework entrypoints, generic stems covered by no-generic-single-export-module, tests, generated files, anonymous defaults, CommonJS, and re-exports are excluded.",
-    "The rule compares the primary filename stem and preserves conventional suffixes such as .server or .worker.",
+    "The rule compares the primary filename stem and preserves a single private underscore prefix and conventional suffixes such as .server or .worker.",
+    "Exported destructuring patterns are excluded rather than undercounted as public exports.",
   ],
   examples: [
     { id: "matching-class", title: "Match a class and module", outcome: "no-match", files: [{ path: "src/artifact-store.ts", source: "export class ArtifactStore {}" }], focusPath: "src/artifact-store.ts", expectedCount: 0, public: true },
@@ -82,6 +83,7 @@ export default createRule<Options, MessageIds>({
     const normalizedFilename = context.filename.replaceAll("\\", "/");
     if (
       EXCLUDED_STEMS.has(fileStem) ||
+      /(?:^|\/)app\/(?:.*\/)?(?:global-)?error\.[jt]sx?$/u.test(normalizedFilename) ||
       normalizedFilename.includes("/pages/") ||
       context.filename.endsWith(".d.ts") ||
       isTestFile(context.filename) ||
@@ -109,6 +111,7 @@ export default createRule<Options, MessageIds>({
             publicExports.add(declaration.id.name);
           }
           if (declaration?.type === AST_NODE_TYPES.VariableDeclaration) {
+            if (declaration.declarations.some((item) => item.id.type !== AST_NODE_TYPES.Identifier)) return;
             for (const item of declaration.declarations) {
               if (item.id.type === AST_NODE_TYPES.Identifier) publicExports.add(item.id.name);
             }
@@ -131,8 +134,20 @@ export default createRule<Options, MessageIds>({
         if (unique.size !== 1 || publicExports.size !== 1) return;
         const only = [...unique.values()][0];
         if (only === undefined) return;
-        const expected = kebabCase(only.name);
-        if (expected === "" || expected === fileStem.toLowerCase()) return;
+        if (
+          only.name === "onRouterTransitionStart" &&
+          /(?:^|\/)instrumentation-client\.[jt]s$/u.test(normalizedFilename)
+        ) return;
+        if (
+          only.name === "collections" &&
+          /(?:^|\/)src\/content\.config\.(?:ts|js|mjs)$/u.test(normalizedFilename) &&
+          program.body.some((statement) => statement.type === AST_NODE_TYPES.ImportDeclaration &&
+            statement.source.value === "astro:content")
+        ) return;
+        const exportedStem = kebabCase(only.name);
+        if (exportedStem === "") return;
+        const expected = `${fileStem.startsWith("_") ? "_" : ""}${exportedStem}`;
+        if (expected === fileStem.toLowerCase()) return;
         context.report({ node: only.node, messageId: "matchSoleExport", data: { exported: only.name, expected } });
       },
     };

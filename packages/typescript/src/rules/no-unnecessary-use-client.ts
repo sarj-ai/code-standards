@@ -15,9 +15,9 @@ type Options = readonly [];
 export const NO_UNNECESSARY_USE_CLIENT_DOCUMENTATION = {
   summary: "Flag `'use client'` files with no hooks or event handlers — they could be RSC.",
   rationale: "An unnecessary client boundary sends the component and its transitive dependencies to the browser without using client-only behavior.",
-  remediation: "Remove the directive, or keep it only when the module uses a supported client-side API or boundary dependency.",
+  remediation: "Review whether the directive can be removed after checking transitive client requirements and intended export boundaries; local syntax alone does not prove server compatibility.",
   category: "performance",
-  limitations: ["Client need is inferred from recognized hooks, handlers, browser globals, exports, classes, and known client-only imports."],
+  limitations: ["Client need is inferred from recognized hooks, handlers, browser globals, exports, classes, and known client-only imports. Unknown side-effect imports preserve the boundary; arbitrary transitive runtime requirements are not inspected."],
   examples: [
     {
       id: "interactive-component",
@@ -125,8 +125,7 @@ const isUseClientDirective = (
 ): node is TSESTree.ExpressionStatement => {
   return (
     node.type === AST_NODE_TYPES.ExpressionStatement &&
-    node.expression.type === AST_NODE_TYPES.Literal &&
-    node.expression.value === "use client"
+    node.directive === "use client"
   );
 };
 
@@ -226,7 +225,7 @@ export default createRule<Options, MessageIds>({
         for (const stmt of node.body) {
           // Directives must be the first statements; once we see a non-
           // ExpressionStatement, stop scanning.
-          if (stmt.type !== AST_NODE_TYPES.ExpressionStatement) break;
+          if (stmt.type !== AST_NODE_TYPES.ExpressionStatement || stmt.directive === undefined) break;
           if (isUseClientDirective(stmt)) {
             directiveNode = stmt;
             break;
@@ -254,6 +253,7 @@ export default createRule<Options, MessageIds>({
         if (directiveNode === null) return;
         if (typeof node.source.value !== "string") return;
         const source = node.source.value;
+        if (node.importKind !== "type" && node.specifiers.length === 0) hasClientIndicator = true;
         if (
           CLIENT_ONLY_PACKAGES_REGEX.test(source) ||
           CLIENT_REQUIRED_MODULES.has(source)

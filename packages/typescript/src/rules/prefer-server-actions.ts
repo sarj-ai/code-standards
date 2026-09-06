@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-server-actions.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -13,10 +13,10 @@ type MessageIds = "preferServerAction";
 
 export const PREFER_SERVER_ACTIONS_DOCUMENTATION = {
   summary: "Prefer Next.js Server Actions over same-origin API mutations.",
-  rationale: "Server Actions preserve typed application calls and avoid an internal JSON request-response boundary.",
-  remediation: "Move the mutation into a Server Action and invoke that action from the React client.",
+  rationale: "Server Actions can remove a hand-written internal API wrapper while retaining typed application calls. Client invocations still cross a network and serialization boundary.",
+  remediation: "Consider a Server Action for application-owned mutations; preserve authorization, input validation and any public API consumers.",
   category: "architecture",
-  limitations: ["Only statically recognizable /api/ mutations, including one explicitly configured literal deployment base path, in use-client modules are reported; server boundaries and route handlers are excluded."],
+  limitations: ["Only statically recognizable /api/ mutations through global fetch or proven Axios imports/instances in use-client modules are reported. Custom wrapper provenance, mutated configuration and unknown option overrides are not inferred; server boundaries and route handlers are excluded."],
   examples: [
     { id: "server-action-call", title: "Call a Server Action", outcome: "no-match", files: [{ path: "app/tasks/page.tsx", source: "import { createTask } from './actions'; await createTask(input);" }], focusPath: "app/tasks/page.tsx", expectedCount: 0, public: true },
     { id: "api-mutation", title: "Do not mutate through an API route", outcome: "match", files: [{ path: "app/tasks/page.tsx", source: "'use client'; await fetch('/api/tasks', { method: 'POST', body });" }], focusPath: "app/tasks/page.tsx", expectedCount: 1, public: true },
@@ -67,24 +67,45 @@ function resolveNode(
   if (!node) return null;
   if (node.type !== "Identifier") return node;
 
-  let scope: Scope.Scope | null = getScope(context, node);
-  while (scope) {
-    const variable = scope.set.get(node.name);
-    if (variable && variable.defs.length === 1) {
-      const def = variable.defs[0];
-      if (def && def.type === "Variable") {
-        const declarator = def.node;
-        if (
-          declarator.type === "VariableDeclarator" &&
-          declarator.init
-        ) {
-          return declarator.init;
-        }
-      }
-    }
-    scope = scope.upper;
+  const variable = ASTUtils.findVariable(getScope(context, node), node.name);
+  const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
+  if (definition?.type !== "Variable" || definition.parent.kind !== "const" || definition.node.init === null || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return node;
+  if (definition.node.init.type === "ObjectExpression" && variable?.references.some((reference) => reference.identifier !== node && reference.init !== true)) return node;
+  return definition.node.init;
+}
+
+function isAxiosClient(node: TSESTree.Node, context: Ctx, seen = new Set<TSESTree.Node>()): boolean {
+  if (node.type !== "Identifier" || seen.has(node)) return false;
+  seen.add(node);
+  const variable = ASTUtils.findVariable(getScope(context, node), node.name);
+  const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
+  if (definition === undefined || variable?.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+  if (variable?.references.some((reference) => {
+    if (reference.init === true) return false;
+    const identifier = reference.identifier;
+    const parent = identifier.parent;
+    if (parent.type === "CallExpression" && parent.callee === identifier) return false;
+    return parent.type !== "MemberExpression" || parent.object !== identifier || parent.computed ||
+      parent.parent.type !== "CallExpression" || parent.parent.callee !== parent;
+  })) return false;
+  if (definition.type === "ImportBinding") {
+    const declaration = definition.parent;
+    return declaration.type === "ImportDeclaration" && declaration.source.value === "axios" && declaration.importKind !== "type" &&
+      (definition.node.type === "ImportDefaultSpecifier" || (definition.node.type === "ImportSpecifier" && definition.node.importKind !== "type" && (definition.node.imported.type === "Identifier" ? definition.node.imported.name : definition.node.imported.value) === "default"));
   }
-  return node;
+  if (definition.type !== "Variable" || definition.parent.kind !== "const") return false;
+  const init = definition.node.init;
+  return init?.type === "CallExpression" && init.arguments.length <= 1 && hasLocalAxiosOptions(init.arguments[0], context) && init.callee.type === "MemberExpression" && !init.callee.computed &&
+    init.callee.property.type === "Identifier" && init.callee.property.name === "create" && isAxiosClient(init.callee.object, context, seen);
+}
+
+function hasLocalAxiosOptions(node: TSESTree.Node | undefined, context: Ctx): boolean {
+  if (node === undefined) return true;
+  const options = resolveNode(node, context);
+  return options?.type === "ObjectExpression" && options.properties.every((property) =>
+    property.type === "Property" && !property.computed && property.kind === "init" &&
+    !["baseURL", "adapter"].includes(property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? String(property.key.value) : "baseURL"),
+  );
 }
 
 function isApiUrl(
@@ -187,7 +208,8 @@ function getPropertyNode(
   propName: string,
 ): TSESTree.Node | null {
   if (!objNode || objNode.type !== "ObjectExpression") return null;
-  for (const prop of objNode.properties) {
+  if (objNode.properties.some((property) => property.type === "SpreadElement" || property.computed)) return null;
+  for (const prop of [...objNode.properties].reverse()) {
     if (prop.type !== "Property") continue;
     let keyName: string | null = null;
     if (prop.key.type === "Identifier" && !prop.computed) {
@@ -235,7 +257,7 @@ export default createRule<Options, MessageIds>({
     ],
     messages: {
       preferServerAction:
-        "Mutation against a same-origin API route — prefer a Next.js Server Action for type-safety and to avoid the JSON round-trip.",
+        "This client mutation targets a same-origin API route. Consider a Server Action to remove the hand-written API wrapper; retain authorization and validation, since the call still crosses a network boundary.",
     },
   },
   defaultOptions: [{}],
@@ -300,14 +322,16 @@ export default createRule<Options, MessageIds>({
             }
           }
         }
-        // 2. Custom wrappers or Axios: api.post('/api/orders') or axios.put('/api/orders')
+        // Axios method calls require import or instance provenance.
         else if (
           node.callee.type === "MemberExpression" &&
           node.callee.property.type === "Identifier" &&
-          !node.callee.computed
+          !node.callee.computed && isAxiosClient(node.callee.object, context)
         ) {
           const methodName = node.callee.property.name.toLowerCase();
           if (AXIOS_MUTATION_METHODS.has(methodName)) {
+            const config = node.arguments[methodName === "delete" ? 1 : 2];
+            if (!hasLocalAxiosOptions(config, context)) return;
             const urlArg = node.arguments[0];
             const hasHandlerArg = node.arguments.some(
               (arg) =>
@@ -327,12 +351,13 @@ export default createRule<Options, MessageIds>({
         // 3. Direct axios/request call: axios({ method: 'post', url: '/api/orders' })
         else if (
           node.callee.type === "Identifier" &&
-          (node.callee.name === "axios" || node.callee.name === "request")
+          isAxiosClient(node.callee, context)
         ) {
           const firstArg = node.arguments[0];
           if (firstArg && firstArg.type !== "SpreadElement") {
             const configArg = resolveNode(firstArg, context);
             if (configArg && configArg.type === "ObjectExpression") {
+              if (!hasLocalAxiosOptions(firstArg, context)) return;
               const urlNode = getPropertyNode(configArg, "url");
               const methodNode = getPropertyNode(configArg, "method");
               if (

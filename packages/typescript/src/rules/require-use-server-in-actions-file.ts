@@ -17,10 +17,10 @@ export const REQUIRE_USE_SERVER_IN_ACTIONS_FILE_DOCUMENTATION = {
   summary: "route action module missing the use server directive",
   rationale:
     "An exported async function is not callable as a Server Action merely because its file is named actions.ts. Without the module directive, a client import can fail or pull server-only implementation details across the client boundary.",
-  remediation: "Put 'use server' at the start of the route action module.",
+  remediation: "Use a leading module directive for an action-only module, or retain a function-level directive for an inline Server Action. Do not turn mixed non-action exports into a Server Action module.",
   category: "correctness",
   limitations: [
-    "Only exported async functions in actions.ts or *-actions.ts below an app directory are checked; other naming schemes and inline Server Actions are intentionally outside the rule.",
+    "Only direct named exports of async declarations or initialized functions in actions.ts or *-actions.ts below an app directory are checked. Detached/default exports and other naming schemes are not inferred; functions with their own directive are accepted.",
   ],
   examples: [
     {
@@ -46,11 +46,13 @@ export const REQUIRE_USE_SERVER_IN_ACTIONS_FILE_DOCUMENTATION = {
 
 function isExportedAsyncFunction(node: TSESTree.ExportNamedDeclaration): boolean {
   const declaration = node.declaration;
-  if (declaration?.type === "FunctionDeclaration") return declaration.async;
+  const unmarked = (fn: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression): boolean =>
+    fn.async && !(fn.body?.type === "BlockStatement" && fn.body.body.some((statement) => statement.type === "ExpressionStatement" && statement.directive === "use server"));
+  if (declaration?.type === "FunctionDeclaration") return unmarked(declaration);
   return (
     declaration?.type === "VariableDeclaration" &&
     declaration.declarations.some((item) =>
-      item.init?.type === "ArrowFunctionExpression" || item.init?.type === "FunctionExpression" ? item.init.async : false,
+      item.init?.type === "ArrowFunctionExpression" || item.init?.type === "FunctionExpression" ? unmarked(item.init) : false,
     )
   );
 }

@@ -13,6 +13,8 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 RULE_TESTER.run("no-router-refresh-polling", rule, {
   valid: [
+    {name: "reassigned binding is not proven Next router", code: "import {useRouter} from 'next/navigation'; let router=useRouter(); router=cache; setInterval(()=>router.refresh(),1000);"},
+    {name: "function declaration is an execution boundary", code: "import {useRouter} from 'next/navigation'; const router=useRouter(); setInterval(() => {function later(){router.refresh();}}, 1000);"},
     { name: "accepts the documented direct fetch", code: NO_ROUTER_REFRESH_POLLING_DOCUMENTATION.examples[0].files[0].source },
     { name: "allows refresh after a mutation", code: `const router = useRouter(); async function save() { await update(); router.refresh(); }` },
     { name: "allows another object's refresh in a timer", code: `const cache = createCache(); setInterval(() => cache.refresh(), 1000);` },

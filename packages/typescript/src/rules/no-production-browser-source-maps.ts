@@ -4,9 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-production-browser-source-maps.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
-
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { exportedNextConfigProperty } from "./_exported-next-config-property.js";
 
 type MessageIds = "noProductionBrowserSourceMaps";
 type Options = readonly [];
@@ -21,7 +20,7 @@ export const NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION = {
     "Leave productionBrowserSourceMaps disabled and upload private source maps directly to the error-monitoring service during the build.",
   category: "security",
   limitations: [
-    "Only a literal true assigned in a next.config source file is reported; computed or imported configuration is intentionally not inferred.",
+    "Only a literal true in the effective property of a directly exported object, unescaped const alias, or isolated module.exports object is reported. Wrappers, factories, spreads, computed keys and mutations are not inferred.",
   ],
   examples: [
     {
@@ -45,12 +44,6 @@ export const NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function propertyName(node: TSESTree.Property): string | null {
-  if (!node.computed && node.key.type === "Identifier") return node.key.name;
-  if (node.key.type === "Literal" && typeof node.key.value === "string") return node.key.value;
-  return null;
-}
-
 export default createRule<Options, MessageIds>({
   name: "no-production-browser-source-maps",
   documentation: NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION,
@@ -67,9 +60,10 @@ export default createRule<Options, MessageIds>({
   create(context) {
     if (!NEXT_CONFIG_RE.test(context.filename.replaceAll("\\", "/"))) return {};
     return {
-      Property(node): void {
+      "Program:exit"(): void {
+        const node = exportedNextConfigProperty(context.sourceCode, ["productionBrowserSourceMaps"]);
         if (
-          propertyName(node) === "productionBrowserSourceMaps" &&
+          node !== null &&
           node.value.type === "Literal" &&
           node.value.value === true
         ) {

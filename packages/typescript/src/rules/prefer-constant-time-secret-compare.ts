@@ -1,5 +1,5 @@
 /**
- * @fileoverview prefer-constant-time-secret-compare — `===` on a secret short-circuits on the first differing byte, so the response time leaks the secret.
+ * @fileoverview prefer-constant-time-secret-compare — ordinary equality is not guaranteed constant-time for secret comparisons.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-constant-time-secret-compare.test.ts
  */
@@ -7,25 +7,26 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isAuthSecretName } from "./_secret-names.js";
+import { isAuthSecretName, SECRET_WORDS, tokenize } from "./_secret-names.js";
 import { isTestFile } from "./_paths.js";
 
 type MessageIds = "preferConstantTimeSecretCompare";
 type Options = readonly [];
 
 export const PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION = {
-  summary: "Disallow `===`/`!==` on a secret-like value; short-circuiting comparison leaks the secret through timing. Use a constant-time compare.",
-  rationale: "Ordinary equality stops at the first differing byte, allowing repeated measurements to reveal secret material.",
+  summary: "Prefer a supported constant-time comparison primitive for secret-like values.",
+  rationale: "Ordinary equality offers no constant-time guarantee for comparing secrets.",
   remediation: "Compare equal-length cryptographic digests with a constant-time comparison primitive.",
   category: "security",
-  limitations: ["Secret-like values are identified conservatively from their names; test files and public sentinel comparisons are excluded."],
+  limitations: ["This is name-based analysis, not proof of runtime sensitivity. Ambiguous token names require an authentication or cryptographic qualifier; test files and public sentinel comparisons are excluded."],
   examples: [
-    { id: "constant-time-compare", title: "Use a constant-time comparison", outcome: "no-match", files: [{ path: "src/auth.ts", source: "if (await constantTimeEqual(presentedToken, expectedToken)) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
-    { id: "secret-equality", title: "Do not compare secrets with equality", outcome: "match", files: [{ path: "src/auth.ts", source: "if (presentedToken === expectedToken) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
+    { id: "constant-time-compare", title: "Use a constant-time comparison", outcome: "no-match", files: [{ path: "src/auth.ts", source: "if (await constantTimeEqual(presentedAccessToken, expectedAccessToken)) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
+    { id: "secret-equality", title: "Do not compare authentication tokens with equality", outcome: "match", files: [{ path: "src/auth.ts", source: "if (presentedAccessToken === expectedAccessToken) { allow(); }" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
 const EQUALITY_OPERATORS: ReadonlySet<string> = new Set(["===", "!==", "==", "!="]);
+const AUTH_TOKEN_QUALIFIERS: ReadonlySet<string> = new Set(["access", "refresh", "session", "admin", "csrf", "xsrf", "auth", "authentication", "signing", "api"]);
 
 const SENTINEL_IDENTIFIERS: ReadonlySet<string> = new Set(["undefined", "NaN"]);
 
@@ -90,7 +91,9 @@ function isSecretOperand(node: TSESTree.Node): boolean {
     return node.expressions.some((expression) => isSecretOperand(expression));
   }
   const name = operandName(node);
-  return name !== null && isAuthSecretName(name);
+  if (name === null || !isAuthSecretName(name)) return false;
+  const words = tokenize(name);
+  return !words.includes("token") || words.some((word) => AUTH_TOKEN_QUALIFIERS.has(word) || (word !== "token" && SECRET_WORDS.has(word)));
 }
 
 /** The secret identifier this comparison exposes, for the diagnostic message. */
@@ -114,12 +117,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Disallow `===`/`!==` on a secret-like value; short-circuiting comparison leaks the secret through timing. Use a constant-time compare.",
+        "Prefer a supported constant-time comparison primitive for secret-like values.",
     },
     schema: [],
     messages: {
       preferConstantTimeSecretCompare:
-        "`{{operator}}` on secret `{{name}}` short-circuits on the first differing byte and leaks it through timing. Compare constant-time instead (`crypto.subtle.timingSafeEqual` over equal-length SHA-256 digests).",
+        "`{{operator}}` on secret-like `{{name}}` is not guaranteed constant-time. Use a constant-time comparison primitive supported by the target runtime and handle its input-length requirements.",
     },
   },
   defaultOptions: [],

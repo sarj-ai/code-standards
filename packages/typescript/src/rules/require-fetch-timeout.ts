@@ -17,10 +17,11 @@ type Options = readonly [
 ];
 
 export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
-  summary: "Require an abort `signal` (e.g. `AbortSignal.timeout(ms)`) on global `fetch()` calls so stalled upstreams cannot hang the caller forever.",
+  summary: "Require an explicit abort signal on locally analyzable global fetch calls.",
   rationale: "An unbounded request can occupy work indefinitely when an upstream stalls.",
   remediation: "Pass an abort signal, such as `AbortSignal.timeout(ms)`, in the fetch init.",
   category: "correctness",
+  limitations: ["Signal presence establishes an explicit cancellation path, not a guaranteed timeout. Forwarded Request objects can carry an existing signal."],
   examples: [
     { id: "bounded-fetch", title: "Bound the request", outcome: "no-match", files: [{ path: "src/client.ts", source: "await fetch(url, { signal: AbortSignal.timeout(5000) });" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
     { id: "unbounded-fetch", title: "Do not leave fetch unbounded", outcome: "match", files: [{ path: "src/client.ts", source: "await fetch('https://api.example.com/items');" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
@@ -97,7 +98,7 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Require an abort `signal` (e.g. `AbortSignal.timeout(ms)`) on global `fetch()` calls so stalled upstreams cannot hang the caller forever.",
+        "Require an explicit abort signal on locally analyzable global fetch calls.",
     },
     schema: [
       {
@@ -115,7 +116,7 @@ export default createRule<Options, MessageIds>({
     ],
     messages: {
       missingSignal:
-        "This `fetch()` has no abort `signal` — a stalled upstream will hang it forever. Pass `{ signal: AbortSignal.timeout(ms) }` or a signal from an AbortController.",
+        "This `fetch()` has no explicit abort signal. Pass `AbortSignal.timeout(ms)` for a deadline, or an owner-managed signal for cancellation.",
     },
   },
   defaultOptions: [{}],
@@ -191,6 +192,17 @@ export default createRule<Options, MessageIds>({
       return true;
     }
 
+    function isForwardedRequest(argument: TSESTree.CallExpressionArgument): boolean {
+      let value = argument;
+      if (value.type === AST_NODE_TYPES.Identifier) {
+        const binding = ASTUtils.findVariable(context.sourceCode.getScope(value), value.name);
+        const definition = binding?.defs.length === 1 ? binding.defs[0] : undefined;
+        if (definition?.type !== "Variable" || definition.parent.kind !== "const" || definition.node.init === null || binding?.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+        value = definition.node.init;
+      }
+      return value.type === AST_NODE_TYPES.NewExpression && value.callee.type === AST_NODE_TYPES.Identifier && value.callee.name === "Request" && resolvesToGlobal(value.callee);
+    }
+
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         if (!isGlobalFetchCall(node.callee)) {
@@ -202,9 +214,8 @@ export default createRule<Options, MessageIds>({
         // lifetime, and a fresh signal cannot be attached without an init.
         const [first, init] = node.arguments;
         if (
-          node.arguments.length === 1 &&
           first !== undefined &&
-          !isInlineUrl(first, resolvesToGlobal)
+          ((node.arguments.length === 1 && !isInlineUrl(first, resolvesToGlobal)) || isForwardedRequest(first))
         ) {
           return;
         }

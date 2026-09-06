@@ -28,12 +28,14 @@ type MessageIds = "commentWall";
 
 type Options = readonly [Partial<WallOptions>?];
 
+const BEHAVIORAL_RELATION_RE = /\b(?:not|no|never|only|must|shall|should|may|can|could|will|would|required|optional|if|unless|when|before|after|until|while|without|instead|true|false|null|undefined)\b|[<>=!]/iu;
+
 export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
   summary: "Flag an object type whose member comments mostly re-spell the members' own names and types.",
   rationale: "Repetitive member comments add scanning cost while hiding the comments that describe facts absent from the type.",
   remediation: "Delete comments that restate member names or types and keep comments that add constraints or behavior.",
   category: "maintainability",
-  limitations: ["Only interface and type-literal bodies meeting the configured comment-count and restatement-ratio thresholds are reported."],
+  limitations: ["Only interface and type-literal bodies meeting the configured comment-count and restatement-ratio thresholds are reported. Negation, requirements, conditional relations, and fixed-value contracts are not counted as restatements. The novel-word threshold is a review heuristic, not proof that a comment contains no useful contract."],
   examples: [
     {
       id: "uncommented-members",
@@ -79,7 +81,7 @@ export default createRule<Options, MessageIds>({
     schema: [WALL_SCHEMA],
     messages: {
       commentWall:
-        "{{restated}} of this type's {{commented}} member comments only re-spell names and types — delete them; if a row still needs narration, improve its name or type. Keep constraints and rationale.",
+        "{{restated}} of this type's {{commented}} member comments appear to repeat names and types — review them for removal or clearer naming. Keep constraints and rationale.",
     },
   },
   defaultOptions: [WALL_DEFAULTS],
@@ -163,7 +165,7 @@ export default createRule<Options, MessageIds>({
         claimed.add(comment);
         commented += 1;
         const body = commentBody(comment);
-        if (body.length === 0 || hasJsDocTag(comment) || carriesValue(body) || isTagsOnly(body)) {
+        if (body.length === 0 || hasJsDocTag(comment) || carriesValue(body) || isTagsOnly(body) || BEHAVIORAL_RELATION_RE.test(body)) {
           continue;
         }
         if (novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords) {

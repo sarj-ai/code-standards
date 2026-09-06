@@ -17,6 +17,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("require-fetch-timeout", rule, {
   valid: [
+    { name: "preserves a Request signal with an inline init", code: "fetch(new Request('/items', {signal: AbortSignal.timeout(5000)}), {method: 'POST'});" },
+    { name: "preserves a forwarded Request signal with a local init", code: "const request = new Request('/items', {signal: controller.signal}); const init = {method: 'POST'}; fetch(request, init);" },
     { name: "accepts the documented bounded fetch", code: REQUIRE_FETCH_TIMEOUT_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "ignores codemod fixtures",
