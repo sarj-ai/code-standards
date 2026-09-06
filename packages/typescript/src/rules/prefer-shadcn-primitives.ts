@@ -26,6 +26,7 @@ export const PREFER_SHADCN_PRIMITIVES_DOCUMENTATION = {
   remediation: "Replace the raw visible control with the corresponding shared shadcn component.",
   category: "style",
   limitations: [
+    "Native multiple selects and controls with possibly enabled hidden attributes are excluded. Unknown JSX spreads can hide controls; visual equivalence is not inferred.",
     "Hidden and file inputs, unassociated labels, and non-control semantic elements are excluded.",
     "Tests and the shared components/ui primitive implementation tree are excluded.",
     "Package-local project detection is opt-in and fails closed unless components.json, one unambiguous tsconfig/jsconfig alias, the exact primitive module, and its expected export all exist.",
@@ -414,6 +415,7 @@ function replacementFor(
   node: TSESTree.JSXOpeningElement,
   element: RawPrimitive,
 ): Replacement | null {
+  if (element === "select" && mayHaveBooleanAttribute(node, "multiple")) return null;
   if (element !== "input") return RAW_PRIMITIVES[element];
   const typeAttribute = effectiveAttribute(node, "type");
   if (typeAttribute.kind === "unknown") return null;
@@ -428,6 +430,17 @@ function replacementFor(
   }
   if (AMBIGUOUS_INPUT_TYPES.has(inputType)) return null;
   return RAW_PRIMITIVES.input;
+}
+
+function mayHaveBooleanAttribute(node: TSESTree.JSXOpeningElement, name: string): boolean {
+  for (const attribute of node.attributes.toReversed()) {
+    if (attribute.type === AST_NODE_TYPES.JSXSpreadAttribute) return true;
+    if (attribute.name.type !== AST_NODE_TYPES.JSXIdentifier || attribute.name.name !== name) continue;
+    return !(attribute.value?.type === AST_NODE_TYPES.JSXExpressionContainer &&
+      attribute.value.expression.type === AST_NODE_TYPES.Literal &&
+      attribute.value.expression.value === false);
+  }
+  return false;
 }
 
 export default createRule<Options, MessageIds>({
@@ -492,6 +505,11 @@ export default createRule<Options, MessageIds>({
       JSXOpeningElement(node): void {
         const element = rawElementName(node);
         if (element === null) return;
+        if (mayHaveBooleanAttribute(node, "hidden") ||
+          context.sourceCode.getAncestors(node).some((ancestor) =>
+            ancestor.type === AST_NODE_TYPES.JSXElement &&
+            mayHaveBooleanAttribute(ancestor.openingElement, "hidden"),
+          )) return;
         if (element === "label" && !isStaticallyAssociatedLabel(node)) return;
         const replacement = replacementFor(node, element);
         if (replacement === null) return;

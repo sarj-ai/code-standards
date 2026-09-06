@@ -998,7 +998,9 @@
       "task": "rule-audit/eslint/no-dangerously-allow-svg",
       "family": "typescript",
       "ruleId": "no-dangerously-allow-svg",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 13 focused cases pass. One unused configuration example was removed from the pinned corpus; focused cases retain effective exported true values. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Inspect only effective exported Next configuration; abstain for unknown wrappers, spreads, computed keys, or mutable aliases."
     },
     {
       "task": "rule-audit/eslint/no-declaration-comment-wall",
@@ -1046,7 +1048,9 @@
       "task": "rule-audit/eslint/no-hand-rolled-spinner",
       "family": "typescript",
       "ruleId": "no-hand-rolled-spinner",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 26 focused cases pass. Zero corpus hits before and after; focused positive cases retain effective spinner classes. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Honor last JSX property semantics and abstain for a later unknown spread; no proof of replacement component capabilities."
     },
     {
       "task": "rule-audit/eslint/no-impossible-zod-literal-bounds",
@@ -1096,7 +1100,9 @@
       "task": "rule-audit/eslint/no-production-browser-source-maps",
       "family": "typescript",
       "ruleId": "no-production-browser-source-maps",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 13 focused cases pass. Zero corpus hits before and after; effective exported configuration positives and unused-example negatives are covered. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Inspect only effective exported Next configuration rather than arbitrary object properties."
     },
     {
       "task": "rule-audit/eslint/no-raw-env",
@@ -1110,7 +1116,9 @@
       "task": "rule-audit/eslint/no-raw-fetch-outside-clients",
       "family": "typescript",
       "ruleId": "no-raw-fetch-outside-clients",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 83 focused cases pass. All 23 retained corpus hits inspected: two transport-shaped filename exceptions and 21 boundary-policy candidates. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Stage warning. Filename placement is a manual architecture policy, not proof that a client boundary is absent. Preserve precise arbitration with proven internal mutations."
     },
     {
       "task": "rule-audit/eslint/no-repeated-string-literal",
@@ -1144,7 +1152,9 @@
       "task": "rule-audit/eslint/no-router-refresh-polling",
       "family": "typescript",
       "ruleId": "no-router-refresh-polling",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 16 focused cases pass. All three retained corpus hits are actual interval-driven router refresh, including intentional bounded polling. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Preserve function-declaration callback boundaries and abstain for reassigned router bindings; recommend manual data-query review rather than equivalent automatic replacement."
     },
     {
       "task": "rule-audit/eslint/no-secret-in-log",
@@ -1230,7 +1240,9 @@
       "task": "rule-audit/eslint/no-unnecessary-use-client",
       "family": "typescript",
       "ruleId": "no-unnecessary-use-client",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 32 focused cases pass. Both retained corpus hits are presentation wrappers; their transitive client requirements are not proven absent. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Recognize only actual directive prologues and preserve unknown side-effect imports; retain a manual warning for transitive client requirements."
     },
     {
       "task": "rule-audit/eslint/no-unsafe-mock-casting",
@@ -1288,7 +1300,9 @@
       "task": "rule-audit/eslint/prefer-input-group-search",
       "family": "typescript",
       "ruleId": "prefer-input-group-search",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 26 focused cases pass. Zero corpus hits before and after; regression cases cover mutually exclusive branches, interactive icons, and local binding shadows. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Require actual imported Input/Search bindings and abstain when branches or interaction make grouping inappropriate."
     },
     {
       "task": "rule-audit/eslint/prefer-millisecond-control-duration-schema",
@@ -1338,19 +1352,25 @@
       "task": "rule-audit/eslint/prefer-semantic-colors",
       "family": "typescript",
       "ruleId": "prefer-semantic-colors",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 98 focused cases pass, including four absent-class literal-condition regressions. All 56 retained corpus token findings inspected; actual raw palette/color uses. No URL-fragment or conditional-value false positives remain in inspected hits. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Distinguish class-helper object keys from variant values and ignore URL payloads. Token ownership, visualization and brand choices remain manual policy."
     },
     {
       "task": "rule-audit/eslint/prefer-server-actions",
       "family": "typescript",
       "ruleId": "prefer-server-actions",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 77 focused cases pass. Zero corpus hits before and after; regressions prove Map/custom-wrapper and unknown Axios origin exclusions. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Restrict transport evidence to stable unshadowed fetch or proven Axios bindings with known internal origin. Server Actions remain network boundaries needing authorization and validation."
     },
     {
       "task": "rule-audit/eslint/prefer-shadcn-primitives",
       "family": "typescript",
       "ruleId": "prefer-shadcn-primitives",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 48 focused cases pass. All ten retained corpus controls inspected: eight buttons, one text input, and one screen-reader-only label; manual component-policy candidates. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Preserve native multiple selects, hidden controls, and unknown overriding props. Substitution must preserve behavior, accessibility and styling."
     },
     {
       "task": "rule-audit/eslint/prefer-whole-object-assertion",
@@ -1402,13 +1422,17 @@
       "task": "rule-audit/eslint/require-use-form-default-values",
       "family": "typescript",
       "ruleId": "require-use-form-default-values",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 11 focused cases pass. Zero corpus hits before and after; focused regressions retain explicit values and unknown spread configuration. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Abstain when effective options cannot be established. Keep the UI example inside a component."
     },
     {
       "task": "rule-audit/eslint/require-use-server-in-actions-file",
       "family": "typescript",
       "ruleId": "require-use-server-in-actions-file",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 13 focused cases pass. Zero corpus hits before and after; focused cases include inline server directives and mixed exports. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Respect inline server directives and document direct named-export scope; inspect remaining mixed exports manually."
     },
     {
       "task": "rule-audit/eslint/require-zod-form-validation",
@@ -1512,7 +1536,9 @@
       "task": "rule-audit/eslint/sole-export-matches-filename",
       "family": "typescript",
       "ruleId": "sole-export-matches-filename",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent reviews accepted the bounded precision repair; 31 focused cases pass, covering private-prefix preservation and exported destructuring. All 123 baseline corpus hits inspected; two Next/Astro reserved-name false positives removed. Remaining 121 are manual naming candidates, including two possible filename collisions. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
+      "outcome": "Exclude exact framework path/export contracts and unmodeled exported destructuring. Preserve one private underscore prefix. Retain warning without automatic rename; imported sibling collisions and domain naming require manual review."
     },
     {
       "task": "rule-audit/python/complex-postgres-query-requires-architecture-review",

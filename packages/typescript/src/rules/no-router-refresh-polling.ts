@@ -19,8 +19,8 @@ export const NO_ROUTER_REFRESH_POLLING_DOCUMENTATION = {
   category: "performance",
   limitations: ["Only router bindings created from next/navigation useRouter and direct setInterval or window.setInterval callbacks are inspected; generated and test files are excluded."],
   examples: [
-    { id: "poll-named-action", title: "Poll a named action", outcome: "no-match", files: [{ path: "src/status.tsx", source: 'import { useRouter } from "next/navigation"; const router = useRouter(); setInterval(() => fetchStatus(), POLLING_INTERVAL_MS);' }], focusPath: "src/status.tsx", expectedCount: 0, public: true },
-    { id: "poll-router-refresh", title: "Do not poll the whole route", outcome: "match", files: [{ path: "src/status.tsx", source: 'import { useRouter } from "next/navigation"; const router = useRouter(); setInterval(() => router.refresh(), POLLING_INTERVAL_MS);' }], focusPath: "src/status.tsx", expectedCount: 1, public: true },
+    { id: "poll-named-action", title: "Poll a named resource", outcome: "no-match", files: [{ path: "src/status.tsx", source: '"use client"; import { useEffect } from "react"; function Status() { useEffect(() => { const timer = setInterval(() => fetchStatus(), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, []); return null; }' }], focusPath: "src/status.tsx", expectedCount: 0, public: true },
+    { id: "poll-router-refresh", title: "Do not poll the whole route", outcome: "match", files: [{ path: "src/status.tsx", source: '"use client"; import { useEffect } from "react"; import { useRouter } from "next/navigation"; function Status() { const router = useRouter(); useEffect(() => { const timer = setInterval(() => router.refresh(), POLLING_INTERVAL_MS); return () => clearInterval(timer); }, [router]); return null; }' }], focusPath: "src/status.tsx", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -38,6 +38,7 @@ function enclosingIntervalCallback(
   const ancestors = sourceCode.getAncestors(node);
   for (let index = ancestors.length - 1; index >= 0; index -= 1) {
     const ancestor = ancestors[index];
+    if (ancestor?.type === AST_NODE_TYPES.FunctionDeclaration) return null;
     if (
       ancestor?.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
       ancestor?.type !== AST_NODE_TYPES.FunctionExpression
@@ -119,7 +120,7 @@ export default createRule<Options, MessageIds>({
           context.sourceCode.getScope(node.callee.object),
           node.callee.object.name,
         );
-        if (router === null || !routers.has(router)) return;
+        if (router === null || !routers.has(router) || router.references.some((reference) => reference.isWrite() && reference.init !== true)) return;
         const callback = enclosingIntervalCallback(context.sourceCode, node);
         if (callback !== null && !reportedCallbacks.has(callback)) {
           reportedCallbacks.add(callback);

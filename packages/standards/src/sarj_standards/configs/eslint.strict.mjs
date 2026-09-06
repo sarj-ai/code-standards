@@ -1116,7 +1116,7 @@ export function createConfig(options = {}) {
       "@sarj/duplicate-test-body": "error",
       "@sarj/test-loops-over-literal-cases": "error",
       "@sarj/test-phase-label-comment": "error",
-      "@sarj/no-raw-fetch-outside-clients": "error",
+      "@sarj/no-raw-fetch-outside-clients": "warn",
       // Storage policy requires explicit stateless-module boundaries.
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),

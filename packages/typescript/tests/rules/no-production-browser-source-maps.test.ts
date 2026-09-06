@@ -12,12 +12,19 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-production-browser-source-maps", rule, {
   valid: [
+    {filename:"next.config.mjs", code:"const example={productionBrowserSourceMaps:true}; export default {productionBrowserSourceMaps:false};"},
+    {filename:"next.config.mjs", code:"export default {productionBrowserSourceMaps:true,productionBrowserSourceMaps:false};"},
+    {filename:"next.config.mjs", code:"export default {productionBrowserSourceMaps:true,...unknown};"},
+    {filename:"next.config.mjs", code:"export default {example:{productionBrowserSourceMaps:true}};"},
+    {filename:"next.config.mjs", code:"let config={productionBrowserSourceMaps:true}; config={productionBrowserSourceMaps:false}; export default config;"},
     { filename: "next.config.mjs", code: "export default { productionBrowserSourceMaps: false };" },
     { filename: "next.config.ts", code: "export default {};" },
     { filename: "src/options.ts", code: "export const options = { productionBrowserSourceMaps: true };" },
     { filename: "next.config.mjs", code: "export default { productionBrowserSourceMaps: enabled };" },
   ],
   invalid: [
+    {filename:"next.config.ts", code:"const config={productionBrowserSourceMaps:true} satisfies Record<string,boolean>; export default config;", errors:[{messageId:"noProductionBrowserSourceMaps"}]},
+    {filename:"next.config.cjs", code:"module.exports={productionBrowserSourceMaps:true};", errors:[{messageId:"noProductionBrowserSourceMaps"}]},
     {
       filename: "/repo/next.config.mjs",
       code: "export default { productionBrowserSourceMaps: true };",

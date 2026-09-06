@@ -20,6 +20,10 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-unnecessary-use-client", rule, {
   valid: [
+    {name: "string after a call is not a directive", filename: "/repo/src/banner.tsx", code: "boot(); 'use client'; export default function Banner(){return <div/>;}"},
+    {name: "parenthesized string is not a directive", filename: "/repo/src/banner.tsx", code: "('use client'); export default function Banner(){return <div/>;}"},
+    {name: "preserves local side-effect boundary", filename: "/repo/src/banner.tsx", code: "'use client'; import './register-browser-widget'; export default function Banner(){return <div/>;}"},
+    {name: "preserves package side-effect boundary", filename: "/repo/src/banner.tsx", code: "'use client'; import 'browser-bootstrap'; export default function Banner(){return <div/>;}"},
     {
       name: "allows wrappers that render named third-party components",
       code: [

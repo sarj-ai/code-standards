@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-input-group-search.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
@@ -17,6 +17,7 @@ export const PREFER_INPUT_GROUP_SEARCH_DOCUMENTATION = {
   remediation: "Compose the search icon and field with InputGroup, InputGroupAddon, and InputGroupInput.",
   category: "style",
   limitations: [
+    "Opposite branches of the same conditional expression and icons with explicit interaction handlers are excluded; arbitrary component behavior is not inferred.",
     "Only Search and Input bindings imported from the recognized shared modules are paired.",
     "The file must import InputGroup, proving that the repository has adopted that optional primitive.",
   ],
@@ -106,10 +107,31 @@ function isActionIcon(
   search: Occurrence,
   wrapper: TSESTree.JSXElement,
 ): boolean {
+  if (hasInteraction(search.node)) return true;
   return jsxAncestors(search).some((ancestor) => {
     if (ancestor === wrapper) return false;
     const name = elementName(ancestor.openingElement);
-    return name === "a" || name === "button";
+    return name === "a" || name === "button" || hasInteraction(ancestor.openingElement);
+  });
+}
+
+function hasInteraction(node: TSESTree.JSXOpeningElement): boolean {
+  return node.attributes.some((attribute) =>
+    attribute.type === AST_NODE_TYPES.JSXAttribute &&
+    attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
+    /^(?:on[A-Z]|href$)/u.test(attribute.name.name),
+  );
+}
+
+function mutuallyExclusive(left: Occurrence, right: Occurrence): boolean {
+  return left.ancestors.some((ancestor, index) => {
+    if (ancestor.type !== AST_NODE_TYPES.ConditionalExpression) return false;
+    const otherIndex = right.ancestors.indexOf(ancestor);
+    if (otherIndex < 0) return false;
+    const leftBranch = left.ancestors[index + 1];
+    const rightBranch = right.ancestors[otherIndex + 1];
+    return (leftBranch === ancestor.consequent && rightBranch === ancestor.alternate) ||
+      (leftBranch === ancestor.alternate && rightBranch === ancestor.consequent);
   });
 }
 
@@ -138,6 +160,7 @@ export default createRule<Options, MessageIds>({
 
     return {
       ImportDeclaration(node): void {
+        if (node.importKind === "type") return;
         const source = String(node.source.value);
         if (source === "lucide-react") {
           for (const exported of SEARCH_EXPORTS) {
@@ -158,6 +181,10 @@ export default createRule<Options, MessageIds>({
       JSXOpeningElement(node): void {
         const name = elementName(node);
         if (name === null) return;
+        const binding = ASTUtils.findVariable(context.sourceCode.getScope(node), name);
+        if (binding?.defs.length !== 1 ||
+          binding.defs[0]?.node.type !== AST_NODE_TYPES.ImportSpecifier ||
+          binding.defs[0].node.importKind === "type") return;
         const occurrence = {
           ancestors: context.sourceCode.getAncestors(node),
           node,
@@ -171,6 +198,7 @@ export default createRule<Options, MessageIds>({
         for (const search of searches) {
           if (isWithinInputGroup(search, inputGroupNames)) continue;
           for (const input of inputs) {
+            if (mutuallyExclusive(search, input)) continue;
             if (isWithinInputGroup(input, inputGroupNames)) continue;
             const wrapper = nearestEligibleCommonAncestor(
               search,

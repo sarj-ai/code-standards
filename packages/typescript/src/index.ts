@@ -200,7 +200,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.9",
+  version: "15.17.11",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -215,6 +215,7 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-raw-fetch-outside-clients",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
   "@sarj/prefer-millisecond-control-duration-schema",
@@ -360,7 +361,7 @@ const STRICT_RULES = {
   "@sarj/no-positional-tuple-return": "error",
   "@sarj/no-production-browser-source-maps": "error",
   "@sarj/no-raw-env": "error",
-  "@sarj/no-raw-fetch-outside-clients": "error",
+  "@sarj/no-raw-fetch-outside-clients": "warn",
   "@sarj/no-repeated-string-literal": "error",
   "@sarj/no-router-refresh-polling": "error",
   "@sarj/no-restated-comment": "warn",

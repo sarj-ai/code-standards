@@ -17,7 +17,7 @@ export const NO_HAND_ROLLED_SPINNER_DOCUMENTATION = {
   rationale: "One-off loading indicators duplicate a shared primitive and let accessibility and styling diverge.",
   remediation: "Render the design-system Spinner component instead.",
   category: "maintainability",
-  limitations: ["Only static className values on div and span elements are inspected; tests, stories, generated files, and the design-system implementation are excluded."],
+  limitations: ["Only effective static className values on div and span elements are inspected; a later spread makes the value unknown. Tests, stories, generated files, and the design-system implementation are excluded."],
   examples: [
     { id: "design-system-spinner", title: "Use the shared spinner", outcome: "no-match", files: [{ path: "src/loading-state.tsx", source: '<Spinner className="size-4" />' }], focusPath: "src/loading-state.tsx", expectedCount: 0, public: true },
     { id: "border-ring-spinner", title: "Do not rebuild a spinner", outcome: "match", files: [{ path: "src/loading-state.tsx", source: '<div className="size-4 animate-spin rounded-full border-2 border-t-transparent" />' }], focusPath: "src/loading-state.tsx", expectedCount: 1, public: true },
@@ -117,13 +117,14 @@ export default createRule<Options, MessageIds>({
         ) {
           return;
         }
-        const classNameAttribute = node.attributes.find(
-          (attribute): attribute is TSESTree.JSXAttribute =>
-            attribute.type === AST_NODE_TYPES.JSXAttribute &&
+        const classNameAttribute = node.attributes.toReversed().find(
+          (attribute) =>
+            attribute.type === AST_NODE_TYPES.JSXSpreadAttribute ||
+            (attribute.type === AST_NODE_TYPES.JSXAttribute &&
             attribute.name.type === AST_NODE_TYPES.JSXIdentifier &&
-            attribute.name.name === "className",
+            attribute.name.name === "className"),
         );
-        if (classNameAttribute === undefined) return;
+        if (classNameAttribute?.type !== AST_NODE_TYPES.JSXAttribute) return;
         const className = staticClassName(classNameAttribute);
         if (className === null) return;
         const classes = className.split(/\s+/u);

@@ -25,7 +25,7 @@ export const NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION = {
   rationale: "Scattered fetch calls bypass shared transport policy and are harder to stub and observe consistently.",
   remediation: "Move the request into a client module and call that abstraction from application code.",
   category: "architecture",
-  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded. Configure the same literal Next.js basePath here and on prefer-server-actions so one rule owns each internal mutation."],
+  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded. Configure the same literal Next.js basePath here and on prefer-server-actions so one rule owns each internal mutation.", "Effect and pre-signed-transfer exemptions use recognized syntax and naming conventions, not complete React or URL provenance. Those conservative exclusions are recall limitations, not evidence that every excluded request satisfies transport policy."],
   examples: [
     { id: "client-call", title: "Use a client abstraction", outcome: "no-match", files: [{ path: "src/routes/handler.ts", source: "const response = await billingClient.getInvoice(id);" }], focusPath: "src/routes/handler.ts", expectedCount: 0, public: true },
     { id: "raw-fetch", title: "Do not call global fetch here", outcome: "match", files: [{ path: "src/routes/handler.ts", source: "const response = await fetch('/api/invoices');" }], focusPath: "src/routes/handler.ts", expectedCount: 1, public: true },
@@ -331,7 +331,9 @@ export default createRule<Options, MessageIds>({
       );
       if (variable?.defs.length !== 1) return node;
       const definition = variable.defs[0];
-      return definition?.type === "Variable" && definition.node.init !== null
+      return definition?.type === "Variable" && definition.parent.kind === "const" && definition.node.init !== null &&
+        !variable.references.some((reference) => reference.isWrite() && reference.init !== true) &&
+        !(definition.node.init.type === AST_NODE_TYPES.ObjectExpression && variable.references.some((reference) => reference.identifier !== node && reference.init !== true))
         ? definition.node.init
         : node;
     }
@@ -341,7 +343,8 @@ export default createRule<Options, MessageIds>({
       name: string,
     ): TSESTree.Node | null {
       if (node?.type !== AST_NODE_TYPES.ObjectExpression) return null;
-      for (const property of node.properties) {
+      if (node.properties.some((property) => property.type !== AST_NODE_TYPES.Property || property.computed)) return null;
+      for (const property of [...node.properties].reverse()) {
         if (property.type !== AST_NODE_TYPES.Property || property.computed) continue;
         const key = property.key;
         const keyName =

@@ -113,6 +113,11 @@ describe("configs.recommended / configs.strict are flat config", () => {
     expect(extra).toEqual([]);
   });
 
+  it("keeps managed fetch warning strict-only without expanding recommended activation", () => {
+    expect(RECOMMENDED_RULES).not.toHaveProperty("@sarj/no-raw-fetch-outside-clients");
+    expect(STRICT_RULES["@sarj/no-raw-fetch-outside-clients"]).toBe("warn");
+  });
+
   it("strict is at least as strict as recommended, rule for rule", () => {
     const severityOf = (value: unknown): unknown =>
       Array.isArray(value) ? value[0] : value;
@@ -136,6 +141,6 @@ describe("configs.recommended / configs.strict are flat config", () => {
       })
       .map(([rule]) => rule);
     expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
-    expect(nonErrors.toSorted()).toEqual([...ADVISORY_RULES]);
+    expect(nonErrors.toSorted()).toEqual(ADVISORY_RULES.filter(rule => rule in plugin.configs[name].rules));
   });
 });

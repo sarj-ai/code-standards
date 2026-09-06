@@ -216,7 +216,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
   ])("enforces the managed fetch default for $filename", ({ filename, expected }) => {
     const severity = baseSeverities(readFileSync(STRICT_CONFIG_PATH, "utf8"))
       .get("no-raw-fetch-outside-clients");
-    if (severity !== "error") throw new Error("Managed fetch policy must be enabled at error");
+    if (severity !== "warn") throw new Error("Managed fetch policy must remain a non-blocking warning");
     const messages = new Linter({ cwd: "/repo" }).verify(
       "const response = fetch('https://example.com/data');",
       {
@@ -227,6 +227,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
       { filename },
     );
     expect(messages.map(message => message.ruleId)).toEqual(expected);
+    expect(messages.every(message => message.severity === 1)).toBe(true);
   });
 
   /**

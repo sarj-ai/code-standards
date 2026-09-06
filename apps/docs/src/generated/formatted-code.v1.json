@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f3786bc46f8d4245fc925e9134c507c1f18ecf2ef52b5b01c6e465ad65f064d5",
-  "cliSha256": "aca5bb44230be9615c31f62b9c7ce9f664cbe83944005d2ed4cf301521702fb9",
+  "catalogSha256": "feb2adef14d35b493e32a834e11e1b35ca969a6354ba189b5d5dae06e1d9fcd7",
+  "cliSha256": "f4a2e6648019874b445dd529ae7c8ffef89b83efec4d6c7b4902a1223a0569f1",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1203,7 +1203,7 @@
           "files": [
             {
               "path": "src/status.tsx",
-              "source": "import { useRouter } from \"next/navigation\";\nconst router = useRouter();\nsetInterval(() => fetchStatus(), POLLING_INTERVAL_MS);\n"
+              "source": "\"use client\";\nimport { useEffect } from \"react\";\nfunction Status() {\n  useEffect(() => {\n    const timer = setInterval(() => fetchStatus(), POLLING_INTERVAL_MS);\n    return () => clearInterval(timer);\n  }, []);\n  return null;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -1211,14 +1211,14 @@
           "id": "poll-named-action",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Poll a named action"
+          "title": "Poll a named resource"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "src/status.tsx",
-              "source": "import { useRouter } from \"next/navigation\";\nconst router = useRouter();\nsetInterval(() => router.refresh(), POLLING_INTERVAL_MS);\n"
+              "source": "\"use client\";\nimport { useEffect } from \"react\";\nimport { useRouter } from \"next/navigation\";\nfunction Status() {\n  const router = useRouter();\n  useEffect(() => {\n    const timer = setInterval(() => router.refresh(), POLLING_INTERVAL_MS);\n    return () => clearInterval(timer);\n  }, [router]);\n  return null;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3028,7 +3028,7 @@
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "import { useForm } from \"react-hook-form\";\nconst form = useForm({ defaultValues: { name: \"\" } });\n"
+              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ defaultValues: { name: \"\" } });\n  return <input {...form.register(\"name\")} />;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3043,7 +3043,7 @@
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "import { useForm } from \"react-hook-form\";\nconst form = useForm({ mode: \"onChange\" });\n"
+              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ mode: \"onChange\" });\n  return <input {...form.register(\"name\")} />;\n}\n"
             }
           ],
           "fixedFiles": [],
