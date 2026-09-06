@@ -26,8 +26,8 @@ export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
   rationale: "Wrapping a TypeScript enum preserves its emitted runtime object and duplicates the schema's value definition across two constructs.",
   remediation: "Pass string literals directly to `z.enum` and derive the TypeScript type with `z.infer`.",
   category: "maintainability",
-  autofix: "safe",
-  limitations: ["Automatic fixes are limited to inline object literals whose unique values are all string literals."],
+  autofix: "none",
+  limitations: ["Migration is manual: replacing an enum-like object with a value array changes the public schema.enum keys and can affect consumers."],
   examples: [
     {
       id: "zod-literal-enum",
@@ -46,7 +46,6 @@ export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
       focusPath: "src/status.ts",
       expectedCount: 1,
       public: true,
-      fixedFiles: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.enum([\"active\", \"inactive\"]);" }],
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -79,34 +78,6 @@ function unwrap(node: TSESTree.Expression): TSESTree.Expression {
     return unwrap(node.expression);
   }
   return node;
-}
-
-/** Returns unique string-literal values when the object can be safely rewritten. */
-function stringValueTexts(
-  node: TSESTree.ObjectExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): string[] | null {
-  const texts: string[] = [];
-  for (const prop of node.properties) {
-    if (prop.type !== AST_NODE_TYPES.Property) {
-      return null;
-    }
-    if (prop.computed || prop.shorthand || prop.method || prop.kind !== "init") {
-      return null;
-    }
-    const value = prop.value;
-    if (
-      value.type !== AST_NODE_TYPES.Literal ||
-      typeof value.value !== "string"
-    ) {
-      return null;
-    }
-    const text = sourceCode.getText(value);
-    if (!texts.includes(text)) {
-      texts.push(text);
-    }
-  }
-  return texts.length > 0 ? texts : null;
 }
 
 /** Resolves an identifier to a `TSEnumDeclaration` declared in this file. */
@@ -151,7 +122,6 @@ export default createRule<Options, MessageIds>({
   documentation: NO_ZOD_NATIVE_ENUM_DOCUMENTATION,
   meta: {
     type: "suggestion",
-    fixable: "code",
     docs: {
       description:
         "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
@@ -219,40 +189,6 @@ export default createRule<Options, MessageIds>({
       return false;
     }
 
-    function buildFix(
-      node: TSESTree.CallExpression,
-    ): TSESLint.ReportFixFunction | null {
-      const callee = node.callee;
-      if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.property.type !== AST_NODE_TYPES.Identifier
-      ) {
-        return null;
-      }
-      const arg = node.arguments[0];
-      if (
-        arg === undefined ||
-        node.arguments.length !== 1 ||
-        arg.type === AST_NODE_TYPES.SpreadElement
-      ) {
-        return null;
-      }
-      const inner = unwrap(arg);
-      if (inner.type !== AST_NODE_TYPES.ObjectExpression) {
-        return null;
-      }
-      const values = stringValueTexts(inner, sourceCode);
-      if (values === null) {
-        return null;
-      }
-      const property = callee.property;
-      const replacementArg = `[${values.join(", ")}]`;
-      return (fixer) => [
-        fixer.replaceText(property, "enum"),
-        fixer.replaceText(arg, replacementArg),
-      ];
-    }
-
     return {
       ImportDeclaration(node: TSESTree.ImportDeclaration): void {
         if (!isZodModule(node.source.value)) {
@@ -284,11 +220,9 @@ export default createRule<Options, MessageIds>({
 
       CallExpression(node: TSESTree.CallExpression): void {
         if (isZodMemberCall(node, "nativeEnum")) {
-          const fix = buildFix(node);
           context.report({
             node,
             messageId: "nativeEnum",
-            ...(fix === null ? {} : { fix }),
           });
           return;
         }
