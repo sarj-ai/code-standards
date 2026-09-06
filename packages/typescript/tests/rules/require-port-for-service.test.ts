@@ -20,6 +20,8 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 
 RULE_TESTER.run("require-port-for-service", rule, {
   valid: [
+    { name: "quoted callable keys match equivalent interface keys", code: 'interface Handler { "handle"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }' },
+    { name: "quoted function properties match equivalent port properties", code: 'interface Handler { "handle": () => void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle" = () => { this.store.handle(); }; }' },
     { name: "accepts the documented service port", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "treats a retained metadata record read through fields as constructor data",
@@ -957,6 +959,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
   ],
 
   invalid: [
+    { name: "different quoted method names do not establish a port", code: 'interface Handler { "save"(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} "handle"(): void { this.store.handle(); } }', errors: [{ messageId: "requireInterface" }] },
     { name: "reports the documented concrete service", filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].focusPath, code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" } }] },
     {
       name: "selects the concrete constructor after overload signatures",

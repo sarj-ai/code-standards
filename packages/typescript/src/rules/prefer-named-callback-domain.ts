@@ -31,7 +31,10 @@ function isLiteralUnion(node: TSESTree.TypeNode): boolean {
 function exportedContract(node: TSESTree.Node): boolean {
   let current: TSESTree.Node | undefined = node;
   while (current !== undefined) {
-    if (current.type === AST_NODE_TYPES.ExportNamedDeclaration) return true;
+    if (
+      current.type === AST_NODE_TYPES.TSTypeAliasDeclaration ||
+      current.type === AST_NODE_TYPES.TSInterfaceDeclaration
+    ) return current.parent.type === AST_NODE_TYPES.ExportNamedDeclaration;
     if (current.type === AST_NODE_TYPES.Program) return false;
     current = current.parent ?? undefined;
   }

@@ -12,6 +12,9 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parser
 
 RULE_TESTER.run("prefer-switch-for-repeated-equality", rule, {
   valid: [
+    { name: "does not collapse repeated effectful selector evaluation", code: "if (next() === 'a') a(); else if (next() === 'b') b(); else if (next() === 'c') c();" },
+    { name: "does not collapse a selector with an observable getter", code: "if (state.kind === 'a') a(); else if (state.kind === 'b') b(); else if (state.kind === 'c') c();" },
+    { name: "does not collapse indexed selector reads", code: "if (state[key] === 'a') a(); else if (state[key] === 'b') b(); else if (state[key] === 'c') c();" },
     "if (kind === 'a') a(); else if (kind === 'b') b();",
     "if (kind === 'a') a(); else if (other === 'b') b(); else if (kind === 'c') c();",
     "if (score > 90) a(); else if (score > 80) b(); else if (score > 70) c();",

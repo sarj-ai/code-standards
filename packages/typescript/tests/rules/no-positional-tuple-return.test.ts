@@ -17,6 +17,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-positional-tuple-return", rule, {
   valid: [
+    { name: "local object alias shadows outer tuple", code: "type Result = [string, number]; function outer() { type Result = { value: string }; function read(): Result { return {value: 'ok'}; } }" },
+    { name: "type parameter shadows outer tuple", code: "type Result = [string, number]; function identity<Result>(value: Result): Result { return value; }" },
     { name: "accepts the documented named object", code: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "does not collide a nested interface name with an exported top-level interface",
@@ -44,6 +46,7 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
     { name: "explicit non-tuple contract wins over const implementation", code: "function pair(): unknown { return ['a', 1] as const; }" },
   ],
   invalid: [
+    { name: "unshadowed outer tuple alias remains checked inside a function", code: "type Result = [string, number]; function outer() { function read(): Result { return load(); } }", errors: [{ messageId: "noPositionalTupleReturn" }] },
     { name: "reports the documented tuple return", code: NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noPositionalTupleReturn" }] },
     {
       name: "rejects a private method",

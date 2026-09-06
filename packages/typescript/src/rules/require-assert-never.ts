@@ -23,6 +23,7 @@ export const REQUIRE_ASSERT_NEVER_DOCUMENTATION = {
   rationale: "An empty default silently accepts new union members instead of making the compiler identify the missing case.",
   remediation: "Call `assertNever` with the discriminant in the exhaustive switch default.",
   category: "correctness",
+  limitations: ["Requires type information and singleton case values covering the current union. The helper must accept never to provide a compile-time check; its spelling alone is not a proof of that contract. Review the desired runtime behavior for unexpected external values."],
   examples: [
     { id: "assert-never-default", title: "Make the default exhaustive", outcome: "no-match", files: [{ path: "src/render.ts", source: "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: assertNever(kind); }" }], focusPath: "src/render.ts", expectedCount: 0, public: true },
     { id: "empty-default", title: "Do not leave an exhaustive default empty", outcome: "match", files: [{ path: "src/render.ts", source: "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: }" }], focusPath: "src/render.ts", expectedCount: 1, public: true },
@@ -122,11 +123,10 @@ function isExhaustiveFiniteSwitch(
     if (caseNode.test === null) continue;
     const test = services.esTreeNodeToTSNodeMap.get(caseNode.test);
     const testType = checker.getTypeAtLocation(test);
-    const alternatives = testType.isUnion() ? testType.types : [testType];
-    for (const alternative of alternatives) {
-      const key = finiteTypeKey(alternative, checker);
-      if (key !== null) handled.add(key);
-    }
+    // A union-valued expression evaluates to one value, not every alternative.
+    if (testType.isUnion()) continue;
+    const key = finiteTypeKey(testType, checker);
+    if (key !== null) handled.add(key);
   }
   return [...expected].every((key) => handled.has(key));
 }

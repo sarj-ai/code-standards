@@ -608,15 +608,14 @@ const publicMethodNames = (
           functionAliases.has(member.typeAnnotation.typeAnnotation.typeName.name)
         )
       ) continue;
-      names.push(member.key.type === AST_NODE_TYPES.Identifier ? member.key.name : "…");
+      names.push(declaredMemberName(member) ?? "…");
       continue;
     }
     if (member.type !== AST_NODE_TYPES.MethodDefinition) continue;
     if (member.kind !== "method" || member.static) continue;
     if (member.accessibility === "private" || member.accessibility === "protected") continue;
     if (member.key.type === AST_NODE_TYPES.PrivateIdentifier) continue;
-    if (member.key.type === AST_NODE_TYPES.Identifier) names.push(member.key.name);
-    else names.push("…");
+    names.push(declaredMemberName(member) ?? "…");
   }
   return names;
 };
@@ -676,6 +675,12 @@ function localClassAbstractness(program: TSESTree.Program): ReadonlyMap<string, 
   return classes;
 }
 
+function declaredMemberName(member: { key: TSESTree.Node; computed: boolean }): string | null {
+  if (!member.computed && member.key.type === AST_NODE_TYPES.Identifier) return member.key.name;
+  if (member.key.type === AST_NODE_TYPES.Literal && typeof member.key.value === "string") return member.key.value;
+  return null;
+}
+
 function localInterfaceSurfaces(program: TSESTree.Program): ReadonlyMap<string, ReadonlySet<string>> {
   const interfaces = new Map<string, Set<string>>();
   const parents = new Map<string, string[]>();
@@ -711,9 +716,10 @@ function localInterfaceSurfaces(program: TSESTree.Program): ReadonlyMap<string, 
             member.type !== AST_NODE_TYPES.TSMethodSignature &&
             member.type !== AST_NODE_TYPES.TSPropertySignature
           ) continue;
-          if (member.computed || member.key.type !== AST_NODE_TYPES.Identifier) continue;
+          const name = declaredMemberName(member);
+          if (name === null) continue;
           if (member.type === AST_NODE_TYPES.TSMethodSignature) {
-            callables.add(member.key.name);
+            callables.add(name);
             continue;
           }
           if (member.type !== AST_NODE_TYPES.TSPropertySignature) continue;
@@ -723,7 +729,7 @@ function localInterfaceSurfaces(program: TSESTree.Program): ReadonlyMap<string, 
             (annotation?.type === AST_NODE_TYPES.TSTypeReference &&
               annotation.typeName.type === AST_NODE_TYPES.Identifier &&
               functionAliases.has(annotation.typeName.name))
-          ) callables.add(member.key.name);
+          ) callables.add(name);
         }
       }
       interfaces.set(declaration.id.name, callables);
@@ -737,14 +743,15 @@ function localInterfaceSurfaces(program: TSESTree.Program): ReadonlyMap<string, 
         member.type !== AST_NODE_TYPES.TSMethodSignature &&
         member.type !== AST_NODE_TYPES.TSPropertySignature
       ) continue;
-      if (member.computed || member.key.type !== AST_NODE_TYPES.Identifier) continue;
+      const name = declaredMemberName(member);
+      if (name === null) continue;
       if (
         member.type === AST_NODE_TYPES.TSMethodSignature ||
         member.typeAnnotation?.typeAnnotation.type === AST_NODE_TYPES.TSFunctionType ||
         (member.typeAnnotation?.typeAnnotation.type === AST_NODE_TYPES.TSTypeReference &&
           member.typeAnnotation.typeAnnotation.typeName.type === AST_NODE_TYPES.Identifier &&
           functionAliases.has(member.typeAnnotation.typeAnnotation.typeName.name))
-      ) callables.add(member.key.name);
+      ) callables.add(name);
     }
     interfaces.set(declaration.id.name, callables);
     parents.set(

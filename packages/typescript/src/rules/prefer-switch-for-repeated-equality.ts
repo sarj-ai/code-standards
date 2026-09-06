@@ -18,6 +18,7 @@ export const PREFER_SWITCH_FOR_REPEATED_EQUALITY_DOCUMENTATION = {
   category: "maintainability",
   limitations: [
     "Only direct if/else-if chains with at least three strict-equality tests are reported.",
+    "The discriminant must be a bare identifier; calls, getters, indexed reads and other repeatedly evaluated expressions are excluded. Review case-value effects, selector mutation, branch scoping, and break/continue targets when converting manually; this is not an equivalence proof.",
     "Case values may be literals, enum-like member references, or upper-case named constants; dynamic expressions are excluded.",
     "The rule deliberately ignores compound predicates, loose equality, ranges, and chains that compare different discriminants.",
   ],
@@ -35,7 +36,8 @@ function discriminantText(
   const leftIsCase = isCaseValue(test.left);
   const rightIsCase = isCaseValue(test.right);
   if (leftIsCase === rightIsCase) return null;
-  return sourceCode.getText(leftIsCase ? test.right : test.left);
+  const discriminant = leftIsCase ? test.right : test.left;
+  return discriminant.type === AST_NODE_TYPES.Identifier ? sourceCode.getText(discriminant) : null;
 }
 
 function isCaseValue(node: TSESTree.Expression | TSESTree.PrivateIdentifier): boolean {

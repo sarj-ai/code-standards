@@ -17,6 +17,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
   valid: [
+    { name: "preserves injected fallback named undefined", code: "function run(undefined) { try { return load(); } catch { return undefined; } }" },
+    { name: "preserves wrapped lexical fallback named undefined", code: "const undefined = fallback; function run() { try { return load(); } catch { return undefined as Value; } }" },
     { name: "accepts the documented reported fallback", code: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "ignores generated request clients",
