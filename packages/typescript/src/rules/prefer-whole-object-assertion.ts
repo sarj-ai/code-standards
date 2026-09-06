@@ -33,13 +33,14 @@ const MIN_RUN_LENGTH = 2;
 export const PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION = {
   summary: "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
   rationale: "One whole-object assertion presents related expectations together and produces a complete structural diff.",
-  remediation: "Replace consecutive member assertions with one `toMatchObject` assertion.",
+  remediation: "Consider one `toMatchObject` assertion for ordinary data objects. Preserve missing-property checks, identity, and getter or proxy behavior when deciding whether to combine assertions.",
   category: "testing",
   aliases: ["strict-test-assertions"],
-  autofix: "safe",
+  autofix: "none",
+  limitations: ["No automatic rewrite: whole-object matching can require previously absent properties and change observable getter or proxy reads."],
   examples: [
     { id: "whole-object", title: "Assert the object once", outcome: "no-match", files: [{ path: "src/user.test.ts", source: "expect(user).toMatchObject({ id: 1, name: 'Ada' });" }], focusPath: "src/user.test.ts", expectedCount: 0, public: true },
-    { id: "member-run", title: "Do not split one object across assertions", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(user.id).toBe(1);\nexpect(user.name).toBe('Ada');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/user.test.ts", source: "expect(user).toMatchObject({ id: 1, name: 'Ada' });\n" }] },
+    { id: "member-run", title: "Consider grouping related data properties", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(user.id).toBe(1);\nexpect(user.name).toBe('Ada');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -127,10 +128,9 @@ export default createRule<Options, MessageIds>({
       description:
         "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
     },
-    fixable: "code",
     messages: {
       combineAssertions:
-        "These {{count}} assertions each check one property of `{{receiver}}` against a literal, so the first mismatch hides the rest. Assert the object once: `expect({{receiver}}).toMatchObject({ … })`.",
+        "Consider combining these {{count}} assertions on `{{receiver}}` with `toMatchObject` when structural matching preserves property presence and getter or proxy behavior.",
       assertArrayOnce:
         "These {{count}} assertions check `{{receiver}}[0]`…`{{receiver}}[{{last}}]` one at a time, which never checks how long `{{receiver}}` is — extra elements pass unnoticed. Assert the array once: `expect({{receiver}}).{{matcher}}([ … ])`.",
     },
@@ -215,20 +215,7 @@ export default createRule<Options, MessageIds>({
       };
     }
 
-    function hasInterveningComment(run: readonly Assertion[]): boolean {
-      return run.some(
-        (assertion, index) =>
-          sourceCode.getCommentsInside(assertion.statement).length > 0 ||
-          (index > 0 && sourceCode.getCommentsBefore(assertion.statement).length > 0),
-      );
-    }
-
-    /**
-     * A property run is reportable only when the merged `toMatchObject` says
-     * exactly what the run says: every matcher mergeable, every expected value a
-     * primitive literal, and every key distinct so nothing is lost to a
-     * duplicate object property.
-     */
+    /** Distinct literal expectations are candidates, not proof of equivalent runtime reads. */
     function reportPropertyRun(run: readonly Assertion[]): void {
       type ObjectTree = Map<string, string | ObjectTree>;
       const tree: ObjectTree = new Map();
@@ -276,20 +263,10 @@ export default createRule<Options, MessageIds>({
         return;
       }
       const receiverText = `${sourceCode.getText(first.receiver)}${commonPrefix.map((name) => `.${name}`).join("")}`;
-      const renderTree = (value: ObjectTree): string => [...value.entries()]
-        .map(([name, child]) => `${name}: ${child instanceof Map ? `{ ${renderTree(child)} }` : child}`)
-        .join(", ");
-      const properties = renderTree(tree);
       context.report({
         node: first.statement,
         messageId: "combineAssertions",
         data: { count: String(run.length), receiver: receiverText },
-        fix: hasInterveningComment(run)
-          ? null
-          : (fixer) => [
-              fixer.replaceText(first.statement, `expect(${receiverText}).toMatchObject({ ${properties} });`),
-              ...run.slice(1).map((assertion) => fixer.remove(assertion.statement)),
-            ],
       });
     }
 

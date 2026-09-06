@@ -1242,7 +1242,9 @@
       "task": "rule-audit/eslint/no-zod-native-enum",
       "family": "typescript",
       "ruleId": "no-zod-native-enum",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test, UI and candidate reviews confirmed that the former inline-object rewrite changes public schema.enum keys and can discard comments. All 134 focused cases across the three-rule safety batch pass, including executed Zod enum-key, introspection, validation-error and missing-property counterexamples. A pinned 80-rule survey in 16 fresh-process batches covered 2,963 analyzed files and 17,790,175 bytes across five private consumers and installed public Zod, TypeScript and ESLint packages; seven oversized files and four type-required rules were explicitly excluded. The native-enum rule had no corpus matches, so its positive fixtures, not zero findings, establish detection. Installed packages are not complete upstream repositories.",
+      "outcome": "Retain the compatible name and existing explicit enum policy at error severity. Remove the automatic object-to-array migration and its fixedFiles UI example. Require manual review of schema.enum keys, duplicate-key behavior, comments and downstream references; preserve the detector and paired manual examples."
     },
     {
       "task": "rule-audit/eslint/prefer-await-in-async-return",
@@ -1346,7 +1348,9 @@
       "task": "rule-audit/eslint/prefer-whole-object-assertion",
       "family": "typescript",
       "ruleId": "prefer-whole-object-assertion",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test, UI and candidate reviews confirmed unsafe missing-property and observable-read rewrites. All 134 focused cases across the safety batch pass. The pinned isolated survey covered 2,963 analyzed files, seven oversized exclusions and 17,790,175 bytes in 16 fresh-process batches of at most 250 files. It used five private consumers and installed public Zod, TypeScript and ESLint, not complete upstream repositories; four type-required rules were excluded. Both baseline and candidate emitted 1,942 combined findings from 80 rules, including 47 whole-object findings. Every whole-object finding was inspected: five concrete unsafe presence rewrites, two observable-object manual-review cases, and 40 reasonable advisory candidates, not proven equivalent transformations. Aggregate batch time was 19.242 seconds before and 19.193 seconds after, with 626.6 and 662.2 MiB peak RSS; these single load-sensitive runs are not controlled performance guarantees.",
+      "outcome": "Retain the compatible rule name, stage this judgment-heavy rule as a warning, and remove automatic assertion merging. Recommend manual grouping only when property presence, identity, getter and proxy reads preserve intended semantics. Array recommendations remain manual. Remove the UI automatic-fix claim without treating shorter tests as proof of equivalent assertions."
     },
     {
       "task": "rule-audit/eslint/prefer-zod-infer",
@@ -1448,7 +1452,9 @@
       "task": "rule-audit/eslint/prefer-multi-value-zod-literal",
       "family": "typescript",
       "ruleId": "prefer-multi-value-zod-literal",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test, UI and candidate reviews confirmed that replacing ZodUnion with ZodLiteral changes schema.options and validation error shapes despite accepting the same values. All 134 focused cases across the safety batch pass, including executed schema and error-contract counterexamples. The isolated pinned 80-rule survey covered 2,963 analyzed files and 17,790,175 bytes in 16 fresh-process batches across five private consumers and installed public Zod, TypeScript and ESLint packages; seven oversized files and four type-required rules were excluded. There were no multi-value matches in this corpus; positive fixtures prove the version-gated rule still fires. Installed packages are not complete upstream repositories.",
+      "outcome": "Retain the compatible name and existing warning severity. Remove the automatic union-to-literal conversion and fixedFiles UI example. Require manual review of schema introspection and error consumers. Preserve Zod 4 gating and leave all-string literal unions to the existing upstream owner."
     },
     {
       "task": "rule-audit/eslint/prefer-named-callback-domain",

@@ -24,11 +24,11 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
     "One multi-value literal expresses the same closed value domain without repeated schema wrappers.",
   remediation: "Replace the union with z.literal([value1, value2, ...]).",
   category: "maintainability",
-  autofix: "safe",
+  autofix: "none",
   limitations: [
     "Bare zod imports are analyzed only when the rule option explicitly declares zodMajorVersion: 4; explicit zod/v4 entrypoints are self-declaring.",
     "All-string domains are left to zod/prefer-enum-over-literal-union.",
-    "A finding containing comments is not autofixed because moving its trivia is ambiguous.",
+    "Migration is manual: ZodLiteral and ZodUnion expose different introspection APIs and validation error shapes even when they accept the same values.",
   ],
   examples: [
     {
@@ -52,11 +52,6 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
         path: "src/schema.ts",
         source:
           "import { z } from 'zod'; export const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);",
-      }],
-      fixedFiles: [{
-        path: "src/schema.ts",
-        source:
-          "import { z } from 'zod'; export const Version = z.literal([1, 2, 3]);",
       }],
       focusPath: "src/schema.ts",
       expectedCount: 1,
@@ -109,7 +104,6 @@ export default createRule<Options, MessageIds>({
   documentation: PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
   meta: {
     type: "suggestion",
-    fixable: "code",
     docs: {
       description:
         "Use the Zod 4 multi-value literal API instead of a union of literal schemas.",
@@ -220,21 +214,10 @@ export default createRule<Options, MessageIds>({
         if (values.every(isStaticString)) return;
 
         const namespace = node.callee.object.name;
-        const hasComments =
-          context.sourceCode.getCommentsInside(node).length > 0;
         context.report({
           node,
           messageId: "useMultiValueLiteral",
           data: { zod: namespace },
-          fix: hasComments
-            ? null
-            : (fixer) =>
-                fixer.replaceText(
-                  node,
-                  `${namespace}.literal([${values
-                    .map((value) => context.sourceCode.getText(value))
-                    .join(", ")}])`,
-                ),
         });
       },
     } satisfies TSESLint.RuleListener;

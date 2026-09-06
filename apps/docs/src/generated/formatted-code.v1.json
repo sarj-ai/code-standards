@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "dcc44a6bc433fffd4a6af6dd9986975f6072b33ee7aadd38132056adc8d251ce",
-  "cliSha256": "3c12501256dfffc76f3aff832a603d3baf47e1828a561801a16441d8e673de96",
+  "catalogSha256": "086a857ac2369e8e1b7cf89277b672383fa53109062dfc0259dda59400cdd01a",
+  "cliSha256": "aca5bb44230be9615c31f62b9c7ce9f664cbe83944005d2ed4cf301521702fb9",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1816,12 +1816,7 @@
               "source": "import { z } from \"zod\";\nconst S = z.nativeEnum({ Active: \"active\", Inactive: \"inactive\" });\n"
             }
           ],
-          "fixedFiles": [
-            {
-              "path": "src/status.ts",
-              "source": "import { z } from \"zod\";\nconst S = z.enum([\"active\", \"inactive\"]);\n"
-            }
-          ],
+          "fixedFiles": [],
           "focusPath": "src/status.ts",
           "id": "zod-native-enum",
           "outcome": "reject",
@@ -2196,12 +2191,7 @@
               "source": "import { z } from \"zod\";\nexport const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);\n"
             }
           ],
-          "fixedFiles": [
-            {
-              "path": "src/schema.ts",
-              "source": "import { z } from \"zod\";\nexport const Version = z.literal([1, 2, 3]);\n"
-            }
-          ],
+          "fixedFiles": [],
           "focusPath": "src/schema.ts",
           "id": "literal-union",
           "outcome": "reject",
@@ -2691,17 +2681,12 @@
               "source": "expect(user.id).toBe(1);\nexpect(user.name).toBe(\"Ada\");\n"
             }
           ],
-          "fixedFiles": [
-            {
-              "path": "src/user.test.ts",
-              "source": "expect(user).toMatchObject({ id: 1, name: \"Ada\" });\n"
-            }
-          ],
+          "fixedFiles": [],
           "focusPath": "src/user.test.ts",
           "id": "member-run",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not split one object across assertions"
+          "title": "Consider grouping related data properties"
         },
         {
           "expectedCount": 0,
