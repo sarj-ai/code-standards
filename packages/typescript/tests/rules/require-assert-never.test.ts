@@ -25,6 +25,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("require-assert-never", rule, {
   valid: [
+    { name: "does not treat one union-valued case as covering every possible value", code: "declare const kind: 'a' | 'b'; declare const choice: 'a' | 'b'; switch (kind) { case choice: break; default: }" },
+    { name: "does not count an open case expression as finite coverage", code: "declare const kind: 'a' | 'b'; declare const choice: string; switch (kind) { case choice: break; default: }" },
     { name: "accepts the documented exhaustive default", code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows a switch with no default",
@@ -212,6 +214,7 @@ RULE_TESTER.run("require-assert-never", rule, {
     },
   ],
   invalid: [
+    { name: "retains singleton literal case aliases", code: "declare const kind: 'a' | 'b'; const first = 'a' as const; const second = 'b' as const; switch (kind) { case first: break; case second: break; default: }", errors: [{ messageId: "missingAssertNever" }], output: null },
     { name: "reports the documented empty default", code: REQUIRE_ASSERT_NEVER_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "missingAssertNever" }], output: null },
     {
       name: "reports an undocumented empty default",

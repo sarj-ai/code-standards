@@ -15,6 +15,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-generic-single-export-module", rule, {
   valid: [
+    { name: "does not claim a sole export alongside destructured bindings", filename: "src/utils.ts", code: "export const {first, second} = pair; export function third() {}" },
+    { name: "does not overlook nested array exports", filename: "src/utils.ts", code: "export const [first, ...rest] = values; export function third() {}" },
     { filename: "/repo/src/order-parser.ts", code: NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION.examples[0].files[0].source },
     { filename: "/repo/src/utils.ts", code: "export function parseOrder() { return {}; }\nexport function formatOrder() { return ''; }" },
     { filename: "/repo/src/types.ts", code: "export interface Order { id: string }" },

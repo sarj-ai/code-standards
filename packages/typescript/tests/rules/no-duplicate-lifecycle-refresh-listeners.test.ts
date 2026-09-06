@@ -13,6 +13,9 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
   valid: [
+    { name: "reassigned function declaration loses callback provenance", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); function refresh() { router.refresh(); } refresh = trackActivation; window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
+    { name: "reassigned callback is not proven to refresh", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); let refresh = () => router.refresh(); refresh = trackActivation; window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
+    { name: "reassigned router is not proven Next transport", code: 'import { useRouter } from "next/navigation"; let router = useRouter(); router = cache; const refresh = () => router.refresh(); window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
     { name: "accepts the documented single signal", code: NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION.examples[0].files[0].source },
     { name: "allows different callbacks", code: `window.addEventListener("focus", onFocus); document.addEventListener("visibilitychange", onVisibility);` },
     { name: "allows a shared analytics callback", code: `const trackActivation = () => analytics.track("activate"); window.addEventListener("focus", trackActivation); document.addEventListener("visibilitychange", trackActivation);` },

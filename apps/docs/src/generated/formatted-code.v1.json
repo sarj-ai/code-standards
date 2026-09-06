@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "489fb89cb70cdfbac5941d511636ebc329f9ce710f51ae3a20592e4130a0ec4c",
-  "cliSha256": "da462633ab8a9977a47bf08a8feebd9f3fa5381d21773a5abdf9e88473476346",
+  "catalogSha256": "ff9a996ea50a75ba858f414d3c7e3e739d2bb06f9185e265f3cb8f40685cbd29",
+  "cliSha256": "f4a2e6648019874b445dd529ae7c8ffef89b83efec4d6c7b4902a1223a0569f1",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -592,12 +592,12 @@
           "expectedCount": 0,
           "files": [
             {
-              "path": "src/order-parser.ts",
+              "path": "src/parse-order.ts",
               "source": "export function parseOrder() {\n  return {};\n}\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "src/order-parser.ts",
+          "focusPath": "src/parse-order.ts",
           "id": "responsibility-named-module",
           "outcome": "accept",
           "scenarioId": "primary",
@@ -1956,12 +1956,7 @@
               "source": "class Vault {\n  private read() {\n    return 1;\n  }\n  open() {\n    return this.read();\n  }\n}\n"
             }
           ],
-          "fixedFiles": [
-            {
-              "path": "src/vault.ts",
-              "source": "class Vault {\n  #read() {\n    return 1;\n  }\n  open() {\n    return this.#read();\n  }\n}\n"
-            }
-          ],
+          "fixedFiles": [],
           "focusPath": "src/vault.ts",
           "id": "typescript-private-member",
           "outcome": "reject",

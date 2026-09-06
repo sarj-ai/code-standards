@@ -15,10 +15,10 @@ type Options = readonly [];
 
 export const PREFER_DISCRIMINATED_UNION_DOCUMENTATION = {
   summary: "Flag flat result objects with a required positive boolean status and optional success/failure payloads.",
-  rationale: "A boolean status plus optional branch data permits contradictory and incomplete states.",
-  remediation: "Represent each result branch as a discriminated union member with its required payload.",
+  rationale: "When success and failure are mutually exclusive outcomes, a boolean plus optional branch data permits contradictory and incomplete states.",
+  remediation: "If the outcomes are mutually exclusive, represent each branch as a discriminated union member with its required payload.",
   category: "correctness",
-  limitations: ["Only local object shapes with recognized positive status and payload names are inspected."],
+  limitations: ["Only local object shapes with recognized non-computed status and payload names are inspected. Names do not prove that partial-success outcomes are forbidden; review the domain before changing its representation."],
   examples: [
     { id: "explicit-result-branches", title: "Use explicit result branches", outcome: "no-match", files: [{ path: "src/result.ts", source: "type Result = { ok: true; data: string } | { ok: false; error: string };" }], focusPath: "src/result.ts", expectedCount: 0, public: true },
     { id: "optional-result-payloads", title: "Do not make both result payloads optional", outcome: "match", files: [{ path: "src/result.ts", source: "type Result = { ok: boolean; data?: string; error?: string };" }], focusPath: "src/result.ts", expectedCount: 1, public: true },
@@ -113,7 +113,7 @@ function looksLikeMutuallyExclusiveState(
  * string-literal property signature, otherwise `null`.
  */
 function getMemberName(member: TSESTree.TypeElement): string | null {
-  if (member.type !== AST_NODE_TYPES.TSPropertySignature) {
+  if (member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed) {
     return null;
   }
   const { key } = member;
@@ -175,7 +175,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       preferDiscriminatedUnion:
-        "This object type uses a boolean status flag alongside several optional fields, which lets illegal states be representable. Model it as a `z.discriminatedUnion` / discriminated union (e.g. `{ ok: true; data: T } | { ok: false; error: E }`) to make illegal states unrepresentable.",
+        "This object type combines a boolean status with optional payloads. If success and failure are mutually exclusive, consider a discriminated union such as `{ ok: true; data: T } | { ok: false; error: E }`.",
     },
   },
   defaultOptions: [],

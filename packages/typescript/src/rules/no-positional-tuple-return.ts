@@ -4,13 +4,16 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-positional-tuple-return.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "noPositionalTupleReturn";
 type Options = readonly [];
+interface TypeAliases {
+  get(identifier: TSESTree.Identifier): TSESTree.TypeNode | undefined;
+}
 type FunctionNode =
   | TSESTree.FunctionDeclaration
   | TSESTree.FunctionExpression
@@ -45,7 +48,7 @@ function staticMemberName(key: TSESTree.PropertyName): string | null {
 /** The first boundary tuple in a return annotation, unwrapping transparent wrappers and unions. */
 function tupleReturnType(
   node: TSESTree.TypeNode,
-  aliases: ReadonlyMap<string, TSESTree.TypeNode>,
+  aliases: TypeAliases,
   resolving: ReadonlySet<string> = new Set(),
 ): TSESTree.TSTupleType | null {
   if (node.type === AST_NODE_TYPES.TSTupleType) {
@@ -64,7 +67,7 @@ function tupleReturnType(
     node.typeName.type === AST_NODE_TYPES.Identifier &&
     !resolving.has(node.typeName.name)
   ) {
-    const target = aliases.get(node.typeName.name);
+    const target = aliases.get(node.typeName);
     if (target !== undefined) return tupleReturnType(target, aliases, new Set([...resolving, node.typeName.name]));
   }
   if (node.type === AST_NODE_TYPES.TSTypeOperator && node.operator === "readonly") {
@@ -81,7 +84,7 @@ function tupleReturnType(
 
 function tupleExpression(
   node: TSESTree.Expression,
-  aliases: ReadonlyMap<string, TSESTree.TypeNode>,
+  aliases: TypeAliases,
 ): TSESTree.ArrayExpression | null {
   if (node.type !== AST_NODE_TYPES.TSAsExpression && node.type !== AST_NODE_TYPES.TSSatisfiesExpression) {
     return null;
@@ -227,22 +230,31 @@ function exportedTypeNames(program: TSESTree.Program): ReadonlySet<string> {
   return names;
 }
 
-function typeAliases(program: TSESTree.Program): ReadonlyMap<string, TSESTree.TypeNode> {
-  const aliases = new Map<string, TSESTree.TypeNode>();
-  for (const statement of program.body) {
+function typeAliases(sourceCode: TSESLint.SourceCode): TypeAliases {
+  const aliases = new Map<string, TSESTree.TSTypeAliasDeclaration>();
+  for (const statement of sourceCode.ast.body) {
     const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
       ? statement.declaration
       : statement;
     if (declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
-      aliases.set(declaration.id.name, declaration.typeAnnotation);
+      aliases.set(declaration.id.name, declaration);
     }
   }
-  return aliases;
+  return {
+    get(identifier) {
+      const declaration = aliases.get(identifier.name);
+      if (declaration === undefined) return undefined;
+      const binding = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+      return binding?.defs.length === 1 && binding.defs[0]?.node === declaration
+        ? declaration.typeAnnotation
+        : undefined;
+    },
+  };
 }
 
 function callableReturnType(
   node: TSESTree.TypeNode,
-  aliases: ReadonlyMap<string, TSESTree.TypeNode>,
+  aliases: TypeAliases,
   resolving: ReadonlySet<string> = new Set(),
 ): TSESTree.TypeNode | null {
   if (node.type === AST_NODE_TYPES.TSFunctionType) return node.returnType?.typeAnnotation ?? null;
@@ -251,7 +263,7 @@ function callableReturnType(
     node.typeName.type === AST_NODE_TYPES.Identifier &&
     !resolving.has(node.typeName.name)
   ) {
-    const target = aliases.get(node.typeName.name);
+    const target = aliases.get(node.typeName);
     if (target !== undefined) {
       return callableReturnType(target, aliases, new Set([...resolving, node.typeName.name]));
     }
@@ -443,7 +455,7 @@ export default createRule<Options, MessageIds>({
       context.sourceCode.ast,
       exportedTypeNames(context.sourceCode.ast),
     );
-    const aliases = typeAliases(context.sourceCode.ast);
+    const aliases = typeAliases(context.sourceCode);
     const reportedFunctions = new WeakSet<FunctionNode>();
     const functionStack: FunctionNode[] = [];
     const report = (annotation: TSESTree.TypeNode, name: string): void => {

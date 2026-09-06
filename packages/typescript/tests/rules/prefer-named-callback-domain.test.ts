@@ -7,6 +7,8 @@ RuleTester.afterAll = afterAll; RuleTester.describe = describe; RuleTester.it = 
 const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parserOptions: { ecmaVersion: "latest", sourceType: "module" } } });
 RULE_TESTER.run("prefer-named-callback-domain", rule, {
   valid: [
+    { name: "ignores a private local alias inside an exported function", code: "export function run() { type Local = (value: 'a' | 'b') => void; const callback: Local = () => {}; callback('a'); }" },
+    { name: "ignores a local interface in an exported class method", code: "export class Service { run() { interface Local { callback: (value: 'a' | 'b') => void } } }" },
     "export type Boundary = 'seeded' | 'queued'; export interface Options { done?: (boundary: Boundary) => void; }",
     "interface Local { done?: (boundary: 'seeded' | 'queued') => void; }",
     { filename: "src/options.test.ts", code: "export interface Options { done: (boundary: 'a' | 'b') => void }" },

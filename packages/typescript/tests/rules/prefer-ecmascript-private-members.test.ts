@@ -2,16 +2,23 @@ import { join } from "node:path";
 
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, {
   PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION,
 } from "../../src/rules/prefer-ecmascript-private-members.js";
+import { ErasedPrivate, RuntimePrivate } from "../fixtures/private-member-reflection.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+it("keeps runtime reflection changes behind manual review", () => {
+  expect(Object.getOwnPropertyNames(ErasedPrivate.prototype)).toContain("load");
+  expect(Object.getOwnPropertyNames(RuntimePrivate.prototype)).not.toContain("load");
+  expect(rule.meta.fixable).toBeUndefined();
+});
 
 const RULE_TESTER = new RuleTester({
   languageOptions: {
@@ -36,22 +43,23 @@ RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
     { code: "class Service { private run() {} }", filename: "generated/service.ts" },
   ],
   invalid: [
+    { name: "does not rewrite a class escaping through static this", code: "declare function register(value: unknown): void; class Service { static { register(this); } private load() { return 1; } run() { return this.load(); } }", output: null, errors: [{ messageId: "preferEcmascriptPrivate" }] },
     {
-      name: "fixes the documented method and its exact reference",
+      name: "reports the documented method without an automatic runtime change",
       code: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[1].files[0].source,
-      output: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION.examples[1].fixedFiles?.[0]?.source,
+      output: null,
       errors: [{ messageId: "preferEcmascriptPrivate", data: { name: "read" } }],
     },
     {
-      name: "fixes an async method without deleting async",
+      name: "preserves an async method for manual migration",
       code: "class Service { private async load() { return 1; } run() { return this.load(); } }",
-      output: "class Service { async #load() { return 1; } run() { return this.#load(); } }",
+      output: null,
       errors: [{ messageId: "preferEcmascriptPrivate", data: { name: "load" } }],
     },
     {
-      name: "fixes a getter setter pair once",
+      name: "reports a getter setter pair once without rewriting it",
       code: "class Box { private get value() { return 1; } private set value(next: number) {} read() { return this.value; } }",
-      output: "class Box { get #value() { return 1; } set #value(next: number) {} read() { return this.#value; } }",
+      output: null,
       errors: [{ messageId: "preferEcmascriptPrivate", data: { name: "value" } }],
     },
     {
@@ -75,7 +83,7 @@ RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
     {
       name: "reports a private field",
       code: "class Box { private value = 1; read() { return this.value; } }",
-      output: "class Box { #value = 1; read() { return this.#value; } }",
+      output: null,
       errors: [{ messageId: "preferEcmascriptPrivate", data: { name: "value" } }],
     },
     {

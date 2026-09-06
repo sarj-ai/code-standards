@@ -17,6 +17,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-discriminated-union", rule, {
   valid: [
+    { name: "does not mistake a symbol key for named status", code: "declare const ok: unique symbol; type Result = { [ok]: boolean; data?: string; error?: Error };" },
+    { name: "does not mistake a symbol key for named failure payload", code: "declare const error: unique symbol; type Result = { ok: boolean; [error]?: Error };" },
     { name: "public no-match example", filename: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[0].focusPath, code: PREFER_DISCRIMINATED_UNION_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "allows independent all-boolean flag sets",

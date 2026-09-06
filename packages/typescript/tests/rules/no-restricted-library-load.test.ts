@@ -29,6 +29,7 @@ const OPTIONS = [
 
 RULE_TESTER.run("no-restricted-library-load", rule, {
   valid: [
+    { name: "preserves erased import-type equals declarations", code: "import type Axios = require('axios');", options: OPTIONS },
     { name: "accepts the documented static import", code: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION.examples[0].files[0].source, options: OPTIONS },
     { code: 'import axios from "axios";', options: OPTIONS },
     { code: 'export { default } from "axios";', options: OPTIONS },

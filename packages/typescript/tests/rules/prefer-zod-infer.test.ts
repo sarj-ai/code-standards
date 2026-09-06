@@ -17,6 +17,12 @@ const IMPORT = 'import { z } from "zod";\n';
 
 RULE_TESTER.run("prefer-zod-infer", rule, {
   valid: [
+    { name: "requires proof for every field rather than one matching primitive", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), payload: SomeSchema }); interface User { id: string; payload: OtherType }` },
+    { name: "leaves matching collection shapes for manual type-aware review", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: string[] }` },
+    { name: "does not pair a local schema with a module type", code: `${IMPORT}function build() { const UserSchema = z.object({ id: z.string() }); return UserSchema; } interface User { id: string }` },
+    { name: "does not pair a local type with a module schema", code: `${IMPORT}const UserSchema = z.object({ id: z.string() }); function run() { interface User { id: string } }` },
+    { name: "does not equate different array element types", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: number[] }` },
+    { name: "does not equate different nested object shapes", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), child: z.object({ value: z.string() }) }); interface User { id: string; child: { value: number } }` },
     { name: "accepts the documented inferred type", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[0].files[0].source },
     // The supported shape: the type is derived, so it cannot drift.
     `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });

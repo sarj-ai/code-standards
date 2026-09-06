@@ -35,6 +35,8 @@ RULE_TESTER.run("prefer-native-random-uuid", rule, {
     },
   ],
   invalid: [
+    { name: "withholds replacement when globalThis is shadowed", code: "import { v4 } from 'uuid'; function run(globalThis) { return v4(); }", errors: [{ messageId: "preferNative", suggestions: 0 }] },
+    { name: "preserves comments inside the replaced call", code: "import { v4 } from 'uuid'; v4(/* preserve compatibility note */);", errors: [{ messageId: "preferNative", suggestions: 0 }] },
     { name: "public match example", filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].focusPath, code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferNative", suggestions: 1 }] },
     {
       code: 'import { v4 } from "uuid"; v4();',

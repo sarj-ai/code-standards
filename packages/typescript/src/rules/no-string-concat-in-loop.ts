@@ -1,5 +1,5 @@
 /**
- * @fileoverview no-string-concat-in-loop — `+=` on a string inside a loop rebuilds the whole string every pass, which is O(n^2).
+ * @fileoverview no-string-concat-in-loop — review repeated accumulation of a growing string.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-string-concat-in-loop.test.ts
  */
@@ -15,13 +15,14 @@ type Options = readonly [];
 
 export const NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION = {
   summary:
-    "Disallow O(n^2) string building via `+=` on a string variable inside a loop; push parts to an array and `join` instead.",
+    "Prefer collecting string fragments over repeatedly accumulating a growing string inside a loop.",
   rationale:
     "Repeatedly rebuilding a growing string can copy all prior content on each iteration, making total work grow quadratically.",
-  remediation: "Collect each fragment in an array, then join the fragments after the loop.",
+  remediation: "Consider collecting fragments and joining once; preserve intermediate observations and coercion timing, and measure hot paths.",
   category: "performance",
   limitations: [
     "Only local identifiers initialized with a string or template literal and accumulated in a loop body are inspected.",
+    "Deferred function bodies are excluded except recognized direct forEach callbacks. Syntax does not establish engine-specific string allocation complexity.",
   ],
   examples: [
     {
@@ -204,6 +205,7 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
     ) {
       return parent.parent;
     }
+    if (parent.type === "ArrowFunctionExpression" || parent.type === "FunctionExpression" || parent.type === "FunctionDeclaration") return null;
     if (LOOP_NODE_TYPES.has(parent.type)) {
       const loop = parent as
         | TSESTree.ForStatement
@@ -219,6 +221,21 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
     parent = parent.parent;
   }
   return null;
+}
+
+function immediatelyExitsLoop(node: TSESTree.AssignmentExpression, loop: TSESTree.Node): boolean {
+  if (!LOOP_NODE_TYPES.has(loop.type) || node.parent.type !== "ExpressionStatement") return false;
+  const statement = node.parent;
+  const block = statement.parent;
+  if (block.type !== "BlockStatement") return false;
+  const next = block.body[block.body.indexOf(statement) + 1];
+  if (next?.type !== "BreakStatement" && next?.type !== "ReturnStatement" && next?.type !== "ThrowStatement") return false;
+  if (next.type === "BreakStatement" && next.label !== null) return false;
+  for (let current: TSESTree.Node | undefined = block; current !== undefined && current !== loop; current = current.parent) {
+    if (current.type === "TryStatement" ||
+      (next.type === "BreakStatement" && current.type === "SwitchStatement")) return false;
+  }
+  return true;
 }
 
 /** A small literal loop cannot exhibit unbounded quadratic growth. */
@@ -303,15 +320,14 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "suggestion",
     docs: {
-      description:
-        "Disallow O(n^2) string building via `+=` on a string variable inside a loop; push parts to an array and `join` instead.",
+      description: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION.summary,
     },
     schema: [],
     messages: {
       noStringConcatInLoop:
-        "Avoid building a string with `+=` inside a loop — this is O(n^2). Push the parts onto an array and use `arr.join(\"\")` after the loop.",
+        "This loop repeatedly accumulates a growing string. Consider collecting fragments and joining once; preserve coercion timing and intermediate reads, and measure performance-sensitive paths.",
       noStringReduce:
-        "Avoid concatenating a growing string in `reduce` — this is O(n^2). Map the fragments and join them once instead.",
+        "This reduce repeatedly accumulates a growing string. Consider mapping fragments and joining once if coercion timing and intermediate observations are unchanged.",
     },
   },
   defaultOptions: [],
@@ -348,6 +364,7 @@ export default createRule<Options, MessageIds>({
         if (loop === null) {
           return;
         }
+        if (immediatelyExitsLoop(node, loop)) return;
         if (isSmallStaticForLoop(loop)) {
           return;
         }

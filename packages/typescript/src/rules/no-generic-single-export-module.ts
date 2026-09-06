@@ -17,9 +17,9 @@ export const NO_GENERIC_SINGLE_EXPORT_MODULE_DOCUMENTATION = {
   rationale: "A generic filename hides the sole exported responsibility and makes navigation less descriptive.",
   remediation: "Choose a responsibility-bearing module name or colocate the export with its domain.",
   category: "maintainability",
-  limitations: ["Only configured generic stems with exactly one public runtime export are reported."],
+  limitations: ["Only the fixed generic-stem vocabulary with exactly one public runtime export is checked; exported destructuring patterns are excluded rather than undercounted."],
   examples: [
-    { id: "responsibility-named-module", title: "Name the module after its export", outcome: "no-match", files: [{ path: "src/order-parser.ts", source: "export function parseOrder() { return {}; }" }], focusPath: "src/order-parser.ts", expectedCount: 0, public: true },
+    { id: "responsibility-named-module", title: "Name the module after its export", outcome: "no-match", files: [{ path: "src/parse-order.ts", source: "export function parseOrder() { return {}; }" }], focusPath: "src/parse-order.ts", expectedCount: 0, public: true },
     { id: "generic-module-name", title: "Do not hide one export in a generic module", outcome: "match", files: [{ path: "src/utils.ts", source: "export function parseOrder() { return {}; }" }], focusPath: "src/utils.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
@@ -99,6 +99,7 @@ function runtimeExports(program: TSESTree.Program): RuntimeExports {
     }
     if (statement.declaration !== null) {
       const declaration = statement.declaration;
+      if (declaration.type === AST_NODE_TYPES.VariableDeclaration && declaration.declarations.some((item) => item.id.type !== AST_NODE_TYPES.Identifier)) ambiguous = true;
       exports.push(...declaredNames(declaration).map((name) => ({ key: name, name, node: declaration })));
     }
     for (const specifier of statement.specifiers) {

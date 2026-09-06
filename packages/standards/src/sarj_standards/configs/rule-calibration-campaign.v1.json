@@ -1012,7 +1012,9 @@
       "task": "rule-audit/eslint/no-duplicate-lifecycle-refresh-listeners",
       "family": "typescript",
       "ruleId": "no-duplicate-lifecycle-refresh-listeners",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 21 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures cover reassigned callback identity. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Require stable callback bindings before recommending a shared handler."
     },
     {
       "task": "rule-audit/eslint/no-dynamic-sql",
@@ -1036,7 +1038,9 @@
       "task": "rule-audit/eslint/no-generic-single-export-module",
       "family": "typescript",
       "ruleId": "no-generic-single-export-module",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 58 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures preserve multiple destructured public bindings. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Abstain for exported destructuring rather than undercounting exports."
     },
     {
       "task": "rule-audit/eslint/no-hand-rolled-sleep",
@@ -1094,7 +1098,9 @@
       "task": "rule-audit/eslint/no-positional-tuple-return",
       "family": "typescript",
       "ruleId": "no-positional-tuple-return",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 72 focused cases pass within the 621-case integrated batch. All ten corpus findings were inspected: six explicitly excepted framework query keys, two hooks and two color triples; these are manual compatibility decisions. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Resolve aliases by lexical identity. Preserve original error severity at user request and retain explicit framework tuple exceptions."
     },
     {
       "task": "rule-audit/eslint/no-production-browser-source-maps",
@@ -1146,7 +1152,9 @@
       "task": "rule-audit/eslint/no-restricted-library-load",
       "family": "typescript",
       "ruleId": "no-restricted-library-load",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 18 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures distinguish erased type imports from runtime loads. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Exclude type-only import-equals declarations while retaining runtime restrictions."
     },
     {
       "task": "rule-audit/eslint/no-router-refresh-polling",
@@ -1174,7 +1182,9 @@
       "task": "rule-audit/eslint/no-sentinel-return-on-catch",
       "family": "typescript",
       "ruleId": "no-sentinel-return-on-catch",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 75 focused cases pass within the 621-case integrated batch. The single corpus finding is intentional storage recovery, not a proven swallowed-error defect. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Preserve original error severity at user request; exclude shadowed undefined and review fallback contracts manually."
     },
     {
       "task": "rule-audit/eslint/no-server-env-in-client-component",
@@ -1204,7 +1214,9 @@
       "task": "rule-audit/eslint/no-string-concat-in-loop",
       "family": "typescript",
       "ruleId": "no-string-concat-in-loop",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 57 focused cases pass within the 621-case integrated batch. All 19 original findings were inspected; removing a one-pass append before break leaves 18 manual performance suggestions. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Preserve original error severity at user request; exclude deferred functions and immediate unconditional exits. Explain conditional copy costs, not universal quadratic behavior."
     },
     {
       "task": "rule-audit/eslint/no-tautological-expect",
@@ -1290,13 +1302,17 @@
       "task": "rule-audit/eslint/prefer-discriminated-union",
       "family": "typescript",
       "ruleId": "prefer-discriminated-union",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 49 focused cases pass within the 621-case integrated batch. The one finding is a boolean status with optional validation issues, useful modeling advice rather than proof of exclusivity. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Exclude computed property keys from static discriminant evidence."
     },
     {
       "task": "rule-audit/eslint/prefer-ecmascript-private-members",
       "family": "typescript",
       "ruleId": "prefer-ecmascript-private-members",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 22 focused cases pass within the 621-case integrated batch. This type-aware owner is excluded from the shared corpus; focused typed regressions supply evidence. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Remove automatic private-to-# conversion: reflection, serialization, proxies and escapes require manual migration review."
     },
     {
       "task": "rule-audit/eslint/prefer-immutable-module-constant",
@@ -1334,7 +1350,9 @@
       "task": "rule-audit/eslint/prefer-native-random-uuid",
       "family": "typescript",
       "ruleId": "prefer-native-random-uuid",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 23 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures cover shadowed globalThis and meaningful comments. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Require native binding and withhold suggestions that discard comments."
     },
     {
       "task": "rule-audit/eslint/prefer-non-nullable-collection",
@@ -1392,7 +1410,9 @@
       "task": "rule-audit/eslint/prefer-zod-infer",
       "family": "typescript",
       "ruleId": "prefer-zod-infer",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 57 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures cover module visibility and every modeled field including collection elements. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Require module-visible pairing and positive leaf agreement; unknown collections abstain. Input/output and domain identity remain manual."
     },
     {
       "task": "rule-audit/eslint/repeated-static-call-cases",
@@ -1404,7 +1424,9 @@
       "task": "rule-audit/eslint/require-assert-never",
       "family": "typescript",
       "ruleId": "require-assert-never",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 30 focused cases pass within the 621-case integrated batch. This type-aware owner is excluded from the shared corpus; typed fixtures distinguish singleton values from union-valued expressions. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Count only singleton case-value evidence for already covered domains; upstream missing-case exhaustiveness remains distinct."
     },
     {
       "task": "rule-audit/eslint/require-fetch-timeout",
@@ -1418,7 +1440,9 @@
       "task": "rule-audit/eslint/require-port-for-service",
       "family": "typescript",
       "ruleId": "require-port-for-service",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 122 focused cases pass within the 621-case integrated batch. All three findings were inspected as uncovered service methods under the architecture policy. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Resolve quoted literal method names. Retain intentional overlap with the advisory exported-interface rule, not a single-diagnostic ownership claim."
     },
     {
       "task": "rule-audit/eslint/require-static-next-matcher",
@@ -1502,7 +1526,9 @@
       "task": "rule-audit/eslint/prefer-named-callback-domain",
       "family": "typescript",
       "ruleId": "prefer-named-callback-domain",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 7 focused cases pass within the 621-case integrated batch. Two original findings disappear because they are local aliases; exported positive fixtures remain. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Restrict to directly exported type/interface declarations, excluding local descendants of exported implementations."
     },
     {
       "task": "rule-audit/eslint/prefer-node-fs-promises",
@@ -1526,7 +1552,9 @@
       "task": "rule-audit/eslint/prefer-switch-for-repeated-equality",
       "family": "typescript",
       "ruleId": "prefer-switch-for-repeated-equality",
-      "state": "pending"
+      "state": "complete",
+      "evidence": "Three independent source, test and UI reviews accepted the repair; 10 focused cases pass within the 621-case integrated batch. All six findings were inspected as finite dispatch candidates, including three duplicated public-package build forms. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
+      "outcome": "Require a bare identifier selector. Case effects, mutation and control flow remain manual; no automatic rewrite."
     },
     {
       "task": "rule-audit/eslint/require-interface-for-exported-class",

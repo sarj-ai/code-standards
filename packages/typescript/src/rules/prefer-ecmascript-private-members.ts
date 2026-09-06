@@ -14,7 +14,6 @@ import {
 
 import {
   convertibleMemberName,
-  privateMemberFixes,
   type PrivateConvertibleMember,
 } from "./_class-private.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -26,13 +25,12 @@ type Options = readonly [];
 export const PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION = {
   summary: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members.",
   rationale: "ECMAScript private names enforce encapsulation at runtime instead of erasing the boundary during compilation.",
-  remediation: "Replace the TypeScript `private` modifier and all proven same-class references with an ECMAScript private name.",
+  remediation: "Review reflection, instance escape and framework contracts before replacing TypeScript privacy with ECMAScript private names and updating references.",
   category: "maintainability",
-  autofix: "safe",
+  autofix: "none",
   limitations: [
     "Ambient, abstract, computed, decorated, override, parameter-property, and generated declarations are excluded.",
-    "A fix is offered only for an undecorated, unexported class declaration with no references outside its body and when type information proves every use is a direct `this.name` access inside that class.",
-    "Overloads, modifier-adjacent comments, reflection, and any potentially cross-file or escaping class remain report-only.",
+    "Migration is report-only: type information cannot prove that instances or constructors never escape through this, or that reflection and framework serialization do not observe ordinary private properties.",
   ],
   references: ["https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_elements"],
   examples: [
@@ -53,29 +51,14 @@ export const PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION = {
       focusPath: "src/vault.ts",
       expectedCount: 1,
       public: true,
-      fixedFiles: [{ path: "src/vault.ts", source: "class Vault { #read() { return 1; } open() { return this.#read(); } }" }],
     },
   ],
 } as const satisfies RuleDocumentation;
 
 function reportClass(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
-  services: ParserServicesWithTypeInformation,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
 ): void {
-  const parent = owner.parent;
-  const directlyExported =
-    parent.type === AST_NODE_TYPES.ExportNamedDeclaration ||
-    parent.type === AST_NODE_TYPES.ExportDefaultDeclaration;
-  const locallyClosed =
-    !directlyExported &&
-    owner.decorators.length === 0 &&
-    owner.type === AST_NODE_TYPES.ClassDeclaration &&
-    context.sourceCode.getDeclaredVariables(owner).every((variable) =>
-      variable.references.every((reference) =>
-        reference.identifier.range[0] >= owner.range[0] && reference.identifier.range[1] <= owner.range[1]
-      )
-    );
   const groups = new Map<string, PrivateConvertibleMember[]>();
   for (const member of owner.body.body) {
     if (!isConvertible(member)) continue;
@@ -88,20 +71,10 @@ function reportClass(
   for (const [name, members] of groups) {
     const first = members[0];
     if (first === undefined) continue;
-    const fix = locallyClosed
-      ? privateMemberFixes(
-        context,
-        services,
-        owner,
-        members,
-        true,
-      )
-      : undefined;
     context.report({
       node: first.key,
       messageId: "preferEcmascriptPrivate",
       data: { name },
-      ...(fix === undefined ? {} : { fix }),
     });
   }
 }
@@ -130,7 +103,6 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "suggestion",
     docs: { description: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members." },
-    fixable: "code",
     schema: [],
     messages: {
       preferEcmascriptPrivate:
@@ -148,8 +120,8 @@ export default createRule<Options, MessageIds>({
     }
     if (services === null) return {};
     return {
-      ClassDeclaration: (node): void => reportClass(context, services, node),
-      ClassExpression: (node): void => reportClass(context, services, node),
+      ClassDeclaration: (node): void => reportClass(context, node),
+      ClassExpression: (node): void => reportClass(context, node),
     };
   },
 });

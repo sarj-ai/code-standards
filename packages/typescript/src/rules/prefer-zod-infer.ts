@@ -23,6 +23,11 @@ export const PREFER_ZOD_INFER_DOCUMENTATION = {
   rationale: "A derived type stays synchronized when the runtime schema changes.",
   remediation: "Replace the hand-written twin with `z.infer<typeof Schema>`.",
   category: "correctness",
+  limitations: [
+    "Only module-level const schemas and module-level type declarations are paired; local declarations are excluded rather than matched by spelling across scopes.",
+    "By default every field must positively agree; collection, nested-object and referenced-schema equivalence is not inferred from outer syntax alone.",
+    "This is a bounded syntactic comparison, not general type equivalence. Review schema input versus output, interface augmentation, and separately evolving domain contracts before replacing a declaration.",
+  ],
   examples: [
     { id: "inferred-type", title: "Infer the schema type", outcome: "no-match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;' }], focusPath: "src/user.ts", expectedCount: 0, public: true },
     { id: "handwritten-twin", title: "Do not duplicate the schema shape", outcome: "match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }' }], focusPath: "src/user.ts", expectedCount: 1, public: true },
@@ -285,6 +290,12 @@ function isExportedDeclaration(node: TSESTree.Node): boolean {
   return node.parent?.type === AST_NODE_TYPES.ExportNamedDeclaration;
 }
 
+function isModuleLevelDeclaration(node: TSESTree.Node): boolean {
+  const parent = node.parent;
+  return parent?.type === AST_NODE_TYPES.Program ||
+    (parent?.type === AST_NODE_TYPES.ExportNamedDeclaration && parent.parent.type === AST_NODE_TYPES.Program);
+}
+
 function isModuleLevelConst(node: TSESTree.VariableDeclarator): boolean {
   const declaration = node.parent;
   if (
@@ -360,6 +371,9 @@ function leafAgrees(
     return annotationDomain !== null && sameDomain(field.domain, annotationDomain);
   }
   const { leaf } = field;
+  if (leaf !== null && ["array", "tuple", "object", "strictObject", "looseObject", "record", "map", "set", "promise", "intersection"].includes(leaf)) {
+    return false;
+  }
   if (leaf === null || annotation === null) {
     return null;
   }
@@ -790,7 +804,6 @@ export default createRule<Options, MessageIds>({
       if (fields.size !== members.size) {
         return false;
       }
-      let agreements = 0;
       for (const [name, field] of fields) {
         const member = members.get(name);
         if (member === undefined) {
@@ -810,16 +823,11 @@ export default createRule<Options, MessageIds>({
           return false;
         }
         const agrees = leafAgrees(field, member.annotation);
-        if (agrees === false) {
+        if (agrees !== true) {
           return false;
         }
-        if (agrees === true) {
-          agreements += 1;
-        }
       }
-      // At least one member has to positively agree; a pair of types whose
-      // members are all references to other symbols is a name coincidence.
-      return agreements > 0;
+      return true;
     }
 
     return {
@@ -838,7 +846,7 @@ export default createRule<Options, MessageIds>({
       },
 
       VariableDeclarator(node): void {
-        if (node.id.type !== AST_NODE_TYPES.Identifier || node.init == null) {
+        if (node.id.type !== AST_NODE_TYPES.Identifier || node.init == null || !isModuleLevelConst(node)) {
           return;
         }
         const fields = schemaFields(node.init);
@@ -884,6 +892,7 @@ export default createRule<Options, MessageIds>({
       },
 
       TSInterfaceDeclaration(node): void {
+        if (!isModuleLevelDeclaration(node)) return;
         // Generics and `extends` cannot be replaced by direct schema inference.
         if (node.typeParameters !== undefined || (node.extends?.length ?? 0) > 0) {
           return;
@@ -901,6 +910,7 @@ export default createRule<Options, MessageIds>({
       },
 
       TSTypeAliasDeclaration(node): void {
+        if (!isModuleLevelDeclaration(node)) return;
         const schemaName = inferredSchemaName(node.typeAnnotation);
         if (schemaName !== null) {
           inferredAliases.push({

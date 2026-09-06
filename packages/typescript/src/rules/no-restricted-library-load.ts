@@ -23,11 +23,11 @@ type Options = readonly [
 ];
 
 export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
-  summary: "Apply a configured library-replacement policy to literal dynamic imports, CommonJS loads, and TypeScript import-equals declarations.",
-  rationale: "Runtime module loads can bypass the replacement policy enforced for static imports.",
-  remediation: "Load the configured replacement library instead of the restricted module.",
+  summary: "Apply configured library restrictions to literal runtime loads and CommonJS resolution references.",
+  rationale: "Dynamic imports, CommonJS loads, and package resolution checks can bypass library restrictions enforced for static imports.",
+  remediation: "Use the configured replacement for the runtime dependency reference; resolution checks do not themselves load a module.",
   category: "architecture",
-  limitations: ["Only literal dynamic imports, unshadowed CommonJS loads, and TypeScript import-equals declarations are checked."],
+  limitations: ["Only literal dynamic imports, unshadowed CommonJS loads/resolution calls, and runtime TypeScript import-equals declarations are checked; erased type imports are excluded. A configured restriction list is required."],
   examples: [
     { id: "static-import", title: "Static imports remain the static-import rule's responsibility", outcome: "no-match", files: [{ path: "src/client.ts", source: "import axios from 'axios';" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
     { id: "runtime-load", title: "Do not load a restricted library at runtime", outcome: "match", files: [{ path: "src/client.ts", source: "const client = require('axios');" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
@@ -50,8 +50,7 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "problem",
     docs: {
-      description:
-        "Apply a configured library-replacement policy to literal dynamic imports, CommonJS loads, and TypeScript import-equals declarations.",
+      description: NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION.summary,
     },
     schema: [
       {
@@ -78,7 +77,7 @@ export default createRule<Options, MessageIds>({
     ],
     messages: {
       restrictedLibraryLoad:
-        "{{id}}: Replace runtime loading of {{module}} with {{replacement}}.{{note}}",
+        "{{id}}: Replace this runtime dependency reference to {{module}} with {{replacement}}.{{note}}",
     },
   },
   defaultOptions: [{ libraries: [] }],
@@ -137,6 +136,7 @@ export default createRule<Options, MessageIds>({
         if (source !== null) report(node.arguments[0] as TSESTree.Node, source);
       },
       TSImportEqualsDeclaration(node: TSESTree.TSImportEqualsDeclaration): void {
+        if (node.importKind === "type") return;
         if (node.moduleReference.type !== AST_NODE_TYPES.TSExternalModuleReference) return;
         const source = literalModule(node.moduleReference.expression);
         if (source !== null) report(node.moduleReference.expression, source);

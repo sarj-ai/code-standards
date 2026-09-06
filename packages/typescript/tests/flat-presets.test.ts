@@ -121,6 +121,9 @@ describe("configs.recommended / configs.strict are flat config", () => {
   it.each([
     "@sarj/no-trailing-value-narration",
     "@sarj/no-type-member-comment-wall",
+    "@sarj/no-positional-tuple-return",
+    "@sarj/no-sentinel-return-on-catch",
+    "@sarj/no-string-concat-in-loop",
     "@sarj/no-typed-doc-sections",
     "@sarj/no-union-in-comment",
   ])("preserves error enforcement for %s", (rule) => {

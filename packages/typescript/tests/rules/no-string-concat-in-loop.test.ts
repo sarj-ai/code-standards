@@ -19,6 +19,12 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-string-concat-in-loop", rule, {
   valid: [
+    { name: "does not call an append before break repeated accumulation", code: "let text = ''; for (const item of items) { if (item.ok) { text += item.name; break; } }" },
+    { name: "does not repeat an append before return", code: "function f(items) { let text = ''; for (const item of items) { text += item.name; return text; } }" },
+    { name: "does not repeat an append before throw", code: "let text = ''; for (const item of items) { text += item.name; throw new Error(text); }" },
+    { name: "does not execute stored arrow callbacks in the enclosing loop", code: "let text = ''; for (const item of items) { callbacks.push(() => { text += item; }); }" },
+    { name: "does not execute nested function declarations", code: "let text = ''; for (const item of items) { function later() { text += item; } }" },
+    { name: "does not cross a deferred callback inside forEach", code: "let text = ''; items.forEach(item => { callbacks.push(function () { text += item; }); });" },
     {
       name: "ignores numeric reduce accumulation",
       code: "const total = values.reduce((sum, value) => sum + value, 0);",
@@ -242,6 +248,9 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
     },
   ],
   invalid: [
+    { name: "a switch break does not terminate the loop", code: "let text = ''; for (const item of items) { switch (item.kind) { case 'a': { text += item.name; break; } } }", errors: [{ messageId: "noStringConcatInLoop" }] },
+    { name: "a forEach return does not terminate iteration", code: "let text = ''; items.forEach(item => { text += item.name; return; });", errors: [{ messageId: "noStringConcatInLoop" }] },
+    { name: "a caught throw can continue the loop", code: "let text = ''; for (const item of items) { try { text += item.name; throw new Error(); } catch {} }", errors: [{ messageId: "noStringConcatInLoop" }] },
     {
       name: "reports a string-seeded reduce accumulator",
       code: "const text = values.reduce((text, value) => text + value.content, '');",
