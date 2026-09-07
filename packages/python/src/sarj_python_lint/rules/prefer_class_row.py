@@ -36,6 +36,7 @@ _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 class _BoundCursor(NamedTuple):
     variable: str
     factory: ast.expr
+    active_nodes: tuple[ast.AST, ...]
 
 
 class _FetchedValue(NamedTuple):
@@ -73,7 +74,7 @@ class PreferClassRow(Rule):
                 files=(
                     ExampleFile.python(
                         "app/task_store.py",
-                        "from psycopg.rows import dict_row\n\nasync def load(conn):\n    async with conn.cursor(row_factory=dict_row) as cursor:\n        row = await cursor.fetchone()\n        return Task.model_validate(row)\n",
+                        'from psycopg.rows import dict_row\n\nasync def load(conn):\n    async with conn.cursor(row_factory=dict_row) as cursor:\n        await cursor.execute("SELECT id, state FROM task")\n        row = await cursor.fetchone()\n        return Task.model_validate(row)\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/task_store.py"),
@@ -112,7 +113,7 @@ class PreferClassRow(Rule):
             for cursor in _bound_cursors(function):
                 if not imports.is_dict_row(cursor.factory, shadowed):
                     continue
-                models = _models_built_from_cursor(function, cursor.variable)
+                models = _models_built_from_cursor(cursor)
                 if len(models) != 1:
                     continue
                 model = next(iter(models))
@@ -247,8 +248,35 @@ def _functions(tree: ast.Module) -> Iterator[ast.FunctionDef | ast.AsyncFunction
     return (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)))
 
 
-def _scope_nodes(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
-    pending: list[ast.AST] = list(reversed(function.body))
+def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_BoundCursor]:
+    scoped_nodes = tuple(_nodes_in(function.body))
+    cursors: list[_BoundCursor] = []
+    for node in scoped_nodes:
+        if isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                if isinstance(item.optional_vars, ast.Name):
+                    active_nodes = _active_nodes(tuple(_nodes_in(node.body)), item.optional_vars.id, node.lineno)
+                    cursor = _cursor(item.context_expr, item.optional_vars.id, active_nodes)
+                    if cursor is not None:
+                        cursors.append(cursor)
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            variable = node.targets[0].id
+            cursor = _cursor(node.value, variable, _active_nodes(scoped_nodes, variable, node.lineno))
+            if cursor is not None:
+                cursors.append(cursor)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
+            cursor = _cursor(
+                node.value,
+                node.target.id,
+                _active_nodes(scoped_nodes, node.target.id, node.lineno),
+            )
+            if cursor is not None:
+                cursors.append(cursor)
+    return cursors
+
+
+def _nodes_in(statements: Iterable[ast.stmt]) -> Iterator[ast.AST]:
+    pending: list[ast.AST] = list(reversed(tuple(statements)))
     while pending:
         node = pending.pop()
         yield node
@@ -257,27 +285,41 @@ def _scope_nodes(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[a
         pending.extend(reversed(list(ast.iter_child_nodes(node))))
 
 
-def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_BoundCursor]:
-    cursors: list[_BoundCursor] = []
-    for node in _scope_nodes(function):
-        if isinstance(node, (ast.With, ast.AsyncWith)):
-            for item in node.items:
-                if isinstance(item.optional_vars, ast.Name):
-                    cursor = _cursor(item.context_expr, item.optional_vars.id)
-                    if cursor is not None:
-                        cursors.append(cursor)
-        elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-            cursor = _cursor(node.value, node.targets[0].id)
-            if cursor is not None:
-                cursors.append(cursor)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
-            cursor = _cursor(node.value, node.target.id)
-            if cursor is not None:
-                cursors.append(cursor)
-    return cursors
+def _active_nodes(nodes: tuple[ast.AST, ...], variable: str, start: int) -> tuple[ast.AST, ...]:
+    rebound_lines = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.stmt) and node.lineno > start and _binds_name(node, variable)
+    ]
+    end = min(rebound_lines, default=None)
+    return tuple(
+        node
+        for node in nodes
+        if getattr(node, "lineno", start) > start and (end is None or getattr(node, "lineno", end) < end)
+    )
 
 
-def _cursor(expression: ast.expr, variable: str) -> _BoundCursor | None:
+def _binds_name(node: ast.stmt, name: str) -> bool:
+    if _writes_name(node, name):
+        return True
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            return node.name == name
+        case ast.For() | ast.AsyncFor():
+            return _target_root(node.target) == name
+        case ast.With() | ast.AsyncWith():
+            return any(
+                item.optional_vars is not None and _target_root(item.optional_vars) == name for item in node.items
+            )
+        case ast.Import():
+            return any((alias.asname or alias.name.partition(".")[0]) == name for alias in node.names)
+        case ast.ImportFrom():
+            return any((alias.asname or alias.name) == name for alias in node.names)
+        case _:
+            return False
+
+
+def _cursor(expression: ast.expr, variable: str, active_nodes: tuple[ast.AST, ...]) -> _BoundCursor | None:
     if not (
         isinstance(expression, ast.Call)
         and isinstance(expression.func, ast.Attribute)
@@ -285,18 +327,15 @@ def _cursor(expression: ast.expr, variable: str) -> _BoundCursor | None:
     ):
         return None
     factory = next((keyword.value for keyword in expression.keywords if keyword.arg == _ROW_FACTORY), None)
-    return None if factory is None else _BoundCursor(variable, factory)
+    return None if factory is None else _BoundCursor(variable, factory, active_nodes)
 
 
 def _models_built_from_cursor(
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
-    cursor: str,
+    cursor: _BoundCursor,
 ) -> frozenset[str]:
-    scoped_nodes = list(_scope_nodes(function))
-    fetched_values = _fetched_values(scoped_nodes, cursor)
-    if not fetched_values:
-        return frozenset()
-    models: set[str] = set()
+    scoped_nodes = list(cursor.active_nodes)
+    fetched_values = _fetched_values(scoped_nodes, cursor.variable)
+    models = _models_from_direct_fetch(scoped_nodes, cursor.variable)
     for fetched in fetched_values:
         if fetched.many:
             converted = _models_from_collection(scoped_nodes, fetched)
@@ -306,6 +345,27 @@ def _models_built_from_cursor(
             return frozenset()
         models.update(converted)
     return frozenset(models)
+
+
+def _models_from_direct_fetch(scoped_nodes: list[ast.AST], cursor: str) -> set[str]:
+    models: set[str] = set()
+    for node in scoped_nodes:
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Attribute) and node.func.attr == _MODEL_VALIDATE:
+            if len(node.args) != 1 or node.keywords or _fetch_method(node.args[0], cursor) != "fetchone":
+                continue
+            model = _model_name(node.func.value)
+        else:
+            direct_rows = [
+                keyword.value
+                for keyword in node.keywords
+                if keyword.arg is None and _fetch_method(keyword.value, cursor) == "fetchone"
+            ]
+            model = _model_name(node.func) if len(direct_rows) == 1 else None
+        if model is not None:
+            models.add(model)
+    return models
 
 
 def _fetched_values(scoped_nodes: list[ast.AST], cursor: str) -> list[_FetchedValue]:

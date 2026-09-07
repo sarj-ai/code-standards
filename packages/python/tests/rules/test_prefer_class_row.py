@@ -59,6 +59,66 @@ def test_async_cursor_then_model_constructor_fires() -> None:
     assert len(_check(source)) == 1
 
 
+@pytest.mark.parametrize(
+    "conversion",
+    [
+        "Task.model_validate(await cursor.fetchone())",
+        "Task(**await cursor.fetchone())",
+    ],
+)
+def test_outer_select_fetched_directly_into_model_fires(conversion: str) -> None:
+    source = f"""\
+        async def load(conn):
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute("WITH ready AS (SELECT id, state FROM task) SELECT * FROM ready")
+                return {conversion}
+    """  # ruff:ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [diagnostic] = _check(source)
+    assert "class_row(Task)" in diagnostic.message
+
+
+def test_direct_non_fetch_model_input_is_clean() -> None:
+    source = """
+        async def load(conn, payload):
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute("SELECT id, state FROM task")
+                return Task.model_validate(payload)
+    """
+    assert _check(source) == []
+
+
+def test_direct_fetch_before_dict_cursor_binding_is_clean() -> None:
+    source = """
+        async def load(conn, cursor):
+            existing = Task(**await cursor.fetchone())
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute("SELECT id, state FROM task")
+                return existing
+    """
+    assert _check(source) == []
+
+
+def test_direct_fetch_after_dict_cursor_lifetime_and_rebinding_is_clean() -> None:
+    source = """
+        async def load(conn):
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                await cursor.execute("SELECT id, state FROM task")
+            cursor = custom_cursor()
+            return Task(**await cursor.fetchone())
+    """
+    assert _check(source) == []
+
+
+def test_direct_fetch_after_rebinding_inside_dict_cursor_scope_is_clean() -> None:
+    source = """
+        async def load(conn):
+            async with conn.cursor(row_factory=dict_row) as cursor:
+                cursor = custom_cursor()
+                return Task(**await cursor.fetchone())
+    """
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize("container", ["[]", "set()", "()"])
 def test_fetchall_model_comprehensions_fire(container: str) -> None:
     match container:
