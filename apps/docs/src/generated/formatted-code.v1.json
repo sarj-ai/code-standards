@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0d2dbdb430477cd9e8ff8fbb3637dcc2fec8019fbe5b8805ade6b77835ce9d99",
-  "cliSha256": "5cd4db735306372a0ea099eb9ecaeddbdc04bcc6ff3b69c66474f0803693f929",
+  "catalogSha256": "0023c7dc53a24ba31344fe94e7fa64a7f939bf904a5997e78d213947b84b8ebe",
+  "cliSha256": "9f3cc03b116ce30e8fb7c07d273eb9c945180ecf70cf99dc3baef59f13523fe0",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5947,7 +5947,7 @@
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "from psycopg.rows import dict_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=dict_row) as cursor:\n        row = await cursor.fetchone()\n        return Task.model_validate(row)\n"
+              "source": "from psycopg.rows import dict_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=dict_row) as cursor:\n        await cursor.execute(\"SELECT id, state FROM task\")\n        row = await cursor.fetchone()\n        return Task.model_validate(row)\n"
             }
           ],
           "fixedFiles": [],
