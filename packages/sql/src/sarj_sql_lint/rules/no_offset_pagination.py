@@ -142,7 +142,7 @@ class NoOffsetPagination(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         path_parts = frozenset(part.lower() for part in path.parts)
         if (
-            path_parts & _NON_PRODUCTION_PARTS
+            not path_parts.isdisjoint(_NON_PRODUCTION_PARTS)
             or is_dump_file(source, path)
             or is_migration_source(path, source)
             or path.name.lower().endswith(".generated.sql")

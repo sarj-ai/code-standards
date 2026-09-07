@@ -92,11 +92,12 @@ class Policy:
             if diagnostic.rule_id is not None
             else {f"{engine}:{diagnostic.code}"}
         )
-        if selectors & self.excluded_rules:
+        if not selectors.isdisjoint(self.excluded_rules):
             return False
         relative = diagnostic.location.path
         return not any(
-            override.paths.match_file(relative) and selectors & override.rules for override in self.overrides
+            override.paths.match_file(relative) and not selectors.isdisjoint(override.rules)
+            for override in self.overrides
         )
 
     def filter_paths(self, paths: Iterable[str]) -> tuple[str, ...]:

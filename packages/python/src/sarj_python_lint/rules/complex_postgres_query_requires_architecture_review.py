@@ -200,7 +200,7 @@ def _query_argument(call: ast.Call) -> ast.expr | None:
     tokens = frozenset(part for part in receiver.split("_") if part)
     if (
         receiver not in _QUERY_RECEIVER_TOKENS
-        and not tokens.intersection(_QUERY_RECEIVER_TOKENS)
+        and tokens.isdisjoint(_QUERY_RECEIVER_TOKENS)
         and not any(receiver.endswith(suffix) for suffix in ("conn", "cur", "cursor", "session"))
     ):
         return None

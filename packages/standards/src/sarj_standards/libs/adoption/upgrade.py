@@ -228,7 +228,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
                 changes.append(Change(companion_target_path, f"sync {companion_name} companion config"))
                 config_writes.append((companion_source_path, companion_target_path))
 
-    if set(adopted.configs) & (
+    if not set(adopted.configs).isdisjoint(
         set(manifest.SWIFT_CONFIGS) | set(manifest.KOTLIN_CONFIGS) | set(manifest.MOBILE_CONFIGS)
     ):
         for companion_name, (companion_source, companion_target) in MOBILE_COMPANION_CONFIGS.items():

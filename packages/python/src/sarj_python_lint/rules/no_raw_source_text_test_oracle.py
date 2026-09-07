@@ -761,7 +761,7 @@ def _representation_fixture_path(node: ast.AST) -> bool:
         if not isinstance(child, ast.Constant) or not isinstance(child.value, str):
             continue
         parts = {part.lower() for part in child.value.replace("\\", "/").split("/")}
-        if parts & _REPRESENTATION_DIRS:
+        if not parts.isdisjoint(_REPRESENTATION_DIRS):
             return True
     return False
 

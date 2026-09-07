@@ -431,7 +431,7 @@ def _missing_unit(statement: ast.Assign | ast.AnnAssign, name: str, comment: str
     # A name carrying a different unit is contradictory, but appending a second
     # suffix would worsen it; leave the conflict to a dedicated future rule.
     mentioned_name_tokens = frozenset(token for unit in mentioned for token in unit.name_tokens)
-    if declaration_tokens & (_CONFLICT_UNIT_NAME_TOKENS - mentioned_name_tokens):
+    if not declaration_tokens.isdisjoint(_CONFLICT_UNIT_NAME_TOKENS - mentioned_name_tokens):
         return None
     # A rationale can mention several quantities; once the name identifies one,
     # guessing that another quantity is the assigned value is unsafe.

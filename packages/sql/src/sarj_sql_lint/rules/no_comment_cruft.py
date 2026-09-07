@@ -177,7 +177,7 @@ class NoCommentCruft(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         path_parts = frozenset(part.lower() for part in path.parts)
         if (
-            path_parts & _TEST_PATH_PARTS
+            not path_parts.isdisjoint(_TEST_PATH_PARTS)
             or is_dump_file(source, path)
             or not is_migration_source(path, source)
             or is_generated_migration(path, source)

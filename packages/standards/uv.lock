@@ -1268,7 +1268,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.16.12"
+version = "0.16.13"
 source = { editable = "../sql" }
 dependencies = [
     { name = "typer" },

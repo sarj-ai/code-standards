@@ -447,9 +447,7 @@ def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_too
     assert adopted.typescript_dest == "web"
     assert adopted.swift_dest == "."
     assert adopted.kotlin_dest == "."
-    assert not set(manifest.SWIFT_CONFIGS + manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).intersection(
-        adopted.configs
-    )
+    assert set(manifest.SWIFT_CONFIGS + manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).isdisjoint(adopted.configs)
 
 
 def test_setup_discards_retired_rule_exclusions_while_migrating_schema_three(tmp_path: Path) -> None:
@@ -554,7 +552,7 @@ def test_swift_defaults_are_language_wide_while_other_mobile_tools_require_mobil
     )
 
     assert set(manifest.SWIFT_CONFIGS).issubset(generic)
-    assert not set(manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).intersection(generic)
+    assert set(manifest.KOTLIN_CONFIGS + manifest.MOBILE_CONFIGS).isdisjoint(generic)
     assert mobile[:5] == ("swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security")
 
 
