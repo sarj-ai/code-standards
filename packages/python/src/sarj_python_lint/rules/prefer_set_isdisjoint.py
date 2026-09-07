@@ -23,6 +23,24 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_TRACKED_BUILTINS = frozenset(
+    {
+        "bool",
+        "dict",
+        "enumerate",
+        "filter",
+        "frozenset",
+        "list",
+        "map",
+        "range",
+        "reversed",
+        "set",
+        "tuple",
+        "zip",
+    }
+)
+
+
 @final
 class PreferSetIsdisjoint(Rule):
     id = "prefer-set-isdisjoint"
@@ -331,26 +349,12 @@ def _argument_names(arguments: ast.arguments) -> set[str]:
 
 
 def _shadowed_builtins(tree: ast.Module) -> frozenset[str]:
-    tracked = {
-        "bool",
-        "dict",
-        "enumerate",
-        "filter",
-        "frozenset",
-        "list",
-        "map",
-        "range",
-        "reversed",
-        "set",
-        "tuple",
-        "zip",
-    }
     shadowed: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in tracked:
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in _TRACKED_BUILTINS:
             shadowed.add(node.id)
-        elif isinstance(node, ast.arg) and node.arg in tracked:
+        elif isinstance(node, ast.arg) and node.arg in _TRACKED_BUILTINS:
             shadowed.add(node.arg)
-        elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in tracked:
+        elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in _TRACKED_BUILTINS:
             shadowed.add(node.asname or node.name.split(".")[0])
     return frozenset(shadowed)
