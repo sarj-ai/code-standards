@@ -3,12 +3,31 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 import re
+import shlex
 
+from pydantic import TypeAdapter
 import pytest
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ACTION_USE_PATTERN = re.compile(r"^\s*uses:\s+[^\s@]+@[^\s#]+", re.MULTILINE)
+MAPPING = TypeAdapter(dict[str, object])
+MAPPING_LIST = TypeAdapter(list[dict[str, object]])
+
+
+def _mapping(value: object) -> dict[str, object]:
+    return MAPPING.validate_python(value)
+
+
+def _workflow(path: Path) -> dict[str, object]:
+    parsed: object = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # pyright: ignore[reportAny]
+    return _mapping(parsed)
+
+
+def _assert_unconditional(entry: dict[str, object]) -> None:
+    assert "if" not in entry
+    assert "continue-on-error" not in entry
 
 
 def test_every_setup_uv_step_pins_the_uv_binary() -> None:
@@ -35,6 +54,60 @@ def test_read_only_workflows_do_not_persist_checkout_credentials() -> None:
             if "persist-credentials: false" not in following:
                 violations.append(f"checkout persists credentials in {workflow}: {match[0]}")
     assert violations == []
+
+
+def test_iac_ci_gates_the_pinned_bounded_hcl_fuzzer() -> None:
+    workflow = _workflow(REPO_ROOT / ".github/workflows/iac-ci.yml")
+    harness = (REPO_ROOT / "packages/iac/fuzz/hcl_document_fuzzer.py").read_text(encoding="utf-8")
+    requirements = shlex.split(
+        (REPO_ROOT / "packages/iac/fuzz/requirements.txt").read_text(encoding="utf-8")
+    )
+
+    assert _mapping(workflow["permissions"]) == {"contents": "read"}
+    triggers = _mapping(workflow["on"])
+    assert _mapping(triggers["push"]) == {"branches": ["main"]}
+    assert not triggers["pull_request"]
+
+    job = _mapping(_mapping(workflow["jobs"])["test"])
+    assert job["name"] == "iac package"
+    assert job["timeout-minutes"] == "30"
+    _assert_unconditional(job)
+    steps = MAPPING_LIST.validate_python(job["steps"])
+
+    install_step = next(step for step in steps if step.get("name") == "Install the pinned fuzzing engine")
+    install = install_step["run"]
+    assert isinstance(install, str)
+    assert "--require-hashes" in install
+    assert "--no-deps" in install
+    assert "fuzz/requirements.txt" in install
+    assert requirements == [  # sarj-noqa: SARJ402 -- parsed requirements tokens are the supply-chain contract
+        "atheris==3.1.0",
+        "--hash=sha256:315a0b5c819852b1ffe1ca72efc389c7724881f2c33e4aacb8c6bcec49bd5011",
+    ]
+
+    fuzz_step = next(step for step in steps if step.get("name") == "Fuzz the production HCL parser")
+    _assert_unconditional(fuzz_step)
+    assert fuzz_step["env"] == {"PYTHONPATH": "src"}
+    run = fuzz_step["run"]
+    assert isinstance(run, str)
+    assert run.split() == [
+        '"$RUNNER_TEMP/hcl-fuzz-venv/bin/python"',
+        "fuzz/hcl_document_fuzzer.py",
+        "-max_total_time=180",
+        "-rss_limit_mb=2048",
+        "fuzz/corpus/hcl_document",
+    ]
+    assert "import atheris" in harness  # sarj-noqa: SARJ402 -- the import is the Scorecard detection contract
+
+
+@pytest.mark.parametrize(
+    "bypass",
+    [{"if": "false"}, {"continue-on-error": "true"}],
+    ids=["conditional-skip", "ignored-failure"],
+)
+def test_unconditional_gate_contract_rejects_bypasses(bypass: dict[str, object]) -> None:
+    with pytest.raises(AssertionError):
+        _assert_unconditional(bypass)
 
 
 def test_every_job_starts_with_harden_runner() -> None:
