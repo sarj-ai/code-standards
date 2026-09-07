@@ -66,6 +66,7 @@
       "no-restated-comment",
       "no-secret-in-log",
       "no-select-star",
+      "no-service-behavior-in-settings",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
       "no-trailing-numeric-unit-assignment-comment",
@@ -350,7 +351,8 @@
       "SARJ437",
       "SARJ438",
       "SARJ439",
-      "SARJ440"
+      "SARJ440",
+      "SARJ441"
     ],
     "sql": [
       "SARJ101",

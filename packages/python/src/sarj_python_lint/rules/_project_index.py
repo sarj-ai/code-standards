@@ -193,6 +193,37 @@ class ProjectIndexSet:
     def source_unit(self, module: str) -> SourceUnit | None:
         return self._by_module.get(module)
 
+    def constructor_consumers(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
+        if unit.module is None:
+            return frozenset()
+        target = SymbolRef(unit.module, name)
+        consumers: set[tuple[Path, str]] = set()
+        for candidate in self._units.values():
+            if candidate.tree is None:
+                continue
+            for owner in candidate.tree.body:
+                if not isinstance(owner, ast.ClassDef):
+                    continue
+                initializer = next(
+                    (
+                        statement
+                        for statement in owner.body
+                        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and statement.name == "__init__"
+                    ),
+                    None,
+                )
+                if initializer is None:
+                    continue
+                parameters = (*initializer.args.posonlyargs, *initializer.args.args, *initializer.args.kwonlyargs)
+                if any(
+                    _annotation_contains_symbol(candidate, parameter.annotation, target)
+                    for parameter in parameters
+                    if parameter.arg != "self"
+                ):
+                    consumers.add((candidate.path, owner.name))
+        return frozenset(consumers)
+
     def class_inherits_from(self, unit: SourceUnit, name: str, qualified_bases: frozenset[str]) -> bool:
         if unit.module is None:
             return False
@@ -328,7 +359,7 @@ def _imports(module: str | None, tree: ast.Module | None, *, is_package: bool) -
         return {}
     result: dict[str, SymbolRef] = {}
     package = module if is_package else module.rpartition(".")[0]
-    for node in tree.body:
+    for node in _module_import_statements(tree):
         if isinstance(node, ast.ImportFrom) and not any(alias.name == "*" for alias in node.names):
             target = _relative_module(package, node.level, node.module)
             if target is None:
@@ -341,6 +372,37 @@ def _imports(module: str | None, tree: ast.Module | None, *, is_package: bool) -
                 module = alias.name if alias.asname else local_name
                 result[local_name] = SymbolRef(module, "")
     return result
+
+
+def _module_import_statements(tree: ast.Module) -> tuple[ast.stmt, ...]:
+    statements: list[ast.stmt] = list(tree.body)
+    for statement in tree.body:
+        if not isinstance(statement, ast.If) or not _is_type_checking_guard(statement.test):
+            continue
+        statements.extend(child for child in statement.body if isinstance(child, (ast.Import, ast.ImportFrom)))
+    return tuple(statements)
+
+
+def _is_type_checking_guard(node: ast.expr) -> bool:
+    return (isinstance(node, ast.Name) and node.id == "TYPE_CHECKING") or (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in {"typing", "typing_extensions"}
+        and node.attr == "TYPE_CHECKING"
+    )
+
+
+def _annotation_contains_symbol(unit: SourceUnit, annotation: ast.expr | None, target: SymbolRef) -> bool:
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        with suppress(SyntaxError):
+            annotation = ast.parse(annotation.value, mode="eval").body
+    return any(
+        _resolve(unit, candidate) == target
+        for candidate in ast.walk(annotation)
+        if isinstance(candidate, (ast.Name, ast.Attribute))
+    )
 
 
 def _relative_module(package: str, level: int, module: str | None) -> str | None:

@@ -65,6 +65,7 @@ from sarj_python_lint.rules.no_repeated_test_body import NoRepeatedTestBody
 from sarj_python_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_python_lint.rules.no_secret_in_log import NoSecretInLog
 from sarj_python_lint.rules.no_select_star import NoSelectStar
+from sarj_python_lint.rules.no_service_behavior_in_settings import NoServiceBehaviorInSettings
 from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
@@ -186,6 +187,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoRawConnectionInTests.id: NoRawConnectionInTests,
         NoAnalyticalAggregationInPostgresStore.id: NoAnalyticalAggregationInPostgresStore,
         NoSelectStar.id: NoSelectStar,
+        NoServiceBehaviorInSettings.id: NoServiceBehaviorInSettings,
         NoGenericSingleExportModule.id: NoGenericSingleExportModule,
         Stepdown.id: Stepdown,
         NoRepeatedStringLiteral.id: NoRepeatedStringLiteral,

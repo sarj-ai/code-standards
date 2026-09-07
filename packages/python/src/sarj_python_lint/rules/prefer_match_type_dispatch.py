@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 _MIN_BRANCHES = 3
 _ISINSTANCE_ARGS = 2
+_NESTED_TYPE_CHECKS = 2
 _BUILTIN_TYPES = frozenset(
     {
         "bool",
@@ -87,19 +88,23 @@ class PreferMatchTypeDispatch(Rule):
     id: str = "prefer-match-type-dispatch"
     code: str = "SARJ080"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Prefer `match` for three-or-more-branch runtime type dispatch.",
+        summary="Prefer `match` for structural runtime type dispatch and nested class guards.",
         rationale=(
             "A long mutually exclusive `isinstance` dispatch repeats its subject and hides the closed list of "
-            "runtime shapes; class patterns put that dispatch in one explicit construct."
+            "runtime shapes. A chained guard that separately checks an object and one of its attributes similarly "
+            "spells one structural invariant as unrelated boolean calls; class patterns express both shapes and "
+            "can bind the narrowed values in one construct."
         ),
         remediation=(
             "Replace the branches with `match subject` and one class-pattern arm per distinct type; combine types "
-            "that share behavior with an OR-pattern."
+            "that share behavior with an OR-pattern. For a nested guard, use a nested class pattern and bind any "
+            "narrowed attribute that later code consumes."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only three or more adjacent, unguarded `isinstance` branches over the same simple name are checked.",
+            "Nested-guard findings require exactly two negated checks joined by `or`: an imported or module-local class for a simple name, followed by an imported or module-local class for an attribute rooted at that name, with an unconditional built-in `TypeError` raise.",
             "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "A terminal-looking context-manager body does not prove a sibling branch terminates: exceptions can be suppressed. An unconditional return or raise after the context manager remains eligible.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
@@ -149,6 +154,47 @@ class PreferMatchTypeDispatch(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="nested-class-type-guard",
+                title="Separate type checks describe one nested runtime shape",
+                outcome=ExampleOutcome.MATCH,
+                scenario="nested-class-guard",
+                files=(
+                    ExampleFile.python(
+                        "app/scheduler.py",
+                        "from app.models import ActiveSettings, CustomScenario\n\n"
+                        "def schedule(settings):\n"
+                        "    if not isinstance(settings, ActiveSettings) or not isinstance(settings.scenario, CustomScenario):\n"
+                        "        raise TypeError('custom scenario required')\n"
+                        "    return settings.scenario.id\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/scheduler.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="nested-class-pattern",
+                title="One class pattern checks and binds the nested runtime shape",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="nested-class-guard",
+                files=(
+                    ExampleFile.python(
+                        "app/scheduler.py",
+                        "from app.models import ActiveSettings, CustomScenario\n\n"
+                        "def schedule(settings):\n"
+                        "    match settings:\n"
+                        "        case ActiveSettings(scenario=CustomScenario() as scenario):\n"
+                        "            pass\n"
+                        "        case _:\n"
+                        "            raise TypeError('custom scenario required')\n"
+                        "    return scenario.id\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/scheduler.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary
@@ -179,6 +225,16 @@ class PreferMatchTypeDispatch(Rule):
         )
         findings.extend(
             _sibling_findings(
+                all_nodes,
+                path,
+                self.code,
+                imports,
+                local_classes,
+                unsafe_bindings=unsafe_bindings,
+            )
+        )
+        findings.extend(
+            _nested_guard_findings(
                 all_nodes,
                 path,
                 self.code,
@@ -329,6 +385,113 @@ def _dispatch(
     if len(seen) < _MIN_BRANCHES:
         return None
     return _Dispatch(subjects.pop(), len(branches))
+
+
+def _nested_guard_findings(
+    all_nodes: tuple[ast.AST, ...],
+    path: Path,
+    code: str,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    *,
+    unsafe_bindings: frozenset[str],
+) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    for node in all_nodes:
+        if (
+            not isinstance(node, ast.If)
+            or node.orelse
+            or not _raises_builtin_type_error(node.body, imports, unsafe_bindings)
+            or "isinstance" in unsafe_bindings
+        ):
+            continue
+        test = node.test
+        if (
+            not isinstance(test, ast.BoolOp)
+            or not isinstance(test.op, ast.Or)
+            or len(test.values) != _NESTED_TYPE_CHECKS
+        ):
+            continue
+        first = _negated_isinstance(test.values[0])
+        second = _negated_isinstance(test.values[1])
+        if first is None or second is None:
+            continue
+        first_subject, first_type = first
+        second_subject, second_type = second
+        if not isinstance(first_subject, ast.Name):
+            continue
+        attribute = _attribute_path(second_subject, root=first_subject.id)
+        if (
+            attribute is None
+            or not _is_class_pattern_type(first_type, imports, local_classes)
+            or not _is_class_pattern_type(second_type, imports, local_classes)
+        ):
+            continue
+        findings.append(
+            Diagnostic(
+                path=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=(
+                    f"nested isinstance guard on '{first_subject.id}.{attribute}' — use one match/case class "
+                    "pattern and bind the narrowed attribute consumed after the guard."
+                ),
+            )
+        )
+    return findings
+
+
+def _raises_builtin_type_error(body: list[ast.stmt], imports: ImportIndex, unsafe_bindings: frozenset[str]) -> bool:
+    if not imports.builtin_is_unshadowed("TypeError") or "TypeError" in unsafe_bindings or not body:
+        return False
+    final_statement = body[-1]
+    if not isinstance(final_statement, ast.Raise) or final_statement.exc is None:
+        return False
+    exception = final_statement.exc.func if isinstance(final_statement.exc, ast.Call) else final_statement.exc
+    return isinstance(exception, ast.Name) and exception.id == "TypeError"
+
+
+def _negated_isinstance(node: ast.expr) -> tuple[ast.expr, ast.expr] | None:
+    if not isinstance(node, ast.UnaryOp) or not isinstance(node.op, ast.Not):
+        return None
+    call = node.operand
+    if not (
+        isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "isinstance"
+        and len(call.args) == _ISINSTANCE_ARGS
+        and not call.keywords
+    ):
+        return None
+    return call.args[0], call.args[1]
+
+
+def _attribute_path(node: ast.expr, *, root: str) -> str | None:
+    parts: list[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name) or current.id != root or not parts:
+        return None
+    return ".".join(reversed(parts))
+
+
+def _is_class_pattern_type(
+    node: ast.expr,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id[:1].isupper() and (node.id in local_classes or node.id in imports.bindings)
+    if not isinstance(node, ast.Attribute) or not node.attr[:1].isupper():
+        return False
+    root: ast.expr = node
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    return isinstance(root, ast.Name) and root.id in imports.bindings
 
 
 def _type_branch(
