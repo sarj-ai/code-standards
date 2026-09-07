@@ -349,6 +349,23 @@ describe("prefer-shadcn-primitives project detection", () => {
     ]);
   });
 
+  it("fails closed for an invalid target with repeated wildcards", () => {
+    const root = project({
+      "package.json": '{"name":"app"}',
+      "components.json": SHADCN_MANIFEST,
+      "tsconfig.json": `{
+        "compilerOptions": {
+          "baseUrl": ".",
+          "paths": { "@/*": ["./generated/*/src/*"] }
+        }
+      }`,
+      "generated/components/ui/src/components/ui/button.tsx":
+        "const Button = () => null; export { Button };",
+      "src/features/action.tsx": RAW_BUTTON,
+    });
+    expect(projectAwareMessages(root, "src/features/action.tsx")).toEqual([]);
+  });
+
   it("fails closed when the Button module is missing", () => {
     const root = project({
       "package.json": '{"name":"app"}',

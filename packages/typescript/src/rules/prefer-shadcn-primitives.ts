@@ -258,7 +258,8 @@ function resolveAlias(packageRoot: string, alias: string): string | null {
     const suffix = pattern.slice(star + 1);
     if (!alias.startsWith(prefix) || !alias.endsWith(suffix)) continue;
     const substitution = alias.slice(prefix.length, alias.length - suffix.length);
-    matches.push(target.replace("*", substitution));
+    if (target.indexOf("*") !== target.lastIndexOf("*")) continue;
+    matches.push(target.replaceAll("*", () => substitution));
   }
   const [match] = matches;
   if (matches.length !== 1 || match === undefined) return null;
