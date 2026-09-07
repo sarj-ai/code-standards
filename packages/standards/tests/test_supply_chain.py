@@ -37,6 +37,22 @@ def test_read_only_workflows_do_not_persist_checkout_credentials() -> None:
     assert violations == []
 
 
+def test_private_reference_scan_never_checks_out_candidate_code() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/private-refs.yml").read_text(encoding="utf-8")
+
+    assert workflow.count("uses: actions/checkout@") == 1
+    assert "ref: ${{ github.event.pull_request.base.sha || github.sha }}" in workflow
+    assert "ref: ${{ github.event.pull_request.head.sha || github.sha }}" not in workflow
+    assert "path: trusted" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "uv sync --project trusted/packages/standards --frozen --no-dev" in workflow
+    assert "trusted/packages/standards/.venv/bin/code-standards" in workflow
+    assert "path: candidate" not in workflow
+    assert "git init --bare candidate.git" in workflow
+    assert "--root candidate.git maintain check" in workflow
+    assert '--commits "$BASE_SHA..$HEAD_SHA"' in workflow
+
+
 def test_every_job_starts_with_harden_runner() -> None:
     workflows = sorted((REPO_ROOT / ".github/workflows").glob("*.yml"))
     violations: list[str] = []
