@@ -1,3 +1,7 @@
 var legacy = true;
 
-module.exports = { legacy };
+function configure(snake_value) {
+  return snake_value;
+}
+
+module.exports = { configure, legacy };

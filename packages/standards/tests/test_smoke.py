@@ -463,7 +463,26 @@ def test_python_visibility_contract_is_explicitly_strict() -> None:
     ruff = tomllib.loads(RUFF_STRICT.read_text())
     lint = manifest.table_field(manifest.as_table(ruff), "lint")
     ignored = set(manifest.list_field(lint, "ignore"))
-    assert {"SLF001", "N801", "N802", "N806", "N999", "F401"}.isdisjoint(ignored)
+    assert {
+        "SLF001",
+        "N801",
+        "N802",
+        "N803",
+        "N804",
+        "N805",
+        "N806",
+        "N807",
+        "N811",
+        "N812",
+        "N813",
+        "N814",
+        "N815",
+        "N816",
+        "N817",
+        "N818",
+        "N999",
+        "F401",
+    }.isdisjoint(ignored)
     assert "PLC2701" in ignored
 
     upstream = PYRIGHT_STRICT.read_text()
