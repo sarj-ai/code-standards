@@ -299,15 +299,15 @@ def _name_role(identifier: str) -> _Role:
 def _is_authenticator_name(identifier: str) -> bool:
     tokens = identifier_tokens(identifier)
     token_set = set(tokens)
-    is_auth_header = "header" in token_set and bool(token_set & {"auth", "authorization"})
+    is_auth_header = "header" in token_set and not token_set.isdisjoint({"auth", "authorization"})
     if not is_secret_name(identifier) and not is_auth_header:
         return False
     if (token_set == {"token"} and not identifier.isupper()) or not tokens:
         return False
-    if tokens[-1] in _DESCRIPTOR_WORDS or token_set & _CATEGORY_WORDS:
+    if tokens[-1] in _DESCRIPTOR_WORDS or not token_set.isdisjoint(_CATEGORY_WORDS):
         return False
-    return bool(
-        token_set & _AUTH_WORDS
+    return (
+        not token_set.isdisjoint(_AUTH_WORDS)
         or is_auth_header
         or any(left == "api" and right == "key" for left, right in pairwise(tokens))
     )

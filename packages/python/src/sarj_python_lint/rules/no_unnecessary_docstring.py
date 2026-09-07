@@ -647,7 +647,7 @@ def _schema_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> fr
                 _resolve_imported_name(base.value if isinstance(base, ast.Subscript) else base, imports)
                 for base in class_node.bases
             }
-            if base_names & (_KNOWN_SCHEMA_BASES | consumed):
+            if not base_names.isdisjoint(_KNOWN_SCHEMA_BASES | consumed):
                 consumed.add(name)
                 changed = True
     return frozenset(id(classes[name]) for name in consumed)

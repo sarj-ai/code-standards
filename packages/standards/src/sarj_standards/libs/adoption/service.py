@@ -189,7 +189,7 @@ def plan_sync(
                         base / companion_target,
                     )
                 )
-    if set(selected) & (SWIFT_CONFIGS | KOTLIN_CONFIGS | MOBILE_CONFIGS):
+    if not set(selected).isdisjoint(SWIFT_CONFIGS | KOTLIN_CONFIGS | MOBILE_CONFIGS):
         base = destination(_DestinationKind.DEFAULT, None)
         for companion, (companion_source, companion_target) in MOBILE_COMPANION_CONFIGS.items():
             targets.append(

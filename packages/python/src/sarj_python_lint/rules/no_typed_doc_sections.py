@@ -121,7 +121,7 @@ def _public_contract_docstring_lines(path: Path, source: str) -> frozenset[int]:
         protocol_method = isinstance(owner, ast.ClassDef) and any(
             _terminal_name(base) in _PUBLIC_CONTRACT_BASES for base in owner.bases
         )
-        if decorators & _PUBLIC_CONTRACT_DECORATORS or protocol_method:
+        if not decorators.isdisjoint(_PUBLIC_CONTRACT_DECORATORS) or protocol_method:
             excluded.add(first.lineno)
     return frozenset(excluded)
 

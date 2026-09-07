@@ -34,6 +34,11 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         "left = set(values)\nright = frozenset(other)\nassert left & right",
         "left = {value for value in values}\nright = set(other)\nif left.intersection(right):\n    pass",
         "left = set(values)\nitems = [x for x in rows if left & {x}]",
+        'if ready and bool({"retry_settings", "calling_window"} & updates.keys()):\n    refresh()',
+        "if not bool({1, 2} & tuple(values)):\n    pass",
+        "if {1, 2} & {key: value for key, value in rows}:\n    pass",
+        "if {1, 2} & (value for value in values):\n    pass",
+        "if {1}.intersection(values):\n    pass",
     ],
 )
 def test_flags_boolean_only_builtin_intersections(source: str) -> None:
@@ -47,10 +52,11 @@ def test_flags_boolean_only_builtin_intersections(source: str) -> None:
         "left: set[int] = load()\nif left & {1}:\n    pass",
         "result = {1} & {2}",
         "if custom.intersection(values):\n    pass",
-        "if {1}.intersection(values):\n    pass",
         "if {1}.intersection(a, b):\n    pass",
         "set = custom_factory\nleft = set(values)\nif left & {1}:\n    pass",
         "left = set(values)\nleft = load()\nif left & {1}:\n    pass",
+        "if not bool({1, 2} & values):\n    pass",
+        "tuple = custom_factory\nif {1} & tuple(values):\n    pass",
     ],
 )
 def test_rejects_unproven_or_value_producing_intersections(source: str) -> None:
@@ -59,6 +65,11 @@ def test_rejects_unproven_or_value_producing_intersections(source: str) -> None:
 
 def test_branch_assignment_does_not_escape_as_exact_type_proof() -> None:
     source = "if condition:\n    left = set(values)\nif left & {1}:\n    pass"
+    assert _check(source) == []
+
+
+def test_reflected_and_without_iteration_is_not_reported() -> None:
+    source = "class Right:\n    def __rand__(self, left):\n        return {1}\n\nif {1} & Right():\n    pass"
     assert _check(source) == []
 
 
@@ -76,6 +87,18 @@ def test_branch_assignment_does_not_escape_as_exact_type_proof() -> None:
     ],
 )
 def test_rejects_scope_and_rebinding_false_positives(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "bool = custom_predicate\nif bool({1} & values):\n    pass",
+        "def check(bool, values):\n    if bool({1} & values):\n        pass",
+        "from policy import predicate as bool\nif bool({1} & values):\n    pass",
+    ],
+)
+def test_shadowed_bool_wrapper_is_clean(source: str) -> None:
     assert _check(source) == []
 
 
