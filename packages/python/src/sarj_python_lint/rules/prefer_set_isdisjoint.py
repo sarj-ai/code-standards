@@ -35,7 +35,7 @@ class PreferSetIsdisjoint(Rule):
         autofix=AutofixPolicy.SUGGESTION,
         limitations=(
             "Built-in set identity must be proven from a literal, comprehension, constructor, or one dominating local assignment.",
-            "The intersection receiver or left operand must be a proven built-in set; annotations, parameters, attributes, subclasses, branch-merged bindings, stored intersections, and generated files are excluded.",
+            "For binary `&`, the left operand must be a proven built-in set and the right operand must be a literal, comprehension, built-in iterable constructor, standard no-argument collection view, or proven set; annotations, parameters, attributes, subclasses, branch-merged bindings, stored intersections, and generated files are excluded.",
             "The suggestion is intentionally not an autofix because short-circuiting may make custom element equality or hashing side effects observable.",
         ),
         examples=(
@@ -248,7 +248,7 @@ class _Scanner:
 
 def _is_intersection(node: ast.expr, exact: set[str], shadowed: frozenset[str]) -> bool:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitAnd):
-        return _is_exact_set(node.left, exact, shadowed)
+        return _is_exact_set(node.left, exact, shadowed) and _is_proven_iterable(node.right, exact, shadowed)
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
@@ -285,6 +285,30 @@ def _is_exact_set(node: ast.expr, exact: set[str], shadowed: frozenset[str]) -> 
     )
 
 
+def _is_proven_iterable(node: ast.expr, exact: set[str], shadowed: frozenset[str]) -> bool:
+    if _is_exact_set(node, exact, shadowed):
+        return True
+    if isinstance(
+        node,
+        ast.List | ast.Tuple | ast.Dict | ast.ListComp | ast.DictComp | ast.GeneratorExp | ast.Constant,
+    ):
+        return not isinstance(node, ast.Constant) or isinstance(node.value, str | bytes)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"items", "keys", "values"}
+        and not node.args
+        and not node.keywords
+    ):
+        return True
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"dict", "enumerate", "filter", "list", "map", "range", "reversed", "tuple", "zip"}
+        and node.func.id not in shadowed
+    )
+
+
 def _stored_names(node: ast.AST) -> set[str]:
     return {child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)}
 
@@ -307,12 +331,26 @@ def _argument_names(arguments: ast.arguments) -> set[str]:
 
 
 def _shadowed_builtins(tree: ast.Module) -> frozenset[str]:
+    tracked = {
+        "bool",
+        "dict",
+        "enumerate",
+        "filter",
+        "frozenset",
+        "list",
+        "map",
+        "range",
+        "reversed",
+        "set",
+        "tuple",
+        "zip",
+    }
     shadowed: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in {"bool", "set", "frozenset"}:
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in tracked:
             shadowed.add(node.id)
-        elif isinstance(node, ast.arg) and node.arg in {"bool", "set", "frozenset"}:
+        elif isinstance(node, ast.arg) and node.arg in tracked:
             shadowed.add(node.arg)
-        elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in {"bool", "set", "frozenset"}:
+        elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in tracked:
             shadowed.add(node.asname or node.name.split(".")[0])
     return frozenset(shadowed)
