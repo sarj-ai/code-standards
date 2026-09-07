@@ -81,7 +81,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(result?.messages.map(message => message.ruleId)).toContain("@typescript-eslint/naming-convention");
   });
 
-  it.each(CONFIG_FACTORIES)("%s preserves an explicit syntax-only TSX override", async (_name, createConfig) => {
+  it.each(CONFIG_FACTORIES)("%s keeps naming active in an explicit syntax-only TSX override", async (_name, createConfig) => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
@@ -96,7 +96,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     );
     expect(result?.messages.filter(message => message.fatal === true)).toEqual([]);
     const configured: unknown = await eslint.calculateConfigForFile("tooling.tsx");
-    expect(severity(rulesOf(configured)["@typescript-eslint/naming-convention"])).toBe(0);
+    expect(severity(rulesOf(configured)["@typescript-eslint/naming-convention"])).toBe(2);
   });
 
   it("keeps typed diagnostics live in a nested monorepo package", async () => {
@@ -153,6 +153,9 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
 
       expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
       expect(result?.messages.map((message) => message.ruleId)).toContain("no-var");
+      expect(result?.messages.map((message) => message.ruleId)).toContain(
+        "@typescript-eslint/naming-convention",
+      );
       expect(result?.messages.map((message) => message.ruleId)).not.toContain(
         "@typescript-eslint/await-thenable",
       );
@@ -174,9 +177,32 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
 
       expect(result?.messages.filter((message) => message.fatal === true)).toEqual([]);
       expect(result?.messages.map((message) => message.ruleId)).toContain("no-var");
+      expect(result?.messages.map((message) => message.ruleId)).toContain(
+        "@typescript-eslint/naming-convention",
+      );
       expect(result?.messages.map((message) => message.ruleId)).not.toContain(
         "@typescript-eslint/await-thenable",
       );
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s keeps wire keys while requiring camelCase parameter bindings",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        cwd: NESTED_MONOREPO_DIR,
+        overrideConfigFile: true,
+        overrideConfig: createConfig({ tsconfigRootDir: NESTED_MONOREPO_DIR }),
+      });
+
+      const [result] = await eslint.lintFiles([
+        resolve(NESTED_MONOREPO_DIR, "packages/example/src/parameter-naming.ts"),
+      ]);
+      const names = result?.messages
+        .filter((message) => message.ruleId === "@typescript-eslint/naming-convention")
+        .map((message) => message.message.match(/`([^`]+)`/)?.[1]);
+
+      expect(names).toEqual(["snake_param", "wire_key", "snake_local", "snake_item"]);
     },
   );
 

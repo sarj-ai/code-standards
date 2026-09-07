@@ -86,6 +86,58 @@ const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
   "**/.dependency-cruiser.{js,cjs,mjs,ts,cts,mts}",
   "**/eslint.config*.{js,cjs,mjs,ts,cts,mts}",
 ];
+const SYNTAX_ONLY_NAMING_CONVENTION = [
+  "error",
+  {
+    selector: "variable",
+    modifiers: ["const", "global"],
+    filter: {
+      regex:
+        "^(Route|action|clientAction|clientLoader|config|csr|dynamic|dynamicParams|entries|fetchCache|handle|headers|instant|links|loader|maxDuration|meta|metadata|partial|prefetch|preferredRegion|prerender|revalidate|runtime|shouldRevalidate|ssr|trailingSlash|viewport)$",
+      match: true,
+    },
+    format: null,
+  },
+  {
+    // Type-free analysis cannot distinguish function-valued constants.
+    selector: "variable",
+    modifiers: ["const", "global"],
+    format: ["camelCase", "PascalCase", "UPPER_CASE"],
+    leadingUnderscore: "allow",
+  },
+  {
+    selector: [
+      "classProperty",
+      "objectLiteralProperty",
+      "typeProperty",
+      "classMethod",
+      "objectLiteralMethod",
+      "typeMethod",
+      "classicAccessor",
+      "autoAccessor",
+      "enumMember",
+    ],
+    modifiers: ["requiresQuotes"],
+    format: null,
+  },
+  {
+    selector: "default",
+    format: ["camelCase"],
+    leadingUnderscore: "allow",
+    trailingUnderscore: "allow",
+    filter: { regex: "^(UNSAFE_|__)", match: false },
+  },
+  {
+    selector: "variable",
+    format: ["camelCase", "UPPER_CASE", "PascalCase"],
+    leadingUnderscore: "allow",
+  },
+  { selector: "typeLike", format: ["PascalCase"] },
+  { selector: "import", format: ["camelCase", "PascalCase", "UPPER_CASE"] },
+  { selector: "objectLiteralProperty", format: null },
+  { selector: "typeProperty", format: null },
+  { selector: "parameter", format: ["camelCase"], leadingUnderscore: "allow" },
+];
 const TEST_FILES = [
   "**/*.{test,spec,e2e}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
   "**/test/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
@@ -618,6 +670,21 @@ export function createConfig(options = {}) {
           leadingUnderscore: "allow",
         },
         {
+          selector: [
+            "classProperty",
+            "objectLiteralProperty",
+            "typeProperty",
+            "classMethod",
+            "objectLiteralMethod",
+            "typeMethod",
+            "classicAccessor",
+            "autoAccessor",
+            "enumMember",
+          ],
+          modifiers: ["requiresQuotes"],
+          format: null,
+        },
+        {
           selector: "default",
           format: ["camelCase"],
           leadingUnderscore: "allow",
@@ -641,7 +708,7 @@ export function createConfig(options = {}) {
         { selector: "typeProperty", format: null },
         {
           selector: "parameter",
-          format: ["camelCase", "snake_case"],
+          format: ["camelCase"],
           leadingUnderscore: "allow",
         },
       ],
@@ -1120,6 +1187,9 @@ export function createConfig(options = {}) {
       // Storage policy requires explicit stateless-module boundaries.
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),
+      ...(HAS_TYPE_PROJECT
+        ? {}
+        : { "@typescript-eslint/naming-convention": SYNTAX_ONLY_NAMING_CONVENTION }),
     },
   },
 
@@ -1252,6 +1322,21 @@ export function createConfig(options = {}) {
           leadingUnderscore: "allow",
         },
         {
+          selector: [
+            "classProperty",
+            "objectLiteralProperty",
+            "typeProperty",
+            "classMethod",
+            "objectLiteralMethod",
+            "typeMethod",
+            "classicAccessor",
+            "autoAccessor",
+            "enumMember",
+          ],
+          modifiers: ["requiresQuotes"],
+          format: null,
+        },
+        {
           selector: "default",
           format: ["camelCase", "PascalCase"],
           leadingUnderscore: "allow",
@@ -1272,7 +1357,7 @@ export function createConfig(options = {}) {
         { selector: "typeProperty", format: null },
         {
           selector: "parameter",
-          format: ["camelCase", "snake_case"],
+          format: ["camelCase"],
           leadingUnderscore: "allow",
         },
       ],
@@ -1292,7 +1377,10 @@ export function createConfig(options = {}) {
           projectService: false,
         },
       },
-      rules: UNTYPED_RULE_OVERRIDES,
+      rules: {
+        ...UNTYPED_RULE_OVERRIDES,
+        "@typescript-eslint/naming-convention": SYNTAX_ONLY_NAMING_CONVENTION,
+      },
     }]),
 
   // BEGIN GENERATED LIBRARY POLICY

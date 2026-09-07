@@ -346,6 +346,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     });
     const configured = (await eslint.calculateConfigForFile("src/index.ts")) as Linter.Config;
     expect(configured?.rules?.["@typescript-eslint/await-thenable"]).toEqual([0]);
+    expect(severityOf(configured?.rules?.["@typescript-eslint/naming-convention"])).toBe(2);
   });
 
   it("honors explicit project-service options without mutating the default export", () => {
@@ -453,6 +454,10 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       .slice(1)
       .find((option) => option.selector === "default");
     expect(tsxDefaultNaming?.format).toContain("PascalCase");
+    const tsxParameterNaming = tsxNaming
+      .slice(1)
+      .find((option) => option.selector === "parameter");
+    expect(tsxParameterNaming?.format).toEqual(["camelCase"]);
     const tsxFilenameCase = tsxConfig.rules?.["unicorn/filename-case"] as
       | [number, { cases: Record<string, boolean> }]
       | undefined;
