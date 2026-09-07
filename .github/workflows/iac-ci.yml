@@ -43,7 +43,24 @@ jobs:
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked
+      - name: Install the pinned fuzzing engine
+        run: |
+          uv venv --python 3.14 "$RUNNER_TEMP/hcl-fuzz-venv"
+          uv pip install \
+            --python "$RUNNER_TEMP/hcl-fuzz-venv/bin/python" \
+            --require-hashes \
+            --no-deps \
+            -r fuzz/requirements.txt
       - run: uv run pytest -q
       - run: uv run ruff check src/ tests/
       - run: uv run basedpyright
+      - name: Fuzz the production HCL parser
+        env:
+          PYTHONPATH: src
+        run: >-
+          "$RUNNER_TEMP/hcl-fuzz-venv/bin/python"
+          fuzz/hcl_document_fuzzer.py
+          -max_total_time=180
+          -rss_limit_mb=2048
+          fuzz/corpus/hcl_document
       - run: uv build

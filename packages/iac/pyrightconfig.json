@@ -1,4 +1,5 @@
 {
   "extends": "../../.basedpyright-strict.json",
-  "include": ["src", "tests"]
+  "include": ["src", "tests"],
+  "extraPaths": ["fuzz"]
 }
