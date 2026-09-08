@@ -167,10 +167,13 @@ def select_eslint_commands(
     *,
     label: str = "selected",
     fix: bool = False,
+    expand_directories: bool = False,
 ) -> EslintSelection:
     repository = root.resolve()
     fallback_project = _adopted_typescript_project(repository)
-    candidates = _selected_eslint_candidates(repository, paths, fallback_project=fallback_project)
+    candidates = _selected_eslint_candidates(
+        repository, paths, fallback_project=fallback_project, expand_directories=expand_directories
+    )
     if not candidates:
         return EslintSelection((), 0)
     grouped: dict[Path, set[str]] = {}
@@ -250,6 +253,7 @@ def _selected_eslint_candidates(
     paths: Iterable[str],
     *,
     fallback_project: Path | None = None,
+    expand_directories: bool = False,
 ) -> set[Path]:
     candidates: set[Path] = set()
     for raw_path in paths:
@@ -267,7 +271,8 @@ def _selected_eslint_candidates(
             owners = {_owning_typescript_project(source, root, fallback_project=fallback_project) for source in sources}
             candidate_owner = _owning_typescript_project(candidate, root, fallback_project=fallback_project)
             if (
-                sources
+                not expand_directories
+                and sources
                 and owners == {candidate_owner}
                 and candidate_owner is not None
                 and not _contains_skill_artifacts(candidate)

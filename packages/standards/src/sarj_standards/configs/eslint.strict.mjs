@@ -467,16 +467,11 @@ const compatibleReact = fixupPluginRules(react);
 // (`SKIP_DIR_NAMES` in `sarj_python_lint/__main__.py`), so the two halves of the
 // same standard disagreed; this closes that gap rather than inventing a policy.
 //
-// `lib/` is included deliberately and is the only entry that can shadow authored
-// code. It is the conventional Babel/tsc output directory for a published
-// package, which is where the 21,284 came from. A repo that keeps SOURCE in
-// `lib/` re-enables it in its own `eslint.config.mjs` override block, which is
-// what that block is for:
-//     { ignores: ["!lib/**"] }
+// `lib/` commonly contains authored code. Packages emitting into it must
+// explicitly ignore their output directory in the repository configuration.
 const BUILD_OUTPUT_IGNORES = [
   "**/dist/**",
   "**/build/**",
-  "**/lib/**",
   "**/out/**",
   "**/esm/**",
   "**/cjs/**",
