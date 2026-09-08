@@ -30,6 +30,7 @@ from sarj_standards.libs.adoption import (
     scaffold as adoption_scaffold,
     uvtool as adoption_uvtool,
 )
+from sarj_standards.libs.release import retirement
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
 
 
@@ -1235,6 +1236,10 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             if (relative := update.path.relative_to(repo).as_posix()).startswith(".github/workflows/")
         )
         allowed_paths = managed_rollout_paths(repo, allowed_workflow_paths)
+        try:
+            retired_rewrites = retirement.expected_rewrites(repo, allowed_paths, target_version=version)
+        except ValueError as exc:
+            raise RolloutError(str(exc)) from exc
         failures: list[str] = []
         try:
             runner.run((*tool_prefix, *tool, "update", "--to", version), cwd=repo, env=unauthenticated)
@@ -1301,10 +1306,16 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 raise RolloutError(msg)
             consumer_baselines[path] = path.read_bytes()
         worktree_paths = changed_paths(repo, runner)
+        try:
+            retired_paths = retirement.validate_rewrites(repo, retired_rewrites)
+        except ValueError as exc:
+            raise RolloutError(str(exc)) from exc
+        retired_baselines = frozenset(path for path in retired_paths if "baseline" in path.lower())
         reject_unsafe_diff(
             worktree_paths,
+            allowed_source_paths=retired_paths,
             allowed_workflow_paths=allowed_workflow_paths,
-            allowed_baseline_paths=allowed_baseline_paths,
+            allowed_baseline_paths=allowed_baseline_paths | retired_baselines,
             allowed_paths=allowed_paths,
         )
         reject_git_metadata(repo, worktree_paths, runner)
@@ -1343,10 +1354,15 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 failures.append("consumer verification failed:\n" + verification_failure_detail)
         verification_failure = "\n\n".join(failures)[-4000:]
         branch_paths = committed_paths(repo, consumer.branch, runner)
+        try:
+            retirement.validate_rewrites(repo, retired_rewrites)
+        except ValueError as exc:
+            raise RolloutError(str(exc)) from exc
         reject_unsafe_diff(
             branch_paths,
+            allowed_source_paths=retired_paths,
             allowed_workflow_paths=allowed_workflow_paths,
-            allowed_baseline_paths=allowed_baseline_paths,
+            allowed_baseline_paths=allowed_baseline_paths | retired_baselines,
             allowed_paths=allowed_paths,
         )
         reject_git_metadata(

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, final
 import pytest
 
 from sarj_standards.libs.adoption import doctor as adoption_doctor, manifest as adoption_manifest
-from sarj_standards.libs.release import rollout
+from sarj_standards.libs.release import retirement, rollout
 
 from .fakes import FakeRolloutRunner as FakeRunner
 
@@ -918,6 +918,14 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         eslint = repo / "eslint.config.mjs"
         manifest.write_text('schema = 3\nbundle = "5.8.0"\n', encoding="utf-8")
         eslint.write_text("export default [];\n", encoding="utf-8")
+        (repo / "guard.py").write_bytes(
+            (Path(__file__).parents[1] / "fixtures" / "retirement" / "guard.py.txt").read_bytes()
+        )
+        (repo / "suppression-baseline.json").write_bytes(
+            (Path(__file__).parents[1] / "fixtures" / "retirement" / "suppression-baseline.json.txt").read_bytes()
+        )
+        retired_expected = retirement.expected_rewrites(repo, frozenset())
+        monkeypatch.setattr(retirement, "__version__", "5.8.1")
         subprocess.run(("git", "init", "-b", "main"), cwd=repo, check=True, capture_output=True)
         subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=repo, check=True)
         subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=repo, check=True)
@@ -973,6 +981,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                     return subprocess.CompletedProcess(rendered, 0, live_base_ref_payload(live_sha), "")
                 if "update" in rendered:
                     manifest.write_text('schema = 4\nbundle = "5.8.1"\n', encoding="utf-8")
+                    for relative, contents in retired_expected.items():
+                        (repo / relative).write_bytes(contents)
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[-1:] == ("doctor",):
                     return subprocess.CompletedProcess(rendered, 0, "", "")

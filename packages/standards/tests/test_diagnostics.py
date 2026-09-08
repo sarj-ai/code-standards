@@ -481,7 +481,8 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
     def local_argv(argv: Sequence[str], *_args: object) -> tuple[str, ...]:
         return tuple(argv)
 
-    def run_eslint(argv: Sequence[str], *, cwd: Path) -> external_module.ProcessOutput:
+    def run_eslint(argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> external_module.ProcessOutput:
+        assert 0 < timeout_seconds <= 300
         assert cwd == tmp_path
         seen.append(tuple(argv))
         return external_module.ProcessOutput(0, "[]", "")

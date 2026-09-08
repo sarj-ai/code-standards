@@ -109,6 +109,7 @@ jobs:
           for specification in \
             'repo-ci.yml|release-ready' \
             'private-refs.yml|private references' \
+            'security.yml|security' \
             'bootstrap-ci.yml|bootstrap CI' \
             'python-ci.yml|python CI' \
             'typescript-ci.yml|typescript CI' \

@@ -1,0 +1,1 @@
+{"schema_version": 1, "codes": {"sarj-noqa:SARJ052": 1, "noqa:F401": 2}}
