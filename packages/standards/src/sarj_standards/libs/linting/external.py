@@ -25,7 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 import yaml
 
 from sarj_standards.libs.adoption import manifest, packagemanager
-from sarj_standards.libs.adoption.lifecycle import select_eslint_commands
+from sarj_standards.libs.adoption.lifecycle import Command, select_eslint_commands
 from sarj_standards.libs.diagnostics import (
     AnalyzerId,
     Completion,
@@ -72,6 +72,7 @@ _MAX_MOBILE_CONFIG_BYTES = 1024 * 1024
 _PACKAGED_MOBILE_CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 _READ_BYTES = 64 * 1024
 _MAX_ESLINT_PROJECTS = 32
+_ESLINT_BATCH_SIZE = 250
 _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
@@ -345,7 +346,9 @@ def analyze_external(
         unowned_eslint = 0
     else:
         try:
-            eslint_commands, unowned_eslint = select_eslint_commands(root, routed.typescript, label="analysis")
+            eslint_commands, unowned_eslint = select_eslint_commands(
+                root, routed.typescript, label="analysis", expand_directories=True
+            )
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             message = _redact_message(f"{type(exc).__name__}: {exc}", root)
             issue = ExecutionIssue("eslint", "configuration-failure", message)
@@ -376,7 +379,7 @@ def analyze_external(
         reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         eslint_commands = ()
     analysis_started = time.monotonic()
-    for command in eslint_commands:
+    for command, invocation_id in _eslint_batches(eslint_commands, root=root):
         if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
             issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
             reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
@@ -396,7 +399,7 @@ def analyze_external(
                     Completion.FAILED,
                     issues=(issue,),
                     analyzer_id=AnalyzerId("eslint"),
-                    invocation_id=InvocationId(f"eslint:{command.cwd.relative_to(root).as_posix() or '.'}"),
+                    invocation_id=InvocationId(f"eslint:{invocation_id}"),
                     file_count=_argv_file_count(command.argv),
                 )
             )
@@ -421,7 +424,7 @@ def analyze_external(
                 root=root,
                 runner=execute_eslint,
                 parser=parse_eslint,
-                invocation_id=command.cwd.relative_to(root).as_posix() or ".",
+                invocation_id=invocation_id,
                 file_count=_argv_file_count(command.argv),
             )
         )
@@ -2592,6 +2595,27 @@ def _react_doctor_location(
 def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:
     config_args = () if config is None else ("--config", str(config))
     return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
+
+
+def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[Command, str], ...]:
+    batches: list[tuple[Command, str]] = []
+    for command in commands:
+        boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
+        prefix = tuple(command.argv[:boundary])
+        projects: dict[Path, list[str]] = {}
+        for relative in command.argv[boundary:]:
+            project = _nearest_project((command.cwd / relative).parent, root, ("tsconfig.json", "package.json"))
+            projects.setdefault(project, []).append(relative)
+        chunks = [
+            tuple(paths[start : start + _ESLINT_BATCH_SIZE])
+            for _project, paths in sorted(projects.items())
+            for start in range(0, len(paths), _ESLINT_BATCH_SIZE)
+        ]
+        identifier = command.cwd.relative_to(root).as_posix() or "."
+        for index, paths in enumerate(chunks, start=1):
+            invocation_id = identifier if len(chunks) == 1 else f"{identifier}:batch-{index}"
+            batches.append((Command(command.label, (*prefix, *paths), command.cwd), invocation_id))
+    return tuple(batches)
 
 
 def _eslint_json_argv(argv: Sequence[str], *, pass_on_unpruned_suppressions: bool = False) -> tuple[str, ...]:

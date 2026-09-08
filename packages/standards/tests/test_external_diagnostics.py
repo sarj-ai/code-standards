@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import shutil
 import sys
+import time
 from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
@@ -27,6 +28,7 @@ from sarj_standards.libs.linting.external import (
     parse_swiftformat,
     parse_swiftlint,
 )
+from sarj_standards.libs.linting.runner import GroupedPaths
 
 
 if TYPE_CHECKING:
@@ -54,6 +56,98 @@ def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
     assert "--pass-on-unpruned-suppressions" not in strict
     assert scoped_baseline.count("--pass-on-unpruned-suppressions") == 1
     assert scoped_baseline.index("--pass-on-unpruned-suppressions") < scoped_baseline.index("--")
+
+
+@pytest.mark.parametrize("select_directories", [False, True])
+def test_eslint_batches_preserve_every_file_and_project_boundary(tmp_path: Path, select_directories: bool) -> None:
+    for project in ("apps/alpha", "apps/beta"):
+        directory = tmp_path / project
+        directory.mkdir(parents=True)
+        (directory / "tsconfig.json").write_text("{}\n", encoding="utf-8")
+    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    paths = [*(f"apps/alpha/item-{index:03}.ts" for index in range(251)), "apps/beta/item.ts"]
+    for relative in paths:
+        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        calls.append(tuple(argv))
+        return ProcessOutput(0, "[]", "")
+
+    selection = ["apps/alpha", "apps/beta"] if select_directories else paths
+    reports = analyze_external(
+        selection,
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=run,
+        capabilities=frozenset({"eslint"}),
+        grouped=GroupedPaths(typescript=selection),
+    )
+
+    selected = [list(argv[max(index for index, value in enumerate(argv) if value == "--") + 1 :]) for argv in calls]
+    assert sorted(file for batch in selected for file in batch) == sorted(paths)
+    assert sorted(map(len, selected)) == [1, 1, 250]
+    assert all(len({Path(file).parts[1] for file in batch}) == 1 for batch in selected)
+    assert len({report.invocation_id for report in reports}) == 3
+    assert [report.file_count for report in reports] == [250, 1, 1]
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+
+
+def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(tmp_path: Path) -> None:
+    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    paths = [f"item-{index:03}.ts" for index in range(251)]
+    for relative in paths:
+        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        files = argv[max(index for index, value in enumerate(argv) if value == "--") + 1 :]
+        if len(files) == 1:
+            return ProcessOutput(2, "", "FATAL ERROR: Reached heap limit")
+        payload = [
+            {
+                "filePath": str(cwd / files[0]),
+                "messages": [
+                    {"ruleId": "no-alert", "severity": 2, "message": "Unexpected alert.", "line": 1, "column": 1}
+                ],
+            }
+        ]
+        return ProcessOutput(1, json.dumps(payload), "")
+
+    reports = analyze_external(
+        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+    )
+
+    assert len(reports) == 2
+    assert len(reports[0].diagnostics) == 1
+    assert reports[1].completion is Completion.FAILED
+    assert reports[1].issues
+
+
+def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    paths = [f"item-{index:03}.ts" for index in range(251)]
+    for relative in paths:
+        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
+    elapsed = 0.0
+    calls = 0
+    monkeypatch.setattr(time, "monotonic", lambda: elapsed)
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal calls, elapsed
+        assert "eslint" in argv
+        assert cwd == tmp_path
+        calls += 1
+        elapsed = 301.0
+        return ProcessOutput(0, "[]", "")
+
+    reports = analyze_external(
+        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+    )
+
+    assert calls == 1
+    assert reports[-1].completion is Completion.FAILED
+    assert [issue.kind for issue in reports[-1].issues] == ["aggregate-timeout"]
 
 
 def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:

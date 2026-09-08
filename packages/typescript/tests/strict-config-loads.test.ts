@@ -368,6 +368,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     });
     expect(await eslint.calculateConfigForFile("dist/generated.js")).toBeUndefined();
     expect(await eslint.calculateConfigForFile(".astro/generated.d.ts")).toBeUndefined();
+    expect(await eslint.isPathIgnored("src/lib/catalog.ts")).toBe(false);
+    expect(await eslint.isPathIgnored("lib/catalog.ts")).toBe(false);
   });
 
   it.each(PROBE_PATHS)(

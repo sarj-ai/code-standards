@@ -481,13 +481,18 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     const authoredRules = (authored?.messages ?? []).map((m) => m.ruleId);
     expect(authoredRules).toContain("@sarj/no-enum");
 
-    // Same bytes under `lib/`. `lintFiles` on an explicitly named ignored path
-    // returns a result with zero messages, so assert on the messages rather
-    // than on the result count.
-    const compiled = await eslint.lintFiles([
+    const library = await eslint.lintFiles([
       resolve(FIXTURE_DIR, "lib/compiled.ts"),
     ]);
-    expect(compiled.flatMap((r) => r.messages)).toEqual([]);
+    expect(library.flatMap((result) => result.messages.map((message) => message.ruleId))).toContain("@sarj/no-enum");
+
+    const emitted = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: [...strictConfig as Linter.Config[], { ignores: ["lib/**"] }],
+      warnIgnored: false,
+    });
+    expect((await emitted.lintFiles([resolve(FIXTURE_DIR, "lib/compiled.ts")])).flatMap((result) => result.messages)).toEqual([]);
 
     // The ignore must be a GLOBAL ignore: an entry that grows a `files` key
     // stops ignoring anything, and nothing else in the config would notice.
