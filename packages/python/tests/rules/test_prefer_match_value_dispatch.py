@@ -119,6 +119,38 @@ def test_identical_bodies_defer_to_ruff_sim114() -> None:
     assert _check(_ladder().replace("result = second()", "result = first()")) == []
 
 
+def test_direct_return_lookup_defers_to_ruff_sim116() -> None:
+    source = """
+def dispatch(value):
+    if value == "a":
+        return FIRST
+    elif value == "b":
+        return SECOND
+    elif value == "c":
+        return THIRD
+    else:
+        return DEFAULT
+"""
+
+    assert _check(source) == []
+
+
+def test_call_return_ladder_remains_match_guidance() -> None:
+    source = """
+def dispatch(value):
+    if value == "a":
+        return first()
+    elif value == "b":
+        return second()
+    elif value == "c":
+        return third()
+    else:
+        return fallback()
+"""
+
+    assert len(_check(source)) == 1
+
+
 def test_annotated_path_sample_is_advisory() -> None:
     source = """
 from pathlib import Path

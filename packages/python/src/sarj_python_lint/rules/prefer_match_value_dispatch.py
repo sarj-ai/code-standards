@@ -52,6 +52,7 @@ class PreferMatchValueDispatch(Rule):
             "This is a readability suggestion, not proof of exhaustiveness or a safe automatic rewrite: attributes can have side effects and match evaluates its subject once.",
             "Grouped or guarded ladders and terminal sibling branches require three distinct arms on a bare name; only the last arm may have a selector-first guard.",
             "Groups contain two to six distinct string literals in a tuple, list, or set. Set hashing and custom equality can differ from pattern matching; no runtime string type is inferred.",
+            "Three-or-more-arm equality ladders that directly return only constants or names are left to Ruff SIM116, avoiding duplicate lookup-table and match/case advice.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
         ),
         examples=(
@@ -178,6 +179,8 @@ class PreferMatchValueDispatch(Rule):
             subject = _dispatch_subject(branches, constants)
             if subject is None:
                 subject = _expanded_dispatch_subject(branches, constants)
+            elif _ruff_sim116_owned(branches, current.orelse):
+                continue
             if subject is not None:
                 candidates.append((node, subject))
         for branches in _terminal_sibling_dispatches(tree):
@@ -202,6 +205,17 @@ class PreferMatchValueDispatch(Rule):
                 )
             )
         return findings
+
+
+def _ruff_sim116_owned(branches: list[ast.If], fallback: list[ast.stmt]) -> bool:
+    if len(branches) < _MIN_EXPANDED_ARMS or len(fallback) != 1:
+        return False
+    bodies = [branch.body for branch in branches]
+    bodies.append(fallback)
+    return all(
+        len(body) == 1 and isinstance(body[0], ast.Return) and isinstance(body[0].value, (ast.Constant, ast.Name))
+        for body in bodies
+    )
 
 
 def _terminal_sibling_dispatches(tree: ast.Module) -> list[list[ast.If]]:
