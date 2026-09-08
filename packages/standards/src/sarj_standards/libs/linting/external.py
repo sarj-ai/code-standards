@@ -299,7 +299,6 @@ def analyze_external(
     pass_on_unpruned_eslint_suppressions: bool = False,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
-    execute_eslint = _run_eslint_process if runner is None else runner
     try:
         normalized_trust = TrustMode(trust)
         root, contained, routed = _prepare_inputs(files, root, policy=policy, grouped=grouped)
@@ -404,6 +403,14 @@ def analyze_external(
                 )
             )
             continue
+        execute_eslint = (
+            partial(
+                _run_eslint_process,
+                timeout_seconds=max(0.0, _ANALYSIS_DEADLINE.total_seconds() - (time.monotonic() - analysis_started)),
+            )
+            if runner is None
+            else runner
+        )
         reports.append(
             _invoke(
                 "eslint",
@@ -428,6 +435,10 @@ def analyze_external(
                 file_count=_argv_file_count(command.argv),
             )
         )
+        if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
+            issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
+            reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+            break
     react_selection = _selected_react_doctor_projects(
         root,
         enabled=include_react_doctor,
@@ -1825,13 +1836,17 @@ def run_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
     return _run_process(argv, cwd=cwd, environment=_analysis_environment())
 
 
-def _run_eslint_process(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+def _run_eslint_process(
+    argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()
+) -> ProcessOutput:
     environment = _analysis_environment()
     environment["NODE_OPTIONS"] = _ESLINT_NODE_OPTIONS
-    return _run_process(argv, cwd=cwd, environment=environment)
+    return _run_process(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
 
 
-def _run_process(argv: Sequence[str], *, cwd: Path, environment: dict[str, str]) -> ProcessOutput:
+def _run_process(
+    argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float = _TIMEOUT.total_seconds()
+) -> ProcessOutput:
     executable = _analyzer_executable(argv[0])
     if executable is None:
         msg = f"required analyzer executable is missing: {argv[0]}"
@@ -1859,7 +1874,7 @@ def _run_process(argv: Sequence[str], *, cwd: Path, environment: dict[str, str])
     )
     try:
         _start_capture_threads(threads)
-        returncode = _wait_for_process(process, threads, exceeded, argv)
+        returncode = _wait_for_process(process, threads, exceeded, argv, timeout_seconds=timeout_seconds)
     except BaseException:
         if process.poll() is None:
             _terminate_process(process)
@@ -1908,14 +1923,16 @@ def _wait_for_process(
     threads: Sequence[threading.Thread],
     exceeded: threading.Event,
     argv: Sequence[str],
+    *,
+    timeout_seconds: float,
 ) -> int:
-    deadline = time.monotonic() + _TIMEOUT.total_seconds()
+    deadline = time.monotonic() + timeout_seconds
     while process.poll() is None and not exceeded.is_set():
         if time.monotonic() >= deadline:
             _terminate_process(process)
             _ = process.wait(timeout=5)
             _join_capture_threads(threads)
-            raise subprocess.TimeoutExpired(argv, _TIMEOUT.total_seconds())
+            raise subprocess.TimeoutExpired(argv, timeout_seconds)
         time.sleep(0.01)
     if exceeded.is_set():
         _terminate_process(process)

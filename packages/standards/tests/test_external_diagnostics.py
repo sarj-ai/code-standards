@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import time
 from typing import TYPE_CHECKING
@@ -148,6 +149,76 @@ def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.
     assert calls == 1
     assert reports[-1].completion is Completion.FAILED
     assert [issue.kind for issue in reports[-1].issues] == ["aggregate-timeout"]
+
+
+@pytest.mark.parametrize("finding_count", [0, 1])
+def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, finding_count: int
+) -> None:
+    source = tmp_path / "app.ts"
+    source.write_text("alert('hello');\n", encoding="utf-8")
+    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    elapsed = 0.0
+    monkeypatch.setattr(time, "monotonic", lambda: elapsed)
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal elapsed
+        assert "eslint" in argv
+        assert cwd == tmp_path
+        elapsed = 301.0
+        payload = [
+            {
+                "filePath": str(source),
+                "messages": [
+                    {"ruleId": "no-alert", "severity": 2, "message": "Unexpected alert.", "line": 1, "column": 1}
+                ][:finding_count],
+            }
+        ]
+        return ProcessOutput(finding_count, json.dumps(payload), "")
+
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+    )
+
+    assert len(reports[0].diagnostics) == finding_count
+    assert reports[-1].completion is Completion.FAILED
+    assert [issue.kind for issue in reports[-1].issues] == ["aggregate-timeout"]
+
+
+def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    (tmp_path / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    binary = tmp_path / "node_modules" / ".bin" / "eslint"
+    binary.parent.mkdir(parents=True)
+    binary.touch()
+    paths = [f"item-{index:03}.ts" for index in range(251)]
+    for relative in paths:
+        (tmp_path / relative).write_text("export const value = 1;\n", encoding="utf-8")
+    elapsed = 0.0
+    timeouts: list[float] = []
+    monkeypatch.setattr(time, "monotonic", lambda: elapsed)
+
+    def run(argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float) -> ProcessOutput:
+        nonlocal elapsed
+        assert argv[0] == str(binary)
+        assert cwd == tmp_path
+        assert environment["NODE_OPTIONS"] == "--max-old-space-size=4096"
+        timeouts.append(timeout_seconds)
+        elapsed += 125.0
+        return ProcessOutput(0, "[]", "")
+
+    monkeypatch.setattr(external_module, "_run_process", run)
+    reports = analyze_external(paths, root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"eslint"}))
+
+    assert timeouts == [300.0, 175.0]
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+
+
+def test_eslint_subprocess_obeys_remaining_timeout(tmp_path: Path) -> None:
+    with pytest.raises(subprocess.TimeoutExpired) as caught:
+        external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            (sys.executable, "-c", "import time; time.sleep(10)"), cwd=tmp_path, timeout_seconds=0.05
+        )
+    assert caught.value.timeout == pytest.approx(0.05)
 
 
 def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
@@ -2487,7 +2558,8 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
     binary.write_text("", encoding="utf-8")
     called: list[tuple[str, ...]] = []
 
-    def successful(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+    def successful(argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutput:
+        assert 0 < timeout_seconds <= 300
         _ = cwd
         called.append(tuple(argv))
         return ProcessOutput(0, "[]", "")

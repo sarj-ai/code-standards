@@ -43,7 +43,8 @@ _NEXT_STEPS = (
     '  extend = ".ruff-strict.toml"\n'
     "\n(or run `code-standards setup`, which writes that and the rest of the wiring)\n"
 )
-_BOOTSTRAP_TIMEOUT = timedelta(seconds=120)
+_RELEASE_RESOLUTION_TIMEOUT = timedelta(seconds=120)
+_UPDATE_TIMEOUT = timedelta(minutes=30)
 _GIT_SAFE_ENV = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
@@ -510,7 +511,6 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level] -- lazy route
 
         command = [
-            *launcher.argv(executable=executable, version=target_version, refresh=True),
             "--root",
             str(_resolve_dest(args.dest)),
             "update",
@@ -525,20 +525,9 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             command.append("--no-install")
         environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve the caller environment for uvx
         environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
-        try:
-            return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv
-                command,
-                check=False,
-                env=environment,
-                timeout=_BOOTSTRAP_TIMEOUT.total_seconds(),
-            ).returncode
-        except subprocess.TimeoutExpired:
-            print(
-                "error: resolving the requested standards release timed out; check the network and retry "
-                "(--offline only reconverges the executing bundle)",
-                file=sys.stderr,
-            )
-            return 2
+        return _run_resolved_update(
+            launcher.argv(executable=executable, version=target_version, refresh=True), command, environment
+        )
 
     if args.offline:
         args.no_install = True
@@ -665,6 +654,71 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
     print(f"updated: {root} now uses standards {__version__}")
     print("next: run `code-standards check --trust-repository-code` and review every new finding")
     return 0
+
+
+def _run_resolved_update(
+    launcher_command: Sequence[str], arguments: Sequence[str], environment: Mapping[str, str]
+) -> int:
+    if environment.get("UV_NO_CACHE", "").lower() not in {"1", "true", "yes", "on"}:
+        return _resolve_and_run_update(launcher_command, arguments, environment, environment)
+    try:
+        with tempfile.TemporaryDirectory(prefix="standards-update-") as cache_directory:
+            resolution_environment = dict(environment)
+            resolution_environment.pop("UV_NO_CACHE")
+            resolution_environment["UV_CACHE_DIR"] = cache_directory
+            return _resolve_and_run_update(launcher_command, arguments, resolution_environment, environment)
+    except OSError as exc:
+        print(f"error: cannot manage the temporary standards update cache: {exc}", file=sys.stderr)
+        return 2
+
+
+def _resolve_and_run_update(
+    launcher_command: Sequence[str],
+    arguments: Sequence[str],
+    resolution_environment: Mapping[str, str],
+    environment: Mapping[str, str],
+) -> int:
+    resolve_command = [*launcher_command[:-1], "python", "-I", "-c", "import sys; print(sys.executable)"]
+    try:
+        resolved = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed executable and argv
+            resolve_command,
+            check=False,
+            env=resolution_environment,
+            stdout=subprocess.PIPE,
+            text=True,
+            timeout=_RELEASE_RESOLUTION_TIMEOUT.total_seconds(),
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            "error: resolving the requested standards release timed out; check the network and retry", file=sys.stderr
+        )
+        return 2
+    except OSError as exc:
+        print(f"error: cannot resolve the requested standards release: {exc}", file=sys.stderr)
+        return 2
+    if resolved.returncode:
+        return resolved.returncode
+    interpreter = resolved.stdout.strip()
+    if not interpreter or not Path(interpreter).is_absolute():
+        print("error: release resolution did not return an absolute Python interpreter path", file=sys.stderr)
+        return 2
+    try:
+        return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- interpreter resolved by uvx
+            [interpreter, "-I", "-m", "sarj_standards", *arguments],
+            check=False,
+            env=environment,
+            timeout=_UPDATE_TIMEOUT.total_seconds(),
+        ).returncode
+    except subprocess.TimeoutExpired:
+        print(
+            "error: standards update execution exceeded 30 minutes after release resolution; "
+            "inspect the installation and verification output before retrying",
+            file=sys.stderr,
+        )
+        return 2
+    except OSError as exc:
+        print(f"error: cannot execute the resolved standards release: {exc}", file=sys.stderr)
+        return 2
 
 
 def cmd_setup(args: _Args) -> int:

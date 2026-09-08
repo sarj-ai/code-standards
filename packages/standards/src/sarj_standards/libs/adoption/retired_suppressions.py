@@ -472,6 +472,8 @@ def _comment_spans(path: Path, text: str) -> tuple[_CommentSpan, ...]:
 
 
 def _hcl_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
+    if "<<" in text:
+        return ()
     spans = list(_javascript_comment_spans(text))
     masked = _mask_spans(text, tuple(spans))
     offset = 0

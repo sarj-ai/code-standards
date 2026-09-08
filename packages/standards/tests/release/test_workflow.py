@@ -135,6 +135,17 @@ def test_lint_config_release_waits_for_typescript_and_preflights_registry() -> N
     assert "maintain release verify-publications" in lint_config_job
 
 
+@pytest.mark.parametrize("filename", ["release.yml", "release-tags.yml"])
+def test_publication_and_tag_recovery_require_security_at_exact_revision(filename: str) -> None:
+    workflow = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
+    gate = workflow.split("\n  release-safety:\n", maxsplit=1)[1].split("\n\n  ", maxsplit=1)[0]
+
+    assert "'security.yml|security'" in gate
+    assert 'head_sha="$TARGET_SHA"' in gate
+    assert '.head_sha == $sha and .event == "push"' in gate
+    assert 'if [[ -n "$conclusion" ]]; then' in gate
+
+
 def test_release_tags_registry_visible_packages_at_the_published_commit() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     workflow = (REPO_ROOT / ".github/workflows/release-tags.yml").read_text(encoding="utf-8")
