@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e0adb2e21d2f46cd558dc7a992f61b5ccf9ef53792aea7025f670345d0e367d0",
-  "cliSha256": "4f55b9ae5245d4cc84ee19e7a1435b6a9ea9baba00132f834d69b65138e1408a",
+  "catalogSha256": "f8d4b10e27766537eeb77ce151187fb68f92285c6a0d349e12ac173a1e9a225f",
+  "cliSha256": "2eaed1796bd67d10c703f4264cdb9fb86ad2609b5a9391976518c009cece45d0",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6266,36 +6266,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Class patterns make the type dispatch explicit"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/scheduler.py",
-              "source": "from app.models import ActiveSettings, CustomScenario\n\n\ndef schedule(settings):\n    match settings:\n        case ActiveSettings(scenario=CustomScenario() as scenario):\n            pass\n        case _:\n            raise TypeError(\"custom scenario required\")\n    return scenario.id\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/scheduler.py",
-          "id": "nested-class-pattern",
-          "outcome": "accept",
-          "scenarioId": "nested-class-guard",
-          "title": "One class pattern checks and binds the nested runtime shape"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/scheduler.py",
-              "source": "from app.models import ActiveSettings, CustomScenario\n\n\ndef schedule(settings):\n    if not isinstance(settings, ActiveSettings) or not isinstance(\n        settings.scenario, CustomScenario\n    ):\n        raise TypeError(\"custom scenario required\")\n    return settings.scenario.id\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/scheduler.py",
-          "id": "nested-class-type-guard",
-          "outcome": "reject",
-          "scenarioId": "nested-class-guard",
-          "title": "Separate type checks describe one nested runtime shape"
         },
         {
           "expectedCount": 1,

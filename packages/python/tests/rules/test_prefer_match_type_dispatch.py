@@ -316,7 +316,7 @@ def test_allows_near_miss_two_arm_ast_projections(body: str) -> None:
     assert _check(source) == []
 
 
-def test_flags_nested_imported_class_guard_as_warning() -> None:
+def test_allows_nested_imported_class_guard() -> None:
     source = """
 from app.models import ActiveBatchSettings, CustomScenario
 
@@ -326,12 +326,7 @@ def retry(settings):
     return settings.scenario.id
 """
 
-    diagnostics = _check(source)
-
-    assert len(diagnostics) == 1
-    assert diagnostics[0].code == "SARJ080"
-    assert diagnostics[0].severity.value == "warning"
-    assert "nested isinstance guard on 'settings.scenario'" in diagnostics[0].message
+    assert _check(source) == []
 
 
 def test_allows_nested_guard_that_returns() -> None:
@@ -347,7 +342,7 @@ def retry(settings):
     assert _check(source) == []
 
 
-def test_flags_nested_module_local_class_guard_that_raises_type_error() -> None:
+def test_allows_nested_module_local_class_guard_that_raises_type_error() -> None:
     source = """
 class CustomScenario: ...
 class ActiveBatchSettings: ...
@@ -358,7 +353,20 @@ def retry(settings):
         raise TypeError(message)
     return settings.scenario.id
 """
-    assert len(_check(source)) == 1
+    assert _check(source) == []
+
+
+def test_allows_nested_guard_with_imported_runtime_type_group() -> None:
+    source = """
+from app.models import ActiveBatchSettings, ScenarioKinds
+
+def retry(settings):
+    if not isinstance(settings, ActiveBatchSettings) or not isinstance(settings.scenario, ScenarioKinds):
+        raise TypeError("custom scenario required")
+    return settings.scenario.id
+"""
+
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
