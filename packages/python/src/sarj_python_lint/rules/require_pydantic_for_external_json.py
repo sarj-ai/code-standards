@@ -1176,11 +1176,13 @@ def _literal_string(node: ast.expr) -> str | None:
 
 
 def _expression_tail(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute():
+            return node.attr
+        case _:
+            return None
 
 
 def _unwrap_await(node: ast.expr) -> ast.expr:

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.require_port_for_service import RequirePortForService
 
 
@@ -50,6 +51,74 @@ def test_flags_concrete_service_with_injected_collaborator() -> None:
     assert diags[0].line == 2
     assert diags[0].col == 1
     assert diags[0].severity is Severity.WARNING
+
+
+def test_project_evidence_flags_suffixless_concrete_dependency(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    package.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    sources = {
+        package / "settlement.py": """
+class BatchCallSettlement:
+    async def settle(self, batch_id: str) -> bool: ...
+    async def settle_by_id(self, batch_id: str) -> bool: ...
+    async def complete(self, batch_id: str) -> None: ...
+""",
+        package / "creator.py": """
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.settlement import BatchCallSettlement
+
+class BatchCreator:
+    def __init__(self, settlement: BatchCallSettlement) -> None:
+        self.settlement = settlement
+""",
+        package / "retry.py": """
+from app.settlement import BatchCallSettlement
+
+class BatchRetry:
+    def __init__(self, settlement: BatchCallSettlement) -> None:
+        self.settlement = settlement
+""",
+    }
+    for path, source in sources.items():
+        path.write_text(textwrap.dedent(source))
+    loaded = {path: path.read_text() for path in sources}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(sources), loaded))
+
+    diagnostics = rule.check(package / "settlement.py", loaded[package / "settlement.py"])
+
+    assert len(diagnostics) == 1
+    assert "injected directly into 2 production classes" in diagnostics[0].message
+
+
+def test_project_evidence_needs_two_production_consumers(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    package.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    definition = package / "settlement.py"
+    consumer = package / "creator.py"
+    definition.write_text(
+        "class BatchCallSettlement:\n"
+        "    async def settle(self) -> bool: ...\n"
+        "    async def complete(self) -> None: ...\n"
+    )
+    consumer.write_text(
+        "from app.settlement import BatchCallSettlement\n"
+        "class Creator:\n"
+        "    def __init__(self, settlement: BatchCallSettlement) -> None:\n"
+        "        self.settlement = settlement\n"
+    )
+    loaded = {path: path.read_text() for path in (definition, consumer)}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(list(loaded), loaded))
+
+    assert rule.check(definition, loaded[definition]) == []
 
 
 def test_message_is_exactly_the_shipped_text() -> None:
@@ -331,6 +400,37 @@ def test_any_base_class_suppresses(base: str) -> None:
 
 def test_explicit_object_base_still_fires() -> None:
     assert len(_check(_SERVICE.replace("class ThingService:", "class ThingService(object):"))) == 1
+
+
+def test_external_base_with_same_tail_suppresses_project_evidence(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    package = root / "app"
+    package.mkdir(parents=True)
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    (package / "__init__.py").write_text("")
+    definition = package / "tts.py"
+    definition.write_text(
+        "from framework import tts\n"
+        "class TTS(tts.TTS[str]):\n"
+        "    def synthesize(self, text: str): ...\n"
+        "    def stream(self): ...\n"
+    )
+    consumers: list[Path] = []
+    for name in ("first", "second"):
+        consumer = package / f"{name}.py"
+        consumer.write_text(
+            "from app.tts import TTS\n"
+            f"class {name.title()}:\n"
+            "    def __init__(self, tts: TTS) -> None:\n"
+            "        self.tts = tts\n"
+        )
+        consumers.append(consumer)
+    paths = [definition, *consumers]
+    loaded = {path: path.read_text() for path in paths}
+    rule = RequirePortForService()
+    rule.prepare(ProjectIndexSet.build(paths, loaded))
+
+    assert rule.check(definition, loaded[definition]) == []
 
 
 def test_generic_base_does_not_count_as_a_service_port() -> None:

@@ -12,7 +12,7 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
@@ -172,6 +172,7 @@ _PERSISTENCE_DEPENDENCY_RE = re.compile(r"(?:Store|Repository|Repo)$")
 # A collaborator must drive more than one operation before a service-level
 # substitution boundary is worth suggesting.
 _MIN_COLLABORATOR_METHODS = 2
+_MIN_PROJECT_CONSUMERS = 2
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 _UNSUPPORTED_COMPOUND_STATEMENTS = (
@@ -189,7 +190,7 @@ _FRAMEWORK_METHOD_DECORATORS = frozenset(
 _CAST_SOURCES = frozenset({"typing", "typing_extensions"})
 
 
-class RequirePortForService(Rule):
+class RequirePortForService(ProjectRule):
     id: str = "require-port-for-service"
     code: str = "SARJ071"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
@@ -204,7 +205,7 @@ class RequirePortForService(Rule):
         limitations=(
             "This advisory uses service-family names, constructor annotations, collaborator calls, and public-method counts as heuristics.",
             "Only direct module classes are checked; tests, generated code, scripts, framework callbacks, Store/Repository persistence dependencies, and external or interface-like bases are excluded.",
-            "The file-local rule cannot prove cross-module consumers or substitution needs, so it remains a warning; a port owned in another module may require an exact suppression on the implementation.",
+            "A suffixless or store-backed class is checked only when project analysis proves that at least two production classes inject the concrete type. A port owned in another module may require an exact suppression on the implementation.",
         ),
         examples=(
             RuleExample(
@@ -261,12 +262,7 @@ class RequirePortForService(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if (
-            not _is_library_source(path)
-            or is_generated(path, source)
-            or "__init__" not in source
-            or _SERVICE_CLASS_RE.search(source) is None
-        ):
+        if not _is_library_source(path) or is_generated(path, source) or "class " not in source:
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -304,36 +300,63 @@ class RequirePortForService(Rule):
                 break
             local_port_names |= grown
 
-        diags = [
-            Diagnostic(
-                path=path,
-                line=node.lineno,
-                col=node.col_offset + 1,
-                code=self.code,
-                severity=Severity.WARNING,
-                message=(
-                    f"`{node.name}` injects `{collaborator}` and exposes {_public_method_count(node)} public "
-                    "methods with no recognizable in-file or inherited port. If a real consumer needs "
-                    "substitution, define a small consumer-owned `Protocol` and type that consumer against it; "
-                    "otherwise suppress this advisory instead of adding an unused abstraction."
-                ),
+        diags: list[Diagnostic] = []
+        for node in classes:
+            collaborator = _unsubstitutable_service(
+                node,
+                data_names,
+                bound_names,
+                local_class_names,
+                local_port_names,
+                imports=imports,
             )
-            for node in classes
-            if (
-                collaborator := _unsubstitutable_service(
-                    node,
-                    data_names,
-                    bound_names,
-                    local_class_names,
-                    local_port_names,
-                    imports=imports,
+            consumer_count = self._concrete_consumer_count(path, node, local_class_names, local_port_names)
+            if (collaborator is None and consumer_count < _MIN_PROJECT_CONSUMERS) or _class_is_suppressed(
+                node, source_lines, self.code
+            ):
+                continue
+            if collaborator is not None:
+                evidence = f"injects `{collaborator}` and exposes {_public_method_count(node)} public methods"
+            else:
+                evidence = f"is injected directly into {consumer_count} production classes"
+            diags.append(
+                Diagnostic(
+                    path=path,
+                    line=node.lineno,
+                    col=node.col_offset + 1,
+                    code=self.code,
+                    severity=Severity.WARNING,
+                    message=(
+                        f"`{node.name}` {evidence} with no recognizable in-file or inherited port. If a real "
+                        "consumer needs substitution, define a small consumer-owned `Protocol` and type that "
+                        "consumer against it; otherwise suppress this advisory instead of adding an unused "
+                        "abstraction."
+                    ),
                 )
             )
-            is not None
-            and not _class_is_suppressed(node, source_lines, self.code)
-        ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+    def _concrete_consumer_count(
+        self,
+        path: Path,
+        node: ast.ClassDef,
+        local_class_names: frozenset[str] | set[str],
+        local_port_names: frozenset[str] | set[str],
+    ) -> int:
+        indexes = self._project_indexes
+        if indexes is None or not _project_boundary_candidate(node, local_class_names, local_port_names):
+            return 0
+        unit = indexes.unit(path)
+        if unit is None:
+            return 0
+        return len(
+            {
+                (consumer_path, consumer_name)
+                for consumer_path, consumer_name in indexes.constructor_consumers(unit, node.name)
+                if not is_test_path(consumer_path) and not is_test_support_path(consumer_path)
+            }
+        )
 
 
 def _is_library_source(path: Path) -> bool:
@@ -407,6 +430,23 @@ def _unsubstitutable_service(
     return _injected_collaborator(node, data_names, imports)
 
 
+def _project_boundary_candidate(
+    node: ast.ClassDef,
+    local_class_names: frozenset[str] | set[str],
+    local_port_names: frozenset[str] | set[str],
+) -> bool:
+    return not (
+        node.name.startswith("_")
+        or _BASE_NAME_RE.match(node.name)
+        or _has_base(node, local_class_names, local_port_names)
+        or _is_data_type(node)
+        or _declares_interface(node)
+        or _public_method_count(node) < _MIN_PUBLIC_METHODS
+        or _handles_http_requests(node)
+        or _has_framework_callback_method(node)
+    )
+
+
 def _has_framework_callback_method(node: ast.ClassDef) -> bool:
     return any(
         isinstance(target := decorator.func if isinstance(decorator, ast.Call) else decorator, ast.Attribute)
@@ -471,6 +511,10 @@ def _has_base(
             continue
         if name == "Generic":
             continue
+        # `class TTS(tts.TTS)` is an adapter extending an external framework
+        # class whose tail happens to equal the local implementation name.
+        if name == node.name:
+            return True
         if name in local_class_names:
             if name in local_port_names:
                 return True

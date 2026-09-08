@@ -212,5 +212,6 @@
   "SARJ437": "complex-postgres-query-requires-architecture-review",
   "SARJ438": "no-dunder-all",
   "SARJ439": "prefer-match-value-dispatch",
-  "SARJ440": "no-redundant-module-alias-exports"
+  "SARJ440": "no-redundant-module-alias-exports",
+  "SARJ441": "no-service-behavior-in-settings"
 }

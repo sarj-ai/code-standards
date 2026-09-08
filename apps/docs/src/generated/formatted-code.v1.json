@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5298d9c315391565561efc91ac197b35d2ae0ee8b02113b706838b361b2455e6",
-  "cliSha256": "b8cd17028041fc2e71be69e635d2db7d457fa76df4feb6e7f0f4ffe20721f2d0",
+  "catalogSha256": "6566077d21e258133c632d0ace9c5ec7a95e55493735a4a1498a957b06d979b6",
+  "cliSha256": "e6678a6aef636b046d4da9625c55a7da4f3a0681b5337c9ea9c964327ff11fcc",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5625,6 +5625,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-service-behavior-in-settings": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/batch_settings.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass BatchSettings:\n    retry_limit: int\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/batch_settings.py",
+          "id": "settings-is-data-only",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A settings type remains a passive record"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/batch_settings.py",
+              "source": "class BatchSettings:\n    def __init__(self, store: ScheduleStore) -> None:\n        self._store = store\n\n    async def repoint(self, batch_id: str) -> int:\n        return await self._store.repoint(batch_id)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/batch_settings.py",
+          "id": "settings-orchestrates-store",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A settings-named class calls injected persistence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-statically-truthy-assertion": {
       "examples": [
         {
@@ -6233,6 +6268,36 @@
           "title": "Class patterns make the type dispatch explicit"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/scheduler.py",
+              "source": "from app.models import ActiveSettings, CustomScenario\n\n\ndef schedule(settings):\n    match settings:\n        case ActiveSettings(scenario=CustomScenario() as scenario):\n            pass\n        case _:\n            raise TypeError(\"custom scenario required\")\n    return scenario.id\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/scheduler.py",
+          "id": "nested-class-pattern",
+          "outcome": "accept",
+          "scenarioId": "nested-class-guard",
+          "title": "One class pattern checks and binds the nested runtime shape"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/scheduler.py",
+              "source": "from app.models import ActiveSettings, CustomScenario\n\n\ndef schedule(settings):\n    if not isinstance(settings, ActiveSettings) or not isinstance(\n        settings.scenario, CustomScenario\n    ):\n        raise TypeError(\"custom scenario required\")\n    return settings.scenario.id\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/scheduler.py",
+          "id": "nested-class-type-guard",
+          "outcome": "reject",
+          "scenarioId": "nested-class-guard",
+          "title": "Separate type checks describe one nested runtime shape"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -6246,6 +6311,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated branches dispatch on runtime type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/ast_names.py",
+              "source": "import ast\n\n\ndef dotted_tail(node: ast.expr) -> str | None:\n    match node:\n        case ast.Name():\n            return node.id\n        case ast.Attribute():\n            return node.attr\n        case _:\n            return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/ast_names.py",
+          "id": "two-arm-ast-class-pattern",
+          "outcome": "accept",
+          "scenarioId": "two-arm-ast-projection",
+          "title": "Class patterns expose the two AST identifier shapes"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/ast_names.py",
+              "source": "import ast\n\n\ndef dotted_tail(node: ast.expr) -> str | None:\n    if isinstance(node, ast.Name):\n        return node.id\n    if isinstance(node, ast.Attribute):\n        return node.attr\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/ast_names.py",
+          "id": "two-arm-ast-projection",
+          "outcome": "reject",
+          "scenarioId": "two-arm-ast-projection",
+          "title": "Two isinstance returns project one AST identifier shape"
         }
       ],
       "optionsSchemaSource": null
