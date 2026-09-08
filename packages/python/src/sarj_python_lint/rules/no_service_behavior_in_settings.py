@@ -229,8 +229,10 @@ def _dotted_tail(node: ast.expr) -> str | None:
         current = current.func
     if isinstance(current, ast.Subscript):
         current = current.value
-    if isinstance(current, ast.Name):
-        return current.id
-    if isinstance(current, ast.Attribute):
-        return current.attr
-    return None
+    match current:
+        case ast.Name():
+            return current.id
+        case ast.Attribute():
+            return current.attr
+        case _:
+            return None

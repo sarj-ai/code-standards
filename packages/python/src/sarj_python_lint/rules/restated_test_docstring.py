@@ -524,11 +524,13 @@ def _target_names(node: ast.expr) -> set[str]:
 
 
 def _terminal_name(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute():
+            return node.attr
+        case _:
+            return None
 
 
 def _is_docstring_reader(node: ast.Call) -> bool:

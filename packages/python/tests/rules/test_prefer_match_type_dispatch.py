@@ -103,6 +103,86 @@ def parse(value: object):
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    ("first_type", "first_field", "second_type", "second_field"),
+    [
+        ("Name", "id", "Attribute", "attr"),
+        ("Attribute", "attr", "Name", "id"),
+    ],
+)
+def test_flags_two_arm_ast_name_or_attribute_projection(
+    first_type: str,
+    first_field: str,
+    second_type: str,
+    second_field: str,
+) -> None:
+    source = f"""
+import ast
+
+def dotted_tail(node: ast.expr) -> str | None:
+    if isinstance(node, ast.{first_type}):
+        return node.{first_field}
+    if isinstance(node, ast.{second_type}):
+        return node.{second_field}
+    return None
+"""
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert "two-arm ast.Name/ast.Attribute projection" in diagnostics[0].message
+
+
+def test_flags_two_arm_ast_projection_with_direct_imports() -> None:
+    source = """
+from ast import Attribute, Name, expr
+
+def dotted_tail(node: expr) -> str | None:
+    if isinstance(node, Name):
+        return node.id
+    if isinstance(node, Attribute):
+        return node.attr
+    return None
+"""
+    assert len(_check(source)) == 1
+
+
+def test_reports_only_general_finding_for_longer_sequence_ending_in_ast_projection() -> None:
+    source = """
+import ast
+
+def dotted_tail(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant):
+        return str(node.value)
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+"""
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert "3-branch terminating isinstance sequence" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "if isinstance(node, ast.Name):\n        return node.attr\n    if isinstance(node, ast.Attribute):\n        return node.id\n    return None",
+        "if isinstance(node, ast.Name):\n        observe(node)\n        return node.id\n    if isinstance(node, ast.Attribute):\n        return node.attr\n    return None",
+        "if isinstance(node, ast.Name):\n        return node.id\n    if isinstance(other, ast.Attribute):\n        return other.attr\n    return None",
+        "if isinstance(node, ast.Name):\n        return node.id\n    if isinstance(node, ast.Attribute):\n        return node.attr\n    return 'unknown'",
+        "if isinstance(node, ast.Name):\n        return node.id\n    elif isinstance(node, ast.Attribute):\n        return node.attr\n    return None",
+        "if isinstance(node, ast.Name) and ready:\n        return node.id\n    if isinstance(node, ast.Attribute):\n        return node.attr\n    return None",
+    ],
+)
+def test_allows_near_miss_two_arm_ast_projections(body: str) -> None:
+    source = f"import ast\n\ndef dotted_tail(node, other, ready):\n    {body}\n"
+    assert _check(source) == []
+
+
 def test_flags_nested_imported_class_guard_as_warning() -> None:
     source = """
 from app.models import ActiveBatchSettings, CustomScenario

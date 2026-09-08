@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6439f986c79990fa954965d75c6f7fd1dd209c4bc2f54f489ac5af9383dc6443",
+  "catalogSha256": "6566077d21e258133c632d0ace9c5ec7a95e55493735a4a1498a957b06d979b6",
   "cliSha256": "e6678a6aef636b046d4da9625c55a7da4f3a0681b5337c9ea9c964327ff11fcc",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6311,6 +6311,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Repeated branches dispatch on runtime type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/ast_names.py",
+              "source": "import ast\n\n\ndef dotted_tail(node: ast.expr) -> str | None:\n    match node:\n        case ast.Name():\n            return node.id\n        case ast.Attribute():\n            return node.attr\n        case _:\n            return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/ast_names.py",
+          "id": "two-arm-ast-class-pattern",
+          "outcome": "accept",
+          "scenarioId": "two-arm-ast-projection",
+          "title": "Class patterns expose the two AST identifier shapes"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/ast_names.py",
+              "source": "import ast\n\n\ndef dotted_tail(node: ast.expr) -> str | None:\n    if isinstance(node, ast.Name):\n        return node.id\n    if isinstance(node, ast.Attribute):\n        return node.attr\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/ast_names.py",
+          "id": "two-arm-ast-projection",
+          "outcome": "reject",
+          "scenarioId": "two-arm-ast-projection",
+          "title": "Two isinstance returns project one AST identifier shape"
         }
       ],
       "optionsSchemaSource": null

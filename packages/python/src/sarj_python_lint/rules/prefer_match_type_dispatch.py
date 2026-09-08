@@ -103,7 +103,7 @@ class PreferMatchTypeDispatch(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only three or more adjacent, unguarded `isinstance` branches over the same simple name are checked.",
+            "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by `return None`.",
             "Nested-guard findings require exactly two negated checks joined by `or`: an imported or module-local class for a simple name, followed by an imported or module-local class for an attribute rooted at that name, with an unconditional built-in `TypeError` raise.",
             "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "A terminal-looking context-manager body does not prove a sibling branch terminates: exceptions can be suppressed. An unconditional return or raise after the context manager remains eligible.",
@@ -195,6 +195,50 @@ class PreferMatchTypeDispatch(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="two-arm-ast-projection",
+                title="Two isinstance returns project one AST identifier shape",
+                outcome=ExampleOutcome.MATCH,
+                scenario="two-arm-ast-projection",
+                files=(
+                    ExampleFile.python(
+                        "app/ast_names.py",
+                        "import ast\n\n"
+                        "def dotted_tail(node: ast.expr) -> str | None:\n"
+                        "    if isinstance(node, ast.Name):\n"
+                        "        return node.id\n"
+                        "    if isinstance(node, ast.Attribute):\n"
+                        "        return node.attr\n"
+                        "    return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/ast_names.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="two-arm-ast-class-pattern",
+                title="Class patterns expose the two AST identifier shapes",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="two-arm-ast-projection",
+                files=(
+                    ExampleFile.python(
+                        "app/ast_names.py",
+                        "import ast\n\n"
+                        "def dotted_tail(node: ast.expr) -> str | None:\n"
+                        "    match node:\n"
+                        "        case ast.Name():\n"
+                        "            return node.id\n"
+                        "        case ast.Attribute():\n"
+                        "            return node.attr\n"
+                        "        case _:\n"
+                        "            return None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/ast_names.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary
@@ -235,6 +279,16 @@ class PreferMatchTypeDispatch(Rule):
         )
         findings.extend(
             _nested_guard_findings(
+                all_nodes,
+                path,
+                self.code,
+                imports,
+                local_classes,
+                unsafe_bindings=unsafe_bindings,
+            )
+        )
+        findings.extend(
+            _two_arm_ast_projection_findings(
                 all_nodes,
                 path,
                 self.code,
@@ -441,6 +495,113 @@ def _nested_guard_findings(
             )
         )
     return findings
+
+
+def _two_arm_ast_projection_findings(
+    all_nodes: tuple[ast.AST, ...],
+    path: Path,
+    code: str,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    *,
+    unsafe_bindings: frozenset[str],
+) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    for owner in all_nodes:
+        for statements in _statement_blocks(owner):
+            for index in range(len(statements) - 2):
+                first, second, fallback = statements[index : index + 3]
+                if not _returns_none(fallback):
+                    continue
+                first_projection = _ast_identifier_projection(
+                    first,
+                    imports,
+                    local_classes,
+                    unsafe_bindings,
+                )
+                second_projection = _ast_identifier_projection(
+                    second,
+                    imports,
+                    local_classes,
+                    unsafe_bindings,
+                )
+                if (
+                    first_projection is None
+                    or second_projection is None
+                    or first_projection[0] != second_projection[0]
+                    or {first_projection[1], second_projection[1]} != {"ast.Name", "ast.Attribute"}
+                ):
+                    continue
+                if index > 0 and _is_preceding_type_branch(
+                    statements[index - 1],
+                    first_projection[0],
+                    imports,
+                    local_classes,
+                    unsafe_bindings,
+                ):
+                    continue
+                subject = first_projection[0]
+                findings.append(
+                    Diagnostic(
+                        path=path,
+                        line=first.lineno,
+                        col=first.col_offset + 1,
+                        code=code,
+                        severity=Severity.WARNING,
+                        message=(
+                            f"two-arm ast.Name/ast.Attribute projection on '{subject}' — use one match/case "
+                            "statement so the structural alternatives are explicit."
+                        ),
+                    )
+                )
+    return findings
+
+
+def _ast_identifier_projection(
+    statement: ast.stmt,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> tuple[str, str] | None:
+    if not isinstance(statement, ast.If) or statement.orelse or len(statement.body) != 1:
+        return None
+    branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
+    returned = statement.body[0]
+    if branch is None or len(branch.types) != 1 or not isinstance(returned, ast.Return):
+        return None
+    type_name = next(iter(branch.types))
+    expected_field = {"ast.Name": "id", "ast.Attribute": "attr"}.get(type_name)
+    value = returned.value
+    if not (
+        expected_field is not None
+        and isinstance(value, ast.Attribute)
+        and isinstance(value.value, ast.Name)
+        and value.value.id == branch.subject
+        and value.attr == expected_field
+    ):
+        return None
+    return branch.subject, type_name
+
+
+def _is_preceding_type_branch(
+    statement: ast.stmt,
+    subject: str,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> bool:
+    if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
+        return False
+    branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
+    return branch is not None and branch.subject == subject
+
+
+def _returns_none(statement: ast.stmt) -> bool:
+    return (
+        isinstance(statement, ast.Return)
+        and isinstance(statement.value, ast.Constant)
+        and statement.value.value is None
+    )
 
 
 def _raises_builtin_type_error(body: list[ast.stmt], imports: ImportIndex, unsafe_bindings: frozenset[str]) -> bool:
