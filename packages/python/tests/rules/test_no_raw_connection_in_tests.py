@@ -39,9 +39,40 @@ def test_ignores_unproven_connections_and_production_code() -> None:
     assert _check("def run(pool: ConnectionPool):\n    pool.connection()\n", "app/store.py") == []
 
 
-@pytest.mark.parametrize("path", ["tests/conftest.py", "tests/test_utils/database.py", "tests/testing/database.py"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/conftest.py",
+        "tests/test_utils/database.py",
+        "tests/testing/database.py",
+        "tests/fixtures/database.py",
+        "python/app/tests/db_truncate.py",
+    ],
+)
 def test_allows_raw_connection_inside_shared_test_support(path: str) -> None:
     assert _check("def database_fixture(pool: ConnectionPool):\n    return pool.connection()\n", path) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tests/migrations/test_backfill_orders.py",
+        "python/common/tests/migrations/test_backfill_orders.py",
+    ],
+)
+def test_allows_migration_tests_to_manipulate_pre_store_state(path: str) -> None:
+    assert _check("def seed_legacy_row(pool: ConnectionPool):\n    return pool.connection()\n", path) == []
+
+
+def test_still_reports_collected_tests_outside_migration_trees() -> None:
+    assert (
+        len(
+            _check(
+                "def test_query(pool: ConnectionPool):\n    return pool.connection()\n", "tests/store/test_orders.py"
+            )
+        )
+        == 1
+    )
 
 
 def test_allows_fixture_internal_connection_for_setup_and_cleanup() -> None:
