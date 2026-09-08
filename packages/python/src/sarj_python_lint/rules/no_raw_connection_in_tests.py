@@ -42,7 +42,7 @@ class NoRawConnectionInTests(Rule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only test paths outside conftest.py and conventional shared test-support modules are inspected.",
+            "Only collected test modules outside conftest.py, conventional shared test-support modules, and migration-test trees are inspected.",
             "A receiver is reported only when a parameter, annotated local, or constructor call proves it is a psycopg ConnectionPool or AsyncConnectionPool.",
             "Pytest fixtures may use a connection internally for setup and cleanup, but fixtures that return or yield the connection remain reportable.",
         ),
@@ -81,12 +81,16 @@ class NoRawConnectionInTests(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if (
-            not is_test_path(path)
-            or path.name == "conftest.py"
-            or is_test_support_path(path)
-            or is_generated(path, source)
-        ):
+        excluded_path = any(
+            (
+                not is_test_path(path),
+                path.name == "conftest.py",
+                is_test_support_path(path),
+                _is_non_collected_test_support(path),
+                _is_migration_test(path),
+            )
+        )
+        if excluded_path or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -118,6 +122,18 @@ class NoRawConnectionInTests(Rule):
                 and not _is_internal_fixture_connection(scope, node)
             )
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
+
+
+def _is_non_collected_test_support(path: Path) -> bool:
+    return "tests" in path.parts and not (path.name.startswith("test_") or path.name.endswith("_test.py"))
+
+
+def _is_migration_test(path: Path) -> bool:
+    parts = path.parts
+    return any(
+        part == "tests" and index + 1 < len(parts) and parts[index + 1] == "migrations"
+        for index, part in enumerate(parts)
+    )
 
 
 def _proven_pool_names(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
