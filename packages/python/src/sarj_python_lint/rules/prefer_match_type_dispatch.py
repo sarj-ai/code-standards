@@ -103,7 +103,7 @@ class PreferMatchTypeDispatch(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by `return None`.",
+            "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by a None-returning fallback.",
             "Nested-guard findings require exactly two negated checks joined by `or`: an imported or module-local class for a simple name, followed by an imported or module-local class for an attribute rooted at that name, with an unconditional built-in `TypeError` raise.",
             "The checked types must be unshadowed builtins, unshadowed module-local classes, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "A terminal-looking context-manager body does not prove a sibling branch terminates: exceptions can be suppressed. An unconditional return or raise after the context manager remains eligible.",
@@ -597,10 +597,8 @@ def _is_preceding_type_branch(
 
 
 def _returns_none(statement: ast.stmt) -> bool:
-    return (
-        isinstance(statement, ast.Return)
-        and isinstance(statement.value, ast.Constant)
-        and statement.value.value is None
+    return isinstance(statement, ast.Return) and (
+        statement.value is None or (isinstance(statement.value, ast.Constant) and statement.value.value is None)
     )
 
 
@@ -760,6 +758,7 @@ def _statement_blocks(node: ast.AST) -> tuple[list[ast.stmt], ...]:
         case ast.With() | ast.AsyncWith() | ast.ExceptHandler() | ast.match_case():
             return (node.body,)
         case ast.Try() | ast.TryStar():
-            return node.body, node.orelse, node.finalbody, *(handler.body for handler in node.handlers)
+            # ExceptHandler owns each handler body when ast.walk reaches it.
+            return node.body, node.orelse, node.finalbody
         case _:
             return ()
