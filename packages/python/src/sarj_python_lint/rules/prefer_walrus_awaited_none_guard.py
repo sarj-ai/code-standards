@@ -5,7 +5,7 @@ from io import StringIO
 from itertools import pairwise
 from pathlib import PurePosixPath
 import tokenize
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
+from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -28,11 +28,13 @@ if TYPE_CHECKING:
 
 
 _MAX_COMBINED_LINE_LENGTH = 120
+type _NameFlow = Literal["ambiguous", "loaded", "none", "rebound", "terminal"]
 
 
 class _WalrusCandidate(NamedTuple):
     name: str
     awaited: ast.Await
+    is_not_none: bool
 
 
 @final
@@ -40,20 +42,23 @@ class PreferWalrusAwaitedNoneGuard(Rule):
     id = "prefer-walrus-awaited-none-guard"
     code = "SARJ432"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Bind a compact awaited lookup in its immediately following None guard.",
+        summary="Bind a compact awaited lookup in its immediately following terminal None guard.",
         rationale=(
-            "When an awaited lookup and its mandatory absence guard are adjacent, binding in the condition keeps "
-            "the operation and the reason for the temporary name in one compact expression."
+            "When an awaited lookup and its terminal None guard are adjacent, binding in the condition keeps "
+            "the operation, branch decision, and temporary name in one compact expression."
         ),
         remediation=(
             "Rewrite `value = await lookup(); if value is None: return` as "
-            "`if (value := await lookup()) is None: return`."
+            "`if (value := await lookup()) is None: return`. Preserve `is not None` when the terminal branch "
+            "returns or raises with the bound value. Keep two statements when the assignment is an intentional "
+            "debugging or tracing boundary."
         ),
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only one-line awaited calls followed immediately by an exact `is None` guard containing one return are checked.",
-            "The combined condition must fit 120 columns; comments, else branches, rebinding, generated files, and broader assignment-expression preferences are excluded.",
+            "Only one-line awaited calls followed immediately by an exact `is None` or `is not None` guard containing one return or raise are checked.",
+            "A negative guard requires a later use on the surviving path; a positive guard must consume the binding in its terminal statement and leave no later use before rebinding.",
+            "The combined condition must fit 120 columns; comments, else branches, ambiguous name flow, generated files, and broader assignment-expression preferences are excluded.",
         ),
         examples=(
             RuleExample(
@@ -99,6 +104,8 @@ class PreferWalrusAwaitedNoneGuard(Rule):
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if path.suffix == ".pyi" or is_generated(path, source):
             return []
+        if any(token not in source for token in ("await", "None", "if", "=")):
+            return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
@@ -110,8 +117,11 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                 candidate = _candidate(assignment, guard, source, source_lines, comment_lines)
                 if candidate is None:
                     continue
-                name, awaited = candidate
-                if not _used_before_rebinding(body[index + 2 :], name):
+                name, awaited, is_not_none = candidate
+                later_flow = _name_flow(body[index + 2 :], name)
+                if (is_not_none and later_flow in {"ambiguous", "loaded"}) or (
+                    not is_not_none and later_flow != "loaded"
+                ):
                     continue
                 if is_suppressed(source_lines, assignment.lineno, self.code) or is_suppressed(
                     source_lines, guard.lineno, self.code
@@ -128,8 +138,9 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                         code=self.code,
                         severity=Severity.WARNING,
                         message=(
-                            f"`{name}` only separates an awaited lookup from its None guard; "
-                            f"bind it as `if ({name} := {expression.strip()}) is None:`"
+                            f"`{name}` only separates an awaited lookup from its terminal None guard; "
+                            f"bind it as `if ({name} := {expression.strip()}) "
+                            f"is {'not ' if is_not_none else ''}None:`"
                         ),
                     )
                 )
@@ -157,36 +168,50 @@ def _candidate(
         and guard.test.end_lineno == guard.lineno
         and not guard.orelse
         and len(guard.body) == 1
-        and isinstance(guard.body[0], ast.Return)
+        and isinstance(guard.body[0], (ast.Return, ast.Raise))
     ):
         return None
     name = assignment.targets[0].id
-    if not _is_none_guard(guard.test, name) or _loads_name(assignment.value, name) or _loads_name(guard.body[0], name):
+    is_not_none = _none_guard_kind(guard.test, name)
+    if is_not_none is None or _loads_name(assignment.value, name):
         return None
-    if comment_lines.intersection(range(assignment.lineno, guard.lineno + 1)):
+    terminal = guard.body[0]
+    usage = _NameUsage(name)
+    usage.visit(terminal)
+    if usage.rebound or (is_not_none != usage.loaded):
+        return None
+    terminal_end = terminal.end_lineno or terminal.lineno
+    if comment_lines.intersection(range(assignment.lineno, terminal_end + 1)):
         return None
     expression = ast.get_source_segment(source, assignment.value)
     if expression is None:
         return None
     original_line = source_lines[assignment.lineno - 1]
     indentation = original_line[: len(original_line) - len(original_line.lstrip())].expandtabs(8)
-    combined = f"{indentation}if ({name} := {expression.strip()}) is None:"
+    combined = f"{indentation}if ({name} := {expression.strip()}) is {'not ' if is_not_none else ''}None:"
+    if terminal.lineno == guard.lineno:
+        terminal_source = ast.get_source_segment(source, terminal)
+        if terminal_source is None:
+            return None
+        combined = f"{combined} {terminal_source.strip()}"
     if len(combined) > _MAX_COMBINED_LINE_LENGTH:
         return None
-    return _WalrusCandidate(name, assignment.value)
+    return _WalrusCandidate(name, assignment.value, is_not_none)
 
 
-def _is_none_guard(test: ast.expr, name: str) -> bool:
-    return (
+def _none_guard_kind(test: ast.expr, name: str) -> bool | None:
+    if not (
         isinstance(test, ast.Compare)
         and isinstance(test.left, ast.Name)
         and test.left.id == name
         and len(test.ops) == 1
-        and isinstance(test.ops[0], ast.Is)
+        and isinstance(test.ops[0], (ast.Is, ast.IsNot))
         and len(test.comparators) == 1
         and isinstance(test.comparators[0], ast.Constant)
         and test.comparators[0].value is None
-    )
+    ):
+        return None
+    return isinstance(test.ops[0], ast.IsNot)
 
 
 def _loads_name(node: ast.AST, name: str) -> bool:
@@ -195,15 +220,19 @@ def _loads_name(node: ast.AST, name: str) -> bool:
     )
 
 
-def _used_before_rebinding(statements: list[ast.stmt], name: str) -> bool:
+def _name_flow(statements: list[ast.stmt], name: str) -> _NameFlow:
     for statement in statements:
         usage = _NameUsage(name)
         usage.visit(statement)
+        if usage.loaded and usage.rebound:
+            return "ambiguous"
         if usage.rebound:
-            return False
+            return "rebound"
         if usage.loaded:
-            return True
-    return False
+            return "loaded"
+        if isinstance(statement, (ast.Break, ast.Continue, ast.Raise, ast.Return)):
+            return "terminal"
+    return "none"
 
 
 @final
@@ -232,6 +261,10 @@ class _NameUsage(ast.NodeVisitor):
 
     @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
+        _ = node
+
+    @override
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         _ = node
 
     def visit_Import(self, node: ast.Import) -> None:

@@ -585,8 +585,8 @@
       "family": "python",
       "ruleId": "prefer-walrus-awaited-none-guard",
       "state": "complete",
-      "evidence": "Twenty adversarial passes narrowed the rule to physically adjacent one-line awaited calls and one-return None guards. A 7,516-file corpus found 62 exact-boundary candidates after excluding 48 blank-gap cases; the primary application target and all nine current findings were manually accepted.",
-      "outcome": "Required same-indentation physical adjacency, token-aware comment preservation, a 120-column combined condition, later same-scope use before rebinding, and no else or autofix; staged the style rule as a warning."
+      "evidence": "Twenty original adversarial passes plus ten independent follow-up reviews narrowed the rule to physically adjacent one-line awaited calls and single-statement terminal None guards. The follow-up immutable application scan emitted 32 findings: all nine previously accepted findings plus 23 newly covered return-or-raise cases; every emitted location was manually reviewed with zero observed false positives. Scope-aware mutation cases cover deferred lambdas and generators, comprehension shadowing, ambiguous load-and-rebind statements, unreachable later loads, comments, suppressions, and exact 120-column boundaries. A lexical candidate gate preserved every original diagnostic while reducing the isolated-rule median by 28 percent and a shared-AST simulation by 19 percent.",
+      "outcome": "Retained same-indentation physical adjacency, one-line awaited calls, token-aware comment preservation, the 120-column combined condition, no else, and no autofix. Expanded the warning to exact `is None` and `is not None` guards whose sole return or raise has proven name flow: negative guards require a later surviving-path load before rebinding, while positive guards consume the binding in the terminal statement and have no later load before rebinding. Synchronous calls, truthiness tests, ambiguous name flow, deferred consumption, and deliberate trace boundaries remain excluded."
     },
     {
       "task": "rule-audit/python/prefer-walrus-comprehension-filter",
