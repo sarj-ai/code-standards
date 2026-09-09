@@ -788,6 +788,14 @@ def consumer_verification_environment(environment: Mapping[str, str], base_sha: 
     return prepared
 
 
+def authenticated_git_environment(environment: Mapping[str, str]) -> dict[str, str]:
+    prepared = dict(environment)
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+        if value := os.environ.get(name):  # ruff: ignore[banned-api] — hookless Git transport only.
+            prepared[name] = value
+    return prepared
+
+
 def assert_baseline_unchanged(path: Path | None, expected: bytes | None) -> None:
     if path is None:
         return
@@ -1377,10 +1385,14 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
             raise RolloutError(msg)
         lease = force_with_lease(branch, previous_sha)
+        # Consumer code already ran through the registry-owned verification
+        # command without credentials. Disable Git hooks for the transport-only
+        # push so gh's credential helper can receive the App token without
+        # exposing it to repository-controlled hook code.
         runner.run(
-            (*tool_prefix, "git", "push", lease, "-u", "origin", branch),
+            ("git", "-c", "core.hooksPath=/dev/null", "push", lease, "-u", "origin", branch),
             cwd=repo,
-            env=unauthenticated,
+            env=authenticated_git_environment(unauthenticated),
         )
     pull = pull_request(consumer, version, runner)
     body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
