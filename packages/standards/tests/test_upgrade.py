@@ -564,6 +564,43 @@ def test_upgrade_ignores_unselected_ambiguous_mobile_roots(tmp_path: Path) -> No
     assert plan.ecosystems.swift_root is None
 
 
+def test_upgrade_does_not_require_mobile_runners_for_disabled_capabilities(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    swift = tmp_path / "mobile/ios"
+    swift.mkdir(parents=True)
+    (swift / "Package.swift").write_text(
+        "// swift-tools-version: 6.2\nlet package = Package(platforms: [.iOS(.v16)])\n",
+        encoding="utf-8",
+    )
+    kotlin = tmp_path / "mobile/android"
+    kotlin.mkdir(parents=True)
+    (kotlin / "build.gradle.kts").write_text(
+        'plugins { id("com.android.application") }\n',
+        encoding="utf-8",
+    )
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    adopted = replace(adopted, swift_dest="mobile/ios", kotlin_dest="mobile/android")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    workflow = tmp_path / ".github/workflows/custom.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(
+        "name: custom\non: [push]\njobs:\n  standards:\n    runs-on: ubuntu-latest\n"
+        f"    steps:\n      - run: {BOOTSTRAP_COMMAND} check --trust-repository-code\n",
+        encoding="utf-8",
+    )
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert not plan.scaffold_plan.errors
+    assert not plan.ecosystems.swift
+    assert not plan.ecosystems.kotlin
+    assert "runs-on: macos-15" not in scaffold.github_ci_workflow(
+        tmp_path,
+        ecosystems=plan.ecosystems,
+    )
+
+
 def test_upgrade_does_not_rewrite_the_plugin_outside_an_age_preapproval_section(tmp_path: Path) -> None:
     policy = tmp_path / ".yarnrc.yml"
     original = 'otherPackages:\n  - "@sarj/eslint-plugin@15.9.0"\n'

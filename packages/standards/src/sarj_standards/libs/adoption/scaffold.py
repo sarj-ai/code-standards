@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 import os
 from pathlib import Path
@@ -62,6 +62,26 @@ class Ecosystems:
     def mobile(self) -> bool:
         """Whether the repository has explicit Apple or Android project configuration."""
         return self.mobile_swift or self.kotlin
+
+
+def configured_ecosystems(ecosystems: Ecosystems, configs: Sequence[str]) -> Ecosystems:
+    python = ecosystems.python and any(name in manifest.PYTHON_CONFIGS for name in configs)
+    typescript = ecosystems.typescript and any(name in manifest.TYPESCRIPT_CONFIGS for name in configs)
+    swift = ecosystems.swift and any(name in manifest.SWIFT_CONFIGS for name in configs)
+    kotlin = ecosystems.kotlin and any(name in manifest.KOTLIN_CONFIGS for name in configs)
+    return replace(
+        ecosystems,
+        python=python,
+        typescript=typescript,
+        python_root=ecosystems.python_root if python else None,
+        typescript_root=ecosystems.typescript_root if typescript else None,
+        typescript_install_root=ecosystems.typescript_install_root if typescript else None,
+        swift=swift,
+        kotlin=kotlin,
+        swift_root=ecosystems.swift_root if swift else None,
+        kotlin_root=ecosystems.kotlin_root if kotlin else None,
+        mobile_swift=ecosystems.mobile_swift and swift,
+    )
 
 
 @dataclass
@@ -628,7 +648,7 @@ def build_plan(
         case _:
             plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
     workflow = root / ".github" / "workflows" / "standards.yml"
-    workflow_contents = github_ci_workflow(root, ecosystems=ecosystems)
+    workflow_contents = github_ci_workflow(root, ecosystems=configured_ecosystems(ecosystems, selected))
     existing_gates = standards_check_workflows(root)
     if workflow.is_file() and _is_managed_workflow(workflow):
         if workflow.read_text(encoding="utf-8") == workflow_contents:
@@ -639,7 +659,11 @@ def build_plan(
         incompatible = tuple(
             path
             for path in existing_gates
-            if not _workflow_supports_mobile(path, swift=ecosystems.swift, kotlin=ecosystems.kotlin)
+            if not _workflow_supports_mobile(
+                path,
+                swift=configured_ecosystems(ecosystems, selected).swift,
+                kotlin=configured_ecosystems(ecosystems, selected).kotlin,
+            )
         )
         if incompatible:
             names = ", ".join(path.relative_to(root).as_posix() for path in incompatible)
