@@ -923,7 +923,7 @@ export function createConfig(options = {}) {
       // Range and whole-file disables turn every line between two comments
       // into an unaudited suppression scope. Keep suppression ownership at the
       // exact statement: non-suppression directives remain valid, but only
-      // eslint-disable-line and eslint-disable-next-line may disable rules.
+      // Only the two line-local disable forms may disable rules.
       "@eslint-community/eslint-comments/no-use": [
         "error",
         {
