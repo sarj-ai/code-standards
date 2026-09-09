@@ -1377,7 +1377,11 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             msg = f"{consumer.name}: managed rollout head did not resolve to a full commit SHA"
             raise RolloutError(msg)
         lease = force_with_lease(branch, previous_sha)
-        runner.run(("git", "push", lease, "-u", "origin", branch), cwd=repo)
+        runner.run(
+            (*tool_prefix, "git", "push", lease, "-u", "origin", branch),
+            cwd=repo,
+            env=unauthenticated,
+        )
     pull = pull_request(consumer, version, runner)
     body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
     if verification_failure:

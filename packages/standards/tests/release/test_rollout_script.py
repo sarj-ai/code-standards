@@ -948,6 +948,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             def __init__(self) -> None:
                 self.verification_runs = 0
                 self.commands: list[tuple[str, ...]] = []
+                self.push_environments: list[Mapping[str, str] | None] = []
 
             def run(
                 self,
@@ -959,7 +960,10 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             ) -> subprocess.CompletedProcess[str]:
                 rendered = tuple(command)
                 self.commands.append(rendered)
-                if rendered[:3] == ("gh", "repo", "clone") or rendered[:2] == ("git", "push"):
+                if rendered[:3] == ("gh", "repo", "clone"):
+                    return subprocess.CompletedProcess(rendered, 0, "", "")
+                if rendered[3:5] == ("git", "push"):
+                    self.push_environments.append(env)
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered == ("git", "fetch", "origin", "main"):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
@@ -986,7 +990,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[-1:] == ("doctor",):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
-                if rendered == selected_consumer.verify:
+                if rendered == ("mise", "exec", "--", *selected_consumer.verify):
                     self.verification_runs += 1
                     dirty = subprocess.run(
                         ("git", "status", "--porcelain"),
@@ -1040,6 +1044,14 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         ) -> subprocess.CompletedProcess[str] | None:
             return None
 
+        def provisioned_tools(
+            _repo: Path,
+            _shim_directory: Path,
+            _runner: rollout.CommandRunner,
+            _environment: Mapping[str, str],
+        ) -> rollout.ProvisionedTools:
+            return rollout.ProvisionedTools({"PATH": "/tools"}, ("mise", "exec", "--"))
+
         pull_request_calls = 0
 
         def managed_pull_request(
@@ -1073,6 +1085,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         monkeypatch.setattr(rollout, "status_one", missing_status)
         monkeypatch.setattr(rollout, "prepare_branch", fresh_branch)
         monkeypatch.setattr(tempfile, "TemporaryDirectory", fixed_temporary_directory)
+        monkeypatch.setattr(rollout, "provision_consumer_tools", provisioned_tools)
         monkeypatch.setattr(adoption_doctor, "plan_version_pin_updates", no_version_pin_updates)
         monkeypatch.setattr(rollout, "run_consumer_bootstrap", no_bootstrap)
         monkeypatch.setattr(rollout, "pull_request", managed_pull_request)
@@ -1081,6 +1094,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         assert result.state == expected_state
         assert runner.verification_runs == expected_verification_runs
+        assert runner.push_environments == [{"PATH": "/tools"}]
         assert not subprocess.run(
             ("git", "status", "--porcelain"), cwd=repo, check=True, capture_output=True, text=True
         ).stdout
