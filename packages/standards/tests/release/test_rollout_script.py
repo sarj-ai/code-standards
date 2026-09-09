@@ -926,6 +926,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         )
         retired_expected = retirement.expected_rewrites(repo, frozenset())
         monkeypatch.setattr(retirement, "__version__", "5.8.1")
+        monkeypatch.setenv("GH_TOKEN", "push-secret")
         subprocess.run(("git", "init", "-b", "main"), cwd=repo, check=True, capture_output=True)
         subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=repo, check=True)
         subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=repo, check=True)
@@ -962,7 +963,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 self.commands.append(rendered)
                 if rendered[:3] == ("gh", "repo", "clone"):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
-                if rendered[3:5] == ("git", "push"):
+                if rendered[:4] == ("git", "-c", "core.hooksPath=/dev/null", "push"):
                     self.push_environments.append(env)
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered == ("git", "fetch", "origin", "main"):
@@ -1094,7 +1095,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         assert result.state == expected_state
         assert runner.verification_runs == expected_verification_runs
-        assert runner.push_environments == [{"PATH": "/tools"}]
+        assert runner.push_environments == [{"PATH": "/tools", "GH_TOKEN": "push-secret"}]
         assert not subprocess.run(
             ("git", "status", "--porcelain"), cwd=repo, check=True, capture_output=True, text=True
         ).stdout
