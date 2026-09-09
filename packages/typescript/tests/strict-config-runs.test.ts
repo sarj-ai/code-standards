@@ -21,6 +21,7 @@
  * blocks the `.ts` path never merges.
  */
 
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,6 +68,30 @@ function severity(setting: unknown): unknown {
 const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it("does not contain comment prose that ESLint misreads as a directive", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: STRICT_CONFIG_FACTORY({ projectService: false }),
+    });
+    const source = await readFile(
+      resolve(
+        HERE,
+        "../../standards/src/sarj_standards/configs/eslint.strict.mjs",
+      ),
+      "utf8",
+    );
+    const [result] = await eslint.lintText(source, {
+      filePath: resolve(FIXTURE_DIR, "shared-policy.mjs"),
+    });
+
+    expect(
+      result?.messages.filter((message) =>
+        message.message.includes("Definition for rule"),
+      ),
+    ).toEqual([]);
+  });
+
   it.each(CONFIG_FACTORIES)("%s keeps syntax naming active in untyped TSX", async (_name, createConfig) => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
