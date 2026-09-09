@@ -42,11 +42,44 @@ def test_flags_compact_awaited_none_guard() -> None:
     assert "if (call_detail := await store.get_detail(call_id)) is None:" in diagnostics[0].message
 
 
+def test_flags_awaited_none_guard_that_raises() -> None:
+    diagnostics = _check(
+        """
+        async def load(store, call_id):
+            call_detail = await store.get_detail(call_id)
+            if call_detail is None:
+                raise LookupError(call_id)
+            consume(call_detail)
+        """
+    )
+
+    assert len(diagnostics) == 1
+    assert "is None:" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    "terminal",
+    ["return failure", "return render(failure)", "raise failure", "raise VerificationError(failure)"],
+)
+def test_flags_awaited_not_none_terminal_guard(terminal: str) -> None:
+    diagnostics = _check(
+        f"""
+        async def verify(service):
+            failure = await service.verify()
+            if failure is not None:
+                {terminal}
+            return None
+        """
+    )
+
+    assert len(diagnostics) == 1
+    assert "is not None:" in diagnostics[0].message
+
+
 @pytest.mark.parametrize(
     "source",
     [
         "async def f(store):\n    value = await store.get()\n    if value is not None:\n        use(value)\n",
-        "async def f(store):\n    value = await store.get()\n    if value is None:\n        raise LookupError\n    use(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        log()\n        return\n    use(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n    else:\n        use(value)\n",
         "async def f(store):\n    value = await store.get()  # preserve lookup boundary\n    if value is None:\n        return\n    use(value)\n",
@@ -54,6 +87,7 @@ def test_flags_compact_awaited_none_guard() -> None:
         "async def f(store):\n    value = await store.get()\n\n    if value is None:\n        return\n    use(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:  # pragma: no cover\n        return\n    use(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n    value = fallback\n    use(value)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n    value = transform(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n",
         "async def f(store):\n    value = await store.get(\n        'a very long value'\n    )\n    if value is None:\n        return\n    use(value)\n",
         "def f(store):\n    value = store.get()\n    if value is None:\n        return\n    use(value)\n",
@@ -65,6 +99,13 @@ def test_flags_compact_awaited_none_guard() -> None:
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n    async def value(): ...\n    use(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n    try:\n        run()\n    except Error as value:\n        use(value)\n",
         "async def f(store, item):\n    value = await store.get()\n    if value is None:\n        return\n    match item:\n        case {'value': value}:\n            use(value)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is None:\n        return value\n    use(value)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is not None:\n        return fallback\n",
+        "async def f(store):\n    value = await store.get()\n    if value is not None:\n        return lambda: value\n",
+        "async def f(store):\n    value = await store.get()\n    if value is not None:\n        return (value for _ in items)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is not None:\n        return value  # preserve terminal trace\n",
+        "async def f(store):\n    value = await store.get()\n    if value is not None:\n        return value\n    use(value)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n    return\n    use(value)\n",
     ],
 )
 def test_preserves_broader_or_comment_bearing_patterns(source: str) -> None:
@@ -84,6 +125,16 @@ def test_skips_a_combined_condition_over_120_columns() -> None:
         )
         == []
     )
+
+
+def test_skips_an_inline_not_none_guard_over_120_columns() -> None:
+    source = (
+        "async def verify(store):\n"
+        "    failure = await store.get()\n"
+        f"    if failure is not None: return consume(failure, {'x' * 100!r})\n"
+    )
+
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(("length", "expected"), [(120, 1), (121, 0)])
