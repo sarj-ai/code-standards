@@ -2081,7 +2081,8 @@ def parse_ruff(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
         start = _one_based_position(_table(item.get("location"), "Ruff location"), path, documents)
         end_value = item.get("end_location")
         end = _one_based_position(_table(end_value, "Ruff end location"), path, documents)
-        code = _text(item, "code")
+        code_value = item.get("code")
+        code = code_value if isinstance(code_value, str) and code_value else _text(item, "name")
         url_value = item.get("url")
         help_url = url_value if isinstance(url_value, str) else None
         diagnostics.append(

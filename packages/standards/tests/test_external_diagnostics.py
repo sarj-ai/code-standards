@@ -246,6 +246,30 @@ def test_ruff_json_becomes_an_exact_canonical_region(tmp_path: Path) -> None:
     assert finding.location.region.end.byte_offset == 6
 
 
+def test_ruff_name_becomes_code_when_plugin_diagnostic_omits_code(tmp_path: Path) -> None:
+    source = tmp_path / "conftest.py"
+    source.write_text("@pytest.fixture(autouse=True)\ndef fixture(): ...\n", encoding="utf-8")
+    payload = json.dumps(
+        [
+            {
+                "filename": str(source),
+                "location": {"row": 1, "column": 17},
+                "end_location": {"row": 1, "column": 29},
+                "code": None,
+                "name": "pytest-fixture-autouse",
+                "message": "Avoid using `autouse=True` in `pytest.fixture` decorators",
+                "url": "https://docs.astral.sh/ruff/rules/pytest-fixture-autouse/",
+            }
+        ]
+    )
+
+    finding = parse_ruff(payload, root=tmp_path)[0]
+
+    assert finding.code == "pytest-fixture-autouse"
+    assert finding.rule_id == "pytest-fixture-autouse"
+    assert finding.as_dict()["ruleKey"] == "ruff:pytest-fixture-autouse"
+
+
 def test_mobile_protocols_become_canonical_diagnostics(tmp_path: Path) -> None:
     swift = tmp_path / "Screen.swift"
     swift.write_text("struct Screen {}\n", encoding="utf-8")
