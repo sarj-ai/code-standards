@@ -138,7 +138,7 @@ def build_plan(root: Path) -> UpgradePlan:  # ruff: ignore[too-many-locals] -- o
         raise ValueError("; ".join(scaffold_plan.errors))
     manifest_target = manifest.manifest_path(root)
     scaffold_plan.writes = [(path, contents) for path, contents in scaffold_plan.writes if path != manifest_target]
-    ecosystems = _install_ecosystems(detected_ecosystems, adopted.configs)
+    ecosystems = scaffold.configured_ecosystems(detected_ecosystems, adopted.configs)
 
     installed = manifest.installed_versions()
     pin_updates = doctor.plan_version_pin_updates(root, installed)
@@ -329,26 +329,6 @@ def _identical_config_mirrors(root: Path, target: Path) -> tuple[Path, ...]:
         and path.name == target.name
         and not any(part.lower() in _MIRROR_EXCLUDED_PARTS for part in path.relative_to(root).parts)
         and path.read_bytes() == expected
-    )
-
-
-def _install_ecosystems(ecosystems: scaffold.Ecosystems, configs: Sequence[str]) -> scaffold.Ecosystems:
-    python = ecosystems.python and any(name in manifest.PYTHON_CONFIGS for name in configs)
-    typescript = ecosystems.typescript and any(name in manifest.TYPESCRIPT_CONFIGS for name in configs)
-    swift = ecosystems.swift and any(name in manifest.SWIFT_CONFIGS for name in configs)
-    kotlin = ecosystems.kotlin and any(name in manifest.KOTLIN_CONFIGS for name in configs)
-    return scaffold.Ecosystems(
-        python=python,
-        typescript=typescript,
-        python_root=ecosystems.python_root if python else None,
-        typescript_root=ecosystems.typescript_root if typescript else None,
-        typescript_install_root=ecosystems.typescript_install_root if typescript else None,
-        client=ecosystems.client,
-        yarn=ecosystems.yarn,
-        swift=swift,
-        kotlin=kotlin,
-        swift_root=ecosystems.swift_root if swift else None,
-        kotlin_root=ecosystems.kotlin_root if kotlin else None,
     )
 
 
