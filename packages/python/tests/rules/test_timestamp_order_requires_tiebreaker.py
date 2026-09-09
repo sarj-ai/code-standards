@@ -103,6 +103,32 @@ def test_reports_outer_order_clause_without_confusing_nested_commas() -> None:
     assert len(_check(source)) == 1
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT ended_at FROM call_group ORDER BY ended_at ASC LIMIT 1",
+        "SELECT grp.ended_at FROM call_group AS grp ORDER BY grp.ended_at DESC LIMIT 1",
+        "SELECT grp.ended_at AS boundary FROM call_group AS grp ORDER BY grp.ended_at ASC LIMIT 1",
+    ],
+    ids=["unqualified", "qualified", "aliased-projection"],
+)
+def test_skips_scalar_queries_that_only_return_the_ordering_value(query: str) -> None:
+    assert _check(f"QUERY = {query!r}\n") == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM call_group ORDER BY ended_at ASC LIMIT 1",
+        "SELECT grp.ended_at, grp.id FROM call_group AS grp ORDER BY grp.ended_at ASC LIMIT 1",
+        "SELECT coalesce(grp.ended_at, grp.started_at) FROM call_group AS grp ORDER BY grp.ended_at ASC LIMIT 1",
+    ],
+    ids=["different-column", "additional-column", "different-expression"],
+)
+def test_reports_when_equal_timestamp_rows_can_return_distinct_values(query: str) -> None:
+    assert len(_check(f"QUERY = {query!r}\n")) == 1
+
+
 def test_reconstructs_static_concatenation_without_duplicate_diagnostics() -> None:
     source = 'QUERY = "SELECT id FROM task " + "ORDER BY created_at DESC LIMIT 20"\n'
 
