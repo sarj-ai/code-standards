@@ -27,6 +27,8 @@ if TYPE_CHECKING:
 
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
+_SELECT = re.compile(r"\bSELECT\b", re.IGNORECASE)
+_FROM = re.compile(r"\bFROM\b", re.IGNORECASE)
 _ORDER_BY = re.compile(r"\bORDER\s+BY\b", re.IGNORECASE)
 _GROUPED_OR_DISTINCT = re.compile(r"\b(?:GROUP\s+BY|SELECT\s+DISTINCT)\b", re.IGNORECASE)
 _WITH_TIES = re.compile(r"^\s*FETCH\b[\s\S]*?\bWITH\s+TIES\b", re.IGNORECASE)
@@ -44,6 +46,8 @@ _TIMESTAMP_ITEM = re.compile(
     r"(?:\s+(?:ASC|DESC))?(?:\s+NULLS\s+(?:FIRST|LAST))?\s*\Z",
     re.IGNORECASE,
 )
+_ORDER_MODIFIERS = re.compile(r"\s+(?:ASC|DESC)(?:\s+NULLS\s+(?:FIRST|LAST))?\s*\Z", re.IGNORECASE)
+_PROJECTION_ALIAS = re.compile(r"\s+AS\s+[A-Za-z_][A-Za-z0-9_$]*\s*\Z", re.IGNORECASE)
 
 
 @final
@@ -79,6 +83,10 @@ class TimestampOrderRequiresTiebreaker(Rule):
             ),
             "The intended stable key cannot be inferred safely, so the rule does not offer an autofix.",
             "Grouped, DISTINCT, WITH TIES, unbounded, window-only, aggregate-only, and docstring SQL are excluded.",
+            (
+                "A scalar query that projects only the exact timestamp ordering expression is excluded because "
+                "equal-timestamp rows produce the same observable value."
+            ),
         ),
         examples=(
             RuleExample(
@@ -214,8 +222,44 @@ def _timestamp_ending_order_clause(sql: str) -> str | None:
                 item_index == len(items) - 1
                 or all(_UNSTABLE_ITEM.fullmatch(later) is not None for later in items[item_index + 1 :])
             ):
+                if _selects_only_ordering_value(sql, depths, order.start(), clause_depth, item):
+                    continue
                 return timestamp.group("column")
     return None
+
+
+def _selects_only_ordering_value(
+    sql: str,
+    depths: list[int],
+    order_start: int,
+    clause_depth: int,
+    order_item: str,
+) -> bool:
+    select_starts = [
+        match.end() for match in _SELECT.finditer(sql, 0, order_start) if depths[match.start()] == clause_depth
+    ]
+    if not select_starts:
+        return False
+    select_end = select_starts[-1]
+    from_match = next(
+        (match for match in _FROM.finditer(sql, select_end, order_start) if depths[match.start()] == clause_depth),
+        None,
+    )
+    if from_match is None:
+        return False
+    projection = sql[select_end : from_match.start()].strip()
+    if any(
+        depths[index] == clause_depth and character == ","
+        for index, character in enumerate(sql[select_end : from_match.start()], select_end)
+    ):
+        return False
+    projection = _PROJECTION_ALIAS.sub("", projection).strip()
+    ordered = _ORDER_MODIFIERS.sub("", order_item).strip()
+    return _normalize_column_reference(projection) == _normalize_column_reference(ordered)
+
+
+def _normalize_column_reference(expression: str) -> str:
+    return re.sub(r"\s*\.\s*", ".", expression).casefold()
 
 
 def _docstring_nodes(tree: ast.AST) -> set[int]:
