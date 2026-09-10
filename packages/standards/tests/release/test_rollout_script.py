@@ -695,7 +695,7 @@ class TestStatus:
         assert "older" in result.detail
 
     def test_closed_historical_pr_does_not_block_a_new_rollout(self) -> None:
-        runner = FakeRunner([(0, "[]"), (1, "")])
+        runner = FakeRunner([(0, "[]"), (1, "HTTP 404")])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
 
@@ -739,6 +739,27 @@ class TestStatus:
 
         assert result.state == "missing"
         assert "5.7.0" in result.detail
+
+    def test_base_manifest_retries_a_transport_failure(self) -> None:
+        encoded = base64.b64encode(b'bundle = "5.8.1"\n').decode()
+        runner = FakeRunner([(1, "i/o timeout"), (0, json.dumps({"content": encoded}))])
+
+        result = rollout.base_manifest(consumer(), runner, sleep=lambda _seconds: None)
+
+        assert result == 'bundle = "5.8.1"\n'
+        assert len(runner.commands) == 2
+
+    def test_base_manifest_reports_persistent_transport_failure(self) -> None:
+        runner = FakeRunner([(1, "i/o timeout")] * rollout.BASE_MANIFEST_READ_ATTEMPTS)
+
+        with pytest.raises(rollout.RolloutError, match=r"could not read main \.sarj-standards\.toml"):
+            rollout.base_manifest(consumer(), runner, sleep=lambda _seconds: None)
+
+    def test_missing_base_manifest_does_not_retry(self) -> None:
+        runner = FakeRunner([(1, "gh: Not Found (HTTP 404)")])
+
+        assert rollout.base_manifest(consumer(), runner) is None
+        assert len(runner.commands) == 1
 
 
 class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-machine cases share one fake runner
@@ -813,7 +834,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             ),
         ]
         for _ in registry:
-            responses.extend(((0, "[]"), (1, "")))
+            responses.extend(((0, "[]"), (1, "HTTP 404")))
         runner = FakeRunner(responses)
 
         outcomes = rollout.apply("5.8.1", registry, runner, dry_run=True)
