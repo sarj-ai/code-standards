@@ -98,6 +98,8 @@ DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset(
     {MANIFEST, ".shellcheckrc", "uv.lock", "eslint.config.mjs", *MANAGED_WORKFLOW_PATHS}
 )
 MAX_VERIFICATION_ATTEMPTS = 2
+BASE_MANIFEST_READ_ATTEMPTS = 3
+BASE_MANIFEST_READ_RETRY_DELAY = timedelta(seconds=1)
 MISE_CONFIG_PATHS = (Path(".mise.toml"), Path("mise.toml"), Path(".tool-versions"), Path(".mise/config.toml"))
 COREPACK_MANAGERS = frozenset({"pnpm", "yarn"})
 WORKFLOW_TOOL_ACTIONS = MappingProxyType({"hashicorp/setup-terraform": ("terraform", "terraform_version")})
@@ -444,22 +446,40 @@ def manifest_version(contents: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
-def base_manifest(consumer: Consumer, runner: CommandRunner) -> str | None:
-    result = runner.run(
-        (
-            "gh",
-            "api",
-            f"repos/{consumer.repository}/contents/{MANIFEST}",
-            "--method",
-            "GET",
-            "-f",
-            f"ref={consumer.branch}",
-        ),
-        check=False,
+def base_manifest(
+    consumer: Consumer,
+    runner: CommandRunner,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str | None:
+    command = (
+        "gh",
+        "api",
+        f"repos/{consumer.repository}/contents/{MANIFEST}",
+        "--method",
+        "GET",
+        "-f",
+        f"ref={consumer.branch}",
     )
-    if result.returncode != 0:
-        return None
-    payload = json_result(result)
+    manifest_result: subprocess.CompletedProcess[str] | None = None
+    failure_detail = ""
+    failure_status = 0
+    for attempt in range(BASE_MANIFEST_READ_ATTEMPTS):
+        result = runner.run(command, check=False)
+        if result.returncode == 0:
+            manifest_result = result
+            break
+        failure_detail = "\n".join(value.strip() for value in (result.stdout, result.stderr) if value)
+        failure_status = result.returncode
+        if "HTTP 404" in failure_detail:
+            return None
+        if attempt + 1 < BASE_MANIFEST_READ_ATTEMPTS:
+            sleep(BASE_MANIFEST_READ_RETRY_DELAY.total_seconds())
+    if manifest_result is None:
+        failure_detail = failure_detail or f"gh api exited with status {failure_status}"
+        msg = f"{consumer.name}: could not read {consumer.branch} {MANIFEST}: {failure_detail}"
+        raise RolloutError(msg)
+    payload = json_result(manifest_result)
     if not is_object(payload):
         return None
     content = payload.get("content")

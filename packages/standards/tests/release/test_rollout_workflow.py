@@ -130,6 +130,8 @@ def test_failure_is_reported_durably_without_blocking_publication() -> None:
     assert "gh issue edit" in workflow
     assert "gh issue reopen" in workflow
     assert "gh issue close" in workflow
+    assert "operation_status != 0 || status_status != 0" in workflow
+    assert 'gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"' in workflow
     assert 'tail -c 40000 "$log"' in workflow
     assert "GITHUB_STEP_SUMMARY" in workflow
     assert "Enforce the rollout result" in workflow

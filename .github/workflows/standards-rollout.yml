@@ -142,7 +142,7 @@ jobs:
 
           status_status=0
           run_and_log uv run --project packages/standards --frozen python -m sarj_standards.libs.release.rollout --registry "$registry" status --version "$VERSION" || status_status=$?
-          if (( operation_status != 0 )); then
+          if (( operation_status != 0 || status_status != 0 )); then
             result=failure
           else
             result=success
@@ -182,10 +182,13 @@ jobs:
           cat "$body" >> "$GITHUB_STEP_SUMMARY"
 
           if [[ "$RESULT" == success && "$STATUS_STATUS" == 0 ]]; then
-            if [[ -n "$issue_number" && "$issue_state" == OPEN ]]; then
-              gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
-                --body "Every registered consumer has adopted the release in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
-              gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY" --reason completed
+            if [[ -n "$issue_number" ]]; then
+              gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+              if [[ "$issue_state" == OPEN ]]; then
+                gh issue comment "$issue_number" --repo "$GITHUB_REPOSITORY" \
+                  --body "Every registered consumer has adopted the release in run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+                gh issue close "$issue_number" --repo "$GITHUB_REPOSITORY" --reason completed
+              fi
             fi
           elif [[ -n "$issue_number" ]]; then
             gh issue edit "$issue_number" --repo "$GITHUB_REPOSITORY" --body-file "$body"
