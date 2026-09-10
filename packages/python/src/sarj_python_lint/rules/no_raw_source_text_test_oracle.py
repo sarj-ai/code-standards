@@ -392,19 +392,19 @@ class FunctionAnalyzer(ast.NodeVisitor):
 
     @override
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        del node  # A nested helper owns a separate scope and is intentionally not inferred.
+        return None  # A nested helper owns a separate scope and is intentionally not inferred.
 
     @override
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        del node
+        return None
 
     @override
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        del node
+        return None
 
     @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        del node
+        return None
 
     @override
     def visit_Assign(self, node: ast.Assign) -> None:

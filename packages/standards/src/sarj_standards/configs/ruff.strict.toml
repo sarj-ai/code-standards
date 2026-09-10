@@ -60,6 +60,13 @@ ignore = [
   "PLR0913",
   "PLR0915",
 
+  # PLR6301 treats any method that does not read self as a candidate for a
+  # function or static method and recommends adding @override to inherited
+  # hooks. That makes protocol/visitor implementations noisier without proving
+  # a defect; signature compatibility and unused parameters remain separately
+  # checked.
+  "PLR6301",
+
   # DOCSTRINGS: the standard is LESS PROSE, NOT MORE. Code documents itself;
   # a docstring earns its place by saying something the signature cannot.
   #

@@ -23,7 +23,6 @@ class _UndocumentedRule(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        del path, source
         return []
 
 

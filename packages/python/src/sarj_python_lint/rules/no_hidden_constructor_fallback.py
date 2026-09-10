@@ -874,20 +874,20 @@ class _LocalBindingCollector(ast.NodeVisitor):
 
     @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        del node
+        return None
 
     @override
     def visit_ListComp(self, node: ast.ListComp) -> None:
-        del node
+        return None
 
     @override
     def visit_SetComp(self, node: ast.SetComp) -> None:
-        del node
+        return None
 
     @override
     def visit_DictComp(self, node: ast.DictComp) -> None:
-        del node
+        return None
 
     @override
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
-        del node
+        return None

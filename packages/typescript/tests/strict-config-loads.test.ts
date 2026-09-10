@@ -133,7 +133,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       "no-unused-vars",
       "no-with",
     ]);
-    expect(warnings).toHaveLength(44);
+    expect(warnings).toHaveLength(43);
+    expect(severityOf(rules["no-prototype-builtins"])).toBe(2);
     expect(severityOf(rules["no-fallthrough"])).toBe(2);
     for (const rule of [
       "no-async-promise-executor",
@@ -168,6 +169,50 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       'Unsupported test framework "vittest"',
     );
   });
+
+  it.each(CONFIG_FACTORIES)(
+    "%s assigns dynamic execution to typed and syntax-only owners without overlap",
+    async (_name, createConfig) => {
+      const typedEslint = new ESLint({
+        overrideConfigFile: true,
+        overrideConfig: createConfig({
+          tsconfigRootDir: NESTED_MONOREPO_ROOT,
+          syntaxOnlyConfigFiles: ["**/vite.config.ts"],
+        }),
+        cwd: fileURLToPath(NESTED_MONOREPO_ROOT),
+      });
+      const typed = (await typedEslint.calculateConfigForFile(
+        "packages/example/src/index.ts",
+      )) as Linter.Config;
+      const syntaxOnly = (await typedEslint.calculateConfigForFile(
+        "packages/example/vite.config.ts",
+      )) as Linter.Config;
+
+      expect(typed.rules?.["no-eval"]).toEqual([2, { allowIndirect: false }]);
+      expect(severityOf(typed.rules?.["no-prototype-builtins"])).toBe(2);
+      expect(severityOf(typed.rules?.["@typescript-eslint/no-implied-eval"])).toBe(2);
+      expect(severityOf(typed.rules?.["no-implied-eval"])).toBe(0);
+      expect(severityOf(typed.rules?.["no-new-func"])).not.toBe(2);
+
+      expect(severityOf(syntaxOnly.rules?.["@typescript-eslint/no-implied-eval"])).toBe(0);
+      expect(severityOf(syntaxOnly.rules?.["no-implied-eval"])).toBe(2);
+      expect(severityOf(syntaxOnly.rules?.["no-new-func"])).toBe(2);
+
+      const untypedEslint = new ESLint({
+        overrideConfigFile: true,
+        overrideConfig: createConfig({
+          projectService: false,
+          tsconfigRootDir: UNTYPED_ROOT,
+          syntaxOnlyConfigFiles: [],
+        }),
+        cwd: fileURLToPath(UNTYPED_ROOT),
+      });
+      const untyped = (await untypedEslint.calculateConfigForFile("src/index.ts")) as Linter.Config;
+      expect(severityOf(untyped.rules?.["@typescript-eslint/no-implied-eval"])).toBe(0);
+      expect(severityOf(untyped.rules?.["no-implied-eval"])).toBe(2);
+      expect(severityOf(untyped.rules?.["no-new-func"])).toBe(2);
+    },
+  );
 
   it.each(CONFIG_FACTORIES)(
     "%s isolates Vitest, Bun, and Playwright rules by explicit ownership",
