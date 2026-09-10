@@ -65,6 +65,11 @@ RULE_TESTER.run("require-static-next-matcher", rule, {
       code: `const config = { matcher: getApplicationMatcher() };`,
       filename: MIDDLEWARE,
     },
+    {
+      name: "ignores unrelated computed config keys",
+      code: `export const config = { ["runtime"]: getRuntime() };`,
+      filename: MIDDLEWARE,
+    },
   ],
   invalid: [
     { name: "reports the documented computed matcher", code: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[1].files[0].source, filename: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[1].focusPath, errors: [{ messageId: "dynamicMatcher" }] },
@@ -84,6 +89,12 @@ RULE_TESTER.run("require-static-next-matcher", rule, {
       name: "rejects matcher calls",
       code: `export const config = { matcher: createMatcher() };`,
       filename: PROXY,
+      errors: [{ messageId: "dynamicMatcher" }],
+    },
+    {
+      name: "rejects dynamic values behind a computed literal matcher key",
+      code: `export const config = { ["matcher"]: createMatcher() };`,
+      filename: MIDDLEWARE,
       errors: [{ messageId: "dynamicMatcher" }],
     },
     {

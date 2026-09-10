@@ -37,6 +37,7 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
     { name: "allows primitive tuples", filename: PRODUCTION, code: "declare const left: readonly [string, number]; declare const right: [string, number]; const same = JSON.stringify(left) === JSON.stringify(right);" },
     { name: "allows literal primitive arrays without type services", code: "const same = JSON.stringify(['a', 1]) === JSON.stringify(['a', 1]);" },
     { name: "allows a shadowed JSON object", filename: PRODUCTION, code: "function compare(JSON: Serializer, left: object, right: object) { return JSON.stringify(left) === JSON.stringify(right); }" },
+    { name: "allows a shadowed computed JSON object", filename: PRODUCTION, code: "function compare(JSON: Serializer, left: object, right: object) { return JSON['stringify'](left) === JSON['stringify'](right); }" },
     { name: "allows a structural helper", filename: PRODUCTION, code: "const same = sameJson(left, right);" },
     { name: "ignores tests", filename: "compare.test.ts", code: "expect(JSON.stringify(actual)).toBe(JSON.stringify(expected));" },
     { name: "ignores generated files", filename: "generated/compare.ts", code: "const same = JSON.stringify({a: 1}) === JSON.stringify({a: 1});" },
@@ -53,5 +54,6 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
     { name: "reports arrays containing objects", filename: PRODUCTION, code: "declare const actual: Array<{ id: string }>; declare const expected: Array<{ id: string }>; const same = JSON.stringify(actual) === JSON.stringify(expected);", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports unknown values", filename: PRODUCTION, code: "declare const actual: unknown; declare const expected: unknown; const same = JSON.stringify(actual) == JSON.stringify(expected);", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports undefined-collapsing object comparison", filename: PRODUCTION, code: "const same = JSON.stringify({ value: undefined }) === JSON.stringify({});", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "reports computed native stringify access", filename: PRODUCTION, code: "declare const actual: { id: string }; declare const expected: { id: string }; const same = JSON['stringify'](actual) === JSON['stringify'](expected);", errors: [{ messageId: "serializedObjectEquality" }] },
   ],
 });

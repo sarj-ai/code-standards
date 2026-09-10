@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9c154e8fac995673e355b16d54f2bdaae9fbbc0a80473d18bec5201e2a67b8ac",
+  "catalogSha256": "28faeb95927e565ff31f9b3d7487737b8efd3ddc8a6e592e22850a63eeb07386",
   "cliSha256": "025a9b96cb9682300f60559ffe1835bb1e9f759d3f182ac93b8847140626d57f",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -434,26 +434,11 @@
     "eslint:no-detached-global-fetch": {
       "examples": [
         {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/client.ts",
-              "source": "class Client {\n  constructor(private readonly request: typeof fetch = fetch) {}\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/client.ts",
-          "id": "detached-global-fetch",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not detach the ambient fetch"
-        },
-        {
           "expectedCount": 0,
           "files": [
             {
               "path": "src/client.ts",
-              "source": "const request = (input: RequestInfo | URL, init?: RequestInit) =>\n  globalThis.fetch(input, init);\n"
+              "source": "class Client {\n  readonly request = (input: RequestInfo | URL, init?: RequestInit) =>\n    fetch(input, init);\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -461,7 +446,22 @@
           "id": "forwarded-global-fetch",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Forward through the global receiver"
+          "title": "Store a receiver-safe forwarding wrapper"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "class Client {\n  readonly request = fetch;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "receiver-unsafe-global-fetch",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not store raw ambient fetch as an object method"
         }
       ],
       "optionsSchemaSource": null
@@ -2744,11 +2744,11 @@
     "eslint:prefer-shared-zod-enum": {
       "examples": [
         {
-          "expectedCount": 1,
+          "expectedCount": 2,
           "files": [
             {
               "path": "src/provider.ts",
-              "source": "import { z } from \"zod\";\nconst JobSchema = z.object({ provider: z.enum([\"agy\", \"claude\", \"sol\"]) });\n"
+              "source": "import { z } from \"zod\";\nconst JobSchema = z.object({ provider: z.enum([\"agy\", \"claude\", \"sol\"]) });\nconst StatusSchema = z.object({\n  provider: z.enum([\"agy\", \"claude\", \"sol\"]).optional(),\n});\n"
             }
           ],
           "fixedFiles": [],
@@ -2756,7 +2756,7 @@
           "id": "inline-provider",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not inline enum domains in object fields"
+          "title": "Do not repeat an inline enum domain"
         },
         {
           "expectedCount": 0,
@@ -3207,30 +3207,30 @@
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ defaultValues: { name: \"\" } });\n  return <input {...form.register(\"name\")} />;\n}\n"
+              "source": "\"use client\";\nimport { Controller, useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ defaultValues: { name: \"\" } });\n  return <Controller control={form.control} name=\"name\" render={() => null} />;\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "profile-form.tsx",
-          "id": "form-with-initial-values",
+          "id": "controlled-field-with-form-defaults",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Give the form an explicit initial shape"
+          "title": "Initialize controlled fields at form level"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ mode: \"onChange\" });\n  return <input {...form.register(\"name\")} />;\n}\n"
+              "source": "\"use client\";\nimport { Controller, useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm();\n  return <Controller control={form.control} name=\"name\" render={() => null} />;\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "profile-form.tsx",
-          "id": "form-without-initial-values",
+          "id": "controlled-field-without-default",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not leave form initialization implicit"
+          "title": "Do not leave a controlled field uninitialized"
         }
       ],
       "optionsSchemaSource": null

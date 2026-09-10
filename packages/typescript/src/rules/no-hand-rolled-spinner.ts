@@ -8,6 +8,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
+import { tailwindBase, tailwindVariantPrefix } from "./_tailwind.js";
 
 type MessageIds = "handRolledSpinner";
 type Options = readonly [];
@@ -17,7 +18,7 @@ export const NO_HAND_ROLLED_SPINNER_DOCUMENTATION = {
   rationale: "One-off loading indicators duplicate a shared primitive and let accessibility and styling diverge.",
   remediation: "Render the design-system Spinner component instead.",
   category: "maintainability",
-  limitations: ["Only effective static className values on div and span elements are inspected; a later spread makes the value unknown. Tests, stories, generated files, and the design-system implementation are excluded."],
+  limitations: ["Only effective static className values on div and span elements are inspected; Tailwind utilities are combined only when they are unprefixed or share one exact variant context, while a later spread makes the value unknown. Tests, stories, generated files, and the design-system implementation are excluded."],
   examples: [
     { id: "design-system-spinner", title: "Use the shared spinner", outcome: "no-match", files: [{ path: "src/loading-state.tsx", source: '<Spinner className="size-4" />' }], focusPath: "src/loading-state.tsx", expectedCount: 0, public: true },
     { id: "border-ring-spinner", title: "Do not rebuild a spinner", outcome: "match", files: [{ path: "src/loading-state.tsx", source: '<div className="size-4 animate-spin rounded-full border-2 border-t-transparent" />' }], focusPath: "src/loading-state.tsx", expectedCount: 1, public: true },
@@ -59,6 +60,21 @@ function isBorderWidth(token: string): boolean {
 function isContrastingEdge(token: string): boolean {
   const match = DIRECTIONAL_BORDER.exec(token);
   return match?.[2] !== undefined && !isBorderWidthValue(match[2]);
+}
+
+interface TailwindClass {
+  readonly base: string;
+  readonly variant: string;
+}
+
+function hasSpinnerInVariant(classes: readonly TailwindClass[], variant: string): boolean {
+  const effective = classes
+    .filter((entry) => entry.variant === "" || entry.variant === variant)
+    .map((entry) => entry.base);
+  return effective.includes("animate-spin") &&
+    effective.includes("rounded-full") &&
+    effective.some(isBorderWidth) &&
+    effective.some(isContrastingEdge);
 }
 
 function staticClassName(attribute: TSESTree.JSXAttribute): string | null {
@@ -127,13 +143,12 @@ export default createRule<Options, MessageIds>({
         if (classNameAttribute?.type !== AST_NODE_TYPES.JSXAttribute) return;
         const className = staticClassName(classNameAttribute);
         if (className === null) return;
-        const classes = className.split(/\s+/u);
-        if (
-          classes.includes("animate-spin") &&
-          classes.includes("rounded-full") &&
-          classes.some(isBorderWidth) &&
-          classes.some(isContrastingEdge)
-        ) {
+        const classes = className.split(/\s+/u).filter(Boolean).map((token) => ({
+          base: tailwindBase(token),
+          variant: tailwindVariantPrefix(token),
+        }));
+        const variants = new Set(classes.map((entry) => entry.variant));
+        if ([...variants].some((variant) => hasSpinnerInVariant(classes, variant))) {
           context.report({ node, messageId: "handRolledSpinner" });
         }
       },

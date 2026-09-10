@@ -13,13 +13,13 @@ type MessageIds = "matchSoleExport";
 type Options = [];
 
 export const SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION = {
-  summary: "Match a module filename to its sole named public runtime export.",
+  summary: "Make a module filename reflect its sole named public runtime export.",
   rationale: "When a module owns one runtime responsibility, matching names make that responsibility directly discoverable.",
-  remediation: "Rename the module stem to the kebab-case export name, or colocate genuinely related exports.",
+  remediation: "Name the module for the exported responsibility, using either the full export name or a clear leading or trailing domain phrase; otherwise colocate genuinely related exports.",
   category: "maintainability",
   limitations: [
     "Framework entrypoints, generic stems covered by no-generic-single-export-module, tests, generated files, anonymous defaults, CommonJS, and re-exports are excluded.",
-    "The rule compares the primary filename stem and preserves a single private underscore prefix and conventional suffixes such as .server or .worker.",
+    "The rule compares the primary filename stem and preserves a single private underscore prefix and conventional suffixes such as .server or .worker. A leading or trailing export-name phrase is accepted only at token boundaries; multi-token stems also tolerate established acronym spelling such as github versus GitHub.",
     "Exported destructuring patterns are excluded rather than undercounted as public exports.",
   ],
   examples: [
@@ -31,6 +31,10 @@ export const SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION = {
 const EXCLUDED_STEMS: ReadonlySet<string> = new Set([
   "common", "global", "helpers", "index", "layout", "loading", "middleware", "misc", "not-found", "page",
   "route", "shared", "template", "types", "util", "utils",
+]);
+const WEAK_DOMAIN_TOKENS: ReadonlySet<string> = new Set([
+  "adapter", "client", "config", "controller", "factory", "handler", "manager",
+  "provider", "record", "repository", "router", "schema", "service", "store", "worker",
 ]);
 
 function stem(filename: string): string {
@@ -45,6 +49,27 @@ function kebabCase(name: string): string {
     .replaceAll(/[^a-z0-9]+/giu, "-")
     .replaceAll(/^-+|-+$/gu, "")
     .toLowerCase();
+}
+
+function reflectsExportName(fileStem: string, exportedStem: string): boolean {
+  if (fileStem.startsWith("_")) return false;
+  const visibleFileStem = fileStem.toLowerCase();
+  const fileTokens = visibleFileStem.split("-").filter(Boolean);
+  const exportTokens = exportedStem.split("-").filter(Boolean);
+  if (fileTokens.length === 0 || exportTokens.length === 0) return false;
+  if (fileTokens.length === 1) {
+    const [token] = fileTokens;
+    return token !== undefined && token.length >= 4 && !WEAK_DOMAIN_TOKENS.has(token) &&
+      (exportTokens[0] === token || exportTokens.at(-1) === token);
+  }
+  const compactFile = fileTokens.join("");
+  if (compactFile.length < 6) return false;
+  const boundaryPhrases = new Set<string>();
+  for (let index = 1; index <= exportTokens.length; index += 1) {
+    boundaryPhrases.add(exportTokens.slice(0, index).join(""));
+    boundaryPhrases.add(exportTokens.slice(-index).join(""));
+  }
+  return boundaryPhrases.has(compactFile);
 }
 
 interface NamedExport {
@@ -71,7 +96,7 @@ export default createRule<Options, MessageIds>({
   documentation: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION,
   meta: {
     type: "suggestion",
-    docs: { description: "Match a module filename to its sole named public runtime export." },
+    docs: { description: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.summary },
     schema: [],
     messages: {
       matchSoleExport: "This module's sole runtime export is `{{exported}}`; rename the file stem to `{{expected}}`.",
@@ -147,7 +172,10 @@ export default createRule<Options, MessageIds>({
         const exportedStem = kebabCase(only.name);
         if (exportedStem === "") return;
         const expected = `${fileStem.startsWith("_") ? "_" : ""}${exportedStem}`;
-        if (expected === fileStem.toLowerCase()) return;
+        if (
+          expected === fileStem.toLowerCase() ||
+          reflectsExportName(fileStem, exportedStem)
+        ) return;
         context.report({ node: only.node, messageId: "matchSoleExport", data: { exported: only.name, expected } });
       },
     };

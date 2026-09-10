@@ -34,6 +34,9 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { filename: "src/artifacts.ts", code: "export default function () {}" },
     { filename: "src/artifacts.ts", code: "export type ArtifactStore = object;" },
     { filename: "src/provider-contract.ts", code: "export const ProviderSchema = {}; export type Provider = string;" },
+    { name: "leading domain token is already discoverable", filename: "src/html.ts", code: "export function htmlEscape() {}" },
+    { name: "trailing domain phrase is already discoverable", filename: "src/person-name.ts", code: "export function sanitizePersonName() {}" },
+    { name: "established acronym spelling remains discoverable", filename: "src/github-repo-url.ts", code: "export function matchGitHubRepoUrl() {}" },
   ],
   invalid: [
     { name: "private helper mismatches retain the prefix", filename: "src/_record.ts", code: "export function buildRecord() {}", errors: [{ messageId: "matchSoleExport", data: { exported: "buildRecord", expected: "_build-record" } }] },
@@ -41,6 +44,9 @@ RULE_TESTER.run("sole-export-matches-filename", rule, {
     { name: "Astro import outside content config does not exempt a mirror filename", filename: "src/services/content.config.ts", code: "import { defineCollection } from 'astro:content'; export const collections = {};", errors: [{ messageId: "matchSoleExport" }] },
     { name: "content config without Astro provenance remains ordinary code", filename: "src/content.config.ts", code: "export const collections = {};", errors: [{ messageId: "matchSoleExport" }] },
     {filename: "src/error.ts", code: "export class DomainFailure {}", errors: [{messageId: "matchSoleExport"}]},
+    { name: "very short suffixes do not create accidental containment", filename: "src/id.ts", code: "export function invalidId() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "unrelated multi-token stems remain mismatches", filename: "src/user-rate.ts", code: "export function generateUser() {}", errors: [{ messageId: "matchSoleExport" }] },
+    { name: "partial export tokens do not count as a leading phrase", filename: "src/user-rate.ts", code: "export function UserRater() {}", errors: [{ messageId: "matchSoleExport" }] },
     {
       filename: "src/artifacts.ts",
       code: SOLE_EXPORT_MATCHES_FILENAME_DOCUMENTATION.examples[1].files[0].source,

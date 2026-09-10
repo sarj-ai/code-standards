@@ -14,18 +14,19 @@ type MessageIds = "shareEnumDomain";
 type Options = [];
 
 export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
-  summary: "Give literal Zod enum domains one reusable module-level schema.",
-  rationale: "Inline or repeated literal domains hide a reusable contract and allow equivalent fields to drift independently.",
+  summary: "Give repeated literal Zod enum domains one reusable module-level schema.",
+  rationale: "Repeated literal domains hide a shared contract and allow equivalent fields to drift independently.",
   remediation: "Declare a module-level named Zod enum schema and reuse it at each field or contract site.",
   category: "maintainability",
-  limitations: ["Only direct z.enum calls with string-literal arrays are inspected; computed domains require review. Equal values do not prove a shared business domain: retain local schemas when ownership, error customization, or future evolution differs, and review initialization order before extraction."],
+  limitations: ["Only two or more exact, same-order direct z.enum calls with string-literal arrays and no customization argument in one module are inspected; one-off, computed, and customized domains require review. Equal values do not prove a shared business domain: retain local schemas when ownership or future evolution differs, and review initialization order before extraction."],
   examples: [
     { id: "shared-provider", title: "Reuse a named enum schema", outcome: "no-match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const ProviderSchema = z.enum(['agy', 'claude', 'sol']); const JobSchema = z.object({ provider: ProviderSchema }); const StatusSchema = z.object({ provider: ProviderSchema.optional() });" }], focusPath: "src/provider.ts", expectedCount: 0, public: true },
-    { id: "inline-provider", title: "Do not inline enum domains in object fields", outcome: "match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) });" }], focusPath: "src/provider.ts", expectedCount: 1, public: true },
+    { id: "inline-provider", title: "Do not repeat an inline enum domain", outcome: "match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) }); const StatusSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']).optional() });" }], focusPath: "src/provider.ts", expectedCount: 2, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
 function literalDomain(node: TSESTree.CallExpression): readonly string[] | null {
+  if (node.arguments.length !== 1) return null;
   const [argument] = node.arguments;
   if (argument?.type !== AST_NODE_TYPES.ArrayExpression || argument.elements.length < 2) return null;
   const values: string[] = [];
@@ -68,7 +69,7 @@ export default createRule<Options, MessageIds>({
   documentation: PREFER_SHARED_ZOD_ENUM_DOCUMENTATION,
   meta: {
     type: "suggestion",
-    docs: { description: "Give literal Zod enum domains one reusable module-level schema." },
+    docs: { description: PREFER_SHARED_ZOD_ENUM_DOCUMENTATION.summary },
     schema: [],
     messages: {
       shareEnumDomain: "Extract this literal Zod enum to one module-level named schema and reuse it.",
@@ -80,7 +81,7 @@ export default createRule<Options, MessageIds>({
     const zodBindings = new Set<TSESLint.Scope.Variable>();
     const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
       ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
-    const seen = new Set<string>();
+    const candidates = new Map<string, Array<{ readonly node: TSESTree.CallExpression; readonly named: boolean }>>();
     return {
       ImportDeclaration(node): void {
         if (!isZodModule(node.source.value)) return;
@@ -110,10 +111,19 @@ export default createRule<Options, MessageIds>({
         const domain = literalDomain(node);
         if (domain === null) return;
         const key = JSON.stringify(domain);
-        const inline = !isModuleLevelNamedSchema(node);
-        if (inline || seen.has(key))
-          context.report({ node, messageId: "shareEnumDomain" });
-        else seen.add(key);
+        const group = candidates.get(key) ?? [];
+        group.push({ node, named: isModuleLevelNamedSchema(node) });
+        candidates.set(key, group);
+      },
+      "Program:exit"(): void {
+        for (const group of candidates.values()) {
+          if (group.length < 2) continue;
+          const canonical = group.find((candidate) => candidate.named);
+          for (const candidate of group) {
+            if (candidate === canonical) continue;
+            context.report({ node: candidate.node, messageId: "shareEnumDomain" });
+          }
+        }
       },
     };
   },

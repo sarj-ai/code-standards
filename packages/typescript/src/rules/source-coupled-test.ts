@@ -12,7 +12,7 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "rawSourceOracle";
 type Options = readonly [];
 
-const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc|py|[cm]?[jt]s)$/iu;
+const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc?|toml|py|[cm]?[jt]s)$/iu;
 const FS_MODULES = new Set(["fs", "node:fs", "fs/promises", "node:fs/promises"]);
 const FS_READERS = new Set(["readFile", "readFileSync"]);
 const TEXT_TRANSFORMS = new Set([
@@ -49,6 +49,8 @@ const EXPECT_MATCHERS = new Set([
 ]);
 const EXPECT_MODIFIERS = new Set(["not", "rejects", "resolves"]);
 const ASSERT_MATCHERS = new Set(["deepEqual", "doesNotMatch", "equal", "match", "notDeepEqual", "notEqual", "notStrictEqual", "ok", "strictEqual"]);
+const EXPECT_MODULES = new Set(["@jest/globals", "@playwright/test", "bun:test", "vitest"]);
+const ASSERT_MODULES = new Set(["assert", "assert/strict", "node:assert", "node:assert/strict"]);
 
 interface LexicalScope {
   readonly collections: Set<TSESLint.Scope.Variable>;
@@ -66,6 +68,7 @@ export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
   category: "testing",
   limitations: [
     "The rule follows stable lexical bindings, static source paths, awaited reads, and common text operations. Reassigned bindings, dynamic paths, unknown path wrappers, iterator pipelines, and interprocedural flows remain unreported.",
+    "Assertion roots are scope-resolved for supported test runners and Node assert imports; local or unknown helpers with assertion-like names are not inferred.",
     "When raw representation is genuinely the contract (for example a golden or compatibility sentinel), use an exact line suppression with the reason.",
   ],
   examples: [
@@ -161,6 +164,32 @@ export function createSourceCoupledRule(
     const reportedOrigins = new Set<string>();
     const currentScope = (): LexicalScope => scopes.at(-1) ?? scopes[0]!;
     const bindingOf = (node: TSESTree.Identifier) => ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);
+    const assertionKind = (node: TSESTree.Identifier): "assert" | "expect" | null => {
+      const binding = bindingOf(node);
+      if (binding === null || binding.defs.length === 0) {
+        return node.name === "assert" || node.name === "expect" ? node.name : null;
+      }
+      for (const definition of binding.defs) {
+        const specifier = definition.node;
+        if (
+          (specifier.type !== AST_NODE_TYPES.ImportSpecifier &&
+            specifier.type !== AST_NODE_TYPES.ImportDefaultSpecifier &&
+            specifier.type !== AST_NODE_TYPES.ImportNamespaceSpecifier) ||
+          specifier.parent.type !== AST_NODE_TYPES.ImportDeclaration
+        ) continue;
+        const source = importSource(specifier.parent);
+        if (source !== null && ASSERT_MODULES.has(source)) {
+          if (specifier.type !== AST_NODE_TYPES.ImportSpecifier) return "assert";
+          const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
+          if (imported === "strict" || ASSERT_MATCHERS.has(imported)) return "assert";
+          continue;
+        }
+        if (source === null || !EXPECT_MODULES.has(source) || specifier.type !== AST_NODE_TYPES.ImportSpecifier) continue;
+        const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
+        if (imported === "assert" || imported === "expect") return imported;
+      }
+      return null;
+    };
     const visible = (kind: "collections" | "fsObjects" | "fsReaders" | "paths", node: TSESTree.Identifier): boolean => {
       const name = bindingOf(node);
       if (name === null || name.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
@@ -236,7 +265,7 @@ export function createSourceCoupledRule(
     };
     const rawAssertionOrigins = (node: TSESTree.CallExpression): Set<string> => {
       const callee = unwrap(node.callee);
-      if (callee.type === AST_NODE_TYPES.Identifier && callee.name === "assert") {
+      if (callee.type === AST_NODE_TYPES.Identifier && assertionKind(callee) === "assert") {
         return new Set(node.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return new Set();
@@ -244,11 +273,11 @@ export function createSourceCoupledRule(
       if (matcher === null) return new Set();
       let receiver = unwrap(callee.object);
       while (receiver.type === AST_NODE_TYPES.MemberExpression && EXPECT_MODIFIERS.has(staticMemberName(receiver) ?? "")) receiver = unwrap(receiver.object);
-      if (receiver.type === AST_NODE_TYPES.CallExpression && receiver.callee.type === AST_NODE_TYPES.Identifier && receiver.callee.name === "expect") {
+      if (receiver.type === AST_NODE_TYPES.CallExpression && receiver.callee.type === AST_NODE_TYPES.Identifier && assertionKind(receiver.callee) === "expect") {
         if (!EXPECT_MATCHERS.has(matcher)) return new Set();
         return new Set([...receiver.arguments, ...node.arguments].flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
       }
-      if (receiver.type !== AST_NODE_TYPES.Identifier || receiver.name !== "assert" || !ASSERT_MATCHERS.has(matcher)) return new Set();
+      if (receiver.type !== AST_NODE_TYPES.Identifier || assertionKind(receiver) !== "assert" || !ASSERT_MATCHERS.has(matcher)) return new Set();
       return new Set(node.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
     };
     const declare = (node: TSESTree.Identifier, state: { collection?: boolean; fsObject?: boolean; fsReader?: boolean; path?: boolean; rawOrigins?: Set<string> }): void => {

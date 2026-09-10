@@ -34,14 +34,28 @@ export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function literalModule(node: TSESTree.Node | undefined): string | null {
-  return node?.type === AST_NODE_TYPES.Literal && typeof node.value === "string"
-    ? node.value
-    : null;
+function staticModule(node: TSESTree.Node | undefined): string | null {
+  if (node?.type === AST_NODE_TYPES.Literal && typeof node.value === "string") {
+    return node.value;
+  }
+  if (node?.type === AST_NODE_TYPES.TemplateLiteral && node.expressions.length === 0) {
+    return node.quasis[0]?.value.cooked ?? null;
+  }
+  return null;
 }
 
 function matchesModule(source: string, module: string): boolean {
   return source === module || source.startsWith(`${module}/`);
+}
+
+function staticMemberName(node: TSESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === AST_NODE_TYPES.Identifier) {
+    return node.property.name;
+  }
+  return node.computed && node.property.type === AST_NODE_TYPES.Literal &&
+    typeof node.property.value === "string"
+    ? node.property.value
+    : null;
 }
 
 export default createRule<Options, MessageIds>({
@@ -111,7 +125,7 @@ export default createRule<Options, MessageIds>({
 
     return {
       ImportExpression(node: TSESTree.ImportExpression): void {
-        const source = literalModule(node.source);
+        const source = staticModule(node.source);
         if (source !== null) report(node.source, source);
       },
       CallExpression(node: TSESTree.CallExpression): void {
@@ -123,22 +137,20 @@ export default createRule<Options, MessageIds>({
           requireIdentifier = node.callee;
         } else if (
           node.callee.type === AST_NODE_TYPES.MemberExpression &&
-          !node.callee.computed &&
           node.callee.object.type === AST_NODE_TYPES.Identifier &&
           node.callee.object.name === "require" &&
-          node.callee.property.type === AST_NODE_TYPES.Identifier &&
-          node.callee.property.name === "resolve"
+          staticMemberName(node.callee) === "resolve"
         ) {
           requireIdentifier = node.callee.object;
         }
         if (requireIdentifier === null || !isUnshadowedRequire(requireIdentifier)) return;
-        const source = literalModule(node.arguments[0]);
+        const source = staticModule(node.arguments[0]);
         if (source !== null) report(node.arguments[0] as TSESTree.Node, source);
       },
       TSImportEqualsDeclaration(node: TSESTree.TSImportEqualsDeclaration): void {
         if (node.importKind === "type") return;
         if (node.moduleReference.type !== AST_NODE_TYPES.TSExternalModuleReference) return;
-        const source = literalModule(node.moduleReference.expression);
+        const source = staticModule(node.moduleReference.expression);
         if (source !== null) report(node.moduleReference.expression, source);
       },
     };

@@ -20,6 +20,11 @@ const COMPONENT = "/repo/src/components/loading-state.tsx";
 
 RULE_TESTER.run("no-hand-rolled-spinner", rule, {
   valid: [
+    {
+      name: "does not combine mutually exclusive Tailwind variant contexts",
+      code: `<div className="size-4 motion-safe:animate-spin motion-safe:rounded-full motion-safe:border-2 motion-reduce:border-t-transparent" />`,
+      filename: COMPONENT,
+    },
     { name: "later spread can replace spinner classes", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" {...props} />', filename: COMPONENT },
     { name: "last className wins", code: '<div className="animate-spin rounded-full border-2 border-t-transparent" className="static" />', filename: COMPONENT },
     { name: "accepts the documented shared spinner", code: NO_HAND_ROLLED_SPINNER_DOCUMENTATION.examples[0].files[0].source, filename: COMPONENT },
@@ -85,6 +90,18 @@ RULE_TESTER.run("no-hand-rolled-spinner", rule, {
     },
   ],
   invalid: [
+    {
+      name: "reports a spinner whose animation uses a Tailwind variant",
+      code: `<div className="size-4 motion-safe:animate-spin rounded-full border-2 border-t-transparent" />`,
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
+    {
+      name: "reports a spinner behind an arbitrary Tailwind variant",
+      code: `<div className="size-4 [&[data-loading]]:animate-spin rounded-full border-2 border-t-transparent" />`,
+      filename: COMPONENT,
+      errors: [{ messageId: "handRolledSpinner" }],
+    },
     { name: "later explicit className overrides a spread", code: '<div {...props} className="animate-spin rounded-full border-2 border-t-transparent" />', filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
     { name: "reports the documented border-ring spinner", code: NO_HAND_ROLLED_SPINNER_DOCUMENTATION.examples[1].files[0].source, filename: COMPONENT, errors: [{ messageId: "handRolledSpinner" }] },
     {
