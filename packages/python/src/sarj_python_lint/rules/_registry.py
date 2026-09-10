@@ -33,6 +33,7 @@ from sarj_python_lint.rules.no_copied_inherited_docstring import NoCopiedInherit
 from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
     NoCorsWildcardWithCredentials,
 )
+from sarj_python_lint.rules.no_deleted_only_override_parameter import NoDeletedOnlyOverrideParameter
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 from sarj_python_lint.rules.no_fastapi_on_event import NoFastapiOnEvent
@@ -232,6 +233,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferSelfDocumentingConstant.id: PreferSelfDocumentingConstant,
         NoDuplicateDunderAllEntry.id: NoDuplicateDunderAllEntry,
         NoDunderAll.id: NoDunderAll,
+        NoDeletedOnlyOverrideParameter.id: NoDeletedOnlyOverrideParameter,
         NoCopiedInheritedDocstring.id: NoCopiedInheritedDocstring,
         RedundantClassDocstring.id: RedundantClassDocstring,
         RedundantModuleDocstring.id: RedundantModuleDocstring,

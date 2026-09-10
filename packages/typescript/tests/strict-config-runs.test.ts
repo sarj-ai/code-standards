@@ -124,6 +124,84 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(severity(rulesOf(configured)["@typescript-eslint/naming-convention"])).toBe(2);
   });
 
+  it.each(CONFIG_FACTORIES)(
+    "%s rejects direct and implied evaluation exactly once in syntax-only code",
+    async (_name, createConfig) => {
+      const ownedRules = new Set([
+        "@typescript-eslint/no-implied-eval",
+        "no-eval",
+        "no-implied-eval",
+        "no-new-func",
+        "no-prototype-builtins",
+      ]);
+      const focused = createConfig({ projectService: false }).map((entry) => ({
+        ...entry,
+        rules: Object.fromEntries(
+          Object.entries(entry.rules ?? {}).filter(([ruleId]) => ownedRules.has(ruleId)),
+        ),
+      }));
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        overrideConfigFile: true,
+        overrideConfig: focused,
+      });
+      const [result] = await eslint.lintText(
+        [
+          'eval("work()")',
+          'globalThis.setTimeout("work()", 0)',
+          'new Function("return 1")',
+          'payload.hasOwnProperty("id")',
+        ].join("\n"),
+        { filePath: "tooling.js" },
+      );
+      const rules = (result?.messages ?? []).map((message) => message.ruleId).toSorted();
+      expect(rules).toEqual([
+        "no-eval",
+        "no-implied-eval",
+        "no-new-func",
+        "no-prototype-builtins",
+      ]);
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s assigns typed dynamic execution to the TypeScript rule without core duplicates",
+    async (_name, createConfig) => {
+      const ownedRules = new Set([
+        "@typescript-eslint/no-implied-eval",
+        "no-eval",
+        "no-implied-eval",
+        "no-new-func",
+      ]);
+      const focused = createConfig({ tsconfigRootDir: FIXTURE_DIR }).map((entry) => ({
+        ...entry,
+        rules: Object.fromEntries(
+          Object.entries(entry.rules ?? {}).filter(([ruleId]) => ownedRules.has(ruleId)),
+        ),
+      }));
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        overrideConfigFile: true,
+        overrideConfig: focused,
+      });
+      const [result] = await eslint.lintText(
+        [
+          'eval("direct()")',
+          '(0, eval)("indirect()")',
+          'globalThis.setTimeout("later()", 0)',
+          'new Function("return 1")',
+        ].join("\n"),
+        { filePath: resolve(FIXTURE_DIR, "example.ts") },
+      );
+      expect(result?.messages.map((message) => message.ruleId)).toEqual([
+        "no-eval",
+        "no-eval",
+        "@typescript-eslint/no-implied-eval",
+        "@typescript-eslint/no-implied-eval",
+      ]);
+    },
+  );
+
   it("keeps typed diagnostics live in a nested monorepo package", async () => {
     const eslint = new ESLint({
       cwd: NESTED_MONOREPO_DIR,

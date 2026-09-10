@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bdbe85142036e85824dbfe99a8e6a35bcab4e556177558026b3da04e08c0f034",
+  "catalogSha256": "9c154e8fac995673e355b16d54f2bdaae9fbbc0a80473d18bec5201e2a67b8ac",
   "cliSha256": "aebc23d603ffe482e37f1a42c95eab3848dbf62bdffcdd14462d4875af7c9aa2",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -742,6 +742,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Reject an empty numeric interval"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-in-operator-on-built-in-collections": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/cache.ts",
+              "source": "declare const cache: Map<string, object>;\ndeclare const key: string;\nif (key in cache) use(cache);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/cache.ts",
+          "id": "map-entry-membership",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Use Map.has for entry membership"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/cache.ts",
+              "source": "declare const value: { id: string } | { slug: string };\nif (\"id\" in value) use(value.id);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/cache.ts",
+          "id": "object-property-narrowing",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Preserve ordinary object property narrowing"
         }
       ],
       "optionsSchemaSource": null
@@ -4793,6 +4828,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Credentials allowed for every origin"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-deleted-only-override-parameter": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/handler.py",
+              "source": "from typing import override\n\n\nclass Handler(BaseHandler):\n    @override\n    def handle(self, request: Request) -> None:\n        del request\n        emit_ready()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/handler.py",
+          "id": "override-parameter-delete-marker",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Remove a deletion used only as an override parameter marker"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/handler.py",
+              "source": "from typing import override\n\n\nclass Handler(BaseHandler):\n    @override\n    def handle(self, request: Request) -> None:\n        dispatch(request)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/handler.py",
+          "id": "override-uses-parameter",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep an override parameter that contributes to behavior"
         }
       ],
       "optionsSchemaSource": null

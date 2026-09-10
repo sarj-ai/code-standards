@@ -19,7 +19,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "4.7.2",
     "@eslint/compat": "2.1.0",
     "@eslint/js": "10.0.1",
-    "@sarj/eslint-plugin": "15.17.15",
+    "@sarj/eslint-plugin": "15.17.16",
     "@vitest/eslint-plugin": "1.6.27",
     "eslint": "10.10.0",
     "eslint-node-test": "0.4.0",

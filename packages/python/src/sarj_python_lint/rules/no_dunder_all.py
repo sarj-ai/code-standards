@@ -218,7 +218,7 @@ class _ScopePruningVisitor(ast.NodeVisitor):
 
     @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        del node
+        return None
 
     @override
     def visit_If(self, node: ast.If) -> None:

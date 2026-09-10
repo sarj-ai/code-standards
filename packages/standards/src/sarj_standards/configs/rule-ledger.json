@@ -41,6 +41,7 @@
       "no-conftest-test-module-import",
       "no-copied-inherited-docstring",
       "no-cors-wildcard-with-credentials",
+      "no-deleted-only-override-parameter",
       "no-docstring-type-restatement",
       "no-dunder-all",
       "no-duplicate-dunder-all-entry",
@@ -169,6 +170,7 @@
       "no-hand-rolled-sleep",
       "no-hand-rolled-spinner",
       "no-impossible-zod-literal-bounds",
+      "no-in-operator-on-built-in-collections",
       "no-insecure-random-id",
       "no-json-stringify-error",
       "no-json-stringify-object-equality",
@@ -356,7 +358,8 @@
       "SARJ438",
       "SARJ439",
       "SARJ440",
-      "SARJ441"
+      "SARJ441",
+      "SARJ442"
     ],
     "sql": [
       "SARJ101",

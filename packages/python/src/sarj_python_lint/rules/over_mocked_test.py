@@ -307,7 +307,7 @@ class _BindingVisitor(ast.NodeVisitor):
 
     @override
     def visit_Lambda(self, node: ast.Lambda) -> None:
-        del node
+        return None
 
     @override
     def visit_Import(self, node: ast.Import) -> None:

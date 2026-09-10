@@ -21,6 +21,7 @@ import noDetachedGlobalFetch from "./rules/no-detached-global-fetch.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noJsonStringifyObjectEquality from "./rules/no-json-stringify-object-equality.js";
 import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-bounds.js";
+import noInOperatorOnBuiltInCollections from "./rules/no-in-operator-on-built-in-collections.js";
 import noRedundantOptionalArrayDefault from "./rules/no-redundant-optional-array-default.js";
 import interfaceContractMembersPrivate from "./rules/interface-contract-members-private.js";
 import noLogOnlyCatch from "./rules/no-log-only-catch.js";
@@ -125,6 +126,7 @@ const RULES = {
   "no-json-stringify-error": noJsonStringifyError,
   "no-json-stringify-object-equality": noJsonStringifyObjectEquality,
   "no-impossible-zod-literal-bounds": noImpossibleZodLiteralBounds,
+  "no-in-operator-on-built-in-collections": noInOperatorOnBuiltInCollections,
   "no-redundant-optional-array-default": noRedundantOptionalArrayDefault,
   "interface-contract-members-private": interfaceContractMembersPrivate,
   "no-log-only-catch": noLogOnlyCatch,
@@ -208,7 +210,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.15",
+  version: "15.17.16",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -224,6 +226,7 @@ const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
   "@sarj/no-detached-global-fetch",
+  "@sarj/no-in-operator-on-built-in-collections",
   "@sarj/no-json-stringify-object-equality",
   "@sarj/no-redundant-optional-array-default",
   "@sarj/no-restated-comment",
@@ -265,6 +268,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-insecure-random-id": "error",
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
+  "@sarj/no-in-operator-on-built-in-collections": "warn",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "error",
   "@sarj/no-bespoke-api-case-conversion": "warn",
@@ -364,6 +368,7 @@ const STRICT_RULES = {
   "@sarj/no-insecure-random-id": "error",
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
+  "@sarj/no-in-operator-on-built-in-collections": "warn",
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "error",
   "@sarj/no-bespoke-api-case-conversion": "warn",

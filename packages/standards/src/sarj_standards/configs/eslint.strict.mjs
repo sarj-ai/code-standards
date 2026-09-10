@@ -81,6 +81,10 @@ const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
     .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
 );
+const UNTYPED_DYNAMIC_EXECUTION_RULES = {
+  "no-implied-eval": "error",
+  "no-new-func": "error",
+};
 const DEFAULT_SYNTAX_ONLY_CONFIG_FILES = [
   "**/vite.config.ts",
   "**/.dependency-cruiser.{js,cjs,mjs,ts,cts,mts}",
@@ -1105,6 +1109,8 @@ export function createConfig(options = {}) {
       ],
 
       "object-shorthand": ["error", "always"],
+      "no-eval": ["error", { allowIndirect: false }],
+      "no-prototype-builtins": "error",
       "no-return-await": "error",
       // Unicorn's guard-style iteration fix intentionally uses `value != null`
       // to reject both null and undefined without changing truthiness semantics.
@@ -1196,6 +1202,7 @@ export function createConfig(options = {}) {
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
       "@sarj/no-impossible-zod-literal-bounds": "error",
+      "@sarj/no-in-operator-on-built-in-collections": "warn",
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",
       "@sarj/prefer-non-nullable-collection": "error",
@@ -1227,6 +1234,7 @@ export function createConfig(options = {}) {
       // Storage policy requires explicit stateless-module boundaries.
       //   "@sarj/no-storage-in-stateless-modules": ["error", { modules: [...] }],
       ...(HAS_TYPE_PROJECT ? {} : UNTYPED_RULE_OVERRIDES),
+      ...(HAS_TYPE_PROJECT ? {} : UNTYPED_DYNAMIC_EXECUTION_RULES),
       ...(HAS_TYPE_PROJECT
         ? {}
         : { "@typescript-eslint/naming-convention": SYNTAX_ONLY_NAMING_CONVENTION }),
@@ -1419,6 +1427,7 @@ export function createConfig(options = {}) {
       },
       rules: {
         ...UNTYPED_RULE_OVERRIDES,
+        ...UNTYPED_DYNAMIC_EXECUTION_RULES,
         "@typescript-eslint/naming-convention": SYNTAX_ONLY_NAMING_CONVENTION,
       },
     }]),
