@@ -31,6 +31,7 @@
  */
 
 import { ESLint, type Linter } from "eslint";
+import js from "@eslint/js";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -72,6 +73,13 @@ const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["application", createApplicationConfig],
 ];
 const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
+const UNICORN_CONCISION_ADVISORY_RULES = [
+  "unicorn/consistent-arrow-return-style",
+  "unicorn/iteration-fallback-style",
+  "unicorn/logical-assignment-operators",
+  "unicorn/prefer-single-object-destructuring",
+  "unicorn/single-line-block-comment-style",
+] as const;
 
 function parserOptionsOf(config: Linter.Config[]): Record<string, unknown> {
   const options = config.find(
@@ -95,6 +103,65 @@ function severityOf(setting: unknown): unknown {
 }
 
 describe("the shipped eslint.strict.mjs actually loads", () => {
+  it("composes ESLint recommended before TypeScript duplicate ownership", async () => {
+    const configured = await configFor("src/index.ts");
+    const rules = configured.rules ?? {};
+    const recommended = Object.keys(js.configs.recommended.rules);
+    const disabled = recommended.filter((rule) => severityOf(rules[rule]) === 0);
+    const warnings = recommended.filter((rule) => severityOf(rules[rule]) === 1);
+
+    expect(recommended).toHaveLength(64);
+    expect(disabled).toEqual([
+      "constructor-super",
+      "getter-return",
+      "no-class-assign",
+      "no-const-assign",
+      "no-dupe-args",
+      "no-dupe-class-members",
+      "no-dupe-keys",
+      "no-func-assign",
+      "no-import-assign",
+      "no-new-native-nonconstructor",
+      "no-obj-calls",
+      "no-redeclare",
+      "no-setter-return",
+      "no-this-before-super",
+      "no-undef",
+      "no-unreachable",
+      "no-unsafe-negation",
+      "no-unused-vars",
+      "no-with",
+    ]);
+    expect(warnings).toHaveLength(44);
+    expect(severityOf(rules["no-fallthrough"])).toBe(2);
+    for (const rule of [
+      "no-async-promise-executor",
+      "no-constant-binary-expression",
+      "no-unassigned-vars",
+      "no-unsafe-optional-chaining",
+      "no-useless-assignment",
+      "preserve-caught-error",
+    ]) {
+      expect(severityOf(rules[rule])).toBe(1);
+    }
+  });
+
+  it("keeps the approved Unicorn concision trial at warning", async () => {
+    const configured = await configFor("src/index.ts");
+    for (const rule of UNICORN_CONCISION_ADVISORY_RULES) {
+      expect(severityOf(configured.rules?.[rule])).toBe(1);
+    }
+    expect(configured.rules?.["logical-assignment-operators"]).toBeUndefined();
+    expect(configured.rules?.["arrow-body-style"]).toBeUndefined();
+    expect(configured.rules?.["multiline-comment-style"]).toBeUndefined();
+    expect(configured.rules?.["prefer-destructuring"]).toBeUndefined();
+    expect(configured.rules?.["eqeqeq"]).toEqual([
+      2,
+      "always",
+      { null: "ignore" },
+    ]);
+  });
+
   it.each(CONFIG_FACTORIES)("%s rejects unknown test runners", (_name, createConfig) => {
     expect(() => createConfig({ testFrameworks: ["vittest"] })).toThrow(
       'Unsupported test framework "vittest"',
@@ -440,10 +507,14 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     const warnings = Object.entries(plainConfig.rules ?? {})
       .filter(([, setting]) => severityOf(setting) === 1)
       .map(([rule]) => rule);
+    const recommendedCoreWarnings = Object.keys(js.configs.recommended.rules)
+      .filter((rule) => severityOf(plainConfig.rules?.[rule]) === 1);
     expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
     expect(warnings.toSorted()).toEqual([
       ...ADVISORY_RULES,
       "better-tailwindcss/enforce-consistent-variable-syntax",
+      ...recommendedCoreWarnings,
+      ...UNICORN_CONCISION_ADVISORY_RULES,
     ].toSorted());
 
     // Component identifiers are PascalCase, while component filenames remain

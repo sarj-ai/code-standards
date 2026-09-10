@@ -374,6 +374,108 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(ruleIds).toContain("prefer-object-has-own");
   });
 
+  it("runs ESLint recommended correctness rules at warning severity", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: STRICT_CONFIG_FACTORY({ projectService: false }),
+    });
+    const [result] = await eslint.lintText(
+      "new Promise(async (resolve) => { resolve(await operation()); });",
+      { filePath: resolve(FIXTURE_DIR, "recommended-core.js") },
+    );
+    const finding = result?.messages.find(
+      (message) => message.ruleId === "no-async-promise-executor",
+    );
+
+    expect(finding?.severity).toBe(1);
+  });
+
+  it.each([
+    {
+      rule: "unicorn/consistent-arrow-return-style",
+      source: "const value = () => { return 1; };",
+      expected: "const value = () => 1;",
+      nearMiss: "const value = () => 1;",
+    },
+    {
+      rule: "unicorn/single-line-block-comment-style",
+      source: "/*\nconcise rationale\n*/\nconst value = 1;",
+      expected: "/* concise rationale */\nconst value = 1;",
+      nearMiss: "/* concise rationale */\nconst value = 1;",
+    },
+    {
+      rule: "unicorn/logical-assignment-operators",
+      source: "let value; value = value || fallback;",
+      expected: "let value; value ||= fallback;",
+      nearMiss: "let value; value ||= fallback;",
+    },
+    {
+      rule: "unicorn/prefer-single-object-destructuring",
+      source: "const source = {a: 1, b: 2}; const {a} = source; const {b} = source;",
+      expected: "const source = {a: 1, b: 2}; const {a, b} = source;",
+      nearMiss: "let source = {a: 1, b: 2}; const {a} = source; const {b} = source;",
+    },
+    {
+      rule: "unicorn/iteration-fallback-style",
+      source: "for (const item of items ?? []) { use(item); }",
+      expected: "if ((items) != null) {\n\tfor (const item of items) { use(item); }\n}",
+      nearMiss: "if (items != null) { for (const item of items) { use(item); } }",
+    },
+  ])("fixes $rule once without changing an accepted near miss", async ({ rule, source, expected, nearMiss }) => {
+    const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
+      ...entry,
+      rules: Object.fromEntries(
+        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
+      ),
+    }));
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      fix: true,
+      overrideConfigFile: true,
+      overrideConfig: config,
+    });
+    const [first] = await eslint.lintText(source, {
+      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
+    });
+    expect(first?.output).toBe(expected);
+
+    const [second] = await eslint.lintText(expected, {
+      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
+    });
+    expect(second?.output).toBeUndefined();
+    expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+
+    const [accepted] = await eslint.lintText(nearMiss, {
+      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
+    });
+    expect(accepted?.output).toBeUndefined();
+    expect(accepted?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+  });
+
+  it("keeps the iteration guard fix compatible with existing authorities", async () => {
+    const filePath = resolve(FIXTURE_DIR, "iteration-fallback-conflict.ts");
+    const fixing = new ESLint({
+      cwd: FIXTURE_DIR,
+      fix: true,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const [fixed] = await fixing.lintFiles([filePath]);
+    expect(fixed?.output).toContain("if ((items) != null)");
+
+    const checking = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const [checked] = await checking.lintText(fixed?.output ?? "", { filePath });
+    const ruleIds = checked?.messages.map((message) => message.ruleId) ?? [];
+    expect(ruleIds).not.toContain("unicorn/iteration-fallback-style");
+    expect(ruleIds).not.toContain("@typescript-eslint/prefer-nullish-coalescing");
+    expect(ruleIds).not.toContain("eqeqeq");
+  });
+
   it("rejects range disables while preserving line-local suppressions", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,

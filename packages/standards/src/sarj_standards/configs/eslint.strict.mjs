@@ -2,6 +2,7 @@ import { readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
 import { fixupPluginRules } from "@eslint/compat";
@@ -153,6 +154,19 @@ const DEFAULT_BUN_TEST_FILES = [
   "**/bun/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
 ];
 const SUPPORTED_TEST_FRAMEWORKS = new Set(["vitest", "bun", "node", "testing-library", "playwright"]);
+
+// typescript-eslint's strict presets assume ESLint's recommended preset is
+// composed before them: the later TypeScript configs disable compiler-owned
+// duplicates while leaving syntax/runtime correctness rules active. Introduce
+// the newly inherited rules at warning so fleet findings can be calibrated
+// before a separate promotion release.
+const ESLINT_RECOMMENDED_WARNING_CONFIG = {
+  ...js.configs.recommended,
+  name: "sarj/eslint-recommended-warning",
+  rules: Object.fromEntries(
+    Object.keys(js.configs.recommended.rules).map((rule) => [rule, "warn"]),
+  ),
+};
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
 // evaluating each non-deprecated rule for correctness, runtime compatibility,
@@ -402,6 +416,22 @@ const UNICORN_MODERNISATION_RULES = {
   "unicorn/prefer-while-loop-condition": "error",
 };
 
+// Explicitly approved consistency/concision trial. These remain warnings until
+// fixes are proven idempotent and semantics-preserving on pinned consumer
+// corpora. Logical assignment excludes judgment-heavy if-statement rewrites;
+// iteration uses guards so its fixer agrees with the type-aware nullish rule.
+const UNICORN_CONCISION_ADVISORY_RULES = {
+  "unicorn/consistent-arrow-return-style": "warn",
+  "unicorn/single-line-block-comment-style": ["warn", "single-line"],
+  "unicorn/logical-assignment-operators": [
+    "warn",
+    "always",
+    { enforceForIfStatements: false },
+  ],
+  "unicorn/prefer-single-object-destructuring": "warn",
+  "unicorn/iteration-fallback-style": ["warn", "guard"],
+};
+
 // One actionable line instead of N x M "Definition for rule ... was not found".
 // Self-maintaining: it re-derives the required names from the objects above, so
 // adding a rule that a pinned consumer's plugin lacks fails loudly at config
@@ -409,6 +439,7 @@ const UNICORN_MODERNISATION_RULES = {
 const missingUnicornRules = [
   ...Object.keys(UNICORN_CORRECTNESS_RULES),
   ...Object.keys(UNICORN_MODERNISATION_RULES),
+  ...Object.keys(UNICORN_CONCISION_ADVISORY_RULES),
 ]
   .map((key) => key.slice("unicorn/".length))
   .filter((name) => !(name in unicorn.rules));
@@ -540,6 +571,7 @@ export function createConfig(options = {}) {
   // per-file entry that ignores nothing.
   { ignores: BUILD_OUTPUT_IGNORES },
 
+  ESLINT_RECOMMENDED_WARNING_CONFIG,
   ...tseslint.configs.strictTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
 
@@ -870,6 +902,7 @@ export function createConfig(options = {}) {
       // The unicorn 72 expansion, declared and explained above the config.
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
+      ...UNICORN_CONCISION_ADVISORY_RULES,
 
       "zod/prefer-enum-over-literal-union": "error",
       // A type hand-written beside the Zod schema it restates drifts when the
@@ -1070,7 +1103,11 @@ export function createConfig(options = {}) {
 
       "object-shorthand": ["error", "always"],
       "no-return-await": "error",
-      eqeqeq: ["error", "always"],
+      // Unicorn's guard-style iteration fix intentionally uses `value != null`
+      // to reject both null and undefined without changing truthiness semantics.
+      // ESLint documents this narrow null exception; every other loose
+      // comparison remains an error.
+      eqeqeq: ["error", "always", { null: "ignore" }],
       "no-await-in-loop": "error",
       "no-param-reassign": "error",
       "array-callback-return": "error",
