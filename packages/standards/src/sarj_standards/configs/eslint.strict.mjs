@@ -1157,6 +1157,8 @@ export function createConfig(options = {}) {
       "@sarj/no-log-only-catch": "error",
       "@sarj/no-bare-return-from-test-catch": "error",
       "@sarj/no-bespoke-api-case-conversion": "warn",
+      "@sarj/no-detached-global-fetch": "warn",
+      "@sarj/no-json-stringify-object-equality": "warn",
       "@sarj/no-dangerously-allow-svg": "error",
       "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
       "@sarj/no-production-browser-source-maps": "error",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7d3565fd3823212b32de9b716f0e79d7a603591ecd9650e2ae00a7a41af0291e",
-  "cliSha256": "b9f3ac3505edd3d3b2bf12f6404866ee4866daf686d9c6b2459ab07b96c880da",
+  "catalogSha256": "bdbe85142036e85824dbfe99a8e6a35bcab4e556177558026b3da04e08c0f034",
+  "cliSha256": "aebc23d603ffe482e37f1a42c95eab3848dbf62bdffcdd14462d4875af7c9aa2",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -431,6 +431,41 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"maxNovelWords\": {\n      \"description\": \"Most content words a comment may add beyond its member's own source and still count as a restatement.\",\n      \"minimum\": 0,\n      \"type\": \"integer\"\n    },\n    \"minCommentedMembers\": {\n      \"description\": \"Fewest commented members that can count as a wall.\",\n      \"minimum\": 2,\n      \"type\": \"integer\"\n    },\n    \"minCommentedRatio\": {\n      \"description\": \"Least share of the members that must be commented; below it the comments are group labels.\",\n      \"maximum\": 1,\n      \"minimum\": 0,\n      \"type\": \"number\"\n    },\n    \"minRestatedRatio\": {\n      \"description\": \"Least share of the member comments that must be restatements.\",\n      \"maximum\": 1,\n      \"minimum\": 0,\n      \"type\": \"number\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "eslint:no-detached-global-fetch": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "class Client {\n  constructor(private readonly request: typeof fetch = fetch) {}\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "detached-global-fetch",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not detach the ambient fetch"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "const request = (input: RequestInfo | URL, init?: RequestInit) =>\n  globalThis.fetch(input, init);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "forwarded-global-fetch",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Forward through the global receiver"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-duplicate-lifecycle-refresh-listeners": {
       "examples": [
         {
@@ -777,6 +812,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not stringify an Error object"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-json-stringify-object-equality": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/compare.ts",
+              "source": "const same = sameRecord(actual, expected);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/compare.ts",
+          "id": "domain-comparator",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use an explicit structural comparator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/compare.ts",
+              "source": "const same =\n  JSON.stringify({ id: \"1\", state: \"ready\" }) ===\n  JSON.stringify({ state: \"ready\", id: \"1\" });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/compare.ts",
+          "id": "serialized-object-equality",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not compare object serialization"
         }
       ],
       "optionsSchemaSource": null

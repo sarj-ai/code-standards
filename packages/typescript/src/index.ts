@@ -17,7 +17,9 @@ import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
 import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
 import noHandRolledSpinner from "./rules/no-hand-rolled-spinner.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
+import noDetachedGlobalFetch from "./rules/no-detached-global-fetch.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
+import noJsonStringifyObjectEquality from "./rules/no-json-stringify-object-equality.js";
 import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-bounds.js";
 import noRedundantOptionalArrayDefault from "./rules/no-redundant-optional-array-default.js";
 import interfaceContractMembersPrivate from "./rules/interface-contract-members-private.js";
@@ -119,7 +121,9 @@ const RULES = {
   "no-hand-rolled-sleep": noHandRolledSleep,
   "no-hand-rolled-spinner": noHandRolledSpinner,
   "no-insecure-random-id": noInsecureRandomId,
+  "no-detached-global-fetch": noDetachedGlobalFetch,
   "no-json-stringify-error": noJsonStringifyError,
+  "no-json-stringify-object-equality": noJsonStringifyObjectEquality,
   "no-impossible-zod-literal-bounds": noImpossibleZodLiteralBounds,
   "no-redundant-optional-array-default": noRedundantOptionalArrayDefault,
   "interface-contract-members-private": interfaceContractMembersPrivate,
@@ -204,7 +208,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.14",
+  version: "15.17.15",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -219,6 +223,8 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-detached-global-fetch",
+  "@sarj/no-json-stringify-object-equality",
   "@sarj/no-redundant-optional-array-default",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
@@ -262,6 +268,8 @@ const RECOMMENDED_RULES = {
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "error",
   "@sarj/no-bespoke-api-case-conversion": "warn",
+  "@sarj/no-detached-global-fetch": "warn",
+  "@sarj/no-json-stringify-object-equality": "warn",
   "@sarj/no-dangerously-allow-svg": "error",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
@@ -359,6 +367,8 @@ const STRICT_RULES = {
   "@sarj/no-log-only-catch": "error",
   "@sarj/no-bare-return-from-test-catch": "error",
   "@sarj/no-bespoke-api-case-conversion": "warn",
+  "@sarj/no-detached-global-fetch": "warn",
+  "@sarj/no-json-stringify-object-equality": "warn",
   "@sarj/no-dangerously-allow-svg": "error",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
