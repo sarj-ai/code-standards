@@ -2,13 +2,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .changes import changed_release_targets
 from .process import ProcessRunner, run_process
-from .tags import RELEASE_ARTIFACT_FILES, RELEASE_ARTIFACT_PREFIXES, RELEASE_TARGETS
+from .tags import (
+    RELEASE_ARTIFACT_FILES,
+    RELEASE_ARTIFACT_PREFIXES,
+    RELEASE_TARGETS,
+    ReleaseTargetId,
+    has_verified_release_tag,
+    read_manifest_version_text,
+)
 
 
 _DISPLAY_PATH_LIMIT = 3
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    type ReleaseTagChecker = Callable[..., bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,12 +45,22 @@ class CausalityViolation:
 
 
 @dataclass(frozen=True, slots=True)
+class SupersededReleaseViolation:
+    target: str
+    manifest: Path
+    prior_tag: str
+
+    def render(self) -> str:
+        return f"{self.target}: cannot supersede unverified prior release {self.prior_tag}"
+
+
+@dataclass(frozen=True, slots=True)
 class ReleaseCausalityReport:
     before: str
     after: str
     changed_targets: tuple[str, ...]
     bumped_targets: tuple[str, ...]
-    violations: tuple[CausalityViolation, ...]
+    violations: tuple[CausalityViolation | SupersededReleaseViolation, ...]
 
     @property
     def ok(self) -> bool:
@@ -49,6 +73,7 @@ def check_release_causality(
     before: str,
     after: str,
     runner: ProcessRunner = run_process,
+    tag_checker: ReleaseTagChecker = has_verified_release_tag,
 ) -> ReleaseCausalityReport:
     result = runner(("git", "diff", "--name-only", "-z", before, after, "--"), cwd=root, capture_output=True)
     changed_paths = tuple(sorted(path for path in result.stdout.split("\0") if path))
@@ -57,7 +82,7 @@ def check_release_causality(
         name: tuple(path for path in changed_paths if _belongs_to_artifact(name, path=path)) for name in RELEASE_TARGETS
     }
     changed_targets = tuple(name for name, paths in by_target.items() if paths)
-    violations = tuple(
+    causality_violations = tuple(
         CausalityViolation(
             name,
             RELEASE_TARGETS[name].manifest,
@@ -67,12 +92,32 @@ def check_release_causality(
         for name in changed_targets
         if not bumped[name]
     )
+    supersession_violations: list[SupersededReleaseViolation] = []
+    for name, changed in bumped.items():
+        if not changed:
+            continue
+        target = RELEASE_TARGETS[name]
+        prior_contents = runner(
+            ("git", "show", f"{before}:{target.manifest.as_posix()}"),
+            cwd=root,
+            capture_output=True,
+        ).stdout
+        prior_version = read_manifest_version_text(
+            prior_contents,
+            target.format,
+            label=f"{before}:{target.manifest}",
+        )
+        target_name = ReleaseTargetId(name)
+        if not tag_checker(root, target_name, version=prior_version, commit=before, runner=runner):
+            supersession_violations.append(
+                SupersededReleaseViolation(name, target.manifest, f"{name}-v{prior_version}")
+            )
     return ReleaseCausalityReport(
         before,
         after,
         changed_targets,
         tuple(name for name, changed in bumped.items() if changed),
-        violations,
+        (*causality_violations, *supersession_violations),
     )
 
 

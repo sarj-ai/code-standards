@@ -1,9 +1,10 @@
 name: release
 
 # Publishing model:
-# - Push to main: the `detect` job finds manifest version changes and current
-#   versions missing from their authoritative registry. This automatically
-#   recovers a release skipped by an earlier Actions outage. Because
+# - Push to main or hourly reconciliation: the `detect` job finds current
+#   versions missing either an authoritative-registry publication or their
+#   immutable verification tag. This automatically recovers a release skipped
+#   or interrupted by an earlier Actions or registry outage. Because
 #   this workflow runs DIRECTLY on the push (not via workflow_call), PyPI
 #   Trusted Publishing (OIDC) works — reusable workflows are unsupported by PyPI.
 # A push whose current versions are all public publishes nothing.
@@ -11,6 +12,10 @@ name: release
 on:
   push:
     branches: [main]
+  schedule:
+    # Reconcile publication and durable verification-tag state after outages.
+    # The same workflow identity preserves trusted-publisher provenance.
+    - cron: '17 * * * *'
 
 concurrency:
   group: release-main
@@ -109,8 +114,9 @@ jobs:
             fi
           done
 
-  # Detects changed versions and unpublished current versions. Existing `needs`
-  # edges publish siblings before the Standards bundle that pins them.
+  # Detects current versions lacking publication or a durable verification tag.
+  # Existing `needs` edges publish siblings before the Standards bundle that
+  # pins them.
   detect:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -136,7 +142,7 @@ jobs:
           version: '0.12.5'
       - id: c
         env:
-          BEFORE: ${{ github.event.before }}
+          BEFORE: ${{ github.event.before || github.sha }}
           AFTER: ${{ github.sha }}
         run: uv run --project packages/standards --frozen code-standards --root . maintain release changes --before "$BEFORE" --after "$AFTER" --github-output "$GITHUB_OUTPUT"
 
@@ -202,7 +208,7 @@ jobs:
   publish-typescript:
     needs: build-typescript
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     environment: npm-typescript-release
     permissions:
       contents: read
@@ -214,6 +220,7 @@ jobs:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -231,13 +238,12 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-typescript.outputs.artifact_sha256 }}
         run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
-      - name: Publish with npm trusted publishing
-        run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
-      - name: Verify registry bytes and source-bound provenance
+      - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
           uv run --script .github/scripts/verify_registry_publication.py npm
+          --publish
           --tarball "$RUNNER_TEMP/npm-artifacts/package.tgz"
           --commit "$EXPECTED_COMMIT" --environment npm-typescript-release
 
@@ -929,7 +935,7 @@ jobs:
   publish-tsconfig:
     needs: build-tsconfig
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     environment: npm-tsconfig-release
     permissions:
       contents: read
@@ -941,6 +947,7 @@ jobs:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -958,12 +965,11 @@ jobs:
         env:
           EXPECTED_SHA256: ${{ needs.build-tsconfig.outputs.artifact_sha256 }}
         run: echo "$EXPECTED_SHA256  $RUNNER_TEMP/npm-artifacts/package.tgz" | sha256sum --check --strict
-      - name: Publish with npm trusted publishing
-        run: npm publish "$RUNNER_TEMP/npm-artifacts/package.tgz" --access public --ignore-scripts
-      - name: Verify registry bytes and source-bound provenance
+      - name: Publish and verify registry bytes and source-bound provenance
         env:
           EXPECTED_COMMIT: ${{ github.sha }}
         run: >-
           uv run --script .github/scripts/verify_registry_publication.py npm
+          --publish
           --tarball "$RUNNER_TEMP/npm-artifacts/package.tgz"
           --commit "$EXPECTED_COMMIT" --environment npm-tsconfig-release

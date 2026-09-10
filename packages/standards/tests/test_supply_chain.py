@@ -183,7 +183,7 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
         "test \"$actual_name\" = '@sarj/tsconfig'" in release
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     assert (
-        release.count("Verify registry bytes and source-bound provenance") == 2
+        release.count("Publish and verify registry bytes and source-bound provenance") == 2
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-integrity contract
     verifier = (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         REPO_ROOT / ".github/scripts/verify_registry_publication.py"
@@ -191,12 +191,12 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
     assert (  # sarj-noqa: SARJ402 -- verifier text is the pinned supply-chain contract
         'entry.get("predicateType") != "https://slsa.dev/provenance/v1"' in verifier
     )
-    assert (
-        "NPM_ATTESTATION_ATTEMPTS = 36" in verifier
-    )  # sarj-noqa: SARJ402 -- verifier text is the pinned retry contract
-    assert (
-        "range(NPM_ATTESTATION_ATTEMPTS)" in verifier
-    )  # sarj-noqa: SARJ402 -- verifier text is the pinned retry contract
+    for stage_timeout in (
+        "NPM_METADATA_TIMEOUT = timedelta(minutes=5)",
+        "NPM_PROVENANCE_TIMEOUT = timedelta(minutes=10)",
+        "NPM_INSTALL_TIMEOUT = timedelta(minutes=10)",
+    ):
+        assert stage_timeout in verifier  # sarj-noqa: SARJ402 -- verifier text is the pinned retry contract
 
 
 def test_registry_verifier_parses_on_release_runner_python() -> None:

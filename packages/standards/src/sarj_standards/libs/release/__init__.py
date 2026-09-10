@@ -7,6 +7,7 @@ from sarj_standards.libs.release.artifacts import (
 from sarj_standards.libs.release.causality import (
     CausalityViolation as CausalityViolation,
     ReleaseCausalityReport as ReleaseCausalityReport,
+    SupersededReleaseViolation as SupersededReleaseViolation,
     check_release_causality as check_release_causality,
 )
 from sarj_standards.libs.release.changes import (
@@ -42,8 +43,10 @@ from sarj_standards.libs.release.tags import (
     TagSyncResult as TagSyncResult,
     ValidatedReleaseTag as ValidatedReleaseTag,
     create_release_tags as create_release_tags,
+    has_verified_release_tag as has_verified_release_tag,
     missing_remote_release_tags as missing_remote_release_tags,
     read_manifest_version as read_manifest_version,
+    read_manifest_version_text as read_manifest_version_text,
     validate_release_tag as validate_release_tag,
     verify_remote_release_tags as verify_remote_release_tags,
 )
