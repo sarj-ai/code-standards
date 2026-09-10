@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "38bc654d61f478b36953ca63659970f63a9f4991a0167bc3852b0cd2b58078e5",
-  "cliSha256": "4652c850b3030a44c0ef12d77f2a2c34c4fdd78b72a2625dadb7a7cc1e64f75f",
+  "catalogSha256": "454a8f9f9a0467f3d996771091330479d6c0726daee8cd0d779305ac5d0dad89",
+  "cliSha256": "962ffe532dd247437203fc839d43b996479fff3ad03301a6995e7d61ad23ffc4",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2735,6 +2735,45 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"ignoreTypeNames\": { \"items\": { \"type\": \"string\" }, \"type\": \"array\" },\n    \"requireIdenticalShape\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:prefer-zod-parse-output-type": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/contracts.ts",
+              "source": "export interface ParsedRow {\n  id: string;\n}\n"
+            },
+            {
+              "path": "src/row.ts",
+              "source": "import { z } from \"zod\";\nimport type { ParsedRow } from \"./contracts.js\";\nconst RowSchema = z.object({ id: z.string() });\nfunction load(): ParsedRow {\n  return RowSchema.parse({});\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/row.ts",
+          "id": "hand-written-parsed-return",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not hand-write the parsed return shape"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/row.ts",
+              "source": "import { z } from \"zod\";\nconst RowSchema = z.object({ id: z.string() });\ntype Row = z.output<typeof RowSchema>;\nfunction load(): Row {\n  return RowSchema.parse({});\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/row.ts",
+          "id": "schema-derived-return",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Derive the validated return contract"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:repeated-static-call-cases": {
       "examples": [

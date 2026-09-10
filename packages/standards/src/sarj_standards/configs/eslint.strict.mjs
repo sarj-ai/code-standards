@@ -876,6 +876,9 @@ export function createConfig(options = {}) {
       // schema changes. Requiring an identical shape keeps the diagnostic tied
       // to structural evidence instead of name correlation.
       "@sarj/prefer-zod-infer": "error",
+      // Parse-return contracts need type information and broader adoption
+      // evidence before this can become a blocking rule.
+      "@sarj/prefer-zod-parse-output-type": "warn",
       "@sarj/interface-contract-members-private": "error",
       "@sarj/prefer-ecmascript-private-members": "error",
 

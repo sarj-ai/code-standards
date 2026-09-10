@@ -225,6 +225,7 @@
       "prefer-switch-for-repeated-equality",
       "prefer-whole-object-assertion",
       "prefer-zod-infer",
+      "prefer-zod-parse-output-type",
       "repeated-static-call-cases",
       "require-assert-never",
       "require-fetch-timeout",

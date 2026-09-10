@@ -82,6 +82,7 @@ import preferServerActions from "./rules/prefer-server-actions.js";
 import preferWholeObjectAssertion from "./rules/prefer-whole-object-assertion.js";
 import repeatedStaticCallCases from "./rules/repeated-static-call-cases.js";
 import preferZodInfer from "./rules/prefer-zod-infer.js";
+import preferZodParseOutputType from "./rules/prefer-zod-parse-output-type.js";
 import requireAssertNever from "./rules/require-assert-never.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
 import requireInterfaceForExportedClass from "./rules/require-interface-for-exported-class.js";
@@ -184,6 +185,7 @@ const RULES = {
   "prefer-whole-object-assertion": preferWholeObjectAssertion,
   "repeated-static-call-cases": repeatedStaticCallCases,
   "prefer-zod-infer": preferZodInfer,
+  "prefer-zod-parse-output-type": preferZodParseOutputType,
   "require-assert-never": requireAssertNever,
   "require-fetch-timeout": requireFetchTimeout,
   "require-interface-for-exported-class": requireInterfaceForExportedClass,
@@ -200,7 +202,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.11",
+  version: "15.17.12",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -228,6 +230,7 @@ const ADVISORY_RULES = [
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-switch-for-repeated-equality",
   "@sarj/prefer-whole-object-assertion",
+  "@sarj/prefer-zod-parse-output-type",
   "@sarj/require-interface-for-exported-class",
   "@sarj/require-sql-access-class",
   "@sarj/sole-export-matches-filename",
@@ -310,6 +313,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
+  "@sarj/prefer-zod-parse-output-type": "warn",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-interface-for-exported-class": "warn",
@@ -408,6 +412,7 @@ const STRICT_RULES = {
   "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
+  "@sarj/prefer-zod-parse-output-type": "warn",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-interface-for-exported-class": "warn",

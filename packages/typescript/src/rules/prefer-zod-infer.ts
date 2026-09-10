@@ -80,6 +80,10 @@ const MODULE_LEVEL_RESHAPERS: ReadonlySet<string> = new Set([
   "preprocess",
 ]);
 
+export function isPreferZodInferModuleReshaper(name: string): boolean {
+  return MODULE_LEVEL_RESHAPERS.has(name);
+}
+
 /** Type names whose type arguments are hand-written types by construction. */
 const ZOD_TYPE_CONSTRAINTS: ReadonlySet<string> = new Set([
   "ZodType",
@@ -88,6 +92,10 @@ const ZOD_TYPE_CONSTRAINTS: ReadonlySet<string> = new Set([
   "ZodMiniType",
   "Schema",
 ]);
+
+export function isPreferZodInferTypeConstraintName(name: string): boolean {
+  return ZOD_TYPE_CONSTRAINTS.has(name);
+}
 
 /** Zod leaf constructors and the TS AST node their inferred type is written as. */
 const LEAF_NODE_TYPES: Readonly<Record<string, readonly AST_NODE_TYPES[]>> = {
@@ -249,6 +257,7 @@ function sameDomain(left: ReadonlySet<string>, right: ReadonlySet<string>): bool
 interface SchemaInfo {
   readonly name: string;
   readonly fields: ReadonlyMap<string, SchemaField>;
+  readonly initializer: TSESTree.Node;
 }
 
 interface EnumSchemaInfo {
@@ -281,6 +290,7 @@ interface TypeMember {
 }
 
 interface TypeDeclaration {
+  readonly declaration: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration;
   readonly name: string;
   readonly node: TSESTree.Node;
   readonly members: ReadonlyMap<string, TypeMember>;
@@ -313,7 +323,7 @@ function isModuleLevelConst(node: TSESTree.VariableDeclarator): boolean {
 }
 
 /** `ZUserSchema` / `userSchema` / `ZUser` all describe the thing named `User`. */
-function normalizeSchemaName(name: string): string {
+export function normalizeSchemaName(name: string): string {
   return name
     .replace(/Schema$/i, "")
     .replace(/^Z(?=[A-Z])/, "")
@@ -321,7 +331,7 @@ function normalizeSchemaName(name: string): string {
 }
 
 /** `UserType` is the same claim as `User`; nothing else is stripped. */
-function normalizeTypeName(name: string): string {
+export function normalizeTypeName(name: string): string {
   return name.replace(/Type$/, "").toLowerCase();
 }
 
@@ -353,6 +363,42 @@ function unwrapNullish(annotation: TSESTree.TypeNode): {
   }
   // A genuine union of two or more non-nullish members stays a union.
   return { core: rest.length === 0 ? null : annotation, nullable };
+}
+
+/** True only when the established rule owns this pair under its default options. */
+export function preferZodInferOwnsDefaultTwin(input: {
+  readonly constrained: boolean;
+  readonly declaration: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration;
+  readonly initializer: TSESTree.Node;
+  readonly reshaped: boolean;
+  readonly schemaName: string;
+  readonly typeName: string;
+  readonly zodNamespaces: ReadonlySet<string>;
+}): boolean {
+  if (
+    input.constrained ||
+    input.reshaped ||
+    normalizeSchemaName(input.schemaName) !== normalizeTypeName(input.typeName)
+  ) {
+    return false;
+  }
+  const fields = twinSchemaFields(input.initializer, input.zodNamespaces);
+  const members = twinTypeMembers(input.declaration);
+  if (fields === null || members === null || fields.size !== members.size) return false;
+  for (const [name, field] of fields) {
+    const member = members.get(name);
+    if (
+      member === undefined ||
+      field.reshaped ||
+      field.optional !== member.optional ||
+      field.nullable !== member.nullable ||
+      member.readonly ||
+      leafAgrees(field, member.annotation) !== true
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /** Compares a TypeScript annotation with a known Zod leaf; `null` means unknown. */
@@ -428,6 +474,142 @@ function staticStringUnionDomain(
   });
   const domain = exactDomain(keys);
   return domain !== null && domain.size >= 2 ? domain : null;
+}
+
+function twinCallChain(
+  node: TSESTree.Node,
+  zodNamespaces: ReadonlySet<string>,
+): readonly TSESTree.CallExpression[] | null {
+  const chain: TSESTree.CallExpression[] = [];
+  let current: TSESTree.Node = node;
+  while (current.type === AST_NODE_TYPES.CallExpression) {
+    const callee = current.callee;
+    if (
+      callee.type !== AST_NODE_TYPES.MemberExpression ||
+      callee.computed ||
+      callee.property.type !== AST_NODE_TYPES.Identifier
+    ) {
+      return null;
+    }
+    chain.push(current);
+    if (callee.object.type === AST_NODE_TYPES.Identifier) {
+      return zodNamespaces.has(callee.object.name) ? chain.reverse() : null;
+    }
+    current = callee.object;
+  }
+  return null;
+}
+
+function twinMethodName(call: TSESTree.CallExpression): string {
+  const callee = call.callee;
+  return callee.type === AST_NODE_TYPES.MemberExpression &&
+    callee.property.type === AST_NODE_TYPES.Identifier
+    ? callee.property.name
+    : "";
+}
+
+function twinSchemaFields(
+  initializer: TSESTree.Node,
+  zodNamespaces: ReadonlySet<string>,
+): ReadonlyMap<string, SchemaField> | null {
+  const chain = twinCallChain(initializer, zodNamespaces);
+  if (chain === null || chain.length === 0) return null;
+  const [base, ...rest] = chain;
+  if (base === undefined) return null;
+  const baseMethod = twinMethodName(base);
+  if (baseMethod !== "object" && baseMethod !== "strictObject") return null;
+  if (rest.some((call) => !SHAPE_PRESERVING_METHODS.has(twinMethodName(call)))) return null;
+  const shape = base.arguments[0];
+  if (shape === undefined || shape.type !== AST_NODE_TYPES.ObjectExpression) return null;
+  const fields = new Map<string, SchemaField>();
+  for (const property of shape.properties) {
+    if (property.type !== AST_NODE_TYPES.Property || property.computed) return null;
+    const { key } = property;
+    const name =
+      key.type === AST_NODE_TYPES.Identifier
+        ? key.name
+        : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
+          ? key.value
+          : null;
+    if (name === null) return null;
+    fields.set(name, twinSchemaField(property.value, zodNamespaces));
+  }
+  return fields.size === 0 ? null : fields;
+}
+
+function twinSchemaField(
+  node: TSESTree.Node,
+  zodNamespaces: ReadonlySet<string>,
+): SchemaField {
+  const modifiers: string[] = [];
+  let current: TSESTree.Node = node;
+  let leaf: string | null = null;
+  let leafCall: TSESTree.CallExpression | null = null;
+  while (current.type === AST_NODE_TYPES.CallExpression) {
+    const callee = current.callee;
+    if (
+      callee.type !== AST_NODE_TYPES.MemberExpression ||
+      callee.computed ||
+      callee.property.type !== AST_NODE_TYPES.Identifier
+    ) {
+      break;
+    }
+    const receiver = callee.object;
+    if (receiver.type === AST_NODE_TYPES.Identifier && zodNamespaces.has(receiver.name)) {
+      leaf = callee.property.name;
+      leafCall = current;
+      break;
+    }
+    modifiers.push(callee.property.name);
+    current = receiver;
+  }
+  return {
+    domain: modifiers.every((name) => DOMAIN_PRESERVING_MODIFIERS.has(name))
+      ? staticZodDomain(leaf, leafCall)
+      : null,
+    leaf,
+    optional: modifiers.some((name) => OPTIONAL_MODIFIERS.has(name)),
+    nullable: modifiers.some((name) => NULLABLE_MODIFIERS.has(name)),
+    reshaped: modifiers.some((name) => RESHAPING_MODIFIERS.has(name)),
+  };
+}
+
+function twinTypeMembers(
+  declaration: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration,
+): ReadonlyMap<string, TypeMember> | null {
+  let members: readonly TSESTree.TypeElement[];
+  if (declaration.type === AST_NODE_TYPES.TSInterfaceDeclaration) {
+    if (declaration.typeParameters !== undefined || (declaration.extends?.length ?? 0) > 0) return null;
+    members = declaration.body.body;
+  } else {
+    if (
+      declaration.typeParameters !== undefined ||
+      declaration.typeAnnotation.type !== AST_NODE_TYPES.TSTypeLiteral
+    ) {
+      return null;
+    }
+    members = declaration.typeAnnotation.members;
+  }
+  const result = new Map<string, TypeMember>();
+  for (const member of members) {
+    if (member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed) return null;
+    const { key } = member;
+    const name =
+      key.type === AST_NODE_TYPES.Identifier
+        ? key.name
+        : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
+          ? key.value
+          : null;
+    if (name === null) return null;
+    const annotation = member.typeAnnotation?.typeAnnotation ?? null;
+    result.set(name, {
+      optional: member.optional === true,
+      nullable: annotation !== null && unwrapNullish(annotation).nullable,
+      readonly: member.readonly === true,
+      annotation,
+    });
+  }
+  return result.size === 0 ? null : result;
 }
 
 function nameTokens(name: string): readonly string[] {
@@ -518,40 +700,6 @@ export default createRule<Options, MessageIds>({
     /** Schemas reshaped elsewhere in this module. */
     const reshapedSchemaNames = new Set<string>();
 
-    /** The `z.…` call chain of `node`, base call first, or `null`. */
-    function zodCallChain(
-      node: TSESTree.Node,
-    ): readonly TSESTree.CallExpression[] | null {
-      const chain: TSESTree.CallExpression[] = [];
-      let current: TSESTree.Node = node;
-      while (current.type === AST_NODE_TYPES.CallExpression) {
-        const callee = current.callee;
-        if (
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.computed ||
-          callee.property.type !== AST_NODE_TYPES.Identifier
-        ) {
-          return null;
-        }
-        chain.push(current);
-        const receiver = callee.object;
-        if (receiver.type === AST_NODE_TYPES.Identifier) {
-          return zodNamespaces.has(receiver.name) ? chain.reverse() : null;
-        }
-        current = receiver;
-      }
-      return null;
-    }
-
-    /** The method name of a `z.foo()` / `.foo()` link in a chain. */
-    function methodName(call: TSESTree.CallExpression): string {
-      const callee = call.callee;
-      return callee.type === AST_NODE_TYPES.MemberExpression &&
-        callee.property.type === AST_NODE_TYPES.Identifier
-        ? callee.property.name
-        : "";
-    }
-
     function recordZodImport(node: TSESTree.ImportDeclaration): void {
       if (!isZodModule(node.source.value)) {
         return;
@@ -569,58 +717,16 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    /** Modifier/leaf analysis of one `z.object({ key: <here> })` value. */
-    function schemaField(node: TSESTree.Node): SchemaField {
-      const modifiers: string[] = [];
-      let current: TSESTree.Node = node;
-      let leaf: string | null = null;
-      let leafCall: TSESTree.CallExpression | null = null;
-
-      while (current.type === AST_NODE_TYPES.CallExpression) {
-        const callee = current.callee;
-        if (
-          callee.type !== AST_NODE_TYPES.MemberExpression ||
-          callee.computed ||
-          callee.property.type !== AST_NODE_TYPES.Identifier
-        ) {
-          break;
-        }
-        const receiver = callee.object;
-        if (
-          receiver.type === AST_NODE_TYPES.Identifier &&
-          zodNamespaces.has(receiver.name)
-        ) {
-          leaf = callee.property.name;
-          leafCall = current;
-          break;
-        }
-        modifiers.push(callee.property.name);
-        current = receiver;
-      }
-
-      return {
-        domain: modifiers.every((name) =>
-          DOMAIN_PRESERVING_MODIFIERS.has(name),
-        )
-          ? staticZodDomain(leaf, leafCall)
-          : null,
-        leaf,
-        optional: modifiers.some((name) => OPTIONAL_MODIFIERS.has(name)),
-        nullable: modifiers.some((name) => NULLABLE_MODIFIERS.has(name)),
-        reshaped: modifiers.some((name) => RESHAPING_MODIFIERS.has(name)),
-      };
-    }
-
     /** Extracts an exact, direct module-level `z.enum([…])` domain. */
     function enumSchemaDomain(
       init: TSESTree.Node,
     ): ReadonlySet<string> | null {
-      const chain = zodCallChain(init);
+      const chain = twinCallChain(init, zodNamespaces);
       if (chain === null || chain.length !== 1) {
         return null;
       }
       const [call] = chain;
-      if (call === undefined || methodName(call) !== "enum") {
+      if (call === undefined || twinMethodName(call) !== "enum") {
         return null;
       }
       const domain = staticZodDomain("enum", call);
@@ -695,80 +801,6 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    /** Extracts fields only from plain object literals with shape-preserving chains. */
-    function schemaFields(
-      init: TSESTree.Node,
-    ): ReadonlyMap<string, SchemaField> | null {
-      const chain = zodCallChain(init);
-      if (chain === null || chain.length === 0) {
-        return null;
-      }
-      const [base, ...rest] = chain;
-      if (base === undefined) {
-        return null;
-      }
-      const baseMethod = methodName(base);
-      if (baseMethod !== "object" && baseMethod !== "strictObject") {
-        return null;
-      }
-      if (rest.some((call) => !SHAPE_PRESERVING_METHODS.has(methodName(call)))) {
-        return null;
-      }
-      const shape = base.arguments[0];
-      if (shape === undefined || shape.type !== AST_NODE_TYPES.ObjectExpression) {
-        return null;
-      }
-
-      const fields = new Map<string, SchemaField>();
-      for (const property of shape.properties) {
-        if (property.type !== AST_NODE_TYPES.Property || property.computed) {
-          return null; // a spread or computed key hides members from us
-        }
-        const { key } = property;
-        const name =
-          key.type === AST_NODE_TYPES.Identifier
-            ? key.name
-            : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
-              ? key.value
-              : null;
-        if (name === null) {
-          return null;
-        }
-        fields.set(name, schemaField(property.value));
-      }
-      return fields.size === 0 ? null : fields;
-    }
-
-    /** The property signatures of an object type, or `null` if any member is exotic. */
-    function typeMembers(
-      members: readonly TSESTree.TypeElement[],
-    ): ReadonlyMap<string, TypeMember> | null {
-      const result = new Map<string, TypeMember>();
-      for (const member of members) {
-        if (member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed) {
-          return null;
-        }
-        const { key } = member;
-        const name =
-          key.type === AST_NODE_TYPES.Identifier
-            ? key.name
-            : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
-              ? key.value
-              : null;
-        if (name === null) {
-          return null;
-        }
-        const annotation = member.typeAnnotation?.typeAnnotation ?? null;
-        result.set(name, {
-          optional: member.optional === true,
-          nullable: annotation !== null && unwrapNullish(annotation).nullable,
-          readonly: member.readonly === true,
-          annotation,
-        });
-      }
-      return result.size === 0 ? null : result;
-    }
-
     function collectConstrainedNames(node: TSESTree.TypeNode): void {
       if (node.type === AST_NODE_TYPES.TSTypeReference) {
         if (node.typeName.type === AST_NODE_TYPES.Identifier) {
@@ -793,43 +825,6 @@ export default createRule<Options, MessageIds>({
       }
     }
 
-    /** True when the pair is close enough to call one a restatement of the other. */
-    function isTwin(
-      fields: ReadonlyMap<string, SchemaField>,
-      members: ReadonlyMap<string, TypeMember>,
-    ): boolean {
-      if (!requireIdenticalShape) {
-        return true;
-      }
-      if (fields.size !== members.size) {
-        return false;
-      }
-      for (const [name, field] of fields) {
-        const member = members.get(name);
-        if (member === undefined) {
-          return false;
-        }
-        // A reshaped member's inferred type is not what is written.
-        if (field.reshaped) {
-          return false;
-        }
-        if (field.optional !== member.optional) {
-          return false;
-        }
-        if (field.nullable !== member.nullable) {
-          return false;
-        }
-        if (member.readonly) {
-          return false;
-        }
-        const agrees = leafAgrees(field, member.annotation);
-        if (agrees !== true) {
-          return false;
-        }
-      }
-      return true;
-    }
-
     return {
       Program(node): void {
         // Pre-index imports so legal import declarations placed after a schema
@@ -849,9 +844,9 @@ export default createRule<Options, MessageIds>({
         if (node.id.type !== AST_NODE_TYPES.Identifier || node.init == null || !isModuleLevelConst(node)) {
           return;
         }
-        const fields = schemaFields(node.init);
+        const fields = twinSchemaFields(node.init, zodNamespaces);
         if (fields !== null) {
-          schemas.push({ name: node.id.name, fields });
+          schemas.push({ name: node.id.name, fields, initializer: node.init });
         }
         if (isModuleLevelConst(node)) {
           const domain = enumSchemaDomain(node.init);
@@ -867,7 +862,7 @@ export default createRule<Options, MessageIds>({
         if (
           node.object.type === AST_NODE_TYPES.Identifier &&
           node.property.type === AST_NODE_TYPES.Identifier &&
-          MODULE_LEVEL_RESHAPERS.has(node.property.name)
+          isPreferZodInferModuleReshaper(node.property.name)
         ) {
           reshapedSchemaNames.add(node.object.name);
         }
@@ -883,7 +878,7 @@ export default createRule<Options, MessageIds>({
                 typeName.right.type === AST_NODE_TYPES.Identifier
               ? typeName.right.name
               : null;
-        if (referenced === null || !ZOD_TYPE_CONSTRAINTS.has(referenced)) {
+        if (referenced === null || !isPreferZodInferTypeConstraintName(referenced)) {
           return;
         }
         for (const argument of node.typeArguments?.params ?? []) {
@@ -897,9 +892,9 @@ export default createRule<Options, MessageIds>({
         if (node.typeParameters !== undefined || (node.extends?.length ?? 0) > 0) {
           return;
         }
-        const members = typeMembers(node.body.body);
+        const members = twinTypeMembers(node);
         if (members !== null) {
-          typeDeclarations.push({ name: node.id.name, node: node.id, members });
+          typeDeclarations.push({ declaration: node, name: node.id.name, node: node.id, members });
         }
         recordLiteralUnions(
           node.body.body,
@@ -925,9 +920,9 @@ export default createRule<Options, MessageIds>({
         ) {
           return;
         }
-        const members = typeMembers(node.typeAnnotation.members);
+        const members = twinTypeMembers(node);
         if (members !== null) {
-          typeDeclarations.push({ name: node.id.name, node: node.id, members });
+          typeDeclarations.push({ declaration: node, name: node.id.name, node: node.id, members });
         }
         recordLiteralUnions(
           node.typeAnnotation.members,
@@ -958,7 +953,19 @@ export default createRule<Options, MessageIds>({
           if (schema === undefined || reshapedSchemaNames.has(schema.name)) {
             continue;
           }
-          if (!isTwin(schema.fields, declaration.members)) {
+          if (
+            requireIdenticalShape
+              ? !preferZodInferOwnsDefaultTwin({
+                  constrained: constrainedTypeNames.has(declaration.name),
+                  declaration: declaration.declaration,
+                  initializer: schema.initializer,
+                  reshaped: reshapedSchemaNames.has(schema.name),
+                  schemaName: schema.name,
+                  typeName: declaration.name,
+                  zodNamespaces,
+                })
+              : false
+          ) {
             continue;
           }
           twinTypeNames.add(declaration.name);
