@@ -443,7 +443,7 @@ def test_doctor_reports_excessively_nested_package_json_without_recursing(
     assert [finding for finding in findings if finding.id == "doctor.package-json.invalid"]
 
 
-def test_doctor_keeps_independent_findings_when_one_destination_is_invalid(tmp_path: Path) -> None:
+def test_doctor_reports_invalid_adoption_and_missing_commit_policy_manifest(tmp_path: Path) -> None:
     (tmp_path / manifest.MANIFEST_NAME).write_text(
         f'version = "{manifest.adopted_version()}"\n'
         'configs = ["unknown-config", "ruff"]\n'
@@ -454,7 +454,10 @@ def test_doctor_keeps_independent_findings_when_one_destination_is_invalid(tmp_p
 
     findings = doctor.diagnose(tmp_path)
 
-    assert {finding.id for finding in findings} == {"doctor.manifest.invalid"}
+    assert {finding.id for finding in findings} == {
+        "doctor.commit-policy.manifest",
+        "doctor.manifest.invalid",
+    }
 
 
 def test_doctor_falls_back_to_bounded_filesystem_walk_when_git_times_out(
