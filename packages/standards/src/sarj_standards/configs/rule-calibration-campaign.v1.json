@@ -1131,7 +1131,7 @@
       "family": "typescript",
       "ruleId": "no-detached-global-fetch",
       "state": "complete",
-      "evidence": "Independent value and precision reviews retained the receiver-safety policy after testing ambient, explicit-global, shadowed, imported, directly called, forwarded, bound, call/apply, type-position, test, script and generated forms. All 24 focused cases pass within the 5,366-case TypeScript suite. A pinned Automations origin/main snapshot produced zero findings across the internal-automations, sarj-ai-worker and internal-bots production roots after known detached-fetch defects had already been fixed; zero current findings are regression evidence, not promotion evidence.",
+      "evidence": "Independent value and precision reviews retained the receiver-safety policy after testing ambient, explicit-global, shadowed, imported, directly called, forwarded, bound, call/apply, type-position, test, script and generated forms. All 24 focused cases pass within the 5,366-case TypeScript suite. A pinned maintained-consumer snapshot produced zero findings across three production roots after known detached-fetch defects had already been fixed; zero current findings are regression evidence, not promotion evidence.",
       "outcome": "Stage as a warning without autofix. Report only unshadowed ambient fetch values and explicit global receiver properties; preserve direct calls, matching bind/call/apply receivers and forwarding wrappers. Host identity and alias flows remain manual review."
     },
     {
@@ -1147,7 +1147,7 @@
       "family": "typescript",
       "ruleId": "no-json-stringify-object-equality",
       "state": "complete",
-      "evidence": "Independent value and precision reviews retained the structural-comparison policy after checking native JSON provenance, object literals, object variables, arrays of objects, unknown values, primitive arrays and tuples, shadowing, one-sided comparisons, tests and generated source. All 16 focused cases pass within the 5,366-case TypeScript suite. A pinned Automations origin/main production-root scan produced zero findings because current direct comparisons are either repaired or proven primitive collections; historical workspace metadata and Slack block regressions establish the motivating object-order failures.",
+      "evidence": "Independent value and precision reviews retained the structural-comparison policy after checking native JSON provenance, object literals, object variables, arrays of objects, unknown values, primitive arrays and tuples, shadowing, one-sided comparisons, tests and generated source. All 16 focused cases pass within the 5,366-case TypeScript suite. A pinned maintained-consumer production-root scan produced zero findings because current direct comparisons are either repaired or proven primitive collections; historical workspace metadata and structured-message regressions establish the motivating object-order failures.",
       "outcome": "Stage as a type-aware warning without autofix. Report only direct equality comparisons between two native JSON.stringify calls when either operand may contain objects or unknown values. Preserve proven primitive arrays and tuples; aliases, canonical serializers and domain equivalence remain manual review."
     },
     {
