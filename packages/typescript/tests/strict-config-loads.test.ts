@@ -59,6 +59,7 @@ const PROBE_PATHS = [
   "vite.config.ts",
 ] as const;
 const NESTED_MONOREPO_ROOT = new URL("fixtures/nested-monorepo/", import.meta.url);
+const LIB_PROJECT_ROOT = new URL("fixtures/type-project-under-lib/", import.meta.url);
 const UNTYPED_ROOT = new URL("fixtures/no-type-project/", import.meta.url);
 type ConfigFactory = (options?: {
   tsconfigRootDir?: string | URL;
@@ -389,6 +390,17 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(parserOptions.tsconfigRootDir).toBe(fileURLToPath(NESTED_MONOREPO_ROOT));
     // Detection must keep typed rules active; merely setting parserOptions while
     // spreading UNTYPED_RULE_OVERRIDES would still produce a false clean result.
+    const configured = config.find(
+      (entry) => entry.rules?.["@typescript-eslint/await-thenable"] !== undefined,
+    );
+    expect(configured?.rules?.["@typescript-eslint/await-thenable"]).not.toBe("off");
+  });
+
+  it.each(CONFIG_FACTORIES)("%s discovers a type project under lib", (_name, createConfig) => {
+    const config = createConfig({ tsconfigRootDir: LIB_PROJECT_ROOT });
+    const parserOptions = parserOptionsOf(config);
+
+    expect(parserOptions.projectService).toBe(true);
     const configured = config.find(
       (entry) => entry.rules?.["@typescript-eslint/await-thenable"] !== undefined,
     );

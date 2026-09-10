@@ -485,7 +485,11 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
         assert 0 < timeout_seconds <= 300
         assert cwd == tmp_path
         seen.append(tuple(argv))
-        return external_module.ProcessOutput(0, "[]", "")
+        return external_module.ProcessOutput(
+            0,
+            json.dumps([{"filePath": str(source), "messages": []}]),
+            "",
+        )
 
     def installed_eslint(_project: Path, _root: Path) -> None:
         return None

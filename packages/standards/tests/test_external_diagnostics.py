@@ -46,6 +46,11 @@ def _write_detekt_report(command: Sequence[str], payload: str = '{"runs":[]}') -
     return path
 
 
+def _eslint_clean_payload(argv: Sequence[str], cwd: Path) -> str:
+    boundary = max(index for index, value in enumerate(argv) if value == "--") + 1
+    return json.dumps([{"filePath": str((cwd / value).resolve()), "messages": []} for value in argv[boundary:]])
+
+
 def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
     command = ("npx", "eslint", "--", "app.ts")
 
@@ -57,6 +62,32 @@ def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
     assert "--pass-on-unpruned-suppressions" not in strict
     assert scoped_baseline.count("--pass-on-unpruned-suppressions") == 1
     assert scoped_baseline.index("--pass-on-unpruned-suppressions") < scoped_baseline.index("--")
+
+
+def test_eslint_ignored_selected_file_is_incomplete_coverage(tmp_path: Path) -> None:
+    source = tmp_path / "src" / "ignored.ts"
+    source.parent.mkdir()
+    source.write_text("export const ignored = true;\n", encoding="utf-8")
+    (tmp_path / "package.json").write_text('{"name":"fixture"}\n', encoding="utf-8")
+    (tmp_path / "eslint.config.mjs").write_text('export default [{ ignores: ["src/ignored.ts"] }];\n', encoding="utf-8")
+
+    def ignored(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert "--no-warn-ignored" in argv
+        assert cwd == tmp_path
+        return ProcessOutput(0, "[]", "")
+
+    reports = analyze_external(
+        [str(source)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=ignored,
+        capabilities=frozenset({"eslint"}),
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == "coverage-missing"
+    assert reports[0].file_count == 1
 
 
 @pytest.mark.parametrize("select_directories", [False, True])
@@ -74,7 +105,7 @@ def test_eslint_batches_preserve_every_file_and_project_boundary(tmp_path: Path,
     def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         calls.append(tuple(argv))
-        return ProcessOutput(0, "[]", "")
+        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     selection = ["apps/alpha", "apps/beta"] if select_directories else paths
     reports = analyze_external(
@@ -140,7 +171,7 @@ def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.
         assert cwd == tmp_path
         calls += 1
         elapsed = 301.0
-        return ProcessOutput(0, "[]", "")
+        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     reports = analyze_external(
         paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
@@ -204,7 +235,7 @@ def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pyte
         assert environment["NODE_OPTIONS"] == "--max-old-space-size=4096"
         timeouts.append(timeout_seconds)
         elapsed += 125.0
-        return ProcessOutput(0, "[]", "")
+        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     monkeypatch.setattr(external_module, "_run_process", run)
     reports = analyze_external(paths, root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"eslint"}))
@@ -2586,7 +2617,7 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
         assert 0 < timeout_seconds <= 300
         _ = cwd
         called.append(tuple(argv))
-        return ProcessOutput(0, "[]", "")
+        return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     monkeypatch.setattr(external_module, "_run_eslint_process", successful)
 
