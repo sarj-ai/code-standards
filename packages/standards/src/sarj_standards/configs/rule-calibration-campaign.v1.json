@@ -237,8 +237,8 @@
       "family": "python",
       "ruleId": "no-deleted-only-override-parameter",
       "state": "complete",
-      "evidence": "Ten-agent design and adversarial review rejected a categorical del ban and selected the smallest binding-proven warning boundary. Twenty focused behavior cases plus the shared metadata suite cover typing and typing_extensions aliases, decorator shadowing, nested scopes, rebinding, attribute and subscription deletion, multiple paths, generated and malformed source, suppression, and no autofix. The complete maintained 476-file Python corpus initially produced 15 inspected unused-marker findings and zero unrelated findings; removing those markers left zero diagnostics.",
-      "outcome": "Stage SARJ442 as a warning without autofix. Report only a parameter on a direct module-level class method decorated by a proven runtime typing.override or typing_extensions.override import when every body occurrence is a direct bare-name deletion. Preserve any load, rebinding, nested occurrence, attribute or subscription deletion, uncertain decorator provenance, and generated source. Exact reasoned suppression remains available for intentional reference-lifetime control."
+      "evidence": "No corpus findings; tests provide positive evidence.",
+      "outcome": "Retain warning."
     },
     {
       "task": "rule-audit/python/no-dunder-all",
@@ -1115,8 +1115,8 @@
       "family": "typescript",
       "ruleId": "no-in-operator-on-built-in-collections",
       "state": "complete",
-      "evidence": "Ten-agent design and adversarial review rejected blanket in and for-in bans. Twenty focused typed cases cover all six supported built-in Map and Set interfaces, ordinary object narrowing, records, arrays, private brands, unions, intersections, type parameters, subclasses, structural lookalikes, any, unknown, generated source, and no autofix. Complete maintained evaluation analyzed 287 JavaScript and TypeScript files with zero findings or execution issues.",
-      "outcome": "Stage the typed rule as a warning without autofix. Report binary in only when the right operand resolves directly to an exact default-library Map, ReadonlyMap, WeakMap, Set, ReadonlySet, or WeakSet declaration. Recommend .has() for entry membership and Reflect.has() for intentional property or Proxy semantics; exclude aliases and every uncertain or structurally compatible receiver."
+      "evidence": "No corpus findings; tests provide positive evidence.",
+      "outcome": "Retain warning."
     },
     {
       "task": "rule-audit/eslint/no-insecure-random-id",
@@ -1131,7 +1131,7 @@
       "family": "typescript",
       "ruleId": "no-detached-global-fetch",
       "state": "complete",
-      "evidence": "Independent value and precision reviews retained the receiver-safety policy after testing ambient, explicit-global, shadowed, imported, directly called, forwarded, bound, call/apply, type-position, test, script and generated forms. All 24 focused cases pass within the 5,366-case TypeScript suite. A pinned Automations origin/main snapshot produced zero findings across the internal-automations, sarj-ai-worker and internal-bots production roots after known detached-fetch defects had already been fixed; zero current findings are regression evidence, not promotion evidence.",
+      "evidence": "Independent value and precision reviews retained the receiver-safety policy after testing ambient, explicit-global, shadowed, imported, directly called, forwarded, bound, call/apply, type-position, test, script and generated forms. All 24 focused cases pass within the 5,366-case TypeScript suite. A pinned maintained-repository snapshot produced zero findings across production roots after known detached-fetch defects had already been fixed; zero current findings are regression evidence, not promotion evidence.",
       "outcome": "Stage as a warning without autofix. Report only unshadowed ambient fetch values and explicit global receiver properties; preserve direct calls, matching bind/call/apply receivers and forwarding wrappers. Host identity and alias flows remain manual review."
     },
     {
