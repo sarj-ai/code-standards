@@ -33,7 +33,6 @@ const TYPE_PROJECT_SKIPPED_DIRECTORIES = new Set([
   "build",
   "coverage",
   "dist",
-  "lib",
   "node_modules",
   "vendor",
 ]);

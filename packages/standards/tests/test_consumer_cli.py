@@ -127,13 +127,15 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
     yarn_shim = binaries / "yarn_shim.py"
     yarn_shim.write_text(
         "from pathlib import Path\n"
+        "import json\n"
         "import sys\n"
         "arguments = sys.argv[1:]\n"
         "if arguments[:1] == ['install']:\n"
         "    Path('.pnp.cjs').touch()\n"
         "    raise SystemExit(0)\n"
         "if arguments[:2] == ['exec', 'eslint'] and '\"eslint\"' in Path('package.json').read_text():\n"
-        "    print('[]')\n"
+        "    boundary = max(index for index, value in enumerate(arguments) if value == '--') + 1\n"
+        "    print(json.dumps([{'filePath': str(Path(value).resolve()), 'messages': []} for value in arguments[boundary:]]))\n"
         "    raise SystemExit(0)\n"
         "raise SystemExit(127)\n",
         encoding="utf-8",

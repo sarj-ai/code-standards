@@ -431,6 +431,7 @@ def analyze_external(
                 root=root,
                 runner=execute_eslint,
                 parser=parse_eslint,
+                validator=partial(_validate_eslint_coverage, selected_files=_eslint_selected_files(command)),
                 invocation_id=invocation_id,
                 file_count=_argv_file_count(command.argv),
             )
@@ -2003,12 +2004,13 @@ def _invoke(
     root: Path,
     runner: ProcessRunner,
     parser: ProtocolParser,
+    validator: ProtocolValidator | None = None,
     invocation_id: str | None = None,
     file_count: int,
 ) -> ToolReport:
     started = time.monotonic()
     try:
-        report = _invoke_unchecked(name, argv, cwd=cwd, root=root, runner=runner, parser=parser)
+        report = _invoke_unchecked(name, argv, cwd=cwd, root=root, runner=runner, parser=parser, validator=validator)
         return ToolReport(
             report.name,
             report.completion,
@@ -2041,6 +2043,7 @@ def _invoke_unchecked(
     root: Path,
     runner: ProcessRunner,
     parser: ProtocolParser,
+    validator: ProtocolValidator | None = None,
 ) -> ToolReport:
     output = runner(argv, cwd=cwd)
     if output.returncode not in {0, 1}:
@@ -2064,11 +2067,17 @@ def _invoke_unchecked(
         message = _redact_message(output.stderr.strip() or f"{name} exited 1 but reported no diagnostics", root)
         issue = ExecutionIssue(name, "protocol-mismatch", message, output.returncode)
         return ToolReport(name, Completion.FAILED, issues=(issue,))
+    if validator is not None and (issue := validator(output.stdout, root=root)) is not None:
+        return ToolReport(name, Completion.FAILED, diagnostics=diagnostics, issues=(issue,))
     return ToolReport(name, Completion.COMPLETE, diagnostics=diagnostics)
 
 
 class ProtocolParser(Protocol):
     def __call__(self, payload: str, *, root: Path) -> tuple[Diagnostic, ...]: ...
+
+
+class ProtocolValidator(Protocol):
+    def __call__(self, payload: str, *, root: Path) -> ExecutionIssue | None: ...
 
 
 def parse_ruff(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
@@ -2634,6 +2643,27 @@ def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[C
             invocation_id = identifier if len(chunks) == 1 else f"{identifier}:batch-{index}"
             batches.append((Command(command.label, (*prefix, *paths), command.cwd), invocation_id))
     return tuple(batches)
+
+
+def _eslint_selected_files(command: Command) -> frozenset[Path]:
+    boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
+    return frozenset((command.cwd / value).resolve() for value in command.argv[boundary:])
+
+
+def _validate_eslint_coverage(payload: str, *, root: Path, selected_files: frozenset[Path]) -> ExecutionIssue | None:
+    analyzed_files = frozenset(
+        _path(_table(value, "ESLint file result"), "filePath", root)
+        for value in _array(_loads(payload), "ESLint output")
+    )
+    missing_count = len(selected_files - analyzed_files)
+    if missing_count == 0:
+        return None
+    return ExecutionIssue(
+        "eslint",
+        "coverage-missing",
+        f"ESLint did not analyze {missing_count} of {len(selected_files)} selected maintained file(s); "
+        "review the repository ignore configuration",
+    )
 
 
 def _eslint_json_argv(argv: Sequence[str], *, pass_on_unpruned_suppressions: bool = False) -> tuple[str, ...]:
