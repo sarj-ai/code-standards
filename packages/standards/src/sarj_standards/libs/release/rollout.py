@@ -46,6 +46,7 @@ LS_REMOTE_FIELDS = 2
 COMMIT_WITH_PARENT_FIELDS = 2
 PORCELAIN_RECORD_MINIMUM = 4
 MANAGED_TRAILER = "Standards-Rollout: managed/v1"
+MANAGED_TREE_TRAILER_PREFIX = "Standards-Rollout-Tree: "
 PR_MARKER_PREFIX = "<!-- sarj-standards-rollout:managed/v1"
 REPOSITORY_VERSION_PIN = re.compile(r"^(STANDARDS_VERSION[ \t]*:?=[ \t]*)\S+[ \t]*$", re.MULTILINE)
 PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyright[ \t]*$")
@@ -566,6 +567,12 @@ def open_pull_commit_provenance(
     parent_shas = tuple(sha for item in parents if is_object(item) and isinstance((sha := item.get("sha")), str))
     if len(parents) != 1 or len(parent_shas) != 1 or re.fullmatch(r"[0-9a-f]{40}", parent_shas[0]) is None:
         return Outcome(consumer, "blocked", url, "managed rollout head must be exactly one commit with one parent")
+    commit_metadata = payload.get("commit") if is_object(payload) else None
+    message = commit_metadata.get("message") if is_object(commit_metadata) else None
+    tree = commit_metadata.get("tree") if is_object(commit_metadata) else None
+    tree_sha = tree.get("sha") if is_object(tree) else None
+    if not managed_tree_provenance_matches(message, tree_sha):
+        return Outcome(consumer, "blocked", url, "managed rollout commit tree provenance does not match")
     try:
         base_sha = live_consumer_base_sha(consumer, runner)
     except RolloutError as exc:
@@ -733,6 +740,7 @@ def amend_safe_changes(
     repo: Path,
     runner: CommandRunner,
     *,
+    version: str,
     allowed_workflow_paths: frozenset[str],
     allowed_baseline_paths: frozenset[str] = frozenset(),
     allowed_paths: frozenset[str] = DEFAULT_ALLOWED_ROLLOUT_PATHS,
@@ -748,8 +756,9 @@ def amend_safe_changes(
     )
     reject_git_metadata(repo, paths, runner)
     runner.run(("git", "add", "--", *paths), cwd=repo)
+    message = managed_commit_message(version, staged_tree_sha(repo, runner))
     runner.run(
-        ("git", "-c", "core.hooksPath=/dev/null", "commit", "--amend", "--no-edit"),
+        ("git", "-c", "core.hooksPath=/dev/null", "commit", "--amend", "-m", message),
         cwd=repo,
     )
     return True
@@ -763,6 +772,32 @@ def remote_branch_sha(repo: Path, branch: str, runner: CommandRunner) -> str | N
 
 def force_with_lease(branch: str, previous_sha: str | None) -> str:
     return f"--force-with-lease=refs/heads/{branch}:{previous_sha or ''}"
+
+
+def staged_tree_sha(repo: Path, runner: CommandRunner) -> str:
+    tree_sha = stdout(runner.run(("git", "write-tree"), cwd=repo))
+    if re.fullmatch(r"[0-9a-f]{40}", tree_sha) is None:
+        msg = "generated rollout tree did not resolve to a full Git object ID"
+        raise RolloutError(msg)
+    return tree_sha
+
+
+def managed_commit_message(version: str, tree_sha: str) -> str:
+    validate_version(version)
+    if re.fullmatch(r"[0-9a-f]{40}", tree_sha) is None:
+        msg = "generated rollout tree provenance is not a full Git object ID"
+        raise RolloutError(msg)
+    return f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}\n{MANAGED_TREE_TRAILER_PREFIX}{tree_sha}"
+
+
+def managed_tree_provenance_matches(message: object, tree_sha: object) -> bool:
+    if not isinstance(message, str) or not isinstance(tree_sha, str):
+        return False
+    declared_trees = re.findall(
+        rf"(?m)^{re.escape(MANAGED_TREE_TRAILER_PREFIX)}([0-9a-f]{{40}})$",
+        message,
+    )
+    return message.startswith(BOT_COMMIT_PREFIX) and MANAGED_TRAILER in message and declared_trees == [tree_sha]
 
 
 def assert_consumer_base_unchanged(
@@ -1126,6 +1161,11 @@ def prepare_branch(
         and fetched_commit[0] == previous_sha
         and all(re.fullmatch(r"[0-9a-f]{40}", sha) is not None for sha in fetched_commit)
     )
+    declared_trees: list[str] = re.findall(rf"(?m)^{re.escape(MANAGED_TREE_TRAILER_PREFIX)}([0-9a-f]{{40}})$", message)
+    tree_matches_provenance = False
+    if len(declared_trees) == 1:
+        fetched_tree = stdout(runner.run(("git", "show", "-s", "--format=%T", "FETCH_HEAD"), cwd=repo))
+        tree_matches_provenance = fetched_tree == declared_trees[0]
     parent_is_base_ancestor = False
     if valid_commit_shape:
         ancestry = runner.run(
@@ -1138,6 +1178,7 @@ def prepare_branch(
         MANAGED_TRAILER not in message
         or not message.startswith(BOT_COMMIT_PREFIX)
         or not valid_commit_shape
+        or not tree_matches_provenance
         or not parent_is_base_ancestor
     ):
         msg = f"refusing human-modified rollout branch {branch}"
@@ -1348,7 +1389,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         )
         reject_git_metadata(repo, worktree_paths, runner)
         runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
-        message = f"{BOT_COMMIT_PREFIX}{version}\n\n{MANAGED_TRAILER}"
+        message = managed_commit_message(version, staged_tree_sha(repo, runner))
         runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", "-m", message), cwd=repo)
         if bootstrap is not None:
             failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
@@ -1366,6 +1407,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
                 mutated = amend_safe_changes(
                     repo,
                     runner,
+                    version=version,
                     allowed_workflow_paths=allowed_workflow_paths,
                     allowed_baseline_paths=allowed_baseline_paths,
                     allowed_paths=allowed_paths,

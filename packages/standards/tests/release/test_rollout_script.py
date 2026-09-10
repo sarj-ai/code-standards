@@ -519,12 +519,24 @@ def live_base_ref_payload(base_sha: str) -> str:
     return json.dumps({"ref": "refs/heads/main", "object": {"type": "commit", "sha": base_sha}})
 
 
+def managed_commit_payload(version: str, parent_sha: str, tree_sha: str = "c" * 40) -> str:
+    return json.dumps(
+        {
+            "parents": [{"sha": parent_sha}],
+            "commit": {
+                "message": rollout.managed_commit_message(version, tree_sha),
+                "tree": {"sha": tree_sha},
+            },
+        }
+    )
+
+
 class TestStatus:
     def test_open_pr_is_idempotently_reported(self) -> None:
         base_sha = "a" * 40
         head_sha = "b" * 40
         payload = managed_open_pr_payload("5.8.1", base_sha, head_sha)
-        commit = json.dumps({"parents": [{"sha": base_sha}]})
+        commit = managed_commit_payload("5.8.1", base_sha)
         runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(base_sha))])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
@@ -533,6 +545,27 @@ class TestStatus:
         assert result.url == "https://pr/1"
         assert "--head" in runner.commands[0]
         assert runner.commands[-1] == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain")
+
+    def test_open_pr_with_an_amended_tree_is_blocked(self) -> None:
+        base_sha = "a" * 40
+        head_sha = "b" * 40
+        generated_tree = "c" * 40
+        amended_tree = "d" * 40
+        payload = managed_open_pr_payload("5.8.1", base_sha, head_sha)
+        commit = json.dumps(
+            {
+                "parents": [{"sha": base_sha}],
+                "commit": {
+                    "message": rollout.managed_commit_message("5.8.1", generated_tree),
+                    "tree": {"sha": amended_tree},
+                },
+            }
+        )
+
+        result = rollout.status_one(consumer(), "5.8.1", FakeRunner([(0, payload), (0, commit)]))
+
+        assert result.state == "blocked"
+        assert result.detail == "managed rollout commit tree provenance does not match"
 
     def test_open_pr_with_stale_commit_parent_is_refreshed(self) -> None:
         old_base = "9e5cc29955cb89c2dcafca1f0180be1f04b58a7b"
@@ -545,7 +578,7 @@ class TestStatus:
             head_sha,
             url="https://github.com/example/consumer/pull/506",
         )
-        commit = json.dumps({"parents": [{"sha": old_base}]})
+        commit = managed_commit_payload("7.1.14", old_base)
         runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(current_base))])
 
         result = rollout.status_one(consumer(), "7.1.14", runner)
@@ -560,7 +593,7 @@ class TestStatus:
         current_base = "a" * 40
         head_sha = "b" * 40
         payload = managed_open_pr_payload("5.8.1", cached_base, head_sha)
-        commit = json.dumps({"parents": [{"sha": current_base}]})
+        commit = managed_commit_payload("5.8.1", current_base)
         runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(current_base))])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
@@ -572,7 +605,7 @@ class TestStatus:
         current_base = "a" * 40
         head_sha = "b" * 40
         payload = managed_open_pr_payload("5.8.1", cached_base, head_sha)
-        commit = json.dumps({"parents": [{"sha": cached_base}]})
+        commit = managed_commit_payload("5.8.1", cached_base)
         runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload(current_base))])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
@@ -596,7 +629,7 @@ class TestStatus:
         expected_detail: str,
     ) -> None:
         payload = managed_open_pr_payload("5.8.1", "a" * 40, "b" * 40)
-        commit = json.dumps({"parents": [{"sha": "a" * 40}]})
+        commit = managed_commit_payload("5.8.1", "a" * 40)
         runner = FakeRunner([(0, payload), (0, commit), (returncode, response)])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
@@ -606,7 +639,7 @@ class TestStatus:
 
     def test_open_pr_with_invalid_live_base_sha_is_blocked(self) -> None:
         payload = managed_open_pr_payload("5.8.1", "a" * 40, "b" * 40)
-        commit = json.dumps({"parents": [{"sha": "a" * 40}]})
+        commit = managed_commit_payload("5.8.1", "a" * 40)
         runner = FakeRunner([(0, payload), (0, commit), (0, live_base_ref_payload("short"))])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
@@ -617,7 +650,7 @@ class TestStatus:
     def test_open_pr_with_non_commit_live_base_target_is_blocked(self) -> None:
         payload = managed_open_pr_payload("5.8.1", "a" * 40, "b" * 40)
         target = json.dumps({"ref": "refs/heads/main", "object": {"type": "tag", "sha": "a" * 40}})
-        commit = json.dumps({"parents": [{"sha": "a" * 40}]})
+        commit = managed_commit_payload("5.8.1", "a" * 40)
         runner = FakeRunner([(0, payload), (0, commit), (0, target)])
 
         result = rollout.status_one(consumer(), "5.8.1", runner)
@@ -996,10 +1029,29 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 if rendered[:3] == ("gh", "pr", "merge"):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[:2] == ("gh", "api") and rendered[2].startswith("repos/example/consumer/commits/"):
+                    message = subprocess.run(
+                        ("git", "show", "-s", "--format=%B", "HEAD"),
+                        cwd=repo,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip()
+                    tree_sha = subprocess.run(
+                        ("git", "show", "-s", "--format=%T", "HEAD"),
+                        cwd=repo,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip()
                     return subprocess.CompletedProcess(
                         rendered,
                         0,
-                        json.dumps({"parents": [{"sha": base_sha}]}),
+                        json.dumps(
+                            {
+                                "parents": [{"sha": base_sha}],
+                                "commit": {"message": message, "tree": {"sha": tree_sha}},
+                            }
+                        ),
                         "",
                     )
                 if rendered == ("gh", "api", "repos/example/consumer/git/ref/heads%2Fmain"):
@@ -1130,6 +1182,22 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             ).stdout.strip()
             == "1"
         )
+        assert rollout.managed_tree_provenance_matches(
+            subprocess.run(
+                ("git", "show", "-s", "--format=%B", "HEAD"),
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+            subprocess.run(
+                ("git", "show", "-s", "--format=%T", "HEAD"),
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+        )
         expected_eslint = f'export default ["generated-{max(dirty_runs)}"];\n' if dirty_runs else "export default [];\n"
         assert eslint.read_text(encoding="utf-8") == expected_eslint
         pull_request_command = next(command for command in runner.commands if command[:3] == ("gh", "pr", "create"))
@@ -1188,12 +1256,14 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         old_sha = "a" * 40
         base_sha = "b" * 40
         parent_sha = "c" * 40
+        tree_sha = "d" * 40
         runner = FakeRunner(
             [
                 (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
                 (0, ""),
-                (0, f"{rollout.BOT_COMMIT_PREFIX}5.8.0\n\n{rollout.MANAGED_TRAILER}"),
+                (0, rollout.managed_commit_message("5.8.0", tree_sha)),
                 (0, f"{old_sha} {parent_sha}"),
+                (0, tree_sha),
                 (0, ""),
                 (0, ""),
             ]
@@ -1208,12 +1278,14 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         old_sha = "a" * 40
         base_sha = "b" * 40
         old_base_sha = "c" * 40
+        tree_sha = "d" * 40
         runner = FakeRunner(
             [
                 (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
                 (0, ""),
-                (0, f"{rollout.BOT_COMMIT_PREFIX}5.8.0\n\n{rollout.MANAGED_TRAILER}"),
+                (0, rollout.managed_commit_message("5.8.0", tree_sha)),
                 (0, f"{old_sha} {old_base_sha}"),
+                (0, tree_sha),
                 (0, ""),
                 (0, ""),
             ]
@@ -1245,6 +1317,45 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         with pytest.raises(rollout.RolloutError, match="human-modified"):
             rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
+
+    def test_refuses_an_amended_managed_commit_without_generated_tree_provenance(self, tmp_path: Path) -> None:
+        old_sha = "a" * 40
+        base_sha = "b" * 40
+        runner = FakeRunner(
+            [
+                (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
+                (0, ""),
+                (0, f"{rollout.BOT_COMMIT_PREFIX}5.8.0\n\n{rollout.MANAGED_TRAILER}"),
+                (0, f"{old_sha} {base_sha}"),
+                (0, ""),
+            ]
+        )
+
+        with pytest.raises(rollout.RolloutError, match="human-modified"):
+            rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
+
+        assert not any(command[:3] == ("git", "switch", "-C") for command in runner.commands)
+
+    def test_refuses_an_amended_managed_commit_with_mismatched_tree_provenance(self, tmp_path: Path) -> None:
+        old_sha = "a" * 40
+        base_sha = "b" * 40
+        generated_tree = "c" * 40
+        amended_tree = "d" * 40
+        runner = FakeRunner(
+            [
+                (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
+                (0, ""),
+                (0, rollout.managed_commit_message("5.8.0", generated_tree)),
+                (0, f"{old_sha} {base_sha}"),
+                (0, amended_tree),
+                (0, ""),
+            ]
+        )
+
+        with pytest.raises(rollout.RolloutError, match="human-modified"):
+            rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
+
+        assert not any(command[:3] == ("git", "switch", "-C") for command in runner.commands)
 
     def test_provisions_mise_and_isolated_corepack_shims(self, tmp_path: Path) -> None:
         (tmp_path / ".mise.toml").write_text('[tools]\nnode = "24"\n', encoding="utf-8")
