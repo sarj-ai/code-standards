@@ -19,7 +19,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "4.7.2",
     "@eslint/compat": "2.1.0",
     "@eslint/js": "10.0.1",
-    "@sarj/eslint-plugin": "15.17.13",
+    "@sarj/eslint-plugin": "15.17.14",
     "@vitest/eslint-plugin": "1.6.27",
     "eslint": "10.10.0",
     "eslint-node-test": "0.4.0",
@@ -40,7 +40,7 @@
     "typescript-eslint": "8.68.0"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "15.17.13",
+    "@sarj/eslint-plugin": "15.17.14",
     "@typescript-eslint/eslint-plugin": "8.68.0",
     "@typescript-eslint/parser": "8.68.0",
     "@typescript-eslint/project-service": "8.68.0",
