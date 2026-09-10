@@ -7,6 +7,8 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-on
 
 from repo_standards.core.models import (
     Diagnostic as RepositoryDiagnostic,
+    Mode,
+    RatchetClassification,
     SourceLocation as RepositoryLocation,
 )
 from repo_standards.repository import RepositoryAnalysisRequest, analyze_repository
@@ -25,6 +27,7 @@ from sarj_standards.libs.diagnostics import (
 
 
 _MANIFEST = Path(".repo-standards/repository.toml")
+_BASELINE = Path(".repo-standards/baseline.json")
 
 
 def analyze(root: Path, *, staged: bool) -> ToolReport | None:
@@ -36,7 +39,15 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
     # The staged pre-commit path still analyzes the exact index for an initial commit.
     if not staged and not _has_committed_tree(root):
         return None
-    report = analyze_repository(RepositoryAnalysisRequest(root=root, staged=staged))
+    has_baseline = _selected_path_exists(root, _BASELINE, staged=staged)
+    report = analyze_repository(
+        RepositoryAnalysisRequest(
+            root=root,
+            baseline_path=_BASELINE.as_posix() if has_baseline else None,
+            mode=Mode.RATCHET if has_baseline else Mode.STRICT,
+            staged=staged,
+        )
+    )
     if (
         not (adopted.exists() or adopted.is_symlink())
         and len(report.execution_issues) == 1
@@ -52,23 +63,29 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
         )
         for issue in report.execution_issues
     )
-    diagnostics = tuple(_diagnostic(item) for item in report.diagnostics)
+    known: frozenset[str] = (
+        frozenset(report.ratchet.fingerprints(RatchetClassification.KNOWN))
+        if report.ratchet is not None
+        else frozenset[str]()
+    )
+    diagnostics = tuple(_diagnostic(item, baselined=item.fingerprint in known) for item in report.diagnostics)
     return ToolReport(
         "repo-standards",
         Completion.FAILED if issues else Completion.COMPLETE,
         diagnostics=diagnostics,
         issues=issues,
         version=version("repo-standards"),
+        baselined_count=len(known),
     )
 
 
-def _diagnostic(item: object) -> Diagnostic:
+def _diagnostic(item: object, *, baselined: bool) -> Diagnostic:
     if not isinstance(item, RepositoryDiagnostic):
         msg = "Repo Standards returned an invalid diagnostic type"
         raise TypeError(msg)
     severity = (
         Severity.INFO
-        if item.disposition == "excepted"
+        if baselined or item.disposition == "excepted"
         else Severity.ERROR
         if item.severity == "error"
         else Severity.WARNING
@@ -87,6 +104,7 @@ def _diagnostic(item: object) -> Diagnostic:
         f"component: {item.component_id}",
         f"observed: {item.observed}",
         f"expected: {item.expected}",
+        *(("ratchet: known",) if baselined else ()),
         *(f"manifest pointer: {item.location.pointer}" for _ in (0,) if item.location and item.location.pointer),
     )
     return Diagnostic(
@@ -160,3 +178,23 @@ def _has_committed_tree(root: Path) -> bool:
     # A symbolic HEAD without a commit is the normal unborn-repository state.
     # Any other failure is ambiguous and must reach Repo Standards to fail closed.
     return symbolic_head.returncode != 0
+
+
+def _selected_path_exists(root: Path, path: Path, *, staged: bool) -> bool:
+    git = shutil.which("git")
+    if git is None:
+        return False
+    command = (
+        (git, "ls-files", "--cached", "--", path.as_posix())
+        if staged
+        else (git, "ls-tree", "--name-only", "HEAD", "--", path.as_posix())
+    )
+    selected = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        command,
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return path.as_posix() in selected.stdout.splitlines()

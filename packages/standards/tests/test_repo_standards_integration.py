@@ -8,7 +8,11 @@ from repo_standards.core.models import (
     Diagnostic as RepositoryDiagnostic,
     FindingsReport,
     Mode,
+    PassedReport,
     PolicyId,
+    RatchetClassification,
+    RatchetComparison,
+    RatchetEntry,
     RelatedLocation as RepositoryRelatedLocation,
     Remediation,
     RepositoryId,
@@ -190,13 +194,14 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
         fingerprint="a" * 64,
     )
     report = FindingsReport(
-        mode=Mode.STRICT,
+        mode=Mode.RATCHET,
         repository_id=RepositoryId("fixture"),
         policy_id=PolicyId("sarj"),
         policy_version=1,
         scope_digest="0" * 64,
         summary={"diagnostics": 1, "errors": 1, "warnings": 0},
         diagnostics=(diagnostic,),
+        ratchet=RatchetComparison((RatchetEntry(diagnostic.fingerprint, RatchetClassification.KNOWN, diagnostic),)),
     )
 
     def analyze_repository(_request: RepositoryAnalysisRequest) -> FindingsReport:
@@ -204,6 +209,8 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
 
     monkeypatch.setattr(repo_standards, "analyze_repository", analyze_repository)
     _adopt(tmp_path)
+    baseline = tmp_path / ".repo-standards" / "baseline.json"
+    baseline.write_text("{}\n", encoding="utf-8")
     subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
     _commit(tmp_path)
 
@@ -218,4 +225,44 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
     assert converted.location.region.end.character == 7
     assert converted.related[0].location.position is not None
     assert converted.related[0].location.position.line == 3
+    assert converted.severity.value == "info"
+    assert converted_report.baselined_count == 1
+    assert "ratchet: known" in converted.notes
     assert "manifest pointer: /value" in converted.notes
+
+
+def test_ratchet_baseline_is_selected_from_the_exact_git_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requests: list[RepositoryAnalysisRequest] = []
+
+    def analyze_repository(request: RepositoryAnalysisRequest) -> PassedReport:
+        requests.append(request)
+        return PassedReport(
+            mode=request.mode,
+            repository_id=RepositoryId("fixture"),
+            policy_id=PolicyId("sarj"),
+            policy_version=1,
+            scope_digest="0" * 64,
+            summary={"diagnostics": 0, "errors": 0, "warnings": 0},
+            ratchet=RatchetComparison(()) if request.mode is Mode.RATCHET else None,
+        )
+
+    monkeypatch.setattr(repo_standards, "analyze_repository", analyze_repository)
+    _adopt(tmp_path)
+    baseline = tmp_path / ".repo-standards" / "baseline.json"
+    baseline.write_text("{}\n", encoding="utf-8")
+    subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
+    _commit(tmp_path)
+    baseline.unlink()
+
+    repo_standards.analyze(tmp_path, staged=False)
+    subprocess.run(("git", "rm", str(baseline)), cwd=tmp_path, check=True, capture_output=True)
+    baseline.write_text("{}\n", encoding="utf-8")
+    repo_standards.analyze(tmp_path, staged=True)
+
+    assert requests[0].mode is Mode.RATCHET
+    assert requests[0].baseline_path == ".repo-standards/baseline.json"
+    assert requests[1].mode is Mode.STRICT
+    assert requests[1].baseline_path is None
