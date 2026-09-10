@@ -1,0 +1,38 @@
+name: Ruff freshness
+
+on:
+  schedule:
+    - cron: '41 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  latest-stable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+      - name: Fetch authoritative Ruff metadata
+        run: curl --fail --location --retry 3 --silent --show-error https://pypi.org/pypi/ruff/json --output "$RUNNER_TEMP/ruff.json"
+      - name: Verify and maintain the durable freshness issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          uv run --project packages/standards --frozen python -m
+          sarj_standards.libs.repository.ruff_freshness
+          --root .
+          --metadata-path "$RUNNER_TEMP/ruff.json"
+          --repository "$GITHUB_REPOSITORY"
+          --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -77,6 +77,10 @@ _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
 _SHELLCHECK_VERSION_RE: Final = re.compile(r"^version:\s*(?P<version>\S+)\s*$", re.MULTILINE)
+_DEPTRY_ANNOTATION_RE: Final = re.compile(
+    r"^::warning file=(?P<file>.*?),line=(?P<line>[1-9][0-9]*)"
+    r"(?:,col=(?P<column>[1-9][0-9]*))?,title=(?P<code>DEP00[123])::(?P<message>.*)$"
+)
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
 _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
@@ -325,6 +329,14 @@ def analyze_external(
         if capabilities is None or "ruff" in capabilities:
             reports.extend(
                 _invoke_ruff_projects(
+                    routed.python,
+                    root=root,
+                    runner=execute,
+                )
+            )
+        if capabilities is not None and "deptry" in capabilities:
+            reports.extend(
+                _invoke_deptry_projects(
                     routed.python,
                     root=root,
                     runner=execute,
@@ -1618,6 +1630,63 @@ def _invoke_ruff_projects(
     return tuple(reports)
 
 
+def _invoke_deptry_projects(
+    files: Sequence[str],
+    *,
+    root: Path,
+    runner: ProcessRunner,
+) -> tuple[ToolReport, ...]:
+    reports: list[ToolReport] = []
+    for project, scoped_files in _group_deptry_projects(files, root):
+        started = time.monotonic()
+        project_id = project.relative_to(root).as_posix() or None
+        invocation_id = InvocationId("deptry" if project_id is None else f"deptry:{project_id}")
+        try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary preserves complete per-project telemetry.
+            output = runner(_deptry_argv(project), cwd=project)
+            payload = "\n".join(value for value in (output.stdout, output.stderr) if value)
+            diagnostics = parse_deptry(payload, root=root, project=project)
+            if output.returncode not in {0, 1} or (output.returncode == 1 and not diagnostics):
+                message = _redact_message(output.stderr.strip() or f"deptry exited {output.returncode}", root)
+                issue = ExecutionIssue("deptry", "tool-failure", message, output.returncode)
+                reports.append(
+                    ToolReport(
+                        "deptry",
+                        Completion.FAILED,
+                        issues=(issue,),
+                        analyzer_id=AnalyzerId("deptry"),
+                        invocation_id=invocation_id,
+                        duration_ms=round((time.monotonic() - started) * 1_000),
+                        file_count=len(scoped_files),
+                    )
+                )
+                continue
+            reports.append(
+                ToolReport(
+                    "deptry",
+                    Completion.COMPLETE,
+                    diagnostics=diagnostics,
+                    analyzer_id=AnalyzerId("deptry"),
+                    invocation_id=invocation_id,
+                    duration_ms=round((time.monotonic() - started) * 1_000),
+                    file_count=len(scoped_files),
+                )
+            )
+        except (OSError, TypeError, ValueError, RecursionError, subprocess.SubprocessError) as exc:
+            issue = ExecutionIssue("deptry", "tool-failure", _redact_message(f"{type(exc).__name__}: {exc}", root))
+            reports.append(
+                ToolReport(
+                    "deptry",
+                    Completion.FAILED,
+                    issues=(issue,),
+                    analyzer_id=AnalyzerId("deptry"),
+                    invocation_id=invocation_id,
+                    duration_ms=round((time.monotonic() - started) * 1_000),
+                    file_count=len(scoped_files),
+                )
+            )
+    return tuple(reports)
+
+
 def _shellcheck_reports(
     grouped: GroupedPaths, *, root: Path, runner: ProcessRunner, attest_version: bool
 ) -> tuple[ToolReport, ...]:
@@ -1764,6 +1833,49 @@ def _group_ruff_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, 
         (project, config, tuple(sorted(scoped_files)))
         for (project, config), scoped_files in sorted(grouped.items(), key=lambda item: str(item[0][0]))
     )
+
+
+def _group_deptry_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
+    grouped: dict[Path, list[str]] = {}
+    for raw_file in files:
+        path = Path(raw_file).resolve()
+        project = _nearest_deptry_project(path.parent, root)
+        if project is None:
+            continue
+        grouped.setdefault(project, []).append(str(path))
+    return tuple(
+        (project, tuple(sorted(scoped_files)))
+        for project, scoped_files in sorted(grouped.items(), key=lambda item: str(item[0]))
+    )
+
+
+def _nearest_deptry_project(start: Path, root: Path) -> Path | None:
+    current = start
+    while current.is_relative_to(root):
+        if _has_deptry_dependency_specification(current):
+            return current
+        if current == root:
+            break
+        current = current.parent
+    return None
+
+
+def _has_deptry_dependency_specification(project: Path) -> bool:
+    if any((project / name).is_file() for name in ("requirements.txt", "requirements-dev.txt", "dev-requirements.txt")):
+        return True
+    pyproject = project / "pyproject.toml"
+    try:
+        parsed: object = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except OSError, tomllib.TOMLDecodeError:
+        return False
+    document = manifest.as_table(parsed)
+    if isinstance(document.get("project"), dict):
+        return True
+    tool = manifest.as_table(document.get("tool"))
+    if isinstance(tool.get("pdm"), dict):
+        return True
+    poetry = manifest.as_table(tool.get("poetry"))
+    return isinstance(poetry.get("dependencies"), dict)
 
 
 def _nearest_ruff_config(start: Path, root: Path) -> Path | None:
@@ -2106,6 +2218,40 @@ def parse_ruff(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
             )
         )
     return tuple(diagnostics)
+
+
+def parse_deptry(payload: str, *, root: Path, project: Path | None = None) -> tuple[Diagnostic, ...]:
+    documents: dict[Path, SourceDocument | None] = {}
+    diagnostics: list[Diagnostic] = []
+    for raw_line in payload.splitlines():
+        match = _DEPTRY_ANNOTATION_RE.fullmatch(raw_line.strip())
+        if match is None:
+            continue
+        path = ((project or root) / _github_command_unescape(match.group("file"))).resolve()
+        line = int(match.group("line"))
+        column = int(match.group("column") or "1")
+        position = _one_based_position({"row": line, "column": column}, path, documents)
+        code = match.group("code")
+        diagnostics.append(
+            Diagnostic(
+                code,
+                _redact_message(_github_command_unescape(match.group("message")), root),
+                Severity.WARNING,
+                "deptry",
+                Location(_relative(path, root), position=position),
+                rule_id=code,
+                help_url=f"https://deptry.com/rules-violations/#{code.casefold()}",
+            )
+        )
+    return tuple(diagnostics)
+
+
+def _github_command_unescape(value: str) -> str:
+    replacements = (("%0D", "\r"), ("%0A", "\n"), ("%3A", ":"), ("%2C", ","), ("%25", "%"))
+    result = value
+    for encoded, decoded in replacements:
+        result = result.replace(encoded, decoded).replace(encoded.casefold(), decoded)
+    return result
 
 
 _SWIFTFORMAT_LINE: Final = re.compile(
@@ -2622,6 +2768,38 @@ def _react_doctor_location(
 def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:
     config_args = () if config is None else ("--config", str(config))
     return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
+
+
+def _deptry_argv(project: Path) -> tuple[str, ...]:
+    config_args = ("--config", str(project / "pyproject.toml")) if (project / "pyproject.toml").is_file() else ()
+    first_party = _deptry_first_party_modules(project)
+    first_party_args = ("--known-first-party", ",".join(first_party)) if first_party else ()
+    return (
+        _project_analyzer(project, "deptry"),
+        ".",
+        *config_args,
+        *first_party_args,
+        "--ignore",
+        "DEP004,DEP005",
+        "--github-output",
+        "--github-warning-errors",
+        "DEP001,DEP002,DEP003",
+        "--no-ansi",
+    )
+
+
+def _deptry_first_party_modules(project: Path) -> tuple[str, ...]:
+    roots = (project / "src", project)
+    names: set[str] = set()
+    for source_root in roots:
+        if not source_root.is_dir():
+            continue
+        for candidate in source_root.iterdir():
+            if candidate.is_dir() and (candidate / "__init__.py").is_file() and candidate.name.isidentifier():
+                names.add(candidate.name)
+            elif candidate.is_file() and candidate.suffix == ".py" and candidate.stem.isidentifier():
+                names.add(candidate.stem)
+    return tuple(sorted(names))
 
 
 def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[Command, str], ...]:

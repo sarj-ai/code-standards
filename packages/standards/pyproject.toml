@@ -1,6 +1,6 @@
 [project]
 name = "code-standards"
-version = "7.14.36"
+version = "7.14.37"
 description = "One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell, SQL, IaC, and repository policy."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -18,18 +18,19 @@ classifiers = [
 dependencies = [
   "pathspec==1.1.1",
   "basedpyright==1.39.10",
+  "deptry==0.25.1",
   "lefthook==2.1.12",
   "packaging==26.3",
   "pre-commit==4.6.2",
   "pydantic==2.13.5",
   "PyYAML==6.0.3",
   "repo-standards==5.11.4",
-  "ruff==0.16.5",
+  "ruff==0.16.7",
   "semgrep==1.175.0",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
-  "sarj-iac-lint==0.15.4",
-  "sarj-python-lint==0.81.13",
-  "sarj-sql-lint==0.16.13",
+  "sarj-iac-lint==0.15.5",
+  "sarj-python-lint==0.81.14",
+  "sarj-sql-lint==0.16.14",
   "typer==0.27.2",
 ]
 
@@ -78,3 +79,8 @@ extend = "../../.ruff-strict.toml"
 [tool.ruff.lint.extend-per-file-ignores]
 # This fixture deliberately isolates every test from hooks in an enclosing checkout.
 "tests/conftest.py" = ["pytest-fixture-autouse"]
+
+[tool.deptry.per_rule_ignores]
+# These packages are runtime executables invoked by the Standards orchestrator,
+# not importable libraries. Their exact pins are still required and exercised.
+DEP002 = ["basedpyright", "deptry", "lefthook", "pre-commit", "ruff", "semgrep", "shellcheck-py"]

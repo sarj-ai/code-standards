@@ -358,7 +358,9 @@ class Standards:
                     root=self.root,
                     trust=normalized_trust,
                     policy=selection_policy,
-                    capabilities=(frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.configs)),
+                    capabilities=(
+                        frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.enabled_capabilities)
+                    ),
                     grouped=selected_groups,
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,

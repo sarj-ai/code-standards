@@ -23,7 +23,6 @@ const sortedProviders = thirdPartyProvidersForNavigation(providers);
         <a
           href={thirdPartyProviderHref(provider)}
           aria-current={provider.id === activeProvider ? 'page' : undefined}
-          aria-label={provider.label}
         >
           <ThirdPartyProviderIcon providerId={provider.id} />
           <span>{thirdPartyProviderNavigationLabel(provider)}</span>
