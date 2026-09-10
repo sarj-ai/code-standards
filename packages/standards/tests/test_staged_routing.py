@@ -133,18 +133,31 @@ def test_staged_check_refuses_a_worktree_version_that_differs_from_the_index(
     assert "source.py" in output.err
 
 
-def test_staged_check_ignores_clean_and_deleted_only_selections(
+def test_staged_check_still_runs_repository_policy_without_source_selections(
     adopted_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def unexpected_check(*_args: object, **_kwargs: object) -> int:
-        pytest.fail("no analyzable staged file should reach the diagnostic boundary")
+    routed: list[tuple[Sequence[str] | None, bool]] = []
 
-    monkeypatch.setattr(cli, "_run_canonical_check", unexpected_check)
+    def record_check(
+        _root: Path,
+        paths: Sequence[str] | None,
+        *,
+        raw: bool = False,
+        trusted: bool = False,
+        staged: bool = False,
+    ) -> int:
+        assert not raw
+        assert not trusted
+        routed.append((paths, staged))
+        return 0
+
+    monkeypatch.setattr(cli, "_run_canonical_check", record_check)
 
     assert cli.main(["--root", str(adopted_git_repo), "check", "--staged"]) == 0
     subprocess.run(("git", "rm", "source.py"), cwd=adopted_git_repo, check=True, capture_output=True)
     assert cli.main(["--root", str(adopted_git_repo), "check", "--staged"]) == 0
+    assert routed == [((), True), ((), True)]
 
 
 def test_staged_check_does_not_hide_deleted_adoption_config(

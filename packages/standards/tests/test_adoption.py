@@ -1377,6 +1377,75 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     assert "schema_version = 6" in repository_manifest
 
 
+def test_doctor_reports_a_duplicate_direct_repo_standards_hook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + "\n  - repo: https://github.com/sarj-ai/repo-standards\n"
+        + "    rev: 0123456789abcdef0123456789abcdef01234567\n"
+        + "    hooks:\n"
+        + "      - id: repo-standards-check\n"
+        + "        entry: repo-standards check . --staged\n",
+        encoding="utf-8",
+    )
+
+    result = _cli("--root", str(tmp_path), "doctor")
+
+    assert result.returncode == 1
+    assert "doctor.hooks.repository-duplicate" in result.stdout
+
+
+def test_doctor_requires_the_managed_repository_manifest(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    (tmp_path / ".repo-standards" / "repository.toml").unlink()
+
+    result = _cli("--root", str(tmp_path), "doctor")
+
+    assert result.returncode == 1
+    assert "doctor.commit-policy.manifest" in result.stdout
+
+
+def test_duplicate_repository_check_detection_uses_command_semantics(tmp_path: Path) -> None:
+    (tmp_path / "lefthook.yml").write_text(
+        "pre-commit:\n  commands:\n    repository:\n      run: make check-repo-standards\n",
+        encoding="utf-8",
+    )
+
+    assert adoption_hooks.runs_direct_repo_standards_check(tmp_path)
+
+    (tmp_path / "lefthook.yml").unlink()
+    (tmp_path / ".pre-commit-config.yaml").write_text(
+        "repos:\n  - repo: local\n    hooks:\n      - id: repo-standards-check\n        entry: unrelated-command\n",
+        encoding="utf-8",
+    )
+
+    assert not adoption_hooks.runs_direct_repo_standards_check(tmp_path)
+
+
+def test_setup_replaces_the_canonical_direct_repo_standards_hook(tmp_path: Path) -> None:
+    _ = _python_repo(tmp_path)
+    config = tmp_path / ".pre-commit-config.yaml"
+    config.write_text(
+        "repos:\n"
+        "  - repo: https://github.com/sarj-ai/repo-standards\n"
+        "    rev: 0123456789abcdef0123456789abcdef01234567\n"
+        "    hooks:\n"
+        "      - id: repo-standards-check\n",
+        encoding="utf-8",
+    )
+
+    result = _cli("--root", str(tmp_path), "setup", "--no-install")
+
+    assert result.returncode == 0, result.stderr
+    updated = config.read_text(encoding="utf-8")
+    assert "github.com/sarj-ai/repo-standards" not in updated
+    assert updated.count("id: sarj-standards-check") == 1
+    assert "id: repo-standards-check" not in updated
+
+
 @pytest.mark.parametrize("heading", ["repos: []\n", "repos: [] # keep this comment\n"])
 def test_init_opens_an_inline_empty_precommit_repo_list(tmp_path: Path, heading: str) -> None:
     _ = _python_repo(tmp_path)
@@ -1800,7 +1869,7 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
         if not name.startswith("GIT_")
     }
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env=environment)
-    subprocess.run(("git", "add", "src/app.py"), cwd=tmp_path, check=True, env=environment)
+    subprocess.run(("git", "add", "."), cwd=tmp_path, check=True, env=environment)
     message = tmp_path / "COMMIT_EDITMSG"
     _ = message.write_text("feat: add typed value\n", encoding="utf-8")
 

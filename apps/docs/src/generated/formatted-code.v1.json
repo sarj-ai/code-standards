@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a19a15a3486016d6190ce0156621ae1282685c683bd92addc70e6b4b1c4250cd",
-  "cliSha256": "6bd1b6e3539bcce45a20bd2a3ec79221d6f7ba84319c87eaf46aa975bc8d2914",
+  "catalogSha256": "9c154e8fac995673e355b16d54f2bdaae9fbbc0a80473d18bec5201e2a67b8ac",
+  "cliSha256": "823f930fc63102d825c21d4f42e898bfe0353d6043380c4a064ab81ad5a91ee2",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
     "prettierPluginToml": "2.0.6",
-    "ruff": "0.16.7",
+    "ruff": "0.16.5",
     "sqlFormatter": "15.8.2",
     "terraform": "1.15.8"
   },
@@ -434,11 +434,26 @@
     "eslint:no-detached-global-fetch": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "class Client {\n  constructor(private readonly request: typeof fetch = fetch) {}\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "detached-global-fetch",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not detach the ambient fetch"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
               "path": "src/client.ts",
-              "source": "class Client {\n  readonly request = (input: RequestInfo | URL, init?: RequestInit) =>\n    fetch(input, init);\n}\n"
+              "source": "const request = (input: RequestInfo | URL, init?: RequestInit) =>\n  globalThis.fetch(input, init);\n"
             }
           ],
           "fixedFiles": [],
@@ -446,22 +461,7 @@
           "id": "forwarded-global-fetch",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Store a receiver-safe forwarding wrapper"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/client.ts",
-              "source": "class Client {\n  readonly request = fetch;\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/client.ts",
-          "id": "receiver-unsafe-global-fetch",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not store raw ambient fetch as an object method"
+          "title": "Forward through the global receiver"
         }
       ],
       "optionsSchemaSource": null
@@ -2744,11 +2744,11 @@
     "eslint:prefer-shared-zod-enum": {
       "examples": [
         {
-          "expectedCount": 2,
+          "expectedCount": 1,
           "files": [
             {
               "path": "src/provider.ts",
-              "source": "import { z } from \"zod\";\nconst JobSchema = z.object({ provider: z.enum([\"agy\", \"claude\", \"sol\"]) });\nconst StatusSchema = z.object({\n  provider: z.enum([\"agy\", \"claude\", \"sol\"]).optional(),\n});\n"
+              "source": "import { z } from \"zod\";\nconst JobSchema = z.object({ provider: z.enum([\"agy\", \"claude\", \"sol\"]) });\n"
             }
           ],
           "fixedFiles": [],
@@ -2756,7 +2756,7 @@
           "id": "inline-provider",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not repeat an inline enum domain"
+          "title": "Do not inline enum domains in object fields"
         },
         {
           "expectedCount": 0,
@@ -3207,30 +3207,30 @@
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "\"use client\";\nimport { Controller, useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ defaultValues: { name: \"\" } });\n  return <Controller control={form.control} name=\"name\" render={() => null} />;\n}\n"
+              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ defaultValues: { name: \"\" } });\n  return <input {...form.register(\"name\")} />;\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "profile-form.tsx",
-          "id": "controlled-field-with-form-defaults",
+          "id": "form-with-initial-values",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Initialize controlled fields at form level"
+          "title": "Give the form an explicit initial shape"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "profile-form.tsx",
-              "source": "\"use client\";\nimport { Controller, useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm();\n  return <Controller control={form.control} name=\"name\" render={() => null} />;\n}\n"
+              "source": "\"use client\";\nimport { useForm } from \"react-hook-form\";\nfunction ProfileForm() {\n  const form = useForm({ mode: \"onChange\" });\n  return <input {...form.register(\"name\")} />;\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "profile-form.tsx",
-          "id": "controlled-field-without-default",
+          "id": "form-without-initial-values",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not leave a controlled field uninitialized"
+          "title": "Do not leave form initialization implicit"
         }
       ],
       "optionsSchemaSource": null
@@ -7916,41 +7916,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "python:unused-test-factory-option": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget(size=4)\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "exercised-size-option",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Keep customization that a caller exercises"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_widget.py",
-              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget()\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_widget.py",
-          "id": "unused-size-option",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Keep an invariant size inside the factory"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "sql:enforce-timestamptz": {
       "examples": [
         {
@@ -8982,15 +8947,15 @@
           "files": [
             {
               "path": ".github/workflows/ci.yml",
-              "source": "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          else\n            echo 'not applicable'\n          fi\n"
+              "source": "jobs:\n  test:\n    steps:\n      - run: make test\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": ".github/workflows/ci.yml",
-          "id": "workflow-single-decision",
+          "id": "workflow-repository-entrypoint",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Keep one workflow gating decision inline"
+          "title": "Call a tested repository-owned entrypoint"
         }
       ],
       "optionsSchemaSource": null

@@ -164,7 +164,8 @@ def test_sync_is_deterministic_and_check_then_passes(tmp_path: Path) -> None:
     assert first.status == 1
     assert second.status == 0
     assert docs.check(tmp_path).status == 0
-    assert "uv tool install --python 3.14 code-standards" in rendered
+    assert "uvx --no-config --isolated --python 3.14 --from code-standards code-standards setup" in rendered
+    assert "do not install a second Repo Standards hook" in rendered
     assert "Install uv 0.12.5, Python 3.14, Node 24.19, and GNU Make" in rendered
     assert "make setup\nmake verify" in rendered
     assert "[Documentation](https://code-standards.sarj.ai/)" in rendered

@@ -6,9 +6,13 @@ One deterministic quality gate for Sarj Python, TypeScript, Swift, Kotlin, shell
 
 Every repository receives one complete policy, including all 41 library policies. There is no standard/application selection. Legacy profile fields and preset filenames remain read-compatible aliases; newly written manifests omit the profile field. Warning-stage rules retain their reviewed severity. Rules requiring repository-specific boundaries still require those explicit options.
 
+Adopt the complete policy, local hooks, and CI with one command:
+
 ```bash
-uv tool install --python 3.14 code-standards
+uvx --no-config --isolated --python 3.14 --from code-standards code-standards setup
 ```
+
+The canonical staged check includes semantic lint and repository policy; do not install a second Repo Standards hook.
 
 ## Contributing
 
