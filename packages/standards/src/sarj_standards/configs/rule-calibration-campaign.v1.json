@@ -1495,6 +1495,14 @@
       "outcome": "Require module-visible pairing and positive leaf agreement; unknown collections abstain. Input/output and domain identity remain manual."
     },
     {
+      "task": "rule-audit/eslint/prefer-zod-parse-output-type",
+      "family": "typescript",
+      "ruleId": "prefer-zod-parse-output-type",
+      "state": "complete",
+      "evidence": "Three independent correctness, test, and architecture reviews found and closed direct-arrow, nullish-output, ambiguous-schema, multi-rule-overlap, and regression-oracle gaps. Twenty-seven focused cases pass, including integrated precedence cases proving canonical twins stay with prefer-zod-infer while nested and transformed twins stay with the type-aware companion. A pinned 776-file, 6,108,062-byte scan across two maintained TypeScript repositories produced four findings; every finding was inspected and confirmed as a hand-written contract duplicating a parsed Zod output, with zero rule crashes.",
+      "outcome": "Stage the new data-flow companion as a warning without autofix. Require a direct local object-schema parse return, exact keys, bidirectional assignability, one plain contract declaration, and one unambiguous producing schema. Defer only twins the established prefer-zod-infer predicate can prove, and abstain on indirect data flow or uncertain ownership."
+    },
+    {
       "task": "rule-audit/eslint/repeated-static-call-cases",
       "family": "typescript",
       "ruleId": "repeated-static-call-cases",
