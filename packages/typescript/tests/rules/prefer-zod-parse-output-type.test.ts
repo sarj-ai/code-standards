@@ -21,7 +21,7 @@ const TYPED_RULE_TESTER = new RuleTester({
     parserOptions: {
       projectService: {
         allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
-        maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 30,
+        maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 40,
       },
       tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
     },
@@ -104,12 +104,38 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
         function get(): TrialChannelRecord { return parser.parse(); }`,
     },
     {
-      name: "does not infer an indirect data flow",
-      filename: "zod-parse-output-indirect.ts",
+      name: "does not follow a second local alias",
+      filename: "zod-parse-output-second-alias.ts",
       code: `${IMPORT}
         import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
         const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
-        function get(): TrialChannelRecord { const parsed = RowSchema.parse({}); return parsed; }`,
+        function get(): TrialChannelRecord {
+          const parsed = RowSchema.parse({});
+          const alias = parsed;
+          return alias;
+        }`,
+    },
+    {
+      name: "does not follow a mutable parse binding",
+      filename: "zod-parse-output-mutable-binding.ts",
+      code: `${IMPORT}
+        import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
+        const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
+        function get(): TrialChannelRecord {
+          let parsed = RowSchema.parse({});
+          parsed = { applicationId: "replacement", channelId: null };
+          return parsed;
+        }`,
+    },
+    {
+      name: "does not treat a safeParse success check as returning normalized output",
+      filename: "zod-parse-output-safe-raw.ts",
+      code: `${IMPORT}
+        const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
+        function get(raw: unknown): unknown {
+          const parsed = RowSchema.safeParse(raw);
+          return parsed.success ? raw : null;
+        }`,
     },
     {
       name: "allows an augmented interface whose ownership is split",
@@ -181,7 +207,11 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
       errors: [
         {
           messageId: "handWrittenParsedOutput",
-          data: { schemaName: "RowSchema", typeName: "TrialChannelRecord" },
+          data: {
+            methodName: "parse",
+            schemaName: "RowSchema",
+            typeName: "TrialChannelRecord",
+          },
         },
       ],
     },
@@ -195,7 +225,11 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
       errors: [
         {
           messageId: "handWrittenParsedOutput",
-          data: { schemaName: "ValidatedDatabaseOutput", typeName: "TrialChannelRecord" },
+          data: {
+            methodName: "parse",
+            schemaName: "ValidatedDatabaseOutput",
+            typeName: "TrialChannelRecord",
+          },
         },
       ],
     },
@@ -211,7 +245,11 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
       errors: [
         {
           messageId: "handWrittenParsedOutput",
-          data: { schemaName: "DatabaseResultSchema", typeName: "PersistedRow" },
+          data: {
+            methodName: "parse",
+            schemaName: "DatabaseResultSchema",
+            typeName: "PersistedRow",
+          },
         },
       ],
     },
@@ -272,6 +310,44 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
         function get(): TrialChannelRecord | null { return RowSchema.parse({}); }`,
       errors: [{ messageId: "handWrittenParsedOutput" }],
     },
+    {
+      name: "reports a parse output returned through one immutable local binding",
+      filename: "zod-parse-output-local-binding.ts",
+      code: `${IMPORT}
+        import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
+        const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
+        function get(): TrialChannelRecord {
+          const parsed = RowSchema.parse({});
+          observe(parsed.applicationId);
+          return parsed;
+        }`,
+      errors: [{ messageId: "handWrittenParsedOutput" }],
+    },
+    {
+      name: "reports safeParse data returned after a success guard",
+      filename: "zod-safe-parse-output-guard.ts",
+      code: `${IMPORT}
+        import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
+        const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
+        function get(raw: unknown): TrialChannelRecord | null {
+          const parsed = RowSchema.safeParse(raw);
+          if (!parsed.success) return null;
+          return parsed.data;
+        }`,
+      errors: [{ messageId: "handWrittenParsedOutput" }],
+    },
+    {
+      name: "reports safeParse data returned from a nullish conditional",
+      filename: "zod-safe-parse-output-conditional.ts",
+      code: `${IMPORT}
+        import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
+        const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
+        function get(raw: unknown): TrialChannelRecord | undefined {
+          const parsed = RowSchema.safeParse(raw);
+          return parsed.success ? parsed.data : undefined;
+        }`,
+      errors: [{ messageId: "handWrittenParsedOutput" }],
+    },
   ],
 });
 
@@ -286,7 +362,7 @@ describe("prefer-zod-infer precedence", () => {
           parserOptions: {
             projectService: {
               allowDefaultProject: ["audit/*.ts"],
-              maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 3,
+              maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 10,
             },
             tsconfigRootDir: join(import.meta.dirname, "..", ".."),
           },

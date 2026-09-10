@@ -912,6 +912,10 @@ export function createConfig(options = {}) {
       // Parse-return contracts need type information and broader adoption
       // evidence before this can become a blocking rule.
       "@sarj/prefer-zod-parse-output-type": "warn",
+      // Only the semantics-preserving array order is checked: an outer
+      // default already handles undefined, while `.default().optional()` is
+      // intentionally left alone because it can still return undefined.
+      "@sarj/no-redundant-optional-array-default": "warn",
       "@sarj/interface-contract-members-private": "error",
       "@sarj/prefer-ecmascript-private-members": "error",
 

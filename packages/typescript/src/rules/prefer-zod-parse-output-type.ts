@@ -32,10 +32,10 @@ export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
   category: "correctness",
   autofix: "none",
   limitations: [
-    "Requires TypeScript type information and a direct return of a module-level local Zod object schema's `.parse()` result.",
+    "Requires TypeScript type information and a returned output from a module-level local Zod object schema's `.parse()` or `.safeParse()` result.",
     "Same-module name-correlated twins that `prefer-zod-infer` can prove are left to that established rule; this companion owns richer or renamed same-module and cross-module contracts proven by parse-return data flow.",
     "Only a single plain non-generic object interface or object type alias with exact property keys and bidirectional assignability is reported.",
-    "Nullish conditional branches are followed; aliases, assignments, helper calls, imported schemas, and other indirect data flow are intentionally excluded.",
+    "Direct returns, nullish conditional branches, and one immutable local parse-result binding are followed; second aliases, assignments, helper calls, imported schemas, and other indirect data flow are intentionally excluded.",
     "Contracts returned from more than one distinct local schema are excluded because no single schema has unambiguous ownership.",
     "Readonly, augmented, indexed, callable, generated, constrained, any, unknown, and never contracts are excluded rather than guessed.",
     "The rule is report-only because moving or exporting a schema changes module ownership and requires human review.",
@@ -84,6 +84,8 @@ interface LocalSchema {
 
 interface ParsedReturnCandidate {
   readonly call: TSESTree.CallExpression;
+  readonly method: "parse" | "safeParse";
+  readonly output: TSESTree.Node;
   readonly schema: TSESTree.Identifier;
   readonly typeName: string;
   readonly typeReference: TSESTree.TSTypeReference;
@@ -136,18 +138,36 @@ function isLocalZodObjectSchema(
   return false;
 }
 
-function parsedReturnCandidate(node: TSESTree.CallExpression): ParsedReturnCandidate | null {
+interface ZodParseCall {
+  readonly call: TSESTree.CallExpression;
+  readonly method: "parse" | "safeParse";
+  readonly schema: TSESTree.Identifier;
+}
+
+function zodParseCall(node: TSESTree.CallExpression): ZodParseCall | null {
   const { callee } = node;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     callee.computed ||
     callee.object.type !== AST_NODE_TYPES.Identifier ||
     callee.property.type !== AST_NODE_TYPES.Identifier ||
-    callee.property.name !== "parse"
+    (callee.property.name !== "parse" && callee.property.name !== "safeParse")
   ) {
     return null;
   }
-  const owner = directReturnOwner(node);
+  return {
+    call: node,
+    method: callee.property.name,
+    schema: callee.object,
+  };
+}
+
+function returnedOutputCandidate(
+  parsed: ZodParseCall,
+  output: TSESTree.Node,
+): ParsedReturnCandidate | null {
+  const owner = directReturnOwner(output);
+  if (owner === null || enclosingFunction(parsed.call) !== owner) return null;
   const annotation = owner?.returnType?.typeAnnotation;
   if (annotation === undefined) return null;
   const typeReference = returnContractReference(annotation);
@@ -155,15 +175,62 @@ function parsedReturnCandidate(node: TSESTree.CallExpression): ParsedReturnCandi
     return null;
   }
   return {
-    call: node,
-    schema: callee.object,
+    call: parsed.call,
+    method: parsed.method,
+    output,
+    schema: parsed.schema,
     typeName: typeReference.typeName.name,
     typeReference,
   };
 }
 
+function directParseReturnCandidate(
+  node: TSESTree.CallExpression,
+): ParsedReturnCandidate | null {
+  const parsed = zodParseCall(node);
+  return parsed?.method === "parse" ? returnedOutputCandidate(parsed, node) : null;
+}
+
+function localParseReturnCandidates(
+  node: TSESTree.VariableDeclarator,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): readonly ParsedReturnCandidate[] {
+  if (
+    node.id.type !== AST_NODE_TYPES.Identifier ||
+    node.init?.type !== AST_NODE_TYPES.CallExpression ||
+    node.parent.type !== AST_NODE_TYPES.VariableDeclaration ||
+    node.parent.kind !== "const" ||
+    enclosingFunction(node.init) === null
+  ) {
+    return [];
+  }
+  const parsed = zodParseCall(node.init);
+  if (parsed === null) return [];
+  const variable = sourceCode.getDeclaredVariables(node)[0];
+  if (variable === undefined) return [];
+  const candidates: ParsedReturnCandidate[] = [];
+  for (const reference of variable.references) {
+    const identifier = reference.identifier;
+    const parent = identifier.parent;
+    const output =
+      parsed.method === "parse"
+        ? identifier
+        : parent.type === AST_NODE_TYPES.MemberExpression &&
+            parent.object === identifier &&
+            !parent.computed &&
+            parent.property.type === AST_NODE_TYPES.Identifier &&
+            parent.property.name === "data"
+          ? parent
+          : null;
+    if (output === null) continue;
+    const candidate = returnedOutputCandidate(parsed, output);
+    if (candidate !== null) candidates.push(candidate);
+  }
+  return candidates;
+}
+
 /** Returns the owning function only through wrappers that preserve the parsed value. */
-function directReturnOwner(node: TSESTree.CallExpression): FunctionNode | null {
+function directReturnOwner(node: TSESTree.Node): FunctionNode | null {
   let current: TSESTree.Node = node;
   while (current.parent !== undefined) {
     const parent: TSESTree.Node = current.parent;
@@ -203,7 +270,7 @@ function isNullishExpression(node: TSESTree.Node): boolean {
 
 function enclosingFunction(node: TSESTree.Node): FunctionNode | null {
   let current = node.parent;
-  while (current !== undefined) {
+  while (current != null) {
     if (
       current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
       current.type === AST_NODE_TYPES.FunctionDeclaration ||
@@ -329,8 +396,8 @@ function reportCandidates(
     if (declaration === null || declaration.getSourceFile().isDeclarationFile) continue;
     const source = declaration.getSourceFile();
     if (isGeneratedFile(source.fileName, source.text)) continue;
-    const tsCall = services.esTreeNodeToTSNodeMap.get(candidate.call);
-    const parsed = checker.getTypeAtLocation(tsCall);
+    const tsOutput = services.esTreeNodeToTSNodeMap.get(candidate.output);
+    const parsed = checker.getTypeAtLocation(tsOutput);
     // A `z.ZodType<Contract>` constraint deliberately makes the TypeScript
     // contract authoritative over the schema.
     const constrained =
@@ -378,7 +445,11 @@ function reportCandidates(
     context.report({
       node: candidate.typeReference,
       messageId: "handWrittenParsedOutput",
-      data: { schemaName: schema.name, typeName: candidate.typeName },
+      data: {
+        methodName: candidate.method,
+        schemaName: schema.name,
+        typeName: candidate.typeName,
+      },
     });
   }
 }
@@ -456,7 +527,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       handWrittenParsedOutput:
-        "`{{typeName}}` exactly restates the validated output returned by `{{schemaName}}.parse()`. Export or colocate the schema and derive the contract with `z.output<typeof {{schemaName}}>` so the runtime and compile-time shapes cannot drift.",
+        "`{{typeName}}` exactly restates the validated output returned from `{{schemaName}}.{{methodName}}()`. Export or colocate the schema and derive the contract with `z.output<typeof {{schemaName}}>` so the runtime and compile-time shapes cannot drift.",
     },
   },
   defaultOptions: [],
@@ -494,9 +565,10 @@ export default createRule<Options, MessageIds>({
         ) {
           schemas.push({ identifier: node.id, initializer: node.init, name: node.id.name });
         }
+        candidates.push(...localParseReturnCandidates(node, context.sourceCode));
       },
       CallExpression(node): void {
-        const candidate = parsedReturnCandidate(node);
+        const candidate = directParseReturnCandidate(node);
         if (candidate !== null) candidates.push(candidate);
       },
       "MemberExpression[computed=false]"(node: TSESTree.MemberExpression): void {

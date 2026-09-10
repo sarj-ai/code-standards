@@ -177,6 +177,7 @@
       "no-production-browser-source-maps",
       "no-raw-env",
       "no-raw-fetch-outside-clients",
+      "no-redundant-optional-array-default",
       "no-repeated-string-literal",
       "no-restated-comment",
       "no-restated-jsdoc",

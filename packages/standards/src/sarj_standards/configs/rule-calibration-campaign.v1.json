@@ -1175,6 +1175,14 @@
       "outcome": "Retain the pre-existing error severity at the explicit user request; the precision repair does not require a severity downgrade. Filename placement is a manual architecture policy, not proof that a client boundary is absent. Preserve precise arbitration with proven internal mutations."
     },
     {
+      "task": "rule-audit/eslint/no-redundant-optional-array-default",
+      "family": "typescript",
+      "ruleId": "no-redundant-optional-array-default",
+      "state": "complete",
+      "evidence": "Nineteen focused cases cover Zod array constructors, array methods, aliases, comments, lazy defaults, reversed order, scalar schemas, shadowing, generated source, and test files. The combined Zod-focused suite passes 52 cases. A 208-file scan of the maintained Automations Worker found 13 instances; every finding was inspected as a local Zod array using optional().default(), with zero scalar findings and zero rule crashes. One warm load-sensitive comparison took 655 ms without the selected rules and 756 ms with both selected Zod rules; this is not controlled performance evidence. The safe fix is idempotent on a second pass.",
+      "outcome": "Stage as a warning and limit the rule to syntactically proven local Zod arrays whose optional wrapper is immediately inside default. Remove only that inner optional wrapper. Preserve strings and other scalars, aliases, comments, and the semantically distinct default().optional() order."
+    },
+    {
       "task": "rule-audit/eslint/no-repeated-string-literal",
       "family": "typescript",
       "ruleId": "no-repeated-string-literal",
@@ -1499,8 +1507,8 @@
       "family": "typescript",
       "ruleId": "prefer-zod-parse-output-type",
       "state": "complete",
-      "evidence": "Three independent correctness, test, and architecture reviews found and closed direct-arrow, nullish-output, ambiguous-schema, multi-rule-overlap, and regression-oracle gaps. Twenty-seven focused cases pass, including integrated precedence cases proving canonical twins stay with prefer-zod-infer while nested and transformed twins stay with the type-aware companion. A pinned 776-file, 6,108,062-byte scan across two maintained TypeScript repositories produced four findings; every finding was inspected and confirmed as a hand-written contract duplicating a parsed Zod output, with zero rule crashes.",
-      "outcome": "Stage the new data-flow companion as a warning without autofix. Require a direct local object-schema parse return, exact keys, bidirectional assignability, one plain contract declaration, and one unambiguous producing schema. Defer only twins the established prefer-zod-infer predicate can prove, and abstain on indirect data flow or uncertain ownership."
+      "evidence": "Three independent correctness, test, and architecture reviews found and closed direct-arrow, nullish-output, ambiguous-schema, multi-rule-overlap, and regression-oracle gaps. The expanded 33-case suite adds one-hop immutable parse results and guarded or conditional safeParse data while preserving mutable, multi-alias, raw-result, and helper-call exclusions. A pinned 776-file, 6,108,062-byte scan across two maintained TypeScript repositories produced four original findings; every finding was inspected and confirmed as a hand-written contract duplicating a parsed Zod output, with zero rule crashes. A later 208-file Automations scan produced no findings for the expanded rule and no rule crashes.",
+      "outcome": "Keep the data-flow companion as a warning without autofix. Require an exact, bidirectionally assignable output type, one plain contract declaration, one unambiguous producing schema, and either a direct return or one immutable local result from parse or safeParse data. Defer only twins the established prefer-zod-infer predicate can prove, and abstain on mutable, multi-hop, helper-mediated, or uncertain ownership."
     },
     {
       "task": "rule-audit/eslint/repeated-static-call-cases",
