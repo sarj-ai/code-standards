@@ -201,6 +201,9 @@ def test_only_the_berry_note_mentions_berry_only_configuration() -> None:
     assert "resolutions" in classic
     assert "npmMinimalAgeGate" not in classic
     assert "npmMinimalAgeGate" in berry
+    assert "npmMinimalAgeGate: 0" not in berry
+    assert "npmPreapprovedPackages" in berry
+    assert "wait" in berry.lower()
 
 
 def test_ci_workflow_speaks_the_detected_yarn_dialect(tmp_path: Path) -> None:
