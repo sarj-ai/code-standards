@@ -124,6 +124,16 @@ def test_staged_manifest_addition_survives_worktree_deletion_on_first_commit(tmp
     assert [tool.name for tool in report.tools].count("repo-standards") == 1
 
 
+def test_committed_policy_waits_for_the_first_commit(tmp_path: Path) -> None:
+    _adopt(tmp_path)
+    subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
+
+    report = api.Standards(tmp_path).analyze(())
+
+    assert report.exit_code == 0
+    assert not [tool for tool in report.tools if tool.name == "repo-standards"]
+
+
 def test_committed_manifest_deletion_fails_closed(tmp_path: Path) -> None:
     manifest = _adopt(tmp_path)
     subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
@@ -149,6 +159,8 @@ def test_repository_adapter_failures_become_execution_issues(
         raise TypeError(message)
 
     monkeypatch.setattr(repo_standards, "analyze", fail)
+    subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
+    _commit(tmp_path)
 
     report = api.Standards(tmp_path).analyze(())
 
@@ -192,6 +204,8 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
 
     monkeypatch.setattr(repo_standards, "analyze_repository", analyze_repository)
     _adopt(tmp_path)
+    subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
+    _commit(tmp_path)
 
     converted_report = repo_standards.analyze(tmp_path, staged=False)
 
