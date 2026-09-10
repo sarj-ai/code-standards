@@ -34,8 +34,9 @@ REF = "refs/heads/main"
 PYPI_ATTESTATIONS = "pypi-attestations==0.0.30"
 PYPI_ATTEMPTS = 6
 # npm's provenance document is published separately from the package metadata and
-# can remain unavailable for more than a minute after the package itself is live.
-NPM_ATTESTATION_ATTEMPTS = 18
+# has remained unavailable for more than three minutes after the package itself
+# became live. Keep the verification strict while tolerating that observed delay.
+NPM_ATTESTATION_ATTEMPTS = 36
 RETRY_DELAY = timedelta(seconds=10)
 
 

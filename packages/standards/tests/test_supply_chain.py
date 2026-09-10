@@ -192,7 +192,7 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
         'entry.get("predicateType") != "https://slsa.dev/provenance/v1"' in verifier
     )
     assert (
-        "NPM_ATTESTATION_ATTEMPTS = 18" in verifier
+        "NPM_ATTESTATION_ATTEMPTS = 36" in verifier
     )  # sarj-noqa: SARJ402 -- verifier text is the pinned retry contract
     assert (
         "range(NPM_ATTESTATION_ATTEMPTS)" in verifier
