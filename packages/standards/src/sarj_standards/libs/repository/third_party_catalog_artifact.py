@@ -51,7 +51,7 @@ _DETEKT_RULE_SETS: Final = frozenset(
 
 type ProfileName = Literal["application", "standard"]
 type ProviderEngine = Literal[
-    "detekt", "eslint", "ktlint", "mobsfscan", "react-doctor", "ruff", "swiftformat", "swiftlint"
+    "deptry", "detekt", "eslint", "ktlint", "mobsfscan", "react-doctor", "ruff", "swiftformat", "swiftlint"
 ]
 type ProjectionScope = Literal["complete", "config-explicit", "provider-only"]
 RuleId = NewType("RuleId", str)
@@ -195,17 +195,25 @@ def build(root: Path) -> _CatalogArtifact:
     node = shutil.which("node")
     npm = shutil.which("npm")
     ruff = shutil.which("ruff")
-    if node is None or npm is None or ruff is None:
-        missing = "node" if node is None else "npm" if npm is None else "ruff"
+    deptry = shutil.which("deptry")
+    if node is None or npm is None or ruff is None or deptry is None:
+        missing = "node" if node is None else "npm" if npm is None else "ruff" if ruff is None else "deptry"
         msg = f"cannot generate third-party catalog: {missing} is not installed"
         raise RuntimeError(msg)
     _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
     eslint = _eslint_projection(resolved, node)
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
+    deptry_projection = _deptry_projection(resolved, deptry)
     mobile = _mobile_projections(resolved)
-    rules = (*eslint.rules, *react_doctor.rules, *ruff_projection.rules, *mobile.rules)
-    providers = (*eslint.providers, _react_doctor_provider(resolved), ruff_projection.provider, *mobile.providers)
+    rules = (*eslint.rules, *react_doctor.rules, *ruff_projection.rules, *deptry_projection.rules, *mobile.rules)
+    providers = (
+        *eslint.providers,
+        _react_doctor_provider(resolved),
+        ruff_projection.provider,
+        deptry_projection.provider,
+        *mobile.providers,
+    )
     included_providers = {rule.provider for rule in rules} | {provider.id for provider in mobile.providers}
     return _CatalogArtifact(
         schema_version=1,
@@ -278,6 +286,47 @@ def _eslint_projection(root: Path, node: str) -> _EslintProjection:
 def _react_doctor_projection(root: Path, node: str) -> _ReactDoctorProjection:
     output = _run((node, str(root / _REACT_DOCTOR_PROJECTION)), cwd=root)
     return _ReactDoctorProjection.model_validate_json(output)
+
+
+def _deptry_projection(root: Path, executable: str) -> _RuffProjection:
+    output = _run((executable, "--version"), cwd=root).strip()
+    match = re.fullmatch(r"deptry (?P<version>[0-9][0-9A-Za-z.\-+]*)", output)
+    if match is None:
+        msg = f"cannot parse Deptry version: {output!r}"
+        raise ValueError(msg)
+    provider = _Provider(
+        id="deptry",
+        label="Deptry",
+        engine="deptry",
+        package="deptry",
+        version=match.group("version"),
+        homepage="https://deptry.com/",
+    )
+    summaries = {
+        "DEP001": "Imported module is missing from declared dependencies.",
+        "DEP002": "Declared dependency is unused by importable project code.",
+        "DEP003": "Imported module is available only through a transitive dependency.",
+    }
+    contexts = tuple(
+        _Context(id=id_, label=label, level="warning") for id_, label, _path in _RUFF_CONTEXTS if id_ != "test-python"
+    )
+    profiles = tuple(_Profile(name=name, contexts=contexts) for name in ("application", "standard"))
+    rules = tuple(
+        _Rule(
+            key=f"deptry:{code}",
+            provider="deptry",
+            id=RuleId(code),
+            display_id=DisplayRuleId(code),
+            summary=summary,
+            docs_url=f"https://deptry.com/rules-violations/#{code.casefold()}",
+            family="dependencies",
+            autofix="none",
+            has_suggestions=False,
+            profiles=profiles,
+        )
+        for code, summary in summaries.items()
+    )
+    return _RuffProjection(provider, rules)
 
 
 def _react_doctor_provider(root: Path) -> _Provider:

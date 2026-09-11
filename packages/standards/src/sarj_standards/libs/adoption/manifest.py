@@ -71,6 +71,7 @@ def eslint_age_gate_preapprovals() -> dict[str, str]:
 
 #: Config bundle selected for each detected ecosystem.
 PYTHON_CONFIGS: Final = ("ruff", "pyright")
+PYTHON_ANALYZERS: Final = ("deptry",)
 TYPESCRIPT_CONFIGS: Final = ("eslint",)
 SWIFT_CONFIGS: Final = ("swiftformat", "swiftlint")
 KOTLIN_CONFIGS: Final = ("ktlint", "detekt")
@@ -85,6 +86,7 @@ ALL_CONFIGS: Final = (
     *MOBILE_CONFIGS,
     *SHARED_CONFIGS,
 )
+ALL_CAPABILITIES: Final = (*ALL_CONFIGS, *PYTHON_ANALYZERS)
 DEFAULT_DURABLE_ARTIFACTS: Final = (
     "**/README.md",
     "docs/**",
@@ -125,8 +127,15 @@ class Manifest:
     diagnostic_baseline: str | None = None
     ci_bootstrap: tuple[str, ...] = ()
 
+    @property
+    def enabled_capabilities(self) -> tuple[str, ...]:
+        analyzers = PYTHON_ANALYZERS if not set(self.configs).isdisjoint(PYTHON_CONFIGS) else ()
+        enabled = (*self.configs, *analyzers)
+        return tuple(name for name in enabled if name not in self.disabled_capabilities)
+
     def render(self) -> str:
-        disabled = tuple(name for name in ALL_CONFIGS if name not in self.configs)
+        enabled = set(self.enabled_capabilities)
+        disabled = tuple(name for name in ALL_CAPABILITIES if name not in enabled)
         disabled_text = ", ".join(f'"{name}"' for name in disabled)
         durable_text = ", ".join(json.dumps(value) for value in self.durable_artifacts)
         sections = [
@@ -272,7 +281,8 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
     capabilities_table = _manifest_table(data, "capabilities")
     disabled = _string_list(capabilities_table, "disable", label="manifest [capabilities].disable")
     supported_configs = ALL_CONFIGS if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
-    unknown_capabilities = sorted(set(disabled) - set(supported_configs))
+    supported_capabilities = ALL_CAPABILITIES if expected_schema == MANIFEST_SCHEMA else _SCHEMA_THREE_CONFIGS
+    unknown_capabilities = sorted(set(disabled) - set(supported_capabilities))
     if unknown_capabilities:
         msg = f"manifest disables unknown capabilities: {', '.join(unknown_capabilities)}"
         raise ValueError(msg)

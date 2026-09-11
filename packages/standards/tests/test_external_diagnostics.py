@@ -19,6 +19,7 @@ from sarj_standards.libs.linting.external import (
     ProcessOutput,
     analyze_external,
     parse_basedpyright,
+    parse_deptry,
     parse_eslint,
     parse_ktlint,
     parse_mobsfscan,
@@ -88,6 +89,74 @@ def test_eslint_ignored_selected_file_is_incomplete_coverage(tmp_path: Path) -> 
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues[0].kind == "coverage-missing"
     assert reports[0].file_count == 1
+
+
+def test_parse_deptry_normalizes_selected_rules_as_warnings(tmp_path: Path) -> None:
+    source = tmp_path / "src" / "app.py"
+    source.parent.mkdir()
+    source.write_text("import missing\n", encoding="utf-8")
+    payload = (
+        "Scanning 1 file...\n"
+        "::warning file=src/app.py,line=1,col=8,title=DEP001::"
+        "'missing' imported but missing from dependency definitions\n"
+        "::warning file=pyproject.toml,line=1,title=DEP002::'unused' defined but not used\n"
+    )
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='1'\n", encoding="utf-8")
+
+    diagnostics = parse_deptry(payload, root=tmp_path)
+
+    assert [(item.code, item.severity, item.location.path) for item in diagnostics] == [
+        ("DEP001", Severity.WARNING, "src/app.py"),
+        ("DEP002", Severity.WARNING, "pyproject.toml"),
+    ]
+
+
+def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(tmp_path: Path) -> None:
+    source = tmp_path / "packages" / "api" / "src" / "api.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("import transitive\n", encoding="utf-8")
+    project = source.parents[1]
+    (project / "pyproject.toml").write_text("[project]\nname='api'\nversion='1'\n", encoding="utf-8")
+    seen: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == project
+        seen.append(tuple(argv))
+        return ProcessOutput(
+            0,
+            "",
+            "::warning file=src/api.py,line=1,col=8,title=DEP003::'transitive' is a transitive dependency\n",
+        )
+
+    reports = analyze_external(
+        (str(source),),
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=run,
+        capabilities=frozenset({"deptry"}),
+    )
+
+    assert [report.name for report in reports] == ["deptry"]
+    assert reports[0].completion is Completion.COMPLETE
+    assert [item.code for item in reports[0].diagnostics] == ["DEP003"]
+    assert "DEP004,DEP005" in seen[0]
+    assert "DEP001,DEP002,DEP003" in seen[0]
+    assert seen[0][seen[0].index("--known-first-party") + 1] == "api"
+
+
+def test_deptry_skips_python_without_dependency_metadata(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text("import argparse\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[tool.ruff]\nline-length = 120\n", encoding="utf-8")
+
+    reports = analyze_external(
+        (str(source),),
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        capabilities=frozenset({"deptry"}),
+    )
+
+    assert reports == ()
 
 
 @pytest.mark.parametrize("select_directories", [False, True])

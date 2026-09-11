@@ -23,33 +23,26 @@ updates:
       documentation-tooling:
         patterns: ["*"]
   - package-ecosystem: pip
-    directory: /packages/python
+    directories:
+      - /packages/bootstrap
+      - /packages/python
+      - /packages/sql
+      - /packages/iac
+      - /packages/standards
     schedule:
-      interval: weekly
+      interval: cron
+      cronjob: "17 */6 * * *"
+      timezone: UTC
+    cooldown:
+      default-days: 3
+      exclude:
+        - ruff
     groups:
-      python-tooling:
-        patterns: ["*"]
-  - package-ecosystem: pip
-    directory: /packages/sql
-    schedule:
-      interval: weekly
-    groups:
-      sql-tooling:
-        patterns: ["*"]
-  - package-ecosystem: pip
-    directory: /packages/iac
-    schedule:
-      interval: weekly
-    groups:
-      iac-tooling:
-        patterns: ["*"]
-  - package-ecosystem: pip
-    directory: /packages/standards
-    schedule:
-      interval: weekly
-    groups:
-      standards-tooling:
-        patterns: ["*"]
+      # Ruff is the fleet-wide Python parser and linter. Keep it isolated from
+      # unrelated upgrades so one incompatible tool cannot strand its fixes.
+      ruff-fleet:
+        patterns: ["ruff"]
+        group-by: dependency-name
   # Without this, every `uses:` pin in .github/workflows/ is updated by hand or
   # not at all — which is how a repo ends up on an action major that no longer
   # receives security fixes while every language ecosystem above stays current.

@@ -88,6 +88,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     provider_ids = {value["id"] for value in providers}
     assert {value["provider"] for value in rules} <= provider_ids
     assert {value["engine"] for value in providers} == {
+        "deptry",
         "detekt",
         "eslint",
         "ktlint",
