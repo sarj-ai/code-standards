@@ -38,18 +38,17 @@ jobs:
           version: '0.12.5'
       - name: Install trusted scanner
         run: uv sync --project trusted/packages/standards --frozen --no-dev
-      - name: Check out candidate as data
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          path: candidate
-          persist-credentials: false
-      - name: Fetch comparison commit
+      - name: Fetch candidate as Git objects
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: git -C candidate fetch --no-tags --depth=1 "https://github.com/${{ github.repository }}.git" "$BASE_SHA"
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git init --bare candidate.git
+          git -C candidate.git fetch --no-tags "https://github.com/${GITHUB_REPOSITORY}.git" \
+            "$BASE_SHA" "$HEAD_SHA"
       - name: Scan private references
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         env:
@@ -62,7 +61,7 @@ jobs:
           trap 'rm -f "$policy_file"' EXIT
           install -m 600 /dev/null "$policy_file"
           printf '%s' "$PRIVATE_REFS_TOML" > "$policy_file"
-          trusted/packages/standards/.venv/bin/code-standards --root candidate maintain check \
+          trusted/packages/standards/.venv/bin/code-standards --root candidate.git maintain check \
             --policy-root trusted \
             --private-refs-file "$policy_file" \
             --only private-refs \
