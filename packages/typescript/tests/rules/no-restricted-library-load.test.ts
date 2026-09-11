@@ -34,10 +34,11 @@ RULE_TESTER.run("no-restricted-library-load", rule, {
     { code: 'import axios from "axios";', options: OPTIONS },
     { code: 'export { default } from "axios";', options: OPTIONS },
     { code: 'const client = require(name);', options: OPTIONS },
-    { code: 'const client = require(`axios`);', options: OPTIONS },
+    { code: 'const client = require(`axios-${variant}`);', options: OPTIONS },
     { code: 'const client = loader("axios");', options: OPTIONS },
     { code: 'const client = require("axios-retry");', options: OPTIONS },
     { code: 'const require = makeLoader(); require("axios");', options: OPTIONS },
+    { code: 'const require = makeLoader(); require["resolve"]("axios");', options: OPTIONS },
     {
       code: 'function load(require: (name: string) => unknown) { return require("axios"); }',
       options: OPTIONS,
@@ -55,12 +56,24 @@ RULE_TESTER.run("no-restricted-library-load", rule, {
       errors: [{ messageId: "restrictedLibraryLoad" }],
     },
     {
+      name: "reports a static template dynamic import",
+      code: 'const client = await import(`axios`);',
+      options: OPTIONS,
+      errors: [{ messageId: "restrictedLibraryLoad" }],
+    },
+    {
       code: 'const fp = await import("lodash/fp");',
       options: OPTIONS,
       errors: [{ messageId: "restrictedLibraryLoad" }],
     },
     {
       code: 'const client = require("axios");',
+      options: OPTIONS,
+      errors: [{ messageId: "restrictedLibraryLoad" }],
+    },
+    {
+      name: "reports a static template CommonJS load",
+      code: 'const client = require(`axios`);',
       options: OPTIONS,
       errors: [{ messageId: "restrictedLibraryLoad" }],
     },
@@ -72,6 +85,24 @@ RULE_TESTER.run("no-restricted-library-load", rule, {
     },
     {
       code: 'const path = require.resolve("axios");',
+      options: OPTIONS,
+      errors: [{ messageId: "restrictedLibraryLoad" }],
+    },
+    {
+      name: "reports a static template CommonJS resolution reference",
+      code: 'const path = require.resolve(`axios`);',
+      options: OPTIONS,
+      errors: [{ messageId: "restrictedLibraryLoad" }],
+    },
+    {
+      name: "reports a computed CommonJS resolution reference",
+      code: 'const path = require["resolve"]("axios");',
+      options: OPTIONS,
+      errors: [{ messageId: "restrictedLibraryLoad" }],
+    },
+    {
+      name: "reports a computed CommonJS resolution reference with a static template",
+      code: 'const path = require["resolve"](`axios`);',
       options: OPTIONS,
       errors: [{ messageId: "restrictedLibraryLoad" }],
     },

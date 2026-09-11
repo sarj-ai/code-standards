@@ -987,24 +987,24 @@
       "family": "typescript",
       "ruleId": "iac-source-coupled-test",
       "state": "complete",
-      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. No retained matches; shared lexical/path regression fixtures include nested scope collisions and non-source suffix concatenation.",
-      "outcome": "Reuse binding-aware source oracle detection for IaC and preserve exact documented representation contracts. Do not infer dynamic path or iterator dataflow."
+      "evidence": "Latest-50 adversarial review expanded the shared source-oracle analyzer to scope-resolved assertion provenance and JSON or TOML representation files. The pinned <private-corpus> scan had zero findings, so focused Vitest, Jest, Playwright, Bun, node:assert, lookalike, shadowing and raw-representation cases are the detection evidence.",
+      "outcome": "Keep the existing severity. Reuse the binding-aware source-oracle detector for IaC, recognize only supported assertion bindings, and preserve explicit representation-contract exceptions. Do not infer unsupported assertion libraries, dynamic paths or iterator dataflow."
     },
     {
       "task": "rule-audit/eslint/interface-contract-members-private",
       "family": "typescript",
       "ruleId": "interface-contract-members-private",
       "state": "complete",
-      "evidence": "Three independent reviews accepted resolved inherited-interface membership, unknown-contract abstention and overload grouping. All 19 focused typed cases pass within a 121-case unchanged-owner batch. This type-aware owner was excluded from the untyped corpus; no corpus precision claim is made.",
-      "outcome": "Retain advisory interface-surface guidance without privatizing fixes. TypeScript implements does not make a contract exact; framework hooks and multiple interfaces require manual architecture decisions. Modern private syntax remains a separate owner."
+      "evidence": "Latest-50 adversarial review reproduced false positives for protected subclass hooks and override implementations while confirming that an arbitrary decorator does not prove public framework ownership. The exact typed consumer scan retained one actionable public-surface finding; 19 focused cases pass.",
+      "outcome": "Keep the existing severity. Exclude protected extension hooks and overrides, preserve generic decorated extra-member findings, and continue to abstain when inherited contract resolution is uncertain."
     },
     {
       "task": "rule-audit/eslint/no-bare-return-from-test-catch",
       "family": "typescript",
       "ruleId": "no-bare-return-from-test-catch",
       "state": "complete",
-      "evidence": "Three independent reviews accepted the bounded repair; 25 focused tests pass within the 412-case integrated batch. The pinned corpus has zero findings; focused regressions are the positive and negative evidence. Calibration covers 2,963 parsed files in eight pinned local sources with no rule crashes.",
-      "outcome": "Preserve completed caught-error assertions, including a single negation modifier, before a direct return. Do not claim every return guarantees a passing test."
+      "evidence": "Latest-50 adversarial review reproduced swallowed failures behind finally cleanup, conditional throws, conditional skips, nested blocks, and default or namespace node:assert imports. The pinned <private-corpus> scan had zero findings, so 30 focused positive and negative cases are the detection evidence.",
+      "outcome": "Keep the existing severity. Exempt only a caught-error assertion or explicit skip that dominates the return in its nearest block; resolve supported assertion imports and preserve conditional-flow findings."
     },
     {
       "task": "rule-audit/eslint/no-bespoke-api-case-conversion",
@@ -1037,8 +1037,8 @@
       "family": "typescript",
       "ruleId": "no-dangerously-allow-svg",
       "state": "complete",
-      "evidence": "Three independent reviews accepted the bounded precision repair; 13 focused cases pass. One unused configuration example was removed from the pinned corpus; focused cases retain effective exported true values. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
-      "outcome": "Inspect only effective exported Next configuration; abstain for unknown wrappers, spreads, computed keys, or mutable aliases."
+      "evidence": "Latest-50 review reproduced a false positive for Next.js's documented hardened SVG configuration and adversarially checked weak, duplicated, dynamic, inline, and script-capable CSP variants. The pinned <private-corpus> scan had zero findings; 20 focused cases pass.",
+      "outcome": "Keep the existing severity. Accept only effective SVG enablement protected by attachment disposition, exactly one script-src 'none' directive, and a sandbox directive without script allowances; continue to abstain on unknown exported configuration."
     },
     {
       "task": "rule-audit/eslint/no-declaration-comment-wall",
@@ -1099,8 +1099,8 @@
       "family": "typescript",
       "ruleId": "no-hand-rolled-spinner",
       "state": "complete",
-      "evidence": "Three independent reviews accepted the bounded precision repair; 26 focused cases pass. Zero corpus hits before and after; focused positive cases retain effective spinner classes. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
-      "outcome": "Honor last JSX property semantics and abstain for a later unknown spread; no proof of replacement component capabilities."
+      "evidence": "Latest-50 adversarial review reproduced missed Tailwind variants and a false positive formed by combining mutually exclusive variant contexts. The pinned <private-corpus> scan had zero findings; 29 focused cases pass.",
+      "outcome": "Keep the existing severity. Normalize Tailwind bases only within one effective variant context, honor last JSX property semantics, and abstain for later unknown spreads."
     },
     {
       "task": "rule-audit/eslint/no-impossible-zod-literal-bounds",
@@ -1131,8 +1131,8 @@
       "family": "typescript",
       "ruleId": "no-detached-global-fetch",
       "state": "complete",
-      "evidence": "Independent value and precision reviews retained the receiver-safety policy after testing ambient, explicit-global, shadowed, imported, directly called, forwarded, bound, call/apply, type-position, test, script and generated forms. All 24 focused cases pass within the 5,366-case TypeScript suite. A pinned maintained-repository snapshot produced zero findings across production roots after known detached-fetch defects had already been fixed; zero current findings are regression evidence, not promotion evidence.",
-      "outcome": "Stage as a warning without autofix. Report only unshadowed ambient fetch values and explicit global receiver properties; preserve direct calls, matching bind/call/apply receivers and forwarding wrappers. Host identity and alias flows remain manual review."
+      "evidence": "Latest-50 adversarial review inspected all 12 findings in a pinned <private-corpus> snapshot. Receiver-flow refinement reduced them to three actionable raw-fetch member-storage paths while removing harmless aliases, declaration keys and proven forwarding patterns. Fifty-three focused cases cover ambient, explicit-global, shadowed, imported, directly called, forwarded, bound, call/apply, alias, default-parameter, member-storage, test, script and generated forms.",
+      "outcome": "Retain warning without autofix. Follow stable ambient aliases and defaulted parameters into member storage and wrong explicit receivers; preserve bare calls, callbacks, returns, forwarding wrappers, and compatible global or undefined bind/call/apply receivers. Unknown interprocedural flows remain manual review."
     },
     {
       "task": "rule-audit/eslint/no-json-stringify-error",
@@ -1147,8 +1147,8 @@
       "family": "typescript",
       "ruleId": "no-json-stringify-object-equality",
       "state": "complete",
-      "evidence": "Independent value and precision reviews retained the structural-comparison policy after checking native JSON provenance, object literals, object variables, arrays of objects, unknown values, primitive arrays and tuples, shadowing, one-sided comparisons, tests and generated source. All 16 focused cases pass within the 5,366-case TypeScript suite. A pinned Automations origin/main production-root scan produced zero findings because current direct comparisons are either repaired or proven primitive collections; historical workspace metadata and Slack block regressions establish the motivating object-order failures.",
-      "outcome": "Stage as a type-aware warning without autofix. Report only direct equality comparisons between two native JSON.stringify calls when either operand may contain objects or unknown values. Preserve proven primitive arrays and tuples; aliases, canonical serializers and domain equivalence remain manual review."
+      "evidence": "Latest-50 review inspected all 55 findings in a pinned <private-corpus> snapshot: 50 high-confidence structural-comparison defects, five domain-normalization reviews and zero confirmed false positives. Focused cases cover direct and static-computed native JSON access, object and unknown values, primitive-only collections, shadowing, one-sided comparisons, tests and generated source.",
+      "outcome": "Retain the type-aware warning without autofix. Report direct equality comparisons between two native JSON serialization calls when either operand may contain objects or unknown values, including static computed access. Preserve proven primitive arrays and tuples, shadowed JSON, tests, generated source and one-sided comparisons; reviewed canonical domain equality remains an explicit comparator or narrow suppression."
     },
     {
       "task": "rule-audit/eslint/no-log-only-catch",
@@ -1243,8 +1243,8 @@
       "family": "typescript",
       "ruleId": "no-restricted-library-load",
       "state": "complete",
-      "evidence": "Three independent source, test and UI reviews accepted the repair; 18 focused cases pass within the 621-case integrated batch. No corpus findings; fixtures distinguish erased type imports from runtime loads. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
-      "outcome": "Exclude type-only import-equals declarations while retaining runtime restrictions."
+      "evidence": "Latest-50 adversarial review covered static string literals and no-substitution templates across import declarations, import expressions, require calls and require.resolve, including computed require access and shadowed lookalikes. The pinned <private-corpus> scan retained no findings; focused cases provide positive detection evidence.",
+      "outcome": "Keep the existing severity. Apply runtime restrictions to statically known string and no-substitution template specifiers, including computed require.resolve, while preserving type-only loads, interpolated templates and shadowed require bindings."
     },
     {
       "task": "rule-audit/eslint/no-router-refresh-polling",
@@ -1379,8 +1379,8 @@
       "family": "typescript",
       "ruleId": "no-vague-suppression-description",
       "state": "complete",
-      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
-      "outcome": "Document exact generic-vocabulary matching rather than proof of explanation quality; wrap public examples in valid function declarations. Preserve existing severity; no promotion or new autofix."
+      "evidence": "Latest-50 adversarial review reproduced a bypass where whitespace-separated @ts-expect-error reasons such as needed were accepted despite conveying no removal condition. Focused cases cover colon, dash, whitespace, concrete reasons, compound comments and unrelated directives; the pinned <private-corpus> scan retained no findings.",
+      "outcome": "Keep the existing severity and bounded generic vocabulary. Normalize supported colon, dash and whitespace reason separators without claiming semantic proof; continue accepting concrete descriptions and excluding unrelated formatter or coverage pragmas."
     },
     {
       "task": "rule-audit/eslint/no-zod-native-enum",
@@ -1579,16 +1579,16 @@
       "family": "typescript",
       "ruleId": "require-static-next-matcher",
       "state": "complete",
-      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus.",
-      "outcome": "Describe framework-ignored dynamic matcher values rather than universal build failure; leave matcher syntax validity to Next. Preserve existing severity; no promotion or new autofix."
+      "evidence": "Latest-50 adversarial review reproduced a static-computed-key bypass for exported Next.js matcher configuration. Focused cases now distinguish matcher and ['matcher'] from unrelated computed keys, dynamic keys and valid static values; the pinned <private-corpus> scan retained no findings.",
+      "outcome": "Keep the existing severity. Resolve identifier, literal and static-computed matcher keys while leaving matcher syntax validity to Next.js; abstain on dynamic keys and unknown exported configuration."
     },
     {
       "task": "rule-audit/eslint/require-use-form-default-values",
       "family": "typescript",
       "ruleId": "require-use-form-default-values",
       "state": "complete",
-      "evidence": "Three independent reviews accepted the bounded precision repair; 11 focused cases pass. Zero corpus hits before and after; focused regressions retain explicit values and unknown spread configuration. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
-      "outcome": "Abstain when effective options cannot be established. Keep the UI example inside a component."
+      "evidence": "Latest-50 adversarial review reproduced broad false positives for useForm instances that never bind controlled fields. The revised Controller/useController dataflow has 30 focused cases covering direct forms, aliased and destructured controls, later destructuring, field defaults, form defaults or values, explicit undefined through TypeScript wrappers, duplicate-property semantics, shadowed undefined, spreads, dynamic options and reassignment. An exact 1,111-file pinned <private-corpus> scan retained zero findings.",
+      "outcome": "Keep the existing severity. Report only a proven Controller or useController binding to a stable useForm control that lacks non-undefined form-level defaultValues or values and lacks a field-level defaultValue. Abstain on dynamic spreads, computed options, provider-only context, wrappers and reassignment; this does not prove that a particular field path exists in form defaults."
     },
     {
       "task": "rule-audit/eslint/require-use-server-in-actions-file",
@@ -1611,8 +1611,8 @@
       "family": "typescript",
       "ruleId": "source-coupled-test",
       "state": "complete",
-      "evidence": "Three independent reviews examined source, tests, name/UI precision and upstream overlap. SQL/flow has 293 focused tests and source/SQL ownership has 142 focused tests; typecheck and scoped ESLint pass. Pinned representative evaluation used five local consumer repositories plus installed public TypeScript, ESLint and Zod packages: 2,970 file visits, 17,790,175 bytes, 16 fresh processes capped at 250 files, seven over-512-KiB skips and zero runner/parse errors. This is not every registered consumer or full upstream coverage; zero findings is not correctness evidence. Two baseline eager extraction findings removed; no retained matches. Direct assertion fixtures remain positive while unsupported iterator pipelines deliberately abstain.",
-      "outcome": "Use resolved lexical bindings and static exact source paths, excluding reassigned aliases, unknown path wrappers and extraction without an assertion. Keep exact justified raw-representation exceptions."
+      "evidence": "Latest-50 adversarial review expanded assertion provenance to resolved Vitest, Jest, Playwright, Bun and node:assert bindings and expanded raw representation paths to JSON and TOML. Focused cases preserve direct positives while excluding local or unsupported assertion lookalikes, shadowed bindings, reassigned aliases, dynamic paths and extraction without a supported assertion. The final exact 1,111-file <private-corpus> scan retained one actionable raw-source assertion.",
+      "outcome": "Keep the existing severity. Use resolved lexical assertion bindings and static exact source paths, excluding unsupported lookalikes, reassigned aliases, unknown path wrappers and extraction without an assertion. Preserve exact justified raw-representation exceptions."
     },
     {
       "task": "rule-audit/eslint/stepdown",
@@ -1699,8 +1699,8 @@
       "family": "typescript",
       "ruleId": "prefer-shared-zod-enum",
       "state": "complete",
-      "evidence": "Three independent source, test and metadata reviews accepted focused precision repairs. Pinned representative local-consumer and installed-public-package corpus: 2,970 visits, 2,963 analyzed files, 17,790,175 bytes, seven oversized skips, 16 fresh batches capped at 250. Not every registered consumer or full upstream repositories. All 59 retained findings inspected, including repeated finite vocabularies and a benchmark. Combined timing was load-sensitive under concurrent checks: hoisting 19.35 seconds versus baseline 19.24; peak 664.0 versus 626.6 MiB. The separate immutable batch measured 33.81 seconds. No controlled overhead or optimization claim.",
-      "outcome": "Retain warning. Resolve imported Zod binding identity, not spelling. Equal values do not establish one business domain; error customization and domain ownership require manual review."
+      "evidence": "Latest-50 adversarial review inspected every finding in the pinned <private-corpus> snapshot. Requiring an exact repeated same-order domain and preferring an existing module-level named schema reduced 179 findings to 62, removing 117 one-off extraction suggestions while retaining repeated-domain candidates. Focused cases cover imported Zod identity, order differences, customization and existing declarations.",
+      "outcome": "Retain warning. Report only exact repeated same-order finite domains without customization arguments and prefer an existing module-level named schema when available. Equal values still do not establish one business domain; customized errors and ownership remain manual review."
     },
     {
       "task": "rule-audit/eslint/prefer-switch-for-repeated-equality",
@@ -1731,8 +1731,8 @@
       "family": "typescript",
       "ruleId": "sole-export-matches-filename",
       "state": "complete",
-      "evidence": "Three independent reviews accepted the bounded precision repair; 31 focused cases pass, covering private-prefix preservation and exported destructuring. All 123 baseline corpus hits inspected; two Next/Astro reserved-name false positives removed. Remaining 121 are manual naming candidates, including two possible filename collisions. Eight pinned local roots, 2,963 parsed files and seven oversized exclusions; no worker exceptions. Concurrent timing is not controlled performance evidence.",
-      "outcome": "Exclude exact framework path/export contracts and unmodeled exported destructuring. Preserve one private underscore prefix. Retain warning without automatic rename; imported sibling collisions and domain naming require manual review."
+      "evidence": "Latest-50 adversarial review inspected every production-root finding in the pinned <private-corpus> snapshot. Whole-token filename/export matching reduced that set from 45 to 29 by accepting semantic compounds such as htmlEscape in html and matchGitHubRepoUrl in github-repo-url without accepting partial collisions such as UserRater in user-rate; the final exact 1,111-file full-snapshot pass retained 31 findings including non-production files. Focused cases cover acronyms, short generic names, framework contracts, private prefixes and destructuring.",
+      "outcome": "Retain warning without automatic rename. Compare semantic whole tokens across filenames and sole exports, guard short or generic tokens, exclude exact framework contracts and unmodeled destructuring, and preserve one private underscore prefix. Imported sibling collisions and domain naming remain manual review."
     },
     {
       "task": "rule-audit/python/complex-postgres-query-requires-architecture-review",

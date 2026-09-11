@@ -68,9 +68,10 @@ function isStaticValue(node: TSESTree.Node): boolean {
 }
 
 function propertyName(property: TSESTree.Property): string | null {
-  if (property.computed) return null;
-  if (property.key.type === AST_NODE_TYPES.Identifier) return property.key.name;
-  return typeof property.key.value === "string" ? property.key.value : null;
+  if (!property.computed && property.key.type === AST_NODE_TYPES.Identifier) return property.key.name;
+  return property.key.type === AST_NODE_TYPES.Literal && typeof property.key.value === "string"
+    ? property.key.value
+    : null;
 }
 
 export default createRule<Options, MessageIds>({

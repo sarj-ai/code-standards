@@ -27,7 +27,7 @@ export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
   category: "architecture",
   autofix: "none",
   limitations: [
-    "Only concrete classes with an explicit `implements` clause are checked; constructors and static members are excluded.",
+    "Only concrete classes with an explicit `implements` clause are checked; constructors, static members, protected extension hooks, and overrides are excluded.",
     "Inherited interface members are resolved by TypeScript. Computed names are excluded because their contract identity is not stable syntax.",
     "The rule abstains for the whole class when TypeScript cannot resolve any implemented contract, avoiding false positives for missing or unavailable package declarations.",
     "The rule is report-only because a public member can have consumers in another source file; the developer must choose whether to extend the interface or privatize it.",
@@ -91,6 +91,8 @@ function candidate(member: TSESTree.ClassElement): member is TSESTree.MethodDefi
     member.type === AST_NODE_TYPES.MethodDefinition &&
     member.kind !== "constructor" &&
     !member.static &&
+    member.accessibility !== "protected" &&
+    !member.override &&
     !member.computed &&
     member.key.type === AST_NODE_TYPES.Identifier &&
     member.value.body !== null

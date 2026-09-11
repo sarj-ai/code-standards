@@ -10,7 +10,8 @@ import { isGeneratedFile } from "./_paths.js";
 type MessageIds = "vagueDescription";
 type Options = readonly [];
 
-const DIRECTIVE_WITH_DESCRIPTION_RE = /^(?:eslint-(?:disable|disable-next-line|disable-line)\b[^:\n]*?|@ts-expect-error\b)\s*(?::|--)\s*(.+?)\s*$/iu;
+const ESLINT_DIRECTIVE_WITH_DESCRIPTION_RE = /^eslint-(?:disable|disable-next-line|disable-line)\b[^:\n]*?\s*(?::|--)\s*(.+?)\s*$/iu;
+const TS_EXPECT_ERROR_WITH_DESCRIPTION_RE = /^@ts-expect-error\b(?:(?:\s*(?::|--)\s*)|\s+)(.+?)\s*$/iu;
 const VAGUE_RE = /^(?:needed|required|intentional(?:ly)?|ignore(?:d)?|false positive|type error|typescript|to satisfy (?:the )?(?:linter|typescript|type checker))\.?$/iu;
 
 export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
@@ -60,6 +61,13 @@ export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
+function suppressionDescription(text: string): string | undefined {
+  return (
+    ESLINT_DIRECTIVE_WITH_DESCRIPTION_RE.exec(text)?.[1] ??
+    TS_EXPECT_ERROR_WITH_DESCRIPTION_RE.exec(text)?.[1]
+  )?.trim();
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-vague-suppression-description",
   documentation: NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION,
@@ -84,7 +92,7 @@ export default createRule<Options, MessageIds>({
       Program(): void {
         for (const comment of context.sourceCode.getAllComments()) {
           const text = comment.value.trim();
-          const description = DIRECTIVE_WITH_DESCRIPTION_RE.exec(text)?.[1]?.trim();
+          const description = suppressionDescription(text);
           if (description === undefined || !VAGUE_RE.test(description)) continue;
           context.report({
             loc: comment.loc,

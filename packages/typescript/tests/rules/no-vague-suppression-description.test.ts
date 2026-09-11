@@ -21,6 +21,7 @@ RULE_TESTER.run("no-vague-suppression-description", rule, {
   valid: [
     "// eslint-disable-next-line no-console -- CLI output is the public interface\nconsole.log(value);",
     "// @ts-expect-error -- vendor declaration omits the runtime overload added in v4\nlegacy.call(value);",
+    "// @ts-expect-error vendor declaration omits the runtime overload added in v4\nlegacy.call(value);",
     "// @ts-expect-error: generated SDK types model this nullable response as required\nread(value);",
     "// false positive in prose, not a directive\nconst value = 1;",
     "// Unlike @ts-expect-error -- needed, this prose does not suppress anything\nconst value = 1;",
@@ -46,6 +47,10 @@ RULE_TESTER.run("no-vague-suppression-description", rule, {
     },
     {
       code: "// @ts-expect-error: to satisfy linter\nlegacy.call(value);",
+      errors: [{ messageId: "vagueDescription" }],
+    },
+    {
+      code: "// @ts-expect-error needed\nlegacy.call(value);",
       errors: [{ messageId: "vagueDescription" }],
     },
     {

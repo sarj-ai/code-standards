@@ -19,7 +19,7 @@ export const NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION = {
   remediation: "Rethrow the error, assert on it, or use the runner's explicit skip mechanism when the capability is optional.",
   category: "testing",
   filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**", "**/__tests__/**"],
-  limitations: ["Only bare returns owned by a direct supported test callback and followed lexically by a framework assertion are reported."],
+  limitations: ["Only bare returns owned by a direct supported test callback and followed lexically by a framework assertion are reported. A runner skip suppresses the finding only when it is an unconditional earlier statement in the return's block."],
   examples: [
     { id: "rethrow", title: "Preserve the failure", outcome: "no-match", files: [{ path: "src/codec.test.ts", source: "test('decodes', () => { try { decode(); } catch (error) { throw error; } expect(result()).toBe('ok'); });" }], focusPath: "src/codec.test.ts", expectedCount: 0, public: true },
     { id: "bare-return", title: "Do not silently pass", outcome: "match", files: [{ path: "src/codec.test.ts", source: "test('decodes', () => { try { decode(); } catch { return; } expect(result()).toBe('ok'); });" }], focusPath: "src/codec.test.ts", expectedCount: 1, public: true },
@@ -43,10 +43,15 @@ function importedName(identifier: TSESTree.Identifier, context: Context, modules
   const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
   if (variable === null || variable.defs.length === 0) return identifier.name;
   for (const definition of variable.defs) {
-    if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) continue;
+    if (
+      definition.node.type !== AST_NODE_TYPES.ImportSpecifier &&
+      definition.node.type !== AST_NODE_TYPES.ImportDefaultSpecifier &&
+      definition.node.type !== AST_NODE_TYPES.ImportNamespaceSpecifier
+    ) continue;
     const declaration = definition.node.parent;
     if (declaration.type !== AST_NODE_TYPES.ImportDeclaration || typeof declaration.source.value !== "string" || !modules.has(declaration.source.value)) continue;
     if (declaration.source.value === "node:assert" || declaration.source.value === "node:assert/strict") return "assert";
+    if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) continue;
     const imported = definition.node.imported;
     return imported.type === AST_NODE_TYPES.Identifier ? imported.name : String(imported.value);
   }
@@ -106,6 +111,20 @@ function isExplicitSkip(node: TSESTree.Node, context: Context): boolean {
   return root !== null && TEST_NAMES.has(importedName(root, context, TEST_MODULES) ?? "");
 }
 
+function hasDominatingExplicitSkip(
+  node: TSESTree.ReturnStatement,
+  context: Context,
+): boolean {
+  const block = node.parent;
+  if (block?.type !== AST_NODE_TYPES.BlockStatement) return false;
+  return block.body.some(
+    (candidate) =>
+      candidate.range[1] <= node.range[0] &&
+      candidate.type === AST_NODE_TYPES.ExpressionStatement &&
+      isExplicitSkip(candidate.expression, context),
+  );
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-bare-return-from-test-catch",
   documentation: NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION,
@@ -128,11 +147,12 @@ export default createRule<Options, MessageIds>({
           if (current?.type === AST_NODE_TYPES.CatchClause) { catchClause = current; break; }
           if (current === null || current === undefined) break;
         }
-        if (catchClause === null || catchClause.parent.finalizer !== null) return;
+        if (catchClause === null) return;
         const parameter = catchClause.param;
-        if (parameter?.type === AST_NODE_TYPES.Identifier && node.parent === catchClause.body) {
+        const returnBlock = node.parent;
+        if (parameter?.type === AST_NODE_TYPES.Identifier && returnBlock?.type === AST_NODE_TYPES.BlockStatement) {
           const errorBinding = ASTUtils.findVariable(context.sourceCode.getScope(parameter), parameter.name);
-          const assertedError = catchClause.body.body.some((statement) => {
+          const assertedError = returnBlock.body.some((statement) => {
             if (statement.range[1] >= node.range[0] || statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
             const expression = statement.expression;
             if (expression.type !== AST_NODE_TYPES.CallExpression || !isAssertion(expression, context)) return false;
@@ -146,7 +166,7 @@ export default createRule<Options, MessageIds>({
           });
           if (assertedError) return;
         }
-        if (walkOwnScope(catchClause.body, (current) => current.type === AST_NODE_TYPES.ThrowStatement || isExplicitSkip(current, context))) return;
+        if (hasDominatingExplicitSkip(node, context)) return;
         if (!walkOwnScope(owner.body, (current) => current.range[0] > node.range[1] && isAssertion(current, context))) return;
         context.report({ node, messageId: "bareReturnFromTestCatch" });
       },

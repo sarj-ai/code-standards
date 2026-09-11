@@ -13,14 +13,14 @@ type Options = readonly [];
 const NEXT_CONFIG_RE = /(?:^|\/)next\.config\.[cm]?[jt]s$/;
 
 export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
-  summary: "Next.js image configuration enables unsanitized SVG rendering",
+  summary: "Next.js image configuration enables SVG rendering without the required response hardening",
   rationale:
     "SVG files can contain scripts and other active content; enabling dangerouslyAllowSVG makes the image optimizer serve that content from the application origin.",
   remediation:
-    "Keep dangerouslyAllowSVG disabled. If SVG delivery is unavoidable, use a separately reviewed asset path with restrictive Content-Disposition and Content-Security-Policy headers.",
+    "Keep dangerouslyAllowSVG disabled. If SVG optimization is required, retain attachment disposition and set the image Content-Security-Policy to `script-src 'none'; sandbox;`.",
   category: "security",
   limitations: [
-    "Only a literal true in the effective images property of a directly exported object, unescaped const alias, or isolated module.exports object is reported. Wrappers, factories, spreads, computed keys and mutations are not inferred.",
+    "Only literal effective properties of a directly exported object, unescaped const alias, or isolated module.exports object are analyzed. Wrappers, factories, spreads, computed keys, dynamic policies and mutations are not inferred.",
   ],
   examples: [
     {
@@ -44,6 +44,30 @@ export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
+function literalString(node: ReturnType<typeof exportedNextConfigProperty>): string | null {
+  if (node?.value.type === "Literal" && typeof node.value.value === "string") return node.value.value;
+  if (node?.value.type === "TemplateLiteral" && node.value.expressions.length === 0) return node.value.quasis[0]?.value.cooked ?? null;
+  return null;
+}
+
+function hasHardenedSvgPolicy(policy: string): boolean {
+  const directives = policy
+    .split(";")
+    .map((part) => part.trim().split(/\s+/u).filter(Boolean))
+    .filter((parts) => parts.length > 0);
+  const scriptSources = directives.filter(([name]) => name?.toLowerCase() === "script-src");
+  const sandboxes = directives.filter(([name]) => name?.toLowerCase() === "sandbox");
+  const scriptSource = scriptSources[0];
+  const sandbox = sandboxes[0];
+  return (
+    scriptSources.length === 1 &&
+    sandboxes.length === 1 &&
+    scriptSource?.length === 2 &&
+    scriptSource[1]?.toLowerCase() === "'none'" &&
+    sandbox?.length === 1
+  );
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-dangerously-allow-svg",
   documentation: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION,
@@ -53,7 +77,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       noDangerouslyAllowSvg:
-        "Do not enable dangerouslyAllowSVG. SVG can carry active content served from the application origin.",
+        "Do not enable dangerouslyAllowSVG without a script-blocking sandbox policy and attachment disposition. SVG can carry active content served from the application origin.",
     },
   },
   defaultOptions: [],
@@ -67,6 +91,12 @@ export default createRule<Options, MessageIds>({
           node.value.type === "Literal" &&
           node.value.value === true
         ) {
+          const disposition = exportedNextConfigProperty(context.sourceCode, ["images", "contentDispositionType"]);
+          const policy = literalString(
+            exportedNextConfigProperty(context.sourceCode, ["images", "contentSecurityPolicy"]),
+          );
+          const attachmentDisposition = disposition === null || literalString(disposition) === "attachment";
+          if (attachmentDisposition && policy !== null && hasHardenedSvgPolicy(policy)) return;
           context.report({ node, messageId: "noDangerouslyAllowSvg" });
         }
       },

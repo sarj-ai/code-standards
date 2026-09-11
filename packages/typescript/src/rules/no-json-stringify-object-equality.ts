@@ -87,11 +87,11 @@ function jsonStringifyArgument(
   const { callee } = expression;
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
     callee.object.type !== AST_NODE_TYPES.Identifier ||
     callee.object.name !== "JSON" ||
-    callee.property.type !== AST_NODE_TYPES.Identifier ||
-    callee.property.name !== "stringify"
+    (!callee.computed
+      ? callee.property.type !== AST_NODE_TYPES.Identifier || callee.property.name !== "stringify"
+      : callee.property.type !== AST_NODE_TYPES.Literal || callee.property.value !== "stringify")
   ) {
     return null;
   }
