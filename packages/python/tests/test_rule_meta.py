@@ -47,7 +47,6 @@ _RENAMED_RULES = {
     "no-string-concat-in-loop": ("SARJ002", ("inefficient-string-concat-in-loop",)),
     "opaque-parametrize-case-needs-id": ("SARJ042", ("parametrize-case-needs-id",)),
     "pytest-fixture-returns-bare-tuple": ("SARJ044", ("fixture-returns-bare-tuple",)),
-    "repeated-kwarg-heavy-call-in-test": ("SARJ045", ("kwarg-heavy-construction-in-test",)),
     "store-get-delegates-to-bulk-read": ("SARJ421", ("get-delegates-to-get-many",)),
     "require-keyword-only-swap-prone-params": ("SARJ034", ("kwonly-same-type-params",)),
     "timestamp-order-requires-tiebreaker": ("SARJ407", ("created-at-order-requires-tiebreaker",)),

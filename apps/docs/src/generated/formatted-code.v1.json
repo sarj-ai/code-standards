@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "28faeb95927e565ff31f9b3d7487737b8efd3ddc8a6e592e22850a63eeb07386",
+  "catalogSha256": "afb291742c83d0dd4664ce061d1d3d51528e6732d0665c8a338d6ac2c1759ef4",
   "cliSha256": "a1727c9b0e343cc8b9d12e726123b16407279125f0782a0121331da3c1ef139a",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -7427,41 +7427,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Docstring repeats the module path"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:repeated-kwarg-heavy-call-in-test": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "tests/test_call.py",
-              "source": "ORDER_DEFAULTS = {\n    \"organization_id\": \"org-1\",\n    \"actor_id\": \"user-1\",\n    \"currency\": \"SAR\",\n    \"locale\": \"ar-SA\",\n    \"channel\": \"web\",\n    \"notify_customer\": True,\n    \"retry_limit\": 3,\n}\n\n\ndef make_order(status):\n    return CreateOrderRequest(**ORDER_DEFAULTS, status=status)\n\n\ndef test_pending_order():\n    assert make_order(\"pending\").status == \"pending\"\n\n\ndef test_completed_order():\n    assert make_order(\"completed\").status == \"completed\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_call.py",
-          "id": "construction-through-builder",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Tests keep incidental order defaults in one helper"
-        },
-        {
-          "expectedCount": 2,
-          "files": [
-            {
-              "path": "tests/test_call.py",
-              "source": "def test_pending_order():\n    request = CreateOrderRequest(\n        organization_id=\"org-1\",\n        actor_id=\"user-1\",\n        currency=\"SAR\",\n        locale=\"ar-SA\",\n        channel=\"web\",\n        notify_customer=True,\n        retry_limit=3,\n        status=\"pending\",\n    )\n    assert request.status == \"pending\"\n\n\ndef test_completed_order():\n    request = CreateOrderRequest(\n        organization_id=\"org-1\",\n        actor_id=\"user-1\",\n        currency=\"SAR\",\n        locale=\"ar-SA\",\n        channel=\"web\",\n        notify_customer=True,\n        retry_limit=3,\n        status=\"completed\",\n    )\n    assert request.status == \"completed\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_call.py",
-          "id": "repeated-wide-construction",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Tests repeat incidental order setup"
         }
       ],
       "optionsSchemaSource": null
