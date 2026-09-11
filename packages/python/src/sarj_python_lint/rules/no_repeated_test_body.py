@@ -44,6 +44,7 @@ _MIN_STATEMENTS = 3
 
 # Members of a normalized-body group before it counts as copy-paste.
 _MIN_GROUP = 2
+_MIN_SHORT_CASE_GROUP = 3
 
 # Small source-checker pairs often read better as individually named contracts.
 # A longer uninterrupted run is a case table whose repeated shell obscures the cases.
@@ -114,21 +115,22 @@ class NoRepeatedTestBody(Rule):
         limitations=(
             "Only substantial sibling test bodies in one non-generated module are compared.",
             "A run of at least five two-statement embedded-source checker cases is compared because the source documents are natural parameter values.",
+            "At least three consecutive call-and-literal-equality cases with corroborating behavior names are compared even with only two statements.",
             "Meaningful docstring or comment differences keep tests distinct.",
             "Two-test groups with varying literals require corroborating behavior names; long scenario prose and distinct API resources remain separate contracts.",
         ),
         examples=(
             RuleExample(
-                example_id="copy-pasted-tests",
-                title="Copy-pasted tests hide the changing case dimension",
+                example_id="short-literal-cases",
+                title="Consecutive short cases repeat the same call and assertion",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
-                        "tests/test_permissions.py",
-                        'def test_rejects_blank_role():\n    role = parse_role("")\n    result = validate(role)\n    assert result.invalid\n\ndef test_rejects_space_role():\n    role = parse_role(" ")\n    result = validate(role)\n    assert result.invalid\n\ndef test_rejects_tab_role():\n    role = parse_role("\\t")\n    result = validate(role)\n    assert result.invalid\n',
+                        "tests/test_parser.py",
+                        'def test_parse_one():\n    result = parse("a")\n    assert result == 1\n\ndef test_parse_two():\n    result = parse("b")\n    assert result == 2\n\ndef test_parse_three():\n    result = parse("c")\n    assert result == 3\n',
                     ),
                 ),
-                focus_path=PurePosixPath("tests/test_permissions.py"),
+                focus_path=PurePosixPath("tests/test_parser.py"),
                 expected_count=1,
                 public=True,
             ),
@@ -349,7 +351,7 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
         if in_test_case or _uses_unittest_api(node):
             continue
         outline = _Outline(node, container)
-        if outline.statements < _MIN_STATEMENTS and not outline.embedded_source_checker:
+        if outline.statements < _MIN_STATEMENTS and not (outline.embedded_source_checker or _is_short_case(node)):
             continue
         outlines.setdefault(outline.key, []).append(outline)
 
@@ -366,11 +368,22 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
             shape = _Shape(outline.node, comments, imports)
             groups.setdefault(shape.key, []).append(shape)
         for members in groups.values():
-            candidates = (
-                _consecutive_embedded_source_groups(members, positions)
-                if all(member.embedded_source_checker for member in members)
-                else [members]
-            )
+            if all(_is_short_case(member.node) for member in members):
+                candidates = [
+                    run
+                    for run in _consecutive_groups(members, positions)
+                    if len(run) >= _MIN_SHORT_CASE_GROUP
+                    and _test_name_tokens(run[0].node.name).intersection(
+                        *(_test_name_tokens(member.node.name) for member in run[1:])
+                    )
+                    - _WEAK_TEST_NAME_TOKENS
+                ]
+            else:
+                candidates = (
+                    _consecutive_embedded_source_groups(members, positions)
+                    if all(member.embedded_source_checker for member in members)
+                    else [members]
+                )
             found.extend(
                 candidate
                 for candidate in candidates
@@ -391,13 +404,21 @@ def duplicate_test_owner_ids(tree: ast.Module, source: str) -> frozenset[int]:
 
 
 def _consecutive_embedded_source_groups(members: list[_Shape], positions: dict[int, int]) -> list[list[_Shape]]:
+    return [
+        run
+        for run in _consecutive_groups(members, positions)
+        if len(run) >= _MIN_EMBEDDED_SOURCE_GROUP and _shares_embedded_source_signal(run)
+    ]
+
+
+def _consecutive_groups(members: list[_Shape], positions: dict[int, int]) -> list[list[_Shape]]:
     ordered = sorted(members, key=lambda member: positions[id(member.node)])
     runs: list[list[_Shape]] = []
     for member in ordered:
         if not runs or positions[id(member.node)] != positions[id(runs[-1][-1].node)] + 1:
             runs.append([])
         runs[-1].append(member)
-    return [run for run in runs if len(run) >= _MIN_EMBEDDED_SOURCE_GROUP and _shares_embedded_source_signal(run)]
+    return runs
 
 
 def _shares_embedded_source_signal(members: list[_Shape]) -> bool:
@@ -544,6 +565,19 @@ def _body_without_docstring(node: ast.FunctionDef | ast.AsyncFunctionDef) -> lis
     if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant):
         return body[1:]
     return body
+
+
+def _is_short_case(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    match _body_without_docstring(node):
+        case [
+            ast.Assign(targets=[ast.Name(id=name)], value=ast.Call()),
+            ast.Assert(
+                test=ast.Compare(left=ast.Name(id=result), ops=[ast.Eq()], comparators=[ast.Constant()]), msg=None
+            ),
+        ]:
+            return name == result
+        case _:
+            return False
 
 
 def _is_embedded_source_checker(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

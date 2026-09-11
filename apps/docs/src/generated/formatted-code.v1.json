@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a19a15a3486016d6190ce0156621ae1282685c683bd92addc70e6b4b1c4250cd",
-  "cliSha256": "823f930fc63102d825c21d4f42e898bfe0353d6043380c4a064ab81ad5a91ee2",
+  "catalogSha256": "507f779e5de9a25b7cc1854ab5286209973694fea9ec0b62e298850ec512dece",
+  "cliSha256": "034514c907ece6a1de9e8c5e74ea73bb6e238ec0e25f2cfb646259065a5fb1ac",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5607,21 +5607,6 @@
     "python:no-repeated-test-body": {
       "examples": [
         {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "tests/test_permissions.py",
-              "source": "def test_rejects_blank_role():\n    role = parse_role(\"\")\n    result = validate(role)\n    assert result.invalid\n\n\ndef test_rejects_space_role():\n    role = parse_role(\" \")\n    result = validate(role)\n    assert result.invalid\n\n\ndef test_rejects_tab_role():\n    role = parse_role(\"\\t\")\n    result = validate(role)\n    assert result.invalid\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "tests/test_permissions.py",
-          "id": "copy-pasted-tests",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Copy-pasted tests hide the changing case dimension"
-        },
-        {
           "expectedCount": 0,
           "files": [
             {
@@ -5650,6 +5635,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One named case table exposes the changing inputs"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_parser.py",
+              "source": "def test_parse_one():\n    result = parse(\"a\")\n    assert result == 1\n\n\ndef test_parse_two():\n    result = parse(\"b\")\n    assert result == 2\n\n\ndef test_parse_three():\n    result = parse(\"c\")\n    assert result == 3\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_parser.py",
+          "id": "short-literal-cases",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Consecutive short cases repeat the same call and assertion"
         },
         {
           "expectedCount": 1,
@@ -7938,15 +7938,15 @@
           "files": [
             {
               "path": "tests/test_widget.py",
-              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget()\n"
+              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\n_make_widget()\n_make_widget(size=3)\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "tests/test_widget.py",
-          "id": "unused-size-option",
+          "id": "invariant-size-option",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Keep an invariant size inside the factory"
+          "title": "Repeated calls never vary the option"
         }
       ],
       "optionsSchemaSource": null

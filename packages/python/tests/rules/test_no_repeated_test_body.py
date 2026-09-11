@@ -1428,3 +1428,63 @@ def test_a_pathologically_deep_body_does_not_exhaust_the_stack():
 
 def test_ordinary_duplicates_are_still_found_after_the_recursion_guard():
     assert len(_check(_COPY_PASTED_PAIR)) == 1
+
+
+_SHORT_CASES = """
+def test_parse_alpha():
+    result = parse("a")
+    assert result == 1
+
+
+def test_parse_beta():
+    result = parse("b")
+    assert result == 2
+
+
+def test_parse_gamma():
+    result = parse("c")
+    assert result == 3
+"""
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(_SHORT_CASES, 1, id="three-consecutive-cases"),
+        pytest.param(_SHORT_CASES.split("def test_parse_gamma", maxsplit=1)[0], 0, id="pair-is-too-small"),
+        pytest.param(
+            _SHORT_CASES.replace(
+                "def test_parse_gamma", "def test_other():\n    assert other()\n\ndef test_parse_gamma"
+            ),
+            0,
+            id="intervening-contract",
+        ),
+        pytest.param(_SHORT_CASES.replace('parse("b")', 'other("b")'), 0, id="different-callee"),
+        pytest.param(_SHORT_CASES.replace("result == 2", "result != 2"), 0, id="different-assertion"),
+        pytest.param(
+            _SHORT_CASES.replace('parse("b")', 'parse("b")  # independent contract'), 0, id="distinct-comment"
+        ),
+        pytest.param(
+            _SHORT_CASES.replace("def test_parse_beta", "@pytest.mark.slow\ndef test_parse_beta"),
+            0,
+            id="different-mark",
+        ),
+        pytest.param(
+            _SHORT_CASES.replace("test_parse_beta()", "test_parse_beta(resource)"), 0, id="different-fixtures"
+        ),
+        pytest.param(
+            _SHORT_CASES.replace('"a"', '"/users"').replace('"b"', '"/jobs"').replace('"c"', '"/tasks"'),
+            0,
+            id="different-api-resources",
+        ),
+        pytest.param(
+            _SHORT_CASES.replace("test_parse_alpha", "test_accepts_alpha").replace(
+                "test_parse_beta", "test_rejects_beta"
+            ),
+            0,
+            id="distinct-contract-names",
+        ),
+    ],
+)
+def test_short_case_groups(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected
