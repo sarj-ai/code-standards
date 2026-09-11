@@ -34,3 +34,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["packages/python/src/sarj_python_lint"]
+
+[tool.deptry]
+# Sibling projects are checked against their own manifests; this root wheel ships only the Python linter.
+extend_exclude = ["packages/(bootstrap|iac|sql|standards.*|python/tests)"]
+known_first_party = ["sarj_python_lint"]

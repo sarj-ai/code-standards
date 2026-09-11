@@ -8,6 +8,7 @@ import sys
 import time
 from typing import TYPE_CHECKING
 
+from deptry.cli import cli as deptry_cli
 from pydantic import ValidationError
 import pytest
 
@@ -115,6 +116,7 @@ def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(tm
     source = tmp_path / "packages" / "api" / "src" / "api.py"
     source.parent.mkdir(parents=True)
     source.write_text("import transitive\n", encoding="utf-8")
+    (source.parent / "helper.py").write_text("", encoding="utf-8")
     project = source.parents[1]
     (project / "pyproject.toml").write_text("[project]\nname='api'\nversion='1'\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
@@ -141,7 +143,8 @@ def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(tm
     assert [item.code for item in reports[0].diagnostics] == ["DEP003"]
     assert "DEP004,DEP005" in seen[0]
     assert "DEP001,DEP002,DEP003" in seen[0]
-    assert seen[0][seen[0].index("--known-first-party") + 1] == "api"
+    with deptry_cli.make_context("deptry", list(seen[0][1:])) as context:
+        assert context.params["known_first_party"] == ("api", "helper")
 
 
 def test_deptry_skips_python_without_dependency_metadata(tmp_path: Path) -> None:

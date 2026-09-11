@@ -2773,7 +2773,7 @@ def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str
 def _deptry_argv(project: Path) -> tuple[str, ...]:
     config_args = ("--config", str(project / "pyproject.toml")) if (project / "pyproject.toml").is_file() else ()
     first_party = _deptry_first_party_modules(project)
-    first_party_args = ("--known-first-party", ",".join(first_party)) if first_party else ()
+    first_party_args = tuple(arg for module in first_party for arg in ("--known-first-party", module))
     return (
         _project_analyzer(project, "deptry"),
         ".",
