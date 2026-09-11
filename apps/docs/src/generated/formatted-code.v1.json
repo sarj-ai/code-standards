@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "28551ccf13ed2659e316771cf27073cb6787f66d9d1f5cec8190e9ad88661a98",
-  "cliSha256": "9b5acf63386848f4498654452ccc8eb19df58ba5633eca461f18b0ecdcf21732",
+  "catalogSha256": "a19a15a3486016d6190ce0156621ae1282685c683bd92addc70e6b4b1c4250cd",
+  "cliSha256": "6bd1b6e3539bcce45a20bd2a3ec79221d6f7ba84319c87eaf46aa975bc8d2914",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -7912,6 +7912,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "An exception carries nominal reason records"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:unused-test-factory-option": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget(size=4)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "exercised-size-option",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep customization that a caller exercises"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_widget.py",
+              "source": "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n\ndef test_widget():\n    assert _make_widget()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_widget.py",
+          "id": "unused-size-option",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keep an invariant size inside the factory"
         }
       ],
       "optionsSchemaSource": null

@@ -154,6 +154,7 @@ from sarj_python_lint.rules.trailing_value_narration import TrailingValueNarrati
 from sarj_python_lint.rules.typed_error_reasons import TypedErrorReasons
 from sarj_python_lint.rules.uncontrolled_randomness_in_test import UncontrolledRandomnessInTest
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
+from sarj_python_lint.rules.unused_test_factory_option import UnusedTestFactoryOption
 
 
 if TYPE_CHECKING:
@@ -219,6 +220,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoFrozenAfterValidatorFieldWrite.id: NoFrozenAfterValidatorFieldWrite,
         NoRepeatedTestBody.id: NoRepeatedTestBody,
         UnusedMockSetup.id: UnusedMockSetup,
+        UnusedTestFactoryOption.id: UnusedTestFactoryOption,
         PreferFstringOverConcat.id: PreferFstringOverConcat,
         PreferOrPattern.id: PreferOrPattern,
         RequirePortForService.id: RequirePortForService,
