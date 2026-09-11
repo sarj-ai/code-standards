@@ -80,12 +80,43 @@ def test_matching_manifest_bump_satisfies_source_change(tmp_path: Path) -> None:
             )
         if argv[-1] == "packages/python/pyproject.toml":
             return ProcessResult(0, '+version = "0.50.0"\n')
+        if argv[:2] == ("git", "show"):
+            return ProcessResult(0, 'version = "0.49.0"\n')
         return ProcessResult(0, "")
 
-    report = check_release_causality(tmp_path, before="base", after="head", runner=runner)
+    report = check_release_causality(
+        tmp_path,
+        before="base",
+        after="head",
+        runner=runner,
+        tag_checker=lambda *_args, **_kwargs: True,
+    )
 
     assert report.ok
     assert report.bumped_targets == ("python",)
+
+
+def test_version_bump_cannot_supersede_an_unverified_prior_release(tmp_path: Path) -> None:
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if "--name-only" in argv:
+            return ProcessResult(0, "packages/python/pyproject.toml\0")
+        if argv[:2] == ("git", "show"):
+            return ProcessResult(0, 'version = "0.49.0"\n')
+        if argv[-1] == "packages/python/pyproject.toml":
+            return ProcessResult(0, '+version = "0.50.0"\n')
+        return ProcessResult(0, "")
+
+    report = check_release_causality(
+        tmp_path,
+        before="base",
+        after="head",
+        runner=runner,
+        tag_checker=lambda *_args, **_kwargs: False,
+    )
+
+    assert not report.ok
+    assert report.violations[-1].render() == "python: cannot supersede unverified prior release python-v0.49.0"
 
 
 def test_tests_locks_and_generated_readmes_do_not_force_noop_releases(tmp_path: Path) -> None:

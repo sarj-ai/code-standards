@@ -5,12 +5,20 @@ from typing import TYPE_CHECKING
 
 from sarj_standards.libs.release.process import ProcessRunner, run_process
 from sarj_standards.libs.release.registry import PublicationChecker, publication_exists, target_requirements
-from sarj_standards.libs.release.tags import RELEASE_TARGETS, release_manifests
+from sarj_standards.libs.release.tags import (
+    RELEASE_TARGETS,
+    ReleaseTargetId,
+    current_release_tag,
+    release_manifests,
+    verify_remote_release_tags,
+)
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Callable, Mapping
     from pathlib import Path
+
+    type ReleaseTagVerifier = Callable[..., tuple[str, ...]]
 
 
 _ADDED_JSON_VERSION = re.compile(r'(?m)^\+\s*"version"\s*:')
@@ -47,6 +55,12 @@ def pending_release_targets(
     after: str,
     runner: ProcessRunner = run_process,
     checker: PublicationChecker = publication_exists,
+    tag_verifier: ReleaseTagVerifier = verify_remote_release_tags,
 ) -> Mapping[str, bool]:
     _ = changed_release_targets(root, before=before, after=after, runner=runner)
-    return {name: not all(checker(item) for item in target_requirements(root, name)) for name in RELEASE_TARGETS}
+    missing_tags = set(tag_verifier(root, commit=after, runner=runner))
+    return {
+        name: current_release_tag(ReleaseTargetId(name), root) in missing_tags
+        or not all(checker(item) for item in target_requirements(root, name))
+        for name in RELEASE_TARGETS
+    }

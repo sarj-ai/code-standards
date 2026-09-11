@@ -1642,7 +1642,7 @@ def _invoke_deptry_projects(
         project_id = project.relative_to(root).as_posix() or None
         invocation_id = InvocationId("deptry" if project_id is None else f"deptry:{project_id}")
         try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary preserves complete per-project telemetry.
-            output = runner(_deptry_argv(project), cwd=project)
+            output = runner(_deptry_argv(project, scoped_files), cwd=project)
             payload = "\n".join(value for value in (output.stdout, output.stderr) if value)
             diagnostics = parse_deptry(payload, root=root, project=project)
             if output.returncode not in {0, 1} or (output.returncode == 1 and not diagnostics):
@@ -2770,13 +2770,13 @@ def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str
     return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
 
 
-def _deptry_argv(project: Path) -> tuple[str, ...]:
+def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
     config_args = ("--config", str(project / "pyproject.toml")) if (project / "pyproject.toml").is_file() else ()
     first_party = _deptry_first_party_modules(project)
     first_party_args = tuple(arg for module in first_party for arg in ("--known-first-party", module))
     return (
         _project_analyzer(project, "deptry"),
-        ".",
+        *_deptry_scan_roots(project, scoped_files),
         *config_args,
         *first_party_args,
         "--ignore",
@@ -2786,6 +2786,14 @@ def _deptry_argv(project: Path) -> tuple[str, ...]:
         "DEP001,DEP002,DEP003",
         "--no-ansi",
     )
+
+
+def _deptry_scan_roots(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
+    roots: set[str] = set()
+    for raw_file in scoped_files:
+        relative = Path(raw_file).resolve().relative_to(project)
+        roots.add("." if len(relative.parts) == 1 else relative.parts[0])
+    return tuple(sorted(roots))
 
 
 def _deptry_first_party_modules(project: Path) -> tuple[str, ...]:

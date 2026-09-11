@@ -26,6 +26,11 @@ def _manifests(root: Path) -> None:
     compatibility.write_text('version = "1.0.0"\n', encoding="utf-8")
 
 
+def _unchanged(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+    _ = argv, cwd, capture_output
+    return ProcessResult(0, "")
+
+
 def test_changed_release_targets_detects_only_manifest_version_lines(tmp_path: Path) -> None:
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
@@ -78,6 +83,7 @@ def test_pending_release_targets_publish_only_current_versions_missing_from_regi
         after="after",
         runner=runner,
         checker=published,
+        tag_verifier=lambda *_args, **_kwargs: (),
     )
 
     assert pending["standards"] is False
@@ -99,6 +105,7 @@ def test_pending_standards_release_recovers_when_only_compatibility_project_is_m
         after="after",
         runner=unchanged,
         checker=lambda requirement: requirement.name != "sarj-standards",
+        tag_verifier=lambda *_args, **_kwargs: (),
     )
 
     assert pending["standards"] is True
@@ -118,6 +125,7 @@ def test_pending_release_target_changed_but_already_public_is_a_noop(tmp_path: P
         after="after",
         runner=runner,
         checker=lambda _requirement: True,
+        tag_verifier=lambda *_args, **_kwargs: (),
     )
 
     assert not any(pending.values())
@@ -141,4 +149,54 @@ def test_pending_release_targets_fails_closed_when_registry_lookup_fails(tmp_pat
             after="after",
             runner=runner,
             checker=unavailable,
+            tag_verifier=lambda *_args, **_kwargs: (),
+        )
+
+
+def test_registry_visible_target_without_verification_tag_remains_pending(tmp_path: Path) -> None:
+    _manifests(tmp_path)
+
+    pending = pending_release_targets(
+        tmp_path,
+        before="before",
+        after="after",
+        runner=_unchanged,
+        checker=lambda _requirement: True,
+        tag_verifier=lambda *_args, **_kwargs: ("typescript-v1.0.0",),
+    )
+
+    assert pending["typescript"] is True
+    assert all(not value for name, value in pending.items() if name != "typescript")
+
+
+def test_registry_visible_target_with_verified_tag_is_complete(tmp_path: Path) -> None:
+    _manifests(tmp_path)
+
+    pending = pending_release_targets(
+        tmp_path,
+        before="before",
+        after="after",
+        runner=_unchanged,
+        checker=lambda _requirement: True,
+        tag_verifier=lambda *_args, **_kwargs: (),
+    )
+
+    assert not any(pending.values())
+
+
+def test_wrong_commit_verification_tag_fails_closed(tmp_path: Path) -> None:
+    _manifests(tmp_path)
+
+    def reject_wrong_commit(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        message = "existing remote tag typescript-v1.0.0 points to wrong-commit"
+        raise ValueError(message)
+
+    with pytest.raises(ValueError, match="points to wrong-commit"):
+        _ = pending_release_targets(
+            tmp_path,
+            before="before",
+            after="after",
+            runner=_unchanged,
+            checker=lambda _requirement: True,
+            tag_verifier=reject_wrong_commit,
         )

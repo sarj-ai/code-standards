@@ -209,6 +209,7 @@ def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
 
     assert "needs.build-tsconfig.outputs.artifact_sha256" in tsconfig_publish
     assert "verify_registry_publication.py npm" in tsconfig_publish
+    assert "--publish" in tsconfig_publish
     assert "--environment npm-tsconfig-release" in tsconfig_publish
 
 
@@ -218,9 +219,42 @@ def test_typescript_release_verifies_its_own_registry_artifact() -> None:
 
     assert "needs.build-typescript.outputs.artifact_sha256" in publish
     assert "verify_registry_publication.py npm" in publish
+    assert "--publish" in publish
     assert "--environment npm-typescript-release" in publish
     assert "needs.build-design" not in publish
     assert "@sarj/design" not in publish
+
+
+def test_npm_release_reconciles_without_republishing() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    typescript_publish = workflow.split("  publish-typescript:", 1)[1].split("  build-bootstrap:", 1)[0]
+    tsconfig_publish = workflow.split("  publish-tsconfig:", 1)[1]
+
+    assert "schedule:" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert "cron: '17 * * * *'" in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        "BEFORE: ${{ github.event.before || github.sha }}" in workflow
+    )
+    assert "run: npm publish" not in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+    for publisher in (typescript_publish, tsconfig_publish):
+        assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+            "timeout-minutes: 45" in publisher
+        )
+        assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+            "verify_registry_publication.py npm" in publisher
+        )
+        assert "--publish" in publisher  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+
+
+def test_npm_tag_recovery_checks_full_history_against_the_current_commit() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        workflow.count("fetch-depth: 0") >= 9
+    )
+    assert (  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+        workflow.count("EXPECTED_COMMIT: ${{ github.sha }}") == 2
+    )
 
 
 def test_every_pypi_publish_job_verifies_exact_bytes_and_attestations() -> None:

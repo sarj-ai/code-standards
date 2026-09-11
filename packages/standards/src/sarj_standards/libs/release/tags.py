@@ -138,9 +138,18 @@ def release_manifests(target: ReleaseTarget) -> tuple[tuple[Path, ManifestFormat
 
 def read_manifest_version(path: Path, manifest_format: ManifestFormat) -> str:
     try:
-        data = _read_manifest(path, manifest_format)
-    except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
+        contents = path.read_text(encoding="utf-8")
+    except OSError as exc:
         msg = f"could not read release manifest {path}: {exc}"
+        raise ValueError(msg) from exc
+    return read_manifest_version_text(contents, manifest_format, label=str(path))
+
+
+def read_manifest_version_text(contents: str, manifest_format: ManifestFormat, *, label: str) -> str:
+    try:
+        data = _read_manifest_text(contents, manifest_format)
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
+        msg = f"could not read release manifest {label}: {exc}"
         raise ValueError(msg) from exc
     version = data.get("version")
     if manifest_format == "toml" and not isinstance(version, str):
@@ -148,18 +157,17 @@ def read_manifest_version(path: Path, manifest_format: ManifestFormat) -> str:
         project_data = string_object_dict(project, label="project table") if is_object_dict(project) else {}
         version = project_data.get("version")
     if not isinstance(version, str) or not version:
-        msg = f"release manifest {path} has no non-empty package version"
+        msg = f"release manifest {label} has no non-empty package version"
         raise ValueError(msg)
     return version
 
 
-def _read_manifest(path: Path, manifest_format: ManifestFormat) -> dict[str, object]:
+def _read_manifest_text(contents: str, manifest_format: ManifestFormat) -> dict[str, object]:
     if manifest_format == "json":
-        untyped: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+        untyped: object = json.loads(contents)  # pyright: ignore[reportAny]
         return string_object_dict(untyped, label="release manifest")
-    with path.open("rb") as manifest:
-        untyped_toml: object = tomllib.load(manifest)
-        return string_object_dict(untyped_toml, label="release manifest")
+    untyped_toml: object = tomllib.loads(contents)
+    return string_object_dict(untyped_toml, label="release manifest")
 
 
 def validate_release_tag(
@@ -189,7 +197,7 @@ def validate_release_tag(
     return ValidatedReleaseTag(tag, target_name, actual, target.manifest)
 
 
-def _current_tag(target_name: ReleaseTargetId, root: Path) -> str:
+def current_release_tag(target_name: ReleaseTargetId, root: Path) -> str:
     target = RELEASE_TARGETS.get(target_name)
     if target is None:
         msg = f"unsupported release target: {target_name}"
@@ -218,7 +226,7 @@ def missing_remote_release_tags(
     runner: ProcessRunner = run_process,
 ) -> tuple[str, ...]:
     resolved = root.resolve()
-    tags = (_current_tag(ReleaseTargetId(target), resolved) for target in RELEASE_TARGETS)
+    tags = (current_release_tag(ReleaseTargetId(target), resolved) for target in RELEASE_TARGETS)
     return tuple(tag for tag in tags if not _remote_tag_exists(resolved, tag, runner=runner))
 
 
@@ -243,12 +251,42 @@ def verify_remote_release_tags(
     missing: list[str] = []
     for target_text in RELEASE_TARGETS:
         target_name = ReleaseTargetId(target_text)
-        tag = _current_tag(target_name, resolved)
+        tag = current_release_tag(target_name, resolved)
         if not _remote_tag_exists(resolved, tag, runner=runner):
             missing.append(tag)
             continue
         _require_remote_tag_commit(resolved, tag, target_name, resolved_commit, runner=runner)
     return tuple(missing)
+
+
+def has_verified_release_tag(
+    root: Path,
+    target_name: ReleaseTargetId,
+    *,
+    version: str,
+    commit: str,
+    runner: ProcessRunner = run_process,
+) -> bool:
+    resolved = root.resolve()
+    if not version or any(character.isspace() or character == "/" for character in version):
+        msg = f"invalid release version for {target_name}: {version!r}"
+        raise ValueError(msg)
+    if not commit or commit.startswith("-"):
+        msg = "release tag verification requires an explicit publishing commit"
+        raise ValueError(msg)
+    tag = f"{target_name}-v{version}"
+    if not _remote_tag_exists(resolved, tag, runner=runner):
+        return False
+    resolved_commit = (
+        runner(
+            ("git", "rev-parse", "--verify", f"{commit}^{{commit}}"),
+            cwd=resolved,
+            capture_output=True,
+        ).stdout.strip()
+        or commit
+    )
+    _require_remote_tag_commit(resolved, tag, target_name, resolved_commit, runner=runner)
+    return True
 
 
 def create_release_tags(
@@ -296,7 +334,7 @@ def create_release_tags(
         except ValueError as exc:
             msg = f"unsupported release target: {target_text}"
             raise ValueError(msg) from exc
-        tag = _current_tag(target, resolved)
+        tag = current_release_tag(target, resolved)
         if _remote_tag_exists(resolved, tag, runner=runner):
             _require_remote_tag_commit(resolved, tag, target, resolved_commit, runner=runner)
             existing.append(tag)
