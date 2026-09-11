@@ -462,6 +462,13 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
         PurePosixPath(".github/workflows/ci.yml"),
     ),
     EvaluationCase(
+        "shell-nested-if-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            if make nested-probe; then make test; fi\n          fi\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
         "shell-loop-program",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: |\n          for item in api worker; do\n            make test-package PACKAGE=$item\n          done\n",

@@ -756,11 +756,18 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     expected_count=1,
                 ),
                 _public_example(
-                    example_id="workflow-repository-entrypoint",
-                    title="Call a tested repository-owned entrypoint",
+                    example_id="workflow-single-decision",
+                    title="Keep one workflow gating decision inline",
                     outcome=ExpectedOutcome.NO_MATCH,
                     path=".github/workflows/ci.yml",
-                    source="jobs:\n  test:\n    steps:\n      - run: make test\n",
+                    source=(
+                        "jobs:\n  test:\n    steps:\n      - run: |\n"
+                        "          if make probe; then\n"
+                        "            make test\n"
+                        "          else\n"
+                        "            echo 'not applicable'\n"
+                        "          fi\n"
+                    ),
                     expected_count=0,
                 ),
             ),
