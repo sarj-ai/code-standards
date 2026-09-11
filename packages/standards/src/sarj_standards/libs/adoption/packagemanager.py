@@ -288,8 +288,9 @@ def install_note(client: PackageManager, *, yarn: YarnVariant = YarnVariant.CLAS
             note += (
                 " Yarn 4.15+ also refuses a package published within its minimum release"
                 " age (`All versions satisfying ... are quarantined`); if a fresh"
-                " @sarj/eslint-plugin trips that, set `npmMinimalAgeGate: 0` in"
-                " .yarnrc.yml or wait it out."
+                " @sarj/eslint-plugin trips that, wait until it clears the gate or,"
+                " after review, add its exact package descriptor to `npmPreapprovedPackages`."
+                " Keep `npmMinimalAgeGate` unchanged."
             )
         return note
     if client is PackageManager.PNPM:
