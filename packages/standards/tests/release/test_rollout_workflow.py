@@ -174,5 +174,6 @@ def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> Non
     assert isinstance(command, str)
     assert 'version="${STANDARDS_TAG#standards-v}"' in command
     assert "gh workflow run standards-rollout.yml" in command
+    assert '--repo "$GITHUB_REPOSITORY"' in command
     assert '--ref "$STANDARDS_TAG"' in command
     assert '-f version="$version"' in command
