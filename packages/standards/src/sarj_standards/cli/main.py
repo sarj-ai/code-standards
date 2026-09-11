@@ -1004,7 +1004,7 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged an
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path), root=root)]
         if not args.files and not react_doctor_triggered:
-            return 0
+            return _run_canonical_check(root, (), trusted=args.trust_repository_code, staged=True)
     if args.output_format != "text":
         if _validate_analysis_output(args, root):
             return 2

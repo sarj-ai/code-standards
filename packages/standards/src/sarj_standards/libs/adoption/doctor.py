@@ -238,6 +238,8 @@ def diagnose(root: Path) -> list[Finding]:
     installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = authored_files(root)
     findings = [*_check_manifest(root)]
+    if manifest.manifest_path(root).is_file():
+        findings.extend(_check_commit_policy_manifest(root))
     findings.extend(_check_repository_launcher(root))
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
@@ -363,6 +365,8 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     installed[_ESLINT_PLUGIN] = manifest.eslint_peers()[_ESLINT_PLUGIN]
     files = _adoption_health_files(root, selected)
     findings = [*_check_manifest(root)]
+    if manifest.manifest_path(root).is_file():
+        findings.extend(_check_commit_policy_manifest(root))
     findings.extend(_check_repository_launcher(root))
     findings.extend(_check_hook_manager(root))
     findings.extend(_check_pin_files(root, files, installed))
@@ -503,6 +507,14 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
         return
     if adopted is None or adopted.hook_manager == "none":
         return
+    if hooks.runs_direct_repo_standards_check(root):
+        yield Finding(
+            Level.DRIFT,
+            "Git hooks",
+            "runs Repo Standards twice through the canonical gate and a direct package hook",
+            "doctor.hooks.repository-duplicate",
+            "remove repo-standards-check; the canonical sarj-standards-check includes repository policy",
+        )
     configured = {
         manager
         for manager, active in (

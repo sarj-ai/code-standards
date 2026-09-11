@@ -31,7 +31,7 @@ updates:
       - /packages/standards
     schedule:
       interval: cron
-      cronjob: "17 */6 * * *"
+      cronjob: "17 6 * * *"
       timezone: UTC
     cooldown:
       default-days: 3

@@ -294,6 +294,22 @@ class Standards:
                 issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
                 policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
             native = report_from_tools(self.root, (*native.tools, policy))
+        if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
+            from .libs.linting.repo_standards import (  # ruff: ignore[import-outside-top-level]
+                analyze as analyze_repository,
+            )
+
+            try:
+                repository = analyze_repository(self.root, staged=staged)
+            except Exception as exc:  # ruff: ignore[blind-except] -- dependency contract failures must fail closed.
+                issue = ExecutionIssue(
+                    "repo-standards",
+                    "integration-failure",
+                    f"{type(exc).__name__}: {exc}",
+                )
+                repository = ToolReport("repo-standards", Completion.FAILED, issues=(issue,))
+            if repository is not None:
+                native = report_from_tools(self.root, (*native.tools, repository))
         coverage: list[CoverageNotice] = []
         excluded = sum(Path(item).is_file() and item not in active_selected for item in selected)
         if excluded:

@@ -1820,7 +1820,9 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigrati
             hook = manifest.as_table(hook_value)
             hook_id = hook.get("id")
             custom_keys = sorted(set(hook) - {"id"})
-            is_owned = isinstance(hook_id, str) and (hook_id == "sarj-standards" or hook_id.startswith("sarj-"))
+            is_owned = isinstance(hook_id, str) and (
+                hook_id in {"repo-standards-check", "sarj-standards"} or hook_id.startswith("sarj-")
+            )
             if not is_owned or custom_keys:
                 detail = (
                     f"hook {hook_id!r} has custom keys {custom_keys}"
@@ -2389,7 +2391,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@3e47e2bc8e1c6354be04ece378e7f1a6ee8f450f # v5.11.4
+      - uses: sarj-ai/repo-standards/pull-request-commits@c795839ffb81fd9f86888913548a8a41340a9747 # v5.13.2
 """
 
 

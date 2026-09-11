@@ -115,7 +115,14 @@ def _root_readme(
             "Warning-stage rules retain their reviewed severity. Rules requiring repository-specific "
             "boundaries still require those explicit options."
         ),
-        "```bash\nuv tool install --python 3.14 code-standards\n```",
+        (
+            "Adopt the complete policy, local hooks, and CI with one command:\n\n"
+            "```bash\n"
+            "uvx --no-config --isolated --python 3.14 --from code-standards code-standards setup\n"
+            "```\n\n"
+            "The canonical staged check includes semantic lint and repository policy; do not install a "
+            "second Repo Standards hook."
+        ),
         (
             "## Contributing\n\n"
             "Install uv 0.12.5, Python 3.14, Node 24.19, and GNU Make. Then bootstrap a fresh checkout:\n\n"
@@ -175,7 +182,9 @@ def _package_readme(
 def _package_usage(name: str, engine: str | None) -> str:
     if name == "code-standards":
         return (
-            "Use it from pre-commit with a coding agent so violations are flagged and fixed before commit.\n\n"
+            "Adopt the repository once with `code-standards setup`. It installs one canonical staged gate "
+            "that includes semantic lint and repository policy, plus commit-message and pull-request history "
+            "enforcement. Do not install Repo Standards separately.\n\n"
             "```bash\n"
             "code-standards setup\n"
             "code-standards check\n"

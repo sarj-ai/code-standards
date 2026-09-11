@@ -33,7 +33,7 @@ _MAX_JOB_DEPTH: Final = 64
 _REPO_LINE: Final = re.compile(r"^(?P<indent> *)-\s+repo:\s*(?P<value>[^\r\n]+)(?:\r?\n)?$")
 _OFFICIAL_STANDARDS_REPO: Final = re.compile(
     r"(?i)(?:https?://github\.com/|ssh://git@github\.com/|git@github\.com:)"
-    r"sarj-ai/(?:code-)?standards(?:\.git)?/?"
+    r"sarj-ai/(?:(?:code|repo)-)?standards(?:\.git)?/?"
 )
 
 
@@ -332,6 +332,34 @@ def precommit_runs_commit_message_check(root: Path, *, runner_prefix: str | None
     )
 
 
+def runs_direct_repo_standards_check(root: Path) -> bool:
+    paths = [root / name for name in PRECOMMIT_NAMES if (root / name).is_file()]
+    if len(paths) == 1:
+        try:
+            parsed: object = yaml.safe_load(  # pyright: ignore[reportAny] -- narrowed below.
+                paths[0].read_text(encoding="utf-8")
+            )
+        except OSError, UnicodeError, yaml.YAMLError:
+            parsed = None
+        if any(
+            _runs_direct_repo_standards_check(hook.get("entry"))
+            for raw_repository in manifest.list_field(manifest.as_table(parsed), "repos")
+            for raw_hook in manifest.list_field(manifest.as_table(raw_repository), "hooks")
+            if (hook := manifest.as_table(raw_hook)).get("id") == "repo-standards-check"
+            or hook.get("entry") is not None
+        ):
+            return True
+    path = lefthook_config(root)
+    if path is None:
+        return False
+    try:
+        parsed = yaml.safe_load(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    except OSError, UnicodeError, yaml.YAMLError:
+        return False
+    pre_commit = manifest.as_table(manifest.as_table(parsed).get("pre-commit"))
+    return any(_runs_direct_repo_standards_check(value) for value in _lefthook_run_values(pre_commit))
+
+
 def lefthook_runs_staged_check(root: Path) -> bool:
     path = lefthook_config(root)
     if path is None:
@@ -583,6 +611,21 @@ def _runs_staged_check(value: object) -> bool:
     if _is_exact_standards_argv(tokens):
         prefix = tuple(tokens[: len(launcher.repository_argv())])
     return tuple(tokens[: len(prefix)]) == prefix and tokens[len(prefix) : len(prefix) + 2] == ["check", "--staged"]
+
+
+def _runs_direct_repo_standards_check(value: object) -> bool:
+    if not isinstance(value, str) or re.search(r"(?:&&|\|\||[;|`]|\$\()", value):
+        return False
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        return False
+    if tokens[:1] == ["make"] and "check-repo-standards" in tokens[1:]:
+        return True
+    return any(
+        Path(token).name == "repo-standards" and tokens[index + 1 : index + 2] == ["check"]
+        for index, token in enumerate(tokens)
+    )
 
 
 def _runs_commit_message_check(value: object) -> bool:
