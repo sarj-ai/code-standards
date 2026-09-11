@@ -17,7 +17,7 @@ classifiers = [
 ]
 dependencies = [
   "pathspec==1.1.1",
-  "basedpyright==1.39.10",
+  "basedpyright==1.40.0",
   "deptry==0.25.1",
   "lefthook==2.1.12",
   "packaging==26.3",
