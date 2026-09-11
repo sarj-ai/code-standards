@@ -118,7 +118,8 @@
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "timestamp-order-requires-tiebreaker",
-      "typed-error-reasons"
+      "typed-error-reasons",
+      "unused-test-factory-option"
     ],
     "sql": [
       "enforce-timestamptz",
@@ -359,7 +360,8 @@
       "SARJ439",
       "SARJ440",
       "SARJ441",
-      "SARJ442"
+      "SARJ442",
+      "SARJ443"
     ],
     "sql": [
       "SARJ101",

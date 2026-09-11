@@ -214,5 +214,6 @@
   "SARJ439": "prefer-match-value-dispatch",
   "SARJ440": "no-redundant-module-alias-exports",
   "SARJ441": "no-service-behavior-in-settings",
-  "SARJ442": "no-deleted-only-override-parameter"
+  "SARJ442": "no-deleted-only-override-parameter",
+  "SARJ443": "unused-test-factory-option"
 }
