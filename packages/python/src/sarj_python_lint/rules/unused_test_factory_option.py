@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_MIN_INVARIANT_CALLS = 2
+
 _REFLECTION = frozenset({"globals", "locals", "vars", "eval", "exec", "getattr", "__import__", "__all__"})
 
 
@@ -33,25 +35,25 @@ class UnusedTestFactoryOption(Rule):
     id = "unused-test-factory-option"
     code = "SARJ443"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="A private test factory exposes a literal default that no visible caller supplies.",
+        summary="A private test factory exposes a literal option that visible callers never vary.",
         rationale="Unused customization obscures the values that actually distinguish test scenarios.",
         remediation="Keep the value in the factory's construction instead of exposing an unused option; retain it if external callers need it.",
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only module-level private _make_ and _build_ helpers consisting of a single return call are considered.",
-            "Only literal defaults with direct, unambiguous calls in this file are reported. Decorators, rebinding, callable escapes, reflection, and argument unpacking exclude the helper.",
+            "Only literal defaults with direct, unambiguous calls in this file are reported. Explicit options require at least two calls with the same effective literal value. Decorators, rebinding, callable escapes, reflection, and argument unpacking exclude the helper.",
             "Cross-module callers cannot be proven absent. Shared helpers require an exact suppression; this advisory never autofixes signatures or changes default evaluation timing.",
         ),
         examples=(
             RuleExample(
-                example_id="unused-size-option",
-                title="Keep an invariant size inside the factory",
+                example_id="invariant-size-option",
+                title="Repeated calls never vary the option",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "tests/test_widget.py",
-                        "def _make_widget(*, size=3):\n    return Widget(size=size)\n\ndef test_widget():\n    assert _make_widget()\n",
+                        "def _make_widget(*, size=3):\n    return Widget(size=size)\n\n_make_widget()\n_make_widget(size=3)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_widget.py"),
@@ -94,19 +96,29 @@ class UnusedTestFactoryOption(Rule):
             calls = _direct_calls(tree, function)
             if not calls:
                 continue
-            supplied = {keyword.arg for call in calls for keyword in call.keywords}
+            bound = _bound_calls(function, calls)
+            if bound is None:
+                continue
+            supplied = {name for arguments in bound for name in arguments}
             positional = [*function.args.posonlyargs, *function.args.args]
-            supplied.update(argument.arg for call in calls for argument in positional[: len(call.args)])
             defaults = [
                 *zip(positional[len(positional) - len(function.args.defaults) :], function.args.defaults, strict=True),
                 *zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True),
             ]
             used = {node.id for node in nodes(function, ast.Name) if isinstance(node.ctx, ast.Load)}
             for argument, default in defaults:
-                if argument.arg in supplied or argument.arg not in used or not isinstance(default, ast.Constant):
+                if argument.arg not in used or not isinstance(default, ast.Constant):
                     continue
                 if default.value is not None and not isinstance(default.value, (str, bytes, int, float)):
                     continue
+                explicitly_supplied = argument.arg in supplied
+                if explicitly_supplied:
+                    values = [arguments.get(argument.arg, default) for arguments in bound]
+                    if len(values) < _MIN_INVARIANT_CALLS or any(
+                        not isinstance(value, ast.Constant) or ast.dump(value) != ast.dump(values[0])
+                        for value in values
+                    ):
+                        continue
                 if is_suppressed(lines, argument.lineno, self.code):
                     continue
                 findings.append(
@@ -116,7 +128,12 @@ class UnusedTestFactoryOption(Rule):
                         col=argument.col_offset + 1,
                         code=self.code,
                         severity=Severity.WARNING,
-                        message=f"No direct caller in this file supplies `{function.name}.{argument.arg}`; keep its literal value in the factory instead of exposing an unused option. Retain it if external callers need it.",
+                        message=(
+                            f"Direct callers in this file always use the same literal for `{function.name}.{argument.arg}`; "
+                            "consider keeping that value in the factory instead of repeating an invariant option. Retain it if external callers need it."
+                            if explicitly_supplied
+                            else f"No direct caller in this file supplies `{function.name}.{argument.arg}`; keep its literal value in the factory instead of exposing an unused option. Retain it if external callers need it."
+                        ),
                     )
                 )
         return sorted(findings, key=lambda item: (item.line, item.col))
@@ -163,3 +180,27 @@ def _direct_calls(tree: ast.Module, function: ast.FunctionDef) -> list[ast.Call]
     if any(function.lineno <= call.lineno <= (function.end_lineno or function.lineno) for call in calls):
         return []
     return calls
+
+
+def _bound_calls(function: ast.FunctionDef, calls: list[ast.Call]) -> list[dict[str, ast.expr]] | None:
+    positional = [*function.args.posonlyargs, *function.args.args]
+    keywords = {arg.arg for arg in (*function.args.args, *function.args.kwonlyargs)}
+    required = {arg.arg for arg in positional[: len(positional) - len(function.args.defaults)]}
+    required.update(
+        arg.arg
+        for arg, default in zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True)
+        if default is None
+    )
+    bound: list[dict[str, ast.expr]] = []
+    for call in calls:
+        if len(call.args) > len(positional):
+            return None
+        arguments = {arg.arg: value for arg, value in zip(positional[: len(call.args)], call.args, strict=True)}
+        for keyword in call.keywords:
+            if keyword.arg not in keywords or keyword.arg in arguments:
+                return None
+            arguments[keyword.arg] = keyword.value
+        if not required <= arguments.keys():
+            return None
+        bound.append(arguments)
+    return bound

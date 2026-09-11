@@ -22,6 +22,105 @@ _CASES = (
         "tests/test_widget.py",
         id="supplied",
     ),
+    pytest.param(
+        _FACTORY + "_make_widget()\n_make_widget(width=3)\n", True, "tests/test_widget.py", id="mixed-same-default"
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(width=4)\n_make_widget(width=4)\n", True, "tests/test_widget.py", id="same-override"
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget()\n_make_widget(width=4)\n",
+        False,
+        "tests/test_widget.py",
+        id="mixed-different-default",
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(width=4)\n_make_widget(width=5)\n",
+        False,
+        "tests/test_widget.py",
+        id="different-overrides",
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(width=1)\n_make_widget(width=True)\n",
+        False,
+        "tests/test_widget.py",
+        id="typed-literals",
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(width=value)\n_make_widget(width=value)\n",
+        False,
+        "tests/test_widget.py",
+        id="dynamic-arguments",
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(width=[])\n_make_widget(width=[])\n",
+        False,
+        "tests/test_widget.py",
+        id="mutable-arguments",
+    ),
+    pytest.param(
+        "def _make_widget(width=3):\n    return Widget(width=width)\n_make_widget(4)\n_make_widget(width=4)\n",
+        True,
+        "tests/test_widget.py",
+        id="positional-and-keyword",
+    ),
+    pytest.param(
+        "def _make_widget(width=3, /):\n    return Widget(width=width)\n_make_widget(4)\n_make_widget(4)\n",
+        True,
+        "tests/test_widget.py",
+        id="positional-only",
+    ),
+    pytest.param(
+        "def _make_widget(required, *, width=3):\n    return Widget(required, width=width)\n_make_widget(width=3)\n_make_widget(width=3)\n",
+        False,
+        "tests/test_widget.py",
+        id="missing-required",
+    ),
+    pytest.param(
+        "def _make_widget(width=3):\n    return Widget(width=width)\n_make_widget(4, width=4)\n_make_widget(4)\n",
+        False,
+        "tests/test_widget.py",
+        id="double-binding",
+    ),
+    pytest.param(
+        "def _make_widget(width):\n    return Widget(width=width)\n_make_widget(4)\n_make_widget(4)\n",
+        False,
+        "tests/test_widget.py",
+        id="required-option",
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(width=3, width=3)\n_make_widget(width=3)\n",
+        False,
+        "tests/test_widget.py",
+        id="duplicate-keyword",
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(width=3, extra=0)\n_make_widget(width=3)\n",
+        False,
+        "tests/test_widget.py",
+        id="unknown-keyword",
+    ),
+    pytest.param(
+        _FACTORY + "_make_widget(3)\n_make_widget(3)\n", False, "tests/test_widget.py", id="too-many-positional"
+    ),
+    pytest.param(
+        "def _make_widget(*, required, width=3):\n    return Widget(required, width=width)\n_make_widget(width=3)\n_make_widget(width=3)\n",
+        False,
+        "tests/test_widget.py",
+        id="required-keyword",
+    ),
+    pytest.param(
+        "def _make_widget(width=3, /):\n    return Widget(width=width)\n_make_widget(width=3)\n_make_widget(width=3)\n",
+        False,
+        "tests/test_widget.py",
+        id="posonly-keyword",
+    ),
+    pytest.param(
+        "def _make_widget(*, width=3):  # sarj-noqa: SARJ443 -- shared externally\n    return Widget(width=width)\n_make_widget(width=4)\n_make_widget(width=4)\n",
+        False,
+        "tests/test_widget.py",
+        id="invariant-suppressed",
+    ),
     pytest.param(_FACTORY, False, "tests/test_widget.py", id="no-callers"),
     pytest.param(
         _FACTORY + "import builtins\nbuiltins.globals()\n_make_widget()\n",
