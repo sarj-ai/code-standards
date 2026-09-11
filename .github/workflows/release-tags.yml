@@ -254,5 +254,6 @@ jobs:
             exit 2
           fi
           gh workflow run standards-rollout.yml \
+            --repo "$GITHUB_REPOSITORY" \
             --ref "$STANDARDS_TAG" \
             -f version="$version"
