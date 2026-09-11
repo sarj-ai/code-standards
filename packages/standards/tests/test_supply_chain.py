@@ -334,6 +334,14 @@ def test_parallel_package_workflows_are_always_present_with_stable_contexts() ->
         assert job_name in workflow
 
 
+def test_standards_package_dogfoods_full_scope_on_pull_requests_and_pushes() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/standards-ci.yml").read_text(encoding="utf-8")
+
+    assert (  # sarj-noqa: SARJ402 -- explicit root is the PR and push scope parity contract
+        "uv run code-standards --root ../.. check ." in workflow
+    )
+
+
 def test_pre_push_keeps_complete_tests_in_ci() -> None:
     lefthook = (REPO_ROOT / "lefthook.yml").read_text(encoding="utf-8")
     pre_push = lefthook.partition("\npre-push:\n")[2]

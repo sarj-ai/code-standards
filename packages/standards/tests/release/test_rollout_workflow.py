@@ -62,13 +62,17 @@ def test_rollout_is_downstream_of_release_and_reconciles_hourly() -> None:
     trigger = workflow.get("on")
     assert _is_object(trigger)
 
-    assert set(trigger) == {"workflow_run", "schedule", "workflow_dispatch"}
-    assert trigger["workflow_run"] == {"workflows": ["release-tags"], "types": ["completed"]}
+    assert set(trigger) == {"schedule", "workflow_dispatch"}
     assert trigger["schedule"] == [{"cron": "17 * * * *"}]
+    dispatch = trigger["workflow_dispatch"]
+    assert _is_object(dispatch)
+    inputs = dispatch["inputs"]
+    assert _is_object(inputs)
+    version = inputs["version"]
+    assert _is_object(version)
+    assert version["required"] == "true"
     rendered = _rendered_workflow()
-    assert "github.event.workflow_run.conclusion == 'success'" in rendered
-    assert "github.event.workflow_run.head_branch == 'main'" in rendered
-    assert "github.event.workflow_run.head_repository.full_name == github.repository" in rendered
+    assert "github.event.workflow_run" not in rendered
     release = _load_yaml(REPO_ROOT / ".github/workflows/release.yml")
     assert _is_object(release)
     release_trigger = release.get("on")
@@ -85,8 +89,8 @@ def test_rollout_uses_one_deterministic_interface_for_every_entrypoint() -> None
     assert f'{module} --registry "$registry" reconcile --version "$VERSION"' in workflow
     assert "--refresh-package code-standards --from code-standards" in workflow
     assert f'{module} --registry "$registry" status --version "$VERSION"' in workflow
-    assert "github.event.workflow_run.head_sha || github.sha" in workflow
-    assert "packages/standards/pyproject.toml" in workflow
+    assert "github.sha" in workflow
+    assert "an exact published Standards version is required" in workflow
     assert "gh auth setup-git" in workflow
     assert 'git config --global user.name "sarj-standards-rollout[bot]"' in workflow
 
@@ -139,3 +143,36 @@ def test_failure_is_reported_durably_without_blocking_publication() -> None:
     release_trigger = release.get("on")
     assert _is_object(release_trigger)
     assert "workflow_run" not in release_trigger
+
+
+def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> None:
+    workflow = _load_yaml(REPO_ROOT / ".github/workflows/release-tags.yml")
+    assert _is_object(workflow)
+    jobs = workflow.get("jobs")
+    assert _is_object(jobs)
+    dispatch = jobs.get("dispatch-rollout")
+    assert _is_object(dispatch)
+    permissions = dispatch.get("permissions")
+    assert _is_object(permissions)
+    assert permissions.get("actions") == "write"
+    assert permissions.get("contents") == "read"
+    assert dispatch.get("needs") == ["preflight", "release-safety", "tag"]
+    condition = dispatch.get("if")
+    assert isinstance(condition, str)
+    assert "needs.preflight.outputs.recovery == 'false'" in condition
+    assert "needs.release-safety.result == 'success'" in condition
+    assert "needs.tag.result == 'success'" in condition
+    steps = dispatch.get("steps")
+    assert _is_array(steps)
+    assert len(steps) == 2
+    harden = steps[0]
+    assert _is_object(harden)
+    assert harden.get("uses") == "step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c"
+    step = steps[1]
+    assert _is_object(step)
+    command = step.get("run")
+    assert isinstance(command, str)
+    assert 'version="${STANDARDS_TAG#standards-v}"' in command
+    assert "gh workflow run standards-rollout.yml" in command
+    assert '--ref "$STANDARDS_TAG"' in command
+    assert '-f version="$version"' in command

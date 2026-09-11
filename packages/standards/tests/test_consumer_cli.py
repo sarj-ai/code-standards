@@ -495,6 +495,35 @@ def test_explicit_repository_root_keeps_the_machine_adoption_gate(
     assert "sarj-standards-doctor" in capsys.readouterr().out
 
 
+def test_explicit_repository_root_overrides_pull_request_change_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\nversion = "0.0.0"\nrequires-python = ">=3.14"\n',
+        encoding="utf-8",
+    )
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    _ = capsys.readouterr()
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", "f" * 40)
+
+    def changed_files_must_not_run(_root: Path, _base: str) -> list[str]:
+        pytest.fail("an explicit repository-root input must bypass pull-request change scoping")
+
+    selected: list[Sequence[str] | None] = []
+
+    def capture_check(_root: Path, paths: Sequence[str] | None, **_kwargs: object) -> int:
+        selected.append(paths)
+        return 0
+
+    monkeypatch.setattr(cli, "_changed_file_names", changed_files_must_not_run)
+    monkeypatch.setattr(cli, "_run_canonical_check", capture_check)
+
+    assert cli.main(["--root", str(tmp_path), "check", "."]) == 0
+    assert selected == [(".",)]
+
+
 def test_check_rejects_output_outside_repository_before_analysis(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

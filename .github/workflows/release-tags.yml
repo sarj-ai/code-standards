@@ -222,3 +222,37 @@ jobs:
               exit 1
               ;;
           esac
+
+  dispatch-rollout:
+    needs: [preflight, release-safety, tag]
+    if: >-
+      always() &&
+      needs.preflight.result == 'success' &&
+      ((needs.preflight.outputs.recovery == 'false') ||
+       (needs.preflight.outputs.recovery == 'true' &&
+        needs.release-safety.result == 'success' &&
+        needs.tag.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Dispatch rollout from the immutable Standards tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STANDARDS_TAG: ${{ needs.preflight.outputs.standards_tag }}
+        run: |
+          set -euo pipefail
+          version="${STANDARDS_TAG#standards-v}"
+          if [[ -z "$version" || "$version" == "$STANDARDS_TAG" ]]; then
+            echo "::error::invalid immutable Standards tag: $STANDARDS_TAG"
+            exit 2
+          fi
+          gh workflow run standards-rollout.yml \
+            --ref "$STANDARDS_TAG" \
+            -f version="$version"

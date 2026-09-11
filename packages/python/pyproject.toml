@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "0.81.16"
+version = "0.81.17"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -64,3 +64,8 @@ markers = [
 # Dogfooding: linted/formatted by this repo's own published config (root-synced).
 [tool.ruff]
 extend = "../../.ruff-strict.toml"
+
+[tool.deptry.per_rule_ignores]
+# Ruff is invoked at runtime through `sys.executable -m ruff`, which Deptry's
+# import analysis cannot observe.
+DEP002 = ["ruff"]
