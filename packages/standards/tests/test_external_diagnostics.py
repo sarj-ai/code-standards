@@ -152,6 +152,67 @@ def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(
         assert context.params["known_first_party"] == ("api", "helper")
 
 
+def test_deptry_refuses_unbounded_project_fanout(tmp_path: Path) -> None:
+    sources: list[str] = []
+    for index in range(33):
+        project = tmp_path / f"project-{index:02}"
+        project.mkdir()
+        (project / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='1'\n", encoding="utf-8")
+        source = project / "app.py"
+        source.write_text("value = 1\n", encoding="utf-8")
+        sources.append(str(source))
+    called = False
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal called
+        called = True
+        pytest.fail(f"Deptry must not run after the project limit is exceeded: {argv!r} in {cwd}")
+
+    reports = analyze_external(
+        sources,
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=run,
+        capabilities=frozenset({"deptry"}),
+    )
+
+    assert not called
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == "project-limit"
+
+
+def test_deptry_allows_the_bounded_project_limit(tmp_path: Path) -> None:
+    sources: list[str] = []
+    for index in range(32):
+        project = tmp_path / f"project-{index:02}"
+        project.mkdir()
+        (project / "pyproject.toml").write_text("[project]\nname='fixture'\nversion='1'\n", encoding="utf-8")
+        source = project / "app.py"
+        source.write_text("value = 1\n", encoding="utf-8")
+        sources.append(str(source))
+    calls = 0
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal calls
+        assert cwd.parent == tmp_path
+        assert argv[0]
+        calls += 1
+        return ProcessOutput(0, "", "")
+
+    reports = analyze_external(
+        sources,
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=run,
+        capabilities=frozenset({"deptry"}),
+    )
+
+    assert calls == 32
+    assert len(reports) == 32
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+
+
 def test_deptry_skips_python_without_dependency_metadata(tmp_path: Path) -> None:
     source = tmp_path / "service.py"
     source.write_text("import argparse\n", encoding="utf-8")

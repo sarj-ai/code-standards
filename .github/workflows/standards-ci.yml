@@ -224,7 +224,10 @@ jobs:
           # but Standards is adopted at the repository root. Dogfood that real
           # manifest and its verification paths instead of treating the package
           # subdirectory as an unadopted consumer.
-          uv run code-standards --root ../.. check
+          # Passing the repository root explicitly prevents GitHub pull-request
+          # metadata from silently reducing this required dogfood gate to only
+          # changed files. PR and push runs must exercise the same full scope.
+          uv run code-standards --root ../.. check .
       - name: Build wheel
         run: |
           uv build --wheel

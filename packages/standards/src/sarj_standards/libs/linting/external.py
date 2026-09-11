@@ -1636,8 +1636,16 @@ def _invoke_deptry_projects(
     root: Path,
     runner: ProcessRunner,
 ) -> tuple[ToolReport, ...]:
+    projects = _group_deptry_projects(files, root)
+    if len(projects) > _MAX_PYTHON_PROJECTS:
+        issue = ExecutionIssue(
+            "deptry",
+            "project-limit",
+            f"selected {len(projects)} Python projects; maximum is {_MAX_PYTHON_PROJECTS}",
+        )
+        return (ToolReport("deptry", Completion.FAILED, issues=(issue,), analyzer_id=AnalyzerId("deptry")),)
     reports: list[ToolReport] = []
-    for project, scoped_files in _group_deptry_projects(files, root):
+    for project, scoped_files in projects:
         started = time.monotonic()
         project_id = project.relative_to(root).as_posix() or None
         invocation_id = InvocationId("deptry" if project_id is None else f"deptry:{project_id}")
@@ -2773,7 +2781,10 @@ def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str
 def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
     config_args = ("--config", str(project / "pyproject.toml")) if (project / "pyproject.toml").is_file() else ()
     first_party = _deptry_first_party_modules(project)
-    first_party_args = tuple(arg for module in first_party for arg in ("--known-first-party", module))
+    # Deptry's option is repeatable, not comma-delimited. Passing multiple
+    # modules as one comma-joined value makes Deptry treat the entire string as
+    # one module name and can turn every intra-package import into DEP003.
+    first_party_args = tuple(value for module in first_party for value in ("--known-first-party", module))
     return (
         _project_analyzer(project, "deptry"),
         *_deptry_scan_roots(project, scoped_files),

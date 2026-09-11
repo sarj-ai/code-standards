@@ -4,16 +4,13 @@ name: Standards rollout
 # rollout failure is visible here and in a durable issue, but can never change
 # the conclusion of the release or release-tags workflows.
 on:
-  workflow_run:
-    workflows: [release-tags]
-    types: [completed]
   schedule:
     - cron: '17 * * * *'
   workflow_dispatch:
     inputs:
       version:
-        description: Exact Standards bundle version; defaults to the current manifest
-        required: false
+        description: Exact published Standards bundle version
+        required: true
         type: string
 
 permissions:
@@ -26,11 +23,6 @@ concurrency:
 
 jobs:
   rollout:
-    if: >-
-      github.event_name != 'workflow_run' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -40,7 +32,7 @@ jobs:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
@@ -72,16 +64,8 @@ jobs:
             version="$(uvx --no-config --isolated --python 3.14 --refresh-package code-standards --from code-standards code-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"
           fi
           if [[ -z "$version" ]]; then
-            version="$(python3 - <<'PY'
-          import tomllib
-
-          with open("packages/standards/pyproject.toml", "rb") as manifest:
-              value = tomllib.load(manifest)["project"]["version"]
-          if not isinstance(value, str) or not value or any(character.isspace() for character in value):
-              raise ValueError("invalid Standards package version")
-          print(value)
-          PY
-          )"
+            echo "::error::an exact published Standards version is required"
+            exit 2
           fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([a-zA-Z0-9.-]+)?$ ]]; then
             echo "::error::invalid Standards bundle version: $version"
