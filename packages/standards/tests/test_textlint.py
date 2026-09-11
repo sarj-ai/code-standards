@@ -434,9 +434,37 @@ SECRET_PERMISSION_CASES = (
 
 WORKFLOW_EMBEDDED_PROGRAM_CASES = (
     EvaluationCase(
-        "shell-if-program",
+        "shell-single-arm-if-guard",
         Language.CONFIG,
         "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          fi\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-single-if-else-gate",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          else\n            make test-fallback\n          fi\n",
+        ExpectedOutcome.NO_MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-if-elif-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            make test\n          elif make fallback-probe; then\n            make test-fallback\n          fi\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-repeated-if-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe-api; then make test-api; fi\n          if make probe-worker; then make test-worker; fi\n",
+        ExpectedOutcome.MATCH,
+        PurePosixPath(".github/workflows/ci.yml"),
+    ),
+    EvaluationCase(
+        "shell-nested-if-program",
+        Language.CONFIG,
+        "jobs:\n  test:\n    steps:\n      - run: |\n          if make probe; then\n            if make nested-probe; then make test; fi\n          fi\n",
         ExpectedOutcome.MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
@@ -618,7 +646,7 @@ WORKFLOW_EMBEDDED_PROGRAM_CASES = (
     EvaluationCase(
         "quoted-heredoc-operator-before-program",
         Language.CONFIG,
-        "jobs:\n  test:\n    steps:\n      - run: |\n          echo '<<DATA'\n          if make probe; then make test; fi\n",
+        "jobs:\n  test:\n    steps:\n      - run: |\n          echo '<<DATA'\n          if make probe; then make test; elif make fallback-probe; then make test-fallback; fi\n",
         ExpectedOutcome.MATCH,
         PurePosixPath(".github/workflows/ci.yml"),
     ),
@@ -902,7 +930,7 @@ def test_workflow_embedded_program_deduplicates_yaml_aliases(tmp_path: Path) -> 
     path.write_text(
         "jobs:\n  test:\n    steps:\n"
         "      - &procedural\n"
-        "        run: if make probe; then make test; fi\n"
+        "        run: for item in api worker; do make test-package PACKAGE=$item; done\n"
         "      - *procedural\n",
         encoding="utf-8",
     )
@@ -919,7 +947,8 @@ def test_deployment_boundary_takes_precedence_over_embedded_program(tmp_path: Pa
         "jobs:\n  deploy:\n    steps:\n      - run: |\n"
         '          if test -n "$IMAGE"; then\n'
         '            gcloud run deploy api --image "$IMAGE" --memory 1Gi\n'
-        "          fi\n",
+        "          fi\n"
+        '          if test -n "$IMAGE"; then make verify; fi\n',
         encoding="utf-8",
     )
 
@@ -938,7 +967,7 @@ def test_heredoc_data_does_not_create_deployment_precedence(tmp_path: Path) -> N
     path.parent.mkdir(parents=True)
     path.write_text(
         "jobs:\n  report:\n    steps:\n      - run: |\n"
-        "          if make report; then echo ready; fi\n"
+        "          while make report; do echo ready; done\n"
         "          cat > report.txt <<'DATA'\n"
         "          gcloud run deploy api --memory 1Gi\n"
         "          DATA\n",

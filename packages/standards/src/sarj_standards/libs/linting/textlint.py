@@ -756,16 +756,23 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     expected_count=1,
                 ),
                 _public_example(
-                    example_id="workflow-repository-entrypoint",
-                    title="Call a tested repository-owned entrypoint",
+                    example_id="workflow-single-decision",
+                    title="Keep one workflow gating decision inline",
                     outcome=ExpectedOutcome.NO_MATCH,
                     path=".github/workflows/ci.yml",
-                    source="jobs:\n  test:\n    steps:\n      - run: make test\n",
+                    source=(
+                        "jobs:\n  test:\n    steps:\n      - run: |\n"
+                        "          if make probe; then\n"
+                        "            make test\n"
+                        "          else\n"
+                        "            echo 'not applicable'\n"
+                        "          fi\n"
+                    ),
                     expected_count=0,
                 ),
             ),
             limitations=(
-                "Only direct files in .github/workflows are checked; shell control-flow openers, shell function declarations, inline interpreter flags, and interpreter heredocs in run scalars are reported.",
+                "Only direct files in .github/workflows are checked; loops, repeated or nested conditionals, elif chains, shell function declarations, inline interpreter flags, and interpreter heredocs in run scalars are reported. One if/else decision is treated as workflow orchestration.",
                 "Quoted source, including multiline jq filters, is treated as an argument rather than reinterpreted as shell syntax.",
                 "Long linear command lists and wrapper-indirected behavior are intentionally unreported because complexity or ownership cannot be inferred reliably from those forms alone.",
                 "Workflow topology, ownership, and redundancy require repository review and are not inferred by this semantic rule.",
@@ -1155,6 +1162,7 @@ def _workflow_path(path: Path, relative: str) -> bool:
 
 _WORKFLOW_PATH_PARTS: Final = 3
 _WORKFLOW_CONTROL_FLOW_OPENERS: Final = frozenset({"case", "for", "if", "select", "until", "while"})
+_WORKFLOW_SECONDARY_CONDITIONS: Final = frozenset({"elif"})
 _INLINE_INTERPRETERS: Final = frozenset(
     {"bash", "dash", "node", "perl", "php", "python", "python2", "python3", "ruby", "sh", "zsh"}
 )
@@ -1222,6 +1230,8 @@ def _workflow_embedded_program_findings(
 
 def _workflow_run_embeds_program(source: str) -> bool:
     shell_source = _shell_without_quoted_content(_shell_without_heredoc_bodies(source))
+    control_flow_openers: list[str] = []
+    has_secondary_condition = False
     for logical_line in _shell_logical_lines(shell_source):
         tokens = _shell_tokens(logical_line.command)
         if not tokens:
@@ -1229,7 +1239,9 @@ def _workflow_run_embeds_program(source: str) -> bool:
         segments = _shell_segments(tokens)
         for segment in segments:
             if segment.tokens and segment.tokens[0] in _WORKFLOW_CONTROL_FLOW_OPENERS:
-                return True
+                control_flow_openers.append(segment.tokens[0])
+            if segment.tokens and segment.tokens[0] in _WORKFLOW_SECONDARY_CONDITIONS:
+                has_secondary_condition = True
             argv = _command_argv(segment.tokens)
             if not argv:
                 continue
@@ -1238,7 +1250,9 @@ def _workflow_run_embeds_program(source: str) -> bool:
                 return True
             if executable in _INLINE_INTERPRETERS and _interpreter_embeds_source(executable, argv):
                 return True
-    return False
+    if any(opener != "if" for opener in control_flow_openers):
+        return True
+    return len(control_flow_openers) > 1 or has_secondary_condition
 
 
 def _shell_without_quoted_content(source: str) -> str:
