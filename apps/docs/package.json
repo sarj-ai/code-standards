@@ -21,13 +21,13 @@
     "verify:deployment": "node scripts/verify-deployment.mjs"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.41.10",
+    "@astrojs/starlight": "0.42.0",
     "@sarj/design": "0.5.0",
-    "astro": "7.2.9"
+    "astro": "7.3.1"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
-    "@astrojs/sitemap": "3.7.3",
+    "@astrojs/sitemap": "3.7.4",
     "@eslint/js": "10.0.1",
     "@sarj/eslint-plugin": "file:../../packages/typescript",
     "eslint": "10.9.1",
@@ -35,11 +35,11 @@
     "prettier": "3.9.6",
     "prettier-plugin-sh": "0.19.0",
     "prettier-plugin-toml": "2.0.6",
-    "react-doctor": "0.9.12",
+    "react-doctor": "0.9.13",
     "sql-formatter": "15.8.2",
     "typescript": "6.0.3",
     "typescript-eslint": "8.68.0",
-    "wrangler": "4.127.1"
+    "wrangler": "4.129.1"
   },
   "engines": {
     "node": ">=22.12.0"
