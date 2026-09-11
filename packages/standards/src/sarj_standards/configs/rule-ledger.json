@@ -106,7 +106,6 @@
       "redundant-class-docstring",
       "redundant-docstring",
       "redundant-module-docstring",
-      "repeated-kwarg-heavy-call-in-test",
       "repeated-static-call-cases",
       "replay-contract-insert-requires-duplicate-policy",
       "require-keyword-only-swap-prone-params",
@@ -288,7 +287,6 @@
       "SARJ040",
       "SARJ042",
       "SARJ044",
-      "SARJ045",
       "SARJ046",
       "SARJ048",
       "SARJ049",
@@ -650,6 +648,12 @@
       "note": "Delete SARJ043 suppressions and baseline keys; a bare production call can intentionally assert that an operation does not raise, which syntax alone cannot distinguish from a weak test. Removed in sarj-python-lint 0.61.0."
     },
     {
+      "id": "SARJ045",
+      "kind": "code",
+      "status": "removed",
+      "note": "Shared keyword names do not establish harmful duplication; direct construction can be clearer and shorter than a factory with defaults."
+    },
+    {
       "id": "SARJ047",
       "kind": "code",
       "status": "removed",
@@ -932,9 +936,8 @@
     {
       "id": "kwarg-heavy-construction-in-test",
       "kind": "python",
-      "status": "renamed",
-      "replacement": "repeated-kwarg-heavy-call-in-test",
-      "note": "Replace sarj-kwarg-heavy-construction-in-test with sarj-repeated-kwarg-heavy-call-in-test before upgrading."
+      "status": "removed",
+      "note": "Shared keyword names do not establish harmful duplication; direct construction can be clearer and shorter than a factory with defaults."
     },
     {
       "id": "kwonly-same-type-params",
@@ -1215,6 +1218,12 @@
       "status": "removed",
       "replacement": null,
       "note": "Remove this hook from pre-commit. Converting an enum to str is commonly required at rendering, logging, JSON, header, and exception boundaries; the rule never proved a receiving enum contract and produced no findings across 5,323 tracked files. There is no replacement."
+    },
+    {
+      "id": "repeated-kwarg-heavy-call-in-test",
+      "kind": "python",
+      "status": "removed",
+      "note": "Shared keyword names do not establish harmful duplication; direct construction can be clearer and shorter than a factory with defaults."
     },
     {
       "id": "repeated-static-call-assertions",

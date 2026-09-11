@@ -171,14 +171,6 @@
       "outcome": "Kept invalid-pydantic-field-default and error severity after adding validator-aware abstention for exact field, model, root, and Annotated before/plain/wrap transformers. Clarified that direct assignments are covered, fixed the direct-None diagnostic, added a public nullability pair, recognized exact BaseModel plus Generic declarations, and expanded literal length checks to list, tuple, set, and dict defaults. Broader model inheritance, coercion inference, Pydantic v1, and dynamic constraints remain excluded to protect precision."
     },
     {
-      "task": "rule-audit/python/repeated-kwarg-heavy-call-in-test",
-      "family": "python",
-      "ruleId": "repeated-kwarg-heavy-call-in-test",
-      "state": "complete",
-      "evidence": "Three fresh independent reviews ran 53 focused tests and scanned up to 7,097 Python files. A primary-checkout scan produced 53 diagnostics across 14 files: many were useful repeated-construction clusters, while explicit expected records and full-contract calls confirmed the signal remains judgment-heavy. All reviewers reproduced false positives for disjoint keyword sets and generated tests; targeted probes also exposed pytest fixtures named test_*, import-resolved SimpleNamespace records, and unittest.mock.call expectations.",
-      "outcome": "Kept repeated-kwarg-heavy-call-in-test and its compatibility alias, made SARJ045 explicitly warning-only, and required at least seven shared keyword names between calls to the same syntactic callee. Excluded generated files, exact pytest fixtures, import-resolved types.SimpleNamespace and unittest.mock.call data, and cross-class self/cls collisions. Reworked the public UI pair around incidental order setup, added parametrized-case remediation, and made diagnostics quantify keyword overlap and occurrences. Post-change calibration reported 47 warnings across 2,971 primary-checkout files, removing the demonstrated noise while preserving the reviewed high-value clusters."
-    },
-    {
       "task": "rule-audit/python/mock-without-spec",
       "family": "python",
       "ruleId": "mock-without-spec",

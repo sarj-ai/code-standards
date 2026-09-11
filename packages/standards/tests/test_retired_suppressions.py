@@ -93,6 +93,7 @@ def test_does_not_rewrite_a_ratchet_shaped_unrelated_json_file(tmp_path: Path) -
         ),
         ("value = 1  # sarj-noqa: SARJ061, SARJ096\n", "value = 1  # sarj-noqa: SARJ096\n"),
         ("# sarj-noqa: SARJ061\nvalue = 1\n", "value = 1\n"),
+        ("value = 1  # sarj-noqa: SARJ045, SARJ096\n", "value = 1  # sarj-noqa: SARJ096\n"),
     ],
 )
 def test_plans_unambiguous_retired_suppression_migrations(tmp_path: Path, source: str, expected: str) -> None:

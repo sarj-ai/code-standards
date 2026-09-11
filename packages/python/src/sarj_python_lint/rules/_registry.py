@@ -128,7 +128,6 @@ from sarj_python_lint.rules.pytest_fixture_returns_bare_tuple import PytestFixtu
 from sarj_python_lint.rules.redundant_class_docstring import RedundantClassDocstring
 from sarj_python_lint.rules.redundant_docstring import RedundantDocstring
 from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDocstring
-from sarj_python_lint.rules.repeated_kwarg_heavy_call_in_test import RepeatedKwargHeavyCallInTest
 from sarj_python_lint.rules.repeated_static_call_cases import RepeatedStaticCallCases
 from sarj_python_lint.rules.require_keyword_only_swap_prone_params import (
     RequireKeywordOnlySwapProneParams,
@@ -201,7 +200,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         PytestFixtureReturnsBareTuple.id: PytestFixtureReturnsBareTuple,
         StoreGetDelegatesToBulkRead.id: StoreGetDelegatesToBulkRead,
-        RepeatedKwargHeavyCallInTest.id: RepeatedKwargHeavyCallInTest,
         DefectXfailRequiresExplicitStrict.id: DefectXfailRequiresExplicitStrict,
         NoFirstPartyPrivateImport.id: NoFirstPartyPrivateImport,
         NoRestatedComment.id: NoRestatedComment,
