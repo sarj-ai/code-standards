@@ -112,7 +112,10 @@ def test_parse_deptry_normalizes_selected_rules_as_warnings(tmp_path: Path) -> N
     ]
 
 
-def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(tmp_path: Path) -> None:
+def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     source = tmp_path / "packages" / "api" / "src" / "api.py"
     source.parent.mkdir(parents=True)
     source.write_text("import transitive\n", encoding="utf-8")
@@ -143,6 +146,8 @@ def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(tm
     assert [item.code for item in reports[0].diagnostics] == ["DEP003"]
     assert "DEP004,DEP005" in seen[0]
     assert "DEP001,DEP002,DEP003" in seen[0]
+    assert seen[0][1] == "src"
+    monkeypatch.chdir(project)
     with deptry_cli.make_context("deptry", list(seen[0][1:])) as context:
         assert context.params["known_first_party"] == ("api", "helper")
 
