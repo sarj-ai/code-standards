@@ -70,7 +70,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(_check(focus.source, str(focus.path))) == example.expected_count
 
 
-def test_flags_three_branch_isinstance_ladder_as_warning() -> None:
+def test_flags_three_branch_isinstance_ladder_as_error() -> None:
     source = """
 def parse(value: object):
     if isinstance(value, str):
@@ -86,7 +86,7 @@ def parse(value: object):
 
     assert len(diagnostics) == 1
     assert diagnostics[0].code == "SARJ080"
-    assert diagnostics[0].severity.value == "warning"
+    assert diagnostics[0].severity.value == "error"
     assert "3-branch isinstance ladder" in diagnostics[0].message
 
 
@@ -130,6 +130,7 @@ def dotted_tail(node: ast.expr) -> str | None:
     diagnostics = _check(source)
 
     assert len(diagnostics) == 1
+    assert diagnostics[0].severity.value == "error"
     assert "two-arm ast.Name/ast.Attribute projection" in diagnostics[0].message
 
 

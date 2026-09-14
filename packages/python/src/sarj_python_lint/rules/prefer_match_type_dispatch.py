@@ -436,7 +436,7 @@ def _two_arm_ast_projection_findings(
                         line=first.lineno,
                         col=first.col_offset + 1,
                         code=code,
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         message=(
                             f"two-arm ast.Name/ast.Attribute projection on '{subject}' — use one match/case "
                             "statement so the structural alternatives are explicit."
@@ -581,7 +581,7 @@ def _diagnostic(path: Path, code: str, node: ast.If, dispatch: _Dispatch, shape:
         line=node.lineno,
         col=node.col_offset + 1,
         code=code,
-        severity=Severity.WARNING,
+        severity=Severity.ERROR,
         message=(
             f"{dispatch.branch_count}-branch {shape} on '{dispatch.subject}' — use match/case class patterns "
             "so the mutually exclusive runtime type dispatch is explicit."
