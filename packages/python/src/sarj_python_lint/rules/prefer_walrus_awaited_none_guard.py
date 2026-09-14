@@ -50,14 +50,16 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         remediation=(
             "Rewrite `value = await lookup(); if value is None: return` as "
             "`if (value := await lookup()) is None: return`. Preserve `is not None` when the terminal branch "
-            "returns or raises with the bound value. Keep two statements when the assignment is an intentional "
-            "debugging or tracing boundary."
+            "returns or raises with the bound value. A short message assignment may remain inside the guard before "
+            "the terminal statement. Keep two statements when the awaited assignment is an intentional debugging "
+            "or tracing boundary."
         ),
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only one-line awaited calls followed immediately by an exact `is None` or `is not None` guard containing one return or raise are checked.",
-            "A negative guard requires a later use on the surviving path; a positive guard must consume the binding in its terminal statement and leave no later use before rebinding.",
+            "Only one-line awaited calls followed immediately by an exact `is None` or `is not None` guard ending in return or raise are checked.",
+            "Statements before the terminal operation must be simple assignments; expressions and compound control flow are excluded.",
+            "An `is None` guard requires a later use on the surviving path and must not use or rebind the name inside the guard; an `is not None` guard must consume the binding inside the terminal branch and leave no later use before rebinding.",
             "The combined condition must fit 120 columns; comments, else branches, ambiguous name flow, generated files, and broader assignment-expression preferences are excluded.",
         ),
         examples=(
@@ -167,17 +169,19 @@ def _candidate(
         and guard.col_offset == assignment.col_offset
         and guard.test.end_lineno == guard.lineno
         and not guard.orelse
-        and len(guard.body) == 1
-        and isinstance(guard.body[0], (ast.Return, ast.Raise))
+        and guard.body
+        and all(isinstance(statement, (ast.Assign, ast.AnnAssign)) for statement in guard.body[:-1])
+        and isinstance(guard.body[-1], (ast.Return, ast.Raise))
     ):
         return None
     name = assignment.targets[0].id
     is_not_none = _none_guard_kind(guard.test, name)
     if is_not_none is None or _loads_name(assignment.value, name):
         return None
-    terminal = guard.body[0]
+    terminal = guard.body[-1]
     usage = _NameUsage(name)
-    usage.visit(terminal)
+    for statement in guard.body:
+        usage.visit(statement)
     if usage.rebound or (is_not_none != usage.loaded):
         return None
     terminal_end = terminal.end_lineno or terminal.lineno
