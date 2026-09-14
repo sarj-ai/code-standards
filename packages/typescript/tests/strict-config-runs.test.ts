@@ -26,6 +26,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { ESLint, type Linter } from "eslint";
+import reactHooks from "eslint-plugin-react-hooks";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -396,12 +397,6 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   );
 
   it.each([
-    "react-hooks/error-boundaries",
-    "react-hooks/globals",
-    "react-hooks/immutability",
-    "react-hooks/purity",
-    "react-hooks/refs",
-    "react-hooks/set-state-in-render",
     "react/no-object-type-as-default-prop",
     "react/no-unknown-property",
   ])("enables %s as an error", async (rule) => {
@@ -415,6 +410,43 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     );
     const setting = rulesOf(config)[rule];
     expect(severity(setting)).toBe(2);
+  });
+
+  it("enables every react-hooks recommended-latest rule as an error", async () => {
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: strictConfig as Linter.Config[],
+    });
+    const config: unknown = await eslint.calculateConfigForFile(
+      resolve(FIXTURE_DIR, "widget.tsx"),
+    );
+    const configuredRules = rulesOf(config);
+    const recommendedLatest = reactHooks.configs["recommended-latest"].rules;
+
+    expect(Object.keys(recommendedLatest).sort()).toEqual([
+      "react-hooks/config",
+      "react-hooks/error-boundaries",
+      "react-hooks/exhaustive-deps",
+      "react-hooks/gating",
+      "react-hooks/globals",
+      "react-hooks/immutability",
+      "react-hooks/incompatible-library",
+      "react-hooks/preserve-manual-memoization",
+      "react-hooks/purity",
+      "react-hooks/refs",
+      "react-hooks/rules-of-hooks",
+      "react-hooks/set-state-in-effect",
+      "react-hooks/set-state-in-render",
+      "react-hooks/static-components",
+      "react-hooks/unsupported-syntax",
+      "react-hooks/use-memo",
+      "react-hooks/void-use-memo",
+    ]);
+    for (const rule of Object.keys(recommendedLatest)) {
+      expect(severity(configuredRules[rule]), rule).toBe(2);
+    }
+    expect(severity(configuredRules["react/no-unstable-nested-components"])).toBe(0);
   });
 
   it("requires explicit button types inside design-system primitives", () => {
