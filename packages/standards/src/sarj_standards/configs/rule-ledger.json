@@ -238,6 +238,7 @@
       "prefer-zod-parse-output-type",
       "repeated-static-call-cases",
       "require-assert-never",
+      "require-button-accessible-name",
       "require-fetch-timeout",
       "require-interface-for-exported-class",
       "require-pascal-case-zod-schema-name",
