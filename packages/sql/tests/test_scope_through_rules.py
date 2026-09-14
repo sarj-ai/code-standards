@@ -8,6 +8,7 @@ import pytest
 from sarj_sql_lint.rules import REGISTRY
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
+from sarj_sql_lint.rules.no_application_schema_check import NoApplicationSchemaCheck
 from sarj_sql_lint.rules.no_create_trigger import NoCreateTrigger
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
@@ -27,7 +28,8 @@ if TYPE_CHECKING:
 # SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ113 the commented-out
 # `DROP TABLE`, SARJ114 `CREATE TRIGGER`, SARJ115 a
 # long implementation narrative, SARJ116 the fourth child-table index, and
-# SARJ117 one duplicate child-table index shape.
+# SARJ117 one duplicate child-table index shape, and SARJ118 an application-owned
+# closed text value set repeated as a database CHECK.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 -- Create the children table used by the application in this database.
@@ -42,6 +44,7 @@ CREATE TABLE IF NOT EXISTS children (
     parent_id uuid REFERENCES parents (id) ON DELETE CASCADE,
     name VARCHAR(50),
     payload JSON,
+    status TEXT CHECK (status IN ('queued', 'completed')),
     created_at TIMESTAMP
 );
 CREATE INDEX idx_orders_total ON orders (total);
@@ -70,6 +73,7 @@ MODEL_REDIRECTING = (
     PreferJsonb,
     PreferUuidv7Default,
     NoCreateTrigger,
+    NoApplicationSchemaCheck,
 )
 
 
@@ -84,7 +88,7 @@ def _total(path: Path, source: str) -> int:
 def test_the_shared_source_fires_every_migration_rule_exactly_once() -> None:
     fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in MIGRATION_RULES}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 16
+    assert len(fired) == 17
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -94,7 +98,7 @@ def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
 
 
 def test_the_dump_exemption_suppresses_all_migration_findings() -> None:
-    assert _total(HAND_WRITTEN, ALL_RULES) == 16
+    assert _total(HAND_WRITTEN, ALL_RULES) == 17
     assert _total(Path("db/structure.sql"), ALL_RULES) == 0
 
 
@@ -112,7 +116,7 @@ def test_a_restore_directory_is_a_dump_signal() -> None:
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 16
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 17
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_RULES}"

@@ -1,6 +1,6 @@
 [project]
 name = "sarj-sql-lint"
-version = "0.16.14"
+version = "0.16.15"
 description = "Deterministic PostgreSQL migration rules for safe, repeatable schema changes."
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]

@@ -845,6 +845,12 @@
       "outcome": "Kept the stable no-offset-pagination selector and aligned SARJ107 with the calibrated Python policy: only complete dynamic driver-offset expressions in credible SELECT queries are reported, while fixed ordinals, migrations, generated paths, tests, fixtures, snapshots, quoted identifiers, comments, data strings, stored bodies, bare variables, malformed clauses, and ambiguous templates are preserved. Added absolute source mapping, precise dollar-quote masking, closed parenthesized, arithmetic, CAST, COALESCE, SQL-standard, and MySQL comma-form detection, and rewrote the UI around a direction-matched stable composite cursor with a unique tie-breaker and an explicit bounded or random-access suppression path."
     },
     {
+      "task": "rule-audit/sql/no-application-schema-check",
+      "family": "sql",
+      "ruleId": "no-application-schema-check",
+      "state": "pending"
+    },
+    {
       "task": "rule-audit/sql/no-pg-enum",
       "family": "sql",
       "ruleId": "no-pg-enum",
