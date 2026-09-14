@@ -57,6 +57,22 @@ def test_flags_awaited_none_guard_that_raises() -> None:
     assert "is None:" in diagnostics[0].message
 
 
+def test_flags_awaited_none_guard_with_message_assignment_before_raise() -> None:
+    diagnostics = _check(
+        """
+        async def attach(cursor, call_id):
+            stored = await cursor.fetchone()
+            if stored is None:
+                msg = f"Call {call_id} already has a different no-op execution plan"
+                raise ConflictError(msg)
+            return stored
+        """
+    )
+
+    assert len(diagnostics) == 1
+    assert "if (stored := await cursor.fetchone()) is None:" in diagnostics[0].message
+
+
 @pytest.mark.parametrize(
     "terminal",
     ["return failure", "return render(failure)", "raise failure", "raise VerificationError(failure)"],
@@ -81,6 +97,9 @@ def test_flags_awaited_not_none_terminal_guard(terminal: str) -> None:
     [
         "async def f(store):\n    value = await store.get()\n    if value is not None:\n        use(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        log()\n        return\n    use(value)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is None:\n        if should_log:\n            log()\n        raise Error\n    use(value)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is None:\n        message = render(value)\n        raise Error(message)\n    use(value)\n",
+        "async def f(store):\n    value = await store.get()\n    if value is None:\n        value = fallback\n        raise Error(value)\n    use(value)\n",
         "async def f(store):\n    value = await store.get()\n    if value is None:\n        return\n    else:\n        use(value)\n",
         "async def f(store):\n    value = await store.get()  # preserve lookup boundary\n    if value is None:\n        return\n    use(value)\n",
         "async def f(store):\n    value = await store.get()\n    # absence is expected\n    if value is None:\n        return\n    use(value)\n",
