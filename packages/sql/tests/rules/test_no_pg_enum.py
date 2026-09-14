@@ -36,7 +36,7 @@ def test_flags_create_type_as_enum():
     src = "CREATE TYPE call_status AS ENUM ('pending', 'active', 'completed');"
     diags = _check(src)
     assert len(diags) == 1
-    assert "TEXT + CHECK" in diags[0].message
+    assert "typed application enum" in diags[0].message
 
 
 def test_flags_schema_qualified_enum_type():
@@ -64,11 +64,9 @@ def test_is_case_insensitive():
     assert len(_check(src)) == 1
 
 
-def test_allows_text_with_check_constraint():
+def test_allows_text_with_application_owned_values():
     src = """
-CREATE TABLE IF NOT EXISTS call (
-    status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'completed'))
-);
+CREATE TABLE IF NOT EXISTS call (status TEXT NOT NULL);
 """
     assert _check(src) == []
 

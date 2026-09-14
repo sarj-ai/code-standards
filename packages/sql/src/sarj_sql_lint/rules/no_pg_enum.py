@@ -38,12 +38,12 @@ class NoPgEnum(Rule):
     id = "no-pg-enum"
     code = "SARJ103"
     documentation = RuleDocumentation(
-        summary="CREATE TYPE ... AS ENUM — use TEXT + CHECK constraint instead.",
+        summary="CREATE TYPE ... AS ENUM — use TEXT with an application enum instead.",
         rationale=(
             "PostgreSQL enums make ordinary value changes operationally awkward and couple application evolution to "
             "database type migrations."
         ),
-        remediation="Store the value as TEXT and constrain the allowed values with an explicit CHECK expression.",
+        remediation="Store the value as TEXT and validate its allowed values at the typed application boundary.",
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -66,15 +66,13 @@ class NoPgEnum(Rule):
                 public=True,
             ),
             RuleExample(
-                example_id="text-check-constraint",
-                title="Text column with an explicit value constraint",
+                example_id="text-with-application-enum",
+                title="Text column whose closed values are application-owned",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(
                         "supabase/migrations/001_status.sql",
-                        "CREATE TABLE call (\n"
-                        "    status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'completed'))\n"
-                        ");\n",
+                        "CREATE TABLE call (status TEXT NOT NULL);\n",
                     ),
                 ),
                 focus_path=PurePosixPath("supabase/migrations/001_status.sql"),
@@ -105,7 +103,7 @@ class NoPgEnum(Rule):
                         line=line,
                         col=col,
                         code=self.code,
-                        message=("Use TEXT + CHECK constraint — PG enums can't be altered transactionally."),
+                        message=("Use TEXT with a typed application enum — PG enums can't be altered transactionally."),
                     )
                 )
         return redirect_to_model(diags, model_owned=model_owned)

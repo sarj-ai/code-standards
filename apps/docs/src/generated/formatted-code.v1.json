@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "507f779e5de9a25b7cc1854ab5286209973694fea9ec0b62e298850ec512dece",
-  "cliSha256": "9a197718c893069163fe9aa5e0084c436de2dc7335b8d7e5bcf80d555454b9ac",
+  "catalogSha256": "e72b12547eb7297cfde861151b817ae003060b1adcf6c6df52bf17b38d95cf98",
+  "cliSha256": "f21f1c6644a4b8e9d0d55559ae4a7ea591aa3f5133ceddb4f27717dac3dfd6d5",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -8165,6 +8165,71 @@
       ],
       "optionsSchemaSource": null
     },
+    "sql:no-application-schema-check": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_execution_plan.sql",
+              "source": "CREATE TABLE execution_plan (\n  call_id UUID PRIMARY KEY REFERENCES\n  CALL (id),\n  outcomes JSONB NOT NULL\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_execution_plan.sql",
+          "id": "application-owned-json-shape",
+          "outcome": "accept",
+          "scenarioId": "json-shape",
+          "title": "Application schema owns the JSON document contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_call.sql",
+              "source": "CREATE TABLE\nCALL (status TEXT NOT NULL);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_call.sql",
+          "id": "application-owned-status-values",
+          "outcome": "accept",
+          "scenarioId": "closed-values",
+          "title": "Application enum owns the closed value set"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_call.sql",
+              "source": "CREATE TABLE\nCALL (\n  status TEXT NOT NULL CHECK (status IN ('queued', 'completed'))\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_call.sql",
+          "id": "closed-status-values-check",
+          "outcome": "reject",
+          "scenarioId": "closed-values",
+          "title": "Database duplicates an application enum"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_execution_plan.sql",
+              "source": "CREATE TABLE execution_plan (\n  outcomes JSONB NOT NULL CHECK (\n    JSONB_TYPEOF(outcomes) = 'array'\n    AND JSONB_ARRAY_LENGTH(outcomes) BETWEEN 1 AND 10\n  )\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_execution_plan.sql",
+          "id": "json-array-shape-check",
+          "outcome": "reject",
+          "scenarioId": "json-shape",
+          "title": "Database duplicates a JSON array schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "sql:no-database-triggers": {
       "examples": [
         {
@@ -8362,15 +8427,15 @@
           "files": [
             {
               "path": "supabase/migrations/001_status.sql",
-              "source": "CREATE TABLE\nCALL (\n  status TEXT NOT NULL CHECK (status IN ('pending', 'active', 'completed'))\n);\n"
+              "source": "CREATE TABLE\nCALL (status TEXT NOT NULL);\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "supabase/migrations/001_status.sql",
-          "id": "text-check-constraint",
+          "id": "text-with-application-enum",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Text column with an explicit value constraint"
+          "title": "Text column whose closed values are application-owned"
         }
       ],
       "optionsSchemaSource": null
