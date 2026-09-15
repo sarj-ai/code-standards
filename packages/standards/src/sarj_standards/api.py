@@ -381,6 +381,7 @@ class Standards:
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
+                    react_doctor_full_scan=paths is None and not staged,
                     pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 )
                 if adopted is not None
@@ -393,6 +394,7 @@ class Standards:
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
+                    react_doctor_full_scan=paths is None and not staged,
                     pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 )
             )

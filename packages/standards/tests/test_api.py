@@ -117,13 +117,18 @@ def test_explicit_typescript_ci_scope_still_includes_react_doctor(
 ) -> None:
     source = tmp_path / "component.tsx"
     source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
-    included: list[bool] = []
+    included: list[tuple[bool, bool]] = []
 
     def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
         return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
 
     def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
-        included.append(kwargs["include_react_doctor"] is True)
+        included.append(
+            (
+                kwargs["include_react_doctor"] is True,
+                kwargs["react_doctor_full_scan"] is False,
+            )
+        )
         return (api.ToolReport("eslint", api.Completion.COMPLETE),)
 
     monkeypatch.setattr(api, "analyze_paths", native)
@@ -131,7 +136,27 @@ def test_explicit_typescript_ci_scope_still_includes_react_doctor(
 
     _ = api.Standards(tmp_path).analyze(["component.tsx"], external=True)
 
-    assert included == [True]
+    assert included == [(True, True)]
+
+
+def test_repository_wide_analysis_uses_full_react_doctor_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = tmp_path / "component.tsx"
+    source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
+    full_scan: list[bool] = []
+
+    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+        full_scan.append(kwargs["react_doctor_full_scan"] is True)
+        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+
+    monkeypatch.setattr(api, "analyze_paths", native)
+    monkeypatch.setattr(api, "analyze_external", external)
+
+    _ = api.Standards(tmp_path).analyze(external=True)
+
+    assert full_scan == [True]
 
 
 def test_analysis_rejects_a_bare_rule_selector_string(tmp_path: Path) -> None:
