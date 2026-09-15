@@ -159,6 +159,88 @@ def test_repository_wide_analysis_uses_full_react_doctor_scope(monkeypatch: pyte
     assert full_scan == [True]
 
 
+def test_default_analysis_without_verification_paths_uses_full_react_doctor_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    source = tmp_path / "component.tsx"
+    source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
+    (tmp_path / ".sarj-standards.toml").write_text(
+        Manifest(
+            version=api.__version__,
+            configs=("eslint",),
+            python_dest=".",
+            typescript_dest=".",
+        ).render(),
+        encoding="utf-8",
+    )
+    full_scan: list[bool] = []
+
+    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+        full_scan.append(kwargs["react_doctor_full_scan"] is True)
+        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+
+    monkeypatch.setattr(api, "analyze_paths", native)
+    monkeypatch.setattr(api, "analyze_external", external)
+
+    _ = api.Standards(tmp_path).analyze(external=True)
+
+    assert full_scan == [True]
+
+
+def test_explicit_repository_root_uses_full_react_doctor_scope(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = tmp_path / "component.tsx"
+    source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
+    full_scan: list[bool] = []
+
+    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+        full_scan.append(kwargs["react_doctor_full_scan"] is True)
+        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+
+    monkeypatch.setattr(api, "analyze_paths", native)
+    monkeypatch.setattr(api, "analyze_external", external)
+
+    _ = api.Standards(tmp_path).analyze(["."], external=True)
+
+    assert full_scan == [True]
+
+
+def test_default_analysis_respects_scoped_verification_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = tmp_path / "src" / "component.tsx"
+    source.parent.mkdir()
+    source.write_text("export const Component = () => <button />;\n", encoding="utf-8")
+    (tmp_path / ".sarj-standards.toml").write_text(
+        Manifest(
+            version=api.__version__,
+            configs=("eslint",),
+            python_dest=".",
+            typescript_dest=".",
+            verify_paths=("src",),
+        ).render(),
+        encoding="utf-8",
+    )
+    full_scan: list[bool] = []
+
+    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    def external(_paths: Sequence[str], **kwargs: object) -> tuple[api.ToolReport, ...]:
+        full_scan.append(kwargs["react_doctor_full_scan"] is True)
+        return (api.ToolReport("eslint", api.Completion.COMPLETE),)
+
+    monkeypatch.setattr(api, "analyze_paths", native)
+    monkeypatch.setattr(api, "analyze_external", external)
+
+    _ = api.Standards(tmp_path).analyze(external=True)
+
+    assert full_scan == [False]
+
+
 def test_analysis_rejects_a_bare_rule_selector_string(tmp_path: Path) -> None:
     report = api.Standards(tmp_path).analyze(rules="python:no-rule")
 

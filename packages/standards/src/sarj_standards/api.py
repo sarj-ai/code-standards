@@ -280,6 +280,10 @@ class Standards:
             selected_groups = group_paths(active_selected, policy=selection_policy)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
+        requested_paths = adopted.verify_paths if paths is None and adopted is not None else paths
+        react_doctor_full_scan = not staged and (
+            requested_paths is None or any(Path(path) == Path() for path in requested_paths)
+        )
         native = analyze_paths(
             active_selected,
             root=self.root,
@@ -381,7 +385,7 @@ class Standards:
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
-                    react_doctor_full_scan=paths is None and not staged,
+                    react_doctor_full_scan=react_doctor_full_scan,
                     pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 )
                 if adopted is not None
@@ -394,7 +398,7 @@ class Standards:
                     include_react_doctor=include_react_doctor and rule_selection is None,
                     force_react_doctor=react_doctor_triggered,
                     react_doctor_staged=staged,
-                    react_doctor_full_scan=paths is None and not staged,
+                    react_doctor_full_scan=react_doctor_full_scan,
                     pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 )
             )
