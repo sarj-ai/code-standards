@@ -7,7 +7,12 @@ import tseslint from 'typescript-eslint';
 const allSarjRules = Object.fromEntries(
   Object.keys(sarj.rules)
     .sort()
-    .map((name) => [`@sarj/${name}`, 'error']),
+    .map((name) => {
+      const id = `@sarj/${name}`;
+      const configured = sarj.configs.strict.rules[id];
+      // Preserve policy options when escalating the shared preset for dogfooding.
+      return [id, Array.isArray(configured) ? ['error', ...configured.slice(1)] : 'error'];
+    }),
 );
 
 export default defineConfig(
