@@ -171,6 +171,13 @@ const ESLINT_RECOMMENDED_WARNING_CONFIG = {
   ),
 };
 
+// Prefer expression bodies whenever an arrow contains only a return. Unlike
+// unicorn/consistent-arrow-return-style, this does not expand a multiline
+// expression or object literal into an explicit `return` block.
+const ESLINT_CONCISION_ADVISORY_RULES = {
+  "arrow-body-style": ["warn", "as-needed"],
+};
+
 // Unicorn ships a broad rule set. The enabled subset below was selected by
 // evaluating each non-deprecated rule for correctness, runtime compatibility,
 // overlap with existing authorities, and whether its fix preserves semantics.
@@ -424,7 +431,6 @@ const UNICORN_MODERNISATION_RULES = {
 // corpora. Logical assignment excludes judgment-heavy if-statement rewrites;
 // iteration uses guards so its fixer agrees with the type-aware nullish rule.
 const UNICORN_CONCISION_ADVISORY_RULES = {
-  "unicorn/consistent-arrow-return-style": "warn",
   "unicorn/single-line-block-comment-style": ["warn", "single-line"],
   "unicorn/logical-assignment-operators": [
     "warn",
@@ -915,6 +921,7 @@ export function createConfig(options = {}) {
       // The unicorn 72 expansion, declared and explained above the config.
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
+      ...ESLINT_CONCISION_ADVISORY_RULES,
       ...UNICORN_CONCISION_ADVISORY_RULES,
 
       "zod/prefer-enum-over-literal-union": "error",

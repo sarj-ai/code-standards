@@ -75,7 +75,6 @@ const CONFIG_FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
 ];
 const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
 const UNICORN_CONCISION_ADVISORY_RULES = [
-  "unicorn/consistent-arrow-return-style",
   "unicorn/iteration-fallback-style",
   "unicorn/logical-assignment-operators",
   "unicorn/prefer-single-object-destructuring",
@@ -148,13 +147,13 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     }
   });
 
-  it("keeps the approved Unicorn concision trial at warning", async () => {
+  it("keeps the approved upstream concision trial at warning", async () => {
     const configured = await configFor("src/index.ts");
     for (const rule of UNICORN_CONCISION_ADVISORY_RULES) {
       expect(severityOf(configured.rules?.[rule])).toBe(1);
     }
     expect(configured.rules?.["logical-assignment-operators"]).toBeUndefined();
-    expect(configured.rules?.["arrow-body-style"]).toBeUndefined();
+    expect(configured.rules?.["arrow-body-style"]).toEqual([1, "as-needed"]);
     expect(configured.rules?.["multiline-comment-style"]).toBeUndefined();
     expect(configured.rules?.["prefer-destructuring"]).toBeUndefined();
     expect(configured.rules?.["eqeqeq"]).toEqual([
@@ -569,6 +568,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(ADVISORY_RULES).toEqual(warningStageEslintRules());
     expect(warnings.toSorted()).toEqual([
       ...ADVISORY_RULES,
+      "arrow-body-style",
       "better-tailwindcss/enforce-consistent-variable-syntax",
       ...recommendedCoreWarnings,
       ...UNICORN_CONCISION_ADVISORY_RULES,
