@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2b81847979746eb9a672978cd5eb26ae894e2ebadf1d8c2f3525b2716a9bad26",
-  "cliSha256": "7bccefa38428995ee086dfd32eabe89d4355ebcfa85fd711e6d0869ef045dc2a",
+  "catalogSha256": "c6d0d924308c3e1e6cc58d431ef393902bd6c091c101cca7e52aeec58f6a3279",
+  "cliSha256": "39009e5020fc910dd3e98d9c87b5bce71e1fcfa0e599f151a944aad2ffa9c41d",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2180,6 +2180,41 @@
         }
       ],
       "optionsSchemaSource": null
+    },
+    "eslint:prefer-logical-tailwind-utilities": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/layout.tsx",
+              "source": "<div className=\"ms-2\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/layout.tsx",
+          "id": "logical-spacing",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use direction-aware spacing"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/layout.tsx",
+              "source": "<div className=\"ml-2\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/layout.tsx",
+          "id": "physical-spacing",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Mirror layout spacing"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowUtilities\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"checkInsets\": { \"type\": \"boolean\" },\n    \"enabled\": { \"type\": \"boolean\" }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:prefer-millisecond-control-duration-schema": {
       "examples": [

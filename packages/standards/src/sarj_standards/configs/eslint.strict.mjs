@@ -1216,6 +1216,7 @@ export function createConfig(options = {}) {
       "@sarj/no-secret-in-log": "error",
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",
+      "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
       "@sarj/prefer-input-group-search": "error",
       "@sarj/prefer-millisecond-control-duration-schema": "warn",
       "@sarj/prefer-immutable-module-constant": "error",

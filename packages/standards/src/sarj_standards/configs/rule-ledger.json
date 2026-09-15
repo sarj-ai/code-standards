@@ -215,6 +215,7 @@
       "prefer-ecmascript-private-members",
       "prefer-immutable-module-constant",
       "prefer-input-group-search",
+      "prefer-logical-tailwind-utilities",
       "prefer-millisecond-control-duration-schema",
       "prefer-module-level-constant",
       "prefer-module-level-refined-schema",
