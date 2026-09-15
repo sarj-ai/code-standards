@@ -3,6 +3,7 @@
  */
 
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
+import requireSvgAccessibleName from "./rules/require-svg-accessible-name.js";
 import { LIBRARY_POLICY } from "./library-policy.js";
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
@@ -108,6 +109,7 @@ import { RETIRED_RULES } from "./rules/_retired.js";
 
 const RULES = {
   "require-button-accessible-name": requireButtonAccessibleName,
+  "require-svg-accessible-name": requireSvgAccessibleName,
   "excessive-commentary": excessiveCommentary,
   "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
@@ -212,7 +214,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.18.0",
+  version: "15.19.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -252,6 +254,7 @@ const ADVISORY_RULES = [
 
 const RECOMMENDED_RULES = {
   "@sarj/require-button-accessible-name": "error",
+  "@sarj/require-svg-accessible-name": "error",
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
@@ -352,6 +355,7 @@ const RECOMMENDED_RULES = {
 
 const STRICT_RULES = {
   "@sarj/require-button-accessible-name": "error",
+  "@sarj/require-svg-accessible-name": "error",
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
