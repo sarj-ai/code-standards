@@ -395,7 +395,15 @@ def test_staged_eslint_omits_deletions_symlinks_and_unrelated_paths(tmp_path: Pa
     )
 
     assert len(commands) == 1
-    assert commands[0].argv == ("npm", "exec", "--offline", "--", "eslint", "--", "source.ts")
+    assert commands[0].argv == (
+        "npm",
+        "exec",
+        "--offline",
+        "--",
+        "eslint",
+        "--",
+        "source.ts",
+    )
     assert lifecycle.staged_eslint_commands(tmp_path, [str(symlink)]) == []
 
 
@@ -554,7 +562,37 @@ def test_selected_eslint_keeps_a_directory_with_its_nested_project_owner(
     assert len(commands) == 1
     assert commands[0].cwd == project
     assert commands[0].argv[:7] == ("npm", "exec", "--offline", "--", "eslint", "--config", "eslint.config.mjs")
-    assert set(commands[0].argv[8:]) == {"app.ts", "eslint.config.mjs"}
+    assert set(commands[0].argv[8:]) == {"app.ts"}
+
+
+def test_staged_eslint_excludes_globally_ignored_config_modules(tmp_path: Path) -> None:
+    (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
+    source = tmp_path / "source.ts"
+    source.write_text("export const value = 1;\n", encoding="utf-8")
+    ignored = (
+        "eslint.config.js",
+        "eslint.config.cjs",
+        "eslint.config.mjs",
+        "eslint.config.ts",
+        "eslint.strict.mjs",
+    )
+    for name in ignored:
+        (tmp_path / name).write_text("export default [];\n", encoding="utf-8")
+
+    commands = lifecycle.staged_eslint_commands(tmp_path, [str(source), *ignored])
+
+    assert commands[0].argv == (
+        "npm",
+        "exec",
+        "--offline",
+        "--",
+        "eslint",
+        "--config",
+        "eslint.config.js",
+        "--",
+        "source.ts",
+    )
+    assert lifecycle.staged_eslint_commands(tmp_path, ignored) == []
 
 
 def test_staged_eslint_supports_every_eslint_module_suffix(tmp_path: Path) -> None:

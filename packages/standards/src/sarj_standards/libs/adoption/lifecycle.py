@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules", "target", "vendor"})
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
 _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
+_ESLINT_GLOBAL_IGNORE_NAMES = frozenset(
+    {"eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts", "eslint.strict.mjs"}
+)
 _COMMAND_TIMEOUT = timedelta(minutes=10)
 _GIT_DISCOVERY_TIMEOUT = timedelta(seconds=5)
 _GIT_SAFE_ENV = frozenset(
@@ -280,7 +283,11 @@ def _selected_eslint_candidates(
                 candidates.add(candidate)
             else:
                 candidates.update(sources)
-        elif candidate.suffix.lower() in _ESLINT_SUFFIXES and candidate.is_file():
+        elif (
+            candidate.suffix.lower() in _ESLINT_SUFFIXES
+            and candidate.name not in _ESLINT_GLOBAL_IGNORE_NAMES
+            and candidate.is_file()
+        ):
             candidates.add(candidate)
     return candidates
 
@@ -303,7 +310,9 @@ def _eslint_sources(directory: Path) -> set[Path]:
         sources.update(
             base / name
             for name in names
-            if Path(name).suffix.lower() in _ESLINT_SUFFIXES and not is_link_like(base / name)
+            if Path(name).suffix.lower() in _ESLINT_SUFFIXES
+            and name not in _ESLINT_GLOBAL_IGNORE_NAMES
+            and not is_link_like(base / name)
         )
     return sources
 
