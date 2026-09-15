@@ -241,6 +241,7 @@
       "require-port-for-service",
       "require-sql-access-class",
       "require-static-next-matcher",
+      "require-svg-accessible-name",
       "require-use-form-default-values",
       "require-use-server-in-actions-file",
       "require-zod-form-validation",

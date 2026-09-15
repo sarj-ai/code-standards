@@ -1809,6 +1809,14 @@
       "state": "complete",
       "evidence": "Forty-nine labeled boundaries: five true positives, 44 true negatives, zero false positives, false negatives or duplicate locations. Cases include effective omitted defaults, type-distinct literals, positional and keyword binding, missing required arguments, duplicate keywords and suppression. Extension calibration used 706 tracked test files (8,571,638 bytes) from two clean pinned local Git corpora: 479 private-consumer and 227 public Standards files. The two extensions added one inspected advisory finding each; the 14 baseline findings were unchanged. Three fresh-process trials with batches capped at 250: old SARJ066/SARJ443 plus adjacent SARJ413 median 7.23 seconds and peak 66.44 MiB; extended pair 6.08 seconds and 65.67 MiB; extended pair plus SARJ413 6.61 seconds and 64.94 MiB. These are nearby-rule timings under concurrent workloads, not whole-linter overhead or a speedup claim. No mature third-party corpus was included.",
       "outcome": "Keep warning without autofix. In addition to unsupplied literal defaults, recognize defaulted options whose effective value is the same literal across at least two direct calls. Reject invalid bindings, dynamic values, mutable defaults, required options, escapes and reflection. Single explicitly supplied callers remain excluded. The additional live finding is a simplification prompt with a readability tradeoff; retain explicit setup when it communicates the contract, and suppress for external callers."
+    },
+    {
+      "task": "rule-audit/typescript/require-svg-accessible-name",
+      "family": "typescript",
+      "ruleId": "require-svg-accessible-name",
+      "state": "complete",
+      "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. Both live findings were inspected as graphics needing explicit decorative intent. Forwarded props, names and direct titles are covered.",
+      "outcome": "Enable as an error by explicit user policy. Meaningful inline SVGs need a name; decorative graphics need explicit semantics. Preserve conservative handling of forwarded props and runtime values."
     }
   ]
 }
