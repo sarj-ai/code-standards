@@ -3,32 +3,32 @@ export const LIBRARY_POLICY = [
   {
     "id": "LIB101",
     "module": "request",
-    "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-    "replacement": "ky"
+    "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+    "replacement": "native fetch"
   },
   {
     "id": "LIB101",
     "module": "node-fetch",
-    "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-    "replacement": "ky"
+    "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+    "replacement": "native fetch"
   },
   {
     "id": "LIB101",
     "module": "cross-fetch",
-    "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-    "replacement": "ky"
+    "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+    "replacement": "native fetch"
   },
   {
     "id": "LIB101",
     "module": "isomorphic-fetch",
-    "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-    "replacement": "ky"
+    "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+    "replacement": "native fetch"
   },
   {
     "id": "LIB101",
     "module": "axios",
-    "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-    "replacement": "ky"
+    "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+    "replacement": "native fetch"
   },
   {
     "id": "LIB102",

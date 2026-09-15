@@ -815,16 +815,26 @@ export function createConfig(options = {}) {
         "error",
         { validStrategies: ["ternary", "coerce"] },
       ],
-      "react/no-unstable-nested-components": "error",
+      // react-hooks/static-components is the compiler-aware authority.
+      "react/no-unstable-nested-components": "off",
       "react-hooks/exhaustive-deps": "error",
       "react-hooks/rules-of-hooks": "error",
-      // Runtime correctness rules that do not require enabling React Compiler.
+      // Enforce the complete pinned react-hooks recommended-latest surface.
       "react-hooks/error-boundaries": "error",
+      "react-hooks/config": "error",
+      "react-hooks/gating": "error",
       "react-hooks/globals": "error",
       "react-hooks/immutability": "error",
+      "react-hooks/incompatible-library": "error",
+      "react-hooks/preserve-manual-memoization": "error",
       "react-hooks/purity": "error",
       "react-hooks/refs": "error",
+      "react-hooks/set-state-in-effect": "error",
       "react-hooks/set-state-in-render": "error",
+      "react-hooks/static-components": "error",
+      "react-hooks/unsupported-syntax": "error",
+      "react-hooks/use-memo": "error",
+      "react-hooks/void-use-memo": "error",
       // These rules cannot distinguish a raw inline style from the CSS custom
       // properties their own message recommends for dynamic utility values.
       // Semantic-color and design-system rules remain the style authorities.
@@ -1022,11 +1032,11 @@ export function createConfig(options = {}) {
         {
           paths: [
             // BEGIN GENERATED LIBRARY POLICY
-            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "request"},
-            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "node-fetch"},
-            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "cross-fetch"},
-            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "isomorphic-fetch"},
-            {"message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky.", "name": "axios"},
+            {"message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch.", "name": "request"},
+            {"message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch.", "name": "node-fetch"},
+            {"message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch.", "name": "cross-fetch"},
+            {"message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch.", "name": "isomorphic-fetch"},
+            {"message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch.", "name": "axios"},
             {"message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns.", "name": "moment"},
             {"message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns.", "name": "dayjs"},
             {"message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda.", "name": "lodash"},
@@ -1069,11 +1079,11 @@ export function createConfig(options = {}) {
           ],
           patterns: [{"group": ["*/index", "*/index.ts"]},
             // BEGIN GENERATED LIBRARY POLICY
-            {"group": ["request/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
-            {"group": ["node-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
-            {"group": ["cross-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
-            {"group": ["isomorphic-fetch/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
-            {"group": ["axios/*"], "message": "LIB101: Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing. Replace with ky."},
+            {"group": ["request/*"], "message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch."},
+            {"group": ["node-fetch/*"], "message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch."},
+            {"group": ["cross-fetch/*"], "message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch."},
+            {"group": ["isomorphic-fetch/*"], "message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch."},
+            {"group": ["axios/*"], "message": "LIB101: Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration. Replace with native fetch."},
             {"group": ["moment/*"], "message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns."},
             {"group": ["dayjs/*"], "message": "LIB102: Standards standardizes date utilities on date-fns; migration is not API-compatible. Replace with date-fns."},
             {"group": ["lodash/*"], "message": "LIB103: Standards standardizes collection utilities on Remeda and native APIs. Replace with remeda."},
@@ -1443,32 +1453,32 @@ export function createConfig(options = {}) {
             {
               "id": "LIB101",
               "module": "request",
-              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-              "replacement": "ky"
+              "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+              "replacement": "native fetch"
             },
             {
               "id": "LIB101",
               "module": "node-fetch",
-              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-              "replacement": "ky"
+              "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+              "replacement": "native fetch"
             },
             {
               "id": "LIB101",
               "module": "cross-fetch",
-              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-              "replacement": "ky"
+              "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+              "replacement": "native fetch"
             },
             {
               "id": "LIB101",
               "module": "isomorphic-fetch",
-              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-              "replacement": "ky"
+              "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+              "replacement": "native fetch"
             },
             {
               "id": "LIB101",
               "module": "axios",
-              "note": "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
-              "replacement": "ky"
+              "note": "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
+              "replacement": "native fetch"
             },
             {
               "id": "LIB102",

@@ -19,6 +19,9 @@ def test_catalog_has_stable_unique_ids_and_adapter_messages() -> None:
     assert len({entry.id for entry in entries}) == len(entries)
     assert library_policy.python_banned_api()["argparse"].startswith("LIB001:")
     assert {entry.name for entry in library_policy.typescript_restricted_imports()} >= {"axios", "express", "tslint"}
+    http_policy = next(entry for entry in entries if entry.id == "LIB101")
+    assert "axios" in http_policy.packages
+    assert http_policy.replacement == "native fetch"
 
 
 def write_adoption(root: Path, profile: manifest.Profile, *, configs: tuple[str, ...] = ()) -> None:

@@ -222,8 +222,8 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "typescript",
         "preferred-stack",
         "request,node-fetch,cross-fetch,isomorphic-fetch,axios",
-        "ky",
-        "Standards standardizes HTTP clients on Ky; review errors, retries, hooks, and response parsing.",
+        "native fetch",
+        "Use the platform-native fetch API; review errors, timeouts, retries, and response parsing during migration.",
     ),
     _mapping(
         "LIB102",
