@@ -119,6 +119,33 @@ def test_version_bump_cannot_supersede_an_unverified_prior_release(tmp_path: Pat
     assert report.violations[-1].render() == "python: cannot supersede unverified prior release python-v0.49.0"
 
 
+def test_non_publishable_push_is_a_clean_release_recovery_barrier(tmp_path: Path) -> None:
+    checked_tags: list[str] = []
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        _ = cwd, capture_output
+        if "--name-only" in argv:
+            return ProcessResult(0, ".github/workflows/release.yml\0")
+        return ProcessResult(0, "")
+
+    def tag_checker(*_args: object, **_kwargs: object) -> bool:
+        checked_tags.append("unexpected")
+        return False
+
+    report = check_release_causality(
+        tmp_path,
+        before="blocked-release",
+        after="recovery-barrier",
+        runner=runner,
+        tag_checker=tag_checker,
+    )
+
+    assert report.ok
+    assert report.changed_targets == ()
+    assert report.bumped_targets == ()
+    assert checked_tags == []
+
+
 def test_tests_locks_and_generated_readmes_do_not_force_noop_releases(tmp_path: Path) -> None:
     def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
         _ = cwd, capture_output
