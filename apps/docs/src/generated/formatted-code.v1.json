@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2b89d6d7c14395dc01e09a0e283f507c9cd31c631828783a3d8b1473db8df4b9",
-  "cliSha256": "39009e5020fc910dd3e98d9c87b5bce71e1fcfa0e599f151a944aad2ffa9c41d",
+  "catalogSha256": "56da6981b341c83d3278395db75f4ab1c0bee8f61ef96d7fa5d2f54ec5fa2135",
+  "cliSha256": "a69bab18a507a786fa41fccb1935483ee316a45e12aa714b489b635a0625db67",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1830,6 +1830,111 @@
         }
       ],
       "optionsSchemaSource": null
+    },
+    "eslint:no-unlocalized-jsx-attributes": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/message.tsx",
+              "source": "<input placeholder=\"Search\" />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/message.tsx",
+          "id": "literal-message",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Translate a user-facing message"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/message.tsx",
+              "source": "<input placeholder={t(\"search\")} />;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/message.tsx",
+          "id": "translated-message",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Resolve the message through translation"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"attributes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-unlocalized-jsx-text": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/message.tsx",
+              "source": "<p>Hello</p>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/message.tsx",
+          "id": "literal-message",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Translate a user-facing message"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/message.tsx",
+              "source": "<p>{t(\"hello\")}</p>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/message.tsx",
+          "id": "translated-message",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Resolve the message through translation"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-unlocalized-toast": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/message.tsx",
+              "source": "import { toast } from \"sonner\";\ntoast.success(\"Saved\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/message.tsx",
+          "id": "literal-message",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Translate a user-facing message"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/message.tsx",
+              "source": "import { toast } from \"sonner\";\ntoast.success(t(\"saved\"));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/message.tsx",
+          "id": "translated-message",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Resolve the message through translation"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowText\": {\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"enabled\": { \"type\": \"boolean\" },\n    \"functions\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"methods\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"translationComponents\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-unnecessary-use-client": {
       "examples": [

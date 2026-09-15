@@ -1859,6 +1859,30 @@
       "state": "pending",
       "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. Deterministic samples were inspected. Consumer-specific policy exceptions and further per-rule calibration remain before error promotion.",
       "outcome": "Stage as a warning without autofix. Keep disabled in shared presets until the consumer opts in. Continue calibration with configured file scopes and literal or physical-placement exceptions before any error promotion."
+    },
+    {
+      "task": "rule-audit/typescript/no-unlocalized-jsx-text",
+      "family": "typescript",
+      "ruleId": "no-unlocalized-jsx-text",
+      "state": "pending",
+      "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. Deterministic samples were inspected. Consumer-specific policy exceptions and further per-rule calibration remain before error promotion.",
+      "outcome": "Stage as a warning without autofix. Keep disabled in shared presets until the consumer opts in. Continue calibration with configured file scopes and literal or physical-placement exceptions before any error promotion."
+    },
+    {
+      "task": "rule-audit/typescript/no-unlocalized-jsx-attributes",
+      "family": "typescript",
+      "ruleId": "no-unlocalized-jsx-attributes",
+      "state": "pending",
+      "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. Deterministic samples were inspected. Consumer-specific policy exceptions and further per-rule calibration remain before error promotion.",
+      "outcome": "Stage as a warning without autofix. Keep disabled in shared presets until the consumer opts in. Continue calibration with configured file scopes and literal or physical-placement exceptions before any error promotion."
+    },
+    {
+      "task": "rule-audit/typescript/no-unlocalized-toast",
+      "family": "typescript",
+      "ruleId": "no-unlocalized-toast",
+      "state": "pending",
+      "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. Deterministic samples were inspected. Consumer-specific policy exceptions and further per-rule calibration remain before error promotion.",
+      "outcome": "Stage as a warning without autofix. Keep disabled in shared presets until the consumer opts in. Continue calibration with configured file scopes and literal or physical-placement exceptions before any error promotion."
     }
   ]
 }
