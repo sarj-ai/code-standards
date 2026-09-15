@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2b81847979746eb9a672978cd5eb26ae894e2ebadf1d8c2f3525b2716a9bad26",
-  "cliSha256": "7bccefa38428995ee086dfd32eabe89d4355ebcfa85fd711e6d0869ef045dc2a",
+  "catalogSha256": "f338f5bb6797ef38a76722d38b26c6560df343cbe48f7d6c4ddce798ac365ce1",
+  "cliSha256": "d271b2f027f94aa5eefc56ac515cb7bf642dacee32e09535d2251909f217a8f2",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3196,6 +3196,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Use a literal matcher"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-svg-accessible-name": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/chart.tsx",
+              "source": "<svg aria-hidden=\"true\">\n  <path />\n</svg>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/chart.tsx",
+          "id": "decorative-svg",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Identify decorative graphics"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/chart.tsx",
+              "source": "<svg>\n  <path />\n</svg>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/chart.tsx",
+          "id": "unnamed-svg",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Name meaningful graphics"
         }
       ],
       "optionsSchemaSource": null

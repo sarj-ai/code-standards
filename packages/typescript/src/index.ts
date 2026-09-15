@@ -2,6 +2,7 @@
  * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renames.ts`.
  */
 
+import requireSvgAccessibleName from "./rules/require-svg-accessible-name.js";
 import { LIBRARY_POLICY } from "./library-policy.js";
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
@@ -106,6 +107,7 @@ import { RENAMED_RULES } from "./rules/_renames.js";
 import { RETIRED_RULES } from "./rules/_retired.js";
 
 const RULES = {
+  "require-svg-accessible-name": requireSvgAccessibleName,
   "excessive-commentary": excessiveCommentary,
   "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
@@ -210,7 +212,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.17.18",
+  version: "15.19.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -249,6 +251,7 @@ const ADVISORY_RULES = [
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "@sarj/require-svg-accessible-name": "error",
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
@@ -348,6 +351,7 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/require-svg-accessible-name": "error",
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
