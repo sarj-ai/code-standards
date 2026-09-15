@@ -35,6 +35,10 @@
  * - the outlier gate is unchanged in spirit: no rule may exceed
  *   `RELATIVE_OUTLIER_FACTOR` times the median rule, which now compares rule
  *   costs rather than parse costs. Worst observed is ~2.8x.
+ *
+ * A candidate that exceeds the absolute backstop is confirmed separately with
+ * its rule timing bracketed by fresh parse timings. This distinguishes a real,
+ * repeatable regression from a scheduler interruption during the broad sweep.
  */
 
 import { Linter, type SourceCode } from "eslint";
@@ -163,6 +167,7 @@ for (let round = 0; round < MEASUREMENT_ROUNDS; round++) {
 }
 
 const PARSE_MS = median(PARSE_SAMPLES);
+const CONFIRMATION_ROUNDS = 9;
 
 function ruleMs(ruleName: string): number {
   return median(RULE_SAMPLES.get(ruleName) ?? []);
@@ -170,6 +175,17 @@ function ruleMs(ruleName: string): number {
 
 function ruleRatio(ruleName: string): number {
   return median(RATIO_SAMPLES.get(ruleName) ?? []);
+}
+
+function confirmedRuleRatio(ruleName: string): number {
+  const config = configFor({ [`@sarj/${ruleName}`]: "error" });
+  const ratios = Array.from({ length: CONFIRMATION_ROUNDS }, () => {
+    const parseBefore = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+    const rule = elapsedMs(() => LINTER.verify(PARSED, config, "synthetic.tsx"));
+    const parseAfter = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+    return rule / ((parseBefore + parseAfter) / 2);
+  });
+  return median(ratios);
 }
 
 const PERF_TIMEOUT_MS = 120_000;
@@ -190,10 +206,13 @@ describe("rule performance", () => {
 
   it("no rule costs more than a fraction of parsing the same file", () => {
     for (const name of RULE_NAMES) {
-      const ratio = ruleRatio(name);
+      const initialRatio = ruleRatio(name);
+      const ratio =
+        initialRatio < MAX_RULE_COST_VS_PARSE ? initialRatio : confirmedRuleRatio(name);
       expect(
         ratio,
-        `${name}: ${ratio.toFixed(4)}x the parse cost of the same file (budget ${MAX_RULE_COST_VS_PARSE})`,
+        `${name}: ${ratio.toFixed(4)}x the parse cost of the same file after confirmation ` +
+          `(initial ${initialRatio.toFixed(4)}, budget ${MAX_RULE_COST_VS_PARSE})`,
       ).toBeLessThan(MAX_RULE_COST_VS_PARSE);
     }
   }, PERF_TIMEOUT_MS);
