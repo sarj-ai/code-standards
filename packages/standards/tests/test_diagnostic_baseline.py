@@ -23,6 +23,7 @@ from sarj_standards.libs.diagnostics import (
 from sarj_standards.libs.diagnostics.serialize import to_github, to_sarif, to_text
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.analysis import report_from_tools
+from sarj_standards.libs.linting.policy import Policy
 
 
 if TYPE_CHECKING:
@@ -977,6 +978,8 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
         ),
         encoding="utf-8",
     )
+    adopted = replace(_manifest(baseline_path.name), excluded_paths=("generated/**",))
+    (tmp_path / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     captured: list[tuple[object, object]] = []
 
     def analyze(self: api.Standards, paths: object = None, **kwargs: object) -> AnalysisReport:
@@ -989,12 +992,15 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
     external_calls: list[object] = []
 
     def analyze_eslint(files: object, **kwargs: object) -> tuple[ToolReport, ...]:
+        policy = kwargs.get("policy")
+        assert isinstance(policy, Policy)
         external_calls.append(
             (
                 files,
                 kwargs.get("capabilities"),
                 kwargs.get("include_react_doctor"),
                 kwargs.get("pass_on_unpruned_eslint_suppressions"),
+                policy.allows_path(tmp_path / "generated" / "client.ts"),
             )
         )
         return ()
@@ -1017,7 +1023,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
         == 0
     )
     assert captured == []
-    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False, True)]
+    assert external_calls == [([str(tmp_path)], frozenset({"eslint"}), False, True, False)]
 
 
 def test_baseline_rejects_a_path_outside_the_repository(tmp_path: Path) -> None:

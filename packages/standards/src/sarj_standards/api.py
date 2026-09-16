@@ -69,7 +69,7 @@ from .libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from .libs.adoption.manifest import Profile
+    from .libs.adoption.manifest import Manifest, Profile
 
 
 _INVALID_EXIT = 2
@@ -93,6 +93,19 @@ class AnalysisMode(StrEnum):
     CORPUS = "corpus"
     OBSERVE = "observe"
     RAW = "raw"
+
+
+def _analysis_manifest(root: Path, mode: AnalysisMode) -> Manifest | None:
+    if mode is AnalysisMode.RAW:
+        return None
+    if mode is not AnalysisMode.CORPUS:
+        return load_manifest(root)
+    try:
+        return load_manifest(root)
+    except ValueError:
+        # Corpus evaluation is intentionally portable across consumer manifest
+        # generations. Current manifests still contribute path exclusions.
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,9 +255,7 @@ class Standards:
         except ValueError as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
-            adopted = (
-                load_manifest(self.root) if normalized_mode not in {AnalysisMode.RAW, AnalysisMode.CORPUS} else None
-            )
+            adopted = _analysis_manifest(self.root, normalized_mode)
             selection_policy = (
                 Policy.corpus_from_manifest(self.root, adopted)
                 if normalized_mode is AnalysisMode.CORPUS
