@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2b81847979746eb9a672978cd5eb26ae894e2ebadf1d8c2f3525b2716a9bad26",
-  "cliSha256": "174e6be560ea13f8ad47f516182fce696838d1f73b4e3434c43dea4cfc5afbec",
+  "catalogSha256": "c2320fb34a2e2b0b6f11bd733c2499e0630b300286893eee6659b6f498b4bde5",
+  "cliSha256": "e983075ea18c9f1d933381aabbd4ba0b46a08d29145245f204059a3ecf6d5870",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -2989,6 +2989,41 @@
         }
       ],
       "optionsSchemaSource": null
+    },
+    "eslint:require-button-accessible-name": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/action.tsx",
+              "source": "<button aria-label=\"Close\">\n  <svg aria-hidden=\"true\" />\n</button>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/action.tsx",
+          "id": "named-button",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Provide the action name"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/action.tsx",
+              "source": "<button>\n  <svg aria-hidden=\"true\" />\n</button>;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/action.tsx",
+          "id": "unnamed-button",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Name an icon action"
+        }
+      ],
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"components\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"export\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"module\", \"export\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    },\n    \"iconModules\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:require-fetch-timeout": {
       "examples": [
