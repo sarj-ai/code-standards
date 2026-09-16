@@ -4,6 +4,7 @@
 
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
 import requireSvgAccessibleName from "./rules/require-svg-accessible-name.js";
+import preferLogicalTailwindUtilities from "./rules/prefer-logical-tailwind-utilities.js";
 import { LIBRARY_POLICY } from "./library-policy.js";
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
@@ -110,6 +111,7 @@ import { RETIRED_RULES } from "./rules/_retired.js";
 const RULES = {
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-svg-accessible-name": requireSvgAccessibleName,
+  "prefer-logical-tailwind-utilities": preferLogicalTailwindUtilities,
   "excessive-commentary": excessiveCommentary,
   "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
@@ -214,7 +216,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.19.0",
+  version: "15.20.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -235,6 +237,7 @@ const ADVISORY_RULES = [
   "@sarj/no-redundant-optional-array-default",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
+  "@sarj/prefer-logical-tailwind-utilities",
   "@sarj/prefer-millisecond-control-duration-schema",
   "@sarj/prefer-module-level-refined-schema",
   "@sarj/prefer-multi-value-zod-literal",
@@ -255,6 +258,7 @@ const ADVISORY_RULES = [
 const RECOMMENDED_RULES = {
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-svg-accessible-name": "error",
+  "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
@@ -356,6 +360,7 @@ const RECOMMENDED_RULES = {
 const STRICT_RULES = {
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-svg-accessible-name": "error",
+  "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",

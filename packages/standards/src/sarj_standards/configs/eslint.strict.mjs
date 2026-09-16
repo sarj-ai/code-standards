@@ -1238,6 +1238,7 @@ export function createConfig(options = {}) {
       "@sarj/no-hand-rolled-spinner": "error",
       "@sarj/require-button-accessible-name": "error",
       "@sarj/require-svg-accessible-name": "error",
+      "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
       "@sarj/prefer-input-group-search": "error",
       "@sarj/prefer-millisecond-control-duration-schema": "warn",
       "@sarj/prefer-immutable-module-constant": "error",
