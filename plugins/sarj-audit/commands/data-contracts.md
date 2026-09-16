@@ -55,3 +55,30 @@ A decoder such as `parseRequest(input: unknown): Request` is a valid boundary.
 A domain service returning `Promise<unknown>` after validation loses that
 boundary's result. Reuse its parsed output type instead of validating again in
 every caller. Do not invent another runtime schema for already-trusted values.
+
+## Typed access before reflection
+
+Inspect `Reflect.get` and `Reflect.apply` when a known property or callable
+contract is available. Report the specific lost check, such as a field typo or
+argument mismatch accepted through reflection. Use typed access or a named
+boundary contract; preserve the invocation receiver and property-access semantics.
+
+Synthetic example:
+
+```ts
+// Before: neither the property spelling nor the arguments use the owner contract.
+const status = Reflect.get(shipment, "status");
+const result = Reflect.apply(service.dispatch, service, [request]);
+
+// After
+const status = shipment.status;
+const result = service.dispatch(request);
+```
+
+Keep reflection in genuine proxy forwarding, metaprogramming, and dynamic plugin
+boundaries. `Reflect.get(target, key, receiver)` can bind a getter differently
+from `target[key]`; `Reflect.apply` can preserve a deliberate receiver. A proxy
+that forwards arbitrary properties is a counterexample, not evidence of an
+unsafe domain contract. Require a behavior-preserving replacement before
+reporting, and do not duplicate existing unsafe-argument or unsafe-access lint
+findings.
