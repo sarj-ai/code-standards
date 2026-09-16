@@ -1843,6 +1843,14 @@
       "state": "complete",
       "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. All 37 live findings were inspected as unnamed icon actions. Render-prop composition false positives were corrected and regression tested.",
       "outcome": "Enable as an error by explicit user policy. Check native button and conventional Button elements by default, including Lucide icon children. Keep exact import mappings for aliases and other custom components; retain runtime accessibility testing."
+    },
+    {
+      "task": "rule-audit/typescript/require-svg-accessible-name",
+      "family": "typescript",
+      "ruleId": "require-svg-accessible-name",
+      "state": "complete",
+      "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. Both live findings were inspected as graphics needing explicit decorative intent. Forwarded props, names and direct titles are covered.",
+      "outcome": "Enable as an error by explicit user policy. Meaningful inline SVGs need a name; decorative graphics need explicit semantics. Preserve conservative handling of forwarded props and runtime values."
     }
   ]
 }
