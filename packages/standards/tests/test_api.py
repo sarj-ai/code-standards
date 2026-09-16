@@ -112,6 +112,27 @@ def test_canonical_analysis_routes_the_repository_only_once(
     assert len(routed) == 1
 
 
+def test_external_router_can_intentionally_ignore_managed_eslint_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    managed_config = tmp_path / "eslint.strict.mjs"
+    managed_config.write_text("export default [];\n", encoding="utf-8")
+
+    def native(_paths: Sequence[str], **_kwargs: object) -> api.AnalysisReport:
+        return api.AnalysisReport(tmp_path, api.Completion.COMPLETE, api.Conclusion.PASSED, ())
+
+    def external(_paths: Sequence[str], **_kwargs: object) -> tuple[api.ToolReport, ...]:
+        return ()
+
+    monkeypatch.setattr(api, "analyze_paths", native)
+    monkeypatch.setattr(api, "analyze_external", external)
+
+    report = api.Standards(tmp_path).analyze(["eslint.strict.mjs"], external=True)
+
+    assert report.conclusion is api.Conclusion.PASSED
+    assert report.issues == ()
+
+
 def test_explicit_typescript_ci_scope_still_includes_react_doctor(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
