@@ -1907,6 +1907,14 @@
       "state": "pending",
       "evidence": "17 focused cases pass; local maintained TypeScript source scan found no matches. Wider corpus calibration remains pending.",
       "outcome": "Introduce a warning without autofix; retain boundary and parser-service exclusions."
+    },
+    {
+      "task": "rule-audit/typescript/no-reduce-accumulator-copy",
+      "family": "typescript",
+      "ruleId": "no-reduce-accumulator-copy",
+      "state": "pending",
+      "evidence": "Focused positive and negative cases cover built-in arrays, lexical scope, fresh seeds, generated source, and syntax-only parsing. Wider corpus calibration remains pending.",
+      "outcome": "Introduce an advisory warning without autofix; require review of growth and ownership before changing behavior."
     }
   ]
 }

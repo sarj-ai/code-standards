@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "96b7a88eb00860cf190a0949a9c9ce356e4b6a1096fdb7a4098e42e0692a8b71",
-  "cliSha256": "bb120ac354d55719f72602cf37678694b39b04c6335af89d99a2a63bda2d3716",
+  "catalogSha256": "8a0d6df0f15b4188d4d31312993baa6eafd0c4fc150ced3a8f40aec4b3dd83c8",
+  "cliSha256": "a03468865f2a6e0ef49df71b15065aae495249d3491873d520125ac573a17eec",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -1260,6 +1260,41 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Regular-expression sources matched against the filename. Replaces the defaults.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    },\n    \"basePath\": {\n      \"pattern\": \"^/(?!$)(?!.*[?#])(?!(?:.*/)?\\\\.\\\\.?(?:/|$))(?:[^/]+/)*[^/]+$\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-reduce-accumulator-copy": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/reports.ts",
+              "source": "declare const pages: string[][];\nconst rows = pages.reduce<string[]>((acc, page) => acc.concat(page), []);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/reports.ts",
+          "id": "copy-rows",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Repeated concatenation copies prior report rows"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/reports.ts",
+              "source": "declare const pages: string[][];\nconst rows = pages.flatMap((page) => page);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/reports.ts",
+          "id": "flatten-rows",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Flatten report rows without copying the accumulated prefix"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:no-redundant-optional-array-default": {
       "examples": [
