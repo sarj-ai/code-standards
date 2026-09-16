@@ -486,6 +486,122 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
 
   it.each([
     {
+      rule: "no-extra-bind",
+      source: "const load = (() => 1).bind(undefined);",
+      expected: "const load = (() => 1);",
+      extension: "ts",
+    },
+    {
+      rule: "no-undef-init",
+      source: "let value = undefined;",
+      expected: "let value;",
+      extension: "ts",
+    },
+    {
+      rule: "no-useless-computed-key",
+      source: 'const value = { ["name"]: "Ada" };',
+      expected: 'const value = { "name": "Ada" };',
+      extension: "ts",
+    },
+    {
+      rule: "no-useless-rename",
+      source: "const { value: value } = input;",
+      expected: "const { value } = input;",
+      extension: "ts",
+    },
+    {
+      rule: "no-useless-return",
+      source: "function finish(): void { return; }",
+      expected: "function finish(): void {  }",
+      extension: "ts",
+    },
+    {
+      rule: "prefer-arrow-callback",
+      source: "items.map(function (item) { return item; });",
+      expected: "items.map((item) => item);",
+      extension: "ts",
+    },
+    {
+      rule: "react/jsx-curly-brace-presence",
+      source: 'const view = <Panel label={"ready"}>{"Done"}</Panel>;',
+      expected: 'const view = <Panel label="ready">Done</Panel>;',
+      extension: "tsx",
+    },
+    {
+      rule: "@typescript-eslint/no-useless-empty-export",
+      source: "export const value = 1; export {};",
+      expected: "export const value = 1; ",
+      extension: "ts",
+    },
+    {
+      rule: "unicorn/no-useless-coercion",
+      source: 'const value = String("ready");',
+      expected: 'const value = "ready";',
+      extension: "ts",
+    },
+  ])(
+    "autofixes $rule once and converges",
+    async ({ rule, source, expected, extension }) => {
+      const ownedRules = new Set([rule, "arrow-body-style"]);
+      const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
+        ...entry,
+        rules: Object.fromEntries(
+          Object.entries(entry.rules ?? {}).filter(([ruleId]) => ownedRules.has(ruleId)),
+        ),
+      }));
+      const eslint = new ESLint({
+        cwd: FIXTURE_DIR,
+        fix: true,
+        overrideConfigFile: true,
+        overrideConfig: config,
+      });
+      const filePath = resolve(FIXTURE_DIR, `concision-probe.${extension}`);
+      const [first] = await eslint.lintText(source, { filePath });
+      expect(first?.output).toBe(expected);
+      expect(first?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+
+      const [second] = await eslint.lintText(first?.output ?? source, { filePath });
+      expect(second?.output).toBeUndefined();
+      expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+    },
+  );
+
+  it.each([
+    {
+      rule: "@typescript-eslint/consistent-type-exports",
+      source: "type User = { id: string }; const version = 1; export { User, version };",
+      expected: "type User = { id: string }; const version = 1; export { type User, version };",
+    },
+    {
+      rule: "@typescript-eslint/no-unnecessary-qualifier",
+      source: "namespace Values { export type Item = string; const value: Values.Item = 'x'; }",
+      expected: "namespace Values { export type Item = string; const value: Item = 'x'; }",
+    },
+  ])("type-checks and converges the $rule autofix", async ({ rule, source, expected }) => {
+    const config = STRICT_CONFIG_FACTORY({ tsconfigRootDir: FIXTURE_DIR }).map((entry) => ({
+      ...entry,
+      rules: Object.fromEntries(
+        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
+      ),
+    }));
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      fix: true,
+      overrideConfigFile: true,
+      overrideConfig: config,
+    });
+    const filePath = resolve(FIXTURE_DIR, "typed-concision-probe.ts");
+    const [first] = await eslint.lintText(source, { filePath });
+    expect(first?.output).toBe(expected);
+    expect(first?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+
+    const [second] = await eslint.lintText(first?.output ?? source, { filePath });
+    expect(second?.output).toBeUndefined();
+    expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+  });
+
+  it.each([
+    {
       rule: "unicorn/no-object-as-default-parameter",
       severity: 2,
       source: "function configure(options = {timeout: 1000}) { return options; }",
