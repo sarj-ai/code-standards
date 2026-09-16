@@ -503,7 +503,7 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
 
   it.each([
     {
-      rule: "unicorn/consistent-arrow-return-style",
+      rule: "arrow-body-style",
       source: "const value = () => { return 1; };",
       expected: "const value = () => 1;",
       nearMiss: "const value = () => 1;",
@@ -561,6 +561,57 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     });
     expect(accepted?.output).toBeUndefined();
     expect(accepted?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+  });
+
+  it("prefers concise multiline arrow expressions instead of expanding return blocks", async () => {
+    const rule = "arrow-body-style";
+    const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
+      ...entry,
+      rules: Object.fromEntries(
+        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
+      ),
+    }));
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      fix: true,
+      overrideConfigFile: true,
+      overrideConfig: config,
+    });
+    const concise = `const getObject = () => ({
+  value: getValue(
+    first,
+    second,
+  ),
+});`;
+    const verbose = `const getObject = () => {
+  return {
+    value: getValue(
+      first,
+      second,
+    ),
+  };
+};`;
+    const fixedVerbose = `const getObject = () => ({
+    value: getValue(
+      first,
+      second,
+    ),
+  });`;
+    const [fixed] = await eslint.lintText(verbose, {
+      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
+    });
+    const [accepted] = await eslint.lintText(concise, {
+      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
+    });
+    const [second] = await eslint.lintText(fixed?.output ?? "", {
+      filePath: resolve(FIXTURE_DIR, "upstream-concision.ts"),
+    });
+
+    expect(fixed?.output).toBe(fixedVerbose);
+    expect(accepted?.output).toBeUndefined();
+    expect(accepted?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+    expect(second?.output).toBeUndefined();
+    expect(second?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
   });
 
   it("keeps the iteration guard fix compatible with existing authorities", async () => {
