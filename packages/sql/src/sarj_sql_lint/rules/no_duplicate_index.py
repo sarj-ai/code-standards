@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
@@ -32,15 +32,15 @@ class NoDuplicateIndex(Rule):
     id = "no-duplicate-index"
     code = "SARJ117"
     documentation = RuleDocumentation(
-        summary="Report repeated normalized index definitions that remain active in one authored migration.",
+        summary="Report duplicate and conservatively covered indexes that remain active in one authored migration.",
         rationale=(
-            "Two explicit indexes with the same normalized structural definition add duplicate write amplification, "
-            "storage, vacuum work, and planner choices in the migration's resulting state."
+            "Duplicate definitions, non-unique copies of unique access paths, and strict B-tree prefixes can add "
+            "write amplification, storage, vacuum work, and planner choices without a distinct measured read path."
         ),
         remediation=(
-            "Remove the repeated definition, or explicitly drop the superseded index in the same migration. If both "
-            "indexes must remain, give them a materially different key, uniqueness or partition scope, access method, "
-            "included columns, null treatment, predicate, tablespace, or storage parameters."
+            "Remove the repeated definition or verify the exact query plan before retaining a potentially covered "
+            "index. Preserve an index when uniqueness, key order, operator class, collation, predicate, included "
+            "columns, partition scope, access method, tablespace, or storage parameters give it distinct behavior."
         ),
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
@@ -49,6 +49,7 @@ class NoDuplicateIndex(Rule):
             "DROP INDEX operations in the same migration remove the named definition from the final active set before repeated definitions are compared.",
             "The normalized definition includes uniqueness, table and ONLY scope, access method, ordered key expressions and operator classes, INCLUDE columns, NULLS DISTINCT treatment, storage parameters, tablespace, and WHERE predicate.",
             "Semantically equivalent expressions with different normalized source spelling are intentionally not inferred.",
+            "Left-prefix review is limited to ordinary non-unique B-tree indexes with identical physical options and compatible INCLUDE coverage.",
         ),
         examples=(
             RuleExample(
@@ -96,12 +97,15 @@ class NoDuplicateIndex(Rule):
             index = operation
             key = index_namespace_key(index) or f"<unnamed>@{index.start}"
             active.setdefault(key, index)
+        indexes = sorted(active.values(), key=lambda definition: definition.start)
         findings: list[Diagnostic] = []
+        reported: set[int] = set()
         seen: dict[IndexSignature, IndexDefinition] = {}
-        for index in sorted(active.values(), key=lambda definition: definition.start):
+        for index in indexes:
             first = seen.setdefault(index.signature, index)
             if first is index:
                 continue
+            reported.add(index.start)
             findings.append(
                 Diagnostic(
                     path,
@@ -111,4 +115,100 @@ class NoDuplicateIndex(Rule):
                     f"Index `{index.name}` duplicates `{first.name}` on table `{index.table}`; remove the later index.",
                 )
             )
+        for position, index in enumerate(indexes):
+            if index.start in reported:
+                continue
+            counterpart = next(
+                (
+                    candidate
+                    for candidate in indexes[:position]
+                    if candidate.start not in reported
+                    and candidate.unique != index.unique
+                    and index_access_signature(candidate) == index_access_signature(index)
+                ),
+                None,
+            )
+            if counterpart is None:
+                continue
+            nonunique, unique = (counterpart, index) if index.unique else (index, counterpart)
+            reported.add(index.start)
+            findings.append(
+                Diagnostic(
+                    path,
+                    index.line,
+                    index.column,
+                    self.code,
+                    f"Non-unique index `{nonunique.name}` repeats unique access path `{unique.name}` on table "
+                    f"`{index.table}`; remove the non-unique copy unless an exact query plan proves distinct value.",
+                )
+            )
+        for position, later in enumerate(indexes):
+            if later.start in reported:
+                continue
+            earlier = next(
+                (
+                    candidate
+                    for candidate in indexes[:position]
+                    if candidate.start not in reported
+                    and (_strict_prefix_pair(candidate, later) or _strict_prefix_pair(later, candidate))
+                ),
+                None,
+            )
+            if earlier is None:
+                continue
+            shorter, longer = (earlier, later) if _strict_prefix_pair(earlier, later) else (later, earlier)
+            reported.add(later.start)
+            findings.append(
+                Diagnostic(
+                    path,
+                    later.line,
+                    later.column,
+                    self.code,
+                    f"Index `{shorter.name}` is a strict left prefix of `{longer.name}` on table `{later.table}`; "
+                    "the pair may overlap, so verify the exact query plan before retaining both.",
+                )
+            )
+        findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings
+
+
+class _IndexAccessSignature(NamedTuple):
+    only: bool
+    table: str
+    method: str
+    keys: tuple[str, ...]
+    include: tuple[str, ...]
+    storage_parameters: tuple[str, ...]
+    tablespace: str
+    predicate: str
+
+
+def index_access_signature(index: IndexDefinition) -> _IndexAccessSignature:
+    return _IndexAccessSignature(
+        index.only,
+        index.table,
+        index.method,
+        index.keys,
+        index.include,
+        index.storage_parameters,
+        index.tablespace,
+        index.predicate,
+    )
+
+
+def _strict_prefix_pair(shorter: IndexDefinition, longer: IndexDefinition) -> bool:
+    if shorter.unique or longer.unique or shorter.method != "btree" or longer.method != "btree":
+        return False
+    if (
+        _prefix_context(shorter) != _prefix_context(longer)
+        or not shorter.keys
+        or len(shorter.keys) >= len(longer.keys)
+        or longer.keys[: len(shorter.keys)] != shorter.keys
+    ):
+        return False
+    available = frozenset((*longer.keys, *longer.include))
+    return all(column in available for column in shorter.include)
+
+
+def _prefix_context(index: IndexDefinition) -> tuple[str, bool, str, tuple[str, ...], str]:
+    return index.table, index.only, index.predicate, index.storage_parameters, index.tablespace

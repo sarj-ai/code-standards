@@ -67,6 +67,14 @@
       "outcome": "Ship SARJ209 as a warning without autofix. Report only exact syntax-parsed conditions that cannot reject a value after Terraform has applied the same variable's static type and nullability constraints. Preserve enum, range, format, CIDR, nullability, provider, and cross-field validation; abstain on compound predicates, dynamic types, generated files, fixtures, malformed input, and references to another variable. Promote separately only after warning adoption demonstrates live positive precision."
     },
     {
+      "task": "rule-audit/iac/no-terraform-data-condition",
+      "family": "iac",
+      "ruleId": "no-terraform-data-condition",
+      "state": "complete",
+      "evidence": "Focused fixtures cover lifecycle preconditions and postconditions, multiple conditions, ordinary terraform_data replacement triggers, provider-resource conditions, variable validation, check blocks, comments, string literals, non-Terraform files, and malformed HCL. The complete IaC suite passes with the rule registered, and the generated public match/no-match examples execute successfully.",
+      "outcome": "Ship SARJ210 as a warning without autofix. Report one diagnostic for a terraform_data resource with a direct lifecycle precondition or postcondition, while allowing replacement triggers and conditions at owning variable, provider-resource, check, test, and deployment boundaries. Restrict analysis to Terraform source and abstain on unsupported or malformed input."
+    },
+    {
       "task": "rule-audit/iac/require-deletion-protection",
       "family": "iac",
       "ruleId": "require-deletion-protection",
@@ -1752,7 +1760,17 @@
       "task": "rule-audit/python/complex-postgres-query-requires-architecture-review",
       "family": "python",
       "ruleId": "complex-postgres-query-requires-architecture-review",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Focused boundary fixtures cover four joins, six query stages, the combined threshold, wide joined projections, atomic locking, executable sinks, dynamic abstention and mixed backends. A bounded local <private-corpus> evaluation scanned 1,917 Python files and 16,343,919 bytes across two consumer snapshots; its one finding was inspected as a true architecture-review prompt. Three rule-only runs completed in 0.353s cold and 0.301-0.311s warm with no duplicate locations.",
+      "outcome": "Retain warning. Review complex derived relations, four joins, six query stages, three joins plus four stages, or 25 projections plus two joins. Preserve atomic coordination, classify competing analytical backends per query, and do not infer runtime cost, data-model quality or datastore placement from syntax."
+    },
+    {
+      "task": "rule-audit/sql/mixed-migration-phases",
+      "family": "sql",
+      "ruleId": "mixed-migration-phases",
+      "state": "complete",
+      "evidence": "Focused fixtures cover phase thresholds, fresh-table bootstrap, forward/down boundaries, dollar-quoted bodies, ClickHouse exchange, exclusions and malformed scope. A bounded local <private-corpus> evaluation scanned 319 SQL files and 480,745 bytes across two consumer snapshots; all 16 findings were inspected as existing-table deployment-phase review prompts, with no duplicate locations or known false positives. Adding the rule to the full SQL registry changed the same-corpus warm scan from 0.507s to 0.549s (8.3%).",
+      "outcome": "Ship as a warning. Report BACKFILL plus CONTRACT or three substantive forward phases, fold proven fresh-table seed/index/constraint work into EXPAND, ignore procedural bodies rather than guessing, and require manual lock, runtime, rollback and atomicity review."
     },
     {
       "task": "rule-audit/python/excessive-commentary",

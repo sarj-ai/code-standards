@@ -25,6 +25,8 @@ from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sqlglot import exp
+
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
 _POSTGRES_OWNER = re.compile(
@@ -49,6 +51,11 @@ _COMMON_AGGREGATE = re.compile(
     r"\b(?:COUNT|SUM|AVG|MIN|MAX|ARRAY_AGG|STRING_AGG|JSONB?_AGG|BOOL_AND|BOOL_OR|EVERY)\s*\(",
     re.IGNORECASE,
 )
+_LOCKING_READ = re.compile(r"\b(?:FOR\s+(?:NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|SKIP\s+LOCKED)\b", re.IGNORECASE)
+_PLACEHOLDER = re.compile(r"%(?:\([^)]+\))?s")
+_GROUP_KEYS_LIMIT = 2
+_GROUP_AGGREGATES_LIMIT = 2
+_SINGLE_GROUP_AGGREGATES_LIMIT = 3
 _STRONG_ANALYTICAL: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("STDDEV", re.compile(r"\bSTDDEV(?:_POP|_SAMP)?\s*\(", re.IGNORECASE)),
     ("VARIANCE", re.compile(r"\b(?:VARIANCE|VAR_POP|VAR_SAMP)\s*\(", re.IGNORECASE)),
@@ -71,13 +78,64 @@ def _docstring_node_ids(tree: ast.AST) -> set[int]:
     return result
 
 
-def _analytical_signal(sql: str) -> str | None:
+def analytical_signal(sql: str) -> str | None:
+    if _LOCKING_READ.search(sql) is not None:
+        return None
     for label, pattern in _STRONG_ANALYTICAL:
         if pattern.search(sql):
             return label
     if _TIME_BUCKET.search(sql) and _GROUP_BY.search(sql) and _COMMON_AGGREGATE.search(sql):
         return "time-bucketed GROUP BY"
+    return _grouped_reporting_signal(sql)
+
+
+def _grouped_reporting_signal(sql: str) -> str | None:
+    import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only aggregate-shaped SQL after cheap gates
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
+    from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
+
+    if _GROUP_BY.search(sql) is None or _COMMON_AGGREGATE.search(sql) is None:
+        return None
+    try:
+        statements = sqlglot.parse(_PLACEHOLDER.sub("?", sql), read="postgres")
+    except SqlglotError:
+        return None
+    for statement in statements:
+        if not isinstance(statement, exp.Query):
+            continue
+        for select in statement.find_all(exp.Select):
+            if _is_identity_bounded(select):
+                continue
+            group = select.args.get("group")
+            group_count = len(group.expressions) if isinstance(group, exp.Group) else 0
+            aggregate_count = sum(1 for aggregate in select.find_all(exp.AggFunc) if aggregate.parent_select is select)
+            if (
+                group_count >= _GROUP_KEYS_LIMIT and aggregate_count >= _GROUP_AGGREGATES_LIMIT
+            ) or aggregate_count >= _SINGLE_GROUP_AGGREGATES_LIMIT:
+                return "grouped reporting shape"
     return None
+
+
+def _is_identity_bounded(select: object) -> bool:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- shared with lazy parser path
+
+    if not isinstance(select, exp.Select):
+        return False
+    where = select.args.get("where")
+    if not isinstance(where, exp.Where):
+        return False
+    equality = _expression_arg(where, "this")
+    if not isinstance(equality, exp.EQ):
+        return False
+    left = _expression_arg(equality, "this")
+    right = _expression_arg(equality, "expression")
+    return (isinstance(left, exp.Column) and left.name.casefold() == "id" and not isinstance(right, exp.Column)) or (
+        isinstance(right, exp.Column) and right.name.casefold() == "id" and not isinstance(left, exp.Column)
+    )
+
+
+def _expression_arg(node: exp.Expr, key: str) -> exp.Expr | None:
+    return next((child for child in node.iter_expressions() if child.arg_key == key), None)
 
 
 @final
@@ -100,7 +158,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
         aliases=("no-aggregation-in-store-query",),
         limitations=(
             "Only SQL string literals in recognized store modules with positive PostgreSQL ownership evidence are analyzed.",
-            "Only statistical aggregates and time-bucketed grouped rollups are reported; ordinary operational aggregates are intentionally excluded.",
+            "Statistical aggregates, time-bucketed rollups, and broad grouped reporting shapes are reported; locked coordination reads and identity-bounded aggregates are excluded.",
             "ClickHouse- and BigQuery-specific query syntax is excluded per query, including in mixed-backend modules.",
         ),
         examples=(
@@ -166,7 +224,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
                 or _BIGQUERY_SQL.search(sql)
             ):
                 continue
-            signal = _analytical_signal(sql)
+            signal = analytical_signal(sql)
             if signal is None:
                 continue
             diagnostics.append(

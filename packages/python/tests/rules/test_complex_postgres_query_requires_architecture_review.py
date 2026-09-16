@@ -451,6 +451,66 @@ JOIN (SELECT event_id, COUNT(*) FROM audit GROUP BY event_id) AS audited ON audi
     assert len(_check(source)) == 1
 
 
+def test_flags_four_ordinary_joins() -> None:
+    source = '''import psycopg
+cursor.execute("""
+SELECT event.id FROM event
+JOIN account ON account.id = event.account_id
+JOIN organization ON organization.id = account.organization_id
+JOIN region ON region.id = organization.region_id
+JOIN country ON country.id = region.country_id
+""")
+'''
+    [diagnostic] = _check(source)
+    assert "4 JOINs" in diagnostic.message
+
+
+def test_three_ordinary_joins_alone_are_allowed() -> None:
+    source = '''import psycopg
+cursor.execute("""
+SELECT event.id FROM event
+JOIN account ON account.id = event.account_id
+JOIN organization ON organization.id = account.organization_id
+JOIN region ON region.id = organization.region_id
+""")
+'''
+    assert _check(source) == []
+
+
+def test_flags_six_named_or_nested_query_stages() -> None:
+    source = '''import psycopg
+cursor.execute("""
+WITH a AS (SELECT id FROM event),
+b AS (SELECT id FROM a),
+c AS (SELECT id FROM b),
+d AS (SELECT id FROM c),
+e AS (SELECT id FROM d)
+SELECT id FROM e WHERE EXISTS (SELECT 1 FROM tag WHERE tag.event_id = e.id)
+""")
+'''
+    [diagnostic] = _check(source)
+    assert "6 CTE/subquery stages" in diagnostic.message
+
+
+def test_flags_wide_joined_projection_but_not_wide_hydration() -> None:
+    columns = ", ".join(f"event.column_{position}" for position in range(25))
+    joined = (
+        "import psycopg\n"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+        f'cursor.execute("SELECT {columns} FROM event JOIN account ON TRUE JOIN organization ON TRUE")\n'
+    )
+    hydration = f'import psycopg\ncursor.execute("SELECT {columns} FROM event")\n'  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    assert "25 projected expressions" in _check(joined)[0].message
+    assert _check(hydration) == []
+
+
+def test_mixed_backend_import_does_not_hide_postgres_query() -> None:
+    source = """import psycopg
+import clickhouse_connect
+cursor.execute("SELECT event.id FROM event JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE")
+"""
+    assert len(_check(source)) == 1
+
+
 def test_multiple_literals_emit_sorted_diagnostics() -> None:
     source = """import psycopg
 cursor.execute("SELECT event.id FROM event JOIN (SELECT event_id, COUNT(*) FROM tag GROUP BY event_id) tagged ON TRUE")

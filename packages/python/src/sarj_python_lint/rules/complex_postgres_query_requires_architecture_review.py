@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import analytical_signal
 
 
 if TYPE_CHECKING:
@@ -29,9 +30,6 @@ if TYPE_CHECKING:
 
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
-_DERIVED_RELATION_GATE = re.compile(r"\b(?:FROM|JOIN)\s*\(", re.IGNORECASE)
-_JOIN_GATE = re.compile(r"\bJOIN\b", re.IGNORECASE)
-_JOIN_REVIEW_THRESHOLD = 4
 _POSTGRES_IMPORT_PREFIXES = (
     "asyncpg",
     "psycopg",
@@ -39,13 +37,7 @@ _POSTGRES_IMPORT_PREFIXES = (
     "psycopg_pool",
     "sqlalchemy.dialects.postgresql",
 )
-_COMPETING_IMPORT_PREFIXES = (
-    "aiosqlite",
-    "clickhouse_connect",
-    "clickhouse_driver",
-    "google.cloud.bigquery",
-    "sqlite3",
-)
+_AMBIGUOUS_RELATIONAL_IMPORT_PREFIXES = ("aiosqlite", "sqlite3")
 _QUERY_SINKS = frozenset({"execute", "executemany", "fetch", "fetchrow", "fetchval", "prepare"})
 _QUERY_KEYWORDS = frozenset({"command", "operation", "query", "statement"})
 _QUERY_RECEIVER_TOKENS = frozenset(
@@ -63,6 +55,12 @@ _BIGQUERY_SQL = re.compile(
 )
 _COMPOSABLE_HOLE = re.compile(r"(?<!\{)\{(?:[A-Za-z_]\w*|\d*)\}(?!\})")
 _SQL_HOLE = "__sarj_sql_hole__"
+_JOIN_LIMIT = 4
+_STAGE_LIMIT = 6
+_COMBINED_JOIN_LIMIT = 3
+_COMBINED_STAGE_LIMIT = 4
+_WIDE_PROJECTION_LIMIT = 25
+_WIDE_PROJECTION_JOIN_LIMIT = 2
 
 
 class _ConstructorImport(NamedTuple):
@@ -310,7 +308,7 @@ def _expression_args(node: exp.Expr, key: str) -> tuple[exp.Expr, ...]:
     return tuple(child for child in node.iter_expressions() if child.arg_key == key)
 
 
-def _parse_signal(sql: str, *, include_derived_stages: bool) -> str | None:
+def _parse_signal(sql: str, *, include_extended_shapes: bool) -> str | None:
     import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only SQL that passes cheap ownership and shape gates
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
 
@@ -322,27 +320,29 @@ def _parse_signal(sql: str, *, include_derived_stages: bool) -> str | None:
     for statement in statements:
         if (
             statement is not None
-            and (signal := _architecture_signal(statement, include_derived_stages=include_derived_stages)) is not None
+            and (signal := _architecture_signal(statement, include_extended_shapes=include_extended_shapes)) is not None
         ):
             return signal
     return None
 
 
-def _architecture_signal(statement: exp.Expr, *, include_derived_stages: bool) -> str | None:
+def _architecture_signal(statement: exp.Expr, *, include_extended_shapes: bool) -> str | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
     if not isinstance(statement, exp.Query):
         return None
-    if any(
-        # SQLGlot's explicit JOIN parser sets pivots, including when absent;
-        # comma relations instead create a bare Join(this=...).
-        sum(isinstance(join, exp.Join) and "pivots" in join.args for join in _expression_args(select, "joins"))
-        >= _JOIN_REVIEW_THRESHOLD
-        for select in statement.find_all(exp.Select)
-    ):
-        return "SELECT block with 4+ explicit JOINs"
-    if not include_derived_stages:
+    maximum_joins = max(
+        (
+            sum(isinstance(join, exp.Join) and "pivots" in join.args for join in _expression_args(select, "joins"))
+            for select in statement.find_all(exp.Select)
+        ),
+        default=0,
+    )
+    if maximum_joins >= _JOIN_LIMIT:
+        return f"SELECT block has {maximum_joins} JOINs (4+ explicit JOINs)"
+    if not include_extended_shapes:
         return None
+    nested_queries = sum(1 for query in statement.walk() if isinstance(query, exp.Query)) - 1
     for select in _root_selects(statement):
         for join in _expression_args(select, "joins"):
             if not isinstance(join, exp.Join):
@@ -354,6 +354,15 @@ def _architecture_signal(statement: exp.Expr, *, include_derived_stages: bool) -
             continue
         if (derived := _derived_query(_expression_arg(from_clause, "this"))) is not None and _has_complex_body(derived):
             return "Complex FROM-derived query"
+    if nested_queries >= _STAGE_LIMIT:
+        return f"Query has {nested_queries} CTE/subquery stages"
+    if maximum_joins >= _COMBINED_JOIN_LIMIT and nested_queries >= _COMBINED_STAGE_LIMIT:
+        return f"Query combines {maximum_joins} JOINs with {nested_queries} CTE/subquery stages"
+    for select in _root_selects(statement):
+        projections = tuple(_expression_args(select, "expressions"))
+        joins = tuple(join for join in _expression_args(select, "joins") if isinstance(join, exp.Join))
+        if len(projections) >= _WIDE_PROJECTION_LIMIT and len(joins) >= _WIDE_PROJECTION_JOIN_LIMIT:
+            return f"Joined query block has {len(projections)} projected expressions"
     return None
 
 
@@ -404,36 +413,28 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
     id: str = "complex-postgres-query-requires-architecture-review"
     code: str = "SARJ437"
     documentation = RuleDocumentation(
-        summary="Join-heavy PostgreSQL reads and complex anonymous relation stages merit architecture review.",
+        summary="Complex executable PostgreSQL query shapes require architecture review.",
         rationale=(
-            "A read that needs four or more explicit joins to recover an operational fact can signal that the data "
-            "model does not expose that fact directly, leaving application reads to reconstruct it repeatedly. "
-            "The four-JOIN threshold is a review convention, not evidence of a defect or runtime cost. "
-            "Anonymous derived relations with nested or transformational bodies can obscure query stages and make "
-            "bounds, ordering, and locking semantics harder to review. Syntax alone does not establish runtime cost "
-            "or justify materialization or offload."
+            "Join-heavy, deeply staged, or wide joined reads can obscure cardinality, bounds, ordering, and locking "
+            "semantics and can signal repeated read-time reconstruction. Syntax alone does not establish runtime "
+            "cost, a bad data model, or the right datastore."
         ),
         remediation=(
-            "For join-heavy reads, first review whether the schema's ownership and relationships match the domain, "
-            "or whether a stable identifier or derived fact should be maintained at write time with explicit "
-            "consistency and freshness ownership. Otherwise, justify the relational query using cardinality, "
-            "indexes, and EXPLAIN evidence. Do not mechanically replace database joins with application-layer joins. "
-            "First verify bounds, ordering, and lock semantics. Use a semantics-preserving CTE when naming improves "
-            "reviewability; it is not a performance optimization. Consider a view only for a reusable stable "
-            "interface, a materialized view only for measured repeated reads with an explicit freshness contract, "
-            "and a columnar store only for measured analytical workloads with an explicit synchronization contract."
+            "Review whether the schema exposes the operational fact directly, together with production-like "
+            "cardinality and EXPLAIN output. Simplify the query or read model when warranted, but do not mechanically "
+            "replace database joins with application joins. Keep atomic coordination in one statement; consider a "
+            "columnar store only for measured repeated analytical reads with an explicit freshness contract."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in non-test modules with explicit PostgreSQL imports is analyzed. Complex derived-stage review additionally requires a recognized store module.",
+            "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in non-test modules with explicit PostgreSQL imports is analyzed; extended derived, staged, and wide-shape review requires a recognized store module.",
             "Execution receivers must use a conventional database name; custom wrappers and dynamically obtained receivers abstain.",
             "One direct, unambiguous simple-name binding in the same lexical scope is followed; standalone constants, branches, aliases, attributes, containers, wildcard imports, and cross-scope flow abstain.",
-            "A derived relation is reported only when it contains nesting, a window, grouping, HAVING, or a set operation.",
-            "Four or more explicit JOINs in any one SELECT block merit review, including CTE and nested blocks; counts are not combined across blocks or UNION branches. Comma relations are excluded.",
-            "Complex derived-stage detection excludes scalar, EXISTS, IN, and LATERAL subqueries; join-count review includes them. Execution plans and production cardinality remain authoritative.",
-            "Only one finding per statically recoverable SQL expression is emitted, even when several SELECT blocks qualify.",
-            "A CTE is suggested only as a naming refactor; the rule does not infer optimizer behavior, materialization, performance, or datastore placement.",
+            "A query is reviewed for a complex derived relation, at least four joins in one query block, at least six nested query stages, three joins plus four stages, or 25 projections plus two joins.",
+            "Projection width alone is accepted, and UNION branches are measured independently; execution plans and production cardinality remain authoritative.",
+            "ClickHouse and BigQuery syntax is excluded per query, including in mixed-backend modules.",
+            "The rule does not infer optimizer behavior, materialization, performance, data-model quality, or datastore placement.",
         ),
         examples=(
             RuleExample(
@@ -518,7 +519,7 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             return []
         imports = _import_names(tree)
         if not _has_import_prefix(imports, _POSTGRES_IMPORT_PREFIXES) or _has_import_prefix(
-            imports, _COMPETING_IMPORT_PREFIXES
+            imports, _AMBIGUOUS_RELATIONAL_IMPORT_PREFIXES
         ):
             return []
 
@@ -539,16 +540,24 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             sql_without_noise = strip_sql_noise(text_value)
             if (
                 _QUERY_SHAPE.search(sql_without_noise) is None
-                or (
-                    _DERIVED_RELATION_GATE.search(sql_without_noise) is None
-                    and len(_JOIN_GATE.findall(sql_without_noise)) < _JOIN_REVIEW_THRESHOLD
-                )
                 or _CLICKHOUSE_SQL.search(sql_without_noise)
                 or _BIGQUERY_SQL.search(sql_without_noise)
+                or (is_store_module(path) and analytical_signal(sql_without_noise) is not None)
             ):
                 continue
-            if (signal := _parse_signal(text_value, include_derived_stages=is_store_module(path))) is None:
+            if (signal := _parse_signal(text_value, include_extended_shapes=is_store_module(path))) is None:
                 continue
+            coordination = re.search(
+                r"\b(?:FOR\s+(?:NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|SKIP\s+LOCKED)\b", text_value, re.IGNORECASE
+            )
+            guidance = (
+                " preserve the atomic statement; review bounds, ordering, and locks, then document its cardinality, "
+                "supporting indexes, and production-like plan."
+                if coordination is not None
+                else " review bounds, ordering, and locks; review cardinality and a production-like query plan, then "
+                "review whether repeated read-time reconstruction should become a stable derived fact maintained at "
+                "write-time, or otherwise simplify the query or read model when warranted."
+            )
             diagnostics.append(
                 Diagnostic(
                     path=path,
@@ -557,12 +566,9 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
                     code=self.code,
                     severity=Severity.WARNING,
                     message=(
-                        f"{signal} — this may indicate repeated read-time reconstruction or fragmented ownership. "
-                        "Review whether the schema exposes the operational fact directly; if it is stable, consider "
-                        "maintaining it at write-time. Otherwise, justify the relational read with cardinality, "
-                        "indexes, and EXPLAIN evidence; review bounds, ordering, and locks; name derived stages with a "
-                        "semantics-preserving CTE if clearer. Review warning only, not a defect or cost claim; do not "
-                        "mechanically replace SQL joins with application-layer joins."
+                        f"{signal} requires architecture review;{guidance} "
+                        "Review warning only, not a defect or cost claim; syntax does not prove a bad data model or "
+                        "an offload decision."
                     ),
                 )
             )
