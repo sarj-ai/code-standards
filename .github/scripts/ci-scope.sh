@@ -14,26 +14,36 @@ select_scopes() {
 }
 
 # Runner images provide Python 3.11+; no package installation is needed.
-# Ignore only this distribution's version, never dependency or toolchain changes.
+# Local linter releases cannot affect mobile; retain their dependency/toolchain changes.
 version_only_change() {
   python3 - "$comparison_base" "$head" "$path" <<'PY'
 import subprocess
 import sys
 import tomllib
+import re
 
 base, head, path = sys.argv[1:]
+local_sources = {
+    "code-standards": ".",
+    "sarj-python-lint": "../python",
+    "sarj-sql-lint": "../sql",
+    "sarj-iac-lint": "../iac",
+}
 documents = []
 for revision in (base, head):
     source = subprocess.check_output(["git", "show", f"{revision}:{path}"], text=True, timeout=30)
     document = tomllib.loads(source)
     if path.endswith("pyproject.toml"):
         del document["project"]["version"]
+        document["project"]["dependencies"] = [
+            re.sub(r"^(sarj-(?:python|sql|iac)-lint)==[0-9]+(?:\.[0-9]+)*$", r"\1", dependency)
+            for dependency in document["project"].get("dependencies", [])
+        ]
     else:
-        package = next(
-            item for item in document["package"]
-            if item["name"] == "code-standards" and item.get("source") == {"editable": "."}
-        )
-        del package["version"]
+        for package in document["package"]:
+            name = package["name"]
+            if name in local_sources and package.get("source") == {"editable": local_sources[name]}:
+                del package["version"]
     documents.append(document)
 sys.exit(0 if documents[0] == documents[1] else 1)
 PY
@@ -87,6 +97,8 @@ else
       packages/standards/tests/*)
         select_scopes standards ;;
       packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json)
+        select_scopes standards docs ;;
+      packages/standards/src/sarj_standards/libs/linting/textlint.py)
         select_scopes standards docs ;;
       packages/standards/pyproject.toml|packages/standards/uv.lock)
         select_scopes standards docs

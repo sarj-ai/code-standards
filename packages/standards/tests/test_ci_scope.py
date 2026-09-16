@@ -141,19 +141,43 @@ def test_cross_package_rename_checks_old_and_new_owners(repository: Path) -> Non
     }
 
 
-def test_typescript_rule_with_generated_catalog_and_version_bump_skips_mobile(repository: Path) -> None:
+@pytest.mark.parametrize(
+    ("source_path", "owner", "local_linter", "security"),
+    [
+        ("packages/typescript/src/rules/new-rule.ts", "typescript", None, "codeql-javascript"),
+        ("packages/python/src/new_rule.py", "python", "sarj-python-lint", "codeql-python"),
+        ("packages/sql/src/new_rule.py", "sql", "sarj-sql-lint", "codeql-python"),
+        ("packages/iac/src/new_rule.py", "iac", "sarj-iac-lint", "codeql-python"),
+        (
+            "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+            "standards",
+            None,
+            "codeql-python",
+        ),
+    ],
+    ids=["typescript", "python", "sql", "iac", "text"],
+)
+def test_rule_with_generated_catalog_and_version_bump_skips_unrelated_jobs(
+    repository: Path, source_path: str, owner: str, local_linter: str | None, security: str
+) -> None:
     project = repository / "packages/standards/pyproject.toml"
     project.parent.mkdir(parents=True)
     project.write_text('[project]\nname = "code-standards"\nversion = "1.0.0"\n')
     lock = project.with_name("uv.lock")
     lock.write_text('[[package]]\nname = "code-standards"\nversion = "1.0.0"\nsource = { editable = "." }\n')
+    if local_linter is not None:
+        project.write_text(project.read_text() + f'dependencies = ["{local_linter}==1.0.0"]\n')
+        lock.write_text(
+            lock.read_text()
+            + f'[[package]]\nname = "{local_linter}"\nversion = "1.0.0"\nsource = {{ editable = "../{owner}" }}\n'
+        )
     git(repository, "add", "packages")
     git(repository, "commit", "-qm", "initial package")
     base = git(repository, "rev-parse", "HEAD")
     for path in (project, lock):
         path.write_text(path.read_text().replace("1.0.0", "1.1.0"))
     for relative in (
-        "packages/typescript/src/rules/new-rule.ts",
+        source_path,
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
         "packages/standards/src/sarj_standards/configs/rule-inventory.v1.json",
         "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
@@ -165,10 +189,10 @@ def test_typescript_rule_with_generated_catalog_and_version_bump_skips_mobile(re
     git(repository, "add", "packages", "apps")
     git(repository, "commit", "-qm", "new rule and release metadata")
     assert route(repository, base, git(repository, "rev-parse", "HEAD")) == {
-        "typescript",
+        owner,
         "standards",
         "docs",
-        "codeql-javascript",
+        security,
     }
 
 
@@ -187,8 +211,24 @@ def test_typescript_rule_with_generated_catalog_and_version_bump_skips_mobile(re
         ),
         ("pyproject.toml", '[project]\nversion = "1"\n', "invalid toml"),
         ("pyproject.toml", '[project]\nversion = "1"\n', None),
+        (
+            "uv.lock",
+            (
+                '[[package]]\nname = "sarj-python-lint"\nversion = "1"\nsource = { editable = "../python" }\n'
+                'dependencies = [{ name = "old-dependency" }]\n'
+            ),
+            (
+                '[[package]]\nname = "sarj-python-lint"\nversion = "2"\nsource = { editable = "../python" }\n'
+                'dependencies = [{ name = "new-dependency" }]\n'
+            ),
+        ),
+        (
+            "uv.lock",
+            '[[package]]\nname = "sarj-python-lint"\nversion = "1"\nsource = { registry = "https://pypi.org/simple" }\n',
+            '[[package]]\nname = "sarj-python-lint"\nversion = "2"\nsource = { registry = "https://pypi.org/simple" }\n',
+        ),
     ],
-    ids=["direct-dependency", "transitive-dependency", "malformed", "deleted"],
+    ids=["direct-dependency", "transitive-dependency", "malformed", "deleted", "local-dependency", "registry-linter"],
 )
 def test_dependency_changes_or_comparison_errors_keep_mobile(
     repository: Path, filename: str, before: str, after: str | None
