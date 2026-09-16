@@ -224,7 +224,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.21.1",
+  version: "15.21.2",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */

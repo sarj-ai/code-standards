@@ -22,7 +22,7 @@ const MAX_CONTRIBUTORS = 3;
 export const NO_EXCESSIVE_COGNITIVE_COMPLEXITY_DOCUMENTATION = {
   summary: `Report an error for function bodies with cognitive complexity above ${ERROR_COMPLEXITY}.`,
   rationale: "Nested control flow increases the context a reader must retain while following a function.",
-  remediation: "Scores up to 20 pass; 21 or more are errors. Examples are fictional; domain types are omitted. Refactor one function at a time, starting with its largest contributors. Use guard clauses, named predicates, or cohesive helpers; use lookup tables only for equivalent pure dispatch. Preserve APIs, side effects, evaluation order, and exception behavior. Run relevant tests before and after; remeasure the original and extracted functions. Do not hide branches in dense expressions or add indirection just to lower a score.",
+  remediation: "Scores up to 20 pass; 21 or more are errors. Examples are fictional; domain types are omitted. Refactor one function at a time, starting with its largest contributors. First simplify control flow and reduce nesting within the function. Extract a helper only when it clarifies a cohesive responsibility or enables meaningful reuse; do not split code solely to lower the score. Use lookup tables only for equivalent pure dispatch. Preserve APIs, side effects, evaluation order, and exception behavior. Run relevant tests before and after; remeasure the original and extracted functions. Do not hide branches in dense expressions or add indirection just to lower a score.",
   category: "maintainability",
   limitations: [
     "Sarj metric, not exact Sonar compatibility: functions and callbacks are independent; calls, recursion, types, parameter defaults, decorators, and class initializers are not scored.",
@@ -163,7 +163,7 @@ export default createRule<[], "excessiveComplexity">({
     docs: { description: NO_EXCESSIVE_COGNITIVE_COMPLEXITY_DOCUMENTATION.summary },
     schema: [],
     messages: {
-      excessiveComplexity: "Cognitive complexity {{score}} exceeds {{limit}}. Largest contributors: {{detail}}. Start with the largest contributors: flatten nesting or extract a clearly named operation without hiding branches in dense expressions. Preserve behavior and public APIs, run relevant tests before and after, then remeasure.",
+      excessiveComplexity: "Cognitive complexity {{score}} exceeds {{limit}}. Largest contributors: {{detail}}. Start with the largest contributors: simplify control flow and flatten nesting. Extract a helper only when it clarifies a cohesive responsibility or enables meaningful reuse, never solely to lower the score. Do not hide branches in dense expressions. Preserve behavior and public APIs, run relevant tests before and after, then remeasure.",
     },
   },
   defaultOptions: [],
