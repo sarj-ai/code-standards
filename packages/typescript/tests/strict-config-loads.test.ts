@@ -473,6 +473,9 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     });
     const configured = (await eslint.calculateConfigForFile("src/index.ts")) as Linter.Config;
     expect(configured?.rules?.["@typescript-eslint/await-thenable"]).toEqual([0]);
+    expect(configured?.rules?.["@typescript-eslint/consistent-type-exports"]).toEqual([0]);
+    expect(configured?.rules?.["@typescript-eslint/no-unnecessary-qualifier"]).toEqual([0]);
+    expect(configured?.rules?.["@typescript-eslint/no-useless-empty-export"]).toEqual([2]);
     expect(severityOf(configured?.rules?.["@typescript-eslint/naming-convention"])).toBe(2);
   });
 
@@ -510,7 +513,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
   );
 
   it.each(CONFIG_FACTORIES)(
-    "%s delegates type-only exports to verbatimModuleSyntax while retaining the core has-own rule",
+    "%s enforces concise type exports while retaining the core has-own rule",
     async (_name, createConfig) => {
       const eslint = new ESLint({
         overrideConfigFile: true,
@@ -519,8 +522,44 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       });
       const configured = (await eslint.calculateConfigForFile("src/index.ts")) as Linter.Config;
 
-      expect(configured.rules?.["@typescript-eslint/consistent-type-exports"]).toBeUndefined();
+      expect(configured.rules?.["@typescript-eslint/consistent-type-exports"]).toEqual([
+        2,
+        { fixMixedExportsWithInlineTypeSpecifier: true },
+      ]);
       expect(configured.rules?.["prefer-object-has-own"]).toEqual([2]);
+    },
+  );
+
+  it.each(CONFIG_FACTORIES)(
+    "%s enables the shared mechanical concision rules",
+    async (_name, createConfig) => {
+      const eslint = new ESLint({
+        overrideConfigFile: true,
+        overrideConfig: createConfig(),
+        cwd: process.cwd(),
+      });
+      const configured = (await eslint.calculateConfigForFile("src/component.tsx")) as Linter.Config;
+
+      for (const rule of [
+        "@typescript-eslint/no-unnecessary-qualifier",
+        "@typescript-eslint/no-useless-empty-export",
+        "no-extra-bind",
+        "no-undef-init",
+        "no-useless-computed-key",
+        "no-useless-rename",
+        "no-useless-return",
+        "unicorn/no-useless-coercion",
+      ]) {
+        expect(severityOf(configured.rules?.[rule]), rule).toBe(2);
+      }
+      expect(configured.rules?.["prefer-arrow-callback"]).toEqual([
+        2,
+        { allowNamedFunctions: true, allowUnboundThis: true },
+      ]);
+      expect(configured.rules?.["react/jsx-curly-brace-presence"]).toEqual([
+        2,
+        { props: "never", children: "never", propElementValues: "always" },
+      ]);
     },
   );
 

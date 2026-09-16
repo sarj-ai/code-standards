@@ -301,6 +301,7 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-unsafe-string-replacement": "error",
   "unicorn/no-unused-array-method-return": "error",
   "unicorn/no-useless-boolean-cast": "error",
+  "unicorn/no-useless-coercion": "error",
   "unicorn/no-useless-collection-argument": "error",
   "unicorn/no-useless-compound-assignment": "error",
   "unicorn/no-useless-concat": "error",
@@ -686,6 +687,10 @@ export function createConfig(options = {}) {
           fixStyle: "inline-type-imports",
         },
       ],
+      "@typescript-eslint/consistent-type-exports": [
+        "error",
+        { fixMixedExportsWithInlineTypeSpecifier: true },
+      ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
       "@typescript-eslint/consistent-type-assertions": [
         "error",
@@ -822,6 +827,8 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-invalid-void-type": "error",
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/no-unnecessary-qualifier": "error",
+      "@typescript-eslint/no-useless-empty-export": "error",
       "@typescript-eslint/array-type": "error",
       "@typescript-eslint/default-param-last": "error",
       "prefer-object-has-own": "error",
@@ -880,6 +887,10 @@ export function createConfig(options = {}) {
       "react/style-prop-object": "error",
       "react/button-has-type": "error",
       "react/jsx-boolean-value": ["error", "never"],
+      "react/jsx-curly-brace-presence": [
+        "error",
+        { props: "never", children: "never", propElementValues: "always" },
+      ],
 
       "unicorn/consistent-function-scoping": "error",
       // Kebab-case filenames. unicorn handles most framework shapes for free:
@@ -1141,6 +1152,11 @@ export function createConfig(options = {}) {
       ],
 
       "object-shorthand": ["error", "always"],
+      "no-extra-bind": "error",
+      "no-undef-init": "error",
+      "no-useless-computed-key": "error",
+      "no-useless-rename": "error",
+      "no-useless-return": "error",
       "no-eval": ["error", { allowIndirect: false }],
       "no-prototype-builtins": "error",
       "no-return-await": "error",
@@ -1155,6 +1171,10 @@ export function createConfig(options = {}) {
       "no-fallthrough": "error",
       "no-console": ["error", { allow: ["warn", "error"] }],
       "prefer-const": "error",
+      "prefer-arrow-callback": [
+        "error",
+        { allowNamedFunctions: true, allowUnboundThis: true },
+      ],
       "prefer-template": "error",
       "no-var": "error",
       "no-shadow": "off",
