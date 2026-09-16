@@ -59,17 +59,14 @@ jobs:
           fail-on-severity: moderate
 
   npm-audit:
+    name: npm-audit (apps/docs)
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.docs-audit != 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        directory: [apps/docs]
     defaults:
       run:
-        working-directory: ${{ matrix.directory }}
+        working-directory: apps/docs
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
@@ -86,7 +83,7 @@ jobs:
         with:
           node-version: '24.19.0'
           cache: npm
-          cache-dependency-path: ${{ matrix.directory }}/package-lock.json
+          cache-dependency-path: apps/docs/package-lock.json
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm audit --audit-level=moderate
 

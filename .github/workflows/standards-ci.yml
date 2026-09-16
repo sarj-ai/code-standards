@@ -19,14 +19,9 @@ jobs:
   portability-smoke:
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
-    name: standards portability (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        # Linux remains the continuous source gate. Exact-SHA macOS and Windows
-        # portability runs gate Standards publication in release.yml.
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    name: standards portability (ubuntu-latest)
+    # Exact-SHA macOS and Windows portability runs gate publication in release.yml.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:

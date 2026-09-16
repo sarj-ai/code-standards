@@ -319,6 +319,7 @@ class WorkflowStep(BaseModel):
 class WorkflowJob(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="ignore")
     needs: str | list[str] | None = None
+    name: str = ""
     condition: str = Field(default="", alias="if")
     steps: list[WorkflowStep] = Field(default_factory=list)
 
@@ -371,3 +372,39 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
         "needs.package-tests.result != 'success'",
     }
     assert guard.run == "exit 1"
+
+
+def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
+    typescript = workflow("typescript-ci.yml").jobs["test"]
+    assert typescript.condition == "always()"
+    for step in typescript.steps[2:]:
+        assert "needs.changes.outputs.typescript != 'false'" in step.condition
+    assert workflow("standards-ci.yml").jobs["portability-smoke"].name == "standards portability (ubuntu-latest)"
+    assert workflow("security.yml").jobs["npm-audit"].name == "npm-audit (apps/docs)"
+
+
+def test_private_reference_fetch_excludes_existing_main_history(repository: Path) -> None:
+    ancestor = git(repository, "rev-parse", "HEAD")
+    git(repository, "commit", "--allow-empty", "-qm", "main advanced")
+    base = git(repository, "rev-parse", "HEAD")
+    git(repository, "checkout", "--detach", ancestor)
+    git(repository, "commit", "--allow-empty", "-qm", "PR change")
+    head = git(repository, "rev-parse", "HEAD")
+    workspace = repository / "workspace"
+    workspace.mkdir()
+    candidate = workspace / "candidate"
+    git(repository, "clone", "--no-local", repository.as_uri(), str(candidate))
+    [step] = [
+        step for step in workflow("private-refs.yml").jobs["scan"].steps if step.name == "Fetch comparison commit"
+    ]
+    command = step.run.replace("https://github.com/${{ github.repository }}.git", repository.as_uri())
+    subprocess.run(
+        ("bash", "-c", command.replace("$BASE_SHA", base)),
+        cwd=workspace,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert git(candidate, "rev-list", f"{base}..{head}") == head
+    assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
