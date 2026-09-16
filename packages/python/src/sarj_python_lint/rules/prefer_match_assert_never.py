@@ -113,12 +113,7 @@ class PreferMatchAssertNever(Rule):
             return []
         module_classdefs = _module_scope_classdefs(tree)
         imports = ImportIndex.from_tree(tree)
-        local_enums = frozenset(
-            node.name
-            for node in module_classdefs
-            if any(_is_enum_base(base, imports) for base in node.bases)
-            and sum(bound == node.name for bound, _ in _scope_bindings(tree.body)) == 1
-        )
+        local_enums = _local_enum_names(module_classdefs, imports, tree)
         enum_members = _enum_members(module_classdefs, local_enums)
         diags: list[Diagnostic] = []
         consumed_elifs: set[int] = set()
@@ -166,23 +161,21 @@ def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:
     return [stmt for stmt in tree.body if isinstance(stmt, ast.ClassDef)]
 
 
+def _local_enum_names(module_classdefs: list[ast.ClassDef], imports: ImportIndex, tree: ast.Module) -> frozenset[str]:
+    return frozenset(
+        node.name
+        for node in module_classdefs
+        if any(_is_enum_base(base, imports) for base in node.bases)
+        and sum(bound == node.name for bound, _ in _scope_bindings(tree.body)) == 1
+    )
+
+
 def _is_enum_base(base: ast.expr, imports: ImportIndex) -> bool:
     return any(imports.resolves(base, sources=frozenset({"enum"}), symbol=symbol) for symbol in _ENUM_BASES)
 
 
 def _enum_members(classdefs: list[ast.ClassDef], local_enums: frozenset[str]) -> dict[str, frozenset[str]]:
-    return {
-        classdef.name: frozenset(
-            target.id
-            for statement in classdef.body
-            if isinstance(statement, (ast.Assign, ast.AnnAssign))
-            and (not isinstance(statement, ast.AnnAssign) or statement.value is not None)
-            for target in (statement.targets if isinstance(statement, ast.Assign) else (statement.target,))
-            if isinstance(target, ast.Name) and not target.id.startswith("_")
-        )
-        for classdef in classdefs
-        if classdef.name in local_enums
-    }
+    return {classdef.name: _class_enum_members(classdef) for classdef in classdefs if classdef.name in local_enums}
 
 
 def _annotated_local_enum(
@@ -360,16 +353,17 @@ def _silent_enum_chain(
         if len(orelse) == 1 and isinstance(orelse[0], ast.If):
             current = orelse[0]
             continue
-        if len(covered) < _MIN_ARMS or not orelse or not _is_silent_body(orelse):
-            return None
-        if all(_is_assignment_only(body) for body in arm_bodies):
-            return None
-        if enum_name is None or first_target is None:
-            return None
-        if _annotated_local_enum(tree, first_target, head, local_enums) != enum_name:
-            return None
-        consumed_elifs.update(map(id, child_elifs))
-        return enum_name
+        break
+    if len(covered) < _MIN_ARMS or not orelse or not _is_silent_body(orelse):
+        return None
+    if all(_is_assignment_only(body) for body in arm_bodies):
+        return None
+    if enum_name is None or first_target is None:
+        return None
+    if _annotated_local_enum(tree, first_target, head, local_enums) != enum_name:
+        return None
+    consumed_elifs.update(map(id, child_elifs))
+    return enum_name
 
 
 def _enum_comparison(test: ast.expr, enum_members: dict[str, frozenset[str]]) -> _EnumComparison | None:
@@ -423,4 +417,15 @@ def _enum_member_container(expr: ast.expr, enum_members: dict[str, frozenset[str
     return _EnumMemberSet(
         owners.pop(),
         frozenset(member.member for member in resolved if member is not None),
+    )
+
+
+def _class_enum_members(classdef: ast.ClassDef) -> frozenset[str]:
+    return frozenset(
+        target.id
+        for statement in classdef.body
+        if isinstance(statement, (ast.Assign, ast.AnnAssign))
+        and (not isinstance(statement, ast.AnnAssign) or statement.value is not None)
+        for target in (statement.targets if isinstance(statement, ast.Assign) else (statement.target,))
+        if isinstance(target, ast.Name) and not target.id.startswith("_")
     )

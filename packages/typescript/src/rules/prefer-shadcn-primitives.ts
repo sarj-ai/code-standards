@@ -242,24 +242,7 @@ function resolveAlias(packageRoot: string, alias: string): string | null {
   const paths = options["paths"];
   if (typeof paths !== "object" || paths === null) return null;
 
-  const matches: string[] = [];
-  for (const [pattern, rawTargets] of Object.entries(paths as Record<string, unknown>)) {
-    if (!Array.isArray(rawTargets) || rawTargets.length !== 1) {
-      continue;
-    }
-    const [target] = rawTargets as unknown[];
-    if (typeof target !== "string") continue;
-    const star = pattern.indexOf("*");
-    if (star === -1) {
-      if (pattern === alias) matches.push(target);
-      continue;
-    }
-    const prefix = pattern.slice(0, star);
-    const suffix = pattern.slice(star + 1);
-    if (!alias.startsWith(prefix) || !alias.endsWith(suffix)) continue;
-    const substitution = alias.slice(prefix.length, alias.length - suffix.length);
-    matches.push(target.replace("*", substitution));
-  }
+  const matches = matchingAliasTargets(paths as Record<string, unknown>, alias);
   const [match] = matches;
   if (matches.length !== 1 || match === undefined) return null;
   return resolve(packageRoot, baseUrl, match);
@@ -548,4 +531,26 @@ function realpathOrOriginal(path: string): string {
   } catch {
     return path;
   }
+}
+
+function matchingAliasTargets(paths: Record<string, unknown>, alias: string): string[] {
+  const matches: string[] = [];
+  for (const [pattern, rawTargets] of Object.entries(paths)) {
+    if (!Array.isArray(rawTargets) || rawTargets.length !== 1) {
+      continue;
+    }
+    const [target] = rawTargets as unknown[];
+    if (typeof target !== "string") continue;
+    const star = pattern.indexOf("*");
+    if (star === -1) {
+      if (pattern === alias) matches.push(target);
+      continue;
+    }
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    if (!alias.startsWith(prefix) || !alias.endsWith(suffix)) continue;
+    const substitution = alias.slice(prefix.length, alias.length - suffix.length);
+    matches.push(target.replace("*", substitution));
+  }
+  return matches;
 }

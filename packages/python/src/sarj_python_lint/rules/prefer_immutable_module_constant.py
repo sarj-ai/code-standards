@@ -311,28 +311,33 @@ class _MutationVisitor(ast.NodeVisitor):
     def _remember_target_roots(self, target: ast.expr, value: ast.expr) -> None:
         if isinstance(target, (ast.Tuple, ast.List)):
             if isinstance(value, (ast.Tuple, ast.List)):
-                starred = [index for index, element in enumerate(target.elts) if isinstance(element, ast.Starred)]
-                if not starred and len(target.elts) == len(value.elts):
-                    for target_element, value_element in zip(target.elts, value.elts, strict=True):
-                        self._remember_target_roots(target_element, value_element)
-                elif len(starred) == 1 and len(value.elts) >= len(target.elts) - 1:
-                    star = starred[0]
-                    for target_element, value_element in zip(target.elts[:star], value.elts[:star], strict=True):
-                        self._remember_target_roots(target_element, value_element)
-                    suffix_length = len(target.elts) - star - 1
-                    captured_end = len(value.elts) - suffix_length if suffix_length else len(value.elts)
-                    for value_element in value.elts[star:captured_end]:
-                        for root in self._module_roots(value_element):
-                            self._record_name(root)
-                    if suffix_length:
-                        for target_element, value_element in zip(
-                            target.elts[-suffix_length:], value.elts[-suffix_length:], strict=True
-                        ):
-                            self._remember_target_roots(target_element, value_element)
+                self._remember_unpacked_roots(target, value)
             return
         if isinstance(value, ast.Subscript):
             return
         self._store_alias_roots(target, self._module_roots(value))
+
+    def _remember_unpacked_roots(self, target: ast.Tuple | ast.List, value: ast.Tuple | ast.List) -> None:
+        starred = [index for index, element in enumerate(target.elts) if isinstance(element, ast.Starred)]
+        if not starred and len(target.elts) == len(value.elts):
+            for target_element, value_element in zip(target.elts, value.elts, strict=True):
+                self._remember_target_roots(target_element, value_element)
+        elif len(starred) == 1 and len(value.elts) >= len(target.elts) - 1:
+            self._remember_starred_roots(target, value, starred[0])
+
+    def _remember_starred_roots(self, target: ast.Tuple | ast.List, value: ast.Tuple | ast.List, star: int) -> None:
+        for target_element, value_element in zip(target.elts[:star], value.elts[:star], strict=True):
+            self._remember_target_roots(target_element, value_element)
+        suffix_length = len(target.elts) - star - 1
+        captured_end = len(value.elts) - suffix_length if suffix_length else len(value.elts)
+        for value_element in value.elts[star:captured_end]:
+            for root in self._module_roots(value_element):
+                self._record_name(root)
+        if suffix_length:
+            for target_element, value_element in zip(
+                target.elts[-suffix_length:], value.elts[-suffix_length:], strict=True
+            ):
+                self._remember_target_roots(target_element, value_element)
 
     def _store_alias_roots(self, target: ast.expr, roots: set[str]) -> None:
         if not roots:
@@ -349,16 +354,7 @@ class _MutationVisitor(ast.NodeVisitor):
 
     def _module_roots(self, value: ast.expr, *, call_argument: bool = False) -> set[str]:
         roots: set[str] = set()
-        if call_argument and isinstance(value, ast.Subscript):
-            names = ()
-        elif call_argument:
-            direct_root = _root_name(value)
-            names = (direct_root,) if direct_root is not None else _literal_container_root_names(value)
-        elif isinstance(value, ast.Subscript):
-            root = _root_name(value)
-            names = (root,) if root is not None else ()
-        else:
-            names = _literal_container_root_names(value)
+        names = _referenced_container_names(value, call_argument=call_argument)
         for name in names:
             alias = next(
                 (scope[name] for scope in reversed(self._local_container_roots) if name in scope),
@@ -583,6 +579,20 @@ def _root_name(value: ast.expr) -> str | None:
             return _root_name(value.value)
         case _:
             return None
+
+
+def _referenced_container_names(value: ast.expr, *, call_argument: bool) -> tuple[str, ...]:
+    if call_argument and isinstance(value, ast.Subscript):
+        names = ()
+    elif call_argument:
+        direct_root = _root_name(value)
+        names = (direct_root,) if direct_root is not None else _literal_container_root_names(value)
+    elif isinstance(value, ast.Subscript):
+        root = _root_name(value)
+        names = (root,) if root is not None else ()
+    else:
+        names = _literal_container_root_names(value)
+    return names
 
 
 def _literal_container_root_names(value: ast.expr) -> tuple[str, ...]:

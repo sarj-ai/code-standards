@@ -155,7 +155,8 @@ def plan_sync(
         return destinations[kind]
 
     targets: list[SyncTarget] = []
-    for name in selected:
+
+    def append_target(name: str) -> None:
         standard_source, target_name = CONFIG_NAMES[name]
         source_name = standard_source
         if name == "eslint":
@@ -189,6 +190,9 @@ def plan_sync(
                         base / companion_target,
                     )
                 )
+
+    for name in selected:
+        append_target(name)
     if not set(selected).isdisjoint(SWIFT_CONFIGS | KOTLIN_CONFIGS | MOBILE_CONFIGS):
         base = destination(_DestinationKind.DEFAULT, None)
         for companion, (companion_source, companion_target) in MOBILE_COMPANION_CONFIGS.items():
@@ -230,26 +234,12 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     already_adopted = adopted is not None
     selected_configs = configs if configs is not None else (adopted.configs if adopted is not None else None)
     selected_profile = profile or (adopted.profile if adopted is not None else "standard")
-    selected_python_dest = python_dest or (
-        adopted.python_dest
-        if adopted is not None and any(name in adopted.configs for name in manifest.PYTHON_CONFIGS)
-        else None
+    selected_python_dest = _init_destination(python_dest, adopted, _DestinationKind.PYTHON, manifest.PYTHON_CONFIGS)
+    selected_typescript_dest = _init_destination(
+        typescript_dest, adopted, _DestinationKind.TYPESCRIPT, manifest.TYPESCRIPT_CONFIGS
     )
-    selected_typescript_dest = typescript_dest or (
-        adopted.typescript_dest
-        if adopted is not None and any(name in adopted.configs for name in manifest.TYPESCRIPT_CONFIGS)
-        else None
-    )
-    selected_swift_dest = swift_dest or (
-        adopted.swift_dest
-        if adopted is not None and any(name in adopted.configs for name in manifest.SWIFT_CONFIGS)
-        else None
-    )
-    selected_kotlin_dest = kotlin_dest or (
-        adopted.kotlin_dest
-        if adopted is not None and any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
-        else None
-    )
+    selected_swift_dest = _init_destination(swift_dest, adopted, _DestinationKind.SWIFT, manifest.SWIFT_CONFIGS)
+    selected_kotlin_dest = _init_destination(kotlin_dest, adopted, _DestinationKind.KOTLIN, manifest.KOTLIN_CONFIGS)
     selected_hook_manager = hook_manager or (adopted.hook_manager if adopted is not None else None)
     scaffold_plan = scaffold.build_plan(
         resolved,
@@ -269,32 +259,9 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     )
     if scaffold_plan.errors:
         return InitPlan(scaffold_plan, None, ())
-    python_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.python_root)
-    typescript_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.typescript_root)
-    swift_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.swift_root)
-    kotlin_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.kotlin_root)
-    sync_plan = plan_sync(
-        resolved,
-        configs=scaffold_plan.configs,
-        python_dest=python_target,
-        typescript_dest=typescript_target,
-        swift_dest=swift_target,
-        kotlin_dest=kotlin_target,
-        profile=scaffold_plan.profile,
-    )
-    if not force and not already_adopted:
-        conflicts = tuple(
-            target.destination
-            for target in sync_plan.targets
-            if target.destination.is_file() and target.destination.read_bytes() != target.source.read_bytes()
-        )
-        if conflicts:
-            names = ", ".join(str(path.relative_to(resolved)) for path in conflicts)
-            scaffold_plan.errors.append(
-                "refusing to overwrite pre-existing lint configuration in an unadopted repository: "
-                f"{names}; review the files and rerun with --force"
-            )
-            return InitPlan(scaffold_plan, None, ())
+    sync_plan = _plan_initial_sync(resolved, scaffold_plan, force=force, already_adopted=already_adopted)
+    if sync_plan is None:
+        return InitPlan(scaffold_plan, None, ())
     mutations = (
         tuple(path for path, _contents in (*scaffold_plan.writes, *scaffold_plan.edits))
         + tuple(scaffold_plan.deletes)
@@ -310,6 +277,62 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     )
     preconditions = {path: path.read_bytes() if path.is_file() else None for path in mutations}
     return InitPlan(scaffold_plan, sync_plan, commands, preconditions)
+
+
+def _plan_initial_sync(
+    resolved: Path, scaffold_plan: scaffold.Plan, *, force: bool, already_adopted: bool
+) -> SyncPlan | None:
+    python_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.python_root)
+    typescript_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.typescript_root)
+    swift_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.swift_root)
+    kotlin_target = scaffold.dest_of(resolved, scaffold_plan.ecosystems.kotlin_root)
+    sync_plan = plan_sync(
+        resolved,
+        configs=scaffold_plan.configs,
+        python_dest=python_target,
+        typescript_dest=typescript_target,
+        swift_dest=swift_target,
+        kotlin_dest=kotlin_target,
+        profile=scaffold_plan.profile,
+    )
+    if not force and not already_adopted:
+        conflicts = _preexisting_sync_conflicts(sync_plan)
+        if conflicts:
+            names = ", ".join(str(path.relative_to(resolved)) for path in conflicts)
+            scaffold_plan.errors.append(
+                "refusing to overwrite pre-existing lint configuration in an unadopted repository: "
+                f"{names}; review the files and rerun with --force"
+            )
+            return None
+    return sync_plan
+
+
+def _preexisting_sync_conflicts(sync_plan: SyncPlan) -> tuple[Path, ...]:
+    return tuple(
+        target.destination
+        for target in sync_plan.targets
+        if target.destination.is_file() and target.destination.read_bytes() != target.source.read_bytes()
+    )
+
+
+def _init_destination(
+    override: str | None, adopted: manifest.Manifest | None, kind: _DestinationKind, configs: Sequence[str]
+) -> str | None:
+    if override:
+        return override
+    if adopted is None or not any(name in adopted.configs for name in configs):
+        return None
+    match kind:
+        case _DestinationKind.PYTHON:
+            return adopted.python_dest
+        case _DestinationKind.TYPESCRIPT:
+            return adopted.typescript_dest
+        case _DestinationKind.SWIFT:
+            return adopted.swift_dest
+        case _DestinationKind.KOTLIN:
+            return adopted.kotlin_dest
+        case _DestinationKind.DEFAULT:
+            return None
 
 
 def plan_commit_policy(
@@ -357,12 +380,7 @@ def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
     scaffold_targets = tuple(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)) + tuple(
         plan.scaffold.deletes
     )
-    python_environment = (
-        None if plan.scaffold.ecosystems.python_root is None else plan.scaffold.ecosystems.python_root / ".venv"
-    )
-    typescript_root = plan.scaffold.ecosystems.typescript_install_root or plan.scaffold.ecosystems.typescript_root
-    node_modules = None if typescript_root is None else typescript_root / "node_modules"
-    generated_trees = tuple((path, path.exists()) for path in (python_environment, node_modules) if path is not None)
+    generated_trees = _generated_environment_trees(plan)
     file_transaction: transaction.FileTransaction | None = None
     try:
         file_transaction = transaction.FileTransaction.capture(plan.sync.root, scaffold_targets)
@@ -391,6 +409,15 @@ def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
             status = 2 if error or result.failure is InitFailure.INSTALL else result.status
             return InitResult(status, result.sync, result.failure, error)
         return result
+
+
+def _generated_environment_trees(plan: InitPlan) -> tuple[tuple[Path, bool], ...]:
+    python_environment = (
+        None if plan.scaffold.ecosystems.python_root is None else plan.scaffold.ecosystems.python_root / ".venv"
+    )
+    typescript_root = plan.scaffold.ecosystems.typescript_install_root or plan.scaffold.ecosystems.typescript_root
+    node_modules = None if typescript_root is None else typescript_root / "node_modules"
+    return tuple((path, path.exists()) for path in (python_environment, node_modules) if path is not None)
 
 
 def _rollback_error(file_transaction: transaction.FileTransaction | None) -> str | None:

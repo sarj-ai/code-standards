@@ -113,27 +113,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     } <= provider_ids
     assert len({value["key"] for value in rules}) == len(rules)
 
-    react_doctor = next(value for value in providers if value["id"] == "react-doctor")
-    assert react_doctor == {
-        "engine": "react-doctor",
-        "homepage": "https://react.doctor/",
-        "id": "react-doctor",
-        "label": "React Doctor",
-        "package": "react-doctor",
-        "projectionScope": "complete",
-        "version": "0.9.12",
-    }
-    react_doctor_rules = [value for value in rules if value["provider"] == "react-doctor"]
-    assert react_doctor_rules
-    array_index_rule = next(
-        value for value in react_doctor_rules if value["displayId"] == "react-doctor/no-array-index-as-key"
-    )
-    assert all(
-        _object(context)["level"] == "error"
-        for profile in _array(array_index_rule["profiles"])
-        for context in _array(_object(profile)["contexts"])
-    )
-    assert not any(value["displayId"] == "react-hooks-js/todo" for value in react_doctor_rules)
+    _assert_react_doctor_inventory(providers, rules)
 
     for rule in rules:
         assert set(rule) == {
@@ -160,3 +140,27 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     assert scopes["swiftformat"] == "provider-only"
     assert scopes["mobsfscan"] == "provider-only"
     assert not any(value["provider"] in {"swiftformat", "mobsfscan"} for value in rules)
+
+
+def _assert_react_doctor_inventory(providers: list[dict[str, object]], rules: list[dict[str, object]]) -> None:
+    react_doctor = next(value for value in providers if value["id"] == "react-doctor")
+    assert react_doctor == {
+        "engine": "react-doctor",
+        "homepage": "https://react.doctor/",
+        "id": "react-doctor",
+        "label": "React Doctor",
+        "package": "react-doctor",
+        "projectionScope": "complete",
+        "version": "0.9.12",
+    }
+    react_doctor_rules = [value for value in rules if value["provider"] == "react-doctor"]
+    assert react_doctor_rules
+    array_index_rule = next(
+        value for value in react_doctor_rules if value["displayId"] == "react-doctor/no-array-index-as-key"
+    )
+    assert all(
+        _object(context)["level"] == "error"
+        for profile in _array(array_index_rule["profiles"])
+        for context in _array(_object(profile)["contexts"])
+    )
+    assert not any(value["displayId"] == "react-hooks-js/todo" for value in react_doctor_rules)

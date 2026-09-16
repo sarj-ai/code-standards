@@ -83,6 +83,14 @@ def _is_secret_reference(value: ast.expr) -> bool:
     return any(is_secret_name(token) for token in _reference_tokens(value))
 
 
+def _logging_payloads(node: ast.Call) -> list[ast.expr]:
+    return [
+        *(payload for argument in node.args for payload in _interpolated_payloads(argument)),
+        *(argument for argument in node.args if _is_payload_reference(argument)),
+        *(value for keyword in node.keywords for value in _keyword_payloads(keyword)),
+    ]
+
+
 def _interpolated_payloads(value: ast.expr) -> tuple[ast.expr, ...]:
     match value:
         case ast.JoinedStr(values=parts):
@@ -162,11 +170,7 @@ class NoWholeRequestResponsePayloadInLog(Rule):
         for node in nodes(tree, ast.Call):
             if not _is_logging_call(node):
                 continue
-            values = [
-                *(payload for argument in node.args for payload in _interpolated_payloads(argument)),
-                *(argument for argument in node.args if _is_payload_reference(argument)),
-                *(value for keyword in node.keywords for value in _keyword_payloads(keyword)),
-            ]
+            values = _logging_payloads(node)
             diagnostics.extend(_diagnostic(path, value) for value in values)
         return diagnostics
 

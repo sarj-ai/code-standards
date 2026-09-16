@@ -279,10 +279,10 @@ export default createRule<Options, MessageIds>({
         node.directive === "use client",
     );
     const hasUseServerDirective = context.sourceCode.ast.body.some(
-        (node) =>
-          node.type === "ExpressionStatement" &&
-          node.directive === "use server",
-      );
+      (node) =>
+        node.type === "ExpressionStatement" &&
+        node.directive === "use server",
+    );
     const importsServerOnly = context.sourceCode.ast.body.some(
       (node) =>
         node.type === "ImportDeclaration" &&
@@ -299,6 +299,65 @@ export default createRule<Options, MessageIds>({
       apiPrefixes.push(`${options.basePath}/api/`);
     }
 
+    function isFetchMutation(node: TSESTree.CallExpression): boolean {
+      const urlArg = node.arguments[0];
+      if (urlArg && urlArg.type !== "SpreadElement" && isApiUrl(urlArg, context, apiPrefixes)) {
+        const initArg = node.arguments[1];
+        if (initArg && initArg.type !== "SpreadElement") {
+          const resolvedInit = resolveNode(initArg, context);
+          const methodNode = getPropertyNode(resolvedInit, "method");
+          if (methodNode && isMutationMethod(methodNode, context)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function isAxiosMethodMutation(node: TSESTree.CallExpression, method: string): boolean {
+      const methodName = method.toLowerCase();
+      if (AXIOS_MUTATION_METHODS.has(methodName)) {
+        const config = node.arguments[methodName === "delete" ? 1 : 2];
+        if (!hasLocalAxiosOptions(config, context)) return false;
+        const urlArg = node.arguments[0];
+        const hasHandlerArg = node.arguments.some(
+          (arg) =>
+            arg.type !== "SpreadElement" &&
+            isFunctionArgument(arg, context),
+        );
+        if (
+          urlArg &&
+          urlArg.type !== "SpreadElement" &&
+          !hasHandlerArg &&
+          isApiUrl(urlArg, context, apiPrefixes)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    function isAxiosConfigMutation(node: TSESTree.CallExpression): boolean {
+      const firstArg = node.arguments[0];
+      if (firstArg && firstArg.type !== "SpreadElement") {
+        const configArg = resolveNode(firstArg, context);
+        if (configArg && configArg.type === "ObjectExpression") {
+          if (!hasLocalAxiosOptions(firstArg, context)) return false;
+          const urlNode = getPropertyNode(configArg, "url");
+          const methodNode = getPropertyNode(configArg, "method");
+          if (
+            urlNode &&
+            isApiUrl(urlNode, context, apiPrefixes) &&
+            methodNode &&
+            isMutationMethod(methodNode, context)
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
     return {
       CallExpression(node) {
         if (isNonReactFramework) return;
@@ -310,17 +369,7 @@ export default createRule<Options, MessageIds>({
           node.callee.name === "fetch" &&
           resolvesToGlobalFetch(context, node.callee)
         ) {
-          const urlArg = node.arguments[0];
-          if (urlArg && urlArg.type !== "SpreadElement" && isApiUrl(urlArg, context, apiPrefixes)) {
-            const initArg = node.arguments[1];
-            if (initArg && initArg.type !== "SpreadElement") {
-              const resolvedInit = resolveNode(initArg, context);
-              const methodNode = getPropertyNode(resolvedInit, "method");
-              if (methodNode && isMutationMethod(methodNode, context)) {
-                isMutation = true;
-              }
-            }
-          }
+          isMutation = isFetchMutation(node);
         }
         // Axios method calls require import or instance provenance.
         else if (
@@ -328,48 +377,14 @@ export default createRule<Options, MessageIds>({
           node.callee.property.type === "Identifier" &&
           !node.callee.computed && isAxiosClient(node.callee.object, context)
         ) {
-          const methodName = node.callee.property.name.toLowerCase();
-          if (AXIOS_MUTATION_METHODS.has(methodName)) {
-            const config = node.arguments[methodName === "delete" ? 1 : 2];
-            if (!hasLocalAxiosOptions(config, context)) return;
-            const urlArg = node.arguments[0];
-            const hasHandlerArg = node.arguments.some(
-              (arg) =>
-                arg.type !== "SpreadElement" &&
-                isFunctionArgument(arg, context),
-            );
-            if (
-              urlArg &&
-              urlArg.type !== "SpreadElement" &&
-              !hasHandlerArg &&
-              isApiUrl(urlArg, context, apiPrefixes)
-            ) {
-              isMutation = true;
-            }
-          }
+          isMutation = isAxiosMethodMutation(node, node.callee.property.name);
         }
         // 3. Direct axios/request call: axios({ method: 'post', url: '/api/orders' })
         else if (
           node.callee.type === "Identifier" &&
           isAxiosClient(node.callee, context)
         ) {
-          const firstArg = node.arguments[0];
-          if (firstArg && firstArg.type !== "SpreadElement") {
-            const configArg = resolveNode(firstArg, context);
-            if (configArg && configArg.type === "ObjectExpression") {
-              if (!hasLocalAxiosOptions(firstArg, context)) return;
-              const urlNode = getPropertyNode(configArg, "url");
-              const methodNode = getPropertyNode(configArg, "method");
-              if (
-                urlNode &&
-                isApiUrl(urlNode, context, apiPrefixes) &&
-                methodNode &&
-                isMutationMethod(methodNode, context)
-              ) {
-                isMutation = true;
-              }
-            }
-          }
+          isMutation = isAxiosConfigMutation(node);
         }
 
         if (isMutation) {

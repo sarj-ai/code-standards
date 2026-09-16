@@ -53,6 +53,9 @@ class PythonTargetFacts:
                 if root not in self._installed:
                     self._installed[root] = _installed_declarations(root)
                 return self._installed[root].get(resolved)
+        return self._project_target(resolved)
+
+    def _project_target(self, resolved: Path) -> str | None:
         for ancestor in list(resolved.parents)[:_MAX_ANCESTORS]:
             try:
                 if any((ancestor / marker).exists() for marker in _PROJECT_BOUNDARIES):

@@ -167,6 +167,22 @@ def _region_size(lines: list[str], index: int) -> int:
     return size
 
 
+def _protected_comment_body(body: str) -> bool:
+    if not body or body.endswith("?"):
+        return True
+    if _DIRECTIVE_RE.match(body) or _is_commented_out_code(body) or _BANNERISH_RE.search(body):
+        return True
+    if _has_non_ascii_prose(body) or is_protected(body):
+        return True
+    if _MODALITY_RE.search(body) or _LEAD_IN_RE.search(body) or _EMPHASIS_RE.search(body):
+        return True
+    if _NEGATION_WORD_RE.search(body):
+        return True
+    if _CONTEXT_QUALIFIER_RE.search(body) or _NAVIGATION_HEADING_RE.search(body):
+        return True
+    return len(body.split()) > _MAX_WORDS
+
+
 def _has_non_ascii_prose(body: str) -> bool:
     return any(ord(ch) > _MAX_ASCII and ch.isalpha() for ch in body)
 
@@ -229,15 +245,7 @@ def _numbered_walkthrough_lines(
 
     protected: set[int] = set()
     for entries in grouped.values():
-        run: list[tuple[int, int]] = []
-        for entry in entries:
-            if run and entry[1] != run[-1][1] + 1:
-                if len(run) >= _NUMBERED_WALKTHROUGH_MIN:
-                    protected.update(line for line, _ in run)
-                run = []
-            run.append(entry)
-        if len(run) >= _NUMBERED_WALKTHROUGH_MIN:
-            protected.update(line for line, _ in run)
+        _protect_walkthrough_run(entries, protected)
     return frozenset(protected)
 
 
@@ -321,16 +329,7 @@ class NoRestatedComment(Rule):
         if tree is None:
             return []
         numbered_walkthrough = _numbered_walkthrough_lines(tree, standalone)
-        action_lines = {
-            line + 1
-            for line, _, _ in candidates
-            if line < len(lines) and not _SIMPLE_STMT_RE.match(lines[line]) and _ACTION_STMT_RE.search(lines[line])
-        }
-        action_assignments = {
-            node.lineno: node
-            for node in nodes(tree, ast.Assign, ast.AnnAssign)
-            if node.lineno in action_lines and _is_action_assignment(node)
-        }
+        action_assignments = _action_assignments(candidates, lines, tree)
         diags: list[Diagnostic] = []
         for line, col, body in candidates:
             if line in numbered_walkthrough:
@@ -359,19 +358,7 @@ class NoRestatedComment(Rule):
         lines: list[str],
         action_assignment: ast.stmt | None,
     ) -> bool:
-        if not body or body.endswith("?"):
-            return False
-        if _DIRECTIVE_RE.match(body) or _is_commented_out_code(body) or _BANNERISH_RE.search(body):
-            return False
-        if _has_non_ascii_prose(body) or is_protected(body):
-            return False
-        if _MODALITY_RE.search(body) or _LEAD_IN_RE.search(body) or _EMPHASIS_RE.search(body):
-            return False
-        if _NEGATION_WORD_RE.search(body):
-            return False
-        if _CONTEXT_QUALIFIER_RE.search(body) or _NAVIGATION_HEADING_RE.search(body):
-            return False
-        if len(body.split()) > _MAX_WORDS:
+        if _protected_comment_body(body):
             return False
         tokens = content_tokens(body)
         if len(tokens) < _MIN_CONTENT_TOKENS:
@@ -400,3 +387,30 @@ class NoRestatedComment(Rule):
         full_tokens = code_tokens(compared_code)
         structural_tokens = _structural_code_tokens(compared_code)
         return restates(tokens, full_tokens) and any(restates((token,), structural_tokens) for token in tokens)
+
+
+def _protect_walkthrough_run(entries: list[tuple[int, int]], protected: set[int]) -> None:
+    run: list[tuple[int, int]] = []
+    for entry in entries:
+        if run and entry[1] != run[-1][1] + 1:
+            if len(run) >= _NUMBERED_WALKTHROUGH_MIN:
+                protected.update(line for line, _ in run)
+            run = []
+        run.append(entry)
+    if len(run) >= _NUMBERED_WALKTHROUGH_MIN:
+        protected.update(line for line, _ in run)
+
+
+def _action_assignments(
+    candidates: list[PositionedComment], lines: list[str], tree: ast.Module
+) -> dict[int, ast.Assign | ast.AnnAssign]:
+    action_lines = {
+        line + 1
+        for line, _, _ in candidates
+        if line < len(lines) and not _SIMPLE_STMT_RE.match(lines[line]) and _ACTION_STMT_RE.search(lines[line])
+    }
+    return {
+        node.lineno: node
+        for node in nodes(tree, ast.Assign, ast.AnnAssign)
+        if node.lineno in action_lines and _is_action_assignment(node)
+    }

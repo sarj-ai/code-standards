@@ -366,23 +366,8 @@ def _loop_read_names(loop: ast.For | ast.AsyncFor | ast.While) -> frozenset[str]
         node = stack.pop()
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
             continue
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target = node.targets[0]
-            if isinstance(node.value, ast.JoinedStr) and any(
-                isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in node.value.values
-            ):
-                stack.extend(
-                    part.value
-                    for part in node.value.values
-                    if isinstance(part, ast.FormattedValue) and _src(part.value) != _src(target)
-                )
-                continue
-            if _is_accumulation_assign(target, node.value) and isinstance(node.value, ast.BinOp):
-                # Skip the self-read operand; still record reads in the other one.
-                other = _other_add_operand(target, node.value)
-                if other is not None:
-                    stack.append(other)
-                continue
+        if _schedule_accumulation_reads(node, stack):
+            continue
         stack.extend(children(node))
         if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(node.ctx, ast.Load):
             reads.add(_src(node))
@@ -394,10 +379,7 @@ def _loop_local_reassignments(loop: ast.For | ast.AsyncFor | ast.While) -> dict[
     for stmt in loop.body:
         match stmt:
             case ast.Assign(targets=targets, value=value):
-                for target in targets:
-                    for bound in _iter_binding_targets(target):
-                        if not _is_accumulation_assign(bound, value):
-                            reassigns.setdefault(_src(bound), []).append(bound.lineno)
+                _collect_assignment_rebindings(targets, value, reassigns)
             case ast.AnnAssign(target=target, value=value) if value is not None:
                 if not _is_accumulation_assign(target, value):
                     reassigns.setdefault(_src(target), []).append(target.lineno)
@@ -430,6 +412,20 @@ def _is_accumulation_assign(target: ast.expr, value: ast.expr) -> bool:
 def _add_tree_contains_target(target: ast.expr, value: ast.expr) -> bool:
     target_src = _src(target)
     return any(_src(node) == target_src for node in walk(value) if isinstance(node, (ast.Name, ast.Attribute)))
+
+
+def _schedule_accumulation_reads(node: ast.AST, stack: list[ast.AST]) -> bool:
+    if isinstance(node, ast.Assign) and len(node.targets) == 1:
+        target = node.targets[0]
+        if _schedule_formatted_reads(node, target, stack):
+            return True
+        if _is_accumulation_assign(target, node.value) and isinstance(node.value, ast.BinOp):
+            # Skip the self-read operand; still record reads in the other one.
+            other = _other_add_operand(target, node.value)
+            if other is not None:
+                stack.append(other)
+            return True
+    return False
 
 
 def _other_add_operand(target: ast.expr, binop: ast.BinOp) -> ast.expr | None:
@@ -472,3 +468,23 @@ def _looks_like_string(node: ast.AST) -> bool:
             return _looks_like_string(left)
         case _:
             return False
+
+
+def _collect_assignment_rebindings(targets: list[ast.expr], value: ast.expr, reassigns: dict[str, list[int]]) -> None:
+    for target in targets:
+        for bound in _iter_binding_targets(target):
+            if not _is_accumulation_assign(bound, value):
+                reassigns.setdefault(_src(bound), []).append(bound.lineno)
+
+
+def _schedule_formatted_reads(node: ast.Assign, target: ast.expr, stack: list[ast.AST]) -> bool:
+    if isinstance(node.value, ast.JoinedStr) and any(
+        isinstance(part, ast.FormattedValue) and _src(part.value) == _src(target) for part in node.value.values
+    ):
+        stack.extend(
+            part.value
+            for part in node.value.values
+            if isinstance(part, ast.FormattedValue) and _src(part.value) != _src(target)
+        )
+        return True
+    return False

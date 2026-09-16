@@ -165,39 +165,39 @@ class PreferNominalIdTypes(Rule):
             for node in tree.body
             if isinstance(node, ast.ClassDef)
         }
-        constructor_owners = {
-            member: node
-            for node in tree.body
-            if isinstance(node, ast.ClassDef)
-            for member in node.body
-            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == "__init__"
-        }
+        constructor_owners = _constructor_owners(tree)
 
         diagnostics: list[Diagnostic] = []
-        for node in _boundary_nodes(tree, imports):
-            roles = _qualifying_roles(_boundary_roles(node, imports, facts))
-            if not roles:
-                continue
-            owner = constructor_owners.get(node) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
-            if owner is not None and class_role_names.get(owner):
-                continue
-            first_raw = next(role for role in roles if role.carrier.raw)
-            if is_suppressed(source_lines, first_raw.annotation.lineno, self.code):
-                continue
-            names = ", ".join(f"`{role.name}`" for role in roles)
-            diagnostics.append(
-                Diagnostic(
-                    path=path,
-                    line=first_raw.annotation.lineno,
-                    col=first_raw.annotation.col_offset + 1,
-                    code=self.code,
-                    message=(
-                        f"{names} are swappable ID-shaped roles with the same carrier; introduce or reuse "
-                        "`typing.NewType` or nominal value-object identifiers and propagate them through this boundary."
-                    ),
-                    severity=Severity.WARNING,
+
+        def collect_boundary_diagnostics() -> None:
+            for node in _boundary_nodes(tree, imports):
+                roles = _qualifying_roles(_boundary_roles(node, imports, facts))
+                if not roles:
+                    continue
+                owner = (
+                    constructor_owners.get(node) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else None
                 )
-            )
+                if owner is not None and class_role_names.get(owner):
+                    continue
+                first_raw = next(role for role in roles if role.carrier.raw)
+                if is_suppressed(source_lines, first_raw.annotation.lineno, self.code):
+                    continue
+                names = ", ".join(f"`{role.name}`" for role in roles)
+                diagnostics.append(
+                    Diagnostic(
+                        path=path,
+                        line=first_raw.annotation.lineno,
+                        col=first_raw.annotation.col_offset + 1,
+                        code=self.code,
+                        message=(
+                            f"{names} are swappable ID-shaped roles with the same carrier; introduce or reuse "
+                            "`typing.NewType` or nominal value-object identifiers and propagate them through this boundary."
+                        ),
+                        severity=Severity.WARNING,
+                    )
+                )
+
+        collect_boundary_diagnostics()
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
 
 
@@ -237,13 +237,7 @@ def _boundary_nodes(
         if _is_raw_schema_class(statement, imports):
             continue
         result.append(statement)
-        result.extend(
-            member
-            for member in statement.body
-            if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
-            and (member.name == "__init__" or _is_public_function(member))
-            and not _is_operational_function(member)
-        )
+        result.extend(_boundary_methods(statement))
     return result
 
 
@@ -296,15 +290,7 @@ def _boundary_roles(
             if (role := _role(argument.arg, argument.annotation, imports, facts, allow_bare_id=True)) is not None
         ]
     if isinstance(node, ast.ClassDef):
-        return [
-            role
-            for statement in node.body
-            if isinstance(statement, ast.AnnAssign)
-            and isinstance(statement.target, ast.Name)
-            and not _has_pydantic_wire_alias(statement, imports)
-            if (role := _role(statement.target.id, statement.annotation, imports, facts, allow_bare_id=True))
-            is not None
-        ]
+        return _class_id_roles(node, imports, facts)
     return []
 
 
@@ -338,6 +324,17 @@ def _qualifying_roles(roles: list[_IdRole]) -> list[_IdRole]:
     return [role for role in roles if role.carrier.shape in qualifying_shapes]
 
 
+def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts) -> list[_IdRole]:
+    return [
+        role
+        for statement in node.body
+        if isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+        and not _has_pydantic_wire_alias(statement, imports)
+        if (role := _role(statement.target.id, statement.annotation, imports, facts, allow_bare_id=True)) is not None
+    ]
+
+
 def _has_pydantic_wire_alias(statement: ast.AnnAssign, imports: ImportIndex) -> bool:
     if _is_pydantic_wire_alias_call(statement.value, imports):
         return True
@@ -364,18 +361,7 @@ def _type_facts(tree: ast.Module, imports: ImportIndex) -> _TypeFacts:
     nominal_aliases: dict[str, str] = {}
     aliases: dict[str, ast.expr] = {}
 
-    for statement in tree.body:
-        target, value = _alias_assignment(statement)
-        if target is None or value is None:
-            continue
-        if _is_new_type_call(value, imports):
-            if len(value.args) >= _MIN_SWAPPABLE_ROLES:
-                carrier = _carrier(value.args[_SECOND_ARGUMENT], imports, _TypeFacts(raw_aliases, nominal_aliases))
-                if carrier is not None:
-                    nominal_aliases[target] = carrier.shape
-            continue
-        aliases[target] = _type_alias_type_value(value, imports) or value
-
+    _collect_type_aliases(tree, imports, raw_aliases, nominal_aliases, aliases)
     for _round in range(len(aliases)):
         grew = False
         facts = _TypeFacts(raw_aliases, nominal_aliases)
@@ -391,6 +377,26 @@ def _type_facts(tree: ast.Module, imports: ImportIndex) -> _TypeFacts:
         if not grew:
             break
     return _TypeFacts(raw_aliases, nominal_aliases)
+
+
+def _collect_type_aliases(
+    tree: ast.Module,
+    imports: ImportIndex,
+    raw_aliases: dict[str, str],
+    nominal_aliases: dict[str, str],
+    aliases: dict[str, ast.expr],
+) -> None:
+    for statement in tree.body:
+        target, value = _alias_assignment(statement)
+        if target is None or value is None:
+            continue
+        if _is_new_type_call(value, imports):
+            if len(value.args) >= _MIN_SWAPPABLE_ROLES:
+                carrier = _carrier(value.args[_SECOND_ARGUMENT], imports, _TypeFacts(raw_aliases, nominal_aliases))
+                if carrier is not None:
+                    nominal_aliases[target] = carrier.shape
+            continue
+        aliases[target] = _type_alias_type_value(value, imports) or value
 
 
 def _alias_assignment(statement: ast.stmt) -> tuple[str | None, ast.expr | None]:
@@ -432,6 +438,23 @@ def _carrier(annotation: ast.expr, imports: ImportIndex, facts: _TypeFacts) -> _
     if not isinstance(annotation, ast.Subscript):
         return None
 
+    return _subscript_carrier(annotation, imports, facts)
+
+
+def _primitive_carrier(annotation: ast.expr, imports: ImportIndex) -> str | None:
+    if isinstance(annotation, ast.Name) and annotation.id in {"int", "str"}:
+        if imports.builtin_is_unshadowed(annotation.id):
+            return annotation.id
+        return None
+    for symbol in ("int", "str"):
+        if imports.resolves(annotation, sources=_BUILTIN_SOURCES, symbol=symbol):
+            return symbol
+    if imports.resolves(annotation, sources=_UUID_SOURCES, symbol="UUID"):
+        return "UUID"
+    return None
+
+
+def _subscript_carrier(annotation: ast.Subscript, imports: ImportIndex, facts: _TypeFacts) -> _Carrier | None:
     target = annotation.value
     if imports.resolves(target, sources=_SQLALCHEMY_SOURCES, symbol="Mapped"):
         return None
@@ -455,19 +478,6 @@ def _carrier(annotation: ast.expr, imports: ImportIndex, facts: _TypeFacts) -> _
     if nested is None:
         return None
     return _Carrier(f"{wrapper}[{nested.shape}]", raw=nested.raw)
-
-
-def _primitive_carrier(annotation: ast.expr, imports: ImportIndex) -> str | None:
-    if isinstance(annotation, ast.Name) and annotation.id in {"int", "str"}:
-        if imports.builtin_is_unshadowed(annotation.id):
-            return annotation.id
-        return None
-    for symbol in ("int", "str"):
-        if imports.resolves(annotation, sources=_BUILTIN_SOURCES, symbol=symbol):
-            return symbol
-    if imports.resolves(annotation, sources=_UUID_SOURCES, symbol="UUID"):
-        return "UUID"
-    return None
 
 
 def _collection_wrapper(target: ast.expr, imports: ImportIndex) -> str | None:
@@ -544,3 +554,23 @@ def _is_external_adapter_path(path: Path) -> bool:
         or "integration" in parts
         or ("integrations" in parts and ("models" in parts or path.name.lower() == "models.py"))
     )
+
+
+def _constructor_owners(tree: ast.Module) -> dict[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef]:
+    return {
+        member: node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        for member in node.body
+        if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)) and member.name == "__init__"
+    }
+
+
+def _boundary_methods(statement: ast.ClassDef) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    return [
+        member
+        for member in statement.body
+        if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and (member.name == "__init__" or _is_public_function(member))
+        and not _is_operational_function(member)
+    ]

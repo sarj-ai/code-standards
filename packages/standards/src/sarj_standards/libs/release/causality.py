@@ -22,7 +22,7 @@ _DISPLAY_PATH_LIMIT = 3
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from .registry import PublicationChecker
 
@@ -90,6 +90,32 @@ def check_release_causality(
     }
     changed_targets = tuple(name for name, paths in by_target.items() if paths)
     checker = publication_exists if publication_checker is None else publication_checker
+    causality_violations = _changed_artifact_violations(
+        root, after, changed_targets, bumped, by_target, runner=runner, tag_checker=tag_checker, checker=checker
+    )
+    supersession_violations = _supersession_violations(
+        root, before, bumped, runner=runner, tag_checker=tag_checker, checker=checker
+    )
+    return ReleaseCausalityReport(
+        before,
+        after,
+        changed_targets,
+        tuple(name for name, changed in bumped.items() if changed),
+        (*causality_violations, *supersession_violations),
+    )
+
+
+def _changed_artifact_violations(
+    root: Path,
+    after: str,
+    changed_targets: tuple[str, ...],
+    bumped: Mapping[str, bool],
+    by_target: dict[str, tuple[str, ...]],
+    *,
+    runner: ProcessRunner,
+    tag_checker: ReleaseTagChecker,
+    checker: PublicationChecker,
+) -> list[CausalityViolation]:
     causality_violations: list[CausalityViolation] = []
     for name in changed_targets:
         if bumped[name]:
@@ -112,6 +138,18 @@ def check_release_causality(
                 by_target[name],
             )
         )
+    return causality_violations
+
+
+def _supersession_violations(
+    root: Path,
+    before: str,
+    bumped: Mapping[str, bool],
+    *,
+    runner: ProcessRunner,
+    tag_checker: ReleaseTagChecker,
+    checker: PublicationChecker,
+) -> list[SupersededReleaseViolation]:
     supersession_violations: list[SupersededReleaseViolation] = []
     for name, changed in bumped.items():
         if not changed:
@@ -134,13 +172,7 @@ def check_release_causality(
             supersession_violations.append(
                 SupersededReleaseViolation(name, target.manifest, f"{name}-v{prior_version}")
             )
-    return ReleaseCausalityReport(
-        before,
-        after,
-        changed_targets,
-        tuple(name for name, changed in bumped.items() if changed),
-        (*causality_violations, *supersession_violations),
-    )
+    return supersession_violations
 
 
 def _publications_are_absent(

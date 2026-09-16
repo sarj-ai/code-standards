@@ -142,14 +142,7 @@ class TypedErrorReasons(Rule):
         for error_class in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
             if not _is_conventional_exception(error_class):
                 continue
-            constructor = next(
-                (
-                    member
-                    for member in error_class.body
-                    if isinstance(member, ast.FunctionDef) and member.name == "__init__"
-                ),
-                None,
-            )
+            constructor = _error_constructor(error_class)
             if constructor is None:
                 continue
             parameter = _sole_string_list_parameter(constructor)
@@ -261,4 +254,11 @@ def _joins_parameter(node: ast.AST, parameter: str) -> TypeGuard[ast.Call]:
         and not node.keywords
         and isinstance(node.args[0], ast.Name)
         and node.args[0].id == parameter
+    )
+
+
+def _error_constructor(error_class: ast.ClassDef) -> ast.FunctionDef | None:
+    return next(
+        (member for member in error_class.body if isinstance(member, ast.FunctionDef) and member.name == "__init__"),
+        None,
     )

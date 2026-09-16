@@ -13,6 +13,7 @@ from sarj_sql_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    StatementFragment,
     is_dump_file,
     is_generated_migration,
     is_postgres_migration,
@@ -131,22 +132,7 @@ class AddConstraintRequiresNotValid(Rule):
                 table, actions, can_attach_existing_rows = altered
                 if can_attach_existing_rows:
                     fresh_tables.discard(table)
-                for action in actions:
-                    if table in fresh_tables or _action_has_not_valid(action):
-                        continue
-                    location = locate(statement, action[0].start)
-                    diags.append(
-                        Diagnostic(
-                            path=path,
-                            line=location.line,
-                            col=location.column,
-                            code=self.code,
-                            message=(
-                                "Add this CHECK or foreign-key constraint with `NOT VALID`, commit that "
-                                "migration or transaction, then run `VALIDATE CONSTRAINT` in a later one."
-                            ),
-                        )
-                    )
+                diags.extend(_constraint_action_findings(actions, table, fresh_tables, statement, path, code=self.code))
                 continue
 
             dropped = _drop_table(tokens)
@@ -172,15 +158,7 @@ def _tokenize(text: str) -> list[_Token] | None:
             cursor += 1
             continue
         if char == '"':
-            end = cursor + 1
-            while end < len(text):
-                if text[end] != '"':
-                    end += 1
-                    continue
-                if end + 1 < len(text) and text[end + 1] == '"':
-                    end += 2
-                    continue
-                break
+            end = _quoted_identifier_end(text, cursor)
             if end >= len(text):
                 return None
             tokens.append(_Token(text[cursor : end + 1], cursor, quoted=True))
@@ -326,6 +304,60 @@ def _is_validating_add_action(action: list[_Token]) -> bool:
         return close is not None and close > cursor + 2
     if not _sequence(action, cursor, ("FOREIGN", "KEY")):
         return False
+    return _is_foreign_key_action(action, cursor)
+
+
+def _is_identifier_token(token: _Token) -> bool:
+    return token.quoted or _WORD.fullmatch(token.text) is not None
+
+
+def _matching_paren(tokens: list[_Token], opening: int) -> int | None:
+    depth = 0
+    for index in range(opening, len(tokens)):
+        if tokens[index].text == "(":
+            depth += 1
+        elif tokens[index].text == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _top_level_tokens(tokens: list[_Token]) -> list[_Token]:
+    found: list[_Token] = []
+    depth = 0
+    for token in tokens:
+        if token.text == "(":
+            depth += 1
+        elif token.text == ")":
+            depth -= 1
+        elif depth == 0:
+            found.append(token)
+    return found
+
+
+def _consume(tokens: list[_Token], cursor: int, expected: str) -> bool:
+    return cursor < len(tokens) and not tokens[cursor].quoted and tokens[cursor].text.upper() == expected
+
+
+def _sequence(tokens: list[_Token], cursor: int, expected: tuple[str, ...]) -> bool:
+    return all(_consume(tokens, cursor + offset, word) for offset, word in enumerate(expected))
+
+
+def _quoted_identifier_end(text: str, cursor: int) -> int:
+    end = cursor + 1
+    while end < len(text):
+        if text[end] != '"':
+            end += 1
+            continue
+        if end + 1 < len(text) and text[end + 1] == '"':
+            end += 2
+            continue
+        break
+    return end
+
+
+def _is_foreign_key_action(action: list[_Token], cursor: int) -> bool:
     columns_open = cursor + 2
     if columns_open >= len(action) or action[columns_open].text != "(":
         return False
@@ -362,20 +394,33 @@ def _valid_identifier_list(tokens: list[_Token]) -> bool:
     return bool(tokens) and not expect_identifier
 
 
-def _is_identifier_token(token: _Token) -> bool:
-    return token.quoted or _WORD.fullmatch(token.text) is not None
-
-
-def _matching_paren(tokens: list[_Token], opening: int) -> int | None:
-    depth = 0
-    for index in range(opening, len(tokens)):
-        if tokens[index].text == "(":
-            depth += 1
-        elif tokens[index].text == ")":
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
+def _constraint_action_findings(
+    actions: list[list[_Token]],
+    table: _TableKey,
+    fresh_tables: set[_TableKey],
+    statement: list[StatementFragment],
+    path: Path,
+    *,
+    code: str,
+) -> list[Diagnostic]:
+    diags: list[Diagnostic] = []
+    for action in actions:
+        if table in fresh_tables or _action_has_not_valid(action):
+            continue
+        location = locate(statement, action[0].start)
+        diags.append(
+            Diagnostic(
+                path=path,
+                line=location.line,
+                col=location.column,
+                code=code,
+                message=(
+                    "Add this CHECK or foreign-key constraint with `NOT VALID`, commit that "
+                    "migration or transaction, then run `VALIDATE CONSTRAINT` in a later one."
+                ),
+            )
+        )
+    return diags
 
 
 def _action_has_not_valid(action: list[_Token]) -> bool:
@@ -390,24 +435,3 @@ def _action_has_not_valid(action: list[_Token]) -> bool:
         if depth == 0 and token.text.upper() == "NOT" and action[index + 1].text.upper() == "VALID":
             return True
     return False
-
-
-def _top_level_tokens(tokens: list[_Token]) -> list[_Token]:
-    found: list[_Token] = []
-    depth = 0
-    for token in tokens:
-        if token.text == "(":
-            depth += 1
-        elif token.text == ")":
-            depth -= 1
-        elif depth == 0:
-            found.append(token)
-    return found
-
-
-def _consume(tokens: list[_Token], cursor: int, expected: str) -> bool:
-    return cursor < len(tokens) and not tokens[cursor].quoted and tokens[cursor].text.upper() == expected
-
-
-def _sequence(tokens: list[_Token], cursor: int, expected: tuple[str, ...]) -> bool:
-    return all(_consume(tokens, cursor + offset, word) for offset, word in enumerate(expected))

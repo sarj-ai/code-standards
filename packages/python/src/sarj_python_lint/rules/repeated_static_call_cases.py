@@ -343,19 +343,7 @@ def _mutating_aliases(tree: ast.Module) -> frozenset[str]:
     changed = True
     while changed:
         changed = False
-        for statement in tree.body:
-            if not isinstance(statement, (ast.Assign, ast.AnnAssign)) or statement.value is None:
-                continue
-            source = _dotted_name(statement.value)
-            if source is None or (
-                source[-1] not in aliases and frozenset(split_identifier(source[-1])).isdisjoint(_MUTATING_CALLEE_WORDS)
-            ):
-                continue
-            targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
-            for target in targets:
-                if isinstance(target, ast.Name) and target.id not in aliases:
-                    aliases.add(target.id)
-                    changed = True
+        changed = _propagate_mutating_aliases(tree, aliases)
     return frozenset(aliases)
 
 
@@ -369,24 +357,24 @@ def _runs(
     current_values: set[str] = set()
     for statement in test.body:
         if not isinstance(statement, ast.Assert) or _has_attached_comment(statement, comments):
-            if len(current) >= _MIN_CASES and len(current_values) >= _MIN_DISTINCT_CASES:
+            if _is_repeated_case_run(current, current_values):
                 yield current
             current, current_shape, current_values = [], None, set()
             continue
         parsed = _assertion_shape(statement, unsafe_callees)
         if parsed is None:
-            if len(current) >= _MIN_CASES and len(current_values) >= _MIN_DISTINCT_CASES:
+            if _is_repeated_case_run(current, current_values):
                 yield current
             current, current_shape, current_values = [], None, set()
             continue
         if current and (parsed.skeleton != current_shape or _has_intervening_comment(current[-1], statement, comments)):
-            if len(current) >= _MIN_CASES and len(current_values) >= _MIN_DISTINCT_CASES:
+            if _is_repeated_case_run(current, current_values):
                 yield current
             current, current_values = [], set()
         current.append(statement)
         current_shape = parsed.skeleton
         current_values.add(parsed.values)
-    if len(current) >= _MIN_CASES and len(current_values) >= _MIN_DISTINCT_CASES:
+    if _is_repeated_case_run(current, current_values):
         yield current
 
 
@@ -510,3 +498,25 @@ def _static_shape(node: ast.expr) -> object:
 def _static_value(node: ast.expr) -> str:
     rendered = ast.dump(node, annotate_fields=False, include_attributes=False)
     return rendered[:512]
+
+
+def _propagate_mutating_aliases(tree: ast.Module, aliases: set[str]) -> bool:
+    changed = False
+    for statement in tree.body:
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign)) or statement.value is None:
+            continue
+        source = _dotted_name(statement.value)
+        if source is None or (
+            source[-1] not in aliases and frozenset(split_identifier(source[-1])).isdisjoint(_MUTATING_CALLEE_WORDS)
+        ):
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id not in aliases:
+                aliases.add(target.id)
+                changed = True
+    return changed
+
+
+def _is_repeated_case_run(current: list[ast.Assert], values: set[str]) -> bool:
+    return len(current) >= _MIN_CASES and len(values) >= _MIN_DISTINCT_CASES

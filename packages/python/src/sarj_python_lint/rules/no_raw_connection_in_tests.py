@@ -139,11 +139,7 @@ def _is_migration_test(path: Path) -> bool:
 def _proven_pool_names(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
     names: set[str] = set()
     if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        names.update(
-            argument.arg
-            for argument in [*scope.args.posonlyargs, *scope.args.args, *scope.args.kwonlyargs]
-            if _tail(argument.annotation) in _POOL_TYPES
-        )
+        _pool_parameter_names(scope, names)
     for node in _scope_nodes(scope):
         if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             if _tail(node.annotation) in _POOL_TYPES:
@@ -211,4 +207,12 @@ def _is_pytest_fixture(scope: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return any(
         _tail(decorator.func if isinstance(decorator, ast.Call) else decorator) == "fixture"
         for decorator in scope.decorator_list
+    )
+
+
+def _pool_parameter_names(scope: ast.FunctionDef | ast.AsyncFunctionDef, names: set[str]) -> None:
+    names.update(
+        argument.arg
+        for argument in [*scope.args.posonlyargs, *scope.args.args, *scope.args.kwonlyargs]
+        if _tail(argument.annotation) in _POOL_TYPES
     )

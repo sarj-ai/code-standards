@@ -190,21 +190,7 @@ function classify(init: TSESTree.Node, checkRegex: boolean): Candidate | null {
     node.callee.type === AST_NODE_TYPES.Identifier &&
     COLLECTION_CONSTRUCTORS.has(node.callee.name)
   ) {
-    const arg = node.arguments[0];
-    if (
-      node.arguments.length !== 1 ||
-      arg === undefined ||
-      arg.type === AST_NODE_TYPES.SpreadElement
-    ) {
-      return null;
-    }
-    const entries = unwrap(arg);
-    if (entries.type !== AST_NODE_TYPES.ArrayExpression) {
-      return null;
-    }
-    return isLiteralOnly(entries, 0)
-      ? { kind: node.callee.name === "Set" ? "Set" : "Map", size: entries.elements.length }
-      : null;
+    return classifyCollection(node, node.callee.name);
   }
 
   return null;
@@ -262,50 +248,9 @@ const NON_RETAINING_BUILTINS: ReadonlyMap<string, ReadonlySet<string>> = new Map
 );
 
 function isSafeRead(identifier: TSESTree.Identifier): boolean {
-  let parent = identifier.parent;
+  const parent = identifier.parent;
 
-  if (parent.type === AST_NODE_TYPES.MemberExpression) {
-    if (parent.object !== identifier) {
-      // `foo[X]` — the binding is used as a key, which is a plain read.
-      return true;
-    }
-    while (parent.parent.type === AST_NODE_TYPES.MemberExpression && parent.parent.object === parent) {
-      parent = parent.parent;
-    }
-    const grandparent = parent.parent;
-    if (grandparent.type === AST_NODE_TYPES.VariableDeclarator || grandparent.type === AST_NODE_TYPES.SpreadElement) return false;
-    // `X.a = 1`, `X[0] = 1`, `X.a += 1`
-    if (
-      grandparent.type === AST_NODE_TYPES.AssignmentExpression &&
-      grandparent.left === parent
-    ) {
-      return false;
-    }
-    // `X.a++`
-    if (grandparent.type === AST_NODE_TYPES.UpdateExpression) {
-      return false;
-    }
-    // `delete X.a`
-    if (
-      grandparent.type === AST_NODE_TYPES.UnaryExpression &&
-      grandparent.operator === "delete"
-    ) {
-      return false;
-    }
-    // `X.push(...)`, `X.sort()`, ...
-    if (
-      grandparent.type === AST_NODE_TYPES.CallExpression &&
-      grandparent.callee === parent &&
-      (parent.computed
-        ? parent.property.type !== AST_NODE_TYPES.Literal || typeof parent.property.value !== "string" || MUTATING_METHODS.has(parent.property.value)
-        : parent.property.type === AST_NODE_TYPES.Identifier && MUTATING_METHODS.has(parent.property.name))
-    ) {
-      return false;
-    }
-    // Other member reads retain the existing heuristic; this is not an
-    // interprocedural proof that callbacks or returned children cannot mutate.
-    return true;
-  }
+  if (parent.type === AST_NODE_TYPES.MemberExpression) return isSafeMemberRead(identifier, parent);
 
   // `for (const x of X)` — iteration is a read.
   if (
@@ -493,3 +438,65 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function classifyCollection(node: TSESTree.NewExpression, constructorName: string): Candidate | null {
+  const arg = node.arguments[0];
+  if (
+    node.arguments.length !== 1 ||
+    arg === undefined ||
+    arg.type === AST_NODE_TYPES.SpreadElement
+  ) {
+    return null;
+  }
+  const entries = unwrap(arg);
+  if (entries.type !== AST_NODE_TYPES.ArrayExpression) {
+    return null;
+  }
+  return isLiteralOnly(entries, 0)
+    ? { kind: constructorName === "Set" ? "Set" : "Map", size: entries.elements.length }
+    : null;
+}
+
+function isSafeMemberRead(identifier: TSESTree.Identifier, parent: TSESTree.MemberExpression): boolean {
+  if (parent.object !== identifier) {
+    // `foo[X]` — the binding is used as a key, which is a plain read.
+    return true;
+  }
+  while (parent.parent.type === AST_NODE_TYPES.MemberExpression && parent.parent.object === parent) {
+    parent = parent.parent;
+  }
+  const grandparent = parent.parent;
+  if (grandparent.type === AST_NODE_TYPES.VariableDeclarator || grandparent.type === AST_NODE_TYPES.SpreadElement) return false;
+  // `X.a = 1`, `X[0] = 1`, `X.a += 1`
+  if (
+    grandparent.type === AST_NODE_TYPES.AssignmentExpression &&
+    grandparent.left === parent
+  ) {
+    return false;
+  }
+  // `X.a++`
+  if (grandparent.type === AST_NODE_TYPES.UpdateExpression) {
+    return false;
+  }
+  // `delete X.a`
+  if (
+    grandparent.type === AST_NODE_TYPES.UnaryExpression &&
+    grandparent.operator === "delete"
+  ) {
+    return false;
+  }
+  // `X.push(...)`, `X.sort()`, ...
+  if (
+    grandparent.type === AST_NODE_TYPES.CallExpression &&
+    grandparent.callee === parent &&
+    (parent.computed
+      ? parent.property.type !== AST_NODE_TYPES.Literal || typeof parent.property.value !== "string" || MUTATING_METHODS.has(parent.property.value)
+      : parent.property.type === AST_NODE_TYPES.Identifier && MUTATING_METHODS.has(parent.property.name))
+  ) {
+    return false;
+  }
+  // Other member reads retain the existing heuristic; this is not an
+  // interprocedural proof that callbacks or returned children cannot mutate.
+  return true;
+
+}

@@ -164,16 +164,7 @@ class Manifest:
         if self.verify_paths != (".",):
             paths = ", ".join(json.dumps(value) for value in self.verify_paths)
             sections.append(f"\n[verify]\npaths = [{paths}]\n")
-        if self.excluded_paths or self.excluded_rules:
-            paths = ", ".join(json.dumps(value) for value in self.excluded_paths)
-            rules = ", ".join(json.dumps(value) for value in self.excluded_rules)
-            sections.append(f"\n[exclude]\npaths = [{paths}]\nrules = [{rules}]\n")
-        for override in self.exclusion_overrides:
-            paths = ", ".join(json.dumps(value) for value in override.paths)
-            rules = ", ".join(json.dumps(value) for value in override.rules)
-            sections.append(
-                f"\n[[exclude.overrides]]\npaths = [{paths}]\nrules = [{rules}]\nreason = {json.dumps(override.reason)}\n"
-            )
+        sections.extend(_exclusion_sections(self))
         if self.text_excluded_paths:
             paths = ", ".join(json.dumps(value) for value in self.text_excluded_paths)
             sections.append(f"\n[text]\nexclude = [{paths}]\n")
@@ -265,14 +256,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         raise ValueError(msg) from exc
 
     data = as_table(parsed)
-    raw_schema = data.get("schema")
-    if type(raw_schema) is not int or raw_schema != expected_schema:
-        msg = f"{path} `schema` must equal {expected_schema}"
-        raise ValueError(msg)
-    legacy_fields = tuple(field for field in ("version", "configs", "gradual") if field in data)
-    if legacy_fields:
-        msg = f"{path} uses removed manifest fields: {', '.join(legacy_fields)}"
-        raise ValueError(msg)
+    _check_manifest_schema(data, path, expected_schema)
     declared = text_field(data, "bundle")
     if data.get("rule_profile", "all") != "all":
         msg = f"{path} `rule_profile` currently supports only: all"
@@ -352,6 +336,17 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         diagnostic_baseline=_relative_file(root, baseline_table, "diagnostics"),
         ci_bootstrap=_ci_bootstrap(ci_table),
     )
+
+
+def _check_manifest_schema(data: Mapping[str, object], path: Path, expected_schema: int) -> None:
+    raw_schema = data.get("schema")
+    if type(raw_schema) is not int or raw_schema != expected_schema:
+        msg = f"{path} `schema` must equal {expected_schema}"
+        raise ValueError(msg)
+    legacy_fields = tuple(field for field in ("version", "configs", "gradual") if field in data)
+    if legacy_fields:
+        msg = f"{path} uses removed manifest fields: {', '.join(legacy_fields)}"
+        raise ValueError(msg)
 
 
 def _manifest_table(data: Mapping[str, object], key: str) -> dict[str, object]:
@@ -691,3 +686,18 @@ def eslint_overrides() -> dict[str, object]:
         PEERS_JSON.read_text(encoding="utf-8")
     )
     return table_field(as_table(parsed), "npmOverrides")
+
+
+def _exclusion_sections(manifest: Manifest) -> list[str]:
+    sections: list[str] = []
+    if manifest.excluded_paths or manifest.excluded_rules:
+        paths = ", ".join(json.dumps(value) for value in manifest.excluded_paths)
+        rules = ", ".join(json.dumps(value) for value in manifest.excluded_rules)
+        sections.append(f"\n[exclude]\npaths = [{paths}]\nrules = [{rules}]\n")
+    for override in manifest.exclusion_overrides:
+        paths = ", ".join(json.dumps(value) for value in override.paths)
+        rules = ", ".join(json.dumps(value) for value in override.rules)
+        sections.append(
+            f"\n[[exclude.overrides]]\npaths = [{paths}]\nrules = [{rules}]\nreason = {json.dumps(override.reason)}\n"
+        )
+    return sections

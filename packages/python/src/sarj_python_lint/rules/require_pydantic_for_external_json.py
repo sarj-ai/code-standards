@@ -198,34 +198,7 @@ def _module_summaries(tree: ast.Module, imports: ImportIndex, source_lines: list
     for function in functions:
         if function.name in duplicate_names:
             continue
-        parameters = _parameter_positions(function)
-        returned = tuple(node.value for node in _own_scope(function) if isinstance(node, ast.Return) and node.value)
-        decoder_positions = {
-            position
-            for value in returned
-            if (position := _decoded_parameter_position(value, parameters, imports)) is not None
-        }
-        if (
-            returned
-            and len(decoder_positions) == 1
-            and all(_decoded_parameter_position(value, parameters, imports) in decoder_positions for value in returned)
-        ):
-            decoders[function.name] = decoder_positions.pop()
-
-        consumed: set[int] = set()
-        validated_names = _validated_names(function, imports, module_validator_names)
-        for node in _own_scope(function):
-            receiver = _summary_record_receiver(node)
-            if (
-                isinstance(receiver, ast.Name)
-                and receiver.id in parameters
-                and isinstance(node, ast.expr)
-                and not _was_validated_before(receiver, node, validated_names)
-                and not is_suppressed(source_lines, node.lineno, "SARJ411")
-            ):
-                consumed.add(parameters[receiver.id])
-        if consumed:
-            records[function.name] = frozenset(consumed)
+        _summarize_function(function, imports, module_validator_names, source_lines, decoders, records=records)
     response_callables = _response_callables(tree, imports)
     return _ModuleSummaries(
         decoders,
@@ -258,19 +231,7 @@ def _response_callables(tree: ast.Module, imports: ImportIndex) -> _ResponseCall
     response_methods: set[tuple[int, str]] = set()
     function_owners: dict[int, int] = {}
     for class_node in nodes(tree, ast.ClassDef):
-        owner = id(class_node)
-        rebound_method_names = _suite_rebound_names(class_node.body)
-        declarations: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
-        for statement in class_node.body:
-            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                function_owners[id(statement)] = owner
-                declarations.setdefault(statement.name, []).append(statement)
-        response_methods.update(
-            (owner, name)
-            for name, functions in declarations.items()
-            if name not in rebound_method_names
-            and all(_returns_http_response(function, imports) for function in functions)
-        )
+        _record_class_response_methods(class_node, imports, response_methods, function_owners)
     return _ResponseCallables(response_functions, frozenset(response_methods), function_owners)
 
 
@@ -297,23 +258,15 @@ def _suite_rebound_names(statements: list[ast.stmt]) -> frozenset[str]:
 
 
 def _marshmallow_schema_names(tree: ast.Module, imports: ImportIndex, binding_counts: Counter[str]) -> frozenset[str]:
-    classes = tuple(node for node in tree.body if isinstance(node, ast.ClassDef))
+    classes = _validation_classes(tree, binding_counts, frozenset({"load"}))
     names = {
         node.name
         for node in classes
-        if binding_counts[node.name] == 1
-        if not node.decorator_list
-        if not _class_overrides(node, frozenset({"load"}))
         if any(imports.resolves(base, sources=_MARSHMALLOW_MODULES, symbol="Schema") for base in node.bases)
     }
     for _round in range(len(classes)):
         inherited = {
-            node.name
-            for node in classes
-            if binding_counts[node.name] == 1
-            if not node.decorator_list
-            if not _class_overrides(node, frozenset({"load"}))
-            if any(isinstance(base, ast.Name) and base.id in names for base in node.bases)
+            node.name for node in classes if any(isinstance(base, ast.Name) and base.id in names for base in node.bases)
         }
         if inherited <= names:
             break
@@ -414,13 +367,10 @@ def _is_jsonschema_validator_constructor(value: ast.expr, imports: ImportIndex) 
 
 
 def _pydantic_model_names(tree: ast.Module, imports: ImportIndex, binding_counts: Counter[str]) -> frozenset[str]:
-    classes = tuple(node for node in tree.body if isinstance(node, ast.ClassDef))
+    classes = _validation_classes(tree, binding_counts, frozenset({"model_validate", "parse_obj"}))
     names = {
         node.name
         for node in classes
-        if binding_counts[node.name] == 1
-        if not node.decorator_list
-        if not _class_overrides(node, frozenset({"model_validate", "parse_obj"}))
         if any(
             imports.resolves(base, sources=_PYDANTIC_MODULES, symbol=model)
             for base in node.bases
@@ -429,22 +379,12 @@ def _pydantic_model_names(tree: ast.Module, imports: ImportIndex, binding_counts
     }
     for _round in range(len(classes)):
         inherited = {
-            node.name
-            for node in classes
-            if binding_counts[node.name] == 1
-            if not node.decorator_list
-            if not _class_overrides(node, frozenset({"model_validate", "parse_obj"}))
-            if any(isinstance(base, ast.Name) and base.id in names for base in node.bases)
+            node.name for node in classes if any(isinstance(base, ast.Name) and base.id in names for base in node.bases)
         }
         if inherited <= names:
             break
         names.update(inherited)
     return _expand_unique_aliases(names, _suite_unique_bindings(tree.body), binding_counts)
-
-
-def _class_overrides(node: ast.ClassDef, method_names: frozenset[str]) -> bool:
-    binding_counts = _suite_binding_counts(node.body)
-    return any(binding_counts[name] for name in method_names)
 
 
 def _suite_binding_counts(statements: list[ast.stmt]) -> Counter[str]:
@@ -515,28 +455,7 @@ def _http_client_attribute_names(tree: ast.Module, imports: ImportIndex) -> froz
         for function in class_node.body:
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            typed_parameters = {
-                argument.arg
-                for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
-                if argument.annotation is not None
-                and any(
-                    imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=symbol)
-                    for symbol in _HTTP_CLIENT_TYPES
-                )
-            }
-            for node in _own_scope(function):
-                if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
-                    continue
-                targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
-                for target in targets:
-                    if (
-                        isinstance(target, ast.Attribute)
-                        and isinstance(target.value, ast.Name)
-                        and target.value.id == "self"
-                    ):
-                        assignments.setdefault(target.attr, []).append(
-                            isinstance(node.value, ast.Name) and node.value.id in typed_parameters
-                        )
+            _record_client_attributes(function, imports, assignments)
         owner = id(class_node)
         owned_attributes.update(
             _OwnedName(owner, name) for name, values in assignments.items() if values and all(values)
@@ -548,10 +467,7 @@ def _locally_sourced_parameters(
     functions: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...],
 ) -> dict[str, frozenset[int]]:
     calls: dict[str, list[ast.Call]] = {}
-    for owner in functions:
-        for node in _own_scope(owner):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-                calls.setdefault(node.func.id, []).append(node)
+    _collect_local_calls(functions, calls)
     local: dict[str, frozenset[int]] = {}
     for function in functions:
         callsites = calls.get(function.name, [])
@@ -565,18 +481,6 @@ def _locally_sourced_parameters(
         if positions:
             local[function.name] = frozenset(positions)
     return local
-
-
-def _decoded_parameter_position(
-    value: ast.expr,
-    parameters: dict[str, int],
-    imports: ImportIndex,
-) -> int | None:
-    value = _unwrap_await(value)
-    if not isinstance(value, ast.Call) or not _is_json_loads(value, imports) or not value.args:
-        return None
-    argument = value.args[0]
-    return parameters.get(argument.id) if isinstance(argument, ast.Name) else None
 
 
 def _parameter_positions(function: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, int]:
@@ -613,11 +517,7 @@ def _function_findings(
         if access is not None and not _was_validated_before(access.receiver, access.sink, validated_names):
             findings.extend(_ExternalRecordFinding(access.sink, origin) for origin in resolver.origins(access.receiver))
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id not in local_bound_names:
-            for position in summaries.record_parameters.get(node.func.id, frozenset()):
-                if position < len(node.args):
-                    findings.extend(
-                        _ExternalRecordFinding(node, origin) for origin in resolver.origins(node.args[position])
-                    )
+            _record_call_findings(node, summaries, resolver, findings)
     return findings
 
 
@@ -676,15 +576,7 @@ def _validated_names(
     imports: ImportIndex,
     module_validator_names: frozenset[str] = frozenset(),
 ) -> _ValidationHistory:
-    validation_calls: list[ast.Call] = []
-    for statement in function.body:
-        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
-            continue
-        call = statement.value
-        if imports.resolves(call.func, sources=_SCHEMA_VALIDATOR_MODULES, symbol="validate") or (
-            isinstance(call.func, ast.Attribute) and call.func.attr == "validate"
-        ):
-            validation_calls.append(call)
+    validation_calls = _direct_validation_calls(function, imports)
     if not validation_calls:
         return {}
     histories: dict[str, list[tuple[_Position, bool]]] = {}
@@ -733,14 +625,7 @@ def _validated_names(
         )
         if not is_module_validator and not is_instance_validator:
             continue
-        candidates = [*call.args[:1], *(keyword.value for keyword in call.keywords if keyword.arg == "instance")]
-        for argument in candidates:
-            if isinstance(argument, ast.Name):
-                token = tokens.setdefault(argument.id, object())
-                validated_tokens.add(token)
-                for name, current_token in tokens.items():
-                    if current_token is token:
-                        histories.setdefault(name, []).append((_node_position(call), True))
+        _record_validated_tokens(call, tokens, validated_tokens, histories)
     return {name: tuple(events) for name, events in histories.items()}
 
 
@@ -952,14 +837,6 @@ def _fixed_record_call_receiver(node: ast.Call) -> ast.expr | None:
     return node.func.value
 
 
-def _summary_record_receiver(node: ast.AST) -> ast.expr | None:
-    if isinstance(node, ast.Subscript):
-        return node.value
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _RECORD_METHODS:
-        return node.func.value
-    return None
-
-
 def _unique_bindings(scope: tuple[ast.AST, ...]) -> dict[str, ast.expr]:
     candidates: dict[str, list[ast.expr]] = {}
     for node in scope:
@@ -989,13 +866,7 @@ def _http_response_names(
     shadowed_names: frozenset[str],
 ) -> frozenset[str]:
     bindings = _unique_bindings(scope)
-    assigned_names = {
-        target.id
-        for node in scope
-        if isinstance(node, ast.Assign | ast.AnnAssign)
-        for target in (node.targets if isinstance(node, ast.Assign) else (node.target,))
-        if isinstance(target, ast.Name)
-    }
+    assigned_names = _assigned_names(scope)
     names = {
         argument.arg
         for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
@@ -1003,15 +874,7 @@ def _http_response_names(
         and argument.arg not in assigned_names
         and imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol="Response")
     }
-    typed_clients = {
-        argument.arg
-        for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
-        if argument.annotation is not None
-        and argument.arg not in assigned_names
-        and any(
-            imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=symbol) for symbol in _HTTP_CLIENT_TYPES
-        )
-    }
+    typed_clients = _typed_http_clients(function, imports, assigned_names)
     for name, value in bindings.items():
         call = _unwrap_await(value)
         if not isinstance(call, ast.Call) or not _is_http_response_call(
@@ -1208,3 +1071,194 @@ def _own_scope(function: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[ast.AS
             continue
         stack.extend(reversed(list(ast.iter_child_nodes(node))))
     return tuple(out)
+
+
+def _summarize_function(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: ImportIndex,
+    module_validator_names: frozenset[str],
+    source_lines: list[str],
+    decoders: dict[str, int],
+    *,
+    records: dict[str, frozenset[int]],
+) -> None:
+    parameters = _parameter_positions(function)
+    returned = tuple(node.value for node in _own_scope(function) if isinstance(node, ast.Return) and node.value)
+    decoder_positions = {
+        position
+        for value in returned
+        if (position := _decoded_parameter_position(value, parameters, imports)) is not None
+    }
+    if (
+        returned
+        and len(decoder_positions) == 1
+        and all(_decoded_parameter_position(value, parameters, imports) in decoder_positions for value in returned)
+    ):
+        decoders[function.name] = decoder_positions.pop()
+
+    consumed: set[int] = set()
+    validated_names = _validated_names(function, imports, module_validator_names)
+    for node in _own_scope(function):
+        receiver = _summary_record_receiver(node)
+        if (
+            isinstance(receiver, ast.Name)
+            and receiver.id in parameters
+            and isinstance(node, ast.expr)
+            and not _was_validated_before(receiver, node, validated_names)
+            and not is_suppressed(source_lines, node.lineno, "SARJ411")
+        ):
+            consumed.add(parameters[receiver.id])
+    if consumed:
+        records[function.name] = frozenset(consumed)
+
+
+def _summary_record_receiver(node: ast.AST) -> ast.expr | None:
+    if isinstance(node, ast.Subscript):
+        return node.value
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _RECORD_METHODS:
+        return node.func.value
+    return None
+
+
+def _decoded_parameter_position(
+    value: ast.expr,
+    parameters: dict[str, int],
+    imports: ImportIndex,
+) -> int | None:
+    value = _unwrap_await(value)
+    if not isinstance(value, ast.Call) or not _is_json_loads(value, imports) or not value.args:
+        return None
+    argument = value.args[0]
+    return parameters.get(argument.id) if isinstance(argument, ast.Name) else None
+
+
+def _record_class_response_methods(
+    class_node: ast.ClassDef,
+    imports: ImportIndex,
+    response_methods: set[tuple[int, str]],
+    function_owners: dict[int, int],
+) -> None:
+    owner = id(class_node)
+    rebound_method_names = _suite_rebound_names(class_node.body)
+    declarations: dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]] = {}
+    for statement in class_node.body:
+        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            function_owners[id(statement)] = owner
+            declarations.setdefault(statement.name, []).append(statement)
+    response_methods.update(
+        (owner, name)
+        for name, functions in declarations.items()
+        if name not in rebound_method_names and all(_returns_http_response(function, imports) for function in functions)
+    )
+
+
+def _validation_classes(
+    tree: ast.Module, binding_counts: Counter[str], methods: frozenset[str]
+) -> tuple[ast.ClassDef, ...]:
+    return tuple(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef)
+        and binding_counts[node.name] == 1
+        and not node.decorator_list
+        and not _class_overrides(node, methods)
+    )
+
+
+def _class_overrides(node: ast.ClassDef, method_names: frozenset[str]) -> bool:
+    binding_counts = _suite_binding_counts(node.body)
+    return any(binding_counts[name] for name in method_names)
+
+
+def _record_client_attributes(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex, assignments: dict[str, list[bool]]
+) -> None:
+    typed_parameters = {
+        argument.arg
+        for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+        if argument.annotation is not None
+        and any(
+            imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=symbol) for symbol in _HTTP_CLIENT_TYPES
+        )
+    }
+    for node in _own_scope(function):
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+        for target in targets:
+            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self":
+                assignments.setdefault(target.attr, []).append(
+                    isinstance(node.value, ast.Name) and node.value.id in typed_parameters
+                )
+
+
+def _collect_local_calls(
+    functions: tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...], calls: dict[str, list[ast.Call]]
+) -> None:
+    for owner in functions:
+        for node in _own_scope(owner):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                calls.setdefault(node.func.id, []).append(node)
+
+
+def _record_call_findings(
+    node: ast.Call, summaries: _ModuleSummaries, resolver: _OriginResolver, findings: list[_ExternalRecordFinding]
+) -> None:
+    if not isinstance(node.func, ast.Name):
+        return
+    for position in summaries.record_parameters.get(node.func.id, frozenset()):
+        if position < len(node.args):
+            findings.extend(_ExternalRecordFinding(node, origin) for origin in resolver.origins(node.args[position]))
+
+
+def _direct_validation_calls(function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> list[ast.Call]:
+    validation_calls: list[ast.Call] = []
+    for statement in function.body:
+        if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
+            continue
+        call = statement.value
+        if imports.resolves(call.func, sources=_SCHEMA_VALIDATOR_MODULES, symbol="validate") or (
+            isinstance(call.func, ast.Attribute) and call.func.attr == "validate"
+        ):
+            validation_calls.append(call)
+    return validation_calls
+
+
+def _record_validated_tokens(
+    call: ast.Call,
+    tokens: dict[str, object],
+    validated_tokens: set[object],
+    histories: dict[str, list[tuple[_Position, bool]]],
+) -> None:
+    candidates = [*call.args[:1], *(keyword.value for keyword in call.keywords if keyword.arg == "instance")]
+    for argument in candidates:
+        if isinstance(argument, ast.Name):
+            token = tokens.setdefault(argument.id, object())
+            validated_tokens.add(token)
+            for name, current_token in tokens.items():
+                if current_token is token:
+                    histories.setdefault(name, []).append((_node_position(call), True))
+
+
+def _assigned_names(scope: tuple[ast.AST, ...]) -> set[str]:
+    return {
+        target.id
+        for node in scope
+        if isinstance(node, ast.Assign | ast.AnnAssign)
+        for target in (node.targets if isinstance(node, ast.Assign) else (node.target,))
+        if isinstance(target, ast.Name)
+    }
+
+
+def _typed_http_clients(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex, assigned_names: set[str]
+) -> set[str]:
+    return {
+        argument.arg
+        for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+        if argument.annotation is not None
+        and argument.arg not in assigned_names
+        and any(
+            imports.resolves(argument.annotation, sources=_HTTP_MODULES, symbol=symbol) for symbol in _HTTP_CLIENT_TYPES
+        )
+    }

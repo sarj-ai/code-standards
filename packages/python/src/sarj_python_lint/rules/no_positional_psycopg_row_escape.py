@@ -138,27 +138,32 @@ class NoPositionalPsycopgRowEscape(Rule):
                 class_attrs=class_attrs,
                 shadowed=shadowed,
             ):
-                for fetch in _escaping_fetches(cursor.body, cursor.name):
-                    shape = _cursor_shape(cursor, fetch, imports, shadowed)
-                    if shape is not _Shape.POSITIONAL or is_suppressed(source_lines, cursor.call.lineno, self.code):
-                        continue
-                    if is_suppressed(source_lines, fetch.lineno, self.code):
-                        continue
-                    diagnostics.append(
-                        Diagnostic(
-                            path=path,
-                            line=cursor.call.lineno,
-                            col=cursor.call.col_offset + 1,
-                            code=self.code,
-                            severity=Severity.WARNING,
-                            message=(
-                                "this positional Psycopg record escapes unchanged; return a named `class_row(Model)` "
-                                "record, use `scalar_row` for a scalar, or transform the tuple locally"
-                            ),
-                        )
-                    )
-                    break
+                diagnostic = self._cursor_diagnostic(path, cursor, imports, shadowed, source_lines)
+                if diagnostic is not None:
+                    diagnostics.append(diagnostic)
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
+
+    def _cursor_diagnostic(
+        self, path: Path, cursor: _Cursor, imports: ImportIndex, shadowed: frozenset[str], source_lines: list[str]
+    ) -> Diagnostic | None:
+        for fetch in _escaping_fetches(cursor.body, cursor.name):
+            shape = _cursor_shape(cursor, fetch, imports, shadowed)
+            if shape is not _Shape.POSITIONAL or is_suppressed(source_lines, cursor.call.lineno, self.code):
+                continue
+            if is_suppressed(source_lines, fetch.lineno, self.code):
+                continue
+            return Diagnostic(
+                path=path,
+                line=cursor.call.lineno,
+                col=cursor.call.col_offset + 1,
+                code=self.code,
+                severity=Severity.WARNING,
+                message=(
+                    "this positional Psycopg record escapes unchanged; return a named `class_row(Model)` "
+                    "record, use `scalar_row` for a scalar, or transform the tuple locally"
+                ),
+            )
+        return None
 
 
 def _functions(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef | None]]:
@@ -185,35 +190,51 @@ def _class_connection_attributes(tree: ast.Module, imports: ImportIndex) -> dict
         init = initializers[0]
         parameters = _parameter_annotations(init)
         properties = _property_names(cls)
-        for method in (node for node in cls.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)):
-            for node in _scope_nodes(method.body):
-                if (
-                    isinstance(node, ast.Attribute)
-                    and isinstance(node.value, ast.Name)
-                    and node.value.id == "self"
-                    and isinstance(node.ctx, ast.Store | ast.Del)
-                ):
-                    counts[cls.lineno, node.attr] += 1
-                elif isinstance(node, ast.Call) and (attribute := _self_setattr_name(node)) is not None:
-                    counts[cls.lineno, attribute] += 1
-        for index, node in enumerate(init.body):
-            match node:
-                case ast.Assign(
-                    targets=[ast.Attribute(value=ast.Name(id="self"), attr=attribute)],
-                    value=ast.Name(id=parameter),
-                ) if (
-                    parameter in parameters
-                    and not _can_return_before(init.body[:index])
-                    and not _is_rebound_before(parameter, init.body[:index])
-                ):
-                    if attribute in properties:
-                        continue
-                    shape = _pool_annotation_shape(parameters[parameter], imports)
-                    if shape is not None:
-                        candidates.setdefault((cls.lineno, attribute), []).append(shape)
-                case _:
-                    pass
+        _connection_attribute_writes(cls, counts)
+        _initializer_connection_shapes(cls, init, parameters, properties, imports, candidates=candidates)
     return {key: shapes[0] for key, shapes in candidates.items() if len(shapes) == 1 and counts[key] == 1}
+
+
+def _initializer_connection_shapes(
+    cls: ast.ClassDef,
+    init: ast.FunctionDef | ast.AsyncFunctionDef,
+    parameters: dict[str, ast.expr],
+    properties: frozenset[str],
+    imports: ImportIndex,
+    *,
+    candidates: dict[tuple[int, str], list[_Shape]],
+) -> None:
+    for index, node in enumerate(init.body):
+        match node:
+            case ast.Assign(
+                targets=[ast.Attribute(value=ast.Name(id="self"), attr=attribute)],
+                value=ast.Name(id=parameter),
+            ) if (
+                parameter in parameters
+                and not _can_return_before(init.body[:index])
+                and not _is_rebound_before(parameter, init.body[:index])
+            ):
+                if attribute in properties:
+                    continue
+                shape = _pool_annotation_shape(parameters[parameter], imports)
+                if shape is not None:
+                    candidates.setdefault((cls.lineno, attribute), []).append(shape)
+            case _:
+                pass
+
+
+def _connection_attribute_writes(cls: ast.ClassDef, counts: Counter[tuple[int, str]]) -> None:
+    for method in (node for node in cls.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)):
+        for node in _scope_nodes(method.body):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "self"
+                and isinstance(node.ctx, ast.Store | ast.Del)
+            ):
+                counts[cls.lineno, node.attr] += 1
+            elif isinstance(node, ast.Call) and (attribute := _self_setattr_name(node)) is not None:
+                counts[cls.lineno, attribute] += 1
 
 
 def _can_return_before(statements: Iterable[ast.stmt]) -> bool:
@@ -301,37 +322,16 @@ def _walk_cursors(
         if isinstance(statement, ast.With | ast.AsyncWith):
             nested = dict(current)
             for item in statement.items:
-                if not isinstance(item.optional_vars, ast.Name):
-                    continue
-                connection_shape = _connection_context_shape(item.context_expr, imports, nested, shadowed)
-                context_call = _as_call(item.context_expr)
-                if (
-                    connection_shape is None
-                    and context_call is not None
-                    and isinstance(context_call.func, ast.Attribute)
-                    and context_call.func.attr == "connection"
-                ):
-                    connection_shape = _receiver_shape(
-                        context_call.func.value,
-                        owner,
-                        nested,
-                        class_attrs,
-                        current_invalidated,
-                    )
-                if connection_shape is not None:
-                    nested[item.optional_vars.id] = connection_shape
-                    continue
-                call = _as_call(item.context_expr)
-                if call is None or not isinstance(call.func, ast.Attribute) or call.func.attr != "cursor":
-                    continue
-                inherited = _receiver_shape(call.func.value, owner, nested, class_attrs, current_invalidated)
-                explicit = _explicit_factory_shape(call, imports, shadowed)
-                if explicit is _Shape.UNKNOWN and _has_explicit_factory(call):
-                    inherited = _Shape.UNKNOWN
-                elif explicit is not None:
-                    inherited = explicit
-                if inherited is not _Shape.UNKNOWN:
-                    yield _Cursor(call, item.optional_vars.id, statement.body, inherited)
+                yield from _context_cursor(
+                    item,
+                    statement,
+                    owner,
+                    imports,
+                    nested,
+                    class_attrs=class_attrs,
+                    current_invalidated=current_invalidated,
+                    shadowed=shadowed,
+                )
             yield from _walk_cursors(
                 statement.body,
                 owner,
@@ -352,6 +352,50 @@ def _walk_cursors(
                 invalidated_attrs=frozenset(current_invalidated),
                 shadowed=shadowed,
             )
+
+
+def _context_cursor(
+    item: ast.withitem,
+    statement: ast.With | ast.AsyncWith,
+    owner: ast.ClassDef | None,
+    imports: ImportIndex,
+    nested: dict[str, _Shape],
+    *,
+    class_attrs: dict[tuple[int, str], _Shape],
+    current_invalidated: set[str],
+    shadowed: frozenset[str],
+) -> Iterator[_Cursor]:
+    if not isinstance(item.optional_vars, ast.Name):
+        return
+    connection_shape = _connection_context_shape(item.context_expr, imports, nested, shadowed)
+    context_call = _as_call(item.context_expr)
+    if (
+        connection_shape is None
+        and context_call is not None
+        and isinstance(context_call.func, ast.Attribute)
+        and context_call.func.attr == "connection"
+    ):
+        connection_shape = _receiver_shape(
+            context_call.func.value,
+            owner,
+            nested,
+            class_attrs,
+            current_invalidated,
+        )
+    if connection_shape is not None:
+        nested[item.optional_vars.id] = connection_shape
+        return
+    call = _as_call(item.context_expr)
+    if call is None or not isinstance(call.func, ast.Attribute) or call.func.attr != "cursor":
+        return
+    inherited = _receiver_shape(call.func.value, owner, nested, class_attrs, current_invalidated)
+    explicit = _explicit_factory_shape(call, imports, shadowed)
+    if explicit is _Shape.UNKNOWN and _has_explicit_factory(call):
+        inherited = _Shape.UNKNOWN
+    elif explicit is not None:
+        inherited = explicit
+    if inherited is not _Shape.UNKNOWN:
+        yield _Cursor(call, item.optional_vars.id, statement.body, inherited)
 
 
 def _invalidate_reassigned_bindings(statement: ast.stmt, visible: dict[str, _Shape]) -> None:
@@ -662,93 +706,111 @@ class _Flow:
 
 
 def _flow_block(statements: list[ast.stmt], cursor: str, incoming: dict[str, _OriginSet]) -> _Flow:
-    state = dict(incoming)
-    escaped: set[ast.Call] = set()
+    flow = _Flow(dict(incoming), set())
     for statement in statements:
         for mutated in _statement_mutation_roots(statement):
-            _invalidate_origin_group(state, mutated)
-        match statement:
-            case ast.Return(value=value):
-                escaped.update(origin for origin in _value_origins(value, state, cursor) if origin is not None)
-                return _Flow(state, escaped, falls_through=False)
-            case ast.Raise() | ast.Break() | ast.Continue():
-                return _Flow(state, escaped, falls_through=False)
-            case ast.Expr(value=ast.Yield(value=value)):
-                escaped.update(origin for origin in _value_origins(value, state, cursor) if origin is not None)
-            case ast.Assign(targets=targets, value=value) if targets and all(
-                isinstance(target, ast.Name) for target in targets
-            ):
-                origins = _value_origins(value, state, cursor)
-                for target in targets:
-                    if isinstance(target, ast.Name):
-                        state[target.id] = origins
-            case ast.AnnAssign(target=ast.Name(id=name), value=value):
-                state[name] = _value_origins(value, state, cursor)
-            case ast.AugAssign(target=target):
-                _invalidate_origin_group(state, _root_name(target))
-            case ast.Assign(targets=targets):
-                for target in targets:
-                    _invalidate_origin_group(state, _mutation_root(target))
-            case ast.If():
-                branches = (
-                    _flow_block(statement.body, cursor, state),
-                    _flow_block(statement.orelse, cursor, state),
-                )
-                escaped.update(origin for branch in branches for origin in branch.escaped)
-                falling = [branch.origins for branch in branches if branch.falls_through]
-                if not falling:
-                    return _Flow(state, escaped, falls_through=False)
-                state = _merge_origins(falling)
-            case ast.Match():
-                branches = [_flow_block(case.body, cursor, state) for case in statement.cases]
-                escaped.update(origin for branch in branches for origin in branch.escaped)
-                falling = [branch.origins for branch in branches if branch.falls_through]
-                if not _match_is_exhaustive(statement):
-                    falling.append(state)
-                if not falling:
-                    return _Flow(state, escaped, falls_through=False)
-                state = _merge_origins(falling)
-            case ast.For() | ast.AsyncFor() | ast.While():
-                before_loop = dict(state)
-                abrupt = _contains_same_scope_loop_control(statement.body)
-                branch = _flow_block(statement.body, cursor, state)
-                escaped.update(branch.escaped)
-                if branch.falls_through and not abrupt:
-                    state = _merge_origins((state, branch.origins))
-                if statement.orelse:
-                    otherwise = _flow_block(statement.orelse, cursor, state)
-                    escaped.update(otherwise.escaped)
-                    if abrupt and otherwise.falls_through:
-                        state = _merge_origins((before_loop, otherwise.origins))
-                    elif abrupt:
-                        state = before_loop
-                    elif otherwise.falls_through:
-                        state = otherwise.origins
-                    else:
-                        return _Flow(state, escaped, falls_through=False)
-            case ast.With() | ast.AsyncWith():
-                if any(
-                    isinstance(item.optional_vars, ast.Name) and item.optional_vars.id == cursor
-                    for item in statement.items
-                ):
-                    continue
-                branch = _flow_block(statement.body, cursor, state)
-                escaped.update(branch.escaped)
-                if not branch.falls_through:
-                    return _Flow(state, escaped, falls_through=False)
-                state = branch.origins
-            case ast.Try() | ast.TryStar():
-                # A finally block can replace a pending return. Avoid path claims across this construct.
-                for name in _same_scope_bindings(statement):
-                    state[name] = frozenset({None})
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-                state[statement.name] = frozenset({None})
-            case ast.Expr(value=ast.Call() as call):
-                if isinstance(call.func, ast.Attribute) and call.func.attr in _MUTATING_METHODS:
-                    _invalidate_origin_group(state, _root_name(call.func.value))
-            case _:
-                pass
-    return _Flow(state, escaped)
+            _invalidate_origin_group(flow.origins, mutated)
+        _flow_statement(statement, cursor, flow)
+        if not flow.falls_through:
+            break
+    return flow
+
+
+def _flow_statement(statement: ast.stmt, cursor: str, flow: _Flow) -> None:
+    match statement:
+        case ast.Return(value=value):
+            flow.escaped.update(origin for origin in _value_origins(value, flow.origins, cursor) if origin is not None)
+            flow.falls_through = False
+        case ast.Raise() | ast.Break() | ast.Continue():
+            flow.falls_through = False
+        case ast.Expr(value=ast.Yield(value=value)):
+            flow.escaped.update(origin for origin in _value_origins(value, flow.origins, cursor) if origin is not None)
+        case ast.If() | ast.Match():
+            _flow_branches(statement, cursor, flow)
+        case ast.For() | ast.AsyncFor() | ast.While():
+            _flow_loop(statement, cursor, flow)
+        case ast.With() | ast.AsyncWith():
+            _flow_context(statement, cursor, flow)
+        case _:
+            _flow_bindings(statement, cursor, flow.origins)
+
+
+def _flow_bindings(statement: ast.stmt, cursor: str, state: dict[str, _OriginSet]) -> None:
+    match statement:
+        case ast.Assign(targets=targets, value=value) if targets and all(
+            isinstance(target, ast.Name) for target in targets
+        ):
+            origins = _value_origins(value, state, cursor)
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    state[target.id] = origins
+        case ast.AnnAssign(target=ast.Name(id=name), value=value):
+            state[name] = _value_origins(value, state, cursor)
+        case ast.AugAssign(target=target):
+            _invalidate_origin_group(state, _root_name(target))
+        case ast.Assign(targets=targets):
+            for target in targets:
+                _invalidate_origin_group(state, _mutation_root(target))
+        case ast.Try() | ast.TryStar():
+            # A finally block can replace a pending return. Avoid path claims across this construct.
+            for name in _same_scope_bindings(statement):
+                state[name] = frozenset({None})
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            state[statement.name] = frozenset({None})
+        case ast.Expr(value=ast.Call() as call):
+            if isinstance(call.func, ast.Attribute) and call.func.attr in _MUTATING_METHODS:
+                _invalidate_origin_group(state, _root_name(call.func.value))
+        case _:
+            pass
+
+
+def _flow_branches(statement: ast.If | ast.Match, cursor: str, flow: _Flow) -> None:
+    if isinstance(statement, ast.If):
+        branches = (
+            _flow_block(statement.body, cursor, flow.origins),
+            _flow_block(statement.orelse, cursor, flow.origins),
+        )
+    else:
+        branches = tuple(_flow_block(case.body, cursor, flow.origins) for case in statement.cases)
+    flow.escaped.update(origin for branch in branches for origin in branch.escaped)
+    falling = [branch.origins for branch in branches if branch.falls_through]
+    if isinstance(statement, ast.Match) and not _match_is_exhaustive(statement):
+        falling.append(flow.origins)
+    if not falling:
+        flow.falls_through = False
+    else:
+        flow.origins = _merge_origins(falling)
+
+
+def _flow_loop(statement: ast.For | ast.AsyncFor | ast.While, cursor: str, flow: _Flow) -> None:
+    before_loop = dict(flow.origins)
+    abrupt = _contains_same_scope_loop_control(statement.body)
+    branch = _flow_block(statement.body, cursor, flow.origins)
+    flow.escaped.update(branch.escaped)
+    if branch.falls_through and not abrupt:
+        flow.origins = _merge_origins((flow.origins, branch.origins))
+    if statement.orelse:
+        otherwise = _flow_block(statement.orelse, cursor, flow.origins)
+        flow.escaped.update(otherwise.escaped)
+        if abrupt and otherwise.falls_through:
+            flow.origins = _merge_origins((before_loop, otherwise.origins))
+        elif abrupt:
+            flow.origins = before_loop
+        elif otherwise.falls_through:
+            flow.origins = otherwise.origins
+        else:
+            flow.falls_through = False
+
+
+def _flow_context(statement: ast.With | ast.AsyncWith, cursor: str, flow: _Flow) -> None:
+    if any(isinstance(item.optional_vars, ast.Name) and item.optional_vars.id == cursor for item in statement.items):
+        return
+    branch = _flow_block(statement.body, cursor, flow.origins)
+    flow.escaped.update(branch.escaped)
+    if not branch.falls_through:
+        flow.falls_through = False
+    else:
+        flow.origins = branch.origins
 
 
 def _value_origins(value: ast.expr | None, state: dict[str, _OriginSet], cursor: str) -> _OriginSet:
@@ -791,18 +853,20 @@ def _statement_mutation_roots(statement: ast.stmt) -> frozenset[str]:
         expressions.extend(case.guard for case in statement.cases if case.guard is not None)
     nodes = (node for expression in expressions for node in ast.walk(expression))
     for node in nodes:
-        root: str | None = None
-        if isinstance(node, ast.Attribute | ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
-            root = _root_name(node)
-        elif (
-            isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS
-        ):
-            root = _root_name(node.func.value)
+        root = _expression_mutation_root(node)
         if root is not None:
             roots.add(root)
     if isinstance(statement, ast.AugAssign) and (root := _root_name(statement.target)) is not None:
         roots.add(root)
     return frozenset(roots)
+
+
+def _expression_mutation_root(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Attribute | ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
+        return _root_name(node)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in _MUTATING_METHODS:
+        return _root_name(node.func.value)
+    return None
 
 
 def _contains_same_scope_loop_control(statements: Iterable[ast.stmt]) -> bool:

@@ -114,7 +114,8 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         source_lines = source.splitlines()
         comment_lines = _comment_lines(source)
         diagnostics: list[Diagnostic] = []
-        for body in _statement_lists(tree):
+
+        def collect_body_candidates(body: list[ast.stmt]) -> None:
             for index, (assignment, guard) in enumerate(pairwise(body)):
                 candidate = _candidate(assignment, guard, source, source_lines, comment_lines)
                 if candidate is None:
@@ -146,6 +147,9 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                         ),
                     )
                 )
+
+        for body in _statement_lists(tree):
+            collect_body_candidates(body)
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
 

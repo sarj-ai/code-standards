@@ -286,20 +286,25 @@ class RestatedTestDocstring(Rule):
     def _walk(self, node: ast.AST, owner: ast.ClassDef | None, context: _ScanContext) -> None:
         for child in children(node):
             if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                opt_outs = context.module_opt_outs if owner is None else _attribute_test_opt_outs(owner.body)
-                shadowed: frozenset[str] = frozenset() if owner is None else _class_bindings_before(owner, child)
-                if (
-                    child.name.startswith("test")
-                    and child.name not in opt_outs
-                    and _has_only_safe_pytest_marks(child.decorator_list, context.imports, shadowed)
-                ):
-                    self._check_function(child, owner.name if owner is not None else None, context)
+                self._check_collected_function(child, owner, context)
             elif isinstance(child, ast.ClassDef):
                 if owner is None and _is_collectible_test_class(child, context.imports, context.module_opt_outs):
                     self._check_class(child, context)
                     self._walk(child, child, context)
             else:
                 self._walk(child, owner, context)
+
+    def _check_collected_function(
+        self, child: ast.FunctionDef | ast.AsyncFunctionDef, owner: ast.ClassDef | None, context: _ScanContext
+    ) -> None:
+        opt_outs = context.module_opt_outs if owner is None else _attribute_test_opt_outs(owner.body)
+        shadowed: frozenset[str] = frozenset() if owner is None else _class_bindings_before(owner, child)
+        if (
+            child.name.startswith("test")
+            and child.name not in opt_outs
+            and _has_only_safe_pytest_marks(child.decorator_list, context.imports, shadowed)
+        ):
+            self._check_function(child, owner.name if owner is not None else None, context)
 
     def _check_class(self, node: ast.ClassDef, context: _ScanContext) -> None:
         if id(node) in context.consumed_nodes:
@@ -435,47 +440,9 @@ def _consumed_docstring_owners(tree: ast.Module) -> set[int]:
         for name in _direct_bound_names(statement):
             binding_counts[name] = binding_counts.get(name, 0) + 1
             bindings[name] = None
-        match statement:
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-                bindings[statement.name] = statement
-            case ast.Assign(targets=targets):
-                for target in targets:
-                    if isinstance(target, ast.Name) and alias_owner is not None:
-                        bindings[target.id] = alias_owner
-            case ast.AnnAssign(target=ast.Name(id=alias)) if alias_owner is not None:
-                bindings[alias] = alias_owner
-            case _:
-                continue
-    for scope in ast.walk(tree):
-        if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            local_names = _scope_bound_names(scope)
-            for name in _scope_docstring_reader_names(scope):
-                owner = bindings.get(name)
-                if name not in local_names and binding_counts.get(name) == 1 and owner is not None:
-                    consumed.add(id(owner))
+        _bind_docstring_owner(statement, alias_owner, bindings)
+    _consume_scope_docstrings(tree, bindings, binding_counts, consumed)
     return consumed
-
-
-def _scope_bound_names(scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
-    bound: set[str] = set()
-    if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
-        args = scope.args
-        bound.update(
-            argument.arg
-            for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
-            if argument is not None
-        )
-    for statement in _lexical_statements(scope.body):
-        bound.update(_direct_bound_names(statement))
-    return bound
-
-
-def _scope_docstring_reader_names(scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
-    names: set[str] = set()
-    for statement in _lexical_statements(scope.body):
-        for expression in _direct_expressions(statement):
-            names.update(_docstring_reader_names(expression))
-    return names
 
 
 def _direct_expressions(statement: ast.stmt) -> Iterator[ast.expr]:
@@ -548,3 +515,58 @@ def _is_docstring_reader(node: ast.Call) -> bool:
         and isinstance(node.args[1], ast.Constant)
         and node.args[1].value == "__doc__"
     )
+
+
+def _consume_scope_docstrings(
+    tree: ast.Module,
+    bindings: dict[str, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | None],
+    binding_counts: dict[str, int],
+    consumed: set[int],
+) -> None:
+    for scope in ast.walk(tree):
+        if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            local_names = _scope_bound_names(scope)
+            for name in _scope_docstring_reader_names(scope):
+                owner = bindings.get(name)
+                if name not in local_names and binding_counts.get(name) == 1 and owner is not None:
+                    consumed.add(id(owner))
+
+
+def _scope_docstring_reader_names(scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
+    names: set[str] = set()
+    for statement in _lexical_statements(scope.body):
+        for expression in _direct_expressions(statement):
+            names.update(_docstring_reader_names(expression))
+    return names
+
+
+def _scope_bound_names(scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) -> set[str]:
+    bound: set[str] = set()
+    if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
+        args = scope.args
+        bound.update(
+            argument.arg
+            for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
+            if argument is not None
+        )
+    for statement in _lexical_statements(scope.body):
+        bound.update(_direct_bound_names(statement))
+    return bound
+
+
+def _bind_docstring_owner(
+    statement: ast.stmt,
+    alias_owner: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | None,
+    bindings: dict[str, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | None],
+) -> None:
+    match statement:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            bindings[statement.name] = statement
+        case ast.Assign(targets=targets):
+            for target in targets:
+                if isinstance(target, ast.Name) and alias_owner is not None:
+                    bindings[target.id] = alias_owner
+        case ast.AnnAssign(target=ast.Name(id=alias)) if alias_owner is not None:
+            bindings[alias] = alias_owner
+        case _:
+            return

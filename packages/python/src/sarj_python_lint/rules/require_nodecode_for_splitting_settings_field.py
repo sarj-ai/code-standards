@@ -123,49 +123,7 @@ class RequireNoDecodeForSplittingSettingsField(Rule):
         for model in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
             if not _is_direct_settings(model, imports) or _customises_settings_sources(model):
                 continue
-            decoding_disabled = _disables_decoding(model, imports)
-            fields = {
-                statement.target.id: statement
-                for statement in model.body
-                if isinstance(statement, ast.AnnAssign)
-                and isinstance(statement.target, ast.Name)
-                and _is_complex_without_nodecode(statement.annotation, imports)
-                and (not decoding_disabled or _has_force_decode(statement.annotation, imports))
-            }
-            reported_fields: set[str] = set()
-            for function in (
-                statement for statement in model.body if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
-            ):
-                field_name = _single_before_validated_field(function, imports)
-                if (
-                    field_name is None
-                    or field_name not in fields
-                    or not _unconditionally_splits_value_parameter(function, imports)
-                ):
-                    continue
-                field = fields[field_name]
-                if (
-                    field_name in reported_fields
-                    or _node_is_suppressed(field, source_lines, self.code)
-                    or _node_is_suppressed(function, source_lines, self.code)
-                ):
-                    continue
-                reported_fields.add(field_name)
-                diagnostics.append(
-                    Diagnostic(
-                        path=path,
-                        line=field.annotation.lineno,
-                        col=field.annotation.col_offset + 1,
-                        code=self.code,
-                        severity=Severity.WARNING,
-                        message=(
-                            f"Complex setting `{field_name}` is unconditionally split by `{function.name}` but "
-                            "environment sources may JSON-decode it first; if the input contract is raw text, "
-                            "import `Annotated` and `NoDecode` and add `NoDecode` metadata, or disable settings "
-                            "decoding for the class."
-                        ),
-                    )
-                )
+            diagnostics.extend(_settings_split_findings(model, imports, source_lines, path, self.code))
         return diagnostics
 
 
@@ -181,122 +139,68 @@ def _customises_settings_sources(node: ast.ClassDef) -> bool:
     )
 
 
-def _disables_decoding(node: ast.ClassDef, imports: ImportIndex) -> bool:
-    if any(keyword.arg == "enable_decoding" and _is_literal_false(keyword.value) for keyword in node.keywords):
-        return True
-    model_config: ast.expr | None = None
-    legacy_config: ast.ClassDef | None = None
-    for statement in node.body:
-        match statement:
-            case ast.Assign(targets=[ast.Name(id="model_config")], value=value):
-                model_config = value
-            case ast.AnnAssign(target=ast.Name(id="model_config"), value=value) if value is not None:
-                model_config = value
-            case ast.AugAssign(target=ast.Name(id="model_config")):
-                model_config = None
-            case ast.ClassDef(name="Config"):
-                legacy_config = statement
-            case _:
-                pass
-    if model_config is not None and _config_value_disables_decoding(model_config, imports):
-        return True
-    return legacy_config is not None and _legacy_config_disables_decoding(legacy_config)
-
-
-def _config_value_disables_decoding(node: ast.expr, imports: ImportIndex) -> bool:
-    if isinstance(node, ast.Dict):
-        setting: ast.expr | None = None
-        for key, value in zip(node.keys, node.values, strict=True):
-            if key is None:
-                setting = None
-                continue
-            if isinstance(key, ast.Constant) and key.value == "enable_decoding":
-                setting = value
-        return _is_literal_false(setting)
-    if not isinstance(node, ast.Call) or node.args or any(keyword.arg is None for keyword in node.keywords):
-        return False
-    is_settings_config = imports.resolves(node.func, sources=_SETTINGS_CONFIG_SOURCES, symbol="SettingsConfigDict")
-    is_pydantic_config = imports.resolves(node.func, sources=_PYDANTIC_CONFIG_SOURCES, symbol="ConfigDict")
-    is_builtin_dict = (
-        isinstance(node.func, ast.Name) and node.func.id == "dict" and imports.builtin_is_unshadowed("dict")
-    )
-    if not is_settings_config and not is_pydantic_config and not is_builtin_dict:
-        return False
-    setting = next((keyword.value for keyword in reversed(node.keywords) if keyword.arg == "enable_decoding"), None)
-    return _is_literal_false(setting)
-
-
-def _legacy_config_disables_decoding(node: ast.ClassDef) -> bool:
-    setting: ast.expr | None = None
-    for statement in node.body:
-        match statement:
-            case ast.Assign(targets=[ast.Name(id="enable_decoding")], value=value):
-                setting = value
-            case ast.AnnAssign(target=ast.Name(id="enable_decoding"), value=value) if value is not None:
-                setting = value
-            case ast.AugAssign(target=ast.Name(id="enable_decoding")):
-                setting = None
-            case _:
-                pass
-    return _is_literal_false(setting)
-
-
 def _is_literal_false(node: ast.expr | None) -> bool:
     return isinstance(node, ast.Constant) and node.value is False
 
 
-def _is_complex_without_nodecode(node: ast.expr, imports: ImportIndex) -> bool:
-    if isinstance(node, ast.Subscript) and imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Annotated"):
-        members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
-        if any(imports.resolves(item, sources=_NODECODE_SOURCES, symbol="NoDecode") for item in members[1:]):
-            return False
-        return bool(members) and _is_complex_without_nodecode(members[0], imports)
-    if isinstance(node, ast.Subscript):
-        value = node.value
-        if isinstance(value, ast.Name) and value.id in _COMPLEX_BUILTINS and imports.builtin_is_unshadowed(value.id):
-            return True
-        return any(
-            imports.resolves(value, sources=_TYPING_SOURCES, symbol=name)
-            for name in ("Dict", "FrozenSet", "List", "Set", "Tuple")
-        )
-    return False
-
-
-def _has_force_decode(node: ast.expr, imports: ImportIndex) -> bool:
-    if not isinstance(node, ast.Subscript) or not imports.resolves(
-        node.value, sources=_TYPING_SOURCES, symbol="Annotated"
+def _settings_split_findings(
+    model: ast.ClassDef, imports: ImportIndex, source_lines: list[str], path: Path, code: str
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    decoding_disabled = _disables_decoding(model, imports)
+    fields = {
+        statement.target.id: statement
+        for statement in model.body
+        if isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+        and _is_complex_without_nodecode(statement.annotation, imports)
+        and (not decoding_disabled or _has_force_decode(statement.annotation, imports))
+    }
+    reported_fields: set[str] = set()
+    for function in (
+        statement for statement in model.body if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
     ):
-        return False
-    members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
-    return any(imports.resolves(item, sources=_NODECODE_SOURCES, symbol="ForceDecode") for item in members[1:]) or (
-        bool(members) and _has_force_decode(members[0], imports)
-    )
-
-
-def _single_before_validated_field(
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
-    imports: ImportIndex,
-) -> str | None:
-    fields: set[str] = set()
-    for decorator in node.decorator_list:
-        if not isinstance(decorator, ast.Call) or not imports.resolves(
-            decorator.func, sources=_PYDANTIC_SOURCES, symbol="field_validator"
+        field_name = _single_before_validated_field(function, imports)
+        if (
+            field_name is None
+            or field_name not in fields
+            or not _unconditionally_splits_value_parameter(function, imports)
         ):
             continue
-        is_before = any(
-            keyword.arg == "mode" and isinstance(keyword.value, ast.Constant) and keyword.value.value == "before"
-            for keyword in decorator.keywords
+        field = fields[field_name]
+        if (
+            field_name in reported_fields
+            or _node_is_suppressed(field, source_lines, code)
+            or _node_is_suppressed(function, source_lines, code)
+        ):
+            continue
+        reported_fields.add(field_name)
+        diagnostics.append(
+            Diagnostic(
+                path=path,
+                line=field.annotation.lineno,
+                col=field.annotation.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=(
+                    f"Complex setting `{field_name}` is unconditionally split by `{function.name}` but "
+                    "environment sources may JSON-decode it first; if the input contract is raw text, "
+                    "import `Annotated` and `NoDecode` and add `NoDecode` metadata, or disable settings "
+                    "decoding for the class."
+                ),
+            )
         )
-        if not is_before:
-            continue
-        if not (
-            len(decorator.args) == 1
-            and isinstance(decorator.args[0], ast.Constant)
-            and isinstance(decorator.args[0].value, str)
-        ):
-            return None
-        fields.add(decorator.args[0].value)
-    return next(iter(fields)) if len(fields) == 1 else None
+    return diagnostics
+
+
+def _node_is_suppressed(
+    node: ast.AnnAssign | ast.FunctionDef | ast.AsyncFunctionDef,
+    source_lines: list[str],
+    code: str,
+) -> bool:
+    decorators = node.decorator_list if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else ()
+    start = min((decorator.lineno for decorator in decorators), default=node.lineno)
+    return any(is_suppressed(source_lines, line, code) for line in range(start, node.lineno + 1))
 
 
 def _unconditionally_splits_value_parameter(
@@ -343,6 +247,124 @@ def _contains_unconditional_split(node: ast.expr, value: str) -> bool:
         and node.func.value.id == value
     ):
         return True
+    return any(_contains_unconditional_split(child, value) for child in _eager_expressions(node))
+
+
+def _single_before_validated_field(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: ImportIndex,
+) -> str | None:
+    fields: set[str] = set()
+    for decorator in node.decorator_list:
+        if not isinstance(decorator, ast.Call) or not imports.resolves(
+            decorator.func, sources=_PYDANTIC_SOURCES, symbol="field_validator"
+        ):
+            continue
+        is_before = any(
+            keyword.arg == "mode" and isinstance(keyword.value, ast.Constant) and keyword.value.value == "before"
+            for keyword in decorator.keywords
+        )
+        if not is_before:
+            continue
+        if not (
+            len(decorator.args) == 1
+            and isinstance(decorator.args[0], ast.Constant)
+            and isinstance(decorator.args[0].value, str)
+        ):
+            return None
+        fields.add(decorator.args[0].value)
+    return next(iter(fields)) if len(fields) == 1 else None
+
+
+def _has_force_decode(node: ast.expr, imports: ImportIndex) -> bool:
+    if not isinstance(node, ast.Subscript) or not imports.resolves(
+        node.value, sources=_TYPING_SOURCES, symbol="Annotated"
+    ):
+        return False
+    members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
+    return any(imports.resolves(item, sources=_NODECODE_SOURCES, symbol="ForceDecode") for item in members[1:]) or (
+        bool(members) and _has_force_decode(members[0], imports)
+    )
+
+
+def _is_complex_without_nodecode(node: ast.expr, imports: ImportIndex) -> bool:
+    if isinstance(node, ast.Subscript) and imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Annotated"):
+        members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
+        if any(imports.resolves(item, sources=_NODECODE_SOURCES, symbol="NoDecode") for item in members[1:]):
+            return False
+        return bool(members) and _is_complex_without_nodecode(members[0], imports)
+    if isinstance(node, ast.Subscript):
+        value = node.value
+        if isinstance(value, ast.Name) and value.id in _COMPLEX_BUILTINS and imports.builtin_is_unshadowed(value.id):
+            return True
+        return any(
+            imports.resolves(value, sources=_TYPING_SOURCES, symbol=name)
+            for name in ("Dict", "FrozenSet", "List", "Set", "Tuple")
+        )
+    return False
+
+
+def _disables_decoding(node: ast.ClassDef, imports: ImportIndex) -> bool:
+    if any(keyword.arg == "enable_decoding" and _is_literal_false(keyword.value) for keyword in node.keywords):
+        return True
+    model_config: ast.expr | None = None
+    legacy_config: ast.ClassDef | None = None
+    for statement in node.body:
+        match statement:
+            case ast.Assign(targets=[ast.Name(id="model_config")], value=value):
+                model_config = value
+            case ast.AnnAssign(target=ast.Name(id="model_config"), value=value) if value is not None:
+                model_config = value
+            case ast.AugAssign(target=ast.Name(id="model_config")):
+                model_config = None
+            case ast.ClassDef(name="Config"):
+                legacy_config = statement
+            case _:
+                pass
+    if model_config is not None and _config_value_disables_decoding(model_config, imports):
+        return True
+    return legacy_config is not None and _legacy_config_disables_decoding(legacy_config)
+
+
+def _legacy_config_disables_decoding(node: ast.ClassDef) -> bool:
+    setting: ast.expr | None = None
+    for statement in node.body:
+        match statement:
+            case ast.Assign(targets=[ast.Name(id="enable_decoding")], value=value):
+                setting = value
+            case ast.AnnAssign(target=ast.Name(id="enable_decoding"), value=value) if value is not None:
+                setting = value
+            case ast.AugAssign(target=ast.Name(id="enable_decoding")):
+                setting = None
+            case _:
+                pass
+    return _is_literal_false(setting)
+
+
+def _config_value_disables_decoding(node: ast.expr, imports: ImportIndex) -> bool:
+    if isinstance(node, ast.Dict):
+        setting: ast.expr | None = None
+        for key, value in zip(node.keys, node.values, strict=True):
+            if key is None:
+                setting = None
+                continue
+            if isinstance(key, ast.Constant) and key.value == "enable_decoding":
+                setting = value
+        return _is_literal_false(setting)
+    if not isinstance(node, ast.Call) or node.args or any(keyword.arg is None for keyword in node.keywords):
+        return False
+    is_settings_config = imports.resolves(node.func, sources=_SETTINGS_CONFIG_SOURCES, symbol="SettingsConfigDict")
+    is_pydantic_config = imports.resolves(node.func, sources=_PYDANTIC_CONFIG_SOURCES, symbol="ConfigDict")
+    is_builtin_dict = (
+        isinstance(node.func, ast.Name) and node.func.id == "dict" and imports.builtin_is_unshadowed("dict")
+    )
+    if not is_settings_config and not is_pydantic_config and not is_builtin_dict:
+        return False
+    setting = next((keyword.value for keyword in reversed(node.keywords) if keyword.arg == "enable_decoding"), None)
+    return _is_literal_false(setting)
+
+
+def _eager_expressions(node: ast.expr) -> list[ast.expr]:
     match node:
         case ast.Call(func=func, args=args, keywords=keywords):
             eager = [func, *(arg for arg in args if not isinstance(arg, ast.GeneratorExp))]
@@ -369,15 +391,5 @@ def _contains_unconditional_split(node: ast.expr, value: str) -> bool:
             eager = [key for key in keys if key is not None]
             eager.extend(values)
         case _:
-            return False
-    return any(_contains_unconditional_split(child, value) for child in eager)
-
-
-def _node_is_suppressed(
-    node: ast.AnnAssign | ast.FunctionDef | ast.AsyncFunctionDef,
-    source_lines: list[str],
-    code: str,
-) -> bool:
-    decorators = node.decorator_list if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) else ()
-    start = min((decorator.lineno for decorator in decorators), default=node.lineno)
-    return any(is_suppressed(source_lines, line, code) for line in range(start, node.lineno + 1))
+            return []
+    return eager

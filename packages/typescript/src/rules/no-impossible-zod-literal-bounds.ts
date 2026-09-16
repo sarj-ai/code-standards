@@ -292,26 +292,9 @@ export default createRule<Options, MessageIds>({
       let lower: Bound | null = null;
       let upper: Bound | null = null;
 
-      for (const { method, node } of chain.calls) {
-        if (!allowed.has(method)) return null;
-        const semantic =
-          method === "positive"
-            ? { exclusive: true, lower: true, value: 0 }
-            : method === "nonnegative"
-              ? { exclusive: false, lower: true, value: 0 }
-              : method === "negative"
-                ? { exclusive: true, lower: false, value: 0 }
-                : method === "nonpositive"
-                  ? { exclusive: false, lower: false, value: 0 }
-                  : null;
-        const value = semantic?.value ?? finiteNumber(node.arguments[0]);
-        if (value === null) return null;
-        if (chain.kind !== "number" && (!Number.isInteger(value) || value < 0)) {
-          return null;
-        }
+      function addBound(method: string, semantic: ReturnType<typeof zeroBoundSemantic>, value: number): void {
         const label = `${method}(${String(value)})`;
         if (semantic !== null) {
-          if (node.arguments.length !== 0) return null;
           if (semantic.lower) {
             lower = strongerLower(lower, {
               exclusive: semantic.exclusive,
@@ -341,6 +324,19 @@ export default createRule<Options, MessageIds>({
             value,
           });
         }
+      }
+
+      for (const { method, node } of chain.calls) {
+        if (!allowed.has(method)) return null;
+        const semantic = zeroBoundSemantic(method);
+        const value = semantic?.value ?? finiteNumber(node.arguments[0]);
+        if (value === null) return null;
+        if (chain.kind !== "number" && (!Number.isInteger(value) || value < 0)) {
+          return null;
+        }
+        if (semantic !== null && node.arguments.length !== 0) return null;
+        addBound(method, semantic, value);
+
       }
       return isEmpty(lower, upper) && lower !== null && upper !== null
         ? { lower, upper }
@@ -391,3 +387,15 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function zeroBoundSemantic(method: string): { exclusive: boolean; lower: boolean; value: number } | null {
+  return method === "positive"
+    ? { exclusive: true, lower: true, value: 0 }
+    : method === "nonnegative"
+      ? { exclusive: false, lower: true, value: 0 }
+      : method === "negative"
+        ? { exclusive: true, lower: false, value: 0 }
+        : method === "nonpositive"
+          ? { exclusive: false, lower: false, value: 0 }
+          : null;
+}

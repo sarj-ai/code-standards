@@ -262,13 +262,7 @@ def _unshadowed_module_classes(tree: ast.Module, all_nodes: tuple[ast.AST, ...])
         if isinstance(candidate, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         and (not isinstance(candidate, ast.ClassDef) or candidate not in tree.body)
     )
-    rebound.update(
-        alias.asname or alias.name.partition(".")[0]
-        for statement in tree.body
-        if isinstance(statement, (ast.Import, ast.ImportFrom))
-        for alias in statement.names
-        if alias.name != "*"
-    )
+    _add_module_import_bindings(tree, rebound)
     return frozenset(name for name in classes if classes.count(name) == 1 and name not in rebound)
 
 
@@ -331,33 +325,33 @@ def _sibling_findings(
     unsafe_bindings: frozenset[str],
 ) -> list[Diagnostic]:
     findings: list[Diagnostic] = []
+
+    def collect_block(statements: list[ast.stmt]) -> None:
+        index = 0
+        while index < len(statements):
+            run: list[ast.If] = []
+            cursor = index
+            subject: str | None = None
+            seen: set[str] = set()
+            while cursor < len(statements):
+                statement = statements[cursor]
+                if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
+                    break
+                branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
+                if branch is None or (subject is not None and branch.subject != subject) or bool(seen & branch.types):
+                    break
+                run.append(statement)
+                subject = branch.subject
+                seen.update(branch.types)
+                cursor += 1
+            dispatch = _dispatch(run, imports, local_classes, unsafe_bindings)
+            if dispatch is not None:
+                findings.append(_diagnostic(path, code, run[0], dispatch, "terminating isinstance sequence"))
+            index = max(cursor, index + 1)
+
     for owner in all_nodes:
         for statements in _statement_blocks(owner):
-            index = 0
-            while index < len(statements):
-                run: list[ast.If] = []
-                cursor = index
-                subject: str | None = None
-                seen: set[str] = set()
-                while cursor < len(statements):
-                    statement = statements[cursor]
-                    if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
-                        break
-                    branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
-                    if (
-                        branch is None
-                        or (subject is not None and branch.subject != subject)
-                        or bool(seen & branch.types)
-                    ):
-                        break
-                    run.append(statement)
-                    subject = branch.subject
-                    seen.update(branch.types)
-                    cursor += 1
-                dispatch = _dispatch(run, imports, local_classes, unsafe_bindings)
-                if dispatch is not None:
-                    findings.append(_diagnostic(path, code, run[0], dispatch, "terminating isinstance sequence"))
-                index = max(cursor, index + 1)
+            collect_block(statements)
     return findings
 
 
@@ -615,3 +609,13 @@ def _statement_blocks(node: ast.AST) -> tuple[list[ast.stmt], ...]:
             return node.body, node.orelse, node.finalbody
         case _:
             return ()
+
+
+def _add_module_import_bindings(tree: ast.Module, rebound: set[str]) -> None:
+    rebound.update(
+        alias.asname or alias.name.partition(".")[0]
+        for statement in tree.body
+        if isinstance(statement, (ast.Import, ast.ImportFrom))
+        for alias in statement.names
+        if alias.name != "*"
+    )

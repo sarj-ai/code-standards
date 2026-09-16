@@ -239,15 +239,29 @@ def _commit_findings(
             "-z",
             revision,
         ).stdout
-        for relative in (path for path in changed.split("\0") if path):
-            where = f"{revision}:{relative}"
-            findings.extend(_private_text_findings(where, relative, broad, scoped))
-            if any(fnmatch(relative, pattern) for pattern in policy.private_excludes):
-                continue
-            text = _revision_text(root, revision, relative)
-            if text is None:
-                continue
-            findings.extend(_private_text_findings(where, text, broad, scoped))
+        findings.extend(_commit_changed_findings(root, revision, changed, policy, broad=broad, scoped=scoped))
+    return findings
+
+
+def _commit_changed_findings(
+    root: Path,
+    revision: str,
+    changed: str,
+    policy: RepositoryPolicy,
+    *,
+    broad: re.Pattern[str] | None,
+    scoped: re.Pattern[str] | None,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    for relative in (path for path in changed.split("\0") if path):
+        where = f"{revision}:{relative}"
+        findings.extend(_private_text_findings(where, relative, broad, scoped))
+        if any(fnmatch(relative, pattern) for pattern in policy.private_excludes):
+            continue
+        text = _revision_text(root, revision, relative)
+        if text is None:
+            continue
+        findings.extend(_private_text_findings(where, text, broad, scoped))
     return findings
 
 

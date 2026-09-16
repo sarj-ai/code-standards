@@ -198,14 +198,7 @@ def _fixture_decorator_names(tree: ast.Module, *, before_line: int) -> _FixtureD
         rebound = _bound_names(statement)
         names.difference_update(rebound)
         roots.difference_update(rebound)
-        if isinstance(statement, ast.Import):
-            for alias in statement.names:
-                if alias.name in {"pytest", "pytest_asyncio"}:
-                    roots.add(alias.asname or alias.name)
-        elif isinstance(statement, ast.ImportFrom) and statement.module in {"pytest", "pytest_asyncio"}:
-            for alias in statement.names:
-                if alias.name == "fixture":
-                    names.add(alias.asname or alias.name)
+        _collect_fixture_imports(statement, names, roots)
     return _FixtureDecorators(frozenset(names), frozenset(roots))
 
 
@@ -274,12 +267,8 @@ def _fixed_tuple_return_arity(
 ) -> int:
     match annotation:
         case ast.Constant(value=str() as value):
-            try:
-                parsed = ast.parse(value, mode="eval").body
-            except SyntaxError:
-                return 0
-            return _fixed_tuple_return_arity(
-                parsed, aliases=aliases, unwrap_yield_wrapper=unwrap_yield_wrapper, resolving=resolving
+            return _string_tuple_arity(
+                value, aliases=aliases, unwrap_yield_wrapper=unwrap_yield_wrapper, resolving=resolving
             )
         case ast.Name(id=name) if name not in resolving:
             target = aliases.get(name)
@@ -313,27 +302,9 @@ def _fixed_tuple_return_arity(
         )
     if not isinstance(annotation, ast.Subscript):
         return 0
-    name = (
-        annotation.value.attr
-        if isinstance(annotation.value, ast.Attribute)
-        else (annotation.value.id if isinstance(annotation.value, ast.Name) else None)
+    return _subscript_tuple_arity(
+        annotation, aliases=aliases, unwrap_yield_wrapper=unwrap_yield_wrapper, resolving=resolving
     )
-    if unwrap_yield_wrapper and name in {
-        "Generator",
-        "Iterator",
-        "Iterable",
-        "AsyncGenerator",
-        "AsyncIterator",
-        "AsyncIterable",
-    }:
-        first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
-        return _fixed_tuple_return_arity(first, aliases=aliases, unwrap_yield_wrapper=False, resolving=resolving)
-    if name not in {"tuple", "Tuple"} or not isinstance(annotation.slice, ast.Tuple):
-        return 0
-    elements = annotation.slice.elts
-    if any(_is_variadic_tuple_member(element) for element in elements):
-        return 0
-    return len(elements)
 
 
 def _is_variadic_tuple_member(node: ast.expr) -> bool:
@@ -484,3 +455,52 @@ def _bare_tuple_arity(value: ast.expr) -> int:
     if any(isinstance(elt, ast.Starred) for elt in value.elts):
         return 0
     return len(value.elts)
+
+
+def _collect_fixture_imports(statement: ast.stmt, names: set[str], roots: set[str]) -> None:
+    if isinstance(statement, ast.Import):
+        for alias in statement.names:
+            if alias.name in {"pytest", "pytest_asyncio"}:
+                roots.add(alias.asname or alias.name)
+    elif isinstance(statement, ast.ImportFrom) and statement.module in {"pytest", "pytest_asyncio"}:
+        for alias in statement.names:
+            if alias.name == "fixture":
+                names.add(alias.asname or alias.name)
+
+
+def _string_tuple_arity(
+    value: str, *, aliases: dict[str, ast.expr], unwrap_yield_wrapper: bool, resolving: frozenset[str]
+) -> int:
+    try:
+        parsed = ast.parse(value, mode="eval").body
+    except SyntaxError:
+        return 0
+    return _fixed_tuple_return_arity(
+        parsed, aliases=aliases, unwrap_yield_wrapper=unwrap_yield_wrapper, resolving=resolving
+    )
+
+
+def _subscript_tuple_arity(
+    annotation: ast.Subscript, *, aliases: dict[str, ast.expr], unwrap_yield_wrapper: bool, resolving: frozenset[str]
+) -> int:
+    name = (
+        annotation.value.attr
+        if isinstance(annotation.value, ast.Attribute)
+        else (annotation.value.id if isinstance(annotation.value, ast.Name) else None)
+    )
+    if unwrap_yield_wrapper and name in {
+        "Generator",
+        "Iterator",
+        "Iterable",
+        "AsyncGenerator",
+        "AsyncIterator",
+        "AsyncIterable",
+    }:
+        first = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
+        return _fixed_tuple_return_arity(first, aliases=aliases, unwrap_yield_wrapper=False, resolving=resolving)
+    if name not in {"tuple", "Tuple"} or not isinstance(annotation.slice, ast.Tuple):
+        return 0
+    elements = annotation.slice.elts
+    if any(_is_variadic_tuple_member(element) for element in elements):
+        return 0
+    return len(elements)

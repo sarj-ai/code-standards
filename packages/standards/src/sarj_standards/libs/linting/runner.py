@@ -243,6 +243,23 @@ def _load_tool(
 
 def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> GroupedPaths:
     grouped = GroupedPaths()
+    inputs = _validated_inputs(files, policy=policy)
+
+    roots = _minimal_roots(path for _raw, path, is_directory in inputs if is_directory)
+    walked: set[Path] = set()
+    seen: set[Path] = set()
+    for raw_path, path, is_directory in inputs:
+        if is_directory:
+            key = _path_key(path)
+            if key in roots and key not in walked:
+                _route_directory(grouped, path, seen, policy=policy)
+                walked.add(key)
+            continue
+        _route_unique_path(grouped, path, raw_path, seen)
+    return grouped
+
+
+def _validated_inputs(files: Sequence[str], *, policy: Policy | None) -> list[tuple[str, Path, bool]]:
     inputs: list[tuple[str, Path, bool]] = []
     for raw_path in files:
         path = Path(raw_path)
@@ -262,18 +279,7 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
                 continue
         inputs.append((raw_path, path, path.is_dir()))
 
-    roots = _minimal_roots(path for _raw, path, is_directory in inputs if is_directory)
-    walked: set[Path] = set()
-    seen: set[Path] = set()
-    for raw_path, path, is_directory in inputs:
-        if is_directory:
-            key = _path_key(path)
-            if key in roots and key not in walked:
-                _route_directory(grouped, path, seen, policy=policy)
-                walked.add(key)
-            continue
-        _route_unique_path(grouped, path, raw_path, seen)
-    return grouped
+    return inputs
 
 
 def accepts_hook_path(path: Path, *, root: Path | None = None) -> bool:
@@ -308,15 +314,19 @@ def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, poli
             if file_name in _IGNORED_DISCOVERED_FILES:
                 continue
             child = Path(root, file_name)
-            if not _owns_path(child):
-                continue
-            if _is_conventionally_generated(child):
-                continue
-            if policy is not None and not policy.allows_path(child):
-                continue
-            if not _is_routable_discovered_file(child):
+            if not _routable_child(child, policy=policy):
                 continue
             _route_unique_path(grouped, child, str(child), seen)
+
+
+def _routable_child(child: Path, *, policy: Policy | None) -> bool:
+    if not _owns_path(child):
+        return False
+    if _is_conventionally_generated(child):
+        return False
+    if policy is not None and not policy.allows_path(child):
+        return False
+    return _is_routable_discovered_file(child)
 
 
 def _is_routable_discovered_file(path: Path) -> bool:

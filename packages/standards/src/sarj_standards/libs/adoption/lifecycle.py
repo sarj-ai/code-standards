@@ -222,13 +222,17 @@ def _owning_typescript_project(
     if configured is not None:
         return configured
     lock_names = tuple(name for name, _client in packagemanager.LOCKFILES)
-    locked = next((path for path in bounded if any((path / name).is_file() for name in lock_names)), None)
+    locked = _nearest_lockfile_owner(bounded, lock_names)
     if locked is not None:
         return fallback_project if fallback_project is not None and locked == repository else locked
     packaged = next((path for path in bounded if (path / "package.json").is_file()), None)
     if fallback_project is not None and (packaged is None or packaged == repository):
         return fallback_project
     return packaged
+
+
+def _nearest_lockfile_owner(bounded: tuple[Path, ...], lock_names: tuple[str, ...]) -> Path | None:
+    return next((path for path in bounded if any((path / name).is_file() for name in lock_names)), None)
 
 
 def _eslint_config(project: Path) -> Path | None:
@@ -259,16 +263,17 @@ def _selected_eslint_candidates(
     expand_directories: bool = False,
 ) -> set[Path]:
     candidates: set[Path] = set()
-    for raw_path in paths:
+
+    def collect_path(raw_path: str) -> None:
         path = Path(raw_path)
         unresolved = path if path.is_absolute() else root / path
         if is_link_like(unresolved):
-            continue
+            return
         candidate = unresolved.resolve()
         if not candidate.is_relative_to(root):
-            continue
+            return
         if _is_skill_artifact(candidate, root):
-            continue
+            return
         if candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS:
             sources = _eslint_sources(candidate)
             owners = {_owning_typescript_project(source, root, fallback_project=fallback_project) for source in sources}
@@ -289,6 +294,9 @@ def _selected_eslint_candidates(
             and candidate.is_file()
         ):
             candidates.add(candidate)
+
+    for raw_path in paths:
+        collect_path(raw_path)
     return candidates
 
 

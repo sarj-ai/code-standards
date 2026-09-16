@@ -91,12 +91,7 @@ def _leading_header_bodies(source: str) -> list[str]:
             bodies.append(token.string.lstrip("#").strip())
             continue
         if token.type == tokenize.STRING and not bodies:
-            try:
-                expression = ast.parse(token.string, mode="eval").body
-            except SyntaxError, ValueError:
-                break
-            if isinstance(expression, ast.Constant) and isinstance(expression.value, str):
-                bodies.extend(line for raw_line in expression.value.splitlines() if (line := raw_line.strip()))
+            bodies.extend(_header_docstring_lines(token.string))
             break
         break
     return bodies
@@ -144,3 +139,13 @@ def is_test_support_path(path: Path) -> bool:
     parts = {part.lower() for part in path.parts}
     stem = path.stem.lower()
     return bool(parts & _TEST_SUPPORT_DIR_NAMES or (not stem.endswith("_prod") and _TEST_SUPPORT_STEM_RE.search(stem)))
+
+
+def _header_docstring_lines(source: str) -> list[str]:
+    try:
+        expression = ast.parse(source, mode="eval").body
+    except SyntaxError, ValueError:
+        return []
+    if isinstance(expression, ast.Constant) and isinstance(expression.value, str):
+        return [line for raw_line in expression.value.splitlines() if (line := raw_line.strip())]
+    return []

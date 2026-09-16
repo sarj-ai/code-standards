@@ -260,184 +260,7 @@ async function verifyDist(ruleCounts) {
   }
 
   for (const provider of catalog.providers) {
-    const rules = rulesForProvider(provider.id);
-    const totalPages = Math.ceil(rules.length / pageSize);
-    const searchIndexSource = await readFile(
-      resolve(distRoot, "third-party-linters", provider.id, "rules.json"),
-      "utf8",
-    );
-    const searchIndex = JSON.parse(searchIndexSource);
-    assert.ok(
-      gzipSync(searchIndexSource, { level: 9 }).byteLength <= 48_000,
-      `${provider.id} compressed search index must stay at or below 48 KB`,
-    );
-    assert.equal(
-      searchIndex.pageSize,
-      pageSize,
-      `${provider.id} search index must expose the rendered page size`,
-    );
-    assert.equal(
-      searchIndex.provider,
-      provider.id,
-      `${provider.id} search index must identify its provider`,
-    );
-    assert.equal(
-      searchIndex.entries.length,
-      rules.length,
-      `${provider.id} search index must cover every rule`,
-    );
-    for (const [index, rule] of rules.entries()) {
-      const entry = searchIndex.entries[index];
-      const pageNumber = Math.floor(index / pageSize) + 1;
-      exactFields(
-        entry,
-        ["anchor", "displayId", "family", "href", "summary"],
-        `${provider.id} search entry ${String(index)}`,
-      );
-      assert.equal(entry.anchor, anchorForRule(rule));
-      assert.equal(entry.displayId, rule.displayId);
-      assert.equal(entry.family, rule.family);
-      assert.equal(entry.summary, plainSearchSummary(rule.summary));
-      assert.equal(
-        entry.href,
-        `${providerPageHref(provider.id, pageNumber)}#${anchorForRule(rule)}`,
-      );
-    }
-    const expectedPageDirectories = Array.from(
-      { length: totalPages - 1 },
-      (_, index) => String(index + 2),
-    );
-    const actualPageDirectories = (
-      await readdir(resolve(distRoot, "third-party-linters", provider.id), {
-        withFileTypes: true,
-      })
-    )
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort((left, right) => Number(left) - Number(right));
-    assert.deepEqual(
-      actualPageDirectories,
-      expectedPageDirectories,
-      `${provider.id} pagination routes must exactly match its rule count`,
-    );
-
-    const providerDocHrefs = [];
-    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
-      const pagePath =
-        pageNumber === 1
-          ? resolve(distRoot, "third-party-linters", provider.id, "index.html")
-          : resolve(
-              distRoot,
-              "third-party-linters",
-              provider.id,
-              String(pageNumber),
-              "index.html",
-            );
-      const page = await readFile(pagePath, "utf8");
-      assert.ok(
-        new TextEncoder().encode(page).byteLength <= 100_000,
-        `${provider.id} page ${String(pageNumber)} must stay at or below 100 KB raw HTML`,
-      );
-      assert.ok(
-        page.includes("Third party Rules"),
-        `${provider.id} page ${String(pageNumber)} must label the provider sidebar group`,
-      );
-      assert.ok(
-        pageNumber === 1
-          ? detailsAttributesForSummary(page, "Third party Rules").includes(
-              "open",
-            )
-          : page.includes("CSS.escape(providerId)"),
-        `${provider.id} page ${String(pageNumber)} must support revealing its active sidebar branch`,
-      );
-      const hrefs = htmlHrefs(page);
-      const hrefSet = new Set(hrefs);
-      assert.deepEqual(
-        [...page.matchAll(/<a\b[^>]*\bdata-provider="([^"]+)"/gu)].map(
-          (match) => match[1],
-        ),
-        expectedProviderOrder,
-        `${provider.id} page ${String(pageNumber)} sidebar providers must be alphabetized by displayed label`,
-      );
-      const pageRules = rules.slice(
-        (pageNumber - 1) * pageSize,
-        pageNumber * pageSize,
-      );
-      assert.deepEqual(
-        [
-          ...page.matchAll(
-            /<li id="([^"]+)" class="third-party-rule-row" data-third-party-rule(?=[ >])/gu,
-          ),
-        ].map((match) => match[1]),
-        pageRules.map((rule) => anchorForRule(rule)),
-        `${provider.id} page ${String(pageNumber)} must render its alphabetized rule slice in order`,
-      );
-      assert.equal(
-        occurrences(page, /data-third-party-rule(?=[ >])/gu),
-        pageRules.length,
-        `${provider.id} page ${String(pageNumber)} must server-render its complete rule slice`,
-      );
-      assert.ok(
-        hrefSet.has(provider.homepage),
-        `${provider.id} page ${String(pageNumber)} must link to its official homepage`,
-      );
-      const expectedDocsUrlCounts = new Map();
-      for (const rule of pageRules) {
-        expectedDocsUrlCounts.set(
-          rule.docsUrl,
-          (expectedDocsUrlCounts.get(rule.docsUrl) ?? 0) + 1,
-        );
-        assert.ok(
-          page.includes(escapeHtml(rule.displayId)),
-          `${rule.key} must render its rule ID`,
-        );
-        assert.ok(
-          hrefSet.has(
-            `${providerPageHref(provider.id, pageNumber)}#${anchorForRule(rule)}`,
-          ),
-          `${rule.key} must link permanently to its rendered page`,
-        );
-        assert.ok(
-          summaryParts(rule.summary).every((part) =>
-            page.includes(escapeHtml(part)),
-          ),
-          `${rule.key} must render its summary`,
-        );
-      }
-      for (const [docsUrl, expectedCount] of expectedDocsUrlCounts) {
-        assert.equal(
-          hrefs.filter((href) => href === docsUrl).length,
-          expectedCount,
-          `${provider.id} page ${String(pageNumber)} must link once per rule to its official explanation`,
-        );
-      }
-      providerDocHrefs.push(
-        ...hrefs.filter((href) => expectedDocsUrlCounts.has(href)),
-      );
-      for (const candidate of catalog.providers) {
-        assert.ok(
-          hrefSet.has(`/third-party-linters/${candidate.id}/`),
-          `${provider.id} page ${String(pageNumber)} navigation must link to ${candidate.id}`,
-        );
-        assert.ok(
-          page.includes(`data-provider="${candidate.id}"`),
-          `${provider.id} page ${String(pageNumber)} sidebar must include ${candidate.id}`,
-        );
-      }
-      for (const targetPage of [pageNumber - 1, pageNumber + 1].filter(
-        (candidate) => candidate >= 1 && candidate <= totalPages,
-      )) {
-        assert.ok(
-          hrefSet.has(providerPageHref(provider.id, targetPage)),
-          `${provider.id} page ${String(pageNumber)} pagination must link to page ${String(targetPage)}`,
-        );
-      }
-    }
-    assert.equal(
-      providerDocHrefs.length,
-      rules.length,
-      `${provider.id} pages must cover every rule exactly once`,
-    );
+    await verifyProviderPages(provider, expectedProviderOrder);
   }
 
   const sitemap = await readFile(resolve(distRoot, "sitemap-0.xml"), "utf8");
@@ -457,6 +280,187 @@ async function verifyDist(ruleCounts) {
       );
     }
   }
+}
+
+async function verifyProviderPages(provider, expectedProviderOrder) {
+  const rules = rulesForProvider(provider.id);
+  const totalPages = Math.ceil(rules.length / pageSize);
+  const searchIndexSource = await readFile(
+    resolve(distRoot, "third-party-linters", provider.id, "rules.json"),
+    "utf8",
+  );
+  const searchIndex = JSON.parse(searchIndexSource);
+  assert.ok(
+    gzipSync(searchIndexSource, { level: 9 }).byteLength <= 48_000,
+    `${provider.id} compressed search index must stay at or below 48 KB`,
+  );
+  assert.equal(
+    searchIndex.pageSize,
+    pageSize,
+    `${provider.id} search index must expose the rendered page size`,
+  );
+  assert.equal(
+    searchIndex.provider,
+    provider.id,
+    `${provider.id} search index must identify its provider`,
+  );
+  assert.equal(
+    searchIndex.entries.length,
+    rules.length,
+    `${provider.id} search index must cover every rule`,
+  );
+  for (const [index, rule] of rules.entries()) {
+    const entry = searchIndex.entries[index];
+    const pageNumber = Math.floor(index / pageSize) + 1;
+    exactFields(
+      entry,
+      ["anchor", "displayId", "family", "href", "summary"],
+      `${provider.id} search entry ${String(index)}`,
+    );
+    assert.equal(entry.anchor, anchorForRule(rule));
+    assert.equal(entry.displayId, rule.displayId);
+    assert.equal(entry.family, rule.family);
+    assert.equal(entry.summary, plainSearchSummary(rule.summary));
+    assert.equal(
+      entry.href,
+      `${providerPageHref(provider.id, pageNumber)}#${anchorForRule(rule)}`,
+    );
+  }
+  const expectedPageDirectories = Array.from(
+    { length: totalPages - 1 },
+    (_, index) => String(index + 2),
+  );
+  const actualPageDirectories = (
+    await readdir(resolve(distRoot, "third-party-linters", provider.id), {
+      withFileTypes: true,
+    })
+  )
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((left, right) => Number(left) - Number(right));
+  assert.deepEqual(
+    actualPageDirectories,
+    expectedPageDirectories,
+    `${provider.id} pagination routes must exactly match its rule count`,
+  );
+
+  const providerDocHrefs = [];
+  for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+    const pagePath =
+      pageNumber === 1
+        ? resolve(distRoot, "third-party-linters", provider.id, "index.html")
+        : resolve(
+            distRoot,
+            "third-party-linters",
+            provider.id,
+            String(pageNumber),
+            "index.html",
+          );
+    const page = await readFile(pagePath, "utf8");
+    assert.ok(
+      new TextEncoder().encode(page).byteLength <= 100_000,
+      `${provider.id} page ${String(pageNumber)} must stay at or below 100 KB raw HTML`,
+    );
+    assert.ok(
+      page.includes("Third party Rules"),
+      `${provider.id} page ${String(pageNumber)} must label the provider sidebar group`,
+    );
+    assert.ok(
+      pageNumber === 1
+        ? detailsAttributesForSummary(page, "Third party Rules").includes(
+            "open",
+          )
+        : page.includes("CSS.escape(providerId)"),
+      `${provider.id} page ${String(pageNumber)} must support revealing its active sidebar branch`,
+    );
+    const hrefs = htmlHrefs(page);
+    const hrefSet = new Set(hrefs);
+    assert.deepEqual(
+      [...page.matchAll(/<a\b[^>]*\bdata-provider="([^"]+)"/gu)].map(
+        (match) => match[1],
+      ),
+      expectedProviderOrder,
+      `${provider.id} page ${String(pageNumber)} sidebar providers must be alphabetized by displayed label`,
+    );
+    const pageRules = rules.slice(
+      (pageNumber - 1) * pageSize,
+      pageNumber * pageSize,
+    );
+    assert.deepEqual(
+      [
+        ...page.matchAll(
+          /<li id="([^"]+)" class="third-party-rule-row" data-third-party-rule(?=[ >])/gu,
+        ),
+      ].map((match) => match[1]),
+      pageRules.map((rule) => anchorForRule(rule)),
+      `${provider.id} page ${String(pageNumber)} must render its alphabetized rule slice in order`,
+    );
+    assert.equal(
+      occurrences(page, /data-third-party-rule(?=[ >])/gu),
+      pageRules.length,
+      `${provider.id} page ${String(pageNumber)} must server-render its complete rule slice`,
+    );
+    assert.ok(
+      hrefSet.has(provider.homepage),
+      `${provider.id} page ${String(pageNumber)} must link to its official homepage`,
+    );
+    const expectedDocsUrlCounts = new Map();
+    for (const rule of pageRules) {
+      expectedDocsUrlCounts.set(
+        rule.docsUrl,
+        (expectedDocsUrlCounts.get(rule.docsUrl) ?? 0) + 1,
+      );
+      assert.ok(
+        page.includes(escapeHtml(rule.displayId)),
+        `${rule.key} must render its rule ID`,
+      );
+      assert.ok(
+        hrefSet.has(
+          `${providerPageHref(provider.id, pageNumber)}#${anchorForRule(rule)}`,
+        ),
+        `${rule.key} must link permanently to its rendered page`,
+      );
+      assert.ok(
+        summaryParts(rule.summary).every((part) =>
+          page.includes(escapeHtml(part)),
+        ),
+        `${rule.key} must render its summary`,
+      );
+    }
+    for (const [docsUrl, expectedCount] of expectedDocsUrlCounts) {
+      assert.equal(
+        hrefs.filter((href) => href === docsUrl).length,
+        expectedCount,
+        `${provider.id} page ${String(pageNumber)} must link once per rule to its official explanation`,
+      );
+    }
+    providerDocHrefs.push(
+      ...hrefs.filter((href) => expectedDocsUrlCounts.has(href)),
+    );
+    for (const candidate of catalog.providers) {
+      assert.ok(
+        hrefSet.has(`/third-party-linters/${candidate.id}/`),
+        `${provider.id} page ${String(pageNumber)} navigation must link to ${candidate.id}`,
+      );
+      assert.ok(
+        page.includes(`data-provider="${candidate.id}"`),
+        `${provider.id} page ${String(pageNumber)} sidebar must include ${candidate.id}`,
+      );
+    }
+    for (const targetPage of [pageNumber - 1, pageNumber + 1].filter(
+      (candidate) => candidate >= 1 && candidate <= totalPages,
+    )) {
+      assert.ok(
+        hrefSet.has(providerPageHref(provider.id, targetPage)),
+        `${provider.id} page ${String(pageNumber)} pagination must link to page ${String(targetPage)}`,
+      );
+    }
+  }
+  assert.equal(
+    providerDocHrefs.length,
+    rules.length,
+    `${provider.id} pages must cover every rule exactly once`,
+  );
 }
 
 function detailsAttributesForSummary(source, label) {

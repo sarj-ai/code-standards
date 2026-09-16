@@ -215,5 +215,6 @@
   "SARJ440": "no-redundant-module-alias-exports",
   "SARJ441": "no-service-behavior-in-settings",
   "SARJ442": "no-deleted-only-override-parameter",
-  "SARJ443": "unused-test-factory-option"
+  "SARJ443": "unused-test-factory-option",
+  "SARJ444": "no-excessive-cognitive-complexity"
 }

@@ -171,18 +171,7 @@ def _collaborator_fields(node: ast.ClassDef) -> frozenset[str]:
         for parameter in (*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs)
         if parameter.arg != "self" and _is_collaborator_annotation(parameter.annotation)
     }
-    for statement in init.body:
-        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
-            continue
-        value = statement.value
-        if not isinstance(value, ast.Name) or value.id not in collaborator_parameters:
-            continue
-        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
-        fields.update(
-            target.attr
-            for target in targets
-            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
-        )
+    _collect_injected_fields(init, collaborator_parameters, fields)
     return frozenset(fields)
 
 
@@ -236,3 +225,20 @@ def _dotted_tail(node: ast.expr) -> str | None:
             return current.attr
         case _:
             return None
+
+
+def _collect_injected_fields(
+    init: ast.FunctionDef | ast.AsyncFunctionDef, collaborator_parameters: set[str], fields: set[str]
+) -> None:
+    for statement in init.body:
+        if not isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            continue
+        value = statement.value
+        if not isinstance(value, ast.Name) or value.id not in collaborator_parameters:
+            continue
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        fields.update(
+            target.attr
+            for target in targets
+            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
+        )

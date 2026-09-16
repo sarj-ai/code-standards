@@ -18,77 +18,93 @@ export function sqlSingleQuotedRanges(text: string): readonly (readonly [number,
 
 function scanSqlNoise(text: string, onSingleQuoted?: (start: number, end: number) => void): string {
   const out = text.split("");
-  const n = text.length;
-  let i = 0;
-  while (i < n) {
-    const ch = text[i];
-    if (ch === "$" && !/[\w$]/u.test(text[i - 1] ?? "")) {
-      const delimiter = /^\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$/u.exec(text.slice(i))?.[0];
-      if (delimiter !== undefined) {
-        const closing = text.indexOf(delimiter, i + delimiter.length);
-        const end = closing < 0 ? n : closing + delimiter.length;
-        while (i < end) {
-          if (text[i] !== "\n") out[i] = " ";
-          i += 1;
-        }
-        continue;
-      }
-    }
-    if (ch === "'" || ch === '"') {
-      const start = i;
-      out[i] = " ";
-      i += 1;
-      while (i < n) {
-        const c = text[i];
-        if (c === ch) {
-          if (i + 1 < n && text[i + 1] === ch) {
-            out[i] = " ";
-            out[i + 1] = " ";
-            i += 2;
-            continue;
-          }
-          out[i] = " ";
-          i += 1;
-          if (ch === "'") onSingleQuoted?.(start, i);
-          break;
-        }
-        if (c !== "\n") {
-          out[i] = " ";
-        }
-        i += 1;
-      }
+  let index = 0;
+  while (index < text.length) {
+    const dollarEnd = dollarQuotedSqlEnd(text, index);
+    if (dollarEnd !== null) {
+      maskSqlRange(text, out, index, dollarEnd);
+      index = dollarEnd;
       continue;
     }
-    if (ch === "-" && text[i + 1] === "-") {
-      while (i < n && text[i] !== "\n") {
-        out[i] = " ";
-        i += 1;
-      }
+    const character = text[index];
+    if (character === "'" || character === '"') {
+      index = quotedSqlEnd(text, out, index, onSingleQuoted);
       continue;
     }
-    if (ch === "/" && text[i + 1] === "*") {
-      out[i] = " ";
-      out[i + 1] = " ";
-      i += 2;
-      let depth = 1;
-      while (i < n && depth > 0) {
-        if ((text[i] === "/" && text[i + 1] === "*") || (text[i] === "*" && text[i + 1] === "/")) {
-          depth += text[i] === "/" ? 1 : -1;
-          out[i] = " ";
-          out[i + 1] = " ";
-          i += 2;
-          continue;
-        }
-        if (text[i] !== "\n") {
-          out[i] = " ";
-        }
-        i += 1;
-      }
+    if (character === "-" && text[index + 1] === "-") {
+      const newline = text.indexOf("\n", index);
+      const end = newline === -1 ? text.length : newline;
+      maskSqlRange(text, out, index, end);
+      index = end;
       continue;
     }
-    i += 1;
+    if (character === "/" && text[index + 1] === "*") {
+      index = blockSqlCommentEnd(text, out, index);
+      continue;
+    }
+    index += 1;
   }
   return out.join("");
+}
+
+
+function dollarQuotedSqlEnd(text: string, start: number): number | null {
+  if (text[start] !== "$" || /[\w$]/u.test(text[start - 1] ?? "")) return null;
+  const delimiter = /^\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$/u.exec(text.slice(start))?.[0];
+  if (delimiter === undefined) return null;
+  const closing = text.indexOf(delimiter, start + delimiter.length);
+  return closing < 0 ? text.length : closing + delimiter.length;
+}
+
+
+function blockSqlCommentEnd(text: string, out: string[], start: number): number {
+  out[start] = " ";
+  out[start + 1] = " ";
+  let index = start + 2;
+  let depth = 1;
+  while (index < text.length && depth > 0) {
+    if ((text[index] === "/" && text[index + 1] === "*") || (text[index] === "*" && text[index + 1] === "/")) {
+      depth += text[index] === "/" ? 1 : -1;
+      out[index] = " ";
+      out[index + 1] = " ";
+      index += 2;
+      continue;
+    }
+    if (text[index] !== "\n") out[index] = " ";
+    index += 1;
+  }
+  return index;
+}
+
+
+function quotedSqlEnd(text: string, out: string[], start: number, onSingleQuoted?: (start: number, end: number) => void): number {
+  const quote = text[start];
+  out[start] = " ";
+  let index = start + 1;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === quote) {
+      out[index] = " ";
+      if (index + 1 < text.length && text[index + 1] === quote) {
+        out[index + 1] = " ";
+        index += 2;
+        continue;
+      }
+      index += 1;
+      if (quote === "'") onSingleQuoted?.(start, index);
+      break;
+    }
+    if (character !== "\n") out[index] = " ";
+    index += 1;
+  }
+  return index;
+}
+
+
+function maskSqlRange(text: string, out: string[], start: number, end: number): void {
+  for (let index = start;index < end;index += 1) {
+    if (text[index] !== "\n") out[index] = " ";
+  }
 }
 
 /** The parameter marker a `${...}` substitution is replaced with before scanning. */

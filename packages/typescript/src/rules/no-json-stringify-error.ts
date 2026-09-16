@@ -134,35 +134,11 @@ function isNarrowedByEarlyReturn(
   let current: TSESTree.Node | undefined = node.parent;
   while (current) {
     if (current.type === "BlockStatement" || current.type === "Program") {
-      for (const stmt of current.body) {
-        if (stmt.range[0] >= node.range[0]) {
-          break;
-        }
-        if (
-          stmt.type === "IfStatement" &&
-          stmt.alternate === null &&
-          branchTerminates(stmt.consequent)
-        ) {
-          const subject = positiveErrorSubject(stmt.test);
-          if (subject && sourceCode.getText(subject) === argText) {
-            return true;
-          }
-        }
-      }
+      if (hasEarlierErrorGuard(current.body, node, argText, sourceCode)) return true;
     }
     current = current.parent;
   }
   return false;
-}
-
-/** Whether a branch statement unconditionally exits (its last statement returns/throws). */
-function branchTerminates(branch: TSESTree.Statement): boolean {
-  const body = branch.type === "BlockStatement" ? branch.body : [branch];
-  const last = body[body.length - 1];
-  return (
-    last !== undefined &&
-    (last.type === "ReturnStatement" || last.type === "ThrowStatement")
-  );
 }
 
 function isGuardedByInstanceofError(
@@ -351,3 +327,33 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function hasEarlierErrorGuard(statements: readonly TSESTree.Statement[], node: TSESTree.Node, argText: string, sourceCode: Readonly<SourceCode>): boolean {
+  for (const stmt of statements) {
+    if (stmt.range[0] >= node.range[0]) {
+      break;
+    }
+    if (
+      stmt.type === "IfStatement" &&
+      stmt.alternate === null &&
+      branchTerminates(stmt.consequent)
+    ) {
+      const subject = positiveErrorSubject(stmt.test);
+      if (subject && sourceCode.getText(subject) === argText) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+
+/** Whether a branch statement unconditionally exits (its last statement returns/throws). */
+function branchTerminates(branch: TSESTree.Statement): boolean {
+  const body = branch.type === "BlockStatement" ? branch.body : [branch];
+  const last = body[body.length - 1];
+  return (
+    last !== undefined &&
+    (last.type === "ReturnStatement" || last.type === "ThrowStatement")
+  );
+}

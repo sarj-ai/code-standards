@@ -132,25 +132,7 @@ class NoMockedTerraformTestOracle(Rule):
         findings: list[Diagnostic] = []
         for run in (block for block in top_level if block.type == "run"):
             injected = (*file_overrides, *_injected_literals(run.blocks))
-            for assertion in (block for block in run.blocks if block.type == "assert"):
-                condition = assertion.attribute("condition")
-                if condition is None:
-                    continue
-                matched = next((item for item in injected if _directly_reasserts(condition.value, item)), None)
-                if matched is None:
-                    continue
-                findings.append(
-                    Diagnostic(
-                        path=path,
-                        line=condition.line,
-                        col=condition.col,
-                        code=self.code,
-                        message=(
-                            f"Assertion directly repeats the injected `{matched.expression}` literal; assert on "
-                            "derived configuration behavior instead."
-                        ),
-                    )
-                )
+            findings.extend(_run_assertion_findings(run, injected, path, self.code))
         return findings
 
 
@@ -169,6 +151,32 @@ def _injected_literals(items: tuple[Block, ...]) -> tuple[_InjectedLiteral, ...]
             for match in _LITERAL_ENTRY_RE.finditer(values.value)
         )
     return tuple(injected)
+
+
+def _run_assertion_findings(
+    run: Block, injected: tuple[_InjectedLiteral, ...], path: Path, code: str
+) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    for assertion in (block for block in run.blocks if block.type == "assert"):
+        condition = assertion.attribute("condition")
+        if condition is None:
+            continue
+        matched = next((item for item in injected if _directly_reasserts(condition.value, item)), None)
+        if matched is None:
+            continue
+        findings.append(
+            Diagnostic(
+                path=path,
+                line=condition.line,
+                col=condition.col,
+                code=code,
+                message=(
+                    f"Assertion directly repeats the injected `{matched.expression}` literal; assert on "
+                    "derived configuration behavior instead."
+                ),
+            )
+        )
+    return findings
 
 
 def _directly_reasserts(condition: str, injected: _InjectedLiteral) -> bool:

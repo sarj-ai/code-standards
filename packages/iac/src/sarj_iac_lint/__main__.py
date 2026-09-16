@@ -7,13 +7,17 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
 from sarj_iac_lint import __version__
 from sarj_iac_lint.rule_base import Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -53,17 +57,7 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
             except OSError:
                 pass
             continue
-        for child in p.rglob("*"):
-            if not child.is_file() or child.suffix not in _SCANNED_SUFFIXES:
-                continue
-            if any(part in SKIP_DIR_NAMES for part in child.parts):
-                continue
-            try:
-                if child.stat().st_size > _MAX_FILE_BYTES:
-                    continue
-            except OSError:
-                continue
-            out.append(child)
+        out.extend(_iter_directory_inputs(p))
     return out
 
 
@@ -249,6 +243,20 @@ def main(argv: list[str] | None = None) -> int:
         if exc.code != 0:
             raise
     return result.code
+
+
+def _iter_directory_inputs(p: Path) -> Iterator[Path]:
+    for child in p.rglob("*"):
+        if not child.is_file() or child.suffix not in _SCANNED_SUFFIXES:
+            continue
+        if any(part in SKIP_DIR_NAMES for part in child.parts):
+            continue
+        try:
+            if child.stat().st_size > _MAX_FILE_BYTES:
+                continue
+        except OSError:
+            continue
+        yield child
 
 
 if __name__ == "__main__":

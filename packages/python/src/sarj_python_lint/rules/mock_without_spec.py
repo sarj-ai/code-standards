@@ -369,28 +369,34 @@ class _FileFacts:
                 found._bind(scope, node.target, node.value, sys_is_imported=sys_is_imported)
                 found._record_constructor_arguments(scope, node.target, node.value, constructors)
             elif isinstance(node, ast.Attribute):
-                if isinstance(node.value, ast.Name):
-                    name = (scope, node.value.id)
-                    found.reads.setdefault(name, set()).add(node.attr)
-                    if node.attr not in _MOCK_API_ATTRS:
-                        found.unsafe_use_lines.setdefault(name, []).append(node.lineno)
-                found._record_path_read(scope, node)
+                found._record_attribute_use(scope, node)
             elif isinstance(node, ast.Call):
-                found._record_spec_addition(scope, node)
-                if isinstance(node.func, ast.Name):
-                    found.called.add((scope, node.func.id))
-                for argument in [*node.args, *(kw.value for kw in node.keywords)]:
-                    for name in _escaped_names(argument):
-                        scoped = (scope, name)
-                        found.escaped.add(scoped)
-                        found.escape_lines.setdefault(scoped, []).append(argument.lineno)
-                found._record_path_call(scope, node)
+                found._record_call_use(scope, node)
             elif _catches_import_failure(node):
                 found.import_fallbacks.update(child for child in walk(node) if isinstance(child, ast.Call))
         for node in nodes(tree, ast.Name):
             if isinstance(node.ctx, ast.Load):
                 found.name_loads.setdefault((scopes[id(node)], node.id), []).append(node)
         return found
+
+    def _record_attribute_use(self, scope: int, node: ast.Attribute) -> None:
+        if isinstance(node.value, ast.Name):
+            name = (scope, node.value.id)
+            self.reads.setdefault(name, set()).add(node.attr)
+            if node.attr not in _MOCK_API_ATTRS:
+                self.unsafe_use_lines.setdefault(name, []).append(node.lineno)
+        self._record_path_read(scope, node)
+
+    def _record_call_use(self, scope: int, node: ast.Call) -> None:
+        self._record_spec_addition(scope, node)
+        if isinstance(node.func, ast.Name):
+            self.called.add((scope, node.func.id))
+        for argument in [*node.args, *(kw.value for kw in node.keywords)]:
+            for name in _escaped_names(argument):
+                scoped = (scope, name)
+                self.escaped.add(scoped)
+                self.escape_lines.setdefault(scoped, []).append(argument.lineno)
+        self._record_path_call(scope, node)
 
     def _bind(
         self,
@@ -740,43 +746,34 @@ def _unspecced_calls(
 def _has_contract_argument(node: ast.Call, names: _MockNames, symbol: str) -> bool:
     # `**kwargs` forwarding could smuggle a spec in; treat it as specced rather
     # than guess, since the call site no longer states its own contract.
-    for keyword in node.keywords:
-        if keyword.arg is None:
-            return True
-        if symbol in _UNSPECCED_FACTORIES:
-            if keyword.arg in _CONSTRUCTOR_CONTRACT_KEYWORDS and not (
-                isinstance(keyword.value, ast.Constant) and keyword.value.value is None
-            ):
-                return True
-            continue
-        if keyword.arg == "create":
-            if not isinstance(keyword.value, ast.Constant) or keyword.value.value is True:
-                return True
-            continue
-        if keyword.arg == "new":
-            # DEFAULT requests the patcher's normal generated mock; every other
-            # value, including None, is a concrete replacement.
-            if not names.is_default(keyword.value):
-                return True
-            continue
-        if keyword.arg == "autospec":
-            if not (isinstance(keyword.value, ast.Constant) and keyword.value.value in {None, False}):
-                return True
-            continue
-        if keyword.arg == "new_callable":
-            # Choosing another unrestricted Mock subclass changes callability or
-            # awaitability, not the collaborator contract. Unknown factories may
-            # create a concrete non-mock replacement, so decline to guess.
-            if isinstance(keyword.value, ast.Constant) and keyword.value.value is None:
-                continue
-            if names.resolve(keyword.value) in _UNSPECCED_FACTORIES:
-                continue
-            return True
-        if keyword.arg in _PATCH_CONTRACT_KEYWORDS and not (
+    return any(_keyword_supplies_contract(keyword, names, symbol) for keyword in node.keywords)
+
+
+def _keyword_supplies_contract(keyword: ast.keyword, names: _MockNames, symbol: str) -> bool:
+    if keyword.arg is None:
+        return True
+    if symbol in _UNSPECCED_FACTORIES:
+        return keyword.arg in _CONSTRUCTOR_CONTRACT_KEYWORDS and not (
             isinstance(keyword.value, ast.Constant) and keyword.value.value is None
-        ):
-            return True
-    return False
+        )
+    if keyword.arg == "create":
+        return not isinstance(keyword.value, ast.Constant) or keyword.value.value is True
+    if keyword.arg == "new":
+        # DEFAULT requests the patcher's normal generated mock; every other
+        # value, including None, is a concrete replacement.
+        return not names.is_default(keyword.value)
+    if keyword.arg == "autospec":
+        return not (isinstance(keyword.value, ast.Constant) and keyword.value.value in {None, False})
+    if keyword.arg == "new_callable":
+        # Choosing another unrestricted Mock subclass changes callability or
+        # awaitability, not the collaborator contract. Unknown factories may
+        # create a concrete non-mock replacement, so decline to guess.
+        if isinstance(keyword.value, ast.Constant) and keyword.value.value is None:
+            return False
+        return names.resolve(keyword.value) not in _UNSPECCED_FACTORIES
+    return keyword.arg in _PATCH_CONTRACT_KEYWORDS and not (
+        isinstance(keyword.value, ast.Constant) and keyword.value.value is None
+    )
 
 
 def _has_positional_replacement(node: ast.Call, label: str, names: _MockNames) -> bool:

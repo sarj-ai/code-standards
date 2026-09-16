@@ -296,13 +296,13 @@ export default createRule<Options, MessageIds>({
     };
     return {
       Program(node): void {
-        for (const statement of node.body) {
+        function collectModuleBindings(statement: TSESTree.ProgramStatement): void {
           const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration ? statement.declaration : statement;
           if (declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
             typeAliases.set(declaration.id.name, declaration.typeAnnotation);
           }
           if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
-            if (statement.source !== null || statement.exportKind === "type") continue;
+            if (statement.source !== null || statement.exportKind === "type") return;
             for (const specifier of statement.specifiers) {
               if (specifier.type === AST_NODE_TYPES.ExportSpecifier && specifier.exportKind !== "type" && specifier.local.type === AST_NODE_TYPES.Identifier) {
                 exportedNames.add(specifier.local.name);
@@ -315,6 +315,8 @@ export default createRule<Options, MessageIds>({
             exportedNames.add((unwrapTransparentExport(statement.declaration) as TSESTree.Identifier).name);
           }
         }
+
+        for (const statement of node.body) { collectModuleBindings(statement); }
       },
       VariableDeclarator(node): void {
         const declaration = node.parent;

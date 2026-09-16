@@ -201,12 +201,9 @@ def _comment_runs(lines: list[str], data_lines: Sequence[bool]) -> list[list[_Co
 def _code_run_leaders(lines: list[str], data_lines: Sequence[bool]) -> frozenset[int]:
     leaders: set[int] = set()
     for run in _comment_runs(lines, data_lines):
-        voting = [(lineno, body) for lineno, body in run if body and not _is_directive(body)]
-        if not voting:
-            continue
-        code = sum(1 for _, body in voting if _HCL_CODE_RE.match(body))
-        if code * 2 >= len(voting):
-            leaders.add(next(lineno for lineno, body in voting if _HCL_CODE_RE.match(body)))
+        leader = _code_run_leader(run)
+        if leader is not None:
+            leaders.add(leader)
     return frozenset(leaders)
 
 
@@ -280,35 +277,60 @@ def _block_comment_diagnostics(
             continue
 
         indent = match.group(1)
-        comment_lines: list[_CommentLine] = []
-        cursor = index
-        fragment = match.group(2)
-        balanced = False
-        while cursor < len(lines) and not data_lines[cursor]:
-            before_close, separator, _after_close = fragment.partition("*/")
-            body = re.sub(r"^\s*\*\s?", "", before_close).strip()
-            comment_lines.append(_CommentLine(cursor + 1, body))
-            if separator:
-                balanced = True
-                break
-            cursor += 1
-            if cursor < len(lines):
-                fragment = lines[cursor]
+        comment_lines, cursor, balanced = _block_comment_lines(lines, data_lines, index, match.group(2))
 
         if balanced:
-            voting = [(lineno, body) for lineno, body in comment_lines if body and not _is_directive(body)]
-            code_lines = [(lineno, body) for lineno, body in voting if _HCL_CODE_RE.match(body)]
-            if code_lines and len(code_lines) * 2 >= len(voting):
-                diagnostics.append(
-                    Diagnostic(
-                        path=path,
-                        line=code_lines[0][0],
-                        col=len(indent) + 1,
-                        code=code,
-                        message="Commented-out HCL — delete it; recover prior source from version control if needed.",
-                    )
-                )
+            diagnostics.extend(_commented_block_findings(comment_lines, path, indent, code))
             index = cursor + 1
         else:
             index += 1
+    return diagnostics
+
+
+def _code_run_leader(run: list[_CommentLine]) -> int | None:
+    voting = [(lineno, body) for lineno, body in run if body and not _is_directive(body)]
+    if not voting:
+        return None
+    code = sum(1 for _, body in voting if _HCL_CODE_RE.match(body))
+    if code * 2 >= len(voting):
+        return next(lineno for lineno, body in voting if _HCL_CODE_RE.match(body))
+    return None
+
+
+def _block_comment_lines(
+    lines: list[str], data_lines: Sequence[bool], index: int, fragment: str
+) -> tuple[list[_CommentLine], int, bool]:
+    comment_lines: list[_CommentLine] = []
+    cursor = index
+    balanced = False
+    while cursor < len(lines) and not data_lines[cursor]:
+        before_close, separator, _after_close = fragment.partition("*/")
+        body = re.sub(r"^\s*\*\s?", "", before_close).strip()
+        comment_lines.append(_CommentLine(cursor + 1, body))
+        if separator:
+            balanced = True
+            break
+        cursor += 1
+        if cursor < len(lines):
+            fragment = lines[cursor]
+
+    return comment_lines, cursor, balanced
+
+
+def _commented_block_findings(
+    comment_lines: list[_CommentLine], path: Path, indent: str, code: str
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    voting = [(lineno, body) for lineno, body in comment_lines if body and not _is_directive(body)]
+    code_lines = [(lineno, body) for lineno, body in voting if _HCL_CODE_RE.match(body)]
+    if code_lines and len(code_lines) * 2 >= len(voting):
+        diagnostics.append(
+            Diagnostic(
+                path=path,
+                line=code_lines[0][0],
+                col=len(indent) + 1,
+                code=code,
+                message="Commented-out HCL — delete it; recover prior source from version control if needed.",
+            )
+        )
     return diagnostics

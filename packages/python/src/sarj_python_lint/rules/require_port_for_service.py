@@ -271,34 +271,12 @@ class RequirePortForService(ProjectRule):
             return []
 
         classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
-        bound_names: set[str] = set()
-        for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                bound_names.add(node.name)
-            elif isinstance(node, ast.ImportFrom | ast.Import):
-                bound_names.update(alias.asname or alias.name.rpartition(".")[2] for alias in node.names)
+        bound_names = _module_bound_names(tree)
         imports = ImportIndex.from_tree(tree)
         source_lines = source.splitlines()
         data_names = {node.name for node in classes if _is_data_type(node)}
         local_class_names = {node.name for node in classes}
-        local_port_names = {
-            node.name
-            for node in classes
-            if _BASE_NAME_RE.match(node.name)
-            or _declares_interface(node)
-            or any(_dotted_tail(base) in {"ABC", "Protocol"} for base in node.bases)
-            or any(keyword.arg == "metaclass" and _dotted_tail(keyword.value) == "ABCMeta" for keyword in node.keywords)
-        }
-        for _round in range(len(classes)):
-            grown = {
-                node.name
-                for node in classes
-                if node.name not in local_port_names
-                and any(_dotted_tail(base) in local_port_names for base in node.bases)
-            }
-            if not grown:
-                break
-            local_port_names |= grown
+        local_port_names = _local_port_names(classes)
 
         diags: list[Diagnostic] = []
         for node in classes:
@@ -579,10 +557,7 @@ def _injected_collaborator(
         if _PERSISTENCE_DEPENDENCY_RE.search(annotation):
             return None
         candidates.append((annotation, fields))
-    for annotation, fields in candidates:
-        if _behavioral_public_method_count(node, fields) >= _MIN_COLLABORATOR_METHODS:
-            return annotation
-    return None
+    return _behavioral_collaborator(node, candidates)
 
 
 def _self_stored_parameters(
@@ -607,39 +582,18 @@ def _self_stored_parameters(
             continue
         if isinstance(node, (ast.If, ast.While, *_UNSUPPORTED_COMPOUND_STATEMENTS)):
             return _StoredParameters({}, frozenset())
-        if isinstance(node, ast.Assign):
-            targets: list[ast.expr] = list(node.targets)
-            value = node.value
-        elif isinstance(node, ast.AnnAssign):
-            targets = [node.target]
-            value = node.value
-        else:
+        assignment = _self_field_assignment(node)
+        if assignment is None:
             continue
-        if value is None:
-            continue
-        fields = {
-            target.attr
-            for target in targets
-            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
-        }
-        if not fields:
-            continue
-        for field in fields:
-            field_write_counts[field] = field_write_counts.get(field, 0) + 1
+        fields, value = assignment
+        _count_field_writes(fields, field_write_counts)
         parameters = _stored_parameter_names(value, imports)
         if not parameters:
             overwritten_fields.update(fields)
         for parameter in parameters:
             fields_by_parameter.setdefault(parameter, set()).update(fields)
         fallback_stored.update(_fallback_parameter_names(value, imports))
-    return _StoredParameters(
-        {
-            parameter: frozenset(field for field in fields - overwritten_fields if field_write_counts[field] == 1)
-            for parameter, fields in fields_by_parameter.items()
-            if any(field not in overwritten_fields and field_write_counts[field] == 1 for field in fields)
-        },
-        frozenset(fallback_stored),
-    )
+    return _stored_parameters_result(fields_by_parameter, overwritten_fields, field_write_counts, fallback_stored)
 
 
 def _stored_parameter_names(value: ast.expr, imports: ImportIndex) -> set[str]:
@@ -668,73 +622,16 @@ def _annotation_allows_none(annotation: ast.expr | None) -> bool:
     if annotation is None:
         return False
     if isinstance(annotation, ast.Constant):
-        if annotation.value is None:
-            return True
-        if isinstance(annotation.value, str):
-            try:
-                return _annotation_allows_none(ast.parse(annotation.value, mode="eval").body)
-            except SyntaxError, ValueError:
-                return False
-        return False
+        return _constant_annotation_allows_none(annotation)
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         return _annotation_allows_none(annotation.left) or _annotation_allows_none(annotation.right)
-    if isinstance(annotation, ast.Subscript):
-        outer = _dotted_tail(annotation.value)
-        if outer == "Optional":
-            return True
-        if outer == "Annotated":
-            inner = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
-            return _annotation_allows_none(inner)
-        if outer == "Union":
-            members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-            return any(_annotation_allows_none(member) for member in members)
-    return False
-
-
-def _behavioral_public_method_count(node: ast.ClassDef, fields: frozenset[str]) -> int:
-    return sum(
-        _method_invokes_field(method, fields)
-        for method in _methods(node)
-        if method.name != "__init__"
-        and not method.name.startswith("_")
-        and not any(_dotted_tail(dec) in _NON_METHOD_DECORATORS for dec in method.decorator_list)
-    )
-
-
-def _method_invokes_field(
-    method: ast.FunctionDef | ast.AsyncFunctionDef,
-    fields: frozenset[str],
-) -> bool:
-    if _has_unsupported_control_flow(method.body):
-        return False
-    found, _falls_through = _statements_invoke_field(method.body, fields)
-    return found
-
-
-def _has_unsupported_control_flow(statements: list[ast.stmt]) -> bool:
-    stack = list(statements)
-    while stack:
-        statement = stack.pop()
-        if isinstance(statement, (ast.While, *_UNSUPPORTED_COMPOUND_STATEMENTS)):
-            return True
-        if isinstance(statement, ast.If):
-            stack.extend(statement.body)
-            stack.extend(statement.orelse)
-    return False
+    return isinstance(annotation, ast.Subscript) and _subscript_allows_none(annotation)
 
 
 def _statements_invoke_field(statements: list[ast.stmt], fields: frozenset[str]) -> tuple[bool, bool]:
     for statement in statements:
         if isinstance(statement, ast.If):
-            if _node_invokes_field(statement.test, fields):
-                return True, True
-            if isinstance(statement.test, ast.Constant):
-                branch = statement.body if bool(statement.test.value) else statement.orelse
-                found, falls_through = _statements_invoke_field(branch, fields)
-            else:
-                body_found, body_falls = _statements_invoke_field(statement.body, fields)
-                else_found, else_falls = _statements_invoke_field(statement.orelse, fields)
-                found, falls_through = body_found or else_found, body_falls or else_falls
+            found, falls_through = _conditional_invokes_field(statement, fields)
             if found or not falls_through:
                 return found, falls_through
             continue
@@ -776,15 +673,7 @@ def _node_invokes_field(node: ast.AST, fields: frozenset[str]) -> bool:
     if isinstance(node, ast.Compare) and len(node.ops) > 1:
         return False
     if isinstance(node, ast.BoolOp):
-        for value in node.values:
-            if _node_invokes_field(value, fields):
-                return True
-            truth = _static_truth(value)
-            if isinstance(node.op, ast.And) and truth is False:
-                break
-            if isinstance(node.op, ast.Or) and truth is True:
-                break
-        return False
+        return _boolean_invokes_field(node, fields)
     if isinstance(node, ast.IfExp) and (truth := _static_truth(node.test)) is not None:
         branch = node.body if truth else node.orelse
         return _node_invokes_field(branch, fields)
@@ -807,14 +696,7 @@ def _static_truth(node: ast.AST) -> bool | None:
             truth = _static_truth(operand)
             return None if truth is None else not truth
         case ast.BoolOp(op=operator, values=values):
-            truths = [_static_truth(value) for value in values]
-            if isinstance(operator, ast.And):
-                if False in truths:
-                    return False
-                return True if all(truth is True for truth in truths) else None
-            if True in truths:
-                return True
-            return False if all(truth is False for truth in truths) else None
+            return _boolean_static_truth(operator, values)
         case _:
             return None
 
@@ -876,3 +758,180 @@ def _dotted_tail(node: ast.expr) -> str | None:
             return "None"
         case _:
             return None
+
+
+def _local_port_names(classes: list[ast.ClassDef]) -> set[str]:
+    local_port_names = {
+        node.name
+        for node in classes
+        if _BASE_NAME_RE.match(node.name)
+        or _declares_interface(node)
+        or any(_dotted_tail(base) in {"ABC", "Protocol"} for base in node.bases)
+        or any(keyword.arg == "metaclass" and _dotted_tail(keyword.value) == "ABCMeta" for keyword in node.keywords)
+    }
+    _inherit_local_ports(classes, local_port_names)
+    return local_port_names
+
+
+def _module_bound_names(tree: ast.Module) -> set[str]:
+    bound_names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef):
+            bound_names.add(node.name)
+        elif isinstance(node, ast.ImportFrom | ast.Import):
+            bound_names.update(alias.asname or alias.name.rpartition(".")[2] for alias in node.names)
+    return bound_names
+
+
+def _behavioral_collaborator(node: ast.ClassDef, candidates: list[tuple[str, frozenset[str]]]) -> str | None:
+    for annotation, fields in candidates:
+        if _behavioral_public_method_count(node, fields) >= _MIN_COLLABORATOR_METHODS:
+            return annotation
+    return None
+
+
+def _behavioral_public_method_count(node: ast.ClassDef, fields: frozenset[str]) -> int:
+    return sum(
+        _method_invokes_field(method, fields)
+        for method in _methods(node)
+        if method.name != "__init__"
+        and not method.name.startswith("_")
+        and not any(_dotted_tail(dec) in _NON_METHOD_DECORATORS for dec in method.decorator_list)
+    )
+
+
+def _method_invokes_field(
+    method: ast.FunctionDef | ast.AsyncFunctionDef,
+    fields: frozenset[str],
+) -> bool:
+    if _has_unsupported_control_flow(method.body):
+        return False
+    found, _falls_through = _statements_invoke_field(method.body, fields)
+    return found
+
+
+def _has_unsupported_control_flow(statements: list[ast.stmt]) -> bool:
+    stack = list(statements)
+    while stack:
+        statement = stack.pop()
+        if isinstance(statement, (ast.While, *_UNSUPPORTED_COMPOUND_STATEMENTS)):
+            return True
+        if isinstance(statement, ast.If):
+            stack.extend(statement.body)
+            stack.extend(statement.orelse)
+    return False
+
+
+def _self_field_assignment(node: ast.stmt) -> tuple[set[str], ast.expr] | None:
+    if isinstance(node, ast.Assign):
+        targets: list[ast.expr] = list(node.targets)
+        value = node.value
+    elif isinstance(node, ast.AnnAssign):
+        targets = [node.target]
+        value = node.value
+    else:
+        return None
+    if value is None:
+        return None
+    fields = {
+        target.attr
+        for target in targets
+        if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self"
+    }
+    if not fields:
+        return None
+    return fields, value
+
+
+def _stored_parameters_result(
+    fields_by_parameter: dict[str, set[str]],
+    overwritten_fields: set[str],
+    field_write_counts: dict[str, int],
+    fallback_stored: set[str],
+) -> _StoredParameters:
+    return _StoredParameters(
+        {
+            parameter: frozenset(field for field in fields - overwritten_fields if field_write_counts[field] == 1)
+            for parameter, fields in fields_by_parameter.items()
+            if any(field not in overwritten_fields and field_write_counts[field] == 1 for field in fields)
+        },
+        frozenset(fallback_stored),
+    )
+
+
+def _constant_annotation_allows_none(annotation: ast.Constant) -> bool:
+    if annotation.value is None:
+        return True
+    if isinstance(annotation.value, str):
+        try:
+            return _annotation_allows_none(ast.parse(annotation.value, mode="eval").body)
+        except SyntaxError, ValueError:
+            return False
+    return False
+
+
+def _conditional_invokes_field(statement: ast.If, fields: frozenset[str]) -> tuple[bool, bool]:
+    if _node_invokes_field(statement.test, fields):
+        return True, True
+    if isinstance(statement.test, ast.Constant):
+        branch = statement.body if bool(statement.test.value) else statement.orelse
+        found, falls_through = _statements_invoke_field(branch, fields)
+    else:
+        body_found, body_falls = _statements_invoke_field(statement.body, fields)
+        else_found, else_falls = _statements_invoke_field(statement.orelse, fields)
+        found, falls_through = body_found or else_found, body_falls or else_falls
+    return found, falls_through
+
+
+def _boolean_invokes_field(node: ast.BoolOp, fields: frozenset[str]) -> bool:
+    for value in node.values:
+        if _node_invokes_field(value, fields):
+            return True
+        truth = _static_truth(value)
+        if isinstance(node.op, ast.And) and truth is False:
+            break
+        if isinstance(node.op, ast.Or) and truth is True:
+            break
+    return False
+
+
+def _boolean_static_truth(operator: ast.boolop, values: list[ast.expr]) -> bool | None:
+    truths = [_static_truth(value) for value in values]
+    if isinstance(operator, ast.And):
+        if False in truths:
+            return False
+        return True if all(truth is True for truth in truths) else None
+    if True in truths:
+        return True
+    return False if all(truth is False for truth in truths) else None
+
+
+def _subscript_allows_none(annotation: ast.Subscript) -> bool:
+    match _dotted_tail(annotation.value):
+        case "Optional":
+            return True
+        case "Annotated":
+            inner = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
+            return _annotation_allows_none(inner)
+        case "Union":
+            members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+            return any(_annotation_allows_none(member) for member in members)
+        case _:
+            return False
+
+
+def _inherit_local_ports(classes: list[ast.ClassDef], local_port_names: set[str]) -> None:
+    for _round in range(len(classes)):
+        grown = {
+            node.name
+            for node in classes
+            if node.name not in local_port_names and any(_dotted_tail(base) in local_port_names for base in node.bases)
+        }
+        if not grown:
+            break
+        local_port_names |= grown
+
+
+def _count_field_writes(fields: set[str], field_write_counts: dict[str, int]) -> None:
+    for field in fields:
+        field_write_counts[field] = field_write_counts.get(field, 0) + 1

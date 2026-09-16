@@ -680,14 +680,7 @@ def test_mobile_analyzers_use_manifest_destinations_and_pinned_mintfile(tmp_path
     )
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
-    mint_commands = [command for command in seen if command[0] == "mint"]
-    assert mint_commands
-    assert all(command[:5] == ("mint", "run", "--silent", "--mintfile", str(mintfile)) for command in mint_commands)
-    assert any(
-        ("--config", str(swift_config)) == (command[-3], command[-2]) for command in seen if "swiftlint" in command
-    )
-    assert any(str(format_config) in command for command in seen if "swiftformat" in command)
-    assert all("--" not in command for command in seen if "swiftformat" in command)
+    _assert_swift_commands(seen, mintfile, swift_config, format_config)
     assert any(f"--editorconfig={editorconfig}" in command for command in seen if command[0] == "ktlint")
     assert all("--log-level=none" in command for command in seen if command[0] == "ktlint")
     assert any(str(detekt_config) in command for command in seen if command[0] == "detekt")
@@ -696,6 +689,19 @@ def test_mobile_analyzers_use_manifest_destinations_and_pinned_mintfile(tmp_path
     report_argument = detekt_command[detekt_command.index("--report") + 1]
     assert report_argument.startswith("sarif:")
     assert report_argument != "sarif:/dev/stdout"
+
+
+def _assert_swift_commands(
+    seen: list[tuple[str, ...]], mintfile: Path, swift_config: Path, format_config: Path
+) -> None:
+    mint_commands = [command for command in seen if command[0] == "mint"]
+    assert mint_commands
+    assert all(command[:5] == ("mint", "run", "--silent", "--mintfile", str(mintfile)) for command in mint_commands)
+    assert any(
+        ("--config", str(swift_config)) == (command[-3], command[-2]) for command in seen if "swiftlint" in command
+    )
+    assert any(str(format_config) in command for command in seen if "swiftformat" in command)
+    assert all("--" not in command for command in seen if "swiftformat" in command)
 
 
 def test_mobile_analyzers_ignore_same_language_files_outside_manifest_destinations(tmp_path: Path) -> None:

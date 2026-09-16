@@ -81,23 +81,7 @@ def _scope_binding_events(statements: list[ast.stmt]) -> list[str]:
     stack: list[ast.AST] = [*reversed(statements)]
     while stack:
         node = stack.pop()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            bindings.append(node.name)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            bindings.extend(alias.asname or alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, (ast.Assign, ast.Delete)):
-            for target in node.targets:
-                bindings.extend(_bound_target_names(target))
-        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor)):
-            bindings.extend(_bound_target_names(node.target))
-        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
-            bindings.append(node.name)
-        elif isinstance(node, ast.MatchMapping) and node.rest is not None:
-            bindings.append(node.rest)
-        elif isinstance(node, (ast.With, ast.AsyncWith)):
-            for item in node.items:
-                if item.optional_vars is not None:
-                    bindings.extend(_bound_target_names(item.optional_vars))
+        _record_scope_binding(node, bindings)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
             continue
         stack.extend(reversed(list(ast.iter_child_nodes(node))))
@@ -129,16 +113,7 @@ def _random_aliases(tree: ast.Module) -> _RandomAliases:
                 if alias.name == "random" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
             )
         elif isinstance(node, ast.ImportFrom) and node.module == "random":
-            for alias in node.names:
-                local = alias.asname or alias.name
-                if binding_counts.get(local, 0) != 1:
-                    continue
-                if alias.name in _PRNG_FUNCTIONS:
-                    functions.add(local)
-                elif alias.name == "seed":
-                    seeds.add(local)
-                elif alias.name == "Random":
-                    constructors.add(local)
+            _record_random_members(node, binding_counts, functions, seeds, constructors)
     return _RandomAliases(modules, functions, seeds, constructors)
 
 
@@ -325,21 +300,7 @@ def _repeated_regions(node: ast.AST) -> tuple[ast.AST, ...]:
         )
     if not isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
         return ()
-    regions: list[ast.AST] = []
-    prior_generator_repeats = False
-    for generator in node.generators:
-        if prior_generator_repeats:
-            regions.append(generator.iter)
-        this_generator_repeats = not _known_at_most_once(generator.iter)
-        if prior_generator_repeats or this_generator_repeats:
-            regions.extend(generator.ifs)
-        prior_generator_repeats = prior_generator_repeats or this_generator_repeats
-    if prior_generator_repeats:
-        if isinstance(node, ast.DictComp):
-            regions.extend((node.key, node.value))
-        else:
-            regions.append(node.elt)
-    return tuple(regions)
+    return _repeated_comprehension_regions(node)
 
 
 def _aliases_for_test(test: ast.FunctionDef | ast.AsyncFunctionDef, module_aliases: _RandomAliases) -> _RandomAliases:
@@ -428,53 +389,123 @@ class UncontrolledRandomnessInTest(Rule):
         aliases = _random_aliases(tree)
         findings: list[Diagnostic] = []
         for test in _collected_tests(tree):
-            test_aliases = _aliases_for_test(test, aliases)
-            if not test_aliases.modules and not test_aliases.functions and not test_aliases.constructors:
-                continue
-            instances = _unseeded_instances(test.body, test_aliases.modules, test_aliases.constructors)
-            nodes = list(_test_nodes(test))
-            top_level_seed_indexes = {
-                index
-                for index, statement in enumerate(test.body)
-                if isinstance(statement, ast.Expr)
-                and isinstance(statement.value, ast.Call)
-                and _has_deterministic_seed(statement.value, test_aliases.modules, test_aliases.seeds)
-            }
-            for repeated in (node for node in nodes if isinstance(node, _REPEAT_NODES)):
-                owner_index = next(
-                    (
-                        index
-                        for index, statement in enumerate(test.body)
-                        if repeated is statement or repeated in _test_nodes_for_statement(statement)
-                    ),
-                    None,
-                )
-                if owner_index is not None and any(seed_index < owner_index for seed_index in top_level_seed_indexes):
-                    continue
-                calls = [
-                    node
-                    for region in _repeated_regions(repeated)
-                    for node in _bounded_nodes(region)
-                    if isinstance(node, ast.Call)
-                    and _is_prng_call(node, test_aliases.modules, test_aliases.functions, instances)
-                ]
-                if not calls:
-                    continue
-                call = min(calls, key=lambda item: (item.lineno, item.col_offset))
-                findings.append(
-                    Diagnostic(
-                        path=path,
-                        line=call.lineno,
-                        col=call.col_offset + 1,
-                        code=self.code,
-                        severity=Severity.WARNING,
-                        message=(
-                            "a standard-library PRNG sample runs in a potentially repeated test region without a "
-                            "dominating deterministic seed; use an isolated `random.Random(seed)`, inject a "
-                            "deterministic RNG, or use a property-testing framework with recorded seeds."
-                        ),
-                    )
-                )
-                break
+            findings.extend(_test_randomness_findings(test, aliases, path, self.code))
         unique = {(finding.line, finding.col): finding for finding in findings}
         return [unique[key] for key in sorted(unique)]
+
+
+def _record_scope_binding(node: ast.AST, bindings: list[str]) -> None:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        bindings.append(node.name)
+    elif isinstance(node, (ast.Import, ast.ImportFrom)):
+        bindings.extend(alias.asname or alias.name.split(".")[0] for alias in node.names)
+    elif isinstance(node, (ast.Assign, ast.Delete)):
+        for target in node.targets:
+            bindings.extend(_bound_target_names(target))
+    elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor)):
+        bindings.extend(_bound_target_names(node.target))
+    elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
+        bindings.append(node.name)
+    elif isinstance(node, ast.MatchMapping) and node.rest is not None:
+        bindings.append(node.rest)
+    elif isinstance(node, (ast.With, ast.AsyncWith)):
+        for item in node.items:
+            if item.optional_vars is not None:
+                bindings.extend(_bound_target_names(item.optional_vars))
+
+
+def _record_random_members(
+    node: ast.ImportFrom, binding_counts: dict[str, int], functions: set[str], seeds: set[str], constructors: set[str]
+) -> None:
+    for alias in node.names:
+        local = alias.asname or alias.name
+        if binding_counts.get(local, 0) != 1:
+            continue
+        if alias.name in _PRNG_FUNCTIONS:
+            functions.add(local)
+        elif alias.name == "seed":
+            seeds.add(local)
+        elif alias.name == "Random":
+            constructors.add(local)
+
+
+def _repeated_comprehension_regions(
+    node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+) -> tuple[ast.AST, ...]:
+    regions: list[ast.AST] = []
+    prior_generator_repeats = False
+    for generator in node.generators:
+        if prior_generator_repeats:
+            regions.append(generator.iter)
+        this_generator_repeats = not _known_at_most_once(generator.iter)
+        if prior_generator_repeats or this_generator_repeats:
+            regions.extend(generator.ifs)
+        prior_generator_repeats = prior_generator_repeats or this_generator_repeats
+    if prior_generator_repeats:
+        if isinstance(node, ast.DictComp):
+            regions.extend((node.key, node.value))
+        else:
+            regions.append(node.elt)
+    return tuple(regions)
+
+
+def _test_randomness_findings(
+    test: ast.FunctionDef | ast.AsyncFunctionDef, aliases: _RandomAliases, path: Path, code: str
+) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    test_aliases = _aliases_for_test(test, aliases)
+    if not test_aliases.modules and not test_aliases.functions and not test_aliases.constructors:
+        return []
+    instances = _unseeded_instances(test.body, test_aliases.modules, test_aliases.constructors)
+    nodes = list(_test_nodes(test))
+    top_level_seed_indexes = {
+        index
+        for index, statement in enumerate(test.body)
+        if isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Call)
+        and _has_deterministic_seed(statement.value, test_aliases.modules, test_aliases.seeds)
+    }
+    for repeated in (node for node in nodes if isinstance(node, _REPEAT_NODES)):
+        owner_index = _repeated_owner_index(test, repeated)
+        if owner_index is not None and any(seed_index < owner_index for seed_index in top_level_seed_indexes):
+            continue
+        calls = _repeated_random_calls(repeated, test_aliases, instances)
+        if not calls:
+            continue
+        call = min(calls, key=lambda item: (item.lineno, item.col_offset))
+        findings.append(
+            Diagnostic(
+                path=path,
+                line=call.lineno,
+                col=call.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=(
+                    "a standard-library PRNG sample runs in a potentially repeated test region without a "
+                    "dominating deterministic seed; use an isolated `random.Random(seed)`, inject a "
+                    "deterministic RNG, or use a property-testing framework with recorded seeds."
+                ),
+            )
+        )
+        break
+    return findings
+
+
+def _repeated_owner_index(test: ast.FunctionDef | ast.AsyncFunctionDef, repeated: ast.AST) -> int | None:
+    return next(
+        (
+            index
+            for index, statement in enumerate(test.body)
+            if repeated is statement or repeated in _test_nodes_for_statement(statement)
+        ),
+        None,
+    )
+
+
+def _repeated_random_calls(repeated: ast.AST, test_aliases: _RandomAliases, instances: set[str]) -> list[ast.Call]:
+    return [
+        node
+        for region in _repeated_regions(repeated)
+        for node in _bounded_nodes(region)
+        if isinstance(node, ast.Call) and _is_prng_call(node, test_aliases.modules, test_aliases.functions, instances)
+    ]

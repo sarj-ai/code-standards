@@ -268,80 +268,18 @@ def drop_namespace_keys(drop: IndexDrop, active_keys: set[str]) -> frozenset[str
 
 
 def _parse_index_suffix(masked: str, start: int, end: int) -> IndexSuffix | None:
-    cursor = start
-    stage = 0
-    include_open: int | None = None
-    include_close: int | None = None
-    nulls_distinct = ""
-    storage_open: int | None = None
-    storage_close: int | None = None
-    tablespace = ""
+    parser = _IndexSuffixParser(start)
     while True:
-        cursor = _skip_space(masked, cursor, end)
-        if cursor == end:
-            return IndexSuffix(
-                include_open,
-                include_close,
-                nulls_distinct,
-                storage_open,
-                storage_close,
-                tablespace,
-                None,
-            )
-        include = _INCLUDE_RE.match(masked, cursor, end)
-        storage = _WITH_RE.match(masked, cursor, end)
-        if include is not None:
-            if stage > 0:
-                return None
-            opening = include.end() - 1
-            closing = _matching_paren(masked, opening, end)
-            if closing is None:
-                return None
-            include_open = opening
-            include_close = closing
-            cursor = closing + 1
-            stage = 1
-            continue
-        if (match := _NULLS_DISTINCT_RE.match(masked, cursor, end)) is not None:
-            if stage > 1:
-                return None
-            cursor = match.end()
-            nulls_distinct = _normalize_sql(match.group(0))
-            stage = 2
-            continue
-        if storage is not None:
-            if stage > _AFTER_NULLS_STAGE:
-                return None
-            opening = storage.end() - 1
-            closing = _matching_paren(masked, opening, end)
-            if closing is None:
-                return None
-            storage_open = opening
-            storage_close = closing
-            cursor = closing + 1
-            stage = _AFTER_WITH_STAGE
-            continue
-        if (match := _TABLESPACE_RE.match(masked, cursor, end)) is not None:
-            if stage > _AFTER_WITH_STAGE:
-                return None
-            cursor = match.end()
-            tablespace = _normalize_identifier(match.group("tablespace"))
-            stage = 4
-            continue
-        if (match := _WHERE_RE.match(masked, cursor, end)) is not None:
+        parser.cursor = _skip_space(masked, parser.cursor, end)
+        if parser.cursor == end:
+            return parser.result(None)
+        if (match := _WHERE_RE.match(masked, parser.cursor, end)) is not None:
             predicate = masked[match.end() : end]
             if not predicate.strip() or not _has_balanced_parentheses(predicate):
                 return None
-            return IndexSuffix(
-                include_open,
-                include_close,
-                nulls_distinct,
-                storage_open,
-                storage_close,
-                tablespace,
-                match.end(),
-            )
-        return None
+            return parser.result(match.end())
+        if not parser.consume(masked, end):
+            return None
 
 
 def _skip_space(value: str, start: int, end: int) -> int:
@@ -470,15 +408,12 @@ def _split_elements(value: str) -> tuple[str, ...]:
     while position < len(value):
         char = value[position]
         if quote is not None:
-            if char == quote:
-                if position + 1 < len(value) and value[position + 1] == quote:
-                    position += 2
-                    continue
-                quote = None
-        elif char == "$" and (dollar_end := _dollar_quoted_literal_end(value, position)) is not None:
+            position, quote = _advance_quoted_text(value, position, quote)
+            continue
+        if char == "$" and (dollar_end := _dollar_quoted_literal_end(value, position)) is not None:
             position = dollar_end
             continue
-        elif char in {"'", '"'}:
+        if char in {"'", '"'}:
             quote = char
         elif char == "(":
             depth += 1
@@ -502,31 +437,25 @@ def _normalize_sql(value: str) -> str:
     while position < len(value):
         char = value[position]
         if quote is not None:
-            output.append(char)
-            if char == quote:
-                if position + 1 < len(value) and value[position + 1] == quote:
-                    output.append(value[position + 1])
-                    position += 2
-                    continue
-                quote = None
-        elif char == "$" and (dollar_end := _dollar_quoted_literal_end(value, position)) is not None:
-            if pending_space and output:
-                output.append(" ")
+            end, quote = _advance_quoted_text(value, position, quote)
+            output.append(value[position:end])
+            position = end
+            continue
+        if char == "$" and (dollar_end := _dollar_quoted_literal_end(value, position)) is not None:
+            _append_normalizing_space(output, pending_space=pending_space)
             pending_space = False
             output.append(value[position:dollar_end])
             position = dollar_end
             continue
-        elif char in {"'", '"'}:
-            if pending_space and output:
-                output.append(" ")
+        if char in {"'", '"'}:
+            _append_normalizing_space(output, pending_space=pending_space)
             pending_space = False
             quote = char
             output.append(char)
         elif char.isspace():
             pending_space = True
         else:
-            if pending_space and output:
-                output.append(" ")
+            _append_normalizing_space(output, pending_space=pending_space)
             pending_space = False
             output.append(char.lower())
         position += 1
@@ -573,3 +502,84 @@ def _has_local_justification(source: str, start: int, *, unique: bool) -> bool:
         or _REFERENTIAL_JUSTIFICATION_RE.fullmatch(previous) is not None
         or (unique and _UNIQUENESS_JUSTIFICATION_RE.fullmatch(previous) is not None)
     )
+
+
+def _advance_quoted_text(value: str, position: int, quote: str) -> tuple[int, str | None]:
+    if value[position] != quote:
+        return position + 1, quote
+    if position + 1 < len(value) and value[position + 1] == quote:
+        return position + 2, quote
+    return position + 1, None
+
+
+class _IndexSuffixParser:
+    def __init__(self, cursor: int) -> None:
+        self.cursor: int = cursor
+        self.stage: int = 0
+        self.include_open: int | None = None
+        self.include_close: int | None = None
+        self.nulls_distinct: str = ""
+        self.storage_open: int | None = None
+        self.storage_close: int | None = None
+        self.tablespace: str = ""
+
+    def result(self, predicate_start: int | None) -> IndexSuffix:
+        return IndexSuffix(
+            self.include_open,
+            self.include_close,
+            self.nulls_distinct,
+            self.storage_open,
+            self.storage_close,
+            self.tablespace,
+            predicate_start,
+        )
+
+    def consume(self, masked: str, end: int) -> bool:
+        include = _INCLUDE_RE.match(masked, self.cursor, end)
+        storage = _WITH_RE.match(masked, self.cursor, end)
+        if include is not None:
+            span = _suffix_parentheses(masked, include, end, self.stage, 0)
+            if span is None:
+                return False
+            self.include_open, self.include_close = span
+            self.cursor = self.include_close + 1
+            self.stage = 1
+            return True
+        if (match := _NULLS_DISTINCT_RE.match(masked, self.cursor, end)) is not None:
+            if self.stage > 1:
+                return False
+            self.cursor = match.end()
+            self.nulls_distinct = _normalize_sql(match.group(0))
+            self.stage = 2
+            return True
+        if storage is not None:
+            span = _suffix_parentheses(masked, storage, end, self.stage, _AFTER_NULLS_STAGE)
+            if span is None:
+                return False
+            self.storage_open, self.storage_close = span
+            self.cursor = self.storage_close + 1
+            self.stage = _AFTER_WITH_STAGE
+            return True
+        if (match := _TABLESPACE_RE.match(masked, self.cursor, end)) is not None:
+            if self.stage > _AFTER_WITH_STAGE:
+                return False
+            self.cursor = match.end()
+            self.tablespace = _normalize_identifier(match.group("tablespace"))
+            self.stage = 4
+            return True
+        return False
+
+
+def _suffix_parentheses(
+    masked: str, match: re.Match[str], end: int, stage: int, maximum_stage: int
+) -> tuple[int, int] | None:
+    if stage > maximum_stage:
+        return None
+    opening = match.end() - 1
+    closing = _matching_paren(masked, opening, end)
+    return None if closing is None else (opening, closing)
+
+
+def _append_normalizing_space(output: list[str], *, pending_space: bool) -> None:
+    if pending_space and output:
+        output.append(" ")

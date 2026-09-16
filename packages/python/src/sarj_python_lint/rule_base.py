@@ -184,6 +184,9 @@ class RuleDocumentation:
         if len(example_ids) != len(set(example_ids)):
             msg = "rule example IDs must be unique"
             raise ValueError(msg)
+        self._validate_public_scenarios()
+
+    def _validate_public_scenarios(self) -> None:
         public_scenarios = {example.scenario for example in self.examples if example.public}
         for scenario in public_scenarios:
             pair = tuple(example for example in self.examples if example.public and example.scenario == scenario)

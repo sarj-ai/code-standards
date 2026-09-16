@@ -586,3 +586,18 @@ def test_standards_facade_init_rejects_invalid_runtime_profile(tmp_path: Path) -
 
     assert result.status is api.Status.INVALID
     assert result.findings[0].id == "setup.input.invalid"
+
+
+@pytest.mark.parametrize(
+    ("score", "expected"),
+    [(20, None), (21, api.Severity.ERROR), (25, api.Severity.ERROR), (26, api.Severity.ERROR)],
+)
+def test_cognitive_complexity_severity_survives_policy_analysis(
+    tmp_path: Path, score: int, expected: api.Severity | None
+) -> None:
+    source = tmp_path / "sample.py"
+    source.write_text("def sample():\n" + "    if ready: work()\n" * score, encoding="utf-8")
+    report = api.Standards(tmp_path).analyze(["sample.py"], rules=["python:no-excessive-cognitive-complexity"])
+    assert report.completion is api.Completion.COMPLETE
+    assert [item.severity for item in report.diagnostics] == ([] if expected is None else [expected])
+    assert report.exit_code == (1 if expected is api.Severity.ERROR else 0)

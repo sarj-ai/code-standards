@@ -118,32 +118,29 @@ class NoRepeatedStringLiteral(Rule):
         scope_line_of: dict[int, int] = {}
         excluded: set[int] = set()
 
-        def visit(node: ast.AST, scope: int) -> None:
-            for annotation in _annotation_exprs(node):
-                excluded.update(id(child) for child in walk(annotation) if isinstance(child, ast.Constant))
-            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                body = node.body
-                if (
-                    body
-                    and isinstance(body[0], ast.Expr)
-                    and isinstance(body[0].value, ast.Constant)
-                    and isinstance(body[0].value.value, str)
-                ):
-                    excluded.add(id(body[0].value))
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    scope = id(node)
-                    scope_line_of[scope] = node.lineno
-            elif isinstance(node, ast.Lambda):
+        def declaration_scope(
+            node: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef, scope: int
+        ) -> int:
+            body = node.body
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                excluded.add(id(body[0].value))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 scope = id(node)
                 scope_line_of[scope] = node.lineno
-            elif isinstance(node, ast.JoinedStr):
+            return scope
+
+        def collect_literal(node: ast.AST, scope: int) -> None:
+            if isinstance(node, ast.JoinedStr):
                 excluded.update(id(value) for value in node.values)
             elif isinstance(node, ast.MatchValue):
                 excluded.update(id(child) for child in walk(node) if isinstance(child, ast.Constant))
             elif isinstance(node, ast.Call):
-                for kw in node.keywords:
-                    if kw.arg in _SCAFFOLDING_KWARGS:
-                        excluded.update(id(child) for child in walk(kw.value) if isinstance(child, ast.Constant))
+                _exclude_scaffolding_strings(node, excluded)
             elif (
                 isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
@@ -153,13 +150,25 @@ class NoRepeatedStringLiteral(Rule):
             ):
                 occurrences[node.value].append(node)
                 scope_of[id(node)] = scope
+
+        def visit(node: ast.AST, scope: int) -> None:
+            for annotation in _annotation_exprs(node):
+                excluded.update(id(child) for child in walk(annotation) if isinstance(child, ast.Constant))
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                scope = declaration_scope(node, scope)
+            elif isinstance(node, ast.Lambda):
+                scope = id(node)
+                scope_line_of[scope] = node.lineno
+            else:
+                collect_literal(node, scope)
             for child in children(node):
                 visit(child, scope)
 
         visit(tree, _MODULE_SCOPE)
 
         diags: list[Diagnostic] = []
-        for value, nodes in occurrences.items():
+
+        def collect_repetitions(value: str, nodes: list[ast.Constant]) -> None:
             function_scopes = {scope for n in nodes if (scope := scope_of.get(id(n), _MODULE_SCOPE)) != _MODULE_SCOPE}
             canonical = canonical_constants.get(value, ())
             eligible_canonical = tuple(
@@ -182,11 +191,11 @@ class NoRepeatedStringLiteral(Rule):
                     )
                     for node in function_nodes
                 )
-                continue
+                return
             if len(function_scopes) < _MIN_DISTINCT_SCOPES:
-                continue
+                return
             if not _is_cross_scope_structured(value):
-                continue
+                return
             nodes.sort(key=lambda n: (n.lineno, n.col_offset))
             first, *repeats = nodes
             diags.extend(
@@ -204,7 +213,11 @@ class NoRepeatedStringLiteral(Rule):
                 )
                 for node in repeats
             )
+
+        for value, nodes in occurrences.items():
+            collect_repetitions(value, nodes)
         diags.sort(key=lambda d: (d.line, d.col))
+
         return diags
 
 
@@ -293,3 +306,9 @@ def _is_skipped_path(path: Path) -> bool:
         }
     )
     return is_test_path(path) or bool(excluded_parts.intersection(part.lower() for part in path.parts))
+
+
+def _exclude_scaffolding_strings(node: ast.Call, excluded: set[int]) -> None:
+    for kw in node.keywords:
+        if kw.arg in _SCAFFOLDING_KWARGS:
+            excluded.update(id(child) for child in walk(kw.value) if isinstance(child, ast.Constant))

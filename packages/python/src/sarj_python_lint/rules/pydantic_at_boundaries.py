@@ -100,38 +100,39 @@ class PydanticAtBoundaries(Rule):
         private_class_methods = _private_class_function_ids(tree)
         imports = ImportIndex.from_tree(tree, module_scope_only=True)
         fastapi = FastapiIndex(tree, path=path)
-        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
+
+        def collect_boundary(node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
             if _is_overload(node, imports):
-                continue
+                return
             # Private/internal functions are not public boundaries — their
             # return shape is an implementation detail, not a data contract.
             if node.name.startswith("_"):
-                continue
+                return
             # A closure cannot be imported, so it is not a boundary either.
             if id(node) in local or id(node) in private_class_methods:
-                continue
+                return
             # `model_dump`/`asdict`/`to_dict`-style converters declare "this
             # returns a dict" as their contract — that is not a missing model.
             if _is_dict_conversion_name(node.name):
-                continue
+                return
             # Pydantic validator hooks (`@model_validator`/`@field_validator`)
             # take and return raw dict/values by contract — that's the API, not
             # a missing model.
             if _is_framework_hook(node, imports):
-                continue
+                return
             # SARJ094 owns visible routes. Hidden routes remain ordinary Python
             # APIs here unless FastAPI already has a concrete named model.
             routes = fastapi.routes(node)
             if any(not route.is_hidden for route in routes) or any(
                 _has_named_response_model(route.keywords.get("response_model"), imports) for route in routes
             ):
-                continue
+                return
             returns = _resolve_annotation(node.returns)
             if returns is None:
-                continue
+                return
             kind = _classify_return(returns, imports)
             if kind is None or not builds_fixed_record(node) or is_suppressed(source_lines, node.lineno, self.code):
-                continue
+                return
             ann_text = ast.unparse(returns)
             diags.append(
                 Diagnostic(
@@ -145,6 +146,9 @@ class PydanticAtBoundaries(Rule):
                     ),
                 )
             )
+
+        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef):
+            collect_boundary(node)
         return sorted(diags, key=lambda diagnostic: (diagnostic.line, diagnostic.col, diagnostic.message))
 
 
@@ -244,13 +248,7 @@ def _classify_return(node: ast.expr, imports: ImportIndex) -> str | None:
     if _is_typing_type(node.value, imports, "Optional"):
         return _classify_return(node.slice, imports)
     if _is_typing_type(node.value, imports, "Union"):
-        if isinstance(node.slice, ast.Tuple):
-            for elt in node.slice.elts:
-                kind = _classify_return(elt, imports)
-                if kind is not None:
-                    return kind
-            return None
-        return _classify_return(node.slice, imports)
+        return _classify_union_return(node, imports)
     if _is_type(node.value, imports, builtin="list", typing_symbol="List"):
         # Only list-of-untyped-dict is flagged (e.g. `list[dict[str, Any]]`).
         inner = _classify_return(node.slice, imports)
@@ -297,3 +295,13 @@ def _has_named_response_model(node: ast.expr | None, imports: ImportIndex) -> bo
     if _classify_return(resolved, imports) is not None:
         return False
     return not (_is_builtin(resolved, imports, "object") or _is_typing_type(resolved, imports, "Any"))
+
+
+def _classify_union_return(node: ast.Subscript, imports: ImportIndex) -> str | None:
+    if isinstance(node.slice, ast.Tuple):
+        for elt in node.slice.elts:
+            kind = _classify_return(elt, imports)
+            if kind is not None:
+                return kind
+        return None
+    return _classify_return(node.slice, imports)

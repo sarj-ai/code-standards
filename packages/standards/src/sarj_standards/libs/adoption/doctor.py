@@ -552,53 +552,65 @@ def _check_hook_manager(root: Path) -> Iterator[Finding]:
             ),
         )
     if adopted.hook_manager == "pre-commit":
-        if hooks.precommit_runs_staged_check(root):
-            yield Finding(
-                Level.OK,
-                ".pre-commit-config.yaml",
-                "runs exactly one canonical staged check",
-                "doctor.hooks.precommit",
-            )
-            if _git_worktree(root) and "pre-commit" not in installed:
-                yield Finding(
-                    Level.WARN,
-                    ".git/hooks/pre-commit",
-                    "the configuration is healthy, but this checkout has no installed commit hook",
-                    "doctor.hooks.precommit-install",
-                    "run `code-standards doctor --repair`",
-                )
-        else:
-            yield Finding(
-                Level.DRIFT,
-                ".pre-commit-config.yaml",
-                "pre-commit does not run exactly one canonical `code-standards check --staged` hook",
-                "doctor.hooks.precommit",
-                "run `code-standards update --offline`",
-            )
-        if hooks.precommit_runs_commit_message_check(root):
-            yield Finding(
-                Level.OK,
-                ".pre-commit-config.yaml",
-                "runs the canonical managed commit-message check",
-                "doctor.hooks.commit-message",
-            )
-            if _git_worktree(root) and "pre-commit" not in commit_message_installed:
-                yield Finding(
-                    Level.WARN,
-                    ".git/hooks/commit-msg",
-                    "the configuration is healthy, but commit-msg is not installed",
-                    "doctor.hooks.commit-message-install",
-                    "run `code-standards doctor --repair`",
-                )
-        else:
-            yield Finding(
-                Level.DRIFT,
-                ".pre-commit-config.yaml",
-                "pre-commit does not run the canonical managed commit-message check",
-                "doctor.hooks.commit-message",
-                "run `code-standards update --offline`",
-            )
+        yield from _check_precommit_hooks(root, installed, commit_message_installed)
         return
+    yield from _check_lefthook_hooks(root, installed, commit_message_installed)
+
+
+def _check_precommit_hooks(
+    root: Path, installed: frozenset[str], commit_message_installed: frozenset[str]
+) -> Iterator[Finding]:
+    if hooks.precommit_runs_staged_check(root):
+        yield Finding(
+            Level.OK,
+            ".pre-commit-config.yaml",
+            "runs exactly one canonical staged check",
+            "doctor.hooks.precommit",
+        )
+        if _git_worktree(root) and "pre-commit" not in installed:
+            yield Finding(
+                Level.WARN,
+                ".git/hooks/pre-commit",
+                "the configuration is healthy, but this checkout has no installed commit hook",
+                "doctor.hooks.precommit-install",
+                "run `code-standards doctor --repair`",
+            )
+    else:
+        yield Finding(
+            Level.DRIFT,
+            ".pre-commit-config.yaml",
+            "pre-commit does not run exactly one canonical `code-standards check --staged` hook",
+            "doctor.hooks.precommit",
+            "run `code-standards update --offline`",
+        )
+    if hooks.precommit_runs_commit_message_check(root):
+        yield Finding(
+            Level.OK,
+            ".pre-commit-config.yaml",
+            "runs the canonical managed commit-message check",
+            "doctor.hooks.commit-message",
+        )
+        if _git_worktree(root) and "pre-commit" not in commit_message_installed:
+            yield Finding(
+                Level.WARN,
+                ".git/hooks/commit-msg",
+                "the configuration is healthy, but commit-msg is not installed",
+                "doctor.hooks.commit-message-install",
+                "run `code-standards doctor --repair`",
+            )
+    else:
+        yield Finding(
+            Level.DRIFT,
+            ".pre-commit-config.yaml",
+            "pre-commit does not run the canonical managed commit-message check",
+            "doctor.hooks.commit-message",
+            "run `code-standards update --offline`",
+        )
+
+
+def _check_lefthook_hooks(
+    root: Path, installed: frozenset[str], commit_message_installed: frozenset[str]
+) -> Iterator[Finding]:
     path = hooks.lefthook_config(root)
     if path is not None and hooks.lefthook_runs_staged_check(root):
         yield Finding(Level.OK, path.name, "runs the canonical staged check", "doctor.hooks.lefthook")
@@ -834,51 +846,55 @@ def check_pyright_deprecated(root: Path, files: Sequence[Path] | None = None) ->
 
 def check_ruff_policy_authority(root: Path, files: Sequence[Path] | None = None) -> Iterator[Finding]:
     for path in files if files is not None else _walk(root):
-        if path.name not in _RUFF_CONFIG_NAMES:
-            continue
-        try:
-            parsed: object = tomllib.loads(_read(path))
-        except tomllib.TOMLDecodeError:
-            continue
-        document = manifest.as_table(parsed)
-        ruff = manifest.as_table(manifest.as_table(document.get("tool")).get("ruff"))
-        if not ruff and path.name != "pyproject.toml":
-            ruff = document
-        if not ruff:
-            continue
-        extended = ruff.get("extend")
-        if not isinstance(extended, str):
-            continue
-        if not _ruff_extend_reaches_canonical(root, path, extended):
-            yield Finding(
-                Level.DRIFT,
-                f"{path.relative_to(root)}: Ruff config",
-                f"extends another project config ({extended}) instead of the canonical .ruff-strict.toml",
-                "doctor.ruff.authority",
-                "extend the project directly from `.ruff-strict.toml`",
-            )
-        lint = manifest.as_table(ruff.get("lint"))
-        table = "tool.ruff.lint" if path.name == "pyproject.toml" else "lint"
-        for key in sorted(_RUFF_REPLACEMENT_KEYS.intersection(lint)):
-            yield Finding(
-                Level.DRIFT,
-                f"{path.relative_to(root)}: [{table}].{key}",
-                f"replaces inherited Ruff policy; use `extend-{key}` so the canonical config remains authoritative",
-                "doctor.ruff.replaces-policy",
-                f"replace `{key}` with `extend-{key}`",
-            )
-        tidy_imports = manifest.as_table(lint.get("flake8-tidy-imports"))
-        if "banned-api" in tidy_imports:
-            yield Finding(
-                Level.DRIFT,
-                f"{path.relative_to(root)}: [{table}.flake8-tidy-imports.banned-api]",
-                (
-                    "replaces the inherited banned API map and can silently re-enable canonical bans; "
-                    "move repository-wide bans into Standards and remove this table"
-                ),
-                "doctor.ruff.replaces-policy",
-                "remove the local `banned-api` table after contributing any additional bans to Standards",
-            )
+        yield from _check_ruff_file_policy(root, path)
+
+
+def _check_ruff_file_policy(root: Path, path: Path) -> Iterator[Finding]:
+    if path.name not in _RUFF_CONFIG_NAMES:
+        return
+    try:
+        parsed: object = tomllib.loads(_read(path))
+    except tomllib.TOMLDecodeError:
+        return
+    document = manifest.as_table(parsed)
+    ruff = manifest.as_table(manifest.as_table(document.get("tool")).get("ruff"))
+    if not ruff and path.name != "pyproject.toml":
+        ruff = document
+    if not ruff:
+        return
+    extended = ruff.get("extend")
+    if not isinstance(extended, str):
+        return
+    if not _ruff_extend_reaches_canonical(root, path, extended):
+        yield Finding(
+            Level.DRIFT,
+            f"{path.relative_to(root)}: Ruff config",
+            f"extends another project config ({extended}) instead of the canonical .ruff-strict.toml",
+            "doctor.ruff.authority",
+            "extend the project directly from `.ruff-strict.toml`",
+        )
+    lint = manifest.as_table(ruff.get("lint"))
+    table = "tool.ruff.lint" if path.name == "pyproject.toml" else "lint"
+    for key in sorted(_RUFF_REPLACEMENT_KEYS.intersection(lint)):
+        yield Finding(
+            Level.DRIFT,
+            f"{path.relative_to(root)}: [{table}].{key}",
+            f"replaces inherited Ruff policy; use `extend-{key}` so the canonical config remains authoritative",
+            "doctor.ruff.replaces-policy",
+            f"replace `{key}` with `extend-{key}`",
+        )
+    tidy_imports = manifest.as_table(lint.get("flake8-tidy-imports"))
+    if "banned-api" in tidy_imports:
+        yield Finding(
+            Level.DRIFT,
+            f"{path.relative_to(root)}: [{table}.flake8-tidy-imports.banned-api]",
+            (
+                "replaces the inherited banned API map and can silently re-enable canonical bans; "
+                "move repository-wide bans into Standards and remove this table"
+            ),
+            "doctor.ruff.replaces-policy",
+            "remove the local `banned-api` table after contributing any additional bans to Standards",
+        )
 
 
 def _ruff_extend_reaches_canonical(root: Path, source: Path, extended: str) -> bool:
@@ -959,63 +975,67 @@ def _check_manifest(root: Path) -> Iterator[Finding]:
 def _check_pin_files(root: Path, files: Sequence[Path], installed: Mapping[str, str]) -> Iterator[Finding]:
     candidates = (path for path in files if _is_pin_site(path))
     for path in candidates:
-        original = _read(path)
-        migration = launcher.rewrite_legacy_repository_invocations(original)
-        if migration.contents != original:
+        yield from _check_pin_file(root, path, installed)
+
+
+def _check_pin_file(root: Path, path: Path, installed: Mapping[str, str]) -> Iterator[Finding]:
+    original = _read(path)
+    migration = launcher.rewrite_legacy_repository_invocations(original)
+    if migration.contents != original:
+        yield Finding(
+            Level.DRIFT,
+            path.relative_to(root).as_posix(),
+            "legacy Standards launcher; the shared bootstrap selects the bundle from TOML",
+            "doctor.launcher.legacy",
+            "run `code-standards doctor --repair`",
+        )
+    for match in _PIN.finditer(_read(path)):
+        name = match.group("name")
+        if name == launcher.BOOTSTRAP_PACKAGE and migration.contents != original:
+            continue
+        pinned = match.group("version")
+        canonical = "code-standards" if name == "sarj-standards" else name
+        current = installed.get(canonical)
+        where = f"{path.relative_to(root)}: {name}{match.group('op')}{pinned}"
+        if current is None:
+            yield Finding(
+                Level.WARN,
+                where,
+                f"{name} is not installed here, so the pin is unverified",
+                "doctor.version.unverified",
+            )
+        elif name == canonical and pinned == current and match.group("op") == "==":
+            yield Finding(Level.OK, where, "matches the installed wheel", "doctor.version.pin")
+        else:
             yield Finding(
                 Level.DRIFT,
-                path.relative_to(root).as_posix(),
-                "legacy Standards launcher; the shared bootstrap selects the bundle from TOML",
-                "doctor.launcher.legacy",
-                "run `code-standards doctor --repair`",
+                where,
+                f"installed {canonical} is {current}; Sarj toolchain dependencies must use the canonical name "
+                "and exact `==` pins",
+                "doctor.version.pin",
+                "run `code-standards update`",
             )
-        for match in _PIN.finditer(_read(path)):
-            name = match.group("name")
-            if name == launcher.BOOTSTRAP_PACKAGE and migration.contents != original:
-                continue
-            pinned = match.group("version")
-            canonical = "code-standards" if name == "sarj-standards" else name
-            current = installed.get(canonical)
-            where = f"{path.relative_to(root)}: {name}{match.group('op')}{pinned}"
-            if current is None:
-                yield Finding(
-                    Level.WARN,
-                    where,
-                    f"{name} is not installed here, so the pin is unverified",
-                    "doctor.version.unverified",
-                )
-            elif name == canonical and pinned == current and match.group("op") == "==":
-                yield Finding(Level.OK, where, "matches the installed wheel", "doctor.version.pin")
-            else:
-                yield Finding(
-                    Level.DRIFT,
-                    where,
-                    f"installed {canonical} is {current}; Sarj toolchain dependencies must use the canonical name "
-                    "and exact `==` pins",
-                    "doctor.version.pin",
-                    "run `code-standards update`",
-                )
-        for match in _PREAPPROVED_ESLINT.finditer(_read(path)):
-            pinned = match.group("version")
-            current = installed.get(_ESLINT_PLUGIN)
-            where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
-            if current is None:
-                yield Finding(
-                    Level.WARN,
-                    where,
-                    "the preapproved internal package version is unverified",
-                    "doctor.version.unverified",
-                )
-            elif pinned == current:
-                yield Finding(Level.OK, where, "matches the tested peer set", "doctor.version.pin")
-            else:
-                yield Finding(
-                    Level.DRIFT,
-                    where,
-                    f"the tested internal plugin is {_ESLINT_PLUGIN}@{current}",
-                    "doctor.version.pin",
-                    "run `code-standards update`",
-                )
+    for match in _PREAPPROVED_ESLINT.finditer(_read(path)):
+        pinned = match.group("version")
+        current = installed.get(_ESLINT_PLUGIN)
+        where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
+        if current is None:
+            yield Finding(
+                Level.WARN,
+                where,
+                "the preapproved internal package version is unverified",
+                "doctor.version.unverified",
+            )
+        elif pinned == current:
+            yield Finding(Level.OK, where, "matches the tested peer set", "doctor.version.pin")
+        else:
+            yield Finding(
+                Level.DRIFT,
+                where,
+                f"the tested internal plugin is {_ESLINT_PLUGIN}@{current}",
+                "doctor.version.pin",
+                "run `code-standards update`",
+            )
 
 
 def _check_legacy_in_project_launcher(root: Path) -> Iterator[Finding]:
@@ -1123,7 +1143,7 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
     return VersionPinRewrite(pinned, tuple(sorted(changed)))
 
 
-def _rewrite_age_gate_preapprovals(  # ruff: ignore[too-many-locals] -- lossless policy rewriting tracks layout.
+def _rewrite_age_gate_preapprovals(
     text: str,
     approvals: Mapping[str, str],
 ) -> AgeGateRewrite:
@@ -1133,31 +1153,37 @@ def _rewrite_age_gate_preapprovals(  # ruff: ignore[too-many-locals] -- lossless
         header = _AGE_GATE_YAML_HEADER.fullmatch(line.rstrip("\r\n"))
         if header is None:
             continue
-        end = index + 1
         retained: list[str] = []
         trailing: list[str] = []
-        saw_item = False
-        while end < len(lines):
-            candidate = lines[end]
-            stripped = candidate.strip()
-            indentation = len(candidate) - len(candidate.lstrip(" \t"))
-            if stripped and indentation <= len(header.group("indent")) and (not stripped.startswith("#") or saw_item):
-                while retained and not retained[-1].strip():
-                    trailing.insert(0, retained.pop())
-                break
-            item = _AGE_GATE_YAML_ITEM.fullmatch(candidate.rstrip("\r\n"))
-            if item is None:
-                retained.append(candidate)
-            else:
-                saw_item = True
-                value = item.group("value")
-                package = next(
-                    (name for name in managed if value == name or value.startswith(f"{name}@")),
-                    None,
-                )
-                if package is None:
+
+        def retain_existing_items(index: int, header: re.Match[str], retained: list[str], trailing: list[str]) -> int:
+            end = index + 1
+            saw_item = False
+            while end < len(lines):
+                candidate = lines[end]
+                stripped = candidate.strip()
+                indentation = len(candidate) - len(candidate.lstrip(" \t"))
+                if (
+                    stripped
+                    and indentation <= len(header.group("indent"))
+                    and (not stripped.startswith("#") or saw_item)
+                ):
+                    while retained and not retained[-1].strip():
+                        trailing.insert(0, retained.pop())
+                    break
+                item = _AGE_GATE_YAML_ITEM.fullmatch(candidate.rstrip("\r\n"))
+                if item is None:
                     retained.append(candidate)
-            end += 1
+                else:
+                    saw_item = True
+                    value = item.group("value")
+                    package = _managed_preapproval(value, managed)
+                    if package is None:
+                        retained.append(candidate)
+                end += 1
+            return end
+
+        end = retain_existing_items(index, header, retained, trailing)
         item_indent = f"{header.group('indent')}  "
         rendered = [f'{item_indent}- "{name}@{approvals[name]}"\n' for name in sorted(managed)]
         replacement = [line, *retained, *rendered, *trailing]
@@ -1176,6 +1202,13 @@ def _rewrite_age_gate_preapprovals(  # ruff: ignore[too-many-locals] -- lossless
 
     rewritten = _NPM_AGE_GATE_EXCLUDE.sub(npm_replacement, text, count=1)
     return AgeGateRewrite(rewritten, managed if rewritten != text else frozenset())
+
+
+def _managed_preapproval(value: str, managed: frozenset[str]) -> str | None:
+    return next(
+        (name for name in managed if value == name or value.startswith(f"{name}@")),
+        None,
+    )
 
 
 def plan_version_pin_updates(
@@ -1229,62 +1262,66 @@ def _check_eslint_plugin(root: Path, files: Sequence[Path]) -> Iterator[Finding]
     # A missing peer manifest is a packaging defect and must fail loudly.
     floor = manifest.eslint_peers()[_ESLINT_PLUGIN]
     for path in _candidate_files(files, (".json",)):
-        if path.name != "package.json":
-            continue
-        text = _read(path)
-        try:
-            pinned = _package_json_pin_text(text)
-        except json.JSONDecodeError as exc:
-            if path != root / "package.json" and _ESLINT_PLUGIN not in text:
-                continue
-            yield Finding(
-                Level.DRIFT,
-                str(path.relative_to(root)),
-                f"invalid package.json at line {exc.lineno}, column {exc.colno}: {exc.msg}",
-                "doctor.package-json.invalid",
-                "repair package.json, then rerun doctor",
-            )
-            continue
-        except RecursionError:
-            yield Finding(
-                Level.DRIFT,
-                str(path.relative_to(root)),
-                "invalid package.json: document nesting is too deep",
-                "doctor.package-json.invalid",
-                "repair package.json, then rerun doctor",
-            )
-            continue
-        if pinned is None:
-            continue
-        where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
-        if pinned.startswith("file:") and _local_eslint_plugin_matches(root, path, pinned, floor):
-            yield Finding(
-                Level.OK,
-                where,
-                "local plugin package matches the tested peer version",
-                "doctor.eslint.plugin",
-            )
-            continue
-        if pinned.startswith(_LOCAL_SPECIFIERS):
-            yield Finding(
-                Level.WARN,
-                f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}",
-                "local/workspace plugin source cannot prove the published tested version",
-                "doctor.eslint.plugin-unverified",
-                "use the exact published peer outside local plugin development",
-            )
-            continue
-        if _is_exact_pin(pinned, floor):
-            yield Finding(Level.OK, where, "matches the tested peer set", "doctor.eslint.plugin")
-        else:
-            yield Finding(
-                Level.DRIFT,
-                where,
-                f"the bundled eslint.strict.mjs is tested against {floor};"
-                " see `code-standards show peers` for the whole resolvable set",
-                "doctor.eslint.plugin",
-                "run `code-standards update`",
-            )
+        yield from _check_eslint_package(root, path, floor)
+
+
+def _check_eslint_package(root: Path, path: Path, floor: str) -> Iterator[Finding]:
+    if path.name != "package.json":
+        return
+    text = _read(path)
+    try:
+        pinned = _package_json_pin_text(text)
+    except json.JSONDecodeError as exc:
+        if path != root / "package.json" and _ESLINT_PLUGIN not in text:
+            return
+        yield Finding(
+            Level.DRIFT,
+            str(path.relative_to(root)),
+            f"invalid package.json at line {exc.lineno}, column {exc.colno}: {exc.msg}",
+            "doctor.package-json.invalid",
+            "repair package.json, then rerun doctor",
+        )
+        return
+    except RecursionError:
+        yield Finding(
+            Level.DRIFT,
+            str(path.relative_to(root)),
+            "invalid package.json: document nesting is too deep",
+            "doctor.package-json.invalid",
+            "repair package.json, then rerun doctor",
+        )
+        return
+    if pinned is None:
+        return
+    where = f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}"
+    if pinned.startswith("file:") and _local_eslint_plugin_matches(root, path, pinned, floor):
+        yield Finding(
+            Level.OK,
+            where,
+            "local plugin package matches the tested peer version",
+            "doctor.eslint.plugin",
+        )
+        return
+    if pinned.startswith(_LOCAL_SPECIFIERS):
+        yield Finding(
+            Level.WARN,
+            f"{path.relative_to(root)}: {_ESLINT_PLUGIN}@{pinned}",
+            "local/workspace plugin source cannot prove the published tested version",
+            "doctor.eslint.plugin-unverified",
+            "use the exact published peer outside local plugin development",
+        )
+        return
+    if _is_exact_pin(pinned, floor):
+        yield Finding(Level.OK, where, "matches the tested peer set", "doctor.eslint.plugin")
+    else:
+        yield Finding(
+            Level.DRIFT,
+            where,
+            f"the bundled eslint.strict.mjs is tested against {floor};"
+            " see `code-standards show peers` for the whole resolvable set",
+            "doctor.eslint.plugin",
+            "run `code-standards update`",
+        )
 
 
 def _local_eslint_plugin_matches(root: Path, manifest_path: Path, pinned: str, floor: str) -> bool:
@@ -1303,7 +1340,7 @@ def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
     return isinstance(value, dict)
 
 
-def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too-many-locals] -- validates each declared adoption site once
+def _check_adoption_wiring(root: Path) -> Iterator[Finding]:
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
@@ -1323,148 +1360,163 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:  # ruff: ignore[too
                 f"set `dest.{kind}` to an existing directory inside the repository",
             )
     for name in adopted.configs:
-        spec = _CONFIG_TARGETS.get(name)
-        if spec is None:
+        yield from _check_adopted_config(root, name, destinations)
+
+    yield from _check_python_wiring(root, destinations["python"], adopted)
+    yield from _check_typescript_wiring(root, destinations["typescript"], adopted)
+
+
+def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: manifest.Manifest) -> Iterator[Finding]:
+    if typescript_root is None or "eslint" not in adopted.configs:
+        return
+    entrypoints = [typescript_root / name for name in _ESLINT_CONFIG_NAMES if (typescript_root / name).is_file()]
+    if len(entrypoints) > 1:
+        yield Finding(
+            Level.DRIFT,
+            str(typescript_root.relative_to(root)),
+            f"multiple ESLint flat configs are active: {', '.join(path.name for path in entrypoints)}",
+            "doctor.eslint.ambiguous-config",
+            "keep one ESLint flat config and remove the shadowed duplicates",
+        )
+    active_entrypoint = entrypoints[0] if entrypoints else typescript_root / "eslint.config.mjs"
+    if _eslint_wiring_reaches_strict(active_entrypoint, typescript_root):
+        yield Finding(
+            Level.OK,
+            str(active_entrypoint.relative_to(root)),
+            "references eslint.strict.mjs",
+            "doctor.eslint.wiring",
+        )
+    else:
+        yield Finding(
+            Level.DRIFT,
+            str(active_entrypoint.relative_to(root)),
+            "does not reference eslint.strict.mjs directly or through a local config",
+            "doctor.eslint.wiring",
+            "import and spread `./eslint.strict.mjs` from the active ESLint config chain",
+        )
+    shadowing = _nested_eslint_configs(typescript_root, active_entrypoint)
+    if shadowing:
+        rendered = ", ".join(path.relative_to(root).as_posix() for path in shadowing)
+        yield Finding(
+            Level.DRIFT,
+            str(typescript_root.relative_to(root)),
+            f"package-local ESLint configs can bypass the adopted config: {rendered}",
+            "doctor.eslint.shadowed-config",
+            "make each package config import the adopted eslint.strict.mjs chain, or remove the shadowing config",
+        )
+    yield from _check_eslint_peer_set(root, typescript_root)
+
+
+def _check_python_wiring(root: Path, python_root: Path | None, adopted: manifest.Manifest) -> Iterator[Finding]:
+    if python_root is None:
+        return
+    if "ruff" in adopted.configs:
+        competing = [path for name in _STANDALONE_RUFF_CONFIG_NAMES if (path := python_root / name).is_file()]
+        if competing:
+            rendered = ", ".join(path.name for path in competing)
             yield Finding(
                 Level.DRIFT,
-                manifest.MANIFEST_NAME,
-                f"declares unknown config {name!r}",
-                "doctor.config.unknown",
-                "remove or correct the unknown config name in the adoption manifest",
+                str(python_root.relative_to(root) or "."),
+                f"standalone Ruff config(s) bypass pyproject.toml and the adopted chain: {rendered}",
+                "doctor.ruff.ambiguous-config",
+                "consolidate the standalone Ruff settings into pyproject.toml, remove them, then rerun doctor",
             )
-            continue
-        standard_source, _application_source, target_name, kind = spec
-        destination = destinations[kind]
-        if destination is None:
-            continue
-        target = destination / target_name
-        source_name = standard_source
-        expected = CONFIGS_DIR / source_name
-        if not target.is_file():
+        yield from _check_text_wiring(
+            root,
+            python_root / "pyproject.toml",
+            ".ruff-strict.toml",
+            "doctor.ruff.wiring",
+            'add `extend = ".ruff-strict.toml"` under `[tool.ruff]`',
+        )
+    if "pyright" in adopted.configs:
+        configs = (python_root / "pyrightconfig.json", python_root / "pyrightconfig.jsonc")
+        active = next((path for path in configs if path.is_file()), configs[0])
+        yield from _check_text_wiring(
+            root,
+            active,
+            ".basedpyright-strict.json",
+            "doctor.pyright.wiring",
+            "set `extends` to `.basedpyright-strict.json`",
+        )
+
+
+def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path | None]) -> Iterator[Finding]:
+    spec = _CONFIG_TARGETS.get(name)
+    if spec is None:
+        yield Finding(
+            Level.DRIFT,
+            manifest.MANIFEST_NAME,
+            f"declares unknown config {name!r}",
+            "doctor.config.unknown",
+            "remove or correct the unknown config name in the adoption manifest",
+        )
+        return
+    standard_source, _application_source, target_name, kind = spec
+    destination = destinations[kind]
+    if destination is None:
+        return
+    target = destination / target_name
+    source_name = standard_source
+    expected = CONFIGS_DIR / source_name
+    if not target.is_file():
+        yield Finding(
+            Level.DRIFT,
+            str(target.relative_to(root)),
+            f"declared {name} config is missing",
+            "doctor.config.missing",
+            "run `code-standards update`",
+        )
+    elif target.read_bytes() != expected.read_bytes():
+        if is_link_like(target):
+            linked = target.resolve(strict=False)
             yield Finding(
                 Level.DRIFT,
                 str(target.relative_to(root)),
-                f"declared {name} config is missing",
+                f"declared {name} config is a source-controlled link to {linked.relative_to(root) if linked.is_relative_to(root) else linked} and differs from the executing bundle",
+                "doctor.config.source-drift",
+                "update or rebase the Standards source checkout; automatic repair will not replace a source-controlled link",
+            )
+            return
+        yield Finding(
+            Level.DRIFT,
+            str(target.relative_to(root)),
+            f"declared {name} config differs from the installed bundle",
+            "doctor.config.drift",
+            "run `code-standards update`",
+        )
+    else:
+        yield Finding(Level.OK, str(target.relative_to(root)), f"{name} config is current", "doctor.config.current")
+    if name == "pyright":
+        yield from _check_python_companions(root, destination)
+
+
+def _check_python_companions(root: Path, destination: Path) -> Iterator[Finding]:
+    for companion_name, (companion_source, companion_target) in PYTHON_COMPANION_CONFIGS.items():
+        companion = destination / companion_target
+        companion_expected = CONFIGS_DIR / companion_source
+        if not companion.is_file():
+            yield Finding(
+                Level.DRIFT,
+                str(companion.relative_to(root)),
+                f"{companion_name} companion config is missing",
                 "doctor.config.missing",
                 "run `code-standards update`",
             )
-        elif target.read_bytes() != expected.read_bytes():
-            if is_link_like(target):
-                linked = target.resolve(strict=False)
-                yield Finding(
-                    Level.DRIFT,
-                    str(target.relative_to(root)),
-                    f"declared {name} config is a source-controlled link to {linked.relative_to(root) if linked.is_relative_to(root) else linked} and differs from the executing bundle",
-                    "doctor.config.source-drift",
-                    "update or rebase the Standards source checkout; automatic repair will not replace a source-controlled link",
-                )
-                continue
+        elif companion.read_bytes() != companion_expected.read_bytes():
             yield Finding(
                 Level.DRIFT,
-                str(target.relative_to(root)),
-                f"declared {name} config differs from the installed bundle",
+                str(companion.relative_to(root)),
+                f"{companion_name} companion config differs from the installed bundle",
                 "doctor.config.drift",
                 "run `code-standards update`",
             )
         else:
-            yield Finding(Level.OK, str(target.relative_to(root)), f"{name} config is current", "doctor.config.current")
-        if name == "pyright":
-            for companion_name, (companion_source, companion_target) in PYTHON_COMPANION_CONFIGS.items():
-                companion = destination / companion_target
-                companion_expected = CONFIGS_DIR / companion_source
-                if not companion.is_file():
-                    yield Finding(
-                        Level.DRIFT,
-                        str(companion.relative_to(root)),
-                        f"{companion_name} companion config is missing",
-                        "doctor.config.missing",
-                        "run `code-standards update`",
-                    )
-                elif companion.read_bytes() != companion_expected.read_bytes():
-                    yield Finding(
-                        Level.DRIFT,
-                        str(companion.relative_to(root)),
-                        f"{companion_name} companion config differs from the installed bundle",
-                        "doctor.config.drift",
-                        "run `code-standards update`",
-                    )
-                else:
-                    yield Finding(
-                        Level.OK,
-                        str(companion.relative_to(root)),
-                        f"{companion_name} companion config is current",
-                        "doctor.config.current",
-                    )
-
-    python_root = destinations["python"]
-    if python_root is not None:
-        if "ruff" in adopted.configs:
-            competing = [path for name in _STANDALONE_RUFF_CONFIG_NAMES if (path := python_root / name).is_file()]
-            if competing:
-                rendered = ", ".join(path.name for path in competing)
-                yield Finding(
-                    Level.DRIFT,
-                    str(python_root.relative_to(root) or "."),
-                    f"standalone Ruff config(s) bypass pyproject.toml and the adopted chain: {rendered}",
-                    "doctor.ruff.ambiguous-config",
-                    "consolidate the standalone Ruff settings into pyproject.toml, remove them, then rerun doctor",
-                )
-            yield from _check_text_wiring(
-                root,
-                python_root / "pyproject.toml",
-                ".ruff-strict.toml",
-                "doctor.ruff.wiring",
-                'add `extend = ".ruff-strict.toml"` under `[tool.ruff]`',
-            )
-        if "pyright" in adopted.configs:
-            configs = (python_root / "pyrightconfig.json", python_root / "pyrightconfig.jsonc")
-            active = next((path for path in configs if path.is_file()), configs[0])
-            yield from _check_text_wiring(
-                root,
-                active,
-                ".basedpyright-strict.json",
-                "doctor.pyright.wiring",
-                "set `extends` to `.basedpyright-strict.json`",
-            )
-
-    typescript_root = destinations["typescript"]
-    if typescript_root is not None and "eslint" in adopted.configs:
-        entrypoints = [typescript_root / name for name in _ESLINT_CONFIG_NAMES if (typescript_root / name).is_file()]
-        if len(entrypoints) > 1:
-            yield Finding(
-                Level.DRIFT,
-                str(typescript_root.relative_to(root)),
-                f"multiple ESLint flat configs are active: {', '.join(path.name for path in entrypoints)}",
-                "doctor.eslint.ambiguous-config",
-                "keep one ESLint flat config and remove the shadowed duplicates",
-            )
-        active_entrypoint = entrypoints[0] if entrypoints else typescript_root / "eslint.config.mjs"
-        if _eslint_wiring_reaches_strict(active_entrypoint, typescript_root):
             yield Finding(
                 Level.OK,
-                str(active_entrypoint.relative_to(root)),
-                "references eslint.strict.mjs",
-                "doctor.eslint.wiring",
+                str(companion.relative_to(root)),
+                f"{companion_name} companion config is current",
+                "doctor.config.current",
             )
-        else:
-            yield Finding(
-                Level.DRIFT,
-                str(active_entrypoint.relative_to(root)),
-                "does not reference eslint.strict.mjs directly or through a local config",
-                "doctor.eslint.wiring",
-                "import and spread `./eslint.strict.mjs` from the active ESLint config chain",
-            )
-        shadowing = _nested_eslint_configs(typescript_root, active_entrypoint)
-        if shadowing:
-            rendered = ", ".join(path.relative_to(root).as_posix() for path in shadowing)
-            yield Finding(
-                Level.DRIFT,
-                str(typescript_root.relative_to(root)),
-                f"package-local ESLint configs can bypass the adopted config: {rendered}",
-                "doctor.eslint.shadowed-config",
-                "make each package config import the adopted eslint.strict.mjs chain, or remove the shadowing config",
-            )
-        yield from _check_eslint_peer_set(root, typescript_root)
 
 
 def _check_ci_gate(root: Path) -> Iterator[Finding]:
@@ -1743,20 +1795,7 @@ def _walk(root: Path) -> tuple[Path, ...]:
     except OSError, subprocess.TimeoutExpired:
         completed = None
     if completed is not None and completed.returncode == 0:
-        found = []
-        for raw in completed.stdout.split(b"\0"):
-            if not raw:
-                continue
-            path = root / raw.decode("utf-8", errors="surrogateescape")
-            relative = path.relative_to(root)
-            if (
-                not any(part in _SKIP_DIRS for part in relative.parts)
-                and not _is_skill_artifact(relative)
-                and not path.is_symlink()
-                and path.is_file()
-            ):
-                found.append(path)
-        return tuple(sorted(found))
+        return _git_discovered_files(root, completed.stdout)
 
     found: list[Path] = []
     for parent, directories, names in os.walk(root):
@@ -1768,6 +1807,23 @@ def _walk(root: Path) -> tuple[Path, ...]:
         )
         found.extend(path for name in sorted(names) if not (path := here / name).is_symlink() and path.is_file())
     return tuple(found)
+
+
+def _git_discovered_files(root: Path, output: bytes) -> tuple[Path, ...]:
+    found: list[Path] = []
+    for raw in output.split(b"\0"):
+        if not raw:
+            continue
+        path = root / raw.decode("utf-8", errors="surrogateescape")
+        relative = path.relative_to(root)
+        if (
+            not any(part in _SKIP_DIRS for part in relative.parts)
+            and not _is_skill_artifact(relative)
+            and not path.is_symlink()
+            and path.is_file()
+        ):
+            found.append(path)
+    return tuple(sorted(found))
 
 
 def _is_skill_artifact(path: Path) -> bool:

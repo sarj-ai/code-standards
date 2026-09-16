@@ -285,7 +285,7 @@ function publiclyReachableTypeNames(
       interfaces.set(declaration.id.name, declaration.extends);
     }
   }
-  for (let pass = 0; pass < interfaces.size; pass += 1) {
+  for (let pass = 0;pass < interfaces.size;pass += 1) {
     let changed = false;
     for (const name of [...names]) {
       for (const heritage of interfaces.get(name) ?? []) {
@@ -301,7 +301,7 @@ function publiclyReachableTypeNames(
 }
 
 function owningInterface(node: TSESTree.Node): TSESTree.TSInterfaceDeclaration | null {
-  for (let current = node.parent; current !== undefined; current = current.parent) {
+  for (let current = node.parent;current !== undefined;current = current.parent) {
     if (current.type === AST_NODE_TYPES.TSInterfaceDeclaration) return current;
     if (current.type === AST_NODE_TYPES.Program) return null;
   }
@@ -309,7 +309,7 @@ function owningInterface(node: TSESTree.Node): TSESTree.TSInterfaceDeclaration |
 }
 
 function owningTypeAlias(node: TSESTree.Node): TSESTree.TSTypeAliasDeclaration | null {
-  for (let current = node.parent; current !== undefined; current = current.parent) {
+  for (let current = node.parent;current !== undefined;current = current.parent) {
     if (current.type === AST_NODE_TYPES.TSTypeAliasDeclaration) return current;
     if (current.type === AST_NODE_TYPES.Program) return null;
   }
@@ -319,7 +319,7 @@ function owningTypeAlias(node: TSESTree.Node): TSESTree.TSTypeAliasDeclaration |
 function owningClass(
   node: TSESTree.Node,
 ): TSESTree.ClassDeclaration | TSESTree.ClassExpression | null {
-  for (let current = node.parent; current !== undefined; current = current.parent) {
+  for (let current = node.parent;current !== undefined;current = current.parent) {
     if (current.type === AST_NODE_TYPES.ClassDeclaration || current.type === AST_NODE_TYPES.ClassExpression) {
       return current;
     }
@@ -352,7 +352,7 @@ function isExportedClass(
  */
 function isInlineExported(node: TSESTree.Node): boolean {
   if (moduleScopeBindingName(node) === null) return false;
-  for (let current: TSESTree.Node | undefined | null = node; current != null; current = current.parent) {
+  for (let current: TSESTree.Node | undefined | null = node;current != null;current = current.parent) {
     const parent = current.parent;
     if (
       parent?.type === AST_NODE_TYPES.ExportNamedDeclaration ||
@@ -387,38 +387,10 @@ function moduleScopeBindingName(node: TSESTree.Node): string | null {
     current.type === AST_NODE_TYPES.ExportDefaultDeclaration
   ) return "default";
   if (topLevel.type === AST_NODE_TYPES.ClassDeclaration) {
-    let owner: TSESTree.Node | undefined = node.parent;
-    while (owner != null && owner.parent !== topLevel.body) owner = owner.parent;
-    return (owner?.type === AST_NODE_TYPES.MethodDefinition ||
-      owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
-      owner?.type === AST_NODE_TYPES.PropertyDefinition) && owner.value === node
-      ? topLevel.id?.name ?? (current.type === AST_NODE_TYPES.ExportDefaultDeclaration ? "default" : null)
-      : null;
+    return classBindingName(topLevel, node, current.type === AST_NODE_TYPES.ExportDefaultDeclaration);
   }
   if (topLevel.type === AST_NODE_TYPES.VariableDeclaration) {
-    for (const declarator of topLevel.declarations) {
-      let initializer = declarator.init;
-      while (
-        initializer?.type === AST_NODE_TYPES.TSAsExpression ||
-        initializer?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-        initializer?.type === AST_NODE_TYPES.TSNonNullExpression
-      ) initializer = initializer.expression;
-      if (declarator.id.type === AST_NODE_TYPES.Identifier && initializer === node) return declarator.id.name;
-      if (
-        declarator.id.type === AST_NODE_TYPES.Identifier &&
-        (initializer?.type === AST_NODE_TYPES.ClassExpression ||
-          initializer?.type === AST_NODE_TYPES.ObjectExpression)
-      ) {
-        let owner: TSESTree.Node | undefined = node.parent;
-        const container = initializer.type === AST_NODE_TYPES.ClassExpression ? initializer.body : initializer;
-        while (owner != null && owner.parent !== container) owner = owner.parent;
-        if (
-          (owner?.type === AST_NODE_TYPES.MethodDefinition ||
-            owner?.type === AST_NODE_TYPES.PropertyDefinition ||
-            owner?.type === AST_NODE_TYPES.Property) && owner.value === node
-        ) return declarator.id.name;
-      }
-    }
+    return variableBindingName(topLevel, node);
   }
   return null;
 }
@@ -577,3 +549,44 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function variableBindingName(topLevel: TSESTree.VariableDeclaration, node: TSESTree.Node): string | null {
+  for (const declarator of topLevel.declarations) {
+    let initializer = declarator.init;
+    while (
+      initializer?.type === AST_NODE_TYPES.TSAsExpression ||
+      initializer?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      initializer?.type === AST_NODE_TYPES.TSNonNullExpression
+    ) initializer = initializer.expression;
+    if (declarator.id.type === AST_NODE_TYPES.Identifier && initializer === node) return declarator.id.name;
+    if (
+      declarator.id.type === AST_NODE_TYPES.Identifier &&
+      (initializer?.type === AST_NODE_TYPES.ClassExpression ||
+        initializer?.type === AST_NODE_TYPES.ObjectExpression)
+    ) {
+      if (ownsMemberValue(initializer, node)) return declarator.id.name;
+    }
+  }
+  return null;
+}
+
+function classBindingName(topLevel: TSESTree.ClassDeclaration, node: TSESTree.Node, defaultExport: boolean): string | null {
+  let owner: TSESTree.Node | undefined = node.parent;
+  while (owner != null && owner.parent !== topLevel.body) owner = owner.parent;
+  return (owner?.type === AST_NODE_TYPES.MethodDefinition ||
+    owner?.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
+    owner?.type === AST_NODE_TYPES.PropertyDefinition) && owner.value === node
+    ? topLevel.id?.name ?? (defaultExport ? "default" : null)
+    : null;
+}
+
+function ownsMemberValue(initializer: TSESTree.ClassExpression | TSESTree.ObjectExpression, node: TSESTree.Node): boolean {
+  let owner: TSESTree.Node | undefined = node.parent;
+  const container = initializer.type === AST_NODE_TYPES.ClassExpression ? initializer.body : initializer;
+  while (owner != null && owner.parent !== container) owner = owner.parent;
+  return (
+    (owner?.type === AST_NODE_TYPES.MethodDefinition ||
+      owner?.type === AST_NODE_TYPES.PropertyDefinition ||
+      owner?.type === AST_NODE_TYPES.Property) && owner.value === node
+  );
+}

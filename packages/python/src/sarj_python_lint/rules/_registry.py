@@ -36,6 +36,7 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
 from sarj_python_lint.rules.no_deleted_only_override_parameter import NoDeletedOnlyOverrideParameter
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
+from sarj_python_lint.rules.no_excessive_cognitive_complexity import NoExcessiveCognitiveComplexity
 from sarj_python_lint.rules.no_fastapi_on_event import NoFastapiOnEvent
 from sarj_python_lint.rules.no_file_level_escape_hatch_suppression import (
     NoFileLevelEscapeHatchSuppression,
@@ -173,6 +174,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferCollectionComprehension.id: PreferCollectionComprehension,
         PreferStrEnum.id: PreferStrEnum,
         NoOffsetPagination.id: NoOffsetPagination,
+        NoExcessiveCognitiveComplexity.id: NoExcessiveCognitiveComplexity,
         PreferNamedtupleOverTupleReturn.id: PreferNamedtupleOverTupleReturn,
         NoCorsWildcardWithCredentials.id: NoCorsWildcardWithCredentials,
         PydanticAtBoundaries.id: PydanticAtBoundaries,

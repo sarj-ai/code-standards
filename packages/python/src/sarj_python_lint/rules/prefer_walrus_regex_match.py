@@ -312,13 +312,7 @@ def _regex_imports(body: list[ast.stmt]) -> _RegexImports:
     modules: set[str] = set()
     functions: set[str] = set()
     for statement in body:
-        match statement:
-            case ast.Import(names=names):
-                modules.update(alias.asname or alias.name for alias in names if alias.name in {"re", "regex"})
-            case ast.ImportFrom(module=module, level=0, names=names) if module in {"re", "regex"}:
-                functions.update(alias.asname or alias.name for alias in names if alias.name == "compile")
-            case _:
-                continue
+        _collect_regex_imports(statement, modules, functions)
     return _RegexImports(frozenset(modules), frozenset(functions))
 
 
@@ -506,3 +500,13 @@ def _is_compile_call(
         and isinstance(func.value, ast.Name)
         and func.value.id in regex_modules
     )
+
+
+def _collect_regex_imports(statement: ast.stmt, modules: set[str], functions: set[str]) -> None:
+    match statement:
+        case ast.Import(names=names):
+            modules.update(alias.asname or alias.name for alias in names if alias.name in {"re", "regex"})
+        case ast.ImportFrom(module=module, level=0, names=names) if module in {"re", "regex"}:
+            functions.update(alias.asname or alias.name for alias in names if alias.name == "compile")
+        case _:
+            return

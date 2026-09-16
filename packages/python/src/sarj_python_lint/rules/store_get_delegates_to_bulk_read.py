@@ -180,6 +180,12 @@ def _compatible_pair(
     singleton, bulk = singletons[0], bulks[0]
     if isinstance(singleton, ast.AsyncFunctionDef) is not isinstance(bulk, ast.AsyncFunctionDef):
         return None
+    return _compatible_method_contracts(singleton, bulk)
+
+
+def _compatible_method_contracts(
+    singleton: ast.FunctionDef | ast.AsyncFunctionDef, bulk: ast.FunctionDef | ast.AsyncFunctionDef
+) -> _MethodPair | None:
     singleton_contract = _singleton_key_contract(singleton)
     bulk_contract = _bulk_key_contract(bulk)
     singleton_value = _nullable_value(singleton.returns)
@@ -324,12 +330,7 @@ def _has_distinct_access_semantics(
 def _behavior_signals(method: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
     signals: set[str] = set()
     for node in _method_nodes(method):
-        for name in _identifier_parts(node):
-            signals.update(part for part in name.lower().split("_") if part in _DISTINCT_ACCESS_MARKERS)
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            signals.update(marker for marker in _LOCKING_SQL if marker in node.value.upper())
-        if isinstance(node, ast.keyword) and node.arg in {"for_update", "prepare", "read_only"}:
-            signals.add(f"{node.arg}={ast.dump(node.value, include_attributes=False)}")
+        _record_behavior_signals(node, signals)
     return frozenset(signals)
 
 
@@ -360,14 +361,6 @@ def _private_method_calls(method: ast.FunctionDef | ast.AsyncFunctionDef) -> fro
         and node.func.attr.startswith("_")
         and not node.func.attr.startswith("__")
     )
-
-
-def _identifier_parts(node: ast.AST) -> tuple[str, ...]:
-    if isinstance(node, ast.Name):
-        return (node.id,)
-    if isinstance(node, ast.Attribute):
-        return (node.attr,)
-    return ()
 
 
 def _calls_method(
@@ -410,3 +403,20 @@ def _qualified_name(node: ast.expr) -> str:
 
 def _is_none_annotation(node: ast.expr) -> bool:
     return isinstance(node, ast.Constant) and node.value is None
+
+
+def _record_behavior_signals(node: ast.AST, signals: set[str]) -> None:
+    for name in _identifier_parts(node):
+        signals.update(part for part in name.lower().split("_") if part in _DISTINCT_ACCESS_MARKERS)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        signals.update(marker for marker in _LOCKING_SQL if marker in node.value.upper())
+    if isinstance(node, ast.keyword) and node.arg in {"for_update", "prepare", "read_only"}:
+        signals.add(f"{node.arg}={ast.dump(node.value, include_attributes=False)}")
+
+
+def _identifier_parts(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+    if isinstance(node, ast.Attribute):
+        return (node.attr,)
+    return ()

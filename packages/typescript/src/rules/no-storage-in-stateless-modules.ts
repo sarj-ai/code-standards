@@ -80,17 +80,7 @@ function storageMethodName(
   if (name === "put" && !isStorageLikeReceiver(callee.object)) {
     return null;
   }
-  if (name === "prepare") {
-    const argument = node.arguments[0];
-    const text = argument === undefined ? null : sqlTextOf(argument);
-    if (text !== null) {
-      if (!/^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu.test(stripSqlNoise(text))) return null;
-    } else {
-      const receiver = callee.object;
-      const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression && !receiver.computed && receiver.property.type === AST_NODE_TYPES.Identifier ? receiver.property.name : "";
-      if (!/^(?:db|database|connection)$/iu.test(receiverName)) return null;
-    }
-  }
+  if (name === "prepare" && !hasSqlPreparationEvidence(node, callee)) return null;
   return name;
 }
 
@@ -189,3 +179,17 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function hasSqlPreparationEvidence(node: TSESTree.CallExpression, callee: TSESTree.MemberExpression): boolean {
+  const argument = node.arguments[0];
+  const text = argument === undefined ? null : sqlTextOf(argument);
+  if (text !== null) {
+    if (!/^\s*(?:SELECT|WITH|INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|PRAGMA|EXPLAIN)\b/iu.test(stripSqlNoise(text))) return false;
+  } else {
+    const receiver = callee.object;
+    const receiverName = receiver.type === AST_NODE_TYPES.Identifier ? receiver.name : receiver.type === AST_NODE_TYPES.MemberExpression && !receiver.computed && receiver.property.type === AST_NODE_TYPES.Identifier ? receiver.property.name : "";
+    if (!/^(?:db|database|connection)$/iu.test(receiverName)) return false;
+  }
+
+  return true;
+}

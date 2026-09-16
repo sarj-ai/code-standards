@@ -22,7 +22,7 @@ from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
     from pathlib import Path
 
     from sarj_python_lint.rules._project_index import ProjectIndexSet
@@ -240,25 +240,22 @@ def _explicit_docstring_consumers(tree: ast.Module, owners: frozenset[str]) -> f
     imports = _import_bindings(tree, shadowed)
     if _bare_module_docstring_consumed(tree):
         consumed.add("__doc__")
-    builtin_help_available = True
-    for statement in tree.body:
-        match statement:
-            case ast.Import(names=names):
-                for item in names:
-                    if item.name == "inspect" and (item.asname or item.name) not in shadowed:
-                        inspect_names.add(item.asname or item.name)
-            case ast.ImportFrom(module="inspect", names=names):
-                for item in names:
-                    if item.name == "getdoc" and (item.asname or item.name) not in shadowed:
-                        getdoc_names.add(item.asname or item.name)
-            case ast.FunctionDef(name="help") | ast.AsyncFunctionDef(name="help") | ast.ClassDef(name="help"):
-                builtin_help_available = False
-            case ast.Assign(targets=targets) if any(
-                isinstance(target, ast.Name) and target.id == "help" for target in targets
-            ):
-                builtin_help_available = False
-            case _:
-                pass
+    builtin_help_available = _doc_consumer_imports(tree, shadowed, inspect_names, getdoc_names)
+
+    def collect_call_consumers(node: ast.Call) -> None:
+        function = _dotted_name(node.func)
+        is_getdoc = function in ({f"{name}.getdoc" for name in inspect_names} | getdoc_names)
+        is_help = function == "help" and builtin_help_available
+        if (is_getdoc or is_help) and (key := _resolve_owner(node.args[0], owners, aliases, owner_index)):
+            consumed.add(key)
+        resolved_function = _resolve_imported_name(node.func, imports)
+        if (
+            resolved_function in _LIVEKIT_TOOL_DECORATORS
+            and _livekit_uses_docstring(node)
+            and (key := _resolve_owner(node.args[0], owners, aliases, owner_index))
+        ):
+            consumed.add(key)
+
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id == "__doc__":
             continue
@@ -266,27 +263,20 @@ def _explicit_docstring_consumers(tree: ast.Module, owners: frozenset[str]) -> f
             if key := _resolve_owner(node.value, owners, aliases, owner_index):
                 consumed.add(key)
         elif isinstance(node, ast.Call) and node.args:
-            function = _dotted_name(node.func)
-            is_getdoc = function in ({f"{name}.getdoc" for name in inspect_names} | getdoc_names)
-            is_help = function == "help" and builtin_help_available
-            if (is_getdoc or is_help) and (key := _resolve_owner(node.args[0], owners, aliases, owner_index)):
-                consumed.add(key)
-            resolved_function = _resolve_imported_name(node.func, imports)
-            if (
-                resolved_function in _LIVEKIT_TOOL_DECORATORS
-                and _livekit_uses_docstring(node)
-                and (key := _resolve_owner(node.args[0], owners, aliases, owner_index))
-            ):
-                consumed.add(key)
-    for owner in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
-        for decorator in owner.decorator_list:
-            if not isinstance(decorator, ast.Call) or not decorator.args:
-                continue
-            function = _resolve_imported_name(decorator.func, imports)
-            if function == "functools.wraps" and (
-                key := _resolve_owner(decorator.args[0], owners, aliases, owner_index)
-            ):
-                consumed.add(key)
+            collect_call_consumers(node)
+
+    def collect_wrapped_owners() -> None:
+        for owner in (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))):
+            for decorator in owner.decorator_list:
+                if not isinstance(decorator, ast.Call) or not decorator.args:
+                    continue
+                function = _resolve_imported_name(decorator.func, imports)
+                if function == "functools.wraps" and (
+                    key := _resolve_owner(decorator.args[0], owners, aliases, owner_index)
+                ):
+                    consumed.add(key)
+
+    collect_wrapped_owners()
     return frozenset(consumed)
 
 
@@ -420,27 +410,7 @@ def _framework_consumes_docstring(
     if isinstance(owner, ast.Module):
         return False
     for decorator in owner.decorator_list:
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        dotted = _dotted_name(target)
-        head = None if dotted is None else dotted.partition(".")[0]
-        name = _resolve_imported_name(target, imports) if head in imports else None
-        if name in _LIVEKIT_TOOL_DECORATORS and (
-            not isinstance(decorator, ast.Call) or _livekit_uses_docstring(decorator)
-        ):
-            return True
-        if name in _OPENAI_TOOL_DECORATORS and (
-            not isinstance(decorator, ast.Call) or _keyword_is_not_literal_false(decorator, "use_docstring_info")
-        ):
-            return True
-        if name in _PYDANTIC_DOC_DECORATORS and (
-            not isinstance(decorator, ast.Call) or _keyword_is_missing_or_none(decorator, "description")
-        ):
-            return True
-        if name in _CLICK_DOC_DECORATORS and (not isinstance(decorator, ast.Call) or _doc_help_is_implicit(decorator)):
-            return True
-        if name in _KNOWN_DECORATORS:
-            return True
-        if dotted == "property" and "property" not in shadowed:
+        if _decorator_consumes_docstring(decorator, imports, shadowed):
             return True
     if not isinstance(owner, ast.ClassDef):
         return False
@@ -453,19 +423,7 @@ def _framework_consumes_docstring(
 def _import_bindings(tree: ast.Module, shadowed: frozenset[str]) -> dict[str, str]:
     bindings: dict[str, str] = {}
     for statement in tree.body:
-        match statement:
-            case ast.Import(names=names):
-                for item in names:
-                    local_name = item.asname or item.name.partition(".")[0]
-                    if local_name not in shadowed:
-                        bindings[local_name] = item.name if item.asname else local_name
-            case ast.ImportFrom(module=str() as module, names=names, level=0):
-                for item in names:
-                    local_name = item.asname or item.name
-                    if local_name not in shadowed:
-                        bindings[local_name] = f"{module}.{item.name}"
-            case _:
-                continue
+        _collect_import_binding(statement, shadowed, bindings)
     return bindings
 
 
@@ -475,31 +433,30 @@ def _module_environment_before(tree: ast.Module, line: int) -> _ModuleEnvironmen
     for statement in tree.body:
         if statement.lineno >= line:
             break
-        match statement:
-            case ast.Import(names=names):
-                for item in names:
-                    local_name = item.asname or item.name.partition(".")[0]
-                    imports[local_name] = item.name if item.asname else local_name
-                    shadowed.discard(local_name)
-            case ast.ImportFrom(module=str() as module, names=names, level=0):
-                for item in names:
-                    local_name = item.asname or item.name
-                    imports[local_name] = f"{module}.{item.name}"
-                    shadowed.discard(local_name)
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
-                imports.pop(statement.name, None)
-                shadowed.add(statement.name)
-            case ast.Assign(targets=targets):
-                for target in targets:
-                    if isinstance(target, ast.Name):
-                        imports.pop(target.id, None)
-                        shadowed.add(target.id)
-            case ast.AnnAssign(target=ast.Name(id=name)):
-                imports.pop(name, None)
-                shadowed.add(name)
-            case _:
-                continue
+        _update_module_environment(statement, imports, shadowed)
     return _ModuleEnvironment(imports, frozenset(shadowed))
+
+
+def _decorator_consumes_docstring(decorator: ast.expr, imports: dict[str, str], shadowed: frozenset[str]) -> bool:
+    target = decorator.func if isinstance(decorator, ast.Call) else decorator
+    dotted = _dotted_name(target)
+    head = None if dotted is None else dotted.partition(".")[0]
+    name = _resolve_imported_name(target, imports) if head in imports else None
+    if name in _LIVEKIT_TOOL_DECORATORS and (not isinstance(decorator, ast.Call) or _livekit_uses_docstring(decorator)):
+        return True
+    if name in _OPENAI_TOOL_DECORATORS and (
+        not isinstance(decorator, ast.Call) or _keyword_is_not_literal_false(decorator, "use_docstring_info")
+    ):
+        return True
+    if name in _PYDANTIC_DOC_DECORATORS and (
+        not isinstance(decorator, ast.Call) or _keyword_is_missing_or_none(decorator, "description")
+    ):
+        return True
+    if name in _CLICK_DOC_DECORATORS and (not isinstance(decorator, ast.Call) or _doc_help_is_implicit(decorator)):
+        return True
+    if name in _KNOWN_DECORATORS:
+        return True
+    return bool(dotted == "property" and "property" not in shadowed)
 
 
 def _keyword_is_not_literal_false(call: ast.Call, name: str) -> bool:
@@ -534,20 +491,7 @@ def _fastapi_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> f
                     consumed.add(id(statement))
                 nested = dict(bindings)
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    arguments = (
-                        *statement.args.posonlyargs,
-                        *statement.args.args,
-                        *statement.args.kwonlyargs,
-                    )
-                    for argument in arguments:
-                        nested[argument.arg] = (
-                            argument.annotation is not None
-                            and _resolve_imported_name(argument.annotation, imports) in _FASTAPI_CONSTRUCTORS
-                        )
-                    if statement.args.vararg is not None:
-                        nested[statement.args.vararg.arg] = False
-                    if statement.args.kwarg is not None:
-                        nested[statement.args.kwarg.arg] = False
+                    _receiver_parameter_bindings(statement, nested, imports, _FASTAPI_CONSTRUCTORS)
                 visit(statement.body, nested)
                 bindings[statement.name] = False
                 continue
@@ -555,9 +499,7 @@ def _fastapi_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> f
                 targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
                 value = statement.value
                 is_receiver = _is_fastapi_receiver_value(value, bindings, imports)
-                for target in targets:
-                    if isinstance(target, ast.Name):
-                        bindings[target.id] = is_receiver
+                _bind_receiver_targets(targets, bindings, is_receiver=is_receiver)
 
     visit(tree.body, {})
     return frozenset(consumed)
@@ -574,19 +516,7 @@ def _typer_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> fro
                     consumed.add(id(statement))
                 nested = dict(bindings)
                 if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    for argument in (
-                        *statement.args.posonlyargs,
-                        *statement.args.args,
-                        *statement.args.kwonlyargs,
-                    ):
-                        nested[argument.arg] = (
-                            argument.annotation is not None
-                            and _resolve_imported_name(argument.annotation, imports) in _TYPER_CONSTRUCTORS
-                        )
-                    if statement.args.vararg is not None:
-                        nested[statement.args.vararg.arg] = False
-                    if statement.args.kwarg is not None:
-                        nested[statement.args.kwarg.arg] = False
+                    _receiver_parameter_bindings(statement, nested, imports, _TYPER_CONSTRUCTORS)
                 visit(statement.body, nested)
                 bindings[statement.name] = False
                 continue
@@ -594,9 +524,7 @@ def _typer_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> fro
                 targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
                 value = statement.value
                 is_receiver = _is_typer_receiver_value(value, bindings, imports)
-                for target in targets:
-                    if isinstance(target, ast.Name):
-                        bindings[target.id] = is_receiver
+                _bind_receiver_targets(targets, bindings, is_receiver=is_receiver)
 
     visit(tree.body, {})
     return frozenset(consumed)
@@ -605,22 +533,23 @@ def _typer_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> fro
 def _click_group_docstring_consumers(tree: ast.Module, imports: dict[str, str]) -> frozenset[int]:
     consumed: set[int] = set()
 
+    def visit_declaration(
+        statement: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, bindings: dict[str, bool]
+    ) -> None:
+        group_decorator = next(
+            (decorator for decorator in statement.decorator_list if _is_click_group_decorator(decorator, imports)),
+            None,
+        )
+        if any(_is_click_group_callback(decorator, bindings) for decorator in statement.decorator_list):
+            consumed.add(id(statement))
+        visit(statement.body, bindings)
+        bindings[statement.name] = group_decorator is not None
+
     def visit(body: list[ast.stmt], inherited: dict[str, bool]) -> None:
         bindings = dict(inherited)
         for statement in body:
             if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                group_decorator = next(
-                    (
-                        decorator
-                        for decorator in statement.decorator_list
-                        if _is_click_group_decorator(decorator, imports)
-                    ),
-                    None,
-                )
-                if any(_is_click_group_callback(decorator, bindings) for decorator in statement.decorator_list):
-                    consumed.add(id(statement))
-                visit(statement.body, bindings)
-                bindings[statement.name] = group_decorator is not None
+                visit_declaration(statement, bindings)
                 continue
             if isinstance(statement, (ast.Assign, ast.AnnAssign)):
                 targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
@@ -759,3 +688,97 @@ def _resolve_imported_name(node: ast.AST, imports: dict[str, str]) -> str | None
     if resolved is None:
         return dotted
     return f"{resolved}.{tail}" if separator else resolved
+
+
+def _doc_consumer_imports(
+    tree: ast.Module, shadowed: frozenset[str], inspect_names: set[str], getdoc_names: set[str]
+) -> bool:
+    builtin_help_available = True
+    for statement in tree.body:
+        match statement:
+            case ast.Import(names=names):
+                _collect_inspect_modules(names, shadowed, inspect_names)
+            case ast.ImportFrom(module="inspect", names=names):
+                for item in names:
+                    if item.name == "getdoc" and (item.asname or item.name) not in shadowed:
+                        getdoc_names.add(item.asname or item.name)
+            case ast.FunctionDef(name="help") | ast.AsyncFunctionDef(name="help") | ast.ClassDef(name="help"):
+                builtin_help_available = False
+            case ast.Assign(targets=targets) if any(
+                isinstance(target, ast.Name) and target.id == "help" for target in targets
+            ):
+                builtin_help_available = False
+            case _:
+                pass
+    return builtin_help_available
+
+
+def _collect_import_binding(statement: ast.stmt, shadowed: frozenset[str], bindings: dict[str, str]) -> None:
+    match statement:
+        case ast.Import(names=names):
+            for item in names:
+                local_name = item.asname or item.name.partition(".")[0]
+                if local_name not in shadowed:
+                    bindings[local_name] = item.name if item.asname else local_name
+        case ast.ImportFrom(module=str() as module, names=names, level=0):
+            for item in names:
+                local_name = item.asname or item.name
+                if local_name not in shadowed:
+                    bindings[local_name] = f"{module}.{item.name}"
+        case _:
+            return
+
+
+def _update_module_environment(statement: ast.stmt, imports: dict[str, str], shadowed: set[str]) -> None:
+    match statement:
+        case ast.Import(names=names):
+            for item in names:
+                local_name = item.asname or item.name.partition(".")[0]
+                imports[local_name] = item.name if item.asname else local_name
+                shadowed.discard(local_name)
+        case ast.ImportFrom(module=str() as module, names=names, level=0):
+            for item in names:
+                local_name = item.asname or item.name
+                imports[local_name] = f"{module}.{item.name}"
+                shadowed.discard(local_name)
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+            imports.pop(statement.name, None)
+            shadowed.add(statement.name)
+        case ast.Assign(targets=targets):
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    imports.pop(target.id, None)
+                    shadowed.add(target.id)
+        case ast.AnnAssign(target=ast.Name(id=name)):
+            imports.pop(name, None)
+            shadowed.add(name)
+        case _:
+            return
+
+
+def _receiver_parameter_bindings(
+    statement: ast.FunctionDef | ast.AsyncFunctionDef,
+    nested: dict[str, bool],
+    imports: dict[str, str],
+    constructors: frozenset[str],
+) -> None:
+    for argument in (*statement.args.posonlyargs, *statement.args.args, *statement.args.kwonlyargs):
+        nested[argument.arg] = (
+            argument.annotation is not None and _resolve_imported_name(argument.annotation, imports) in constructors
+        )
+    if statement.args.vararg is not None:
+        nested[statement.args.vararg.arg] = False
+    if statement.args.kwarg is not None:
+        nested[statement.args.kwarg.arg] = False
+
+
+def _collect_inspect_modules(names: list[ast.alias], shadowed: frozenset[str], inspect_names: set[str]) -> None:
+    for item in names:
+        if item.name == "inspect" and (item.asname or item.name) not in shadowed:
+            inspect_names.add(item.asname or item.name)
+
+
+def _bind_receiver_targets(targets: Sequence[ast.expr], bindings: dict[str, bool], *, is_receiver: bool) -> None:
+    for target in targets:
+        if isinstance(target, ast.Name):
+            bindings[target.id] = is_receiver

@@ -106,7 +106,7 @@ function classBindings(
   if (declaration?.type !== AST_NODE_TYPES.VariableDeclaration) return [];
   return declaration.declarations.flatMap((item) =>
     item.id.type === AST_NODE_TYPES.Identifier &&
-    item.init?.type === AST_NODE_TYPES.ClassExpression
+      item.init?.type === AST_NODE_TYPES.ClassExpression
       ? [{ declaration: item.init, name: item.id.name }]
       : [],
   );
@@ -139,47 +139,16 @@ export default createRule<Options, MessageIds>({
       "Program:exit"(program): void {
         const classes = new Map<string, ClassLike>();
         const abstractBases = new Set<string>();
-        for (const statement of program.body) {
+        function collectClassBindings(statement: TSESTree.ProgramStatement): void {
           for (const binding of classBindings(statement)) {
             classes.set(binding.name, binding.declaration);
             if (binding.declaration.abstract) abstractBases.add(binding.name);
           }
         }
 
-        const exported = new Map<ClassLike, string>();
-        for (const statement of program.body) {
-          if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
-            for (const binding of classBindings(statement)) {
-              exported.set(binding.declaration, binding.name);
-            }
-            if (statement.source !== null || statement.exportKind === "type") continue;
-            for (const specifier of statement.specifiers) {
-              if (specifier.exportKind === "type") continue;
-              const candidate = classes.get(specifier.local.name);
-              if (candidate === undefined) continue;
-              const exportedName = specifier.exported.type === AST_NODE_TYPES.Identifier
-                ? specifier.exported.name
-                : specifier.exported.value;
-              exported.set(candidate, exportedName);
-            }
-            continue;
-          }
-          if (statement.type !== AST_NODE_TYPES.ExportDefaultDeclaration) continue;
-          if (
-            statement.declaration.type === AST_NODE_TYPES.ClassDeclaration ||
-            statement.declaration.type === AST_NODE_TYPES.ClassExpression
-          ) {
-            exported.set(
-              statement.declaration,
-              statement.declaration.id?.name ?? "default",
-            );
-          } else if (statement.declaration.type === AST_NODE_TYPES.Identifier) {
-            const candidate = classes.get(statement.declaration.name);
-            if (candidate !== undefined) {
-              exported.set(candidate, statement.declaration.name);
-            }
-          }
-        }
+        for (const statement of program.body) { collectClassBindings(statement); }
+
+        const exported = exportedClasses(program, classes);
 
         for (const [declaration, exportedName] of exported) {
           const extendsLocalAbstractBase =
@@ -201,3 +170,49 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function exportedClasses(program: TSESTree.Program, classes: ReadonlyMap<string, ClassLike>): Map<ClassLike, string> {
+  const exported = new Map<ClassLike, string>();
+  function collectExportedClass(statement: TSESTree.ProgramStatement): void {
+    if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
+      for (const binding of classBindings(statement)) {
+        exported.set(binding.declaration, binding.name);
+      }
+      if (statement.source !== null || statement.exportKind === "type") return;
+      collectClassSpecifiers(statement);
+      return;
+    }
+    if (statement.type !== AST_NODE_TYPES.ExportDefaultDeclaration) return;
+    if (
+      statement.declaration.type === AST_NODE_TYPES.ClassDeclaration ||
+      statement.declaration.type === AST_NODE_TYPES.ClassExpression
+    ) {
+      exported.set(
+        statement.declaration,
+        statement.declaration.id?.name ?? "default",
+      );
+    } else if (statement.declaration.type === AST_NODE_TYPES.Identifier) {
+      const candidate = classes.get(statement.declaration.name);
+      if (candidate !== undefined) {
+        exported.set(candidate, statement.declaration.name);
+      }
+    }
+  }
+
+  function collectClassSpecifiers(statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>): void {
+    for (const specifier of statement.specifiers) {
+      if (specifier.exportKind === "type") continue;
+      const candidate = classes.get(specifier.local.name);
+      if (candidate === undefined) continue;
+      const exportedName = specifier.exported.type === AST_NODE_TYPES.Identifier
+        ? specifier.exported.name
+        : specifier.exported.value;
+      exported.set(candidate, exportedName);
+    }
+
+  }
+
+  for (const statement of program.body) { collectExportedClass(statement); }
+
+  return exported;
+}

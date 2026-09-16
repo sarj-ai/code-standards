@@ -179,37 +179,31 @@ export default createRule<Options, MessageIds>({
         if (cluster.length >= WALL_CLUSTER_MIN_COMMENTS) {
           for (const member of cluster) wallMembers.add(member);
         }
-        for (let i = 0; i < comments.length; i++) {
+        function checkComment(i: number): void {
           const comment = comments[i];
-          if (comment === undefined || comment.type !== "Line") continue;
-          if (wallMembers.has(comment)) continue;
-          if (!isStandalone(comment)) continue;
+          if (comment === undefined || comment.type !== "Line") return;
+          if (wallMembers.has(comment)) return;
+          if (!isStandalone(comment)) return;
           if (
             areAdjacentLineComments(comments[i - 1], comment, isStandalone) ||
             areAdjacentLineComments(comment, comments[i + 1], isStandalone)
           ) {
-            continue; // one line of a paragraph, not a label for the next statement
+            return; // one line of a paragraph, not a label for the next statement
           }
           const body = comment.value.replace(/^\/*/, "").trim();
-          if (body.length === 0 || body.endsWith("?")) continue;
-          if (DIRECTIVE_RE.test(body) || CODEY_RE.test(body) || BANNERISH_RE.test(body)) continue;
-          if (NON_ASCII_LETTER_RE.test(body) || isProtected(body)) continue;
-          if (MODALITY_RE.test(body) || LEAD_IN_RE.test(body) || EMPHASIS_RE.test(body)) continue;
-          if (NEGATION_WORD_RE.test(body) || SEMANTIC_RELATION_RE.test(body)) continue;
-          const wordCount = body.split(/\s+/).length;
-          if (wordCount < 2 || wordCount > MAX_WORDS || /[.!?]$/.test(body)) continue;
+          if (!isRestatableLabel(body)) return;
 
           const tokens = contentTokens(body);
-          if (tokens.length < MIN_CONTENT_TOKENS) continue;
+          if (tokens.length < MIN_CONTENT_TOKENS) return;
 
           const statementNode = restatableStatementNodeBelow(comment, sourceCode);
-          if (statementNode === null) continue;
+          if (statementNode === null) return;
           const statement = sourceCode.getText(statementNode);
-          if (restatesStatementHead(body, statement)) continue; // `no-comment-cruft` owns it
+          if (restatesStatementHead(body, statement)) return; // `no-comment-cruft` owns it
 
-          if (!ACTION_STMT_RE.test(statement)) continue;
+          if (!ACTION_STMT_RE.test(statement)) return;
 
-          if (labelsASiblingRun(statementNode) || headsValueTypeGroup(statementNode)) continue;
+          if (labelsASiblingRun(statementNode) || headsValueTypeGroup(statementNode)) return;
 
           const identifiers = sourceCode.getTokens(statementNode)
             .filter((token) => token.type === AST_TOKEN_TYPES.Identifier)
@@ -223,15 +217,29 @@ export default createRule<Options, MessageIds>({
               suggest: removal === null
                 ? null
                 : [
-                    {
-                      messageId: "deleteComment",
-                      fix: (fixer) => fixer.removeRange(removal.range),
-                    },
-                  ],
+                  {
+                    messageId: "deleteComment",
+                    fix: (fixer) => fixer.removeRange(removal.range),
+                  },
+                ],
             });
           }
         }
+
+        for (let i = 0;i < comments.length;i++) { checkComment(i); }
       },
     };
   },
 });
+
+function isRestatableLabel(body: string): boolean {
+  if (body.length === 0 || body.endsWith("?")) return false;
+  if (DIRECTIVE_RE.test(body) || CODEY_RE.test(body) || BANNERISH_RE.test(body)) return false;
+  if (NON_ASCII_LETTER_RE.test(body) || isProtected(body)) return false;
+  if (MODALITY_RE.test(body) || LEAD_IN_RE.test(body) || EMPHASIS_RE.test(body)) return false;
+  if (NEGATION_WORD_RE.test(body) || SEMANTIC_RELATION_RE.test(body)) return false;
+  const wordCount = body.split(/\s+/).length;
+  if (wordCount < 2 || wordCount > MAX_WORDS || /[.!?]$/.test(body)) return false;
+
+  return true;
+}

@@ -316,23 +316,51 @@ class PreferSelfDocumentingConstant(Rule):
         comments, _first_code_line = standalone_comments(source)
         by_line = {line: (col, body) for line, col, body in comments}
         findings: list[Diagnostic] = []
-        for statement, name, value in bindings:
-            comment = _attached_comment(statement, by_line)
-            if comment is None:
-                continue
-            statuses = _bare_http_statuses(
-                value,
-                imports,
-                wildcard_import=frozenset_risks[0],
-                builtins_frozenset_mutated=frozenset_risks[1],
-            )
-            if (
-                _is_status_codes_name(name)
-                and len(statuses) >= _MIN_BARE_HTTP_STATUSES
-                and statuses <= _STANDARD_HTTP_STATUSES
-                and _has_http_context(name, comment)
-                and len(statuses & _comment_http_statuses(comment)) >= _MIN_BARE_HTTP_STATUSES
-            ):
+
+        def collect_constant_diagnostics() -> None:
+            for statement, name, value in bindings:
+                comment = _attached_comment(statement, by_line)
+                if comment is None:
+                    continue
+                statuses = _bare_http_statuses(
+                    value,
+                    imports,
+                    wildcard_import=frozenset_risks[0],
+                    builtins_frozenset_mutated=frozenset_risks[1],
+                )
+                if (
+                    _is_status_codes_name(name)
+                    and len(statuses) >= _MIN_BARE_HTTP_STATUSES
+                    and statuses <= _STANDARD_HTTP_STATUSES
+                    and _has_http_context(name, comment)
+                    and len(statuses & _comment_http_statuses(comment)) >= _MIN_BARE_HTTP_STATUSES
+                ):
+                    findings.append(
+                        Diagnostic(
+                            path,
+                            statement.lineno,
+                            statement.col_offset + 1,
+                            self.code,
+                            (
+                                f"`{name}` contains bare HTTP status integers; use `http.HTTPStatus` members, "
+                                "or their `.value` at an exact-integer boundary. Keep non-obvious rationale."
+                            ),
+                            Severity.WARNING,
+                        )
+                    )
+                    continue
+                scalar = _numeric_scalar(value)
+                if scalar is None:
+                    continue
+                if scalar in {-1, 0} and _POLICY_SENTINEL_RE.search(comment):
+                    continue
+                unit = _missing_unit(statement, name, comment, scalar)
+                if unit is None:
+                    continue
+                alternative = " or use a unit-bearing type such as `timedelta`" if unit.duration else ""
+                compatibility = (
+                    " If this exported name is public API, migrate compatibly." if not name.startswith("_") else ""
+                )
                 findings.append(
                     Diagnostic(
                         path,
@@ -340,38 +368,14 @@ class PreferSelfDocumentingConstant(Rule):
                         statement.col_offset + 1,
                         self.code,
                         (
-                            f"`{name}` contains bare HTTP status integers; use `http.HTTPStatus` members, "
-                            "or their `.value` at an exact-integer boundary. Keep non-obvious rationale."
+                            f"`{name}` relies on its comment to identify {unit.label}; encode the unit in "
+                            f"the constant name{alternative}.{compatibility} Keep non-obvious rationale."
                         ),
                         Severity.WARNING,
                     )
                 )
-                continue
-            scalar = _numeric_scalar(value)
-            if scalar is None:
-                continue
-            if scalar in {-1, 0} and _POLICY_SENTINEL_RE.search(comment):
-                continue
-            unit = _missing_unit(statement, name, comment, scalar)
-            if unit is None:
-                continue
-            alternative = " or use a unit-bearing type such as `timedelta`" if unit.duration else ""
-            compatibility = (
-                " If this exported name is public API, migrate compatibly." if not name.startswith("_") else ""
-            )
-            findings.append(
-                Diagnostic(
-                    path,
-                    statement.lineno,
-                    statement.col_offset + 1,
-                    self.code,
-                    (
-                        f"`{name}` relies on its comment to identify {unit.label}; encode the unit in "
-                        f"the constant name{alternative}.{compatibility} Keep non-obvious rationale."
-                    ),
-                    Severity.WARNING,
-                )
-            )
+
+        collect_constant_diagnostics()
         return findings
 
 

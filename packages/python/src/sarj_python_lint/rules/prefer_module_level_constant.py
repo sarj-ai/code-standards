@@ -559,16 +559,7 @@ def _unsafe_bindings(tree: ast.Module) -> frozenset[str]:
         for statement in ast.walk(tree)
     ):
         names.add("*")
-    names.update(
-        candidate.name
-        for candidate in ast.walk(tree)
-        if isinstance(candidate, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and candidate.name is not None
-    )
-    names.update(
-        candidate.rest
-        for candidate in ast.walk(tree)
-        if isinstance(candidate, ast.MatchMapping) and candidate.rest is not None
-    )
+    _collect_pattern_bindings(tree, names)
     return frozenset(names)
 
 
@@ -609,4 +600,17 @@ def _message(name: str, candidate: _Candidate) -> str:
         f"`{name}` is a constant-only {candidate.kind} rebuilt on every call — hoist it "
         "to module scope in immutable form (tuple, frozenset, or an immutable mapping) "
         "so it is built once without exposing mutable shared state."
+    )
+
+
+def _collect_pattern_bindings(tree: ast.Module, names: set[str]) -> None:
+    names.update(
+        candidate.name
+        for candidate in ast.walk(tree)
+        if isinstance(candidate, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and candidate.name is not None
+    )
+    names.update(
+        candidate.rest
+        for candidate in ast.walk(tree)
+        if isinstance(candidate, ast.MatchMapping) and candidate.rest is not None
     )

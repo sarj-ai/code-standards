@@ -38,6 +38,12 @@ _POLICY_FIELDS: Final = frozenset({"defaultLevel", "optionsSchema"})
 _INVENTORY_ENTRY_FIELDS: Final = frozenset({"code", "family", "id", "source", "test"})
 _GIT_SHA_LENGTH: Final = 40
 
+# Approved error-first adoption after repository-wide cleanup with a maximum score of 20.
+# Keep this exception exact: all other new judgment rules still start as warnings.
+_ERROR_FIRST_APPROVALS: Final = frozenset(
+    {"python:no-excessive-cognitive-complexity", "eslint:no-excessive-cognitive-complexity"}
+)
+
 
 class RuleDescriptorV1(TypedDict):
     key: str
@@ -135,7 +141,14 @@ def added_rules_at_other_levels(comparison: RuleChangeSetV1, *, required: RuleLe
     return [
         change["key"]
         for change in comparison["changes"]
-        if change["kind"] == "added" and change["after"] is not None and change["after"]["defaultLevel"] != required
+        if change["kind"] == "added"
+        and change["after"] is not None
+        and change["after"]["defaultLevel"] != required
+        and not (
+            required == "warning"
+            and change["after"]["defaultLevel"] == "error"
+            and change["key"] in _ERROR_FIRST_APPROVALS
+        )
     ]
 
 
@@ -185,24 +198,7 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
     inventory_entries = _rules_array(inventory, label="rule inventory")
     catalog_entries = _rules_array(catalog, label="rule catalog")
 
-    inventory_by_key: dict[str, dict[str, object]] = {}
-    for index, raw in enumerate(inventory_entries, start=1):
-        entry = _object(raw, label=f"rule inventory entry {index}")
-        if frozenset(entry) != _INVENTORY_ENTRY_FIELDS:
-            msg = f"rule inventory entry {index} has unexpected or missing fields"
-            raise ValueError(msg)
-        family = _string(entry, "family")
-        try:
-            engine = _ENGINE_BY_FAMILY[family]
-        except KeyError as exc:
-            msg = f"rule inventory entry {index} has unknown family {family!r}"
-            raise ValueError(msg) from exc
-        rule_id = _string(entry, "id")
-        key = f"{engine}:{rule_id}"
-        if key in inventory_by_key:
-            msg = f"rule inventory repeats {key}"
-            raise ValueError(msg)
-        inventory_by_key[key] = entry
+    inventory_by_key = _inventory_by_key(inventory_entries)
 
     catalog_by_key: dict[str, dict[str, object]] = {}
     for index, raw in enumerate(catalog_entries, start=1):
@@ -263,6 +259,29 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
         "catalog": catalog_by_key,
         "implementation_blobs": implementation_blobs,
     }
+
+
+def _inventory_by_key(inventory_entries: list[object]) -> dict[str, dict[str, object]]:
+    inventory_by_key: dict[str, dict[str, object]] = {}
+    for index, raw in enumerate(inventory_entries, start=1):
+        entry = _object(raw, label=f"rule inventory entry {index}")
+        if frozenset(entry) != _INVENTORY_ENTRY_FIELDS:
+            msg = f"rule inventory entry {index} has unexpected or missing fields"
+            raise ValueError(msg)
+        family = _string(entry, "family")
+        try:
+            engine = _ENGINE_BY_FAMILY[family]
+        except KeyError as exc:
+            msg = f"rule inventory entry {index} has unknown family {family!r}"
+            raise ValueError(msg) from exc
+        rule_id = _string(entry, "id")
+        key = f"{engine}:{rule_id}"
+        if key in inventory_by_key:
+            msg = f"rule inventory repeats {key}"
+            raise ValueError(msg)
+        inventory_by_key[key] = entry
+
+    return inventory_by_key
 
 
 def _git_blob_oid(root: Path, sha: str, path: str, *, runner: ProcessRunner) -> str:

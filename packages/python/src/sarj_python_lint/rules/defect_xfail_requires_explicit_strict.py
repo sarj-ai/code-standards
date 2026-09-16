@@ -297,12 +297,8 @@ def _is_environment_gated(dec: ast.Call, imports: ImportIndex) -> bool:
                 parsed_condition = ast.parse(condition.value, mode="eval").body
             except SyntaxError:
                 continue
-        for node in walk(parsed_condition):
-            if not isinstance(node, ast.expr):
-                continue
-            for module, symbols in _ENV_PROBE_SYMBOLS:
-                if any(imports.resolves(node, sources=frozenset({module}), symbol=symbol) for symbol in symbols):
-                    return True
+        if _has_environment_probe(parsed_condition, imports):
+            return True
     return False
 
 
@@ -373,3 +369,13 @@ def _literal_text(value: ast.expr) -> str | None:
             return f"{left}{right}" if left is not None and right is not None else None
         case _:
             return None
+
+
+def _has_environment_probe(condition: ast.expr, imports: ImportIndex) -> bool:
+    for node in walk(condition):
+        if not isinstance(node, ast.expr):
+            continue
+        for module, symbols in _ENV_PROBE_SYMBOLS:
+            if any(imports.resolves(node, sources=frozenset({module}), symbol=symbol) for symbol in symbols):
+                return True
+    return False

@@ -253,12 +253,7 @@ def _bound_cursors(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Bo
     cursors: list[_BoundCursor] = []
     for node in scoped_nodes:
         if isinstance(node, (ast.With, ast.AsyncWith)):
-            for item in node.items:
-                if isinstance(item.optional_vars, ast.Name):
-                    active_nodes = _active_nodes(tuple(_nodes_in(node.body)), item.optional_vars.id, node.lineno)
-                    cursor = _cursor(item.context_expr, item.optional_vars.id, active_nodes)
-                    if cursor is not None:
-                        cursors.append(cursor)
+            _collect_context_cursors(node, cursors)
         elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             variable = node.targets[0].id
             cursor = _cursor(node.value, variable, _active_nodes(scoped_nodes, variable, node.lineno))
@@ -352,17 +347,7 @@ def _models_from_direct_fetch(scoped_nodes: list[ast.AST], cursor: str) -> set[s
     for node in scoped_nodes:
         if not isinstance(node, ast.Call):
             continue
-        if isinstance(node.func, ast.Attribute) and node.func.attr == _MODEL_VALIDATE:
-            if len(node.args) != 1 or node.keywords or _fetch_method(node.args[0], cursor) != "fetchone":
-                continue
-            model = _model_name(node.func.value)
-        else:
-            direct_rows = [
-                keyword.value
-                for keyword in node.keywords
-                if keyword.arg is None and _fetch_method(keyword.value, cursor) == "fetchone"
-            ]
-            model = _model_name(node.func) if len(direct_rows) == 1 else None
+        model = _direct_fetch_model(node, cursor)
         if model is not None:
             models.add(model)
     return models
@@ -488,3 +473,27 @@ def _dotted(node: ast.expr) -> str | None:
     if not isinstance(node, ast.Name):
         return None
     return ".".join((node.id, *reversed(parts)))
+
+
+def _collect_context_cursors(node: ast.With | ast.AsyncWith, cursors: list[_BoundCursor]) -> None:
+    for item in node.items:
+        if isinstance(item.optional_vars, ast.Name):
+            active_nodes = _active_nodes(tuple(_nodes_in(node.body)), item.optional_vars.id, node.lineno)
+            cursor = _cursor(item.context_expr, item.optional_vars.id, active_nodes)
+            if cursor is not None:
+                cursors.append(cursor)
+
+
+def _direct_fetch_model(node: ast.Call, cursor: str) -> str | None:
+    if isinstance(node.func, ast.Attribute) and node.func.attr == _MODEL_VALIDATE:
+        if len(node.args) != 1 or node.keywords or _fetch_method(node.args[0], cursor) != "fetchone":
+            return None
+        model = _model_name(node.func.value)
+    else:
+        direct_rows = [
+            keyword.value
+            for keyword in node.keywords
+            if keyword.arg is None and _fetch_method(keyword.value, cursor) == "fetchone"
+        ]
+        model = _model_name(node.func) if len(direct_rows) == 1 else None
+    return model

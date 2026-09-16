@@ -363,35 +363,7 @@ def _duplicate_groups(tree: ast.Module, source: str) -> list[list[_Shape]]:
 
     found: list[list[_Shape]] = []
     for bucket in buckets:
-        groups: dict[tuple[str, tuple[str, ...]], list[_Shape]] = {}
-        for outline in bucket:
-            shape = _Shape(outline.node, comments, imports)
-            groups.setdefault(shape.key, []).append(shape)
-        for members in groups.values():
-            if all(_is_short_case(member.node) for member in members):
-                candidates = [
-                    run
-                    for run in _consecutive_groups(members, positions)
-                    if len(run) >= _MIN_SHORT_CASE_GROUP
-                    and _test_name_tokens(run[0].node.name).intersection(
-                        *(_test_name_tokens(member.node.name) for member in run[1:])
-                    )
-                    - _WEAK_TEST_NAME_TOKENS
-                ]
-            else:
-                candidates = (
-                    _consecutive_embedded_source_groups(members, positions)
-                    if all(member.embedded_source_checker for member in members)
-                    else [members]
-                )
-            found.extend(
-                candidate
-                for candidate in candidates
-                if len(candidate) >= _MIN_GROUP
-                and not _erases_a_fixture_document(candidate)
-                and not _erases_contract_identity(candidate)
-                and _has_enough_duplicate_evidence(candidate)
-            )
+        _collect_duplicate_bucket(bucket, comments, imports, positions, found)
     return found
 
 
@@ -401,6 +373,49 @@ def duplicate_test_owner_ids(tree: ast.Module, source: str) -> frozenset[int]:
     except tokenize.TokenError, IndentationError, SyntaxError, RecursionError:
         return frozenset()
     return frozenset(id(member.node) for group in groups for member in group)
+
+
+def _collect_duplicate_bucket(
+    bucket: list[_Outline],
+    comments: dict[int, str],
+    imports: ImportIndex,
+    positions: dict[int, int],
+    found: list[list[_Shape]],
+) -> None:
+    groups: dict[tuple[str, tuple[str, ...]], list[_Shape]] = {}
+    for outline in bucket:
+        shape = _Shape(outline.node, comments, imports)
+        groups.setdefault(shape.key, []).append(shape)
+    for members in groups.values():
+        candidates = _duplicate_candidates(members, positions)
+        found.extend(
+            candidate
+            for candidate in candidates
+            if len(candidate) >= _MIN_GROUP
+            and not _erases_a_fixture_document(candidate)
+            and not _erases_contract_identity(candidate)
+            and _has_enough_duplicate_evidence(candidate)
+        )
+
+
+def _duplicate_candidates(members: list[_Shape], positions: dict[int, int]) -> list[list[_Shape]]:
+    if all(_is_short_case(member.node) for member in members):
+        candidates = [
+            run
+            for run in _consecutive_groups(members, positions)
+            if len(run) >= _MIN_SHORT_CASE_GROUP
+            and _test_name_tokens(run[0].node.name).intersection(
+                *(_test_name_tokens(member.node.name) for member in run[1:])
+            )
+            - _WEAK_TEST_NAME_TOKENS
+        ]
+    else:
+        candidates = (
+            _consecutive_embedded_source_groups(members, positions)
+            if all(member.embedded_source_checker for member in members)
+            else [members]
+        )
+    return candidates
 
 
 def _consecutive_embedded_source_groups(members: list[_Shape], positions: dict[int, int]) -> list[list[_Shape]]:
@@ -589,19 +604,23 @@ def _is_embedded_source_checker(node: ast.FunctionDef | ast.AsyncFunctionDef) ->
             ),
             ast.Assert(test=assertion),
         ] if "\n" in source:
-            loads = [
-                child
-                for child in _walk(assertion)
-                if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name
-            ]
-            return len(loads) == 1 and any(
-                any(load is descendant for descendant in _walk(call))
-                for call in _walk(assertion)
-                if isinstance(call, ast.Call) and _is_checker_call(call)
-                for load in loads
-            )
+            return _assertion_checks_source(assertion, name)
         case _:
             return False
+
+
+def _assertion_checks_source(assertion: ast.expr, name: str) -> bool:
+    loads = [
+        child
+        for child in _walk(assertion)
+        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load) and child.id == name
+    ]
+    return len(loads) == 1 and any(
+        any(load is descendant for descendant in _walk(call))
+        for call in _walk(assertion)
+        if isinstance(call, ast.Call) and _is_checker_call(call)
+        for load in loads
+    )
 
 
 def _is_checker_call(node: ast.Call) -> bool:
@@ -619,12 +638,14 @@ def _embedded_source_signals(node: ast.FunctionDef | ast.AsyncFunctionDef) -> fr
                 tree = ast.parse(textwrap.dedent(source))
             except SyntaxError:
                 return frozenset()
-            names = [
-                name for child in _walk(tree) if isinstance(child, ast.Call) for name in [_call_name(child)] if name
-            ]
-            return frozenset(name for name, count in Counter(names).items() if count >= _MIN_REPEATED_SOURCE_OPERATION)
+            return _repeated_source_calls(tree)
         case _:
             return frozenset()
+
+
+def _repeated_source_calls(tree: ast.Module) -> frozenset[str]:
+    names = [name for child in _walk(tree) if isinstance(child, ast.Call) for name in [_call_name(child)] if name]
+    return frozenset(name for name, count in Counter(names).items() if count >= _MIN_REPEATED_SOURCE_OPERATION)
 
 
 def _call_name(node: ast.Call) -> str:

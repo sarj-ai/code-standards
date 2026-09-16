@@ -22,21 +22,7 @@ class ImportIndex:
     def from_tree(cls, tree: ast.Module, *, module_scope_only: bool = False) -> Self:
         candidates: dict[str, set[_ImportTarget]] = {}
         statements = _module_import_statements(tree) if module_scope_only else tree.body
-        for statement in statements:
-            match statement:
-                case ast.Import(names=names):
-                    for alias in names:
-                        local = alias.asname or alias.name.partition(".")[0]
-                        module = alias.name if alias.asname else alias.name.partition(".")[0]
-                        candidates.setdefault(local, set()).add(_ImportTarget(module, None))
-                case ast.ImportFrom(module=str(module), names=names, level=0):
-                    for alias in names:
-                        if alias.name == "*":
-                            continue
-                        local = alias.asname or alias.name
-                        candidates.setdefault(local, set()).add(_ImportTarget(module, alias.name))
-                case _:
-                    pass
+        _collect_import_candidates(statements, candidates)
 
         imported_names = frozenset(candidates)
         non_import_bindings = _module_non_import_bindings(tree) if module_scope_only else _non_import_bindings(tree)
@@ -175,3 +161,21 @@ def _is_type_checking_guard(node: ast.expr) -> bool:
         and node.value.id in {"typing", "typing_extensions"}
         and node.attr == "TYPE_CHECKING"
     )
+
+
+def _collect_import_candidates(statements: list[ast.stmt], candidates: dict[str, set[_ImportTarget]]) -> None:
+    for statement in statements:
+        match statement:
+            case ast.Import(names=names):
+                for alias in names:
+                    local = alias.asname or alias.name.partition(".")[0]
+                    module = alias.name if alias.asname else alias.name.partition(".")[0]
+                    candidates.setdefault(local, set()).add(_ImportTarget(module, None))
+            case ast.ImportFrom(module=str(module), names=names, level=0):
+                for alias in names:
+                    if alias.name == "*":
+                        continue
+                    local = alias.asname or alias.name
+                    candidates.setdefault(local, set()).add(_ImportTarget(module, alias.name))
+            case _:
+                pass

@@ -176,42 +176,35 @@ class NoHiddenConstructorFallback(Rule):
             facts = _ConstructorFacts()
         resolver = _RuntimeConfigResolver(path, tree, first_party, facts)
         diagnostics: list[Diagnostic] = []
-        for class_node in nodes(tree, ast.ClassDef):
-            init = next(
-                (
-                    statement
-                    for statement in reversed(class_node.body)
-                    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name == "__init__"
-                ),
-                None,
-            )
-            if init is None or _is_descriptor(init):
-                continue
-            hidden = _hidden_parameters(init, resolver)
-            if not hidden or not _has_composition_call(path, class_node.name, first_party, facts):
-                continue
-            names = ", ".join(f"`{match.parameter.arg}`" for match in hidden)
-            noun = "parameter" if len(hidden) == 1 else "parameters"
-            verb = "falls" if len(hidden) == 1 else "fall"
-            falsey_warning = (
-                " A boolean `or` also treats explicit falsey values as omitted."
-                if any(match.uses_boolean_or for match in hidden)
-                else ""
-            )
-            diagnostics.append(
-                Diagnostic(
-                    path=path,
-                    line=hidden[0].parameter.lineno,
-                    col=hidden[0].parameter.col_offset + 1,
-                    code=self.code,
-                    message=(
-                        f"Constructor {noun} {names} {verb} back to application settings when omitted; "
-                        "make the argument required and resolve the fallback at the call site or composition root."
-                        f"{falsey_warning}"
+
+        def collect_hidden_constructors() -> None:
+            for class_node in nodes(tree, ast.ClassDef):
+                init = next(
+                    (
+                        statement
+                        for statement in reversed(class_node.body)
+                        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and statement.name == "__init__"
                     ),
-                    severity=Severity.ERROR,
+                    None,
                 )
-            )
+                if init is None or _is_descriptor(init):
+                    continue
+                hidden = _hidden_parameters(init, resolver)
+                if not hidden or not _has_composition_call(path, class_node.name, first_party, facts):
+                    continue
+                diagnostics.append(
+                    Diagnostic(
+                        path=path,
+                        line=hidden[0].parameter.lineno,
+                        col=hidden[0].parameter.col_offset + 1,
+                        code=self.code,
+                        message=_hidden_constructor_message(hidden),
+                        severity=Severity.ERROR,
+                    )
+                )
+
+        collect_hidden_constructors()
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
 
 
@@ -505,10 +498,7 @@ def _imports(tree: ast.Module, current_module: str | None, *, is_package: bool =
     bindings: dict[str, _Binding] = {}
     for statement in tree.body:
         if isinstance(statement, ast.Import):
-            for alias in statement.names:
-                bound = alias.asname or alias.name.partition(".")[0]
-                module = alias.name if alias.asname else alias.name.partition(".")[0]
-                bindings[bound] = _Binding(module, None)
+            _bind_import_modules(statement, bindings)
         elif isinstance(statement, ast.ImportFrom):
             module = _absolute_module(statement, current_module, is_package=is_package)
             if module is None:
@@ -683,38 +673,59 @@ def _distribution_calls_class_uncached(
             if not file_name.endswith(".py"):
                 continue
             candidate = Path(directory) / file_name
-            if is_test_path(candidate):
-                continue
-            try:
-                source = candidate.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            if class_name not in source or is_generated(candidate, source):
-                continue
-            try:
-                tree = ast.parse(source, filename=str(candidate))
-            except SyntaxError:
-                continue
-            module = _module_name(candidate, root)
-            if module is None:
-                continue
-            imports = _imports(tree, module, is_package=candidate.name == "__init__.py")
-            for node, shadowed in _calls_with_shadowing(tree):
-                parts = _attribute_parts(node.func)
-                if parts is not None and parts[0] in shadowed:
-                    continue
-                resolved = _resolve_expression(node.func, imports)
-                if resolved is None and isinstance(node.func, ast.Name):
-                    called_module, called_symbol = module, node.func.id
-                elif resolved is not None and len(resolved) >= _QUALIFIED_NAME_PARTS:
-                    called_module, called_symbol = ".".join(resolved[:-1]), resolved[-1]
-                else:
-                    continue
-                if called_symbol != class_name:
-                    continue
-                canonical = _canonical_symbol(root, called_module, called_symbol, facts)
-                if canonical == _CanonicalSymbol(target_module, class_name):
-                    return True
+            if _candidate_calls_class(candidate, root, target_module, class_name, facts):
+                return True
+    return False
+
+
+def _candidate_calls_class(
+    candidate: Path, root: Path, target_module: str, class_name: str, facts: _ConstructorFacts
+) -> bool:
+    if is_test_path(candidate):
+        return False
+    try:
+        source = candidate.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if class_name not in source or is_generated(candidate, source):
+        return False
+    try:
+        tree = ast.parse(source, filename=str(candidate))
+    except SyntaxError:
+        return False
+    module = _module_name(candidate, root)
+    if module is None:
+        return False
+    imports = _imports(tree, module, is_package=candidate.name == "__init__.py")
+    return _module_calls_class(tree, module, imports, root, target_module, class_name=class_name, facts=facts)
+
+
+def _module_calls_class(
+    tree: ast.Module,
+    module: str,
+    imports: dict[str, _Binding],
+    root: Path,
+    target_module: str,
+    *,
+    class_name: str,
+    facts: _ConstructorFacts,
+) -> bool:
+    for node, shadowed in _calls_with_shadowing(tree):
+        parts = _attribute_parts(node.func)
+        if parts is not None and parts[0] in shadowed:
+            continue
+        resolved = _resolve_expression(node.func, imports)
+        if resolved is None and isinstance(node.func, ast.Name):
+            called_module, called_symbol = module, node.func.id
+        elif resolved is not None and len(resolved) >= _QUALIFIED_NAME_PARTS:
+            called_module, called_symbol = ".".join(resolved[:-1]), resolved[-1]
+        else:
+            continue
+        if called_symbol != class_name:
+            continue
+        canonical = _canonical_symbol(root, called_module, called_symbol, facts)
+        if canonical == _CanonicalSymbol(target_module, class_name):
+            return True
     return False
 
 
@@ -759,27 +770,10 @@ def _calls_with_shadowing(
 ) -> Iterator[tuple[ast.Call, frozenset[str]]]:
     match node:
         case ast.ListComp() | ast.SetComp() | ast.GeneratorExp():
-            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-            comprehension_shadowed = lexical_parent
-            for index, generator in enumerate(node.generators):
-                iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
-                yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
-                comprehension_shadowed |= frozenset(_target_names(generator.target))
-                for condition in generator.ifs:
-                    yield from _calls_with_shadowing(condition, comprehension_shadowed)
-            yield from _calls_with_shadowing(node.elt, comprehension_shadowed)
+            yield from _comprehension_calls(node.generators, (node.elt,), shadowed, nested_scope_base)
             return
         case ast.DictComp(generators=generators, key=key, value=value):
-            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-            comprehension_shadowed = lexical_parent
-            for index, generator in enumerate(generators):
-                iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
-                yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
-                comprehension_shadowed |= frozenset(_target_names(generator.target))
-                for condition in generator.ifs:
-                    yield from _calls_with_shadowing(condition, comprehension_shadowed)
-            yield from _calls_with_shadowing(key, comprehension_shadowed)
-            yield from _calls_with_shadowing(value, comprehension_shadowed)
+            yield from _comprehension_calls(generators, (key, value), shadowed, nested_scope_base)
             return
         case ast.Lambda(args=args, body=body):
             outer_nodes = [*args.defaults, *(default for default in args.kw_defaults if default is not None)]
@@ -789,17 +783,7 @@ def _calls_with_shadowing(
             yield from _calls_with_shadowing(body, lexical_parent | _scope_bindings(node))
             return
         case ast.FunctionDef() | ast.AsyncFunctionDef():
-            outer_nodes = [
-                *node.decorator_list,
-                *node.args.defaults,
-                *(default for default in node.args.kw_defaults if default is not None),
-            ]
-            for outer in outer_nodes:
-                yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
-            lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
-            local_shadowed = lexical_parent | _scope_bindings(node)
-            for statement in node.body:
-                yield from _calls_with_shadowing(statement, local_shadowed)
+            yield from _function_calls(node, shadowed, nested_scope_base)
             return
         case ast.ClassDef(decorator_list=decorators, bases=bases, keywords=keywords, body=body):
             for outer in (*decorators, *bases, *keywords):
@@ -891,3 +875,63 @@ class _LocalBindingCollector(ast.NodeVisitor):
     @override
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         return None
+
+
+def _bind_import_modules(statement: ast.Import, bindings: dict[str, _Binding]) -> None:
+    for alias in statement.names:
+        bound = alias.asname or alias.name.partition(".")[0]
+        module = alias.name if alias.asname else alias.name.partition(".")[0]
+        bindings[bound] = _Binding(module, None)
+
+
+def _comprehension_calls(
+    generators: list[ast.comprehension],
+    values: tuple[ast.expr, ...],
+    shadowed: frozenset[str],
+    nested_scope_base: frozenset[str] | None,
+) -> Iterator[tuple[ast.Call, frozenset[str]]]:
+    lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+    comprehension_shadowed = lexical_parent
+    for index, generator in enumerate(generators):
+        iterable_shadowed = shadowed if index == 0 else comprehension_shadowed
+        yield from _calls_with_shadowing(generator.iter, iterable_shadowed)
+        comprehension_shadowed |= frozenset(_target_names(generator.target))
+        for condition in generator.ifs:
+            yield from _calls_with_shadowing(condition, comprehension_shadowed)
+    for value in values:
+        yield from _calls_with_shadowing(value, comprehension_shadowed)
+
+
+def _function_calls(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    shadowed: frozenset[str],
+    nested_scope_base: frozenset[str] | None,
+) -> Iterator[tuple[ast.Call, frozenset[str]]]:
+    outer_nodes = [
+        *node.decorator_list,
+        *node.args.defaults,
+        *(default for default in node.args.kw_defaults if default is not None),
+    ]
+    for outer in outer_nodes:
+        yield from _calls_with_shadowing(outer, shadowed, nested_scope_base)
+    lexical_parent = nested_scope_base if nested_scope_base is not None else shadowed
+    local_shadowed = lexical_parent | _scope_bindings(node)
+    for statement in node.body:
+        yield from _calls_with_shadowing(statement, local_shadowed)
+    return
+
+
+def _hidden_constructor_message(hidden: list[_HiddenParameter]) -> str:
+    names = ", ".join(f"`{match.parameter.arg}`" for match in hidden)
+    noun = "parameter" if len(hidden) == 1 else "parameters"
+    verb = "falls" if len(hidden) == 1 else "fall"
+    falsey_warning = (
+        " A boolean `or` also treats explicit falsey values as omitted."
+        if any(match.uses_boolean_or for match in hidden)
+        else ""
+    )
+    return (
+        f"Constructor {noun} {names} {verb} back to application settings when omitted; "
+        "make the argument required and resolve the fallback at the call site or composition root."
+        f"{falsey_warning}"
+    )

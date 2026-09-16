@@ -82,30 +82,7 @@ def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
             indexed_cols.setdefault(base_table, set()).add(cols)
 
     for stmt in masked.split(";"):
-        table_match = TABLE_SCOPE_PATTERN.search(stmt)
-        if not table_match:
-            continue
-        full_table = _normalize_name(table_match.group(1))
-        base_table = full_table.split(".")[-1]
-        for pk_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
-            pk_cols = tuple(
-                normalized for column in pk_match.group(1).split(",") if (normalized := _normalize_name(column))
-            )
-            if pk_cols:
-                indexed_cols.setdefault(full_table, set()).add(pk_cols)
-                indexed_cols.setdefault(base_table, set()).add(pk_cols)
-        body = stmt[table_match.end() :]
-        for segment in body.split(","):
-            if TABLE_PK_OR_UNIQUE_PATTERN.search(segment):
-                continue
-            inline_match = INLINE_PK_OR_UNIQUE_PATTERN.search(segment)
-            if inline_match is None:
-                continue
-            column = _normalize_name(inline_match.group(1))
-            if column in RESERVED_KEYWORDS:
-                continue
-            indexed_cols.setdefault(full_table, set()).add((column,))
-            indexed_cols.setdefault(base_table, set()).add((column,))
+        _collect_constraint_indexes(stmt, indexed_cols)
     return indexed_cols
 
 
@@ -116,13 +93,6 @@ _MIGRATION_ROOT_NAMES = frozenset({"migrations", "migration", "migrate", "drizzl
 # into a repo-wide one.
 _MAX_TREE_FILES = 600
 _MAX_TREE_BYTES = 1_000_000
-
-
-def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
-    for parent in path.parents:
-        if parent.name.lower() in _MIGRATION_ROOT_NAMES:
-            return parent
-    return None
 
 
 @lru_cache(maxsize=64)
@@ -159,6 +129,13 @@ def _sibling_indexes(path: Path, tables: tuple[str, ...]) -> set[tuple[str, ...]
         return set()
     wanted = set(tables)
     return {columns for table, columns in _tree_indexes(root) if table in wanted}
+
+
+def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
+    for parent in path.parents:
+        if parent.name.lower() in _MIGRATION_ROOT_NAMES:
+            return parent
+    return None
 
 
 def _has_covering_index(indexes: set[tuple[str, ...]], columns: tuple[str, ...]) -> bool:
@@ -350,3 +327,30 @@ def _is_index_requiring_inline_reference(segment: str) -> bool:
         and PRIMARY_OR_UNIQUE_KEYWORD.search(segment) is None
         and _INDEX_REQUIRING_ACTION_RE.search(segment) is not None
     )
+
+
+def _collect_constraint_indexes(stmt: str, indexed_cols: dict[str, set[tuple[str, ...]]]) -> None:
+    table_match = TABLE_SCOPE_PATTERN.search(stmt)
+    if not table_match:
+        return
+    full_table = _normalize_name(table_match.group(1))
+    base_table = full_table.split(".")[-1]
+    for pk_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
+        pk_cols = tuple(
+            normalized for column in pk_match.group(1).split(",") if (normalized := _normalize_name(column))
+        )
+        if pk_cols:
+            indexed_cols.setdefault(full_table, set()).add(pk_cols)
+            indexed_cols.setdefault(base_table, set()).add(pk_cols)
+    body = stmt[table_match.end() :]
+    for segment in body.split(","):
+        if TABLE_PK_OR_UNIQUE_PATTERN.search(segment):
+            continue
+        inline_match = INLINE_PK_OR_UNIQUE_PATTERN.search(segment)
+        if inline_match is None:
+            continue
+        column = _normalize_name(inline_match.group(1))
+        if column in RESERVED_KEYWORDS:
+            continue
+        indexed_cols.setdefault(full_table, set()).add((column,))
+        indexed_cols.setdefault(base_table, set()).add((column,))

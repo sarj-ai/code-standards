@@ -78,67 +78,6 @@ function parseJsDoc(value: string): { description: string; tags: JsDocTag[] } {
   return { description: description.join("\n").trim(), tags };
 }
 
-/** True when every content word of `text` already appears in `known`. */
-function covered(text: string, known: ReadonlySet<string>): boolean {
-  if (BEHAVIORAL_PROSE_RE.test(text)) return false;
-  const stems = new Set<string>();
-  for (const token of known) stems.add(stem(token));
-  return proseTokens(text).every((word) => known.has(word) || stems.has(stem(word)));
-}
-
-/** Every content word of `text`, lowercased, with filler dropped. */
-function proseTokens(text: string): string[] {
-  return (text.match(WORD_RE) ?? [])
-    .map((word) => word.toLowerCase())
-    .filter((word) => !STOPWORDS.has(word));
-}
-
-/** The declared name and parameter names of the node a JSDoc block sits above. */
-function declarationNames(node: TSESTree.Node): { name: string; params: string[] } | null {
-  switch (node.type) {
-    // `export function f()` — the JSDoc sits above the `export`, so the token
-    // after it resolves to the wrapper, not to the thing being documented.
-    case AST_NODE_TYPES.ExportNamedDeclaration:
-    case AST_NODE_TYPES.ExportDefaultDeclaration:
-      return node.declaration == null ? null : declarationNames(node.declaration);
-    case AST_NODE_TYPES.FunctionDeclaration:
-    case AST_NODE_TYPES.TSDeclareFunction:
-      return node.id === null ? null : { name: node.id.name, params: paramNames(node.params) };
-    case AST_NODE_TYPES.ClassDeclaration:
-    case AST_NODE_TYPES.TSInterfaceDeclaration:
-    case AST_NODE_TYPES.TSTypeAliasDeclaration:
-    case AST_NODE_TYPES.TSEnumDeclaration:
-      return node.id === null ? null : { name: node.id.name, params: [] };
-    case AST_NODE_TYPES.VariableDeclaration: {
-      const declarator = node.declarations[0];
-      if (declarator === undefined || declarator.id.type !== AST_NODE_TYPES.Identifier) return null;
-      const init = declarator.init;
-      const params =
-        init != null &&
-        (init.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-          init.type === AST_NODE_TYPES.FunctionExpression)
-          ? paramNames(init.params)
-          : [];
-      return { name: declarator.id.name, params };
-    }
-    case AST_NODE_TYPES.MethodDefinition:
-    case AST_NODE_TYPES.PropertyDefinition:
-    case AST_NODE_TYPES.TSMethodSignature:
-    case AST_NODE_TYPES.TSPropertySignature: {
-      if (node.key.type !== AST_NODE_TYPES.Identifier) return null;
-      const params =
-        node.type === AST_NODE_TYPES.MethodDefinition
-          ? paramNames(node.value.params)
-          : node.type === AST_NODE_TYPES.TSMethodSignature
-            ? paramNames(node.params)
-            : [];
-      return { name: node.key.name, params };
-    }
-    default:
-      return null;
-  }
-}
-
 function paramNames(params: readonly TSESTree.Parameter[]): string[] {
   const names: string[] = [];
   for (const param of params) {
@@ -147,12 +86,6 @@ function paramNames(params: readonly TSESTree.Parameter[]): string[] {
     else if (target.type === AST_NODE_TYPES.TSParameterProperty) continue;
   }
   return names;
-}
-
-function tokensOf(names: readonly string[]): Set<string> {
-  const tokens = new Set<string>();
-  for (const name of names) for (const part of splitIdentifier(name)) tokens.add(part);
-  return tokens;
 }
 
 export default createRule<Options, MessageIds>({
@@ -181,78 +114,40 @@ export default createRule<Options, MessageIds>({
 
     return {
       Program(): void {
-        for (const comment of sourceCode.getAllComments()) {
-          if (comment.type !== "Block" || !comment.value.startsWith("*")) continue;
+        function checkJsDoc(comment: TSESTree.Comment): void {
+          if (comment.type !== "Block" || !comment.value.startsWith("*")) return;
           const { description, tags } = parseJsDoc(comment.value);
           const describedText = [
             description,
             ...tags.filter((tag) => tag.name === "description").map((tag) => tag.text),
           ].filter((text) => text.length > 0).join("\n");
-          if (DIRECTIVE_RE.test(describedText)) continue;
+          if (DIRECTIVE_RE.test(describedText)) return;
           const tagNames = new Set(tags.map((tag) => tag.name));
-          if ([...tagNames].some((name) => !MODELLED_TAGS.has(name))) continue;
-          if (isProtected(describedText)) continue;
+          if ([...tagNames].some((name) => !MODELLED_TAGS.has(name))) return;
+          if (isProtected(describedText)) return;
 
           const token = sourceCode.getTokenAfter(comment, { includeComments: true });
-          if (token === null || token.loc.start.line !== comment.loc.end.line + 1) continue;
-          if (token.type === "Line" || token.type === "Block") continue;
-          let node = sourceCode.getNodeByRangeIndex(token.range[0]);
-          let declaration: { name: string; params: string[] } | null = null;
-          while (node != null && node.type !== AST_NODE_TYPES.Program) {
-            declaration = declarationNames(node);
-            if (declaration !== null) break;
-            node = node.parent ?? null;
-          }
-          if (declaration === null) continue;
+          if (token === null || token.loc.start.line !== comment.loc.end.line + 1) return;
+          if (token.type === "Line" || token.type === "Block") return;
+          const declaration = enclosingDeclarationNames(sourceCode.getNodeByRangeIndex(token.range[0]));
+          if (declaration === null) return;
 
           const paramTags = tags.filter((tag) => PARAM_TAGS.has(tag.name));
           const returnTags = tags.filter((tag) => RETURN_TAGS.has(tag.name));
-          if ([...paramTags, ...returnTags].some((tag) => /^\s*\{/.test(tag.text))) continue;
-          if (paramTags.some((tag) => /^\s*(?:\[|[A-Za-z_$][\w$]*\.)/.test(tag.text))) continue;
+          if ([...paramTags, ...returnTags].some((tag) => /^\s*\{/.test(tag.text))) return;
+          if (paramTags.some((tag) => /^\s*(?:\[|[A-Za-z_$][\w$]*\.)/.test(tag.text))) return;
           if (describedText.length === 0 && paramTags.length === 0 && returnTags.length === 0) {
-            continue;
+            return;
           }
           // `no-typed-doc-sections` owns @param/@returns repetition on fully
           // typed signatures. Keeping one owner prevents duplicate diagnostics.
           if (
             (paramTags.length > 0 || returnTags.length > 0) &&
             documentsTypedFunction(sourceCode, comment)
-          ) continue;
+          ) return;
 
-          const nameTokens = tokensOf([declaration.name]);
-          const paramTokens = tokensOf(declaration.params);
-          const known = new Set([...nameTokens, ...paramTokens]);
-
-          let addsNothing = covered(describedText, known);
-          for (const tag of paramTags) {
-            const text = tag.text.replace(/^\{[^}]*\}\s*/, "");
-            const match = /^\[?([A-Za-z_$][\w.$]*)\]?\s*-?\s*([\s\S]*)$/.exec(text);
-            if (match === null) {
-              addsNothing = false;
-              break;
-            }
-            const path = match[1] ?? "";
-            const root = path.split(".")[0] ?? "";
-            if (!declaration.params.includes(root)) {
-              addsNothing = false;
-              break;
-            }
-            const own = new Set([...splitIdentifier(path.split(".").pop() ?? ""), ...nameTokens]);
-            if (!covered(match[2] ?? "", own)) {
-              addsNothing = false;
-              break;
-            }
-            for (const part of splitIdentifier(match[1]?.split(".").pop() ?? "")) known.add(part);
-          }
-          if (addsNothing) {
-            for (const tag of returnTags) {
-              if (!covered(tag.text.replace(/^\{[^}]*\}\s*/, ""), known)) {
-                addsNothing = false;
-                break;
-              }
-            }
-          }
-          if (!addsNothing) continue;
+          const addsNothing = repeatsDeclaration(describedText, declaration, paramTags, returnTags);
+          if (!addsNothing) return;
 
           context.report({
             node: comment,
@@ -265,7 +160,134 @@ export default createRule<Options, MessageIds>({
             ],
           });
         }
+
+        for (const comment of sourceCode.getAllComments()) { checkJsDoc(comment); }
       },
     };
   },
 });
+
+function enclosingDeclarationNames(node: TSESTree.Node | null): { name: string; params: string[] } | null {
+  let declaration: { name: string; params: string[] } | null = null;
+  while (node != null && node.type !== AST_NODE_TYPES.Program) {
+    declaration = declarationNames(node);
+    if (declaration !== null) break;
+    node = node.parent ?? null;
+  }
+
+  return declaration;
+}
+
+
+/** The declared name and parameter names of the node a JSDoc block sits above. */
+function declarationNames(node: TSESTree.Node): { name: string; params: string[] } | null {
+  switch (node.type) {
+    // `export function f()` — the JSDoc sits above the `export`, so the token
+    // after it resolves to the wrapper, not to the thing being documented.
+    case AST_NODE_TYPES.ExportNamedDeclaration:
+    case AST_NODE_TYPES.ExportDefaultDeclaration:
+      return node.declaration == null ? null : declarationNames(node.declaration);
+    case AST_NODE_TYPES.FunctionDeclaration:
+    case AST_NODE_TYPES.TSDeclareFunction:
+      return node.id === null ? null : { name: node.id.name, params: paramNames(node.params) };
+    case AST_NODE_TYPES.ClassDeclaration:
+    case AST_NODE_TYPES.TSInterfaceDeclaration:
+    case AST_NODE_TYPES.TSTypeAliasDeclaration:
+    case AST_NODE_TYPES.TSEnumDeclaration:
+      return node.id === null ? null : { name: node.id.name, params: [] };
+    case AST_NODE_TYPES.VariableDeclaration:
+      return variableDeclarationNames(node);
+    case AST_NODE_TYPES.MethodDefinition:
+    case AST_NODE_TYPES.PropertyDefinition:
+    case AST_NODE_TYPES.TSMethodSignature:
+    case AST_NODE_TYPES.TSPropertySignature: {
+      if (node.key.type !== AST_NODE_TYPES.Identifier) return null;
+      const params =
+        node.type === AST_NODE_TYPES.MethodDefinition
+          ? paramNames(node.value.params)
+          : node.type === AST_NODE_TYPES.TSMethodSignature
+            ? paramNames(node.params)
+            : [];
+      return { name: node.key.name, params };
+    }
+    default:
+      return null;
+  }
+}
+
+
+function variableDeclarationNames(node: TSESTree.VariableDeclaration): { name: string; params: string[] } | null {
+
+  const declarator = node.declarations[0];
+  if (declarator === undefined || declarator.id.type !== AST_NODE_TYPES.Identifier) return null;
+  const init = declarator.init;
+  const params =
+    init != null &&
+      (init.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        init.type === AST_NODE_TYPES.FunctionExpression)
+      ? paramNames(init.params)
+      : [];
+  return { name: declarator.id.name, params };
+}
+
+function repeatsDeclaration(describedText: string, declaration: { name: string; params: string[] }, paramTags: ReturnType<typeof parseJsDoc>["tags"], returnTags: ReturnType<typeof parseJsDoc>["tags"]): boolean {
+  const nameTokens = tokensOf([declaration.name]);
+  const paramTokens = tokensOf(declaration.params);
+  const known = new Set([...nameTokens, ...paramTokens]);
+
+  let addsNothing = covered(describedText, known);
+  for (const tag of paramTags) {
+    const text = tag.text.replace(/^\{[^}]*\}\s*/, "");
+    const match = /^\[?([A-Za-z_$][\w.$]*)\]?\s*-?\s*([\s\S]*)$/.exec(text);
+    if (match === null) {
+      addsNothing = false;
+      break;
+    }
+    const path = match[1] ?? "";
+    const root = path.split(".")[0] ?? "";
+    if (!declaration.params.includes(root)) {
+      addsNothing = false;
+      break;
+    }
+    const own = new Set([...splitIdentifier(path.split(".").pop() ?? ""), ...nameTokens]);
+    if (!covered(match[2] ?? "", own)) {
+      addsNothing = false;
+      break;
+    }
+    for (const part of splitIdentifier(match[1]?.split(".").pop() ?? "")) known.add(part);
+  }
+  if (addsNothing) {
+    for (const tag of returnTags) {
+      if (!covered(tag.text.replace(/^\{[^}]*\}\s*/, ""), known)) {
+        addsNothing = false;
+        break;
+      }
+    }
+  }
+
+  return addsNothing;
+}
+
+
+function tokensOf(names: readonly string[]): Set<string> {
+  const tokens = new Set<string>();
+  for (const name of names) for (const part of splitIdentifier(name)) tokens.add(part);
+  return tokens;
+}
+
+
+/** True when every content word of `text` already appears in `known`. */
+function covered(text: string, known: ReadonlySet<string>): boolean {
+  if (BEHAVIORAL_PROSE_RE.test(text)) return false;
+  const stems = new Set<string>();
+  for (const token of known) stems.add(stem(token));
+  return proseTokens(text).every((word) => known.has(word) || stems.has(stem(word)));
+}
+
+
+/** Every content word of `text`, lowercased, with filler dropped. */
+function proseTokens(text: string): string[] {
+  return (text.match(WORD_RE) ?? [])
+    .map((word) => word.toLowerCase())
+    .filter((word) => !STOPWORDS.has(word));
+}

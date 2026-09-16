@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5e384681075c1492f85cfaa3a895b36f36a9b444249019ee0602a4fdaf39162a",
-  "cliSha256": "e4b3fcd29c7493d8a2a5aacceda1733104f6abd454689576893ab88405f59d5f",
+  "catalogSha256": "3ad3d6be312dd4cea6b5a09f985db66404b1da382993cf457917288989b39205",
+  "cliSha256": "bd8d70beb57a854cc7efcd754e15fc5a6c9c9c3479a19728373e263b068e8355",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -570,6 +570,101 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"ignoreFiles\": {\n      \"description\": \"Additional generated-file globs to ignore; shared generated paths and header markers are always ignored.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-excessive-cognitive-complexity": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "function hasDisplayLabel(item: CatalogItem): boolean {\n  if (!item.visible) return false;\n  if (!item.inStock) return false;\n  if (item.label === \"\") return false;\n  return true;\n}\n\nfunction collectLabels(catalog: Catalog): string[] {\n  const labels: string[] = [];\n  for (const section of catalog.sections) {\n    for (const shelf of section.shelves) {\n      for (const item of shelf.items) {\n        if (hasDisplayLabel(item)) labels.push(item.label);\n      }\n    }\n  }\n  return labels;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "catalog-labels-after",
+          "outcome": "accept",
+          "scenarioId": "catalog-labels",
+          "title": "Extract eligibility: traversal 10; predicate 3"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "function collectLabels(catalog: Catalog): string[] {\n  const labels: string[] = [];\n  for (const section of catalog.sections) {\n    for (const shelf of section.shelves) {\n      for (const item of shelf.items) {\n        if (item.visible) {\n          if (item.inStock) {\n            if (item.label !== \"\") {\n              labels.push(item.label);\n            }\n          }\n        }\n      }\n    }\n  }\n  return labels;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "catalog-labels-before",
+          "outcome": "reject",
+          "scenarioId": "catalog-labels",
+          "title": "Synthetic catalog traversal: score 21 (error)"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "function canDownload(item: Download): boolean {\n  if (!item.published) return false;\n  if (!item.licensed) return false;\n  if (!item.available) return false;\n  if (item.quarantined) return false;\n  if (!(item.bytes > 0)) return false;\n  if (!(item.bytes <= 1000000)) return false;\n  return true;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "download-check-after",
+          "outcome": "accept",
+          "scenarioId": "download-check",
+          "title": "Use early returns: score 6"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "function canDownload(item: Download): boolean {\n  if (item.published) {\n    if (item.licensed) {\n      if (item.available) {\n        if (!item.quarantined) {\n          if (item.bytes > 0) {\n            if (item.bytes <= 1000000) {\n              return true;\n            }\n          }\n        }\n      }\n    }\n  }\n  return false;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "download-check-before",
+          "outcome": "reject",
+          "scenarioId": "download-check",
+          "title": "Synthetic download eligibility: score 21 (error)"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/decision.ts",
+              "source": "function decide(a, b, c, d, e, f, g) {\n  if (!a) return;\n  if (!b) return;\n  if (!c) return;\n  if (!d) return;\n  if (!e) return;\n  if (!f) return;\n  if (!g) return;\n  act();\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/decision.ts",
+          "id": "guard-decisions",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Guard clauses reduce nesting"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/decision.ts",
+              "source": "function decide(a, b, c, d, e, f, g) {\n  if (a) {\n    if (b) {\n      if (c) {\n        if (d) {\n          if (e) {\n            if (f) {\n              if (g) {\n                act();\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/decision.ts",
+          "id": "nested-decisions",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Seven nested decisions exceed the error limit"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:no-fat-try-blocks": {
       "examples": [
@@ -5308,6 +5403,71 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unique names in a package export list"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-excessive-cognitive-complexity": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/decision.py",
+              "source": "def decide(a, b, c, d, e, f):\n    if not a:\n        return\n    if not b:\n        return\n    if not c:\n        return\n    if not d:\n        return\n    if not e:\n        return\n    if not f:\n        return\n    act()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/decision.py",
+          "id": "guard-decisions",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Guard clauses reduce nesting"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/library.py",
+              "source": "def can_borrow(member, book):\n    if not member.active:\n        return False\n    if not member.email_verified:\n        return False\n    if member.suspended:\n        return False\n    if not (member.balance == 0):\n        return False\n    if not (member.borrowed_count < 5):\n        return False\n    if not book.available:\n        return False\n    if book.reference_only:\n        return False\n    return True\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/library.py",
+          "id": "library-check-after",
+          "outcome": "accept",
+          "scenarioId": "library-check",
+          "title": "Synthetic library eligibility after: score 7"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/library.py",
+              "source": "def can_borrow(member, book):\n    if member.active:\n        if member.email_verified:\n            if not member.suspended:\n                if member.balance == 0:\n                    if member.borrowed_count < 5:\n                        if book.available:\n                            if not book.reference_only:\n                                return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/library.py",
+          "id": "library-check-before",
+          "outcome": "reject",
+          "scenarioId": "library-check",
+          "title": "Synthetic library eligibility before: score 28"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/decision.py",
+              "source": "def decide(a, b, c, d, e, f):\n    if a:\n        if b:\n            if c:\n                if d:\n                    if e:\n                        if f:\n                            act()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/decision.py",
+          "id": "nested-decisions",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Six nested decisions require a review"
         }
       ],
       "optionsSchemaSource": null

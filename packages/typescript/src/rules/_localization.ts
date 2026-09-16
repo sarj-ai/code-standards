@@ -59,34 +59,29 @@ export function withinTranslation(
     node.type === AST_NODE_TYPES.JSXExpressionContainer;
   let translateResolved = false;
   for (const current of [node, ...source.getAncestors(node).toReversed()]) {
-    if (current.type === AST_NODE_TYPES.JSXElement) {
-      const opening = current.openingElement;
-      if (
-        opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
-        ["script", "style"].includes(opening.name.name)
-      )
-        return true;
-      if (
-        isText &&
-        opening.name.type === AST_NODE_TYPES.JSXIdentifier &&
-        ["code", "samp"].includes(opening.name.name)
-      )
-        return true;
-      if (!translateResolved) {
-        const translate = attributeText(opening, "translate");
-        if (translate === "no" || translate === null) return true;
-        if (translate === "yes") translateResolved = true;
-      }
-      const imported = importedComponent(opening.name, source);
-      if (
-        options?.translationComponents?.some(
-          (component) =>
-            component.module === imported?.module &&
-            component.export === imported.export,
-        )
-      )
-        return true;
+    if (current.type !== AST_NODE_TYPES.JSXElement) continue;
+    const opening = current.openingElement;
+    if (translationExemptElement(opening, isText)) return true;
+    if (!translateResolved) {
+      const translate = attributeText(opening, "translate");
+      if (translate === "no" || translate === null) return true;
+      if (translate === "yes") translateResolved = true;
     }
+    const imported = importedComponent(opening.name, source);
+    if (
+      options?.translationComponents?.some(
+        (component) =>
+          component.module === imported?.module &&
+          component.export === imported.export,
+      )
+    )
+      return true;
   }
   return false;
+}
+
+function translationExemptElement(opening: TSESTree.JSXOpeningElement, isText: boolean): boolean {
+  if (opening.name.type !== AST_NODE_TYPES.JSXIdentifier) return false;
+  if (["script", "style"].includes(opening.name.name)) return true;
+  return isText && ["code", "samp"].includes(opening.name.name);
 }

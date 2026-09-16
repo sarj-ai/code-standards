@@ -56,7 +56,7 @@ def _rule(rule_id: str, *, level: str = "warning", summary: str = "Summary") -> 
 def _write_revision(root: Path, rules: list[dict[str, object]], message: str) -> str:
     inventory_rules = [
         {
-            "family": "python",
+            "family": "typescript" if rule["engine"] == "eslint" else rule["engine"],
             "id": rule["id"],
             "code": rule["code"],
             "source": rule["source"],
@@ -335,3 +335,41 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
 
     assert status == 2
     assert "cannot compare rule revisions" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("engine", "rule_id", "level", "expected_status"),
+    [
+        ("python", "no-excessive-cognitive-complexity", "error", 0),
+        ("eslint", "no-excessive-cognitive-complexity", "error", 0),
+        ("python", "no-excessive-cognitive-complexity", "off", 1),
+        ("sql", "no-excessive-cognitive-complexity", "error", 1),
+        ("python", "no-excessive-cognitive-complexity-extra", "error", 1),
+    ],
+)
+def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
+    repository: Path, engine: str, rule_id: str, level: str, expected_status: int
+) -> None:
+    before = _write_revision(repository, [], "base")
+    rule = _rule(rule_id, level=level)
+    rule["key"] = f"{engine}:{rule_id}"
+    rule["engine"] = engine
+    after = _write_revision(repository, [rule], "candidate")
+    assert (
+        main(
+            [
+                "--root",
+                str(repository),
+                "maintain",
+                "rules",
+                "changes",
+                "--before",
+                before,
+                "--after",
+                after,
+                "--require-added-level",
+                "warning",
+            ]
+        )
+        == expected_status
+    )

@@ -501,13 +501,7 @@ def _has_wire_protocol_evidence(node: ast.ClassDef, service: _Service) -> bool:
         methods, threshold = _PROTOCOL_METHODS[service.subject]
         implemented = [method for method in node.body if isinstance(method, _FUNC_NODES) and method.name in methods]
         return len(implemented) >= threshold and _has_cross_method_protocol_state(implemented)
-    keys = {
-        key.value
-        for mapping in walk(node)
-        if isinstance(mapping, ast.Dict)
-        for key in mapping.keys
-        if isinstance(key, ast.Constant) and isinstance(key.value, str)
-    }
+    keys = _wire_mapping_keys(node)
     expected = _LLM_WIRE_KEY_SETS if service.subject == "an LLM provider's HTTP API" else _BIGQUERY_WIRE_KEY_SETS
     return any(group <= keys for group in expected)
 
@@ -517,29 +511,8 @@ def _has_cross_method_protocol_state(methods: list[_Method]) -> bool:
     reads: dict[str, set[str]] = {}
     for method in methods:
         for child in _method_body_nodes(method):
-            if isinstance(child, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
-                targets = child.targets if isinstance(child, ast.Assign) else (child.target,)
-                for target in targets:
-                    if (field := _receiver_field(target)) is not None:
-                        writes.setdefault(field, set()).add(method.name)
-            if (
-                isinstance(child, ast.Call)
-                and isinstance(child.func, ast.Attribute)
-                and child.func.attr in _STATE_PRODUCERS
-                and (field := _receiver_field(child.func.value)) is not None
-            ):
-                writes.setdefault(field, set()).add(method.name)
-            expressions: tuple[ast.expr, ...] = ()
-            if isinstance(child, ast.Return) and child.value is not None:
-                expressions = (child.value,)
-            elif isinstance(child, (ast.If, ast.While)):
-                expressions = (child.test,)
-            elif isinstance(child, ast.Match):
-                expressions = (child.subject,)
-            for expression in expressions:
-                for descendant in walk(expression):
-                    if (field := _receiver_field(descendant)) is not None:
-                        reads.setdefault(field, set()).add(method.name)
+            _collect_protocol_writes(child, method.name, writes)
+            _collect_protocol_reads(child, method.name, reads)
     return any(
         _flatten(field) not in _BOOKKEEPING_FIELDS
         and any(writer != reader for writer in writers_by for reader in reads.get(field, set()))
@@ -677,3 +650,42 @@ def _forwards_to_inner(method: _Method) -> bool:
 
 def _is_docstring(stmt: ast.stmt) -> bool:
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str)
+
+
+def _wire_mapping_keys(node: ast.ClassDef) -> set[str]:
+    return {
+        key.value
+        for mapping in walk(node)
+        if isinstance(mapping, ast.Dict)
+        for key in mapping.keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    }
+
+
+def _collect_protocol_writes(child: ast.AST, method_name: str, writes: dict[str, set[str]]) -> None:
+    if isinstance(child, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        targets = child.targets if isinstance(child, ast.Assign) else (child.target,)
+        for target in targets:
+            if (field := _receiver_field(target)) is not None:
+                writes.setdefault(field, set()).add(method_name)
+    if (
+        isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Attribute)
+        and child.func.attr in _STATE_PRODUCERS
+        and (field := _receiver_field(child.func.value)) is not None
+    ):
+        writes.setdefault(field, set()).add(method_name)
+
+
+def _collect_protocol_reads(child: ast.AST, method_name: str, reads: dict[str, set[str]]) -> None:
+    expressions: tuple[ast.expr, ...] = ()
+    if isinstance(child, ast.Return) and child.value is not None:
+        expressions = (child.value,)
+    elif isinstance(child, (ast.If, ast.While)):
+        expressions = (child.test,)
+    elif isinstance(child, ast.Match):
+        expressions = (child.subject,)
+    for expression in expressions:
+        for descendant in walk(expression):
+            if (field := _receiver_field(descendant)) is not None:
+                reads.setdefault(field, set()).add(method_name)

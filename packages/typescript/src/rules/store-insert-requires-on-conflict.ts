@@ -46,26 +46,8 @@ function owningCallableName(node: TSESTree.Node): string | null {
     if (current.type === "MethodDefinition") {
       return !current.computed && current.key.type === "Identifier" ? current.key.name : null;
     }
-    if (
-      (current.type === "ArrowFunctionExpression" ||
-        current.type === "FunctionExpression") &&
-      current.parent.type === "VariableDeclarator" &&
-      current.parent.id.type === "Identifier"
-    ) {
-      return current.parent.id.name;
-    }
-    if (
-      (current.type === "ArrowFunctionExpression" ||
-        current.type === "FunctionExpression") &&
-      current.parent.type === "Property" &&
-      !current.parent.computed &&
-      current.parent.key.type === "Identifier"
-    ) {
-      return current.parent.key.name;
-    }
     if (current.type === "ArrowFunctionExpression" || current.type === "FunctionExpression") {
-      const parent = current.parent;
-      return parent.type === "MethodDefinition" && !parent.computed && parent.key.type === "Identifier" ? parent.key.name : null;
+      return expressionCallableName(current);
     }
   }
   return null;
@@ -105,3 +87,10 @@ export default createRule<Options, MessageIds>({
     });
   },
 });
+
+function expressionCallableName(current: TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression): string | null {
+  const parent = current.parent;
+  if (parent.type === "VariableDeclarator" && parent.id.type === "Identifier") return parent.id.name;
+  if (parent.type === "Property" && !parent.computed && parent.key.type === "Identifier") return parent.key.name;
+  return parent.type === "MethodDefinition" && !parent.computed && parent.key.type === "Identifier" ? parent.key.name : null;
+}

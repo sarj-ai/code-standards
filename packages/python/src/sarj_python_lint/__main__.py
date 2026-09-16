@@ -14,7 +14,7 @@ import typer
 from sarj_python_lint import __version__
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._filesystem import atomic_write_text
-from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Severity, is_suppressed
+from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, is_suppressed
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._paths import clear_path_caches
 from sarj_python_lint.rules._project_index import ProjectIndexSet
@@ -59,17 +59,23 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
             except OSError:
                 pass
             continue
-        for child in p.rglob("*.py"):
-            if not child.is_file():
+        out.extend(_python_files(p))
+    return out
+
+
+def _python_files(p: Path) -> list[Path]:
+    out: list[Path] = []
+    for child in p.rglob("*.py"):
+        if not child.is_file():
+            continue
+        if any(part in SKIP_DIR_NAMES for part in child.parts):
+            continue
+        try:
+            if child.stat().st_size > _MAX_FILE_BYTES:
                 continue
-            if any(part in SKIP_DIR_NAMES for part in child.parts):
-                continue
-            try:
-                if child.stat().st_size > _MAX_FILE_BYTES:
-                    continue
-            except OSError:
-                continue
-            out.append(child)
+        except OSError:
+            continue
+        out.append(child)
     return out
 
 
@@ -98,20 +104,21 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
             rule.prepare(indexes)
     diags: list[Diagnostic] = []
     for p, source in loaded.items():
-        source_lines = source.splitlines()
-        raw = [diagnostic for rule in rules for diagnostic in rule.check(p, source)]
-        diags.extend(
-            diagnostic
-            for diagnostic in deduplicate_diagnostics(
-                [
-                    diagnostic
-                    for diagnostic in raw
-                    if diagnostic.code == "SARJ419" or not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
-                ],
-                source=source,
-            )
-        )
+        diags.extend(_check_source(rules, p, source))
     return diags
+
+
+def _check_source(rules: list[Rule], p: Path, source: str) -> list[Diagnostic]:
+    source_lines = source.splitlines()
+    raw = [diagnostic for rule in rules for diagnostic in rule.check(p, source)]
+    return deduplicate_diagnostics(
+        [
+            diagnostic
+            for diagnostic in raw
+            if diagnostic.code == "SARJ419" or not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
+        ],
+        source=source,
+    )
 
 
 def analyze(
@@ -172,15 +179,7 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
         location = owner_location(diagnostic)
         by_code = present.setdefault((diagnostic.path, location.line, location.column), {})
         by_code.setdefault(diagnostic.code, set()).add(diagnostic.severity)
-    suppressed = {
-        (location, generic, generic_severity)
-        for location, codes in present.items()
-        for specific, generics in _DIAGNOSTIC_PRECEDENCE.items()
-        if specific in codes
-        for generic in generics
-        for generic_severity in codes.get(generic, set())
-        if generic_severity is Severity.WARNING or Severity.ERROR in codes[specific]
-    }
+    suppressed = _suppressed_diagnostics(present)
     return [
         diagnostic
         for diagnostic in diags
@@ -197,6 +196,27 @@ def deduplicate_diagnostics(diags: list[Diagnostic], *, source: str | None = Non
             not in suppressed
         )
     ]
+
+
+def _suppressed_diagnostics(
+    present: dict[tuple[Path, int, int], dict[str, set[Severity]]],
+) -> set[tuple[tuple[Path, int, int], str, Severity]]:
+    return {
+        (location, generic, severity)
+        for location, codes in present.items()
+        for generic, severity in _suppressed_codes(codes)
+    }
+
+
+def _suppressed_codes(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
+    return {
+        (generic, generic_severity)
+        for specific, generics in _DIAGNOSTIC_PRECEDENCE.items()
+        if specific in codes
+        for generic in generics
+        for generic_severity in codes.get(generic, set())
+        if generic_severity is Severity.WARNING or Severity.ERROR in codes[specific]
+    }
 
 
 def _function_signature_owner_locations(source: str) -> dict[int, _OwnerLocation]:

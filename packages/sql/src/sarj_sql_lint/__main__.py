@@ -3,13 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sys
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 
 from sarj_sql_lint import __version__
 from sarj_sql_lint.rule_base import Diagnostic, clear_path_caches, is_suppressed
 from sarj_sql_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -47,17 +51,7 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
             except OSError:
                 pass
             continue
-        for child in p.rglob("*.sql"):
-            if not child.is_file():
-                continue
-            if any(part in SKIP_DIR_NAMES for part in child.parts):
-                continue
-            try:
-                if child.stat().st_size > MAX_FILE_BYTES:
-                    continue
-            except OSError:
-                continue
-            out.append(child)
+        out.extend(_iter_directory_inputs(p))
     return out
 
 
@@ -149,6 +143,20 @@ def main(argv: list[str] | None = None) -> int:
         if exc.code != 0:
             raise
     return result.code
+
+
+def _iter_directory_inputs(p: Path) -> Iterator[Path]:
+    for child in p.rglob("*.sql"):
+        if not child.is_file():
+            continue
+        if any(part in SKIP_DIR_NAMES for part in child.parts):
+            continue
+        try:
+            if child.stat().st_size > MAX_FILE_BYTES:
+                continue
+        except OSError:
+            continue
+        yield child
 
 
 if __name__ == "__main__":

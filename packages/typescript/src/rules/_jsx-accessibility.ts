@@ -34,10 +34,10 @@ export function importedComponent(
 ): ComponentImport | null {
   const local =
     name.type === AST_NODE_TYPES.JSXIdentifier ||
-    name.type === AST_NODE_TYPES.Identifier
+      name.type === AST_NODE_TYPES.Identifier
       ? name
       : name.type === AST_NODE_TYPES.JSXMemberExpression &&
-          name.object.type === AST_NODE_TYPES.JSXIdentifier
+        name.object.type === AST_NODE_TYPES.JSXIdentifier
         ? name.object
         : null;
   if (local === null) return null;
@@ -173,7 +173,7 @@ export function childrenNameStatus(
       return child.value.trim() === "" ? "empty" : "named";
     if (child.type === AST_NODE_TYPES.JSXExpressionContainer) {
       const text = staticText(child);
-      return text === null ? "unknown" : text.trim() === "" ? "empty" : "named";
+      return textNameStatus(text);
     }
     if (child.type === AST_NODE_TYPES.JSXFragment)
       return childrenNameStatus(child.children, source, iconModules);
@@ -196,7 +196,7 @@ export function childrenNameStatus(
       opening.name.name === "img"
     ) {
       const alt = attributeText(opening, "alt");
-      return alt === null ? "unknown" : alt.trim() === "" ? "empty" : "named";
+      return textNameStatus(alt);
     }
     return childrenNameStatus(child.children, source, iconModules);
   });
@@ -230,4 +230,9 @@ export function hasHiddenAncestor(
         ancestor.type === AST_NODE_TYPES.JSXElement &&
         isHidden(ancestor.openingElement),
     );
+}
+
+function textNameStatus(text: string | null): NameStatus {
+  if (text === null) return "unknown";
+  return text.trim() === "" ? "empty" : "named";
 }

@@ -171,24 +171,7 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
   ]) {
     requireString(value, field, context);
   }
-  const languages = requireStringArray(value, "languages", context);
-  for (const language of languages) {
-    if (
-      ![
-        "config",
-        "iac",
-        "markdown",
-        "python",
-        "shell",
-        "sql",
-        "typescript",
-      ].includes(language)
-    ) {
-      throw new TypeError(
-        `${context}.languages contains unsupported value ${language}.`,
-      );
-    }
-  }
+  validateLanguages(value, context);
   for (const field of ["aliases", "limitations", "filePatterns", "messageIds"])
     requireStringArray(value, field, context);
   const references = requireStringArray(value, "references", context);
@@ -200,24 +183,7 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
   for (const [exampleIndex, example] of value.examples.entries()) {
     validateExample(example, `${context}.examples[${String(exampleIndex)}]`);
   }
-  const scenarios = new Set(
-    value.examples.map((example) => (example as RuleExample).scenarioId),
-  );
-  for (const scenario of scenarios) {
-    const pair = value.examples.filter(
-      (example) => (example as RuleExample).scenarioId === scenario,
-    ) as RuleExample[];
-    const outcomes = new Set(pair.map((example) => example.outcome));
-    if (
-      pair.length !== 2 ||
-      !outcomes.has("reject") ||
-      !outcomes.has("accept")
-    ) {
-      throw new TypeError(
-        `${context}.examples scenario ${scenario} must contain tested before and after source.`,
-      );
-    }
-  }
+  validateScenarioPairs(value.examples as RuleExample[], context);
   if (value.code !== null && typeof value.code !== "string")
     throw new TypeError(`${context}.code must be a string or null.`);
   if (value.optionsSchema !== null && !isRecord(value.optionsSchema)) {
@@ -247,6 +213,48 @@ function validateRule(value: unknown, index: number): asserts value is Rule {
   }
   if (value.status !== "active")
     throw new TypeError(`${context}.status must be active.`);
+}
+
+function validateScenarioPairs(examples: RuleExample[], context: string): void {
+  const scenarios = new Set(
+    examples.map((example) => example.scenarioId),
+  );
+  for (const scenario of scenarios) {
+    const pair = examples.filter(
+      (example) => example.scenarioId === scenario,
+    );
+    const outcomes = new Set(pair.map((example) => example.outcome));
+    if (
+      pair.length !== 2 ||
+      !outcomes.has("reject") ||
+      !outcomes.has("accept")
+    ) {
+      throw new TypeError(
+        `${context}.examples scenario ${scenario} must contain tested before and after source.`,
+      );
+    }
+  }
+}
+
+function validateLanguages(value: Record<string, unknown>, context: string): void {
+  const languages = requireStringArray(value, "languages", context);
+  for (const language of languages) {
+    if (
+      ![
+        "config",
+        "iac",
+        "markdown",
+        "python",
+        "shell",
+        "sql",
+        "typescript",
+      ].includes(language)
+    ) {
+      throw new TypeError(
+        `${context}.languages contains unsupported value ${language}.`,
+      );
+    }
+  }
 }
 
 function validateExample(

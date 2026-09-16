@@ -130,13 +130,13 @@ class PreferWalrusStreamLoop(Rule):
         source_lines = source.splitlines()
         diags: list[Diagnostic] = []
 
-        for node in nodes(tree, ast.While):
+        def collect_stream_loop(node: ast.While) -> None:
             if (
                 not (isinstance(node.test, ast.Constant) and node.test.value is True)
                 or node.orelse
                 or len(node.body) < _MIN_BODY_LEN
             ):
-                continue
+                return
 
             first_stmt = node.body[0]
             second_stmt = node.body[1]
@@ -148,11 +148,11 @@ class PreferWalrusStreamLoop(Rule):
                 or first_stmt.type_comment is not None
                 or not _is_producer_call(first_stmt.value)
             ):
-                continue
+                return
             var_name = first_stmt.targets[0].id
 
             if not isinstance(second_stmt, ast.If):
-                continue
+                return
             sentinel = _sentinel_kind(second_stmt, var_name)
             if sentinel is not None and _is_compact_physical_pair(
                 first_stmt,
@@ -167,7 +167,7 @@ class PreferWalrusStreamLoop(Rule):
                 if not is_suppressed(source_lines, line, self.code):
                     value = ast.get_source_segment(source, first_stmt.value)
                     if value is None:  # pragma: no cover - compact source-backed assignment.
-                        continue
+                        return
                     suffix = " is not None" if sentinel == "none" else ""
                     diags.append(
                         Diagnostic(
@@ -182,6 +182,8 @@ class PreferWalrusStreamLoop(Rule):
                         )
                     )
 
+        for node in nodes(tree, ast.While):
+            collect_stream_loop(node)
         return sorted(diags, key=lambda d: (d.line, d.col))
 
 

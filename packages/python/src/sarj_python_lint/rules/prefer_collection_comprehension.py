@@ -268,19 +268,7 @@ def _loop_kind(
         if expression is not None and not _loads_name(expression, name) and _simple_projection(expression, bound_names):
             return _CollectionKind.LIST
     if initialized_kind is _CollectionKind.SET and len(loop.body) == 1:
-        match loop.body[0]:
-            case ast.If(test=test, body=[body], orelse=[]):
-                expression = _single_method_argument(body, name, "add")
-                if (
-                    expression is not None
-                    and not _loads_name(test, name)
-                    and not _loads_name(expression, name)
-                    and _simple_projection(expression, bound_names)
-                    and not _contains_prohibited_expression(test)
-                ):
-                    return _CollectionKind.SET
-            case _:
-                pass
+        return _set_loop_kind(loop, name, bound_names)
     return None
 
 
@@ -439,3 +427,20 @@ def _comment_lines(source: str) -> frozenset[int]:
 def _has_comment(init: _Init, loop: ast.For, comments: frozenset[int]) -> bool:
     end_line = loop.end_lineno or loop.lineno
     return any(init.lineno <= line <= end_line for line in comments)
+
+
+def _set_loop_kind(loop: ast.For, name: str, bound_names: frozenset[str]) -> _CollectionKind | None:
+    match loop.body[0]:
+        case ast.If(test=test, body=[body], orelse=[]):
+            expression = _single_method_argument(body, name, "add")
+            if (
+                expression is not None
+                and not _loads_name(test, name)
+                and not _loads_name(expression, name)
+                and _simple_projection(expression, bound_names)
+                and not _contains_prohibited_expression(test)
+            ):
+                return _CollectionKind.SET
+        case _:
+            pass
+    return None

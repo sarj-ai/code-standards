@@ -223,42 +223,9 @@ class InvalidPydanticFieldDefault(Rule):
             if not _is_direct_base_model(class_node, imports):
                 continue
             transformers = _default_transformers(class_node, imports)
-            for statement in class_node.body:
-                if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
-                    continue
-                if statement.target.id.startswith("_"):
-                    continue
-                contract = _annotation_contract(path, tree, statement.annotation)
-                if contract.transforms_default or transformers.all_fields or statement.target.id in transformers.fields:
-                    continue
-                assignment_field = (
-                    statement.value
-                    if isinstance(statement.value, ast.Call)
-                    and imports.resolves(statement.value.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
-                    else None
-                )
-                constraints = (*contract.constraints, *((assignment_field,) if assignment_field is not None else ()))
-                default = _declared_default(statement.value, assignment_field, contract.constraints)
-                if default is None:
-                    continue
-                message = _invalid_default_message(
-                    statement.target.id,
-                    contract.annotation,
-                    default,
-                    constraints,
-                    contract.imports,
-                )
-                if message is None:
-                    continue
-                diagnostics.append(
-                    Diagnostic(
-                        path=path,
-                        line=default.lineno,
-                        col=default.col_offset + 1,
-                        code=self.code,
-                        message=message,
-                    )
-                )
+            diagnostics.extend(
+                _class_default_diagnostics(class_node, transformers, path, tree, imports, code=self.code)
+            )
         return diagnostics
 
 
@@ -284,96 +251,10 @@ def _default_transformers(node: ast.ClassDef, imports: ImportIndex) -> _DefaultT
         for decorator in statement.decorator_list:
             if not isinstance(decorator, ast.Call):
                 continue
-            if imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol="field_validator"):
-                mode = _literal_keyword_string(decorator, "mode", default="after")
-                dynamic_mode = mode is None and any(keyword.arg == "mode" for keyword in decorator.keywords)
-                if mode not in {"before", "plain", "wrap"} and not dynamic_mode:
-                    continue
-                targets = _literal_string_arguments(decorator)
-                if not targets or "*" in targets:
-                    transforms_all_fields = True
-                fields.update(targets)
-                continue
-            if imports.resolves(
-                decorator.func,
-                sources=_PYDANTIC_LEGACY_VALIDATOR_SOURCES,
-                symbol="validator",
-            ):
-                pre = _literal_keyword_bool(decorator, "pre", default=False)
-                always = _literal_keyword_bool(decorator, "always", default=False)
-                if pre is False and always is False:
-                    continue
-                targets = _literal_string_arguments(decorator)
-                if not targets or "*" in targets:
-                    transforms_all_fields = True
-                fields.update(targets)
-                continue
-            if imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol="model_validator"):
-                mode = _literal_keyword_string(decorator, "mode", default=None)
-                transforms_all_fields |= mode in {None, "before", "wrap"}
-                continue
-            if imports.resolves(
-                decorator.func,
-                sources=_PYDANTIC_LEGACY_VALIDATOR_SOURCES,
-                symbol="root_validator",
-            ):
-                pre = _literal_keyword_bool(decorator, "pre", default=False)
-                transforms_all_fields |= pre is not False
+            transformation = _decorator_default_transformer(decorator, imports)
+            fields.update(transformation.fields)
+            transforms_all_fields |= transformation.all_fields
     return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
-
-
-def _literal_string_arguments(call: ast.Call) -> frozenset[str]:
-    return frozenset(
-        argument.value
-        for argument in call.args
-        if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
-    )
-
-
-def _literal_keyword_string(call: ast.Call, name: str, *, default: str | None) -> str | None:
-    values = [keyword.value for keyword in call.keywords if keyword.arg == name]
-    if not values:
-        return default
-    if len(values) != 1 or not isinstance(values[0], ast.Constant) or not isinstance(values[0].value, str):
-        return None
-    return values[0].value
-
-
-def _literal_keyword_bool(call: ast.Call, name: str, *, default: bool) -> bool | None:
-    values = [keyword.value for keyword in call.keywords if keyword.arg == name]
-    if not values:
-        return default
-    if len(values) != 1 or not isinstance(values[0], ast.Constant) or not isinstance(values[0].value, bool):
-        return None
-    return values[0].value
-
-
-def _declared_default(
-    assigned: ast.expr | None,
-    assignment_field: ast.Call | None,
-    annotation_fields: tuple[ast.Call, ...],
-) -> ast.expr | None:
-    if assignment_field is not None:
-        return _field_default(assignment_field)
-    if assigned is not None:
-        return assigned
-    embedded = tuple(default for call in annotation_fields if (default := _field_default(call)) is not None)
-    return embedded[0] if len(embedded) == 1 else None
-
-
-def _field_default(call: ast.Call) -> ast.expr | None:
-    positional = call.args[0] if call.args else None
-    keywords = [keyword.value for keyword in call.keywords if keyword.arg == "default"]
-    if (positional is not None and keywords) or (len(keywords) != 1 and positional is None):
-        return None
-    default = positional if positional is not None else keywords[0]
-    if isinstance(default, ast.Constant) and default.value is Ellipsis:
-        return None
-    return default
-
-
-def _annotation_contract(path: Path, tree: ast.Module, annotation: ast.expr) -> _AnnotationContract:
-    return _resolve_annotation_contract(path, tree, annotation, seen=frozenset(), depth=0)
 
 
 def _resolve_annotation_contract(
@@ -394,177 +275,22 @@ def _resolve_annotation_contract(
             transforms_default=False,
         )
     if isinstance(annotation, ast.Name):
-        local = _module_alias_expression(tree, annotation.id)
-        if local is not None:
-            return _resolve_annotation_contract(path, tree, local, seen=seen, depth=depth + 1)
-        imported = _imported_symbol(tree, annotation.id)
-        target = _resolve_imported_module(path, imported) if imported is not None else None
-        if target is not None and imported is not None and (target, imported.symbol) not in seen:
-            key = (target, imported.symbol)
-            target_tree = _read_module(target)
-            target_value = _module_alias_expression(target_tree, imported.symbol) if target_tree is not None else None
-            if target_tree is not None and target_value is not None:
-                return _resolve_annotation_contract(
-                    target,
-                    target_tree,
-                    target_value,
-                    seen=seen | {key},
-                    depth=depth + 1,
-                )
+        resolved = _named_annotation_contract(path, tree, annotation, seen=seen, depth=depth)
+        if resolved is not None:
+            return resolved
     if isinstance(annotation, ast.Subscript) and imports.resolves(
         annotation.value, sources=_TYPING_SOURCES, symbol="Annotated"
     ):
         members = _slice_members(annotation.slice)
         if members:
             base = _resolve_annotation_contract(path, tree, members[0], seen=seen, depth=depth + 1)
-            fields = tuple(
-                member
-                for member in members[1:]
-                if isinstance(member, ast.Call)
-                and imports.resolves(member.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
-            )
-            transforms_default = any(
-                isinstance(member, ast.Call)
-                and any(
-                    imports.resolves(member.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol=symbol)
-                    for symbol in ("BeforeValidator", "PlainValidator", "WrapValidator")
-                )
-                for member in members[1:]
-            )
-            return _AnnotationContract(
-                annotation=base.annotation,
-                imports=base.imports,
-                constraints=(*base.constraints, *fields),
-                transforms_default=base.transforms_default or transforms_default,
-            )
+            return _annotated_contract(base, members, imports)
     return _AnnotationContract(
         annotation=annotation,
         imports=imports,
         constraints=(),
         transforms_default=False,
     )
-
-
-def _module_alias_expression(tree: ast.Module, symbol: str) -> ast.expr | None:
-    candidates = [value for statement in tree.body if (value := _alias_value(statement, symbol)) is not None]
-    return candidates[0] if len(candidates) == 1 else None
-
-
-def _alias_value(statement: ast.stmt, symbol: str) -> ast.expr | None:
-    match statement:
-        case ast.TypeAlias(name=ast.Name(id=name), value=value) if name == symbol:
-            return value
-        case ast.AnnAssign(target=ast.Name(id=name), value=value) if name == symbol:
-            return value
-        case ast.Assign(targets=[ast.Name(id=name)], value=value) if name == symbol:
-            return value
-        case _:
-            return None
-
-
-def _imported_symbol(tree: ast.Module, local_name: str) -> _ImportedSymbol | None:
-    candidates = [
-        _ImportedSymbol(statement.module or "", statement.level, alias.name)
-        for statement in tree.body
-        if isinstance(statement, ast.ImportFrom)
-        for alias in statement.names
-        if alias.name != "*" and (alias.asname or alias.name) == local_name
-    ]
-    return candidates[0] if len(candidates) == 1 else None
-
-
-def _resolve_imported_module(current: Path, reference: _ImportedSymbol) -> Path | None:
-    if not current.is_absolute():
-        return None
-    current = current.resolve()
-    checkout = _checkout_root(current)
-    if checkout is None:
-        return None
-    module_parts = tuple(part for part in reference.module.split(".") if part)
-    candidates: set[Path] = set()
-    if reference.level:
-        base = current.parent
-        for _ in range(reference.level - 1):
-            base = base.parent
-        candidates.update(_module_files(base.joinpath(*module_parts), checkout))
-    elif module_parts:
-        for depth, ancestor in enumerate((current.parent, *current.parents)):
-            if depth >= _MAX_PATH_ANCESTORS:
-                break
-            candidates.update(_module_files(ancestor.joinpath(*module_parts), checkout))
-    return next(iter(candidates)) if len(candidates) == 1 else None
-
-
-def _checkout_root(path: Path) -> Path | None:
-    for depth, ancestor in enumerate(path.parents):
-        if depth >= _MAX_PATH_ANCESTORS:
-            break
-        if (ancestor / ".git").exists():
-            return ancestor.resolve()
-    return None
-
-
-def _module_files(base: Path, checkout: Path) -> frozenset[Path]:
-    resolved: set[Path] = set()
-    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
-        if not candidate.is_file() or candidate.is_symlink():
-            continue
-        target = candidate.resolve()
-        if target.is_relative_to(checkout):
-            resolved.add(target)
-    return frozenset(resolved)
-
-
-def _read_module(path: Path) -> ast.Module | None:
-    try:
-        if path.stat().st_size > _MAX_IMPORTED_MODULE_BYTES:
-            return None
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
-    except OSError, SyntaxError:
-        return None
-    return tree
-
-
-def _invalid_default_message(
-    field_name: str,
-    annotation: ast.expr,
-    default: ast.expr,
-    constraints: tuple[ast.Call, ...],
-    imports: ImportIndex,
-) -> str | None:
-    literal = _literal_value(default)
-    container_length = _literal_container_length(default)
-    if literal is _MISSING and container_length is None:
-        return None
-    if literal is None and _provably_non_null(annotation, imports):
-        return (
-            f"`{field_name}` has a `None` default, but its direct annotation excludes `None`; "
-            "include `None` in the annotation or provide a non-null default."
-        )
-
-    domain = _literal_domain(annotation, imports)
-    if (
-        literal is not _MISSING
-        and domain is not None
-        and not isinstance(literal, float)
-        and _literal_key(literal) not in domain.values
-    ):
-        allowed = ", ".join(sorted(repr(item.value) for item in domain.values))
-        return (
-            f"`{field_name}` defaults to {literal!r}, outside its direct `Literal` domain ({allowed}); "
-            "use one of the declared literal values."
-        )
-
-    violation = _bound_violation(literal, container_length, constraints)
-    if violation is not None:
-        bound_name = violation.bound_name
-        bound = violation.bound
-        rendered_default = repr(literal) if literal is not _MISSING else ast.unparse(default)
-        return (
-            f"`{field_name}` defaults to {rendered_default}, which violates `Field({bound_name}={bound!r})`; "
-            "choose a default inside the declared bounds."
-        )
-    return None
 
 
 def _literal_value(node: ast.expr) -> object:
@@ -577,32 +303,6 @@ def _literal_value(node: ast.expr) -> object:
             return -value if isinstance(operator, ast.USub) else value
         case _:
             return _MISSING
-
-
-def _literal_container_length(node: ast.expr) -> int | None:
-    match node:
-        case ast.List() | ast.Tuple():
-            elements = node.elts
-            return None if any(isinstance(element, ast.Starred) for element in elements) else len(elements)
-        case ast.Set(elts=elements):
-            keys = tuple(_constant_key(element) for element in elements)
-            return len(set(keys)) if all(key is not None for key in keys) else None
-        case ast.Dict(keys=raw_keys):
-            keys = tuple(_constant_key(key) for key in raw_keys if key is not None)
-            return len(set(keys)) if len(keys) == len(raw_keys) and all(key is not None for key in keys) else None
-        case _:
-            return None
-
-
-def _constant_key(node: ast.expr) -> _LiteralKey | None:
-    value = _literal_value(node)
-    if value is _MISSING:
-        return None
-    try:
-        hash(value)
-    except TypeError:
-        return None
-    return _literal_key(value)
 
 
 def _literal_key(value: object) -> _LiteralKey:
@@ -648,6 +348,164 @@ def _merge_domains(domains: tuple[_LiteralDomain | None, ...]) -> _LiteralDomain
     return _LiteralDomain(frozenset(values))
 
 
+def _parse_forward_annotation(node: ast.expr) -> ast.expr:
+    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+        return node
+    try:
+        return ast.parse(node.value, mode="eval").body
+    except SyntaxError:
+        return node
+
+
+def _slice_members(node: ast.expr) -> tuple[ast.expr, ...]:
+    return tuple(node.elts) if isinstance(node, ast.Tuple) else (node,)
+
+
+def _class_default_diagnostics(
+    class_node: ast.ClassDef,
+    transformers: _DefaultTransformers,
+    path: Path,
+    tree: ast.Module,
+    imports: ImportIndex,
+    *,
+    code: str,
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    for statement in class_node.body:
+        if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
+            continue
+        if statement.target.id.startswith("_"):
+            continue
+        contract = _annotation_contract(path, tree, statement.annotation)
+        if contract.transforms_default or transformers.all_fields or statement.target.id in transformers.fields:
+            continue
+        assignment_field = (
+            statement.value
+            if isinstance(statement.value, ast.Call)
+            and imports.resolves(statement.value.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
+            else None
+        )
+        constraints = (*contract.constraints, *((assignment_field,) if assignment_field is not None else ()))
+        default = _declared_default(statement.value, assignment_field, contract.constraints)
+        if default is None:
+            continue
+        message = _invalid_default_message(
+            statement.target.id,
+            contract.annotation,
+            default,
+            constraints,
+            contract.imports,
+        )
+        if message is None:
+            continue
+        diagnostics.append(
+            Diagnostic(
+                path=path,
+                line=default.lineno,
+                col=default.col_offset + 1,
+                code=code,
+                message=message,
+            )
+        )
+    return diagnostics
+
+
+def _invalid_default_message(
+    field_name: str,
+    annotation: ast.expr,
+    default: ast.expr,
+    constraints: tuple[ast.Call, ...],
+    imports: ImportIndex,
+) -> str | None:
+    literal = _literal_value(default)
+    container_length = _literal_container_length(default)
+    if literal is _MISSING and container_length is None:
+        return None
+    if literal is None and _provably_non_null(annotation, imports):
+        return (
+            f"`{field_name}` has a `None` default, but its direct annotation excludes `None`; "
+            "include `None` in the annotation or provide a non-null default."
+        )
+
+    domain = _literal_domain(annotation, imports)
+    if (
+        literal is not _MISSING
+        and domain is not None
+        and not isinstance(literal, float)
+        and _literal_key(literal) not in domain.values
+    ):
+        allowed = ", ".join(sorted(repr(item.value) for item in domain.values))
+        return (
+            f"`{field_name}` defaults to {literal!r}, outside its direct `Literal` domain ({allowed}); "
+            "use one of the declared literal values."
+        )
+
+    violation = _bound_violation(literal, container_length, constraints)
+    if violation is not None:
+        bound_name = violation.bound_name
+        bound = violation.bound
+        rendered_default = repr(literal) if literal is not _MISSING else ast.unparse(default)
+        return (
+            f"`{field_name}` defaults to {rendered_default}, which violates `Field({bound_name}={bound!r})`; "
+            "choose a default inside the declared bounds."
+        )
+    return None
+
+
+def _bound_violation(
+    default: object,
+    container_length: int | None,
+    constraints: tuple[ast.Call, ...],
+) -> _BoundViolation | None:
+    bounds = {
+        keyword.arg: _literal_value(keyword.value)
+        for call in constraints
+        for keyword in call.keywords
+        if keyword.arg is not None
+    }
+    if isinstance(default, (int, float)) and not isinstance(default, bool):
+        return _numeric_bound_violation(default, bounds)
+    if isinstance(default, (str, bytes)):
+        return _length_bound_violation(len(default), bounds)
+    if container_length is not None:
+        return _length_bound_violation(container_length, bounds)
+    return None
+
+
+def _length_bound_violation(length: int, bounds: dict[str, object]) -> _BoundViolation | None:
+    for name in ("min_length", "max_length"):
+        bound = bounds.get(name, _MISSING)
+        if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
+            continue
+        if (name == "min_length" and length < bound) or (name == "max_length" and length > bound):
+            return _BoundViolation(name, bound)
+    return None
+
+
+def _numeric_bound_violation(default: float, bounds: dict[str, object]) -> _BoundViolation | None:
+    for name in ("gt", "ge", "lt", "le"):
+        bound = bounds.get(name, _MISSING)
+        if not isinstance(bound, (int, float)) or isinstance(bound, bool):
+            continue
+        if _numeric_bound_is_violated(name, default, bound):
+            return _BoundViolation(name, bound)
+    return None
+
+
+def _numeric_bound_is_violated(name: str, default: float, bound: float) -> bool:
+    match name:
+        case "gt":
+            return default <= bound
+        case "ge":
+            return default < bound
+        case "lt":
+            return default >= bound
+        case "le":
+            return default > bound
+        case _:
+            return False
+
+
 def _provably_non_null(node: ast.expr, imports: ImportIndex) -> bool:
     node = _parse_forward_annotation(node)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
@@ -674,67 +532,254 @@ def _provably_non_null(node: ast.expr, imports: ImportIndex) -> bool:
     )
 
 
-def _bound_violation(
-    default: object,
-    container_length: int | None,
-    constraints: tuple[ast.Call, ...],
-) -> _BoundViolation | None:
-    bounds = {
-        keyword.arg: _literal_value(keyword.value)
-        for call in constraints
-        for keyword in call.keywords
-        if keyword.arg is not None
-    }
-    if isinstance(default, (int, float)) and not isinstance(default, bool):
-        for name in ("gt", "ge", "lt", "le"):
-            bound = bounds.get(name, _MISSING)
-            if not isinstance(bound, (int, float)) or isinstance(bound, bool):
-                continue
-            if _numeric_bound_is_violated(name, default, bound):
-                return _BoundViolation(name, bound)
+def _literal_container_length(node: ast.expr) -> int | None:
+    match node:
+        case ast.List() | ast.Tuple():
+            elements = node.elts
+            return None if any(isinstance(element, ast.Starred) for element in elements) else len(elements)
+        case ast.Set(elts=elements):
+            keys = tuple(_constant_key(element) for element in elements)
+            return _distinct_literal_count(keys)
+        case ast.Dict(keys=raw_keys):
+            keys = tuple(_constant_key(key) for key in raw_keys if key is not None)
+            return _distinct_literal_count(keys) if len(keys) == len(raw_keys) else None
+        case _:
+            return None
+
+
+def _constant_key(node: ast.expr) -> _LiteralKey | None:
+    value = _literal_value(node)
+    if value is _MISSING:
         return None
-    if isinstance(default, (str, bytes)):
-        for name in ("min_length", "max_length"):
-            bound = bounds.get(name, _MISSING)
-            if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
-                continue
-            if (name == "min_length" and len(default) < bound) or (name == "max_length" and len(default) > bound):
-                return _BoundViolation(name, bound)
+    try:
+        hash(value)
+    except TypeError:
         return None
-    if container_length is not None:
-        for name in ("min_length", "max_length"):
-            bound = bounds.get(name, _MISSING)
-            if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
-                continue
-            if (name == "min_length" and container_length < bound) or (
-                name == "max_length" and container_length > bound
-            ):
-                return _BoundViolation(name, bound)
+    return _literal_key(value)
+
+
+def _annotation_contract(path: Path, tree: ast.Module, annotation: ast.expr) -> _AnnotationContract:
+    return _resolve_annotation_contract(path, tree, annotation, seen=frozenset(), depth=0)
+
+
+def _declared_default(
+    assigned: ast.expr | None,
+    assignment_field: ast.Call | None,
+    annotation_fields: tuple[ast.Call, ...],
+) -> ast.expr | None:
+    if assignment_field is not None:
+        return _field_default(assignment_field)
+    if assigned is not None:
+        return assigned
+    embedded = tuple(default for call in annotation_fields if (default := _field_default(call)) is not None)
+    return embedded[0] if len(embedded) == 1 else None
+
+
+def _field_default(call: ast.Call) -> ast.expr | None:
+    positional = call.args[0] if call.args else None
+    keywords = [keyword.value for keyword in call.keywords if keyword.arg == "default"]
+    if (positional is not None and keywords) or (len(keywords) != 1 and positional is None):
+        return None
+    default = positional if positional is not None else keywords[0]
+    if isinstance(default, ast.Constant) and default.value is Ellipsis:
+        return None
+    return default
+
+
+def _distinct_literal_count(keys: tuple[_LiteralKey | None, ...]) -> int | None:
+    return len(set(keys)) if all(key is not None for key in keys) else None
+
+
+def _decorator_default_transformer(decorator: ast.Call, imports: ImportIndex) -> _DefaultTransformers:
+    fields: set[str] = set()
+    transforms_all_fields = False
+    if imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol="field_validator"):
+        mode = _literal_keyword_string(decorator, "mode", default="after")
+        dynamic_mode = mode is None and any(keyword.arg == "mode" for keyword in decorator.keywords)
+        if mode not in {"before", "plain", "wrap"} and not dynamic_mode:
+            return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
+        targets = _literal_string_arguments(decorator)
+        if not targets or "*" in targets:
+            transforms_all_fields = True
+        fields.update(targets)
+        return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
+    if imports.resolves(
+        decorator.func,
+        sources=_PYDANTIC_LEGACY_VALIDATOR_SOURCES,
+        symbol="validator",
+    ):
+        pre = _literal_keyword_bool(decorator, "pre", default=False)
+        always = _literal_keyword_bool(decorator, "always", default=False)
+        if pre is False and always is False:
+            return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
+        targets = _literal_string_arguments(decorator)
+        if not targets or "*" in targets:
+            transforms_all_fields = True
+        fields.update(targets)
+        return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
+    if imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol="model_validator"):
+        mode = _literal_keyword_string(decorator, "mode", default=None)
+        transforms_all_fields |= mode in {None, "before", "wrap"}
+        return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
+    if imports.resolves(
+        decorator.func,
+        sources=_PYDANTIC_LEGACY_VALIDATOR_SOURCES,
+        symbol="root_validator",
+    ):
+        pre = _literal_keyword_bool(decorator, "pre", default=False)
+        transforms_all_fields |= pre is not False
+    return _DefaultTransformers(fields=frozenset(fields), all_fields=transforms_all_fields)
+
+
+def _literal_keyword_bool(call: ast.Call, name: str, *, default: bool) -> bool | None:
+    values = [keyword.value for keyword in call.keywords if keyword.arg == name]
+    if not values:
+        return default
+    if len(values) != 1 or not isinstance(values[0], ast.Constant) or not isinstance(values[0].value, bool):
+        return None
+    return values[0].value
+
+
+def _literal_keyword_string(call: ast.Call, name: str, *, default: str | None) -> str | None:
+    values = [keyword.value for keyword in call.keywords if keyword.arg == name]
+    if not values:
+        return default
+    if len(values) != 1 or not isinstance(values[0], ast.Constant) or not isinstance(values[0].value, str):
+        return None
+    return values[0].value
+
+
+def _literal_string_arguments(call: ast.Call) -> frozenset[str]:
+    return frozenset(
+        argument.value
+        for argument in call.args
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+    )
+
+
+def _named_annotation_contract(
+    path: Path, tree: ast.Module, annotation: ast.Name, *, seen: frozenset[tuple[Path, str]], depth: int
+) -> _AnnotationContract | None:
+    local = _module_alias_expression(tree, annotation.id)
+    if local is not None:
+        return _resolve_annotation_contract(path, tree, local, seen=seen, depth=depth + 1)
+    imported = _imported_symbol(tree, annotation.id)
+    target = _resolve_imported_module(path, imported) if imported is not None else None
+    if target is not None and imported is not None and (target, imported.symbol) not in seen:
+        key = (target, imported.symbol)
+        target_tree = _read_module(target)
+        target_value = _module_alias_expression(target_tree, imported.symbol) if target_tree is not None else None
+        if target_tree is not None and target_value is not None:
+            return _resolve_annotation_contract(
+                target,
+                target_tree,
+                target_value,
+                seen=seen | {key},
+                depth=depth + 1,
+            )
     return None
 
 
-def _numeric_bound_is_violated(name: str, default: float, bound: float) -> bool:
-    match name:
-        case "gt":
-            return default <= bound
-        case "ge":
-            return default < bound
-        case "lt":
-            return default >= bound
-        case "le":
-            return default > bound
-        case _:
-            return False
-
-
-def _parse_forward_annotation(node: ast.expr) -> ast.expr:
-    if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
-        return node
+def _read_module(path: Path) -> ast.Module | None:
     try:
-        return ast.parse(node.value, mode="eval").body
-    except SyntaxError:
-        return node
+        if path.stat().st_size > _MAX_IMPORTED_MODULE_BYTES:
+            return None
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+    except OSError, SyntaxError:
+        return None
+    return tree
 
 
-def _slice_members(node: ast.expr) -> tuple[ast.expr, ...]:
-    return tuple(node.elts) if isinstance(node, ast.Tuple) else (node,)
+def _resolve_imported_module(current: Path, reference: _ImportedSymbol) -> Path | None:
+    if not current.is_absolute():
+        return None
+    current = current.resolve()
+    checkout = _checkout_root(current)
+    if checkout is None:
+        return None
+    module_parts = tuple(part for part in reference.module.split(".") if part)
+    candidates: set[Path] = set()
+    if reference.level:
+        base = current.parent
+        for _ in range(reference.level - 1):
+            base = base.parent
+        candidates.update(_module_files(base.joinpath(*module_parts), checkout))
+    elif module_parts:
+        for depth, ancestor in enumerate((current.parent, *current.parents)):
+            if depth >= _MAX_PATH_ANCESTORS:
+                break
+            candidates.update(_module_files(ancestor.joinpath(*module_parts), checkout))
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _module_files(base: Path, checkout: Path) -> frozenset[Path]:
+    resolved: set[Path] = set()
+    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
+        if not candidate.is_file() or candidate.is_symlink():
+            continue
+        target = candidate.resolve()
+        if target.is_relative_to(checkout):
+            resolved.add(target)
+    return frozenset(resolved)
+
+
+def _checkout_root(path: Path) -> Path | None:
+    for depth, ancestor in enumerate(path.parents):
+        if depth >= _MAX_PATH_ANCESTORS:
+            break
+        if (ancestor / ".git").exists():
+            return ancestor.resolve()
+    return None
+
+
+def _imported_symbol(tree: ast.Module, local_name: str) -> _ImportedSymbol | None:
+    candidates = [
+        _ImportedSymbol(statement.module or "", statement.level, alias.name)
+        for statement in tree.body
+        if isinstance(statement, ast.ImportFrom)
+        for alias in statement.names
+        if alias.name != "*" and (alias.asname or alias.name) == local_name
+    ]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _module_alias_expression(tree: ast.Module, symbol: str) -> ast.expr | None:
+    candidates = [value for statement in tree.body if (value := _alias_value(statement, symbol)) is not None]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _alias_value(statement: ast.stmt, symbol: str) -> ast.expr | None:
+    match statement:
+        case ast.TypeAlias(name=ast.Name(id=name), value=value) if name == symbol:
+            return value
+        case ast.AnnAssign(target=ast.Name(id=name), value=value) if name == symbol:
+            return value
+        case ast.Assign(targets=[ast.Name(id=name)], value=value) if name == symbol:
+            return value
+        case _:
+            return None
+
+
+def _annotated_contract(
+    base: _AnnotationContract, members: tuple[ast.expr, ...], imports: ImportIndex
+) -> _AnnotationContract:
+    fields = tuple(
+        member
+        for member in members[1:]
+        if isinstance(member, ast.Call)
+        and imports.resolves(member.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
+    )
+    transforms_default = any(
+        isinstance(member, ast.Call)
+        and any(
+            imports.resolves(member.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol=symbol)
+            for symbol in ("BeforeValidator", "PlainValidator", "WrapValidator")
+        )
+        for member in members[1:]
+    )
+    return _AnnotationContract(
+        annotation=base.annotation,
+        imports=base.imports,
+        constraints=(*base.constraints, *fields),
+        transforms_default=base.transforms_default or transforms_default,
+    )

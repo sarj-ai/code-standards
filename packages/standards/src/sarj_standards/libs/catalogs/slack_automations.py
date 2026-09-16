@@ -452,19 +452,7 @@ class SlackAutomationCatalog(_CatalogModel):
         used_system_ids: set[str] = set()
         for automation in (*self.bot_apps, *self.integrations):
             for capability in automation.capabilities:
-                for system_id in capability.connected_system_ids:
-                    if system_id not in system_ids:
-                        msg = f"{automation.id}/{capability.id} references unknown system {system_id}"
-                        raise ValueError(msg)
-                    used_system_ids.add(system_id)
-                for trigger in capability.triggers:
-                    if isinstance(trigger, ExternalWebhookTrigger):
-                        if trigger.source_system_id not in system_ids:
-                            msg = f"{automation.id}/{capability.id} references unknown webhook system {trigger.source_system_id}"
-                            raise ValueError(msg)
-                        if trigger.source_system_id not in capability.connected_system_ids:
-                            msg = f"{automation.id}/{capability.id} webhook source must be a connected system"
-                            raise ValueError(msg)
+                _validate_capability_references(automation.id, capability, system_ids, used_system_ids)
         for integration in self.integrations:
             for consumer_id in integration.consumer_bot_app_ids:
                 if consumer_id not in bot_ids:
@@ -475,6 +463,27 @@ class SlackAutomationCatalog(_CatalogModel):
             msg = f"systems must be referenced by a capability: {', '.join(sorted(unused_system_ids))}"
             raise ValueError(msg)
         return self
+
+
+def _validate_capability_references(
+    automation_id: str,
+    capability: BotCapability | IntegrationCapability,
+    system_ids: set[str],
+    used_system_ids: set[str],
+) -> None:
+    for system_id in capability.connected_system_ids:
+        if system_id not in system_ids:
+            msg = f"{automation_id}/{capability.id} references unknown system {system_id}"
+            raise ValueError(msg)
+        used_system_ids.add(system_id)
+    for trigger in capability.triggers:
+        if isinstance(trigger, ExternalWebhookTrigger):
+            if trigger.source_system_id not in system_ids:
+                msg = f"{automation_id}/{capability.id} references unknown webhook system {trigger.source_system_id}"
+                raise ValueError(msg)
+            if trigger.source_system_id not in capability.connected_system_ids:
+                msg = f"{automation_id}/{capability.id} webhook source must be a connected system"
+                raise ValueError(msg)
 
 
 class _DuplicateKeyError(ValueError):

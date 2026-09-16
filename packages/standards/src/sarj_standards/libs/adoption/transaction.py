@@ -160,18 +160,7 @@ class FileTransaction:
     @classmethod
     def capture(cls, root: Path, extra: tuple[Path, ...] = ()) -> Self:
         resolved = root.resolve()
-        candidates = set(extra)
-        for parent, directories, names in os.walk(resolved):
-            directories[:] = [name for name in directories if name not in _SKIP_DIRS]
-            directory = Path(parent)
-            candidates.update(directory / name for name in names if name in _OWNED_NAMES)
-            if "pyproject.toml" in names:
-                candidates.add(directory / "uv.lock")
-            if "package.json" in names:
-                candidates.update(
-                    directory / name
-                    for name in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb")
-                )
+        candidates = _capture_candidates(resolved, extra)
         before: dict[Path, FileSnapshot] = {}
         absent_parents: set[Path] = set()
         for path in candidates:
@@ -274,3 +263,19 @@ def _absent_parents(root: Path, parent: Path) -> set[Path]:
         missing.add(current)
         current = current.parent
     return missing
+
+
+def _capture_candidates(resolved: Path, extra: tuple[Path, ...]) -> set[Path]:
+    candidates = set(extra)
+    for parent, directories, names in os.walk(resolved):
+        directories[:] = [name for name in directories if name not in _SKIP_DIRS]
+        directory = Path(parent)
+        candidates.update(directory / name for name in names if name in _OWNED_NAMES)
+        if "pyproject.toml" in names:
+            candidates.add(directory / "uv.lock")
+        if "package.json" in names:
+            candidates.update(
+                directory / name
+                for name in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock", "bun.lockb")
+            )
+    return candidates

@@ -91,8 +91,7 @@ function leadingCommentBodies(sourceText: string): string[] {
   while (index < sourceText.length) {
     while (/\s/u.test(sourceText[index] ?? "")) index++;
     if (sourceText.startsWith("//", index)) {
-      const end = sourceText.indexOf("\n", index + 2);
-      const stop = end === -1 ? sourceText.length : end;
+      const stop = commentLineEnd(sourceText, index + 2);
       bodies.push(sourceText.slice(index + 2, stop).trim());
       index = stop;
       continue;
@@ -112,8 +111,7 @@ function leadingCommentBodies(sourceText: string): string[] {
     }
     // Some callers pass an extracted JSDoc body rather than a full file.
     if (sourceText[index] === "*") {
-      const end = sourceText.indexOf("\n", index + 1);
-      const stop = end === -1 ? sourceText.length : end;
+      const stop = commentLineEnd(sourceText, index + 1);
       bodies.push(sourceText.slice(index + 1, stop).trim());
       index = stop;
       continue;
@@ -125,4 +123,9 @@ function leadingCommentBodies(sourceText: string): string[] {
 
 export function isScriptFile(filename: string): boolean {
   return SCRIPT_FILE_RE.test(filename);
+}
+
+function commentLineEnd(sourceText: string, start: number): number {
+  const end = sourceText.indexOf("\n", start);
+  return end === -1 ? sourceText.length : end;
 }

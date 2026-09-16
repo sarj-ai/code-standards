@@ -265,24 +265,23 @@ function isRedundantNarration(
 ): boolean {
   const t = body.trim();
   if (!t || looksLikeCode(t) || hasPseudocode(t)) return false;
-  if (standalone) {
-    const justified = JUSTIFICATION_RE.test(t);
-    if (STEP_NARRATION_RE.test(t) && !justified) return true;
-    if (META_COMMENTARY_RE.test(t) && !justified) return true;
-    if (isBareDeferral(t) && !justified) return true;
-    if (HELPER_OPENER_RE.test(t) || LETS_RE.test(t)) return true;
+  if (!standalone) return restatesStatementHead(t, statementBelow);
+  const justified = JUSTIFICATION_RE.test(t);
+  if (STEP_NARRATION_RE.test(t) && !justified) return true;
+  if (META_COMMENTARY_RE.test(t) && !justified) return true;
+  if (isBareDeferral(t) && !justified) return true;
+  if (HELPER_OPENER_RE.test(t) || LETS_RE.test(t)) return true;
 
-    const words = t.split(/\s+/);
-    if (words.length > 1 && words.length <= 4 && DUMMY_TRANSLATION_RE.test(t) && !/[():=]/.test(t)) {
-      const lowerT = t.toLowerCase();
-      if (!RATIONALE_WORDS.some((word) => lowerT.includes(word)) && restatesWholeStatement(t, statementBelow)) {
-        return true;
-      }
+  const words = t.split(/\s+/);
+  if (words.length > 1 && words.length <= 4 && DUMMY_TRANSLATION_RE.test(t) && !/[():=]/.test(t)) {
+    const lowerT = t.toLowerCase();
+    if (!RATIONALE_WORDS.some((word) => lowerT.includes(word)) && restatesWholeStatement(t, statementBelow)) {
+      return true;
     }
-
-    if (!nested && isSectionLabel(t)) return true;
-    if (isolatedEnumeration && ENUMERATION_RE.test(t)) return true;
   }
+
+  if (!nested && isSectionLabel(t)) return true;
+  if (isolatedEnumeration && ENUMERATION_RE.test(t)) return true;
   return restatesStatementHead(t, statementBelow);
 }
 
@@ -425,11 +424,11 @@ const TYPE_MEMBER_CONTAINERS: ReadonlySet<string> = new Set([
 
 /** Preserve an entire contiguous comment run when any line cites a reference. */
 function runCitesAReference(comments: readonly TSESTree.Comment[], index: number): boolean {
-  for (let i = index; i >= 0; i--) {
+  for (let i = index;i >= 0;i--) {
     if (i < index && !areAdjacentLineComments(comments[i], comments[i + 1])) break;
     if (hasExternalReference(stripCommentMarker(comments[i]?.value ?? ""))) return true;
   }
-  for (let i = index + 1; i < comments.length; i++) {
+  for (let i = index + 1;i < comments.length;i++) {
     if (!areAdjacentLineComments(comments[i - 1], comments[i])) break;
     if (hasExternalReference(stripCommentMarker(comments[i]?.value ?? ""))) return true;
   }
@@ -465,7 +464,7 @@ function runDocumentsHttpContract(
   index: number,
 ): boolean {
   const start = lineRunStart(comments, index);
-  for (let i = start; i < comments.length; i++) {
+  for (let i = start;i < comments.length;i++) {
     if (i > start && !areAdjacentLineComments(comments[i - 1], comments[i])) break;
     if (HTTP_CONTRACT_RE.test(stripCommentMarker(comments[i]?.value ?? ""))) return true;
   }
@@ -491,7 +490,7 @@ function hasIllustrationLeadInAbove(
   comments: readonly TSESTree.Comment[],
   index: number,
 ): boolean {
-  for (let i = index - 1; i >= 0 && index - i <= LEAD_IN_SCAN_LIMIT; i--) {
+  for (let i = index - 1;i >= 0 && index - i <= LEAD_IN_SCAN_LIMIT;i--) {
     if (!areAdjacentLineComments(comments[i], comments[i + 1])) return false;
     const body = stripCommentMarker(comments[i]?.value ?? "");
     if (body.length > 0 && body.endsWith(":")) return true;
@@ -504,7 +503,7 @@ function hasCommentedOutCode(
   precedingProse: boolean,
   allowCall: boolean,
 ): boolean {
-  for (let i = 0; i < texts.length; i++) {
+  for (let i = 0;i < texts.length;i++) {
     const line = texts[i];
     if (line === undefined || !looksLikeCode(line, allowCall) || hasPseudocode(line)) {
       continue;
@@ -599,7 +598,8 @@ export default createRule<Options, MessageIds>({
       }
 
       const walls: CommentWall[] = [];
-      for (const entries of attached.values()) {
+      for (const entries of attached.values()) collectWalls(entries);
+      function collectWalls(entries: Array<{ comment: TSESTree.Comment; index: number; weak: boolean }>): void {
         const sorted = entries.toSorted((left, right) => left.index - right.index);
         const clusters: Array<typeof sorted> = [];
         for (const entry of sorted) {
@@ -627,6 +627,7 @@ export default createRule<Options, MessageIds>({
           const leader = weak[0];
           if (leader !== undefined) walls.push({ leader, members: new Set(weak) });
         }
+
       }
       return walls;
     }
@@ -695,9 +696,9 @@ export default createRule<Options, MessageIds>({
         const reportedBannerRuns = new Set<number>();
         const reportedCodeRuns = new Set<number>();
 
-        for (let i = 0; i < comments.length; i++) {
+        function checkComment(i: number): void {
           const comment = comments[i];
-          if (comment === undefined) continue;
+          if (comment === undefined) return;
           const wall = wallByLeader.get(comment);
           if (wall !== undefined) {
             context.report({
@@ -705,9 +706,9 @@ export default createRule<Options, MessageIds>({
               messageId: "commentWall",
               data: { count: String(wall.members.size) },
             });
-            continue;
+            return;
           }
-          if (wallMembers.has(comment)) continue;
+          if (wallMembers.has(comment)) return;
           if (isJsDoc(comment)) {
             const debt = comment.value
               .split("\n")
@@ -715,15 +716,15 @@ export default createRule<Options, MessageIds>({
               .find((line) => JSDOC_DEBT_RE.test(line));
             if (debt !== undefined && !runCitesAReference(comments, i)) {
               context.report({ node: comment, messageId: "untrackedTodo" });
-              continue;
+              return;
             }
             // JSDoc is preserved unless its entire body is a section signpost.
             if (isStandalone(comment) && isSectionJsDoc(comment)) {
               context.report({ node: comment, messageId: "sectionBanner" });
             }
-            continue;
+            return;
           }
-          if (LICENSE_RE.test(comment.value)) continue;
+          if (LICENSE_RE.test(comment.value)) return;
           const texts = comment.value
             .split("\n")
             .map(stripCommentMarker)
@@ -735,9 +736,13 @@ export default createRule<Options, MessageIds>({
             if (isJsxOnlyComment(comment) && texts.some(isBanner)) {
               context.report({ node: comment, messageId: "sectionBanner" });
             }
-            continue;
+            return;
           }
 
+          checkStandaloneComment(comment, texts, i);
+        }
+
+        function checkStandaloneComment(comment: TSESTree.Comment, texts: string[], i: number): void {
           const firstText = texts[0];
           const firstTextStem = firstText === undefined
             ? undefined
@@ -746,7 +751,7 @@ export default createRule<Options, MessageIds>({
             firstTextStem !== undefined &&
             texts.length === 1 &&
             callMatrixStems.has(firstTextStem)
-          ) continue;
+          ) return;
           if (firstText !== undefined && /^(?:todo|fixme)\b/i.test(firstText)) {
             if (!runCitesAReference(comments, i)) {
               context.report({
@@ -754,7 +759,7 @@ export default createRule<Options, MessageIds>({
                 messageId: "untrackedTodo",
               });
             }
-            continue;
+            return;
           }
 
           if (
@@ -764,7 +769,7 @@ export default createRule<Options, MessageIds>({
             !runCitesAReference(comments, i)
           ) {
             context.report({ node: comment, messageId: "placeholderImplementation" });
-            continue;
+            return;
           }
 
           const runStart = lineRunStart(comments, i);
@@ -773,7 +778,7 @@ export default createRule<Options, MessageIds>({
               context.report({ node: comment, messageId: "sectionBanner" });
               reportedBannerRuns.add(runStart);
             }
-            continue;
+            return;
           }
           const prev = comments[i - 1];
           const precedingProse =
@@ -792,8 +797,12 @@ export default createRule<Options, MessageIds>({
               context.report({ node: comment, messageId: "commentedOutCode" });
               reportedCodeRuns.add(runStart);
             }
-            continue;
+            return;
           }
+          checkNarration(comment, texts, i, container);
+        }
+
+        function checkNarration(comment: TSESTree.Comment, texts: string[], i: number, container: TSESTree.Node | null): void {
           // Narration only for single-line comments (a multi-line block is
           // usually a real doc).
           if (comment.type === "Line" && texts.length === 1) {
@@ -810,6 +819,8 @@ export default createRule<Options, MessageIds>({
             }
           }
         }
+
+        for (let i = 0;i < comments.length;i++) { checkComment(i); }
 
         reportLeadingPreamble(comments, firstCodeLine);
       },

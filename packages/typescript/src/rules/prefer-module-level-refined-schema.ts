@@ -374,11 +374,7 @@ export default createRule<Options, MessageIds>({
       collectReferences(context.sourceCode.getScope(node), references);
       const [start, end] = node.range;
       const [functionStart, functionEnd] = enclosing.range;
-      for (const reference of references) {
-        const [referenceStart] = reference.identifier.range;
-        if (referenceStart < start || referenceStart >= end) continue;
-        const resolved = reference.resolved;
-        if (resolved === null) continue;
+      function hasSafeDefinitions(reference: TSESLint.Scope.Reference, resolved: TSESLint.Scope.Variable): boolean {
         for (const definition of resolved.defs) {
           if (definition.type === "ImportBinding") {
             const parent = reference.identifier.parent;
@@ -404,6 +400,15 @@ export default createRule<Options, MessageIds>({
           )
             return false;
         }
+        return true;
+      }
+
+      for (const reference of references) {
+        const [referenceStart] = reference.identifier.range;
+        if (referenceStart < start || referenceStart >= end) continue;
+        const resolved = reference.resolved;
+        if (resolved === null) continue;
+        if (!hasSafeDefinitions(reference, resolved)) return false;
       }
       return true;
     }

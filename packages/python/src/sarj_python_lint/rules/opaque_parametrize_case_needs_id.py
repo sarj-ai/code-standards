@@ -206,15 +206,7 @@ def _parametrize_width(argnames: ast.expr) -> int | None:
 
 def _is_unnameable(case: ast.expr, width: int, imports: ImportIndex) -> bool:
     if isinstance(case, ast.Call) and _is_param_wrapper(case.func, imports):
-        # An explicitly named case is fine however opaque its payload is.
-        case_id = next((keyword.value for keyword in case.keywords if keyword.arg == "id"), None)
-        if case_id is not None and not _is_none(case_id):
-            return False
-        if not case.args:
-            return False
-        if width == 1:
-            return len(case.args) == 1 and _is_opaque_value(case.args[0], single_value=True, imports=imports)
-        return all(_is_opaque_value(arg, single_value=True, imports=imports) for arg in case.args)
+        return _is_unnameable_param(case, width, imports)
     if width == 1:
         return _is_opaque_value(case, single_value=True, imports=imports)
     if not isinstance(case, (ast.Tuple, ast.List)):
@@ -269,14 +261,7 @@ def _module_import_index(tree: ast.Module) -> ImportIndex:
     body: list[ast.stmt] = []
     for statement in tree.body:
         if isinstance(statement, ast.ImportFrom) and statement.module == "pytest":
-            regular_names = [alias for alias in statement.names if alias.name != "mark"]
-            if regular_names:
-                body.append(ast.ImportFrom(module=statement.module, names=regular_names, level=statement.level))
-            body.extend(
-                ast.Import(names=[ast.alias(name="pytest.mark", asname=alias.asname or alias.name)])
-                for alias in statement.names
-                if alias.name == "mark"
-            )
+            _expand_pytest_mark_import(statement, body)
             continue
         if isinstance(statement, (ast.Import, ast.ImportFrom)):
             body.append(statement)
@@ -295,4 +280,27 @@ def _statement_bound_names(statement: ast.stmt) -> frozenset[str]:
         node.id
         for node in ast.walk(statement)
         if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
+    )
+
+
+def _is_unnameable_param(case: ast.Call, width: int, imports: ImportIndex) -> bool:
+    # An explicitly named case is fine however opaque its payload is.
+    case_id = next((keyword.value for keyword in case.keywords if keyword.arg == "id"), None)
+    if case_id is not None and not _is_none(case_id):
+        return False
+    if not case.args:
+        return False
+    if width == 1:
+        return len(case.args) == 1 and _is_opaque_value(case.args[0], single_value=True, imports=imports)
+    return all(_is_opaque_value(arg, single_value=True, imports=imports) for arg in case.args)
+
+
+def _expand_pytest_mark_import(statement: ast.ImportFrom, body: list[ast.stmt]) -> None:
+    regular_names = [alias for alias in statement.names if alias.name != "mark"]
+    if regular_names:
+        body.append(ast.ImportFrom(module=statement.module, names=regular_names, level=statement.level))
+    body.extend(
+        ast.Import(names=[ast.alias(name="pytest.mark", asname=alias.asname or alias.name)])
+        for alias in statement.names
+        if alias.name == "mark"
     )

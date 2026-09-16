@@ -325,33 +325,37 @@ def analyze_external(
     except (OSError, TypeError, ValueError, RecursionError, yaml.YAMLError, zipfile.BadZipFile) as exc:
         issue = ExecutionIssue("mobile-tools", "provisioning-failure", _redact_message(str(exc), root))
         reports.append(ToolReport("mobile-tools", Completion.FAILED, issues=(issue,)))
-    if routed.python:
-        if capabilities is None or "ruff" in capabilities:
-            reports.extend(
-                _invoke_ruff_projects(
-                    routed.python,
-                    root=root,
-                    runner=execute,
+
+    def collect_python_reports() -> None:
+        if routed.python:
+            if capabilities is None or "ruff" in capabilities:
+                reports.extend(
+                    _invoke_ruff_projects(
+                        routed.python,
+                        root=root,
+                        runner=execute,
+                    )
                 )
-            )
-        if capabilities is not None and "deptry" in capabilities:
-            reports.extend(
-                _invoke_deptry_projects(
-                    routed.python,
-                    root=root,
-                    runner=execute,
+            if capabilities is not None and "deptry" in capabilities:
+                reports.extend(
+                    _invoke_deptry_projects(
+                        routed.python,
+                        root=root,
+                        runner=execute,
+                    )
                 )
-            )
-        if capabilities is None or "pyright" in capabilities:
-            reports.extend(
-                _invoke_python_projects(
-                    "basedpyright",
-                    routed.python,
-                    root=root,
-                    runner=execute,
-                    parser=parse_basedpyright,
+            if capabilities is None or "pyright" in capabilities:
+                reports.extend(
+                    _invoke_python_projects(
+                        "basedpyright",
+                        routed.python,
+                        root=root,
+                        runner=execute,
+                        parser=parse_basedpyright,
+                    )
                 )
-            )
+
+    collect_python_reports()
     if capabilities is not None and "eslint" not in capabilities:
         eslint_commands = ()
         unowned_eslint = 0
@@ -389,69 +393,75 @@ def analyze_external(
         )
         reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         eslint_commands = ()
-    analysis_started = time.monotonic()
-    for command, invocation_id in _eslint_batches(eslint_commands, root=root):
-        if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
-            issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
-            reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-            break
-        if normalized_trust is TrustMode.SAFE:
-            issue = ExecutionIssue(
-                "eslint",
-                "trust-required",
-                "ESLint config is executable repository code; retry with TrustMode.TRUSTED",
-            )
-            reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-            continue
-        if runner is None and (issue := _missing_eslint_issue(command.cwd, root)) is not None:
-            reports.append(
-                ToolReport(
+
+    def collect_eslint_reports() -> None:
+        analysis_started = time.monotonic()
+        for command, invocation_id in _eslint_batches(eslint_commands, root=root):
+            if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
+                issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
+                reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+                break
+            if normalized_trust is TrustMode.SAFE:
+                issue = ExecutionIssue(
                     "eslint",
-                    Completion.FAILED,
-                    issues=(issue,),
-                    analyzer_id=AnalyzerId("eslint"),
-                    invocation_id=InvocationId(f"eslint:{invocation_id}"),
-                    file_count=_argv_file_count(command.argv),
+                    "trust-required",
+                    "ESLint config is executable repository code; retry with TrustMode.TRUSTED",
                 )
+                reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+                continue
+            if runner is None and (issue := _missing_eslint_issue(command.cwd, root)) is not None:
+                reports.append(
+                    ToolReport(
+                        "eslint",
+                        Completion.FAILED,
+                        issues=(issue,),
+                        analyzer_id=AnalyzerId("eslint"),
+                        invocation_id=InvocationId(f"eslint:{invocation_id}"),
+                        file_count=_argv_file_count(command.argv),
+                    )
+                )
+                continue
+            execute_eslint = (
+                partial(
+                    _run_eslint_process,
+                    timeout_seconds=max(
+                        0.0, _ANALYSIS_DEADLINE.total_seconds() - (time.monotonic() - analysis_started)
+                    ),
+                )
+                if runner is None
+                else runner
             )
-            continue
-        execute_eslint = (
-            partial(
-                _run_eslint_process,
-                timeout_seconds=max(0.0, _ANALYSIS_DEADLINE.total_seconds() - (time.monotonic() - analysis_started)),
-            )
-            if runner is None
-            else runner
-        )
-        reports.append(
-            _invoke(
-                "eslint",
-                _local_eslint_argv(
-                    _eslint_json_argv(
+            reports.append(
+                _invoke(
+                    "eslint",
+                    _local_eslint_argv(
+                        _eslint_json_argv(
+                            command.argv,
+                            pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
+                        ),
+                        command.cwd,
+                        root,
+                    )
+                    if runner is None
+                    else _eslint_json_argv(
                         command.argv,
                         pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
                     ),
-                    command.cwd,
-                    root,
+                    cwd=command.cwd,
+                    root=root,
+                    runner=execute_eslint,
+                    parser=parse_eslint,
+                    validator=partial(_validate_eslint_coverage, selected_files=_eslint_selected_files(command)),
+                    invocation_id=invocation_id,
+                    file_count=_argv_file_count(command.argv),
                 )
-                if runner is None
-                else _eslint_json_argv(
-                    command.argv,
-                    pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
-                ),
-                cwd=command.cwd,
-                root=root,
-                runner=execute_eslint,
-                parser=parse_eslint,
-                validator=partial(_validate_eslint_coverage, selected_files=_eslint_selected_files(command)),
-                invocation_id=invocation_id,
-                file_count=_argv_file_count(command.argv),
             )
-        )
-        if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
-            issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
-            reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-            break
+            if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
+                issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
+                reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+                break
+
+    collect_eslint_reports()
     react_selection = _selected_react_doctor_projects(
         root,
         enabled=include_react_doctor,
@@ -507,51 +517,55 @@ def _mobile_source_reports(
     reports: list[ToolReport] = []
     swift_files = _mobile_language_paths(root, grouped.swift, language="swift")
     kotlin_files = _mobile_language_paths(root, grouped.kotlin, language="kotlin")
-    if swift_files and enabled("swiftformat"):
-        swift_root = _mobile_capability_root(root, "swiftformat")
-        config = (
-            _PACKAGED_MOBILE_CONFIGS / "swiftformat.strict"
-            if managed_tools
-            else _first_existing(swift_root, (".swiftformat", "swiftformat.strict"))
-        )
-        argv = (*_swift_command(root, "swiftformat", managed=managed_tools), "--lint", "--strict")
-        if config is not None:
-            argv = (*argv, "--config", str(config))
-        reports.append(
-            _invoke_text_tool(
-                "swiftformat",
-                (*argv, *swift_files),
-                cwd=root,
-                root=root,
-                runner=runner,
-                parser=parse_swiftformat,
-                finding_codes=frozenset({1}),
-                file_count=len(swift_files),
+
+    def collect_swift_reports() -> None:
+        if swift_files and enabled("swiftformat"):
+            swift_root = _mobile_capability_root(root, "swiftformat")
+            config = (
+                _PACKAGED_MOBILE_CONFIGS / "swiftformat.strict"
+                if managed_tools
+                else _first_existing(swift_root, (".swiftformat", "swiftformat.strict"))
             )
-        )
-    if swift_files and enabled("swiftlint"):
-        swift_root = _mobile_capability_root(root, "swiftlint")
-        config = (
-            _PACKAGED_MOBILE_CONFIGS / "swiftlint.strict.yml"
-            if managed_tools
-            else _first_existing(swift_root, (".swiftlint.yml", ".swiftlint.yaml", "swiftlint.strict.yml"))
-        )
-        argv = (*_swift_command(root, "swiftlint", managed=managed_tools), "lint", "--strict", "--reporter", "json")
-        if config is not None:
-            argv = (*argv, "--config", str(config))
-        reports.append(
-            _invoke_text_tool(
-                "swiftlint",
-                (*argv, *swift_files),
-                cwd=root,
-                root=root,
-                runner=runner,
-                parser=parse_swiftlint,
-                finding_codes=frozenset({1, 2}),
-                file_count=len(swift_files),
-                empty_payload="[]",
+            argv = (*_swift_command(root, "swiftformat", managed=managed_tools), "--lint", "--strict")
+            if config is not None:
+                argv = (*argv, "--config", str(config))
+            reports.append(
+                _invoke_text_tool(
+                    "swiftformat",
+                    (*argv, *swift_files),
+                    cwd=root,
+                    root=root,
+                    runner=runner,
+                    parser=parse_swiftformat,
+                    finding_codes=frozenset({1}),
+                    file_count=len(swift_files),
+                )
             )
-        )
+        if swift_files and enabled("swiftlint"):
+            swift_root = _mobile_capability_root(root, "swiftlint")
+            config = (
+                _PACKAGED_MOBILE_CONFIGS / "swiftlint.strict.yml"
+                if managed_tools
+                else _first_existing(swift_root, (".swiftlint.yml", ".swiftlint.yaml", "swiftlint.strict.yml"))
+            )
+            argv = (*_swift_command(root, "swiftlint", managed=managed_tools), "lint", "--strict", "--reporter", "json")
+            if config is not None:
+                argv = (*argv, "--config", str(config))
+            reports.append(
+                _invoke_text_tool(
+                    "swiftlint",
+                    (*argv, *swift_files),
+                    cwd=root,
+                    root=root,
+                    runner=runner,
+                    parser=parse_swiftlint,
+                    finding_codes=frozenset({1, 2}),
+                    file_count=len(swift_files),
+                    empty_payload="[]",
+                )
+            )
+
+    collect_swift_reports()
     if kotlin_files and enabled("ktlint"):
         kotlin_root = _mobile_capability_root(root, "ktlint")
         editorconfig = (
@@ -607,30 +621,34 @@ def _mobile_source_reports(
             )
         )
     mobile_files = (*kotlin_files, *swift_files)
-    if mobile_files and enabled("mobile-security"):
-        config = (
-            _PACKAGED_MOBILE_CONFIGS / "mobsf.strict.yml"
-            if managed_tools
-            else _first_existing(root, (".mobsf", "mobsf.strict.yml"))
-        )
-        rules = mobile_tools.mobsf_rules() if managed_tools else Path("mobsfscan-rules")
-        argv = _mobsfscan_argv(rules, config=config)
 
-        def parse_mobile_security(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
-            return parse_mobsfscan(payload, root=root, expected_paths=mobile_files)
-
-        reports.append(
-            _invoke_text_tool(
-                "mobsfscan",
-                (*argv, "--", *mobile_files),
-                cwd=root,
-                root=root,
-                runner=runner,
-                parser=parse_mobile_security,
-                finding_codes=frozenset(),
-                file_count=len(mobile_files),
+    def collect_mobile_security() -> None:
+        if mobile_files and enabled("mobile-security"):
+            config = (
+                _PACKAGED_MOBILE_CONFIGS / "mobsf.strict.yml"
+                if managed_tools
+                else _first_existing(root, (".mobsf", "mobsf.strict.yml"))
             )
-        )
+            rules = mobile_tools.mobsf_rules() if managed_tools else Path("mobsfscan-rules")
+            argv = _mobsfscan_argv(rules, config=config)
+
+            def parse_mobile_security(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+                return parse_mobsfscan(payload, root=root, expected_paths=mobile_files)
+
+            reports.append(
+                _invoke_text_tool(
+                    "mobsfscan",
+                    (*argv, "--", *mobile_files),
+                    cwd=root,
+                    root=root,
+                    runner=runner,
+                    parser=parse_mobile_security,
+                    finding_codes=frozenset(),
+                    file_count=len(mobile_files),
+                )
+            )
+
+    collect_mobile_security()
     return tuple(reports)
 
 
@@ -1360,17 +1378,8 @@ def _react_doctor_changed_scope_is_disjoint(
         )
     ):
         return False
-    for relative in (item for item in changed.stdout.split("\0") if item):
-        relative_path = Path(relative)
-        if relative_path.is_absolute() or ".." in relative_path.parts:
-            return False
-        candidate = resolved_root / relative_path
-        if any(candidate.is_relative_to(project) for project in resolved_projects):
-            return False
-        if _is_react_doctor_metadata(candidate) and any(
-            project.is_relative_to(candidate.parent) for project in resolved_projects
-        ):
-            return False
+    if not _changed_paths_are_disjoint(changed.stdout, resolved_root, resolved_projects):
+        return False
     status = runner(("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--"), cwd=root)
     if status.returncode != 0 or status.stdout:
         return False
@@ -1419,19 +1428,10 @@ def _react_doctor_scope_has_no_source(
         if not base:
             return False
         if reported_base is not None:
-            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", base) or ".." in base or "@{" in base:
+            verified_base = _verified_react_changed_base(base, root, runner)
+            if verified_base is None:
                 return False
-            resolved = runner(
-                ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
-                cwd=root,
-            )
-            resolved_base = resolved.stdout.strip()
-            if resolved.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None:
-                return False
-            ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, "HEAD"), cwd=root)
-            if ancestor.returncode != 0:
-                return False
-            base = resolved_base
+            base = verified_base
         diff_args = ("git", "diff", f"{base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--")
     changed = runner(
         diff_args,
@@ -1445,22 +1445,9 @@ def _react_doctor_scope_has_no_source(
         return False
     resolved_projects = tuple(project.resolve() for project in projects)
     changed_paths = tuple(item for item in changed.stdout.split("\0") if item)
-    scoped_changed_file_count = 0
-    for relative in changed_paths:
-        relative_path = Path(relative)
-        if relative_path.is_absolute() or ".." in relative_path.parts:
-            return False
-        # Keep containment lexical: resolving a changed symlink could move its
-        # apparent path outside the React project and incorrectly waive it.
-        candidate = resolved_root / relative_path
-        if candidate.is_relative_to(resolved_scope):
-            scoped_changed_file_count += 1
-        within_project = any(candidate.is_relative_to(project) for project in resolved_projects)
-        if candidate.suffix.casefold() not in _REACT_DOCTOR_SOURCE_SUFFIXES:
-            continue
-        if within_project:
-            return False
-    return reported_changed_file_count is None or scoped_changed_file_count == reported_changed_file_count
+    return _changed_scope_has_no_source(
+        changed_paths, resolved_root, resolved_scope, resolved_projects, reported_changed_file_count
+    )
 
 
 def change_scope_base() -> str:
@@ -2382,16 +2369,7 @@ def parse_mobsfscan(  # ruff: ignore[too-many-locals] -- protocol normalization 
     report = _JSON_OBJECT_ADAPTER.validate_json(payload, strict=True)
     errors = _array(report.get("errors", []), "mobsfscan errors")
     if expected_paths is not None:
-        paths = _table(report.get("paths"), "mobsfscan paths")
-        scanned_values = _array(paths.get("scanned"), "mobsfscan scanned paths")
-        if any(not isinstance(value, str) or not value for value in scanned_values):
-            msg = "mobsfscan scanned paths must contain non-empty strings"
-            raise TypeError(msg)
-        scanned = {_reported_path(value, root) for value in scanned_values if isinstance(value, str)}
-        expected = {Path(value).resolve() for value in expected_paths}
-        if scanned != expected:
-            msg = f"mobsfscan coverage mismatch: expected {len(expected)} selected file(s), scanned {len(scanned)}"
-            raise ValueError(msg)
+        _validate_mobsfscan_coverage(report, root, expected_paths)
     # Semgrep 1.175.0 does not yet parse Swift's `#Preview` macro. It reports a
     # warning-only PartialParsing record while still scanning the complete file.
     # Permit only that exact, known parser limitation and only when the caller
@@ -2568,54 +2546,17 @@ def parse_shellcheck(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     )
 
 
-def parse_eslint(  # ruff: ignore[too-many-locals] -- protocol normalization keeps each ESLint field explicit.
-    payload: str, *, root: Path
-) -> tuple[Diagnostic, ...]:
+def parse_eslint(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
     values = _array(_loads(payload), "ESLint output")
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
     for value in values:
         result = _table(value, "ESLint file result")
         path = _path(result, "filePath", root)
-        for raw_message in _array(result.get("messages"), "ESLint messages"):
-            item = _table(raw_message, "ESLint diagnostic")
-            if item.get("fatal") is True:
-                detail = _text(item, "message")
-                msg = f"ESLint fatal parser/configuration failure: {detail}"
-                raise ValueError(msg)
-            start = _eslint_start_position(item, path, documents)
-            end = (
-                None
-                if start is None
-                else _eslint_position(item, path, documents, line_key="endLine", column_key="endColumn")
-            )
-            rule_value = item.get("ruleId")
-            rule = rule_value if isinstance(rule_value, str) else "eslint/file"
-            relative_path = _relative(path, root)
-            if start is None:
-                location = Location(relative_path)
-            elif end is not None:
-                location = Location(relative_path, region=Region(start, end))
-            else:
-                location = Location(relative_path, position=start)
-            severity_value = item.get("severity")
-            if type(severity_value) is int and severity_value == _ESLINT_ERROR:
-                severity = Severity.ERROR
-            elif type(severity_value) is int and severity_value == 1:
-                severity = Severity.WARNING
-            else:
-                msg = f"unsupported ESLint severity: {severity_value!r}"
-                raise ValueError(msg)
-            diagnostics.append(
-                Diagnostic(
-                    rule,
-                    _redact_message(_text(item, "message"), root),
-                    severity,
-                    "eslint",
-                    location,
-                    rule_id=rule,
-                )
-            )
+        diagnostics.extend(
+            _parse_eslint_message(raw_message, path, root, documents)
+            for raw_message in _array(result.get("messages"), "ESLint messages")
+        )
     return tuple(diagnostics)
 
 
@@ -2647,22 +2588,7 @@ def _parse_react_doctor_report(
     include_warnings: bool,
     require_react_detection: bool,
 ) -> tuple[Diagnostic, ...]:
-    expected_version = manifest.eslint_peers()["react-doctor"]
-    if report.version != expected_version:
-        msg = f"React Doctor reported version {report.version!r}; expected {expected_version!r}"
-        raise ValueError(msg)
-    if report.error is not None:
-        msg = f"React Doctor scan failed: {report.error.message}"
-        raise ValueError(msg)
-    if not report.ok:
-        msg = "React Doctor report did not complete successfully"
-        raise ValueError(msg)
-    if report.skipped_projects:
-        msg = f"React Doctor skipped {len(report.skipped_projects)} project(s) before analysis"
-        raise ValueError(msg)
-    if report.react_detected is False and require_react_detection:
-        msg = "React Doctor did not detect React in an expected project"
-        raise ValueError(msg)
+    _validate_react_report_status(report, require_react_detection=require_react_detection)
     if not report.projects and allow_empty_projects:
         if report.diagnostics:
             msg = "React Doctor returned diagnostics without an analyzed project"
@@ -2675,31 +2601,12 @@ def _parse_react_doctor_report(
         msg = "React Doctor returned no analyzed projects"
         raise ValueError(msg)
     if expected_projects is not None:
-        if (report.react_detected is not True and require_react_detection) or report.baseline_degraded is not False:
-            msg = "React Doctor omitted required v3 detection or baseline-completeness metadata"
-            raise ValueError(msg)
-        reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
-        if reported_projects != expected_projects:
-            msg = "React Doctor did not return exactly the requested project set"
-            raise ValueError(msg)
+        _validate_react_project_set(report, root, expected_projects, require_react_detection=require_react_detection)
 
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
     for project in report.projects:
-        if not project.complete:
-            msg = f"React Doctor project did not complete: {project.directory!r}"
-            raise ValueError(msg)
-        if project.skipped_checks:
-            msg = f"React Doctor skipped checks for project: {project.directory!r}"
-            raise ValueError(msg)
-        if expected_projects is not None and (
-            project.skipped_checks is None or project.analyzed_file_count is None or project.scanned_file_count is None
-        ):
-            msg = f"React Doctor omitted completeness metadata for project: {project.directory!r}"
-            raise ValueError(msg)
-        if project.analyzed_file_count == 0 or project.scanned_file_count == 0:
-            msg = f"React Doctor analyzed no files for project: {project.directory!r}"
-            raise ValueError(msg)
+        _validate_react_project_completion(project, expected_projects)
         directory = _contained_report_directory(project, root)
         for item in project.diagnostics:
             # The 0.9.x compact JSON protocol can retain warning diagnostics
@@ -3029,6 +2936,43 @@ def _eslint_position(
         return None
 
 
+def _parse_eslint_message(
+    raw_message: object, path: Path, root: Path, documents: dict[Path, SourceDocument | None]
+) -> Diagnostic:
+    item = _table(raw_message, "ESLint diagnostic")
+    if item.get("fatal") is True:
+        detail = _text(item, "message")
+        msg = f"ESLint fatal parser/configuration failure: {detail}"
+        raise ValueError(msg)
+    start = _eslint_start_position(item, path, documents)
+    end = None if start is None else _eslint_position(item, path, documents, line_key="endLine", column_key="endColumn")
+    rule_value = item.get("ruleId")
+    rule = rule_value if isinstance(rule_value, str) else "eslint/file"
+    relative_path = _relative(path, root)
+    if start is None:
+        location = Location(relative_path)
+    elif end is not None:
+        location = Location(relative_path, region=Region(start, end))
+    else:
+        location = Location(relative_path, position=start)
+    severity_value = item.get("severity")
+    if type(severity_value) is int and severity_value == _ESLINT_ERROR:
+        severity = Severity.ERROR
+    elif type(severity_value) is int and severity_value == 1:
+        severity = Severity.WARNING
+    else:
+        msg = f"unsupported ESLint severity: {severity_value!r}"
+        raise ValueError(msg)
+    return Diagnostic(
+        rule,
+        _redact_message(_text(item, "message"), root),
+        severity,
+        "eslint",
+        location,
+        rule_id=rule,
+    )
+
+
 def _eslint_start_position(
     value: dict[str, object], path: Path, cache: dict[Path, SourceDocument | None]
 ) -> Position | None:
@@ -3083,3 +3027,120 @@ def _redact_message(value: str, root: Path) -> str:
     message = re.sub(r"(?<![\w:./])/(?:[^\s:]+/?)+", "<path>", message)
     message = re.sub(r"\b[A-Za-z]:\\[^\s]+", "<path>", message)
     return message[:1024]
+
+
+def _changed_paths_are_disjoint(changed_paths: str, resolved_root: Path, resolved_projects: tuple[Path, ...]) -> bool:
+    for relative in (item for item in changed_paths.split("\0") if item):
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            return False
+        candidate = resolved_root / relative_path
+        if any(candidate.is_relative_to(project) for project in resolved_projects):
+            return False
+        if _is_react_doctor_metadata(candidate) and any(
+            project.is_relative_to(candidate.parent) for project in resolved_projects
+        ):
+            return False
+    return True
+
+
+def _verified_react_changed_base(base: str, root: Path, runner: ProcessRunner) -> str | None:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", base) or ".." in base or "@{" in base:
+        return None
+    resolved = runner(
+        ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
+        cwd=root,
+    )
+    resolved_base = resolved.stdout.strip()
+    if resolved.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None:
+        return None
+    ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, "HEAD"), cwd=root)
+    if ancestor.returncode != 0:
+        return None
+    return resolved_base
+
+
+def _validate_mobsfscan_coverage(report: dict[str, object], root: Path, expected_paths: Sequence[str]) -> None:
+    paths = _table(report.get("paths"), "mobsfscan paths")
+    scanned_values = _array(paths.get("scanned"), "mobsfscan scanned paths")
+    if any(not isinstance(value, str) or not value for value in scanned_values):
+        msg = "mobsfscan scanned paths must contain non-empty strings"
+        raise TypeError(msg)
+    scanned = {_reported_path(value, root) for value in scanned_values if isinstance(value, str)}
+    expected = {Path(value).resolve() for value in expected_paths}
+    if scanned != expected:
+        msg = f"mobsfscan coverage mismatch: expected {len(expected)} selected file(s), scanned {len(scanned)}"
+        raise ValueError(msg)
+
+
+def _validate_react_project_completion(project: _ReactDoctorProject, expected_projects: frozenset[Path] | None) -> None:
+    if not project.complete:
+        msg = f"React Doctor project did not complete: {project.directory!r}"
+        raise ValueError(msg)
+    if project.skipped_checks:
+        msg = f"React Doctor skipped checks for project: {project.directory!r}"
+        raise ValueError(msg)
+    if expected_projects is not None and (
+        project.skipped_checks is None or project.analyzed_file_count is None or project.scanned_file_count is None
+    ):
+        msg = f"React Doctor omitted completeness metadata for project: {project.directory!r}"
+        raise ValueError(msg)
+    if project.analyzed_file_count == 0 or project.scanned_file_count == 0:
+        msg = f"React Doctor analyzed no files for project: {project.directory!r}"
+        raise ValueError(msg)
+
+
+def _validate_react_report_status(report: _ReactDoctorReport, *, require_react_detection: bool) -> None:
+    expected_version = manifest.eslint_peers()["react-doctor"]
+    if report.version != expected_version:
+        msg = f"React Doctor reported version {report.version!r}; expected {expected_version!r}"
+        raise ValueError(msg)
+    if report.error is not None:
+        msg = f"React Doctor scan failed: {report.error.message}"
+        raise ValueError(msg)
+    if not report.ok:
+        msg = "React Doctor report did not complete successfully"
+        raise ValueError(msg)
+    if report.skipped_projects:
+        msg = f"React Doctor skipped {len(report.skipped_projects)} project(s) before analysis"
+        raise ValueError(msg)
+    if report.react_detected is False and require_react_detection:
+        msg = "React Doctor did not detect React in an expected project"
+        raise ValueError(msg)
+
+
+def _changed_scope_has_no_source(
+    changed_paths: tuple[str, ...],
+    resolved_root: Path,
+    resolved_scope: Path,
+    resolved_projects: tuple[Path, ...],
+    reported_changed_file_count: int | None,
+) -> bool:
+    scoped_changed_file_count = 0
+    for relative in changed_paths:
+        relative_path = Path(relative)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            return False
+        # Keep containment lexical: resolving a changed symlink could move its
+        # apparent path outside the React project and incorrectly waive it.
+        candidate = resolved_root / relative_path
+        if candidate.is_relative_to(resolved_scope):
+            scoped_changed_file_count += 1
+        within_project = any(candidate.is_relative_to(project) for project in resolved_projects)
+        if candidate.suffix.casefold() not in _REACT_DOCTOR_SOURCE_SUFFIXES:
+            continue
+        if within_project:
+            return False
+    return reported_changed_file_count is None or scoped_changed_file_count == reported_changed_file_count
+
+
+def _validate_react_project_set(
+    report: _ReactDoctorReport, root: Path, expected_projects: frozenset[Path], *, require_react_detection: bool
+) -> None:
+    if (report.react_detected is not True and require_react_detection) or report.baseline_degraded is not False:
+        msg = "React Doctor omitted required v3 detection or baseline-completeness metadata"
+        raise ValueError(msg)
+    reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
+    if reported_projects != expected_projects:
+        msg = "React Doctor did not return exactly the requested project set"
+        raise ValueError(msg)

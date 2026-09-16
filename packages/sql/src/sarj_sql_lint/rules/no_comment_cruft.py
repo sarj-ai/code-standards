@@ -198,13 +198,9 @@ def _finding(comments: list[SourceComment]) -> _Finding | None:
     if not effective:
         return None
 
-    banner = next((line for line in effective if _is_banner(line.text)), None)
+    banner = _banner_finding(effective)
     if banner is not None:
-        return _Finding(
-            banner.line,
-            banner.column,
-            "Section-banner comment — delete the ASCII divider and let migration structure carry the boundary.",
-        )
+        return banner
 
     debt = next(
         (
@@ -248,10 +244,6 @@ def _comment_lines(comment: SourceComment) -> list[_CommentLine]:
     return lines
 
 
-def _is_banner(line: str) -> bool:
-    return _BANNER_ONLY_RE.fullmatch(line) is not None or _BANNER_HEADING_RE.fullmatch(line) is not None
-
-
 def _first_commented_sql_line(text: str) -> int | None:
     statements = _split_commented_statements(text)
     search_start = 0
@@ -275,28 +267,17 @@ def _split_commented_statements(text: str) -> list[str]:
     while cursor < len(text):
         char = text[cursor]
         if dollar_quote is not None:
-            if text.startswith(dollar_quote, cursor):
-                cursor += len(dollar_quote)
-                dollar_quote = None
-                continue
-            cursor += 1
+            cursor, dollar_quote = _advance_dollar_comment(text, cursor, dollar_quote)
             continue
         if quote is not None:
-            if char == quote:
-                if cursor + 1 < len(text) and text[cursor + 1] == quote:
-                    cursor += 2
-                    continue
-                quote = None
-            cursor += 1
+            cursor, quote = _advance_comment_quote(text, cursor, quote)
             continue
         if char in {"'", '"'}:
             quote = char
-        elif char == "$":
-            delimiter = re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", text[cursor:])
-            if delimiter is not None:
-                dollar_quote = delimiter.group(0)
-                cursor += len(dollar_quote)
-                continue
+        elif char == "$" and (delimiter := re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", text[cursor:])) is not None:
+            dollar_quote = delimiter.group(0)
+            cursor += len(dollar_quote)
+            continue
         elif char == "(":
             depth += 1
         elif char == ")":
@@ -304,14 +285,10 @@ def _split_commented_statements(text: str) -> list[str]:
             if depth < 0:
                 return []
         elif char == ";" and depth == 0:
-            statement = text[start:cursor].strip()
-            if not statement:
+            if not _append_commented_statement(text[start:cursor], statements):
                 return []
-            statements.append(statement)
             start = cursor + 1
         cursor += 1
-    if not statements and (quote is not None or dollar_quote is not None or depth != 0):
-        return []
     return statements
 
 
@@ -446,3 +423,41 @@ def _is_standalone_comment(source_lines: list[str], comment: SourceComment) -> b
     if comment.line < 1 or comment.line > len(source_lines):
         return False
     return not source_lines[comment.line - 1][: comment.column - 1].strip()
+
+
+def _banner_finding(effective: list[_CommentLine]) -> _Finding | None:
+    banner = next((line for line in effective if _is_banner(line.text)), None)
+    if banner is not None:
+        return _Finding(
+            banner.line,
+            banner.column,
+            "Section-banner comment — delete the ASCII divider and let migration structure carry the boundary.",
+        )
+
+    return None
+
+
+def _is_banner(line: str) -> bool:
+    return _BANNER_ONLY_RE.fullmatch(line) is not None or _BANNER_HEADING_RE.fullmatch(line) is not None
+
+
+def _advance_comment_quote(text: str, cursor: int, quote: str) -> tuple[int, str | None]:
+    if text[cursor] != quote:
+        return cursor + 1, quote
+    if cursor + 1 < len(text) and text[cursor + 1] == quote:
+        return cursor + 2, quote
+    return cursor + 1, None
+
+
+def _advance_dollar_comment(text: str, cursor: int, delimiter: str) -> tuple[int, str | None]:
+    if text.startswith(delimiter, cursor):
+        return cursor + len(delimiter), None
+    return cursor + 1, delimiter
+
+
+def _append_commented_statement(text: str, statements: list[str]) -> bool:
+    statement = text.strip()
+    if not statement:
+        return False
+    statements.append(statement)
+    return True

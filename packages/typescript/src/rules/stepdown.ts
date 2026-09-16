@@ -101,8 +101,8 @@ function cycleComponents(graph: ReadonlyMap<string, ReadonlySet<string>>): Reado
   }
   const seen = new Set<string>();
   const finishOrder: string[] = [];
-  for (const root of nodes) {
-    if (seen.has(root)) continue;
+  function finishTraversal(root: string): void {
+    if (seen.has(root)) return;
     const pending: Array<{ readonly name: string; readonly exiting: boolean }> = [
       { name: root, exiting: false },
     ];
@@ -121,12 +121,14 @@ function cycleComponents(graph: ReadonlyMap<string, ReadonlySet<string>>): Reado
       }
     }
   }
+
+  for (const root of nodes) { finishTraversal(root); }
   const components = new Map<string, number>();
   let nextComponent = 0;
   const assigned = new Set<string>();
-  for (let index = finishOrder.length - 1; index >= 0; index -= 1) {
+  function assignComponent(index: number): void {
     const root = finishOrder[index];
-    if (root === undefined || assigned.has(root)) continue;
+    if (root === undefined || assigned.has(root)) return;
     const members: string[] = [];
     const pending = [root];
     assigned.add(root);
@@ -146,6 +148,8 @@ function cycleComponents(graph: ReadonlyMap<string, ReadonlySet<string>>): Reado
       nextComponent += 1;
     }
   }
+
+  for (let index = finishOrder.length - 1;index >= 0;index -= 1) { assignComponent(index); }
   return components;
 }
 
@@ -199,12 +203,12 @@ function moduleScope(
 
 function exportedNames(program: TSESTree.Program): Set<string> {
   const names = new Set<string>();
-  for (const statement of program.body) {
+  function collectNamedExports(statement: TSESTree.ProgramStatement): void {
     if (
       statement.type !== AST_NODE_TYPES.ExportNamedDeclaration ||
       statement.exportKind === "type" ||
       statement.source !== null
-    ) continue;
+    ) return;
     if (statement.declaration?.type === AST_NODE_TYPES.FunctionDeclaration && statement.declaration.id !== null) {
       names.add(statement.declaration.id.name);
     }
@@ -219,6 +223,8 @@ function exportedNames(program: TSESTree.Program): Set<string> {
       }
     }
   }
+
+  for (const statement of program.body) { collectNamedExports(statement); }
   for (const statement of program.body) {
     if (
       statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
@@ -320,16 +326,7 @@ function classScope(
   const methods = node.body.body.filter(
     (member): member is TSESTree.MethodDefinition => member.type === AST_NODE_TYPES.MethodDefinition,
   );
-  const counts = new Map<string, number>();
-  for (const method of methods) {
-    const name = methodName(method);
-    if (name !== null) counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
-  for (const member of node.body.body) {
-    if (member.type !== AST_NODE_TYPES.TSAbstractMethodDefinition) continue;
-    const name = !member.computed && member.key.type === AST_NODE_TYPES.Identifier ? member.key.name : null;
-    if (name !== null) counts.set(name, (counts.get(name) ?? 0) + 1);
-  }
+  const counts = classMethodCounts(node.body, methods);
   const scopeDefinitions = methods.flatMap((method) => {
     const name = methodName(method);
     return name !== null && counts.get(name) === 1 ? [{ name, node: method }] : [];
@@ -359,9 +356,9 @@ function classScope(
     if (outer !== null) classVariables.add(outer);
   }
 
-  for (const method of methods) {
+  function collectMethodCalls(method: TSESTree.MethodDefinition): void {
     const caller = methodName(method);
-    if (caller === null || method.value.body === null) continue;
+    if (caller === null || method.value.body === null) return;
     const methodClassVariables = new Set(classVariables);
     const methodAliases = new Set<NonNullable<ReturnType<typeof ASTUtils.findVariable>>>();
     const parameterDecoratorNodes = new Set<TSESTree.Node>();
@@ -393,13 +390,7 @@ function classScope(
       const value = current.type === AST_NODE_TYPES.VariableDeclarator ? current.init : current.right;
       if (!thisValue(value)) return;
       if (binding.type === AST_NODE_TYPES.ObjectPattern) {
-        for (const property of binding.properties) {
-          if (property.type === AST_NODE_TYPES.RestElement) {
-            for (const name of privateNames) pinned.add(name);
-          } else if (property.key.type === AST_NODE_TYPES.Identifier && privateNames.has(property.key.name)) {
-            pinned.add(property.key.name);
-          }
-        }
+        pinDestructuredMembers(binding);
         return;
       }
       if (binding.type !== AST_NODE_TYPES.Identifier) return;
@@ -415,23 +406,24 @@ function classScope(
     for (const statement of method.value.body.body) {
       walk(statement, context.sourceCode.visitorKeys, collectAlias);
     }
+    function pinDestructuredMembers(binding: TSESTree.ObjectPattern): void {
+      for (const property of binding.properties) {
+        if (property.type === AST_NODE_TYPES.RestElement) {
+          for (const name of privateNames) pinned.add(name);
+        } else if (property.key.type === AST_NODE_TYPES.Identifier && privateNames.has(property.key.name)) {
+          pinned.add(property.key.name);
+        }
+      }
+
+    }
+
     const visitCall = (current: TSESTree.Node, nestedFunction: boolean): void => {
       if (
         current.type === AST_NODE_TYPES.VariableDeclarator &&
         current.id.type === AST_NODE_TYPES.ObjectPattern &&
         thisValue(current.init)
       ) {
-        for (const property of current.id.properties) {
-          if (property.type === AST_NODE_TYPES.RestElement) {
-            for (const name of privateNames) pinned.add(name);
-            continue;
-          }
-          if (
-            property.type === AST_NODE_TYPES.Property &&
-            property.key.type === AST_NODE_TYPES.Identifier &&
-            privateNames.has(property.key.name)
-          ) pinned.add(property.key.name);
-        }
+        pinDestructuredMembers(current.id);
       }
       if (current.type !== AST_NODE_TYPES.MemberExpression) return;
       const target = referencedMethod(context, current, methodClassVariables);
@@ -473,6 +465,7 @@ function classScope(
       walk(statement, context.sourceCode.visitorKeys, visitCall);
     }
   }
+  for (const method of methods) collectMethodCalls(method);
   for (const member of node.body.body) {
     if (member.type === AST_NODE_TYPES.MethodDefinition || member.type === AST_NODE_TYPES.TSAbstractMethodDefinition) continue;
     walk(member, context.sourceCode.visitorKeys, (current) => {
@@ -495,6 +488,7 @@ function classScope(
     if (helperIndex === undefined || callerIndex === undefined) return false;
     return runtimeBarrierPrefix[callerIndex + 1] === runtimeBarrierPrefix[helperIndex + 1];
   };
+
   reportMisordered(context, definitions, scopeDefinitions, calls, pinned, canMove);
 }
 
@@ -547,3 +541,17 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function classMethodCounts(body: TSESTree.ClassBody, methods: readonly TSESTree.MethodDefinition[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const method of methods) {
+    const name = methodName(method);
+    if (name !== null) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  for (const member of body.body) {
+    if (member.type !== AST_NODE_TYPES.TSAbstractMethodDefinition) continue;
+    const name = !member.computed && member.key.type === AST_NODE_TYPES.Identifier ? member.key.name : null;
+    if (name !== null) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return counts;
+}

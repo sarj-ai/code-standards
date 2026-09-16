@@ -143,19 +143,7 @@ class RuleDocumentation:
         if any(not limitation.strip() for limitation in self.limitations):
             msg = "rule limitations must not be empty"
             raise ValueError(msg)
-        example_ids = tuple(example.example_id for example in self.examples)
-        if len(example_ids) != len(set(example_ids)):
-            msg = "rule example IDs must be unique"
-            raise ValueError(msg)
-        public_scenarios = {example.scenario for example in self.examples if example.public}
-        for scenario in public_scenarios:
-            pair = tuple(example for example in self.examples if example.public and example.scenario == scenario)
-            if len(pair) != _PUBLIC_PAIR_SIZE or {example.outcome for example in pair} != {
-                ExampleOutcome.MATCH,
-                ExampleOutcome.NO_MATCH,
-            }:
-                msg = f"published example scenario {scenario!r} must contain both matching and non-matching cases exactly once"
-                raise ValueError(msg)
+        _validate_rule_examples(self.examples)
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,3 +238,19 @@ class Rule(ABC):
     def public_examples(cls) -> tuple[RuleExample, ...]:
         spec = cls.native_spec()
         return () if spec is None else spec.public_examples
+
+
+def _validate_rule_examples(examples: tuple[RuleExample, ...]) -> None:
+    example_ids = tuple(example.example_id for example in examples)
+    if len(example_ids) != len(set(example_ids)):
+        msg = "rule example IDs must be unique"
+        raise ValueError(msg)
+    public_scenarios = {example.scenario for example in examples if example.public}
+    for scenario in public_scenarios:
+        pair = tuple(example for example in examples if example.public and example.scenario == scenario)
+        if len(pair) != _PUBLIC_PAIR_SIZE or {example.outcome for example in pair} != {
+            ExampleOutcome.MATCH,
+            ExampleOutcome.NO_MATCH,
+        }:
+            msg = f"published example scenario {scenario!r} must contain both matching and non-matching cases exactly once"
+            raise ValueError(msg)
