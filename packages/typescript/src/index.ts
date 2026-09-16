@@ -1,3 +1,4 @@
+import noKnownValueWidening from "./rules/no-known-value-widening.js";
 /**
  * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renames.ts`.
  */
@@ -113,6 +114,7 @@ import { RENAMED_RULES } from "./rules/_renames.js";
 import { RETIRED_RULES } from "./rules/_retired.js";
 
 const RULES = {
+  "no-known-value-widening": noKnownValueWidening,
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-svg-accessible-name": requireSvgAccessibleName,
   "prefer-logical-tailwind-utilities": preferLogicalTailwindUtilities,
@@ -224,7 +226,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.21.2",
+  version: "15.22.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -267,6 +269,7 @@ const ADVISORY_RULES = [
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "@sarj/no-known-value-widening": "error",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-svg-accessible-name": "error",
   "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
@@ -373,6 +376,7 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/no-known-value-widening": "error",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-svg-accessible-name": "error",
   "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],

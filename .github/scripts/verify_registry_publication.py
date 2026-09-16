@@ -44,7 +44,7 @@ PYPI_ATTEMPTS = 6
 # npm publishes metadata, provenance, and package-spec installability through
 # independent paths. Give each path its own bounded convergence budget so delay
 # in one stage cannot starve the next one.
-NPM_METADATA_TIMEOUT = timedelta(minutes=5)
+NPM_METADATA_TIMEOUT = timedelta(minutes=15)
 NPM_PROVENANCE_TIMEOUT = timedelta(minutes=10)
 NPM_INSTALL_TIMEOUT = timedelta(minutes=10)
 NPM_INITIAL_RETRY_DELAY = timedelta(seconds=5)

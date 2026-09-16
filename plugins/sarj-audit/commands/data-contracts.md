@@ -11,3 +11,13 @@ Audit weak or duplicated data contracts using the shared [audit protocol](../ski
 - Attribute bags accessed through unchecked dynamic lookup when an explicit protocol or schema would clarify the contract.
 
 Use the lightest suitable contract. Do not introduce runtime schemas for private, already-trusted local values, component props, ORM-generated types, or useful generic abstractions.
+
+## Preserve known evidence
+
+Check whether a populated fixed-key map is widened to an open dictionary, or a
+known domain value is erased to `unknown`, `object`, or an untyped bag before
+its fields are rediscovered. Preserve inference or use `satisfies` when exact
+keys matter. Keep explicit domain contracts, dynamic-key registries, and empty
+accumulators; show the lost information and affected consumer before reporting.
+The `no-known-value-widening` rule owns typed identifier-to-broad local bindings;
+report only additional flows here.

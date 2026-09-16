@@ -1237,6 +1237,7 @@ export function createConfig(options = {}) {
       "@sarj/no-secret-in-log": "error",
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",
+      "@sarj/no-known-value-widening": "error",
       "@sarj/require-button-accessible-name": "error",
       "@sarj/require-svg-accessible-name": "error",
       "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],

@@ -271,14 +271,15 @@ def test_npm_verification_has_independent_stage_budgets(
     verifier.verify_npm(Path("package.tgz"), commit="commit", environment="publisher")
 
     assert stages == [
-        ("metadata and exact bytes", timedelta(minutes=5)),
+        ("metadata and exact bytes", timedelta(minutes=15)),
         ("provenance", timedelta(minutes=10)),
         ("package-spec installability and signature audit", timedelta(minutes=10)),
     ]
 
 
+@pytest.mark.parametrize("metadata_ready_at", [0.0, 360.0, 901.0])
 def test_npm_verification_converges_independently_after_each_stage_is_delayed(
-    verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch
+    verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch, metadata_ready_at: float
 ) -> None:
     now = 0.0
     waits: list[float] = []
@@ -295,7 +296,7 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
 
     def delayed(name: str, result: object = None) -> object:
         attempts[name] += 1
-        if attempts[name] == 1:
+        if attempts[name] == 1 or (name == "metadata" and now < metadata_ready_at):
             message = f"{name} has not propagated"
             raise OSError(message)
         return result
@@ -314,6 +315,15 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     monkeypatch.setattr(verifier, "_verify_npm_provenance", delayed_provenance)
     monkeypatch.setattr(verifier, "_verify_npm_installability", delayed_install)
 
+    if metadata_ready_at > 900:
+        with pytest.raises(Exception, match="metadata and exact bytes did not converge"):
+            verifier.verify_npm(
+                Path("package.tgz"), commit="commit", environment="publisher", clock=clock, sleeper=sleep
+            )
+        assert now == 900
+        assert attempts["provenance"] == attempts["install"] == 0
+        return
+
     verifier.verify_npm(
         Path("package.tgz"),
         commit="commit",
@@ -322,8 +332,10 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
         sleeper=sleep,
     )
 
-    assert attempts == {"metadata": 2, "provenance": 2, "install": 2}
-    assert waits == [5.0, 5.0, 5.0]
+    assert attempts["metadata"] >= 2
+    assert attempts["provenance"] == attempts["install"] == 2
+    assert waits[-2:] == [5.0, 5.0]
+    assert metadata_ready_at <= now < metadata_ready_at + 40
 
 
 def test_wrong_registry_bytes_are_permanent_and_never_retried(
