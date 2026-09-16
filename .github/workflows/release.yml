@@ -11,7 +11,10 @@ name: release
 #   release-ready check fail, first repair the missing version bump, then merge a
 #   clean non-publishable change. That push is the recovery barrier: its exact
 #   revision checks can succeed and reconciliation publishes the current versions
-#   without weakening provenance or rewriting an immutable tag.
+#   without weakening provenance or rewriting an immutable tag. The recovery
+#   commit must not change a publishable artifact or bump another version;
+#   causality then has no new supersession edge while `detect` still reconciles
+#   every current manifest that is missing publication or a verification tag.
 # A push whose current versions are all public publishes nothing.
 
 on:
