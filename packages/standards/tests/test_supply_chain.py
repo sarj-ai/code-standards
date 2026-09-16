@@ -186,7 +186,7 @@ def test_publishers_have_distinct_identities_and_digest_binding() -> None:
         'entry.get("predicateType") != "https://slsa.dev/provenance/v1"' in verifier
     )
     for stage_timeout in (
-        "NPM_METADATA_TIMEOUT = timedelta(minutes=5)",
+        "NPM_METADATA_TIMEOUT = timedelta(minutes=15)",
         "NPM_PROVENANCE_TIMEOUT = timedelta(minutes=10)",
         "NPM_INSTALL_TIMEOUT = timedelta(minutes=10)",
     ):

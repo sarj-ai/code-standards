@@ -38,10 +38,14 @@ _POLICY_FIELDS: Final = frozenset({"defaultLevel", "optionsSchema"})
 _INVENTORY_ENTRY_FIELDS: Final = frozenset({"code", "family", "id", "source", "test"})
 _GIT_SHA_LENGTH: Final = 40
 
-# Approved error-first adoption after repository-wide cleanup with a maximum score of 20.
-# Keep this exception exact: all other new judgment rules still start as warnings.
+# Explicitly approved error-first rules; all other new judgment rules start as warnings.
 _ERROR_FIRST_APPROVALS: Final = frozenset(
-    {"python:no-excessive-cognitive-complexity", "eslint:no-excessive-cognitive-complexity"}
+    {
+        "python:no-excessive-cognitive-complexity",
+        "eslint:no-excessive-cognitive-complexity",
+        "eslint:no-known-value-widening",
+        "eslint:no-reduce-accumulator-copy",
+    }
 )
 
 

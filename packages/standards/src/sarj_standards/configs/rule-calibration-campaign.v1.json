@@ -1899,6 +1899,22 @@
       "state": "pending",
       "evidence": "Focused valid/invalid cases, executable public examples and report-disabled mutation checks passed. Three pinned local corpora covered 1623 tracked files in eight isolated batches; candidate locations had no duplicates. Deterministic samples were inspected. Consumer-specific policy exceptions and further per-rule calibration remain before error promotion.",
       "outcome": "Stage as a warning without autofix. Keep disabled in shared presets until the consumer opts in. Continue calibration with configured file scopes and literal or physical-placement exceptions before any error promotion."
+    },
+    {
+      "task": "rule-audit/typescript/no-known-value-widening",
+      "family": "typescript",
+      "ruleId": "no-known-value-widening",
+      "state": "pending",
+      "evidence": "17 focused cases pass; local maintained TypeScript source scan found no matches. Wider corpus calibration remains pending.",
+      "outcome": "Introduce a warning without autofix; retain boundary and parser-service exclusions."
+    },
+    {
+      "task": "rule-audit/typescript/no-reduce-accumulator-copy",
+      "family": "typescript",
+      "ruleId": "no-reduce-accumulator-copy",
+      "state": "pending",
+      "evidence": "Focused positive and negative cases cover built-in arrays, lexical scope, fresh seeds, generated source, and syntax-only parsing. Wider corpus calibration remains pending.",
+      "outcome": "Introduce an advisory warning without autofix; require review of growth and ownership before changing behavior."
     }
   ]
 }
