@@ -141,6 +141,75 @@ def test_cross_package_rename_checks_old_and_new_owners(repository: Path) -> Non
     }
 
 
+def test_typescript_rule_with_generated_catalog_and_version_bump_skips_mobile(repository: Path) -> None:
+    project = repository / "packages/standards/pyproject.toml"
+    project.parent.mkdir(parents=True)
+    project.write_text('[project]\nname = "code-standards"\nversion = "1.0.0"\n')
+    lock = project.with_name("uv.lock")
+    lock.write_text('[[package]]\nname = "code-standards"\nversion = "1.0.0"\nsource = { editable = "." }\n')
+    git(repository, "add", "packages")
+    git(repository, "commit", "-qm", "initial package")
+    base = git(repository, "rev-parse", "HEAD")
+    for path in (project, lock):
+        path.write_text(path.read_text().replace("1.0.0", "1.1.0"))
+    for relative in (
+        "packages/typescript/src/rules/new-rule.ts",
+        "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
+        "packages/standards/src/sarj_standards/configs/rule-inventory.v1.json",
+        "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
+        "apps/docs/src/generated/formatted-code.v1.json",
+    ):
+        source = repository / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("fixture\n")
+    git(repository, "add", "packages", "apps")
+    git(repository, "commit", "-qm", "new rule and release metadata")
+    assert route(repository, base, git(repository, "rev-parse", "HEAD")) == {
+        "typescript",
+        "standards",
+        "docs",
+        "codeql-javascript",
+    }
+
+
+@pytest.mark.parametrize(
+    ("filename", "before", "after"),
+    [
+        (
+            "pyproject.toml",
+            '[project]\nversion = "1"\ndependencies = ["semgrep==1"]\n',
+            '[project]\nversion = "2"\ndependencies = ["semgrep==2"]\n',
+        ),
+        (
+            "uv.lock",
+            '[[package]]\nname = "semgrep"\nversion = "1"\n',
+            '[[package]]\nname = "semgrep"\nversion = "2"\n',
+        ),
+        ("pyproject.toml", '[project]\nversion = "1"\n', "invalid toml"),
+        ("pyproject.toml", '[project]\nversion = "1"\n', None),
+    ],
+    ids=["direct-dependency", "transitive-dependency", "malformed", "deleted"],
+)
+def test_dependency_changes_or_comparison_errors_keep_mobile(
+    repository: Path, filename: str, before: str, after: str | None
+) -> None:
+    source = repository / "packages/standards" / filename
+    source.parent.mkdir(parents=True)
+    root_package = '[[package]]\nname = "code-standards"\nversion = "1"\nsource = { editable = "." }\n'
+    prefix = root_package if filename == "uv.lock" else ""
+    source.write_text(prefix + before)
+    git(repository, "add", "packages")
+    git(repository, "commit", "-qm", "initial dependencies")
+    base = git(repository, "rev-parse", "HEAD")
+    if after is None:
+        source.unlink()
+    else:
+        source.write_text(prefix + after)
+    git(repository, "add", "packages")
+    git(repository, "commit", "-qm", "changed dependencies")
+    assert "mobile" in route(repository, base, git(repository, "rev-parse", "HEAD"))
+
+
 @pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])
 def test_non_pr_events_keep_complete_validation(repository: Path, event: str) -> None:
     assert route(repository, "", "", event=event) == SCOPES

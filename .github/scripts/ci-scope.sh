@@ -13,6 +13,32 @@ select_scopes() {
   selected+="$* "
 }
 
+# Runner images provide Python 3.11+; no package installation is needed.
+# Ignore only this distribution's version, never dependency or toolchain changes.
+version_only_change() {
+  python3 - "$comparison_base" "$head" "$path" <<'PY'
+import subprocess
+import sys
+import tomllib
+
+base, head, path = sys.argv[1:]
+documents = []
+for revision in (base, head):
+    source = subprocess.check_output(["git", "show", f"{revision}:{path}"], text=True, timeout=30)
+    document = tomllib.loads(source)
+    if path.endswith("pyproject.toml"):
+        del document["project"]["version"]
+    else:
+        package = next(
+            item for item in document["package"]
+            if item["name"] == "code-standards" and item.get("source") == {"editable": "."}
+        )
+        del package["version"]
+    documents.append(document)
+sys.exit(0 if documents[0] == documents[1] else 1)
+PY
+}
+
 if [[ "$event" != pull_request ]]; then
   # Releases wait for complete validation of their exact main revision.
   select_scopes "${scopes[@]}"
@@ -26,6 +52,7 @@ else
   # Disable rename detection so BOTH the old and new package owners run.
   # A failed diff must abort before any false outputs can be published.
   git diff --no-renames --name-only -z "$base...$head" -- > "$changed"
+  comparison_base=$(git merge-base "$base" "$head")
   while IFS= read -r -d '' path; do
     case "$path" in
       *.py|*.pyi) select_scopes codeql-python ;;
@@ -59,6 +86,12 @@ else
         select_scopes tsconfig standards docs ;;
       packages/standards/tests/*)
         select_scopes standards ;;
+      packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json)
+        select_scopes standards docs ;;
+      packages/standards/pyproject.toml|packages/standards/uv.lock)
+        select_scopes standards docs
+        # Missing/malformed files and comparison failures conservatively run mobile.
+        if ! version_only_change; then select_scopes mobile; fi ;;
       packages/standards/src/*)
         select_scopes standards docs mobile ;;
       packages/standards/*)
