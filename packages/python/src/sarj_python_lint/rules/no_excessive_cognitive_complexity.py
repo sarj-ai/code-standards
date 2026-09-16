@@ -166,7 +166,7 @@ class NoExcessiveCognitiveComplexity(Rule):
     documentation = RuleDocumentation(
         summary=f"Error on cognitive complexity above {_ERROR_COMPLEXITY}; scores up to 20 pass.",
         rationale="Nested control flow increases the context a reader must retain while following a function.",
-        remediation="Examples are fictional and written for this documentation; domain types are omitted. The library example replaces nested eligibility checks with early returns while preserving evaluation order. Refactor one function at a time, starting with its largest contributors. Use guard clauses, named predicates, or cohesive helpers; use lookup tables only for equivalent pure dispatch. Preserve APIs, side effects, evaluation order, and exception behavior. Run relevant tests before and after; remeasure the original and extracted functions. Do not hide branches in dense expressions or add indirection just to lower a score.",
+        remediation="Examples are fictional and written for this documentation; domain types are omitted. The library example replaces nested eligibility checks with early returns while preserving evaluation order. Refactor one function at a time, starting with its largest contributors. First simplify control flow and reduce nesting within the function. Extract a helper only when it clarifies a cohesive responsibility or enables meaningful reuse; do not split code solely to lower the score. Use lookup tables only for equivalent pure dispatch. Preserve APIs, side effects, evaluation order, and exception behavior. Run relevant tests before and after; remeasure the original and extracted functions. Do not hide branches in dense expressions or add indirection just to lower a score.",
         category=RuleCategory.MAINTAINABILITY,
         limitations=(
             "Sarj metric, not exact Sonar compatibility: functions and lambdas are independent; calls, recursion, function annotations, parameter defaults, and decorators are not scored.",
@@ -255,7 +255,7 @@ class NoExcessiveCognitiveComplexity(Rule):
                     line=function.lineno,
                     col=function.col_offset + 1,
                     code=self.code,
-                    message=f"Cognitive complexity {score} exceeds {_ERROR_COMPLEXITY}. Largest contributors: {detail}. Start with the largest contributors: flatten nesting or extract a clearly named operation without hiding branches in dense expressions. Preserve behavior and public APIs, run relevant tests before and after, then remeasure.",
+                    message=f"Cognitive complexity {score} exceeds {_ERROR_COMPLEXITY}. Largest contributors: {detail}. Start with the largest contributors: simplify control flow and flatten nesting. Extract a helper only when it clarifies a cohesive responsibility or enables meaningful reuse, never solely to lower the score. Do not hide branches in dense expressions. Preserve behavior and public APIs, run relevant tests before and after, then remeasure.",
                     severity=Severity.ERROR,
                 )
             )
