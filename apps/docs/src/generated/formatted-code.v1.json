@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7a61ab96256a63dd839f0cabdb07d559f59f17af86622729d6398e7fdc14bdbc",
-  "cliSha256": "cb2daec7565e5868441cd90166e2941a7687aaafdb19e957a7c7b05c2062b18a",
+  "catalogSha256": "0983f47469a33b3805c42c7c8fa5da5462fc3b14fbbbcbc9532c832bda4286cc",
+  "cliSha256": "e6ccf0e2b6cbe61c44835a155644fe6e6fe6d9873300ff8c896f0129afa4ee58",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -3918,6 +3918,71 @@
           "outcome": "accept",
           "scenarioId": "terraform-provider-evidence",
           "title": "Empty mock provider validates configured plan behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-redundant-variable-validation": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n  validation {\n    condition     = can(tostring(var.region))\n    error_message = \"Region must be a string.\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "variables.tf",
+          "id": "declared-string-conversion",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "String conversion repeats the declared string type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "variables.tf",
+              "source": "variable \"enabled\" {\n  type     = bool\n  nullable = false\n  validation {\n    condition     = contains([true, false], var.enabled)\n    error_message = \"Enabled must be true or false.\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "variables.tf",
+          "id": "non-nullable-boolean-domain",
+          "outcome": "reject",
+          "scenarioId": "nullability",
+          "title": "Boolean enumeration repeats a non-nullable boolean type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "variables.tf",
+              "source": "variable \"enabled\" {\n  type = bool\n  validation {\n    condition     = contains([true, false], var.enabled)\n    error_message = \"Enabled must not be null.\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "variables.tf",
+          "id": "nullable-boolean-null-guard",
+          "outcome": "accept",
+          "scenarioId": "nullability",
+          "title": "Boolean enumeration rejects an otherwise permitted null"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n  validation {\n    condition     = can(regex(\"^[a-z]+-[a-z]+[0-9]+$\", var.region))\n    error_message = \"Region must use the provider region format.\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "variables.tf",
+          "id": "string-domain-format",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "String validation enforces a narrower domain format"
         }
       ],
       "optionsSchemaSource": null

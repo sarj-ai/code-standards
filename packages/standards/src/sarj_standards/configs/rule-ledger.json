@@ -146,6 +146,7 @@
       "no-dead-environment-input",
       "no-environment-conditional",
       "no-mocked-terraform-test-oracle",
+      "no-redundant-variable-validation",
       "no-restated-comment",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
@@ -391,7 +392,8 @@
       "SARJ204",
       "SARJ205",
       "SARJ206",
-      "SARJ207"
+      "SARJ207",
+      "SARJ209"
     ],
     "text": [
       "SARJ300",
