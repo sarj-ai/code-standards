@@ -5,6 +5,9 @@
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
 import requireSvgAccessibleName from "./rules/require-svg-accessible-name.js";
 import preferLogicalTailwindUtilities from "./rules/prefer-logical-tailwind-utilities.js";
+import noUnlocalizedToast from "./rules/no-unlocalized-toast.js";
+import noUnlocalizedJsxAttributes from "./rules/no-unlocalized-jsx-attributes.js";
+import noUnlocalizedJsxText from "./rules/no-unlocalized-jsx-text.js";
 import { LIBRARY_POLICY } from "./library-policy.js";
 import enforceFileStructure from "./rules/enforce-file-structure.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
@@ -112,6 +115,9 @@ const RULES = {
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-svg-accessible-name": requireSvgAccessibleName,
   "prefer-logical-tailwind-utilities": preferLogicalTailwindUtilities,
+  "no-unlocalized-toast": noUnlocalizedToast,
+  "no-unlocalized-jsx-attributes": noUnlocalizedJsxAttributes,
+  "no-unlocalized-jsx-text": noUnlocalizedJsxText,
   "excessive-commentary": excessiveCommentary,
   "iac-source-coupled-test": iacSourceCoupledTest,
   "duplicate-test-body": duplicateTestBody,
@@ -216,7 +222,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.20.0",
+  version: "15.21.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -237,6 +243,9 @@ const ADVISORY_RULES = [
   "@sarj/no-redundant-optional-array-default",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
+  "@sarj/no-unlocalized-jsx-attributes",
+  "@sarj/no-unlocalized-jsx-text",
+  "@sarj/no-unlocalized-toast",
   "@sarj/prefer-logical-tailwind-utilities",
   "@sarj/prefer-millisecond-control-duration-schema",
   "@sarj/prefer-module-level-refined-schema",
@@ -259,6 +268,9 @@ const RECOMMENDED_RULES = {
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-svg-accessible-name": "error",
   "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
+  "@sarj/no-unlocalized-toast": ["warn", { enabled: false }],
+  "@sarj/no-unlocalized-jsx-attributes": ["warn", { enabled: false }],
+  "@sarj/no-unlocalized-jsx-text": ["warn", { enabled: false }],
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
@@ -361,6 +373,9 @@ const STRICT_RULES = {
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-svg-accessible-name": "error",
   "@sarj/prefer-logical-tailwind-utilities": ["warn", { enabled: false }],
+  "@sarj/no-unlocalized-toast": ["warn", { enabled: false }],
+  "@sarj/no-unlocalized-jsx-attributes": ["warn", { enabled: false }],
+  "@sarj/no-unlocalized-jsx-text": ["warn", { enabled: false }],
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
   "@sarj/prefer-native-random-uuid": "error",
