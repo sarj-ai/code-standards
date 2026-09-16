@@ -289,6 +289,50 @@ def test_private_reference_check_scans_intermediate_commit_blobs(tmp_path: Path)
     ]
 
 
+def test_private_reference_check_scans_commits_in_a_bare_repository(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    _git_repo(source, {"value.txt": "public\n"})
+    _commit(source, "base")
+
+    (source / "message-control.txt").write_text("public\n")
+    _git(source, "add", "message-control.txt")
+    _git(source, "commit", "-qm", "public summary", "-m", "mentions secret-repo/internal")
+    message_commit = _git(source, "rev-parse", "HEAD").stdout.strip()
+
+    (source / "value.txt").write_text("secret-repo/api\n")
+    _git(source, "add", "value.txt")
+    _commit(source, "intermediate blob")
+    blob_commit = _git(source, "rev-parse", "HEAD").stdout.strip()
+    (source / "value.txt").write_text("public again\n")
+    _git(source, "add", "value.txt")
+    _commit(source, "clean blob control")
+
+    private_path = source / "secret-repo-path.txt"
+    private_path.write_text("public\n")
+    _git(source, "add", private_path.name)
+    _commit(source, "private path")
+    path_commit = _git(source, "rev-parse", "HEAD").stdout.strip()
+
+    link = source / "link"
+    link.symlink_to("quartzscope/private")
+    _git(source, "add", link.name)
+    _commit(source, "symlink target")
+    link_commit = _git(source, "rev-parse", "HEAD").stdout.strip()
+
+    bare = tmp_path / "candidate.git"
+    _git(source, "clone", "--bare", ".", str(bare))
+
+    findings = repository.check_private_refs(bare, _policy(), commits="HEAD~5..HEAD")
+
+    assert {(finding.where, finding.message) for finding in findings} == {
+        (message_commit, "private reference or conflict marker in commit message"),
+        (f"{blob_commit}:value.txt", "private repository or client reference"),
+        (f"{path_commit}:secret-repo-path.txt", "private repository or client reference"),
+        (f"{link_commit}:link", "private repository or client reference"),
+    }
+
+
 def test_private_reference_check_scans_intermediate_paths_and_symlink_targets(tmp_path: Path) -> None:
     _git_repo(tmp_path, {"value.txt": "public\n"})
     _commit(tmp_path, "base")
