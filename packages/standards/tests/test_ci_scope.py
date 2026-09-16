@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 from typing import ClassVar
@@ -250,7 +251,7 @@ def test_dependency_changes_or_comparison_errors_keep_mobile(
     assert "mobile" in route(repository, base, git(repository, "rev-parse", "HEAD"))
 
 
-@pytest.mark.parametrize("event", ["push", "schedule", "workflow_dispatch"])
+@pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
 def test_non_pr_events_keep_complete_validation(repository: Path, event: str) -> None:
     assert route(repository, "", "", event=event) == SCOPES
 
@@ -335,33 +336,23 @@ def workflow(name: str) -> Workflow:
     return Workflow.model_validate(document)
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "bootstrap-ci.yml",
-        "python-ci.yml",
-        "sql-ci.yml",
-        "iac-ci.yml",
-        "typescript-ci.yml",
-        "tsconfig-ci.yml",
-        "standards-ci.yml",
-        "docs.yml",
-        "security.yml",
-    ],
-)
-def test_routing_failure_cannot_silently_skip_required_jobs(name: str) -> None:
-    jobs = [job for job in workflow(name).jobs.values() if job.needs == "changes"]
+def test_routing_failure_cannot_silently_skip_required_jobs() -> None:
+    jobs = [job for job in workflow("ci.yml").jobs.values() if job.needs == "changes"]
     assert jobs
     for job in jobs:
         assert job.condition.startswith("always()")
-        assert job.condition == "always()" or "needs.changes.result != 'success'" in job.condition
+        assert (
+            job.condition.startswith("always() && github.event_name")
+            or job.condition == "always()"
+            or "needs.changes.result != 'success'" in job.condition
+        )
         guard = job.steps[1]
         assert guard.condition == "needs.changes.result != 'success'"
         assert guard.run == "exit 1"
 
 
 def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
-    gate = workflow("standards-ci.yml").jobs["test"]
+    gate = workflow("ci.yml").jobs["standards"]
     assert gate.needs == ["changes", "static-analysis", "package-tests"]
     assert gate.condition.startswith("always()")
     assert "needs.changes.result != 'success'" in gate.condition
@@ -375,12 +366,12 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
 
 
 def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
-    typescript = workflow("typescript-ci.yml").jobs["test"]
-    assert typescript.condition == "always()"
+    typescript = workflow("ci.yml").jobs["typescript"]
+    assert typescript.condition == "always() && github.event_name != 'schedule'"
     for step in typescript.steps[2:]:
         assert "needs.changes.outputs.typescript != 'false'" in step.condition
-    assert workflow("standards-ci.yml").jobs["portability-smoke"].name == "standards portability (ubuntu-latest)"
-    assert workflow("security.yml").jobs["npm-audit"].name == "npm-audit (apps/docs)"
+    assert workflow("ci.yml").jobs["portability-smoke"].name == "standards portability (ubuntu-latest)"
+    assert workflow("ci.yml").jobs["npm-audit"].name == "npm-audit (apps/docs)"
 
 
 def test_private_reference_fetch_excludes_existing_main_history(repository: Path) -> None:
@@ -408,3 +399,47 @@ def test_private_reference_fetch_excludes_existing_main_history(repository: Path
     )
     assert git(candidate, "rev-list", f"{base}..{head}") == head
     assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
+
+
+def test_scheduled_ci_selects_only_security(repository: Path) -> None:
+    assert route(repository, "", "", event="schedule") == {
+        "codeql-python",
+        "codeql-javascript-typescript",
+        "docs-audit",
+    }
+
+
+def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
+    workflows = SCRIPT.parents[1] / "workflows"
+    assert sum(path.read_text().count("run: bash .github/scripts/ci-scope.sh") for path in workflows.glob("*.yml")) == 1
+    jobs = workflow("ci.yml").jobs
+    assert jobs["changes"].name == "Detect affected checks"
+    deploy = jobs["docs-deploy"]
+    assert deploy.needs == "docs-build"
+    assert deploy.condition == (
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+    )
+
+
+@pytest.mark.parametrize(
+    ("result", "accepted"), [("success", True), ("skipped", True), ("failure", False), ("cancelled", False)]
+)
+def test_ci_completion_covers_every_job_and_rejects_failures(result: str, accepted: bool) -> None:
+    jobs = workflow("ci.yml").jobs
+    terminal = jobs["complete"]
+    assert isinstance(terminal.needs, list)
+    assert set(terminal.needs) == set(jobs) - {"complete"}
+    assert terminal.condition == "always()"
+    [step] = [step for step in terminal.steps if step.run]
+    results = {key: {"result": "success"} for key in jobs if key != "complete"}
+    for key in results:
+        candidate = results | {key: {"result": result}}
+        process = subprocess.run(
+            ("bash", "-c", step.run),
+            env={"PATH": "/usr/bin:/bin", "RESULTS": json.dumps(candidate)},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+        assert process.returncode == (0 if accepted else 1), (key, process.stderr)

@@ -1,0 +1,932 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '23 9 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'schedule' && 'security' || 'validation' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Detect affected checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      bootstrap: ${{ steps.scope.outputs.bootstrap }}
+      python: ${{ steps.scope.outputs.python }}
+      sql: ${{ steps.scope.outputs.sql }}
+      iac: ${{ steps.scope.outputs.iac }}
+      typescript: ${{ steps.scope.outputs.typescript }}
+      tsconfig: ${{ steps.scope.outputs.tsconfig }}
+      standards: ${{ steps.scope.outputs.standards }}
+      docs: ${{ steps.scope.outputs.docs }}
+      mobile: ${{ steps.scope.outputs.mobile }}
+      codeql-python: ${{ steps.scope.outputs.codeql-python }}
+      codeql-javascript-typescript: ${{ steps.scope.outputs.codeql-javascript-typescript }}
+      docs-audit: ${{ steps.scope.outputs.docs-audit }}
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select affected package checks
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/ci-scope.sh "$EVENT_NAME" "$BASE_SHA" "$HEAD_SHA" "$GITHUB_OUTPUT"
+
+  bootstrap:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.bootstrap != 'false')
+    name: bootstrap package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/bootstrap
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/bootstrap/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
+      - run: uv run pytest -q
+      - run: uv run ruff check src/ tests/
+      - run: uv run ruff format --check src/ tests/
+      - run: uv run basedpyright
+      - run: uv build
+
+  bootstrap-portability:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.bootstrap != 'false')
+    name: bootstrap portability (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/bootstrap
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/bootstrap/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: uv run pytest -q
+
+  python:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.python != 'false')
+    name: python package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/python
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Full history, not a shallow clone: the retired-identifier gates DERIVE the
+      # set of withdrawn rules from `git log --diff-filter=D` instead of trusting a
+      # hand-kept list (which is how SARJ061 and eight TypeScript rule names went
+      # unrecorded). With fetch-depth 1 those gates have nothing to read and fail.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
+      - run: uv run pytest -q
+      - run: uv run ruff check src/ tests/
+      - run: uv run basedpyright
+      - run: uv build
+
+  sql:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.sql != 'false')
+    name: sql package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/sql
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Full history. This job runs the package suite, and the retired-identifier
+      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
+      # rather than trusting a hand-kept list, so a shallow checkout fails them.
+      # The repository policy requires it of every job that runs a
+      # suite: "runs the tests" and "can read git history" were two independent
+      # facts about a job, and a release was lost to the gap between them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
+      - run: uv run pytest -q
+      - run: uv run ruff check src/ tests/
+      - run: uv run basedpyright
+      - run: uv build
+
+  iac:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.iac != 'false')
+    name: iac package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/iac
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Full history. This job runs the package suite, and the retired-identifier
+      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
+      # rather than trusting a hand-kept list, so a shallow checkout fails them.
+      # The repository policy requires it of every job that runs a
+      # suite: "runs the tests" and "can read git history" were two independent
+      # facts about a job, and a release was lost to the gap between them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
+      - run: uv run pytest -q
+      - run: uv run ruff check src/ tests/
+      - run: uv run basedpyright
+      - run: uv build
+
+  typescript:
+    needs: changes
+    # Expand both required check names even when their expensive steps are skipped.
+    if: always() && github.event_name != 'schedule'
+    name: typescript plugin (${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.13.0', '24']
+    defaults:
+      run:
+        working-directory: packages/typescript
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Full history, not a shallow clone: the retired-identifier gates DERIVE the
+      # set of withdrawn rules from `git log --diff-filter=D` instead of trusting a
+      # hand-kept list (which is how SARJ061 and eight TypeScript rule names went
+      # unrecorded). With fetch-depth 1 those gates have nothing to read and fail.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: needs.changes.outputs.typescript != 'false'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: needs.changes.outputs.typescript != 'false'
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        if: needs.changes.outputs.typescript != 'false'
+        with:
+          version: '0.12.5'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        if: needs.changes.outputs.typescript != 'false'
+      # Static analysis uses the canonical development runtime. Build, tests,
+      # and packed-artifact verification still exercise both supported runtimes.
+      - if: needs.changes.outputs.typescript != 'false' && matrix.node == '24'
+        run: npm run lint
+      - run: npm run build
+        if: needs.changes.outputs.typescript != 'false'
+      - if: needs.changes.outputs.typescript != 'false' && matrix.node == '24'
+        run: npm run typecheck
+      - run: npm test
+        if: needs.changes.outputs.typescript != 'false'
+      - name: Pack and verify the publishable artifact
+        if: needs.changes.outputs.typescript != 'false'
+        run: uv run --project ../standards --frozen code-standards --root ../.. maintain release typescript pack --output "$RUNNER_TEMP/npm-artifacts"
+
+  tsconfig:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.tsconfig != 'false')
+    name: tsconfig package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/tsconfig
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+      - name: Validate JSON
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('base.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('strict.json','utf8'))"
+      - name: Smoke test — extend strict.json against a sample
+        run: |
+          npm install --ignore-scripts --no-audit --no-fund --save-dev typescript@6.0.3
+          mkdir -p smoke/src
+          cat > smoke/tsconfig.json <<'EOF'
+          {
+            "extends": "../strict.json",
+            "include": ["src/**/*"],
+            "compilerOptions": {
+              "noEmit": true,
+              "outDir": "out"
+            }
+          }
+          EOF
+          cat > smoke/src/index.ts <<'EOF'
+          export function add(a: number, b: number): number {
+            return a + b;
+          }
+          EOF
+          cd smoke
+          ../node_modules/.bin/tsc --noEmit -p tsconfig.json
+      - run: npm pack --dry-run
+
+  portability-smoke:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    name: standards portability (ubuntu-latest)
+    # Exact-SHA macOS and Windows portability runs gate publication in release.yml.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - name: CLI, adoption, paths, and package-manager smoke
+        run: uv run pytest -q tests/test_cli_startup.py tests/test_lifecycle.py tests/test_package_managers.py tests/test_consumer_cli.py
+      - name: Revision-local pre-commit bundle installs and reuses its environment
+        shell: bash
+        timeout-minutes: 6
+        env:
+          PRE_COMMIT_HOME: ${{ runner.temp }}/sarj-pre-commit
+        run: |
+          set -euo pipefail
+          consumer="$RUNNER_TEMP/sarj-pre-commit-consumer"
+          mkdir -p "$consumer"
+          git -C "$consumer" init -q
+          git -C "$consumer" config user.name "Standards CI"
+          git -C "$consumer" config user.email "standards-ci@example.invalid"
+          printf 'VALUE: int = 1\n' > "$consumer/smoke.py"
+          printf 'SELECT 1;\n' > "$consumer/smoke.sql"
+          : > "$consumer/smoke.tf"
+          python -c 'import json,os,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(json.dumps({"repos":[{"repo":pathlib.Path(os.environ["GITHUB_WORKSPACE"]).resolve().as_uri(),"rev":os.environ["GITHUB_SHA"],"hooks":[{"id":"sarj-standards"}]}]}),encoding="utf-8")' "$consumer/.pre-commit-config.yaml"
+          git -C "$consumer" add .
+          git -C "$consumer" commit -qm fixture
+          pc=(uv run --project "$GITHUB_WORKSPACE/packages/standards" --frozen pre-commit)
+          (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf)
+          (cd "$consumer" && "${pc[@]}" run sarj-standards --color never --files smoke.py smoke.sql smoke.tf) 2>&1 | tee "$RUNNER_TEMP/pre-commit-warm.log"
+          if grep -q 'Installing environment' "$RUNNER_TEMP/pre-commit-warm.log"; then
+            echo "warm pre-commit execution rebuilt its environment" >&2
+            exit 1
+          fi
+
+  mobile-kotlin-smoke:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.mobile != 'false')
+    name: managed Kotlin mobile analyzers
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - name: Provision and execute ktlint, Detekt, and MobSF rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$RUNNER_TEMP/mobile-kotlin-smoke"
+          mkdir -p "$repo/src/main/kotlin/smoke"
+          printf 'plugins { id("com.android.application") }\n' > "$repo/build.gradle.kts"
+          printf 'package smoke\n\ninternal const val MOBILE_SMOKE: Int = 1\n' > "$repo/src/main/kotlin/smoke/MobileSmoke.kt"
+          cli=(uv run --frozen code-standards --root "$repo")
+          "${cli[@]}" setup --no-install
+          "${cli[@]}" check --trust-repository-code --format json --output "$repo/report.json" \
+            "$repo/src/main/kotlin/smoke/MobileSmoke.kt" || true
+          python -c "import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps(p, indent=2)); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$repo/report.json"
+
+  mobile-swift-smoke:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.mobile != 'false')
+    name: managed Swift mobile analyzers
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - name: Identify Swift build toolchain
+        id: swift-toolchain
+        shell: bash
+        run: |
+          digest=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Restore compiled Swift analyzers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # Analyzer subprocesses retain HOME but deliberately discard MINT_PATH.
+          path: ~/.mint
+          key: mint-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.swift-toolchain.outputs.digest }}-${{ hashFiles('packages/standards/src/sarj_standards/configs/Mintfile.mobile.strict', 'packages/standards/src/sarj_standards/configs/mobile-tools.versions.json') }}
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - name: Provision and execute SwiftFormat, SwiftLint, and MobSF rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$RUNNER_TEMP/mobile-swift-smoke"
+          mkdir -p "$repo/Sources/Smoke"
+          printf '// swift-tools-version: 6.2\nimport PackageDescription\nlet package = Package(name: "Smoke", platforms: [.iOS(.v16)])\n' > "$repo/Package.swift"
+          printf 'import Foundation\n' > "$repo/Sources/Smoke/MobileSmoke.swift"
+          cli=(uv run --frozen code-standards --root "$repo")
+          "${cli[@]}" setup --no-install
+          "${cli[@]}" check --trust-repository-code --format json --output "$repo/report.json" \
+            "$repo/Sources/Smoke/MobileSmoke.swift" || true
+          python -c "import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps(p, indent=2)); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$repo/report.json"
+
+  static-analysis:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    name: standards static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Repository policy and changed-line analysis need Git history.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: uv audit --locked
+      # The global root selects the adopted repository for every command.
+      # Install the root adoption's locked JS toolchain so this job neither asks
+      # npx to download an unpinned ESLint nor accidentally tests network state.
+      - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - name: Lint + typecheck (dogfood the strict config)
+        run: |
+          uv run ruff check src/ tests/
+          uv run basedpyright
+          # Standards is developed from this package directory,
+          # but Standards is adopted at the repository root. Dogfood that real
+          # manifest and its verification paths instead of treating the package
+          # subdirectory as an unadopted consumer.
+          # Passing the repository root explicitly prevents GitHub pull-request
+          # metadata from silently reducing this required dogfood gate to only
+          # changed files. PR and push runs must exercise the same full scope.
+          uv run code-standards --root ../.. check .
+
+  package-tests:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    name: standards wheel and integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Full history. This job runs the package suite, and the retired-identifier
+      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
+      # rather than trusting a hand-kept list, so a shallow checkout fails them.
+      # The repository policy requires it of every job that runs a
+      # suite: "runs the tests" and "can read git history" were two independent
+      # facts about a job, and a release was lost to the gap between them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - name: Build wheel
+        run: |
+          uv build --wheel
+          uv build --wheel --project ../python --out-dir dist/deps
+          uv build --wheel --project ../sql --out-dir dist/deps
+          uv build --wheel --project ../iac --out-dir dist/deps
+      - name: Install built wheel + test deps into a fresh venv
+        run: |
+          uv venv --clear --python 3.14 --seed
+          uv pip install ./dist/deps/*.whl ./dist/code_standards-*.whl pytest==9.1.1 jsonschema==4.25.1 ruff
+      - name: Pytest
+        run: uv run --no-project pytest -q
+      - name: CLI smoke
+        run: |
+          uv run --no-project code-standards show configs
+          uv run --no-project code-standards show config ruff
+          uv run --no-project code-standards show peers
+          fresh="$(mktemp -d)"
+          printf 'VALUE = 1\n' > "$fresh/example.py"
+          (cd "$fresh" && "$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards" check example.py)
+          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
+          "$cli" --root "$fresh" check --format json --output "$fresh/report.json" example.py
+          python -c "import json,sys; p=json.load(open(sys.argv[1])); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$fresh/report.json"
+      - name: Adoption smoke -- setup a fresh repo, then prove convergence
+        run: |
+          repo="$(mktemp -d)"
+          wheelhouse="$(mktemp -d)"
+          cp dist/*.whl dist/deps/*.whl "$wheelhouse/"
+          printf '[project]\nname = "smoke"\nversion = "0.1.0"\nrequires-python = ">=3.14"\n' > "$repo/pyproject.toml"
+          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
+          UV_FIND_LINKS="$wheelhouse" "$cli" --root "$repo" setup
+          "$cli" --root "$repo" doctor
+          UV_FIND_LINKS="$wheelhouse" "$cli" --root "$repo" setup
+          "$cli" --root "$repo" doctor
+      - name: Adoption smoke -- a TypeScript repo installs the peer set with no ERESOLVE
+        # The failure this catches: setup used to only PRINT the npm `overrides`,
+        # so every consumer's first `npm install` died with `npm error code
+        # ERESOLVE` (eslint-plugin-react peers eslint <=9.7; the unicorn floor
+        # needs >=10.4). The repo's own package.json carries the same overrides
+        # privately, so nothing here could see it.
+        run: |
+          repo="$(mktemp -d)"
+          printf '{ "name": "smoke", "private": true }\n' > "$repo/package.json"
+          cli="$GITHUB_WORKSPACE/packages/standards/.venv/bin/code-standards"
+          "$cli" --root "$repo" setup --no-install
+          python -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'eslint-plugin-react' in d.get('overrides', {}) else 1)" "$repo/package.json"
+          npm --prefix "$repo" pkg delete 'devDependencies.@sarj/eslint-plugin'
+          # Resolution only, and without the unpublished @sarj/eslint-plugin pin:
+          # this asserts the peer set + overrides produce a tree npm accepts.
+          mapfile -t peer_specs < <("$cli" --root "$repo" show peers | sed -n 's/^npm install -D --save-exact //p' | tr ' ' '\n' | grep -v '^@sarj/')
+          (cd "$repo" && npm install --package-lock-only --no-audit --no-fund "${peer_specs[@]}")
+
+  standards:
+    name: standards package
+    needs: [changes, static-analysis, package-tests]
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Require routing, analysis, and wheel tests to succeed
+        if: needs.changes.result != 'success' || needs.static-analysis.result != 'success' || needs.package-tests.result != 'success'
+        run: exit 1
+
+  docs-build:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.docs != 'false')
+    name: documentation build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/docs
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            apps/docs/package-lock.json
+            packages/typescript/package-lock.json
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - name: Install pinned Terraform CLI
+        env:
+          TERRAFORM_SHA256: d25ce7b6902013ad905db3d2eab0be4cd905887fe88b81a6171b8d5503c31f3d
+          TERRAFORM_VERSION: '1.15.8'
+        run: |
+          archive="$RUNNER_TEMP/terraform.zip"
+          install_dir="$RUNNER_TEMP/terraform-bin"
+          curl --fail --silent --show-error --location \
+            --output "$archive" \
+            "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip"
+          echo "$TERRAFORM_SHA256  $archive" | sha256sum --check --strict
+          mkdir --parents "$install_dir"
+          unzip -q "$archive" -d "$install_dir"
+          echo "$install_dir" >> "$GITHUB_PATH"
+      - name: Install locked documentation toolchains
+        working-directory: .
+        run: |
+          uv python install 3.14
+          uv sync --project packages/standards --locked --no-dev
+          npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
+          npm --prefix apps/docs ci --ignore-scripts --no-audit --no-fund
+      - name: Verify source artifacts and build site
+        working-directory: .
+        env:
+          WORKERS_CI_COMMIT_SHA: ${{ github.sha }}
+        run: make docs-check
+      - name: Upload generated site
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: code-standards-site
+          path: apps/docs/dist
+          if-no-files-found: error
+          retention-days: 1
+  docs-deploy:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: docs-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: code-standards-production
+      url: https://code-standards.sarj.ai
+    defaults:
+      run:
+        working-directory: apps/docs
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify production credentials
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "CLOUDFLARE_ACCOUNT_ID is not configured in code-standards-production"; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "CLOUDFLARE_API_TOKEN is not configured in code-standards-production"; exit 1; }
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: code-standards-site
+          path: apps/docs/dist
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Deploy immutable build to Cloudflare Workers
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run deploy
+      - name: Verify deployed revision and catalog
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: npm run verify:deployment
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned Gitleaks
+        run: |
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  '"$RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan tracked tree and reachable history
+        run: |
+          "$RUNNER_TEMP/gitleaks" dir . --config .gitleaks.toml --redact --no-banner
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner --log-opts='--all'
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject vulnerable dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+
+  npm-audit:
+    name: npm-audit (apps/docs)
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.docs-audit != 'false')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/docs
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: apps/docs/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm audit --audit-level=moderate
+
+  codeql:
+    needs: changes
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, python]
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      - if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Initialize CodeQL
+        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false'
+        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          languages: ${{ matrix.language }}
+      - name: Analyze
+        if: needs.changes.outputs[format('codeql-{0}', matrix.language)] != 'false'
+        uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+
+  scorecard:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+      id-token: write
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: false
+      - name: Upload Scorecard findings
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          sarif_file: scorecard.sarif
+
+  complete:
+    name: CI complete
+    needs: [changes, bootstrap, bootstrap-portability, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, standards, docs-build, docs-deploy, gitleaks, dependency-review, npm-audit, codeql, scorecard]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Require all selected checks to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq --exit-status 'all(.[]; .result == "success" or .result == "skipped")' <<< "$RESULTS"

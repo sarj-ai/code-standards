@@ -109,15 +109,7 @@ jobs:
           for specification in \
             'repo-ci.yml|release-ready' \
             'private-refs.yml|private references' \
-            'security.yml|security' \
-            'bootstrap-ci.yml|bootstrap CI' \
-            'python-ci.yml|python CI' \
-            'typescript-ci.yml|typescript CI' \
-            'sql-ci.yml|sql CI' \
-            'iac-ci.yml|iac CI' \
-            'tsconfig-ci.yml|tsconfig CI' \
-            'docs.yml|documentation' \
-            'standards-ci.yml|standards CI'; do
+            'ci.yml|CI'; do
             IFS='|' read -r workflow expected_name <<< "$specification"
             while (( SECONDS < deadline )); do
               response="$(gh api --method GET \
@@ -155,7 +147,13 @@ jobs:
                 jq -r '.jobs[] | select(.status == "completed" and .conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | "::error::\(.name) concluded \(.conclusion)"' <<< "$jobs"
                 exit 1
               fi
-              if (( pending_jobs == 0 && successful_jobs > 0 )); then
+              # CI's terminal job depends on the entire graph. A routing-only
+              # jobs response must never count as completed validation.
+              terminal_complete=true
+              if [[ "$workflow" == ci.yml ]]; then
+                terminal_complete="$(jq 'any(.jobs[]; .name == "CI complete" and .status == "completed" and .conclusion == "success")' <<< "$jobs")"
+              fi
+              if [[ "$terminal_complete" == true ]] && (( pending_jobs == 0 && successful_jobs > 0 )); then
                 echo "$expected_name jobs succeeded for $TARGET_SHA; outer run finalization is still pending"
                 break
               fi
