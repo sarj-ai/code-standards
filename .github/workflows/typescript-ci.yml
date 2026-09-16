@@ -46,9 +46,13 @@ jobs:
         with:
           version: '0.12.5'
       - run: npm ci --ignore-scripts --no-audit --no-fund
-      - run: npm run lint
+      # Static analysis uses the canonical development runtime. Build, tests,
+      # and packed-artifact verification still exercise both supported runtimes.
+      - if: matrix.node == '24'
+        run: npm run lint
       - run: npm run build
-      - run: npm run typecheck
+      - if: matrix.node == '24'
+        run: npm run typecheck
       - run: npm test
       - name: Pack and verify the publishable artifact
         run: uv run --project ../standards --frozen code-standards --root ../.. maintain release typescript pack --output "$RUNNER_TEMP/npm-artifacts"
