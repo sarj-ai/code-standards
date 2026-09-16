@@ -484,6 +484,62 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(ruleIds).toContain("prefer-object-has-own");
   });
 
+  it.each([
+    {
+      rule: "unicorn/no-object-as-default-parameter",
+      severity: 2,
+      source: "function configure(options = {timeout: 1000}) { return options; }",
+      nearMiss: "function configure({timeout = 1000} = {}) { return timeout; }",
+    },
+    {
+      rule: "unicorn/no-unsafe-sqlite-interpolation",
+      severity: 2,
+      source: "import {DatabaseSync} from 'node:sqlite'; const database = new DatabaseSync(':memory:'); database.prepare(`SELECT * FROM users WHERE id = ${id}`);",
+      nearMiss: "import {DatabaseSync} from 'node:sqlite'; const database = new DatabaseSync(':memory:'); const query = database.prepare('SELECT * FROM users WHERE id = ?'); query.get(id);",
+    },
+    {
+      rule: "@typescript-eslint/default-param-last",
+      severity: 2,
+      source: "function load(optional = true, required: string) { return [optional, required]; }",
+      nearMiss: "function load(required: string, optional = true) { return [required, optional]; }",
+    },
+    {
+      rule: "unicorn/no-computed-property-existence-check",
+      severity: 1,
+      source: "function contains(object: Record<string, unknown>, key: string) { return Boolean(object[key]); }",
+      nearMiss: "function contains(object: Record<string, unknown>, key: string) { return Object.hasOwn(object, key); }",
+    },
+    {
+      rule: "unicorn/custom-error-definition",
+      severity: 1,
+      source: "class ServiceError extends Error { constructor(message: string) { super(message); } }",
+      nearMiss: "class ServiceError extends Error { constructor(message: string, options?: ErrorOptions) { super(message, options); this.name = 'ServiceError'; } }",
+    },
+  ])("enforces $rule with its calibrated severity", async ({ rule, severity: expectedSeverity, source, nearMiss }) => {
+    const config = STRICT_CONFIG_FACTORY({ projectService: false }).map((entry) => ({
+      ...entry,
+      rules: Object.fromEntries(
+        Object.entries(entry.rules ?? {}).filter(([ruleId]) => ruleId === rule),
+      ),
+    }));
+    const eslint = new ESLint({
+      cwd: FIXTURE_DIR,
+      overrideConfigFile: true,
+      overrideConfig: config,
+    });
+    const [invalid] = await eslint.lintText(source, {
+      filePath: resolve(FIXTURE_DIR, "candidate-rule.ts"),
+    });
+    const findings = invalid?.messages.filter((message) => message.ruleId === rule) ?? [];
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.severity).toBe(expectedSeverity);
+
+    const [valid] = await eslint.lintText(nearMiss, {
+      filePath: resolve(FIXTURE_DIR, "candidate-rule.ts"),
+    });
+    expect(valid?.messages.filter((message) => message.ruleId === rule)).toEqual([]);
+  });
+
   it("runs ESLint recommended correctness rules at warning severity", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
