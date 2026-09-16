@@ -80,6 +80,10 @@ const UNICORN_CONCISION_ADVISORY_RULES = [
   "unicorn/prefer-single-object-destructuring",
   "unicorn/single-line-block-comment-style",
 ] as const;
+const UNICORN_SEMANTIC_ADVISORY_RULES = [
+  "unicorn/custom-error-definition",
+  "unicorn/no-computed-property-existence-check",
+] as const;
 
 function parserOptionsOf(config: Linter.Config[]): Record<string, unknown> {
   const options = config.find(
@@ -572,6 +576,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       "better-tailwindcss/enforce-consistent-variable-syntax",
       ...recommendedCoreWarnings,
       ...UNICORN_CONCISION_ADVISORY_RULES,
+      ...UNICORN_SEMANTIC_ADVISORY_RULES,
     ].toSorted());
 
     // Component identifiers are PascalCase, while component filenames remain

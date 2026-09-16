@@ -264,6 +264,7 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-new-array": "error",
   "unicorn/no-new-buffer": "error",
   "unicorn/no-nonstandard-builtin-properties": "error",
+  "unicorn/no-object-as-default-parameter": "error",
   "unicorn/no-object-methods-with-collections": "error",
   "unicorn/no-optional-chaining-on-undeclared-variable": "error",
   "unicorn/no-redundant-comparison": "error",
@@ -296,6 +297,7 @@ const UNICORN_CORRECTNESS_RULES = {
   "unicorn/no-unsafe-dom-html": "error",
   "unicorn/no-unsafe-promise-all-settled-values": "error",
   "unicorn/no-unsafe-property-key": "error",
+  "unicorn/no-unsafe-sqlite-interpolation": "error",
   "unicorn/no-unsafe-string-replacement": "error",
   "unicorn/no-unused-array-method-return": "error",
   "unicorn/no-useless-boolean-cast": "error",
@@ -441,6 +443,16 @@ const UNICORN_CONCISION_ADVISORY_RULES = {
   "unicorn/iteration-fallback-style": ["warn", "guard"],
 };
 
+// Semantic advisories require local intent to resolve. Dynamic property reads
+// can mean either value access or ownership, while custom Error hierarchies may
+// deliberately expose a non-native constructor contract. Keep both visible but
+// non-blocking until consumer fixes establish that the upstream guidance is
+// uniformly correct.
+const UNICORN_SEMANTIC_ADVISORY_RULES = {
+  "unicorn/custom-error-definition": "warn",
+  "unicorn/no-computed-property-existence-check": "warn",
+};
+
 // One actionable line instead of N x M "Definition for rule ... was not found".
 // Self-maintaining: it re-derives the required names from the objects above, so
 // adding a rule that a pinned consumer's plugin lacks fails loudly at config
@@ -449,6 +461,7 @@ const missingUnicornRules = [
   ...Object.keys(UNICORN_CORRECTNESS_RULES),
   ...Object.keys(UNICORN_MODERNISATION_RULES),
   ...Object.keys(UNICORN_CONCISION_ADVISORY_RULES),
+  ...Object.keys(UNICORN_SEMANTIC_ADVISORY_RULES),
 ]
   .map((key) => key.slice("unicorn/".length))
   .filter((name) => !(name in unicorn.rules));
@@ -810,6 +823,7 @@ export function createConfig(options = {}) {
       "@typescript-eslint/no-unnecessary-template-expression": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
       "@typescript-eslint/array-type": "error",
+      "@typescript-eslint/default-param-last": "error",
       "prefer-object-has-own": "error",
       // `no-else-return` used to sit here. It is gone because
       // `unicorn/no-useless-else` (enabled below) is a strict superset: it flags
@@ -923,6 +937,7 @@ export function createConfig(options = {}) {
       ...UNICORN_MODERNISATION_RULES,
       ...ESLINT_CONCISION_ADVISORY_RULES,
       ...UNICORN_CONCISION_ADVISORY_RULES,
+      ...UNICORN_SEMANTIC_ADVISORY_RULES,
 
       "zod/prefer-enum-over-literal-union": "error",
       // A type hand-written beside the Zod schema it restates drifts when the
