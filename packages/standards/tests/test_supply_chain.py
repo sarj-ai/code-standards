@@ -3,12 +3,33 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 import re
+from typing import TypeGuard
 
 import pytest
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ACTION_USE_PATTERN = re.compile(r"^\s*uses:\s+[^\s@]+@[^\s#]+", re.MULTILINE)
+
+
+def _is_object(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict)
+
+
+def _is_array(value: object) -> TypeGuard[list[object]]:
+    return isinstance(value, list)
+
+
+def _workflow_job(filename: str, job_id: str) -> dict[str, object]:
+    source = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
+    parsed: object = yaml.load(source, Loader=yaml.BaseLoader)  # pyright: ignore[reportAny]
+    assert _is_object(parsed)
+    jobs = parsed["jobs"]
+    assert _is_object(jobs)
+    job = jobs[job_id]
+    assert _is_object(job)
+    return job
 
 
 def test_every_setup_uv_step_pins_the_uv_binary() -> None:
@@ -222,6 +243,38 @@ def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks() -> None
         'gitleaks" git --config .gitleaks.toml' in security
     )  # sarj-noqa: SARJ402 -- workflow text is the history-scan contract
     assert "--log-opts='--all'" in security  # sarj-noqa: SARJ402 -- workflow text is the history-scan contract
+
+
+@pytest.mark.parametrize(
+    ("filename", "job_id", "context", "upstream"),
+    [
+        ("security.yml", "legacy-npm-audit-context", "npm-audit (packages/docs-ui)", "npm-audit"),
+        ("docs.yml", "legacy-shared-documentation-context", "shared documentation UI", "build"),
+    ],
+)
+def test_legacy_required_contexts_fail_closed_with_their_current_checks(
+    filename: str,
+    job_id: str,
+    context: str,
+    upstream: str,
+) -> None:
+    job = _workflow_job(filename, job_id)
+
+    assert job["name"] == context
+    assert job["needs"] == upstream
+    assert job["if"] == "always()"
+    assert job["permissions"] == {}
+    assert job["timeout-minutes"] == "5"
+    steps = job["steps"]
+    assert _is_array(steps)
+    assert len(steps) == 2
+    hardening = steps[0]
+    verifier = steps[1]
+    assert _is_object(hardening)
+    assert _is_object(verifier)
+    assert hardening["uses"] == "step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c"
+    assert verifier["env"] == {"UPSTREAM_RESULT": f"${{{{ needs.{upstream}.result }}}}"}
+    assert verifier["run"] == 'test "$UPSTREAM_RESULT" = success'
 
 
 @pytest.mark.parametrize(

@@ -81,6 +81,23 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm audit --audit-level=moderate
 
+  legacy-npm-audit-context:
+    name: npm-audit (packages/docs-ui)
+    needs: npm-audit
+    if: always()
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Mirror the current documentation audit result
+        env:
+          UPSTREAM_RESULT: ${{ needs.npm-audit.result }}
+        run: test "$UPSTREAM_RESULT" = success
+
   codeql:
     runs-on: ubuntu-latest
     timeout-minutes: 30

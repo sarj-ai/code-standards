@@ -75,6 +75,24 @@ jobs:
           path: apps/docs/dist
           if-no-files-found: error
           retention-days: 1
+
+  legacy-shared-documentation-context:
+    name: shared documentation UI
+    needs: build
+    if: always()
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Mirror the current documentation build result
+        env:
+          UPSTREAM_RESULT: ${{ needs.build.result }}
+        run: test "$UPSTREAM_RESULT" = success
+
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
