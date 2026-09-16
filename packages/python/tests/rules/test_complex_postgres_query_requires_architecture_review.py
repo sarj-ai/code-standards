@@ -16,6 +16,69 @@ _PUBLIC_EXAMPLES = ComplexPostgresQueryRequiresArchitectureReview.public_example
 
 
 @pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT a.id FROM a INNER JOIN b ON TRUE LEFT JOIN c ON TRUE CROSS JOIN d NATURAL JOIN e",
+        "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE JOIN f ON TRUE",
+        "WITH roots AS (SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE) SELECT id FROM roots",
+        "SELECT a.id FROM a WHERE EXISTS (SELECT b.id FROM b JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE JOIN f ON TRUE)",
+        "SELECT a.id FROM a UNION ALL SELECT b.id FROM b JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE JOIN f ON TRUE",
+        "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN (SELECT e.id FROM e GROUP BY e.id) e ON TRUE",
+    ],
+    ids=("mixed-root", "five-joins", "cte", "exists", "union-branch", "overlapping-derived-stage"),
+)
+def test_multiple_joins_merit_one_review_warning(query: str) -> None:
+    diagnostics = _check(f'import psycopg\ncursor.execute("{query}")\n')
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.WARNING
+    assert "4+ explicit JOINs" in diagnostics[0].message
+    assert "write-time" in diagnostics[0].message
+    assert "read-time reconstruction" in diagnostics[0].message
+    assert "not a defect or cost claim" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT a.id FROM a JOIN b ON b.id = a.id",
+        "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE",
+        "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE WHERE EXISTS (SELECT e.id FROM e JOIN f ON TRUE JOIN g ON TRUE JOIN h ON TRUE)",
+        "WITH roots AS (SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE) SELECT roots.id FROM roots JOIN e ON TRUE JOIN f ON TRUE JOIN g ON TRUE",
+        "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE UNION ALL SELECT e.id FROM e JOIN f ON TRUE JOIN g ON TRUE JOIN h ON TRUE",
+        "SELECT 'JOIN JOIN JOIN JOIN' FROM a JOIN b ON TRUE /* JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE */",
+        "SELECT a.id FROM a, b, c, d, e",
+        "SELECT a.id FROM a, b JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE WHERE EXISTS (SELECT f.id FROM f JOIN g ON TRUE JOIN h ON TRUE JOIN i ON TRUE)",
+        "UPDATE a SET id = b.id FROM b JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE JOIN f ON TRUE",
+        "SELECT a.id FROM a JOIN JOIN",
+    ],
+    ids=(
+        "one-join",
+        "three-joins",
+        "separate-nested",
+        "separate-cte",
+        "separate-union",
+        "noise",
+        "comma-relations",
+        "mixed-comma",
+        "write",
+        "malformed",
+    ),
+)
+def test_join_count_is_per_select_and_ignores_noise(query: str) -> None:
+    assert _check(f'import psycopg\ncursor.execute("{query}")\n') == []
+
+
+def test_multi_join_review_uses_postgres_execution_not_store_filename() -> None:
+    source = (
+        'from psycopg_pool import AsyncConnectionPool\ncursor.execute("SELECT a.id FROM a JOIN b ON TRUE '
+        'JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE")\n'
+    )
+    assert len(_check(source, "simulated_call.py")) == 1
+    assert _check(source, "tests/test_simulated_call.py") == []
+    assert _check(source.replace("psycopg_pool", "clickhouse_connect"), "simulated_call.py") == []
+
+
+@pytest.mark.parametrize(
     "example",
     _PUBLIC_EXAMPLES,
     ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES),
@@ -402,7 +465,7 @@ cursor.execute("SELECT event.id FROM event JOIN (SELECT event_id, COUNT(*) FROM 
     [
         (
             "service.py",
-            'import psycopg\ncursor.execute("SELECT * FROM event JOIN (SELECT event_id FROM tag) tagged ON TRUE")\n',
+            'import psycopg\ncursor.execute("SELECT * FROM event JOIN (SELECT event_id, COUNT(*) FROM tag GROUP BY event_id) tagged ON TRUE")\n',
         ),
         (
             "test_event_store.py",

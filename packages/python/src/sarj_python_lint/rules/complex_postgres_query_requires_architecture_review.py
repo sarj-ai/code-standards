@@ -18,7 +18,7 @@ from sarj_python_lint.rule_base import (
     parse_or_none,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
@@ -30,6 +30,8 @@ if TYPE_CHECKING:
 
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
 _DERIVED_RELATION_GATE = re.compile(r"\b(?:FROM|JOIN)\s*\(", re.IGNORECASE)
+_JOIN_GATE = re.compile(r"\bJOIN\b", re.IGNORECASE)
+_JOIN_REVIEW_THRESHOLD = 4
 _POSTGRES_IMPORT_PREFIXES = (
     "asyncpg",
     "psycopg",
@@ -308,7 +310,7 @@ def _expression_args(node: exp.Expr, key: str) -> tuple[exp.Expr, ...]:
     return tuple(child for child in node.iter_expressions() if child.arg_key == key)
 
 
-def _parse_signal(sql: str) -> str | None:
+def _parse_signal(sql: str, *, include_derived_stages: bool) -> str | None:
     import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only SQL that passes cheap ownership and shape gates
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
 
@@ -318,15 +320,28 @@ def _parse_signal(sql: str) -> str | None:
     except SqlglotError:
         return None
     for statement in statements:
-        if statement is not None and (signal := _architecture_signal(statement)) is not None:
+        if (
+            statement is not None
+            and (signal := _architecture_signal(statement, include_derived_stages=include_derived_stages)) is not None
+        ):
             return signal
     return None
 
 
-def _architecture_signal(statement: exp.Expr) -> str | None:
+def _architecture_signal(statement: exp.Expr, *, include_derived_stages: bool) -> str | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
     if not isinstance(statement, exp.Query):
+        return None
+    if any(
+        # SQLGlot's explicit JOIN parser sets pivots, including when absent;
+        # comma relations instead create a bare Join(this=...).
+        sum(isinstance(join, exp.Join) and "pivots" in join.args for join in _expression_args(select, "joins"))
+        >= _JOIN_REVIEW_THRESHOLD
+        for select in statement.find_all(exp.Select)
+    ):
+        return "SELECT block with 4+ explicit JOINs"
+    if not include_derived_stages:
         return None
     for select in _root_selects(statement):
         for join in _expression_args(select, "joins"):
@@ -389,13 +404,20 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
     id: str = "complex-postgres-query-requires-architecture-review"
     code: str = "SARJ437"
     documentation = RuleDocumentation(
-        summary="Complex anonymous PostgreSQL relation stages merit readability review.",
+        summary="Join-heavy PostgreSQL reads and complex anonymous relation stages merit architecture review.",
         rationale=(
+            "A read that needs four or more explicit joins to recover an operational fact can signal that the data "
+            "model does not expose that fact directly, leaving application reads to reconstruct it repeatedly. "
+            "The four-JOIN threshold is a review convention, not evidence of a defect or runtime cost. "
             "Anonymous derived relations with nested or transformational bodies can obscure query stages and make "
             "bounds, ordering, and locking semantics harder to review. Syntax alone does not establish runtime cost "
             "or justify materialization or offload."
         ),
         remediation=(
+            "For join-heavy reads, first review whether the schema's ownership and relationships match the domain, "
+            "or whether a stable identifier or derived fact should be maintained at write time with explicit "
+            "consistency and freshness ownership. Otherwise, justify the relational query using cardinality, "
+            "indexes, and EXPLAIN evidence. Do not mechanically replace database joins with application-layer joins. "
             "First verify bounds, ordering, and lock semantics. Use a semantics-preserving CTE when naming improves "
             "reviewability; it is not a performance optimization. Consider a view only for a reusable stable "
             "interface, a materialized view only for measured repeated reads with an explicit freshness contract, "
@@ -404,14 +426,50 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in recognized PostgreSQL store modules is analyzed.",
+            "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in non-test modules with explicit PostgreSQL imports is analyzed. Complex derived-stage review additionally requires a recognized store module.",
             "Execution receivers must use a conventional database name; custom wrappers and dynamically obtained receivers abstain.",
             "One direct, unambiguous simple-name binding in the same lexical scope is followed; standalone constants, branches, aliases, attributes, containers, wildcard imports, and cross-scope flow abstain.",
             "A derived relation is reported only when it contains nesting, a window, grouping, HAVING, or a set operation.",
-            "Scalar, EXISTS, IN, and LATERAL subqueries are excluded; execution plans and production cardinality remain authoritative.",
+            "Four or more explicit JOINs in any one SELECT block merit review, including CTE and nested blocks; counts are not combined across blocks or UNION branches. Comma relations are excluded.",
+            "Complex derived-stage detection excludes scalar, EXISTS, IN, and LATERAL subqueries; join-count review includes them. Execution plans and production cardinality remain authoritative.",
+            "Only one finding per statically recoverable SQL expression is emitted, even when several SELECT blocks qualify.",
             "A CTE is suggested only as a naming refactor; the rule does not infer optimizer behavior, materialization, performance, or datastore placement.",
         ),
         examples=(
+            RuleExample(
+                example_id="multi-join-root-discovery",
+                title="A read repeatedly discovers a derived root through multiple joins",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/call_store.py",
+                        'import psycopg\ncursor.execute("SELECT call.id FROM simulated_batch '
+                        "JOIN batch_call ON batch_call.batch_id = simulated_batch.batch_id "
+                        "JOIN call ON call.batch_call_id = batch_call.id "
+                        "JOIN campaign_call ON campaign_call.call_id = call.id "
+                        'JOIN campaign ON campaign.id = campaign_call.campaign_id WHERE simulated_batch.batch_id = %s")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/call_store.py"),
+                expected_count=1,
+                public=True,
+                scenario="multi-join-review",
+            ),
+            RuleExample(
+                example_id="stored-root-lookup",
+                title="A read uses a root resolved and stored by its owning write workflow",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/call_store.py",
+                        'import psycopg\ncursor.execute("SELECT root_call_id FROM canary_run WHERE id = %s")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/call_store.py"),
+                expected_count=0,
+                public=True,
+                scenario="multi-join-review",
+            ),
             RuleExample(
                 example_id="ranked-queue-claim",
                 title="A queue claim hides ranking inside nested derived relations",
@@ -453,7 +511,7 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not is_store_module(path) or is_generated(path, source):
+        if is_test_path(path) or is_generated(path, source):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
@@ -481,12 +539,15 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             sql_without_noise = strip_sql_noise(text_value)
             if (
                 _QUERY_SHAPE.search(sql_without_noise) is None
-                or _DERIVED_RELATION_GATE.search(sql_without_noise) is None
+                or (
+                    _DERIVED_RELATION_GATE.search(sql_without_noise) is None
+                    and len(_JOIN_GATE.findall(sql_without_noise)) < _JOIN_REVIEW_THRESHOLD
+                )
                 or _CLICKHOUSE_SQL.search(sql_without_noise)
                 or _BIGQUERY_SQL.search(sql_without_noise)
             ):
                 continue
-            if (signal := _parse_signal(text_value)) is None:
+            if (signal := _parse_signal(text_value, include_derived_stages=is_store_module(path))) is None:
                 continue
             diagnostics.append(
                 Diagnostic(
@@ -496,8 +557,12 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
                     code=self.code,
                     severity=Severity.WARNING,
                     message=(
-                        f"{signal} hides a relational stage — review bounds, ordering, and locks; name it with a "
-                        "semantics-preserving CTE if clearer. Reviewability warning only; no cost or offload claim."
+                        f"{signal} — this may indicate repeated read-time reconstruction or fragmented ownership. "
+                        "Review whether the schema exposes the operational fact directly; if it is stable, consider "
+                        "maintaining it at write-time. Otherwise, justify the relational read with cardinality, "
+                        "indexes, and EXPLAIN evidence; review bounds, ordering, and locks; name derived stages with a "
+                        "semantics-preserving CTE if clearer. Review warning only, not a defect or cost claim; do not "
+                        "mechanically replace SQL joins with application-layer joins."
                     ),
                 )
             )
