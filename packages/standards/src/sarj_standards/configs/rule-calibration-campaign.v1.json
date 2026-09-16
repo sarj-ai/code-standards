@@ -59,6 +59,14 @@
       "outcome": "Kept SARJ206 and its established selector for compatibility, staged it as warning, and replaced block-presence matching with run-scoped flow matching that reports only an assertion directly equating an override_resource, override_data, or override_module literal to the same target attribute. Empty mock providers, transformed assertions, provider-scoped overrides, JSON syntax, dynamic values, malformed HCL, and cross-run flows now abstain; public examples and remediation teach layered unit and provider-backed testing."
     },
     {
+      "task": "rule-audit/iac/no-redundant-variable-validation",
+      "family": "iac",
+      "ruleId": "no-redundant-variable-validation",
+      "state": "complete",
+      "evidence": "HashiCorp documents custom variable validation as an additional restriction beyond the declared type constraint, while the current TFLint Terraform rule catalog has no equivalent redundancy rule. Forty-two focused cases cover exact primitive and collection conversions, direct can expressions, non-nullable length and key operations, exhaustive booleans, domain predicates, null guards, other-variable references, dynamic and heterogeneous types, duplicate diagnostics, exact-code suppression, generated and fixture inputs, strings, comments, and malformed HCL. The complete 588-test IaC suite passes. A local scan of 272 maintained Terraform files totaling 1,348,341 bytes across four repositories produced zero findings. Same-scope candidate and adjacent-rule measurements were 15.19 and 15.66 seconds respectively under concurrent local load; these are comparative warm-process observations, not a speedup claim.",
+      "outcome": "Ship SARJ209 as a warning without autofix. Report only exact syntax-parsed conditions that cannot reject a value after Terraform has applied the same variable's static type and nullability constraints. Preserve enum, range, format, CIDR, nullability, provider, and cross-field validation; abstain on compound predicates, dynamic types, generated files, fixtures, malformed input, and references to another variable. Promote separately only after warning adoption demonstrates live positive precision."
+    },
+    {
       "task": "rule-audit/iac/require-deletion-protection",
       "family": "iac",
       "ruleId": "require-deletion-protection",
