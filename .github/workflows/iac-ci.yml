@@ -13,7 +13,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    uses: ./.github/workflows/ci-scope.yml
+
   test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.iac != 'false')
     name: iac package
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -25,6 +30,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
       # Full history. This job runs the package suite, and the retired-identifier
       # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
       # rather than trusting a hand-kept list, so a shallow checkout fails them.

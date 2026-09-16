@@ -49,7 +49,8 @@ jobs:
       - name: Fetch comparison commit
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: git -C candidate fetch --no-tags --depth=1 "https://github.com/${{ github.repository }}.git" "$BASE_SHA"
+        # A shallow fetch truncates base ancestry and makes old commits look new.
+        run: git -C candidate fetch --no-tags "https://github.com/${{ github.repository }}.git" "$BASE_SHA"
       - name: Scan private references
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         env:

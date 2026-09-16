@@ -13,7 +13,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    uses: ./.github/workflows/ci-scope.yml
+
   test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.python != 'false')
     name: python package
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -25,6 +30,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
       # Full history, not a shallow clone: the retired-identifier gates DERIVE the
       # set of withdrawn rules from `git log --diff-filter=D` instead of trusting a
       # hand-kept list (which is how SARJ061 and eight TypeScript rule names went
@@ -38,14 +47,6 @@ jobs:
           version: '0.12.5'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
-      # release.yml's `detect` job watches packages/python/pyproject.toml, but
-      # pre-commit consumers install the root package — so a bump to one and not
-      # the other silently skips the publish. That is exactly how 0.15.0 was
-      # merged without ever reaching PyPI. `make test` depends on this check but
-      # runs from the repo root, which this job never does.
-      - name: Check root/package versions are in sync
-        working-directory: .
-        run: make check-versions-synced
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - run: uv audit --locked

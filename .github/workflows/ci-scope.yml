@@ -1,0 +1,66 @@
+name: CI scope
+
+on:
+  workflow_call:
+    outputs:
+      bootstrap:
+        value: ${{ jobs.scope.outputs.bootstrap }}
+      python:
+        value: ${{ jobs.scope.outputs.python }}
+      sql:
+        value: ${{ jobs.scope.outputs.sql }}
+      iac:
+        value: ${{ jobs.scope.outputs.iac }}
+      typescript:
+        value: ${{ jobs.scope.outputs.typescript }}
+      tsconfig:
+        value: ${{ jobs.scope.outputs.tsconfig }}
+      standards:
+        value: ${{ jobs.scope.outputs.standards }}
+      docs:
+        value: ${{ jobs.scope.outputs.docs }}
+      mobile:
+        value: ${{ jobs.scope.outputs.mobile }}
+      codeql-python:
+        value: ${{ jobs.scope.outputs.codeql-python }}
+      codeql-javascript-typescript:
+        value: ${{ jobs.scope.outputs.codeql-javascript-typescript }}
+      docs-audit:
+        value: ${{ jobs.scope.outputs.docs-audit }}
+
+permissions:
+  contents: read
+
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      bootstrap: ${{ steps.scope.outputs.bootstrap }}
+      python: ${{ steps.scope.outputs.python }}
+      sql: ${{ steps.scope.outputs.sql }}
+      iac: ${{ steps.scope.outputs.iac }}
+      typescript: ${{ steps.scope.outputs.typescript }}
+      tsconfig: ${{ steps.scope.outputs.tsconfig }}
+      standards: ${{ steps.scope.outputs.standards }}
+      docs: ${{ steps.scope.outputs.docs }}
+      mobile: ${{ steps.scope.outputs.mobile }}
+      codeql-python: ${{ steps.scope.outputs.codeql-python }}
+      codeql-javascript-typescript: ${{ steps.scope.outputs.codeql-javascript-typescript }}
+      docs-audit: ${{ steps.scope.outputs.docs-audit }}
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select affected package checks
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash .github/scripts/ci-scope.sh "$EVENT_NAME" "$BASE_SHA" "$HEAD_SHA" "$GITHUB_OUTPUT"

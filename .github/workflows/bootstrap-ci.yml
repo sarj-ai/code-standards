@@ -13,7 +13,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    uses: ./.github/workflows/ci-scope.yml
+
   test:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.bootstrap != 'false')
     name: bootstrap package
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -25,6 +30,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
@@ -44,6 +53,8 @@ jobs:
       - run: uv build
 
   portability:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.bootstrap != 'false')
     name: bootstrap portability (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -59,6 +70,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
