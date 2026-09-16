@@ -10,8 +10,10 @@ from .tags import (
     RELEASE_ARTIFACT_FILES,
     RELEASE_ARTIFACT_PREFIXES,
     RELEASE_TARGETS,
+    ReleaseTarget,
     ReleaseTargetId,
     has_verified_release_tag,
+    read_manifest_version,
     read_manifest_version_text,
 )
 
@@ -21,6 +23,8 @@ _DISPLAY_PATH_LIMIT = 3
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from .registry import PublicationChecker
 
     type ReleaseTagChecker = Callable[..., bool]
 
@@ -74,7 +78,10 @@ def check_release_causality(
     after: str,
     runner: ProcessRunner = run_process,
     tag_checker: ReleaseTagChecker = has_verified_release_tag,
+    publication_checker: PublicationChecker | None = None,
 ) -> ReleaseCausalityReport:
+    from .registry import publication_exists  # ruff: ignore[import-outside-top-level]
+
     result = runner(("git", "diff", "--name-only", "-z", before, after, "--"), cwd=root, capture_output=True)
     changed_paths = tuple(sorted(path for path in result.stdout.split("\0") if path))
     bumped = changed_release_targets(root, before=before, after=after, runner=runner)
@@ -82,16 +89,29 @@ def check_release_causality(
         name: tuple(path for path in changed_paths if _belongs_to_artifact(name, path=path)) for name in RELEASE_TARGETS
     }
     changed_targets = tuple(name for name, paths in by_target.items() if paths)
-    causality_violations = tuple(
-        CausalityViolation(
-            name,
-            RELEASE_TARGETS[name].manifest,
-            'top-level "version"' if RELEASE_TARGETS[name].format == "json" else "[project].version",
-            by_target[name],
+    checker = publication_exists if publication_checker is None else publication_checker
+    causality_violations: list[CausalityViolation] = []
+    for name in changed_targets:
+        if bumped[name]:
+            continue
+        target = RELEASE_TARGETS[name]
+        current_version = read_manifest_version(root / target.manifest, target.format)
+        target_name = ReleaseTargetId(name)
+        has_verified_tag = tag_checker(root, target_name, version=current_version, commit=after, runner=runner)
+        if not has_verified_tag and _publications_are_absent(
+            target,
+            version=current_version,
+            publication_checker=checker,
+        ):
+            continue
+        causality_violations.append(
+            CausalityViolation(
+                name,
+                target.manifest,
+                'top-level "version"' if target.format == "json" else "[project].version",
+                by_target[name],
+            )
         )
-        for name in changed_targets
-        if not bumped[name]
-    )
     supersession_violations: list[SupersededReleaseViolation] = []
     for name, changed in bumped.items():
         if not changed:
@@ -108,7 +128,9 @@ def check_release_causality(
             label=f"{before}:{target.manifest}",
         )
         target_name = ReleaseTargetId(name)
-        if not tag_checker(root, target_name, version=prior_version, commit=before, runner=runner):
+        if tag_checker(root, target_name, version=prior_version, commit=before, runner=runner):
+            continue
+        if not _publications_are_absent(target, version=prior_version, publication_checker=checker):
             supersession_violations.append(
                 SupersededReleaseViolation(name, target.manifest, f"{name}-v{prior_version}")
             )
@@ -119,6 +141,20 @@ def check_release_causality(
         tuple(name for name, changed in bumped.items() if changed),
         (*causality_violations, *supersession_violations),
     )
+
+
+def _publications_are_absent(
+    target: ReleaseTarget,
+    *,
+    version: str,
+    publication_checker: PublicationChecker,
+) -> bool:
+    from .registry import RegistryRequirement  # ruff: ignore[import-outside-top-level]
+
+    requirements: tuple[RegistryRequirement, ...] = tuple(
+        RegistryRequirement(publication.registry, publication.name, version) for publication in target.publications
+    )
+    return bool(requirements) and not any(publication_checker(requirement) for requirement in requirements)
 
 
 def _belongs_to_artifact(target: str, *, path: str) -> bool:
