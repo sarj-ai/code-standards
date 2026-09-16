@@ -407,16 +407,6 @@ class Standards:
         )
         if rule_selection is not None:
             external_reports = tuple(_filter_report_selectors(report, rule_selection) for report in external_reports)
-        if (
-            selected_groups.typescript
-            and run_eslint
-            and (adopted is None or "eslint" in adopted.configs)
-            and not any(report.name == "eslint" for report in external_reports)
-        ):
-            issue = ExecutionIssue(
-                "eslint", "coverage-missing", "no ESLint project accepted the selected TypeScript files"
-            )
-            external_reports = (*external_reports, ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         combined = report_from_tools(self.root, (*native.tools, *external_reports))
         if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
             combined = _with_warning_severity(combined, _warning_rule_keys())
