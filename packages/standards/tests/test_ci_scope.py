@@ -427,6 +427,7 @@ def test_ci_detects_changes_once_and_never_deploys_on_schedule() -> None:
 def test_ci_completion_covers_every_job_and_rejects_failures(result: str, accepted: bool) -> None:
     jobs = workflow("ci.yml").jobs
     terminal = jobs["complete"]
+    assert terminal.name == "CI complete"
     assert isinstance(terminal.needs, list)
     assert set(terminal.needs) == set(jobs) - {"complete"}
     assert terminal.condition == "always()"

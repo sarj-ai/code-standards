@@ -239,7 +239,10 @@ def test_pypi_publishers_exclude_checksum_manifests(needle: str, expected_count:
 
 def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_free() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    typescript_ci = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    ci = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    typescript_job = re.search(r"(?ms)^  typescript:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", ci)
+    assert typescript_job is not None
+    typescript_ci = typescript_job[0]
 
     assert "npm ci --ignore-scripts" in release  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
     assert (
