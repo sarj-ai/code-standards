@@ -13,7 +13,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    uses: ./.github/workflows/ci-scope.yml
+
   portability-smoke:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     name: standards portability (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -31,6 +36,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -71,6 +80,8 @@ jobs:
           fi
 
   mobile-kotlin-smoke:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.mobile != 'false')
     name: managed Kotlin mobile analyzers
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -82,6 +93,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -112,6 +127,8 @@ jobs:
           python -c "import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps(p, indent=2)); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$repo/report.json"
 
   mobile-swift-smoke:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.mobile != 'false')
     name: managed Swift mobile analyzers
     runs-on: macos-15
     timeout-minutes: 60
@@ -123,6 +140,10 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -132,9 +153,22 @@ jobs:
           version: '0.12.5'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
+      - name: Identify Swift build toolchain
+        id: swift-toolchain
+        shell: bash
+        run: |
+          digest=$(xcodebuild -version | shasum -a 256 | cut -d ' ' -f 1)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Restore compiled Swift analyzers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/sarj-mint
+          key: mint-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.swift-toolchain.outputs.digest }}-${{ hashFiles('packages/standards/src/sarj_standards/configs/Mintfile.mobile.strict', 'packages/standards/src/sarj_standards/configs/mobile-tools.versions.json') }}
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - name: Provision and execute SwiftFormat, SwiftLint, and MobSF rules
+        env:
+          MINT_PATH: ${{ runner.temp }}/sarj-mint
         shell: bash
         run: |
           set -euo pipefail
@@ -148,8 +182,10 @@ jobs:
             "$repo/Sources/Smoke/MobileSmoke.swift" || true
           python -c "import json,sys; p=json.load(open(sys.argv[1])); print(json.dumps(p, indent=2)); sys.exit(0 if p['exitCode'] == 0 and p['completion'] == 'complete' else 1)" "$repo/report.json"
 
-  test:
-    name: standards package
+  static-analysis:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    name: standards static analysis
     runs-on: ubuntu-latest
     timeout-minutes: 40
     defaults:
@@ -160,12 +196,11 @@ jobs:
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
-      # Full history. This job runs the package suite, and the retired-identifier
-      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
-      # rather than trusting a hand-kept list, so a shallow checkout fails them.
-      # The repository policy requires it of every job that runs a
-      # suite: "runs the tests" and "can read git history" were two independent
-      # facts about a job, and a release was lost to the gap between them.
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Repository policy and changed-line analysis need Git history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -199,6 +234,48 @@ jobs:
           # metadata from silently reducing this required dogfood gate to only
           # changed files. PR and push runs must exercise the same full scope.
           uv run code-standards --root ../.. check .
+
+  package-tests:
+    needs: changes
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    name: standards wheel and integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: packages/standards
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Reject failed change routing
+        if: needs.changes.result != 'success'
+        working-directory: .
+        run: exit 1
+      # Full history. This job runs the package suite, and the retired-identifier
+      # gates in it DERIVE the withdrawn rule set from `git log --diff-filter=D`
+      # rather than trusting a hand-kept list, so a shallow checkout fails them.
+      # The repository policy requires it of every job that runs a
+      # suite: "runs the tests" and "can read git history" were two independent
+      # facts about a job, and a release was lost to the gap between them.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: '0.12.5'
+          enable-cache: true
+          cache-dependency-glob: 'packages/**/uv.lock'
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: packages/typescript/package-lock.json
+      - run: uv python install 3.14
+      - run: uv sync --locked --dev
+      - run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
       - name: Build wheel
         run: |
           uv build --wheel
@@ -250,3 +327,18 @@ jobs:
           # this asserts the peer set + overrides produce a tree npm accepts.
           mapfile -t peer_specs < <("$cli" --root "$repo" show peers | sed -n 's/^npm install -D --save-exact //p' | tr ' ' '\n' | grep -v '^@sarj/')
           (cd "$repo" && npm install --package-lock-only --no-audit --no-fund "${peer_specs[@]}")
+
+  test:
+    name: standards package
+    needs: [changes, static-analysis, package-tests]
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Require routing, analysis, and wheel tests to succeed
+        if: needs.changes.result != 'success' || needs.static-analysis.result != 'success' || needs.package-tests.result != 'success'
+        run: exit 1

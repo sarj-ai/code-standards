@@ -45,6 +45,8 @@ def test_every_job_starts_with_harden_runner() -> None:
         text = workflow.read_text(encoding="utf-8")
         job_blocks = re.split(r"(?m)^  [a-zA-Z0-9_-]+:\n", text.partition("\njobs:\n")[2])[1:]
         for block in job_blocks:
+            if "    uses: ./.github/workflows/ci-scope.yml\n" in block:
+                continue  # The reusable workflow's runner is checked in its own file.
             job_count += 1
             first_use = ACTION_USE_PATTERN.search(block)
             if first_use is None or "step-security/harden-runner@" not in first_use[0]:
@@ -276,6 +278,8 @@ def test_every_workflow_job_has_a_timeout() -> None:
         text = workflow.read_text(encoding="utf-8")
         job_blocks = re.split(r"(?m)^  [a-zA-Z0-9_-]+:\n", text.partition("\njobs:\n")[2])[1:]
         for index, block in enumerate(job_blocks, start=1):
+            if "    uses: ./.github/workflows/ci-scope.yml\n" in block:
+                continue  # Reusable calls inherit the callee's timeout.
             header = block.partition("\n    steps:\n")[0]
             if "timeout-minutes:" not in header:
                 violations.append(f"job {index} in {workflow} has no timeout")
