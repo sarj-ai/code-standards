@@ -45,7 +45,8 @@ _AFTER_NULLS_STAGE = 2
 _AFTER_WITH_STAGE = 3
 _APP_READ_JUSTIFICATION_RE = re.compile(
     r"^\s*--\s*index-justification:\s*app-read:\s*[^\s;\n](?:[^;\n]*[^\s;\n])?;\s*"
-    r"(?:evidence:\s*https?://\S+|ticket:\s*(?-i:[A-Z][A-Z0-9]+-\d+))\s*$",
+    r"query:\s*(?!/)(?![^;\n]*(?:^|/)\.\.(?:/|#))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*"
+    r"#[A-Za-z_][A-Za-z0-9_.-]*;\s*explain:\s*https?://\S+\s*$",
     re.IGNORECASE,
 )
 _REFERENTIAL_JUSTIFICATION_RE = re.compile(

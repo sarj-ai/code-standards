@@ -128,6 +128,7 @@
       "idempotent-ddl",
       "index-concurrently",
       "insert-requires-replay-policy",
+      "mixed-migration-phases",
       "no-application-schema-check",
       "no-database-triggers",
       "no-duplicate-index",
@@ -148,6 +149,7 @@
       "no-mocked-terraform-test-oracle",
       "no-redundant-variable-validation",
       "no-restated-comment",
+      "no-terraform-data-condition",
       "require-deletion-protection",
       "require-prevent-destroy-on-irreplaceable"
     ],
@@ -383,7 +385,8 @@
       "SARJ115",
       "SARJ116",
       "SARJ117",
-      "SARJ118"
+      "SARJ118",
+      "SARJ119"
     ],
     "iac": [
       "SARJ201",
@@ -393,7 +396,8 @@
       "SARJ205",
       "SARJ206",
       "SARJ207",
-      "SARJ209"
+      "SARJ209",
+      "SARJ210"
     ],
     "text": [
       "SARJ300",

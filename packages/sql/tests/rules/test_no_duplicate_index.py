@@ -78,14 +78,52 @@ def test_three_equivalent_indexes_report_only_each_later_definition() -> None:
     assert [finding.line for finding in _check(source)] == [2, 3]
 
 
-def test_duplicate_unique_indexes_are_reported_but_unique_and_nonunique_are_distinct() -> None:
+def test_duplicate_unique_indexes_and_nonunique_copy_are_reported() -> None:
     source = """
 CREATE UNIQUE INDEX unique_a ON event(external_id);
 CREATE UNIQUE INDEX unique_b ON event(external_id);
 CREATE INDEX lookup_a ON event(external_id);
 """
 
-    assert [finding.line for finding in _check(source)] == [3]
+    findings = _check(source)
+    assert [finding.line for finding in findings] == [3, 4]
+    assert "unique access path" in findings[1].message
+
+
+def test_reports_later_unique_index_when_it_covers_an_existing_nonunique_copy() -> None:
+    source = """
+CREATE INDEX lookup_a ON event(external_id);
+CREATE UNIQUE INDEX unique_a ON event(external_id);
+"""
+
+    [finding] = _check(source)
+    assert finding.line == 3
+    assert "lookup_a" in finding.message
+    assert "unique_a" in finding.message
+
+
+def test_reports_strict_nonunique_btree_left_prefix_overlap() -> None:
+    source = """
+CREATE INDEX event_owner ON event(owner_id);
+CREATE INDEX event_owner_created ON event(owner_id, created_at DESC);
+"""
+    [finding] = _check(source)
+    assert finding.line == 3
+    assert "left prefix" in finding.message
+
+
+@pytest.mark.parametrize(
+    "definitions",
+    [
+        "CREATE UNIQUE INDEX short_idx ON event(owner_id);\nCREATE INDEX long_idx ON event(owner_id, created_at);",
+        "CREATE INDEX short_idx ON event(owner_id DESC);\nCREATE INDEX long_idx ON event(owner_id, created_at);",
+        "CREATE INDEX short_idx ON event(owner_id) WHERE active;\nCREATE INDEX long_idx ON event(owner_id, created_at);",
+        "CREATE INDEX short_idx ON event USING hash(owner_id);\nCREATE INDEX long_idx ON event(owner_id, created_at);",
+        "CREATE INDEX short_idx ON event(owner_id) INCLUDE(payload);\nCREATE INDEX long_idx ON event(owner_id, created_at);",
+    ],
+)
+def test_does_not_guess_unsafe_prefix_coverage(definitions: str) -> None:
+    assert _check(definitions) == []
 
 
 @pytest.mark.parametrize(

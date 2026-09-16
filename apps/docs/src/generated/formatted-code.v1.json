@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0983f47469a33b3805c42c7c8fa5da5462fc3b14fbbbcbc9532c832bda4286cc",
-  "cliSha256": "e6ccf0e2b6cbe61c44835a155644fe6e6fe6d9873300ff8c896f0129afa4ee58",
+  "catalogSha256": "2b81847979746eb9a672978cd5eb26ae894e2ebadf1d8c2f3525b2716a9bad26",
+  "cliSha256": "7bccefa38428995ee086dfd32eabe89d4355ebcfa85fd711e6d0869ef045dc2a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -4082,6 +4082,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "iac:no-terraform-data-condition": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"deployment_guard\" {\n  lifecycle {\n    precondition {\n      condition     = var.enabled\n      error_message = \"deployment must be enabled\"\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "terraform-data-plan-guard",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not model deployment policy as a fake resource"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"release\" {\n  triggers_replace = [var.release]\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "terraform-data-replacement-trigger",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep terraform_data when it models replacement"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:require-deletion-protection": {
       "examples": [
         {
@@ -8088,7 +8123,7 @@
           "files": [
             {
               "path": "migrations/004_indexes.sql",
-              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\n-- index-justification: app-read: event delivery queue; ticket: APP-812\nCREATE INDEX d_idx ON event (d);\n"
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\n-- index-justification: app-read: event delivery queue; query: app/event_store.py#claim; explain: https://metrics.example.test/plans/812\nCREATE INDEX d_idx ON event (d);\n"
             }
           ],
           "fixedFiles": [],
@@ -8256,6 +8291,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Insert without declared replay behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:mixed-migration-phases": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/004_status.sql",
+              "source": "CREATE TABLE status (id UUID PRIMARY KEY, name TEXT NOT NULL);\n\nINSERT INTO\n  status\nVALUES\n  ('00000000-0000-0000-0000-000000000001', 'ready');\n\nCREATE INDEX status_name_idx ON status (name);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_status.sql",
+          "id": "fresh-table-bootstrap",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A fresh lookup table is created, seeded, and indexed atomically"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/004_credentials.sql",
+              "source": "ALTER TABLE credential\nADD COLUMN token TEXT;\n\nUPDATE credential\nSET\n  token = legacy_token;\n\nALTER TABLE credential\nDROP COLUMN legacy_token;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_credentials.sql",
+          "id": "rename-backfill-contract",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An existing-table backfill immediately removes its legacy column"
         }
       ],
       "optionsSchemaSource": null

@@ -53,6 +53,31 @@ QUERY = \"SELECT DATE_TRUNC('hour', occurred_at), COUNT(*), AVG(latency_ms) FROM
 
 
 @pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT organization_id, status, COUNT(*), AVG(duration) FROM call GROUP BY organization_id, status",
+        "SELECT organization_id, COUNT(*), MIN(started_at), MAX(ended_at) FROM call GROUP BY organization_id",
+    ],
+)
+def test_flags_broad_grouped_reporting_shapes(query: str) -> None:
+    diagnostics = _check(f'import psycopg\nq = "{query}"\n')
+    assert len(diagnostics) == 1
+    assert "grouped reporting shape" in diagnostics[0].message
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT status, COUNT(*), AVG(duration) FROM call WHERE id = %s GROUP BY status",
+        "SELECT organization_id, status, COUNT(*), AVG(duration) FROM call WHERE id = %s GROUP BY organization_id, status",
+        "SELECT organization_id, status, COUNT(*), AVG(duration) FROM call GROUP BY organization_id, status FOR UPDATE",
+    ],
+)
+def test_allows_identity_bounded_or_locked_grouped_aggregates(query: str) -> None:
+    assert _check(f'import psycopg\nq = "{query}"\n') == []
+
+
+@pytest.mark.parametrize(
     "source",
     [
         'import psycopg\nq = "SELECT SUM(amount) FROM ledger WHERE account_id = %s FOR UPDATE"\n',

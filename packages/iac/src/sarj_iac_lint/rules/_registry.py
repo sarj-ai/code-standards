@@ -9,6 +9,7 @@ from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditio
 from sarj_iac_lint.rules.no_mocked_terraform_test_oracle import NoMockedTerraformTestOracle
 from sarj_iac_lint.rules.no_redundant_variable_validation import NoRedundantVariableValidation
 from sarj_iac_lint.rules.no_restated_comment import NoRestatedComment
+from sarj_iac_lint.rules.no_terraform_data_condition import NoTerraformDataCondition
 from sarj_iac_lint.rules.require_deletion_protection import RequireDeletionProtection
 from sarj_iac_lint.rules.require_prevent_destroy import RequirePreventDestroyOnIrreplaceable
 
@@ -29,5 +30,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoMockedTerraformTestOracle.id: NoMockedTerraformTestOracle,
         NoRedundantVariableValidation.id: NoRedundantVariableValidation,
         NoRestatedComment.id: NoRestatedComment,
+        NoTerraformDataCondition.id: NoTerraformDataCondition,
     }
 )

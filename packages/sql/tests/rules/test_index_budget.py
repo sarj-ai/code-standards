@@ -41,8 +41,7 @@ def test_reports_indexes_beyond_file_budget_across_tables() -> None:
 @pytest.mark.parametrize(
     "comment",
     [
-        "-- index-justification: app-read: delivery queue; evidence: https://metrics.example.test/reads/812",
-        "-- index-justification: app-read: delivery queue; ticket: APP-812",
+        "-- index-justification: app-read: delivery queue; query: app/event_store.py#claim; explain: https://metrics.example.test/reads/812",
         "-- index-justification: referential-action: ON DELETE CASCADE",
         "-- index-justification: referential-action: SET NULL",
     ],
@@ -62,6 +61,10 @@ def test_accepts_exact_immediately_preceding_justification(comment: str) -> None
         "-- index-justification: app-read: delivery queue",
         "-- index-justification: app-read: delivery queue; ticket: someday",
         "-- index-justification: app-read: delivery queue; ticket: app-812",
+        "-- index-justification: app-read: delivery queue; ticket: APP-812",
+        "-- index-justification: app-read: delivery queue; query: app/event_store.py#claim",
+        "-- index-justification: app-read: delivery queue; explain: https://example.test/plan",
+        "-- index-justification: app-read: delivery queue; query: /tmp/store.py#claim; explain: https://example.test/plan",
         "-- index-justification: app-read:  ; ticket: APP-812",
         "-- index-justification: this seems important",
         "-- index-justification: referential-action:",

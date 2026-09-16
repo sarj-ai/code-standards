@@ -29,7 +29,8 @@ if TYPE_CHECKING:
 # `DROP TABLE`, SARJ114 `CREATE TRIGGER`, SARJ115 a
 # long implementation narrative, SARJ116 the fourth child-table index, and
 # SARJ117 one duplicate child-table index shape, and SARJ118 an application-owned
-# closed text value set repeated as a database CHECK.
+# closed text value set repeated as a database CHECK, and SARJ119 the existing-
+# table constraint plus data write mixed with the surrounding expand phase.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 -- Create the children table used by the application in this database.
@@ -88,7 +89,7 @@ def _total(path: Path, source: str) -> int:
 def test_the_shared_source_fires_every_migration_rule_exactly_once() -> None:
     fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in MIGRATION_RULES}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 17
+    assert len(fired) == 18
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -98,7 +99,7 @@ def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
 
 
 def test_the_dump_exemption_suppresses_all_migration_findings() -> None:
-    assert _total(HAND_WRITTEN, ALL_RULES) == 17
+    assert _total(HAND_WRITTEN, ALL_RULES) == 18
     assert _total(Path("db/structure.sql"), ALL_RULES) == 0
 
 
@@ -116,7 +117,7 @@ def test_a_restore_directory_is_a_dump_signal() -> None:
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 17
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 18
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_RULES}"

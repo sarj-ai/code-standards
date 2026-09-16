@@ -37,7 +37,7 @@ class IndexBudget(Rule):
         ),
         remediation=(
             "Keep at most three explicit indexes per table and eight per migration, or place an exact "
-            "`index-justification: app-read: ...; evidence: URL`/`ticket: ABC-123` or "
+            "`index-justification: app-read: ...; query: path#symbol; explain: URL` or "
             "`index-justification: referential-action: ...` comment immediately above each excess index. "
             "For `CREATE UNIQUE INDEX` only, `index-justification: uniqueness-constraint: ...; ticket: ABC-123` "
             "is also accepted."
@@ -49,7 +49,7 @@ class IndexBudget(Rule):
             "Only authored production migrations are checked; tests, dumps, fixtures, and recognized generator-owned migrations are excluded.",
             "Duplicate index shapes and same-name replacement statements do not consume this budget; SARJ117 reports structural duplicates.",
             "Index declarations inside dollar-quoted stored or anonymous program bodies are not inferred.",
-            "The warning budgets distinct explicit index definitions in one file; it does not estimate workload selectivity or fleet-wide index count.",
+            "The warning budgets distinct explicit index definitions in one file; it does not dereference query or EXPLAIN links, estimate workload selectivity, or reconstruct fleet-wide index state.",
         ),
         examples=(
             RuleExample(
@@ -76,7 +76,8 @@ class IndexBudget(Rule):
                         "migrations/004_indexes.sql",
                         "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\n"
                         "CREATE INDEX c_idx ON event(c);\n"
-                        "-- index-justification: app-read: event delivery queue; ticket: APP-812\n"
+                        "-- index-justification: app-read: event delivery queue; "
+                        "query: app/event_store.py#claim; explain: https://metrics.example.test/plans/812\n"
                         "CREATE INDEX d_idx ON event(d);\n",
                     ),
                 ),
@@ -117,7 +118,7 @@ class IndexBudget(Rule):
             if exceeds_total:
                 lead = "distinct" if limits else "Distinct"
                 limits.append(f"{lead} index {total_position} in this migration exceeds limit 8")
-            accepted_kinds = "app-read or referential-action"
+            accepted_kinds = "app-read with query and EXPLAIN evidence, or referential-action"
             if index.unique:
                 accepted_kinds += ", or uniqueness-constraint"
             findings.append(
@@ -127,7 +128,8 @@ class IndexBudget(Rule):
                     index.column,
                     self.code,
                     "; ".join(limits)
-                    + f". Remove the index or immediately precede it with an exact {accepted_kinds} justification.",
+                    + f". Remove the index or immediately precede it with an exact {accepted_kinds} justification; "
+                    "review columnar placement for repeated reporting or scan access.",
                 )
             )
         return findings
