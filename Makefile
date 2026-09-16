@@ -71,7 +71,7 @@ test: check-versions-synced
 	cd packages/python         && uv run pytest -q
 	cd packages/sql            && uv run pytest -q
 	cd packages/iac            && uv run pytest -q
-	# Sibling wheels are built and installed alongside, mirroring standards-ci.yml.
+	# Sibling wheels are built and installed alongside, mirroring ci.yml.
 	# `code-standards` pins its siblings exactly, so resolving them from PyPI fails
 	# for the whole window between bumping a pin and publishing that version -- which
 	# is exactly when this target most needs to run. Building them locally keeps
@@ -94,7 +94,7 @@ lint:
 	cd packages/sql            && uv run ruff check src/ tests/
 	cd packages/iac            && uv run ruff check src/ tests/
 	cd packages/standards   && uv run ruff check src/ tests/
-	# `standards-ci.yml` runs the custom SARJ rules over this package and
+	# `ci.yml` runs the custom SARJ rules over this package and
 	# `make lint` did not, so a change could pass `make verify` locally and fail
 	# CI on rules this repo wrote. Dogfooding that stops at ruff is not dogfooding.
 	uv run --project packages/standards --frozen code-standards --root . check \

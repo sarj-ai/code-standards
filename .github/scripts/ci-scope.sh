@@ -49,7 +49,10 @@ sys.exit(0 if documents[0] == documents[1] else 1)
 PY
 }
 
-if [[ "$event" != pull_request ]]; then
+if [[ "$event" == schedule ]]; then
+  # Weekly security coverage does not rebuild packages or deploy documentation.
+  select_scopes codeql-python codeql-javascript-typescript docs-audit
+elif [[ "$event" != pull_request ]]; then
   # Releases wait for complete validation of their exact main revision.
   select_scopes "${scopes[@]}"
 else

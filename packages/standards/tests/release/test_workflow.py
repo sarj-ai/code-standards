@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -140,7 +141,7 @@ def test_publication_and_tag_recovery_require_security_at_exact_revision(filenam
     workflow = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
     gate = workflow.split("\n  release-safety:\n", maxsplit=1)[1].split("\n\n  ", maxsplit=1)[0]
 
-    assert "'security.yml|security'" in gate
+    assert "'ci.yml|CI'" in gate
     assert 'head_sha="$TARGET_SHA"' in gate
     assert '.head_sha == $sha and .event == "push"' in gate
     assert 'if [[ -n "$conclusion" ]]; then' in gate
@@ -178,13 +179,7 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
     for specification in (
         "repo-ci.yml|release-ready",
         "private-refs.yml|private references",
-        "bootstrap-ci.yml|bootstrap CI",
-        "python-ci.yml|python CI",
-        "typescript-ci.yml|typescript CI",
-        "sql-ci.yml|sql CI",
-        "iac-ci.yml|iac CI",
-        "tsconfig-ci.yml|tsconfig CI",
-        "standards-ci.yml|standards CI",
+        "ci.yml|CI",
     ):
         assert specification in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
     assert (
@@ -341,3 +336,30 @@ def test_release_tag_preflight_rejects_malformed_manifest(tmp_path: Path) -> Non
 
     assert result.returncode != 0
     assert not output
+
+
+@pytest.mark.parametrize("filename", ["release.yml", "release-tags.yml"])
+@pytest.mark.parametrize("terminal", [None, "success", "failure", "cancelled", "skipped"])
+def test_release_fallback_requires_successful_terminal_ci(filename: str, terminal: str | None) -> None:
+    workflow = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
+    gate = workflow.split("\n  release-safety:\n", 1)[1].split("\n\n  ", 1)[0]
+    script = textwrap.dedent(gate.split("        run: |\n", 1)[1])
+    fallback = script.split("terminal_complete=true", 1)[1].split('echo "$expected_name jobs succeeded', 1)[0]
+    jobs = [{"name": "Detect affected checks", "status": "completed", "conclusion": "success"}]
+    if terminal is not None:
+        jobs.append({"name": "CI complete", "status": "completed", "conclusion": terminal})
+    process = subprocess.run(
+        ("bash", "-euo", "pipefail", "-c", "terminal_complete=true" + fallback + "exit 0; fi; exit 1"),
+        env={
+            "PATH": "/usr/bin:/bin",
+            "workflow": "ci.yml",
+            "jobs": json.dumps({"jobs": jobs}),
+            "pending_jobs": "0",
+            "successful_jobs": "1",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert process.returncode == (0 if terminal == "success" else 1), process.stderr

@@ -45,8 +45,6 @@ def test_every_job_starts_with_harden_runner() -> None:
         text = workflow.read_text(encoding="utf-8")
         job_blocks = re.split(r"(?m)^  [a-zA-Z0-9_-]+:\n", text.partition("\njobs:\n")[2])[1:]
         for block in job_blocks:
-            if "    uses: ./.github/workflows/ci-scope.yml\n" in block:
-                continue  # The reusable workflow's runner is checked in its own file.
             job_count += 1
             first_use = ACTION_USE_PATTERN.search(block)
             if first_use is None or "step-security/harden-runner@" not in first_use[0]:
@@ -96,13 +94,7 @@ def test_release_waits_for_exact_revision_safety_checks() -> None:
     for specification in (
         "repo-ci.yml|release-ready",
         "private-refs.yml|private references",
-        "bootstrap-ci.yml|bootstrap CI",
-        "python-ci.yml|python CI",
-        "typescript-ci.yml|typescript CI",
-        "sql-ci.yml|sql CI",
-        "iac-ci.yml|iac CI",
-        "tsconfig-ci.yml|tsconfig CI",
-        "standards-ci.yml|standards CI",
+        "ci.yml|CI",
     ):
         assert specification in release  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
     assert "head_sha == $sha" in release  # sarj-noqa: SARJ402 -- workflow text is the release-gate contract
@@ -208,7 +200,7 @@ def test_registry_verifier_parses_on_release_runner_python() -> None:
 
 
 def test_security_workflow_scans_tree_and_history_with_pinned_gitleaks() -> None:
-    security = (REPO_ROOT / ".github/workflows/security.yml").read_text(encoding="utf-8")
+    security = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert (  # sarj-noqa: SARJ402 -- workflow text is the security-policy contract
         "gitleaks_8.30.1_linux_x64.tar.gz" in security
@@ -247,7 +239,10 @@ def test_pypi_publishers_exclude_checksum_manifests(needle: str, expected_count:
 
 def test_npm_release_disables_install_scripts_and_keeps_publishers_dependency_free() -> None:
     release = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
-    typescript_ci = (REPO_ROOT / ".github/workflows/typescript-ci.yml").read_text(encoding="utf-8")
+    ci = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    typescript_job = re.search(r"(?ms)^  typescript:\n.*?(?=^  [a-zA-Z0-9_-]+:\n|\Z)", ci)
+    assert typescript_job is not None
+    typescript_ci = typescript_job[0]
 
     assert "npm ci --ignore-scripts" in release  # sarj-noqa: SARJ402 -- workflow text is the publishing-policy contract
     assert (
@@ -278,8 +273,6 @@ def test_every_workflow_job_has_a_timeout() -> None:
         text = workflow.read_text(encoding="utf-8")
         job_blocks = re.split(r"(?m)^  [a-zA-Z0-9_-]+:\n", text.partition("\njobs:\n")[2])[1:]
         for index, block in enumerate(job_blocks, start=1):
-            if "    uses: ./.github/workflows/ci-scope.yml\n" in block:
-                continue  # Reusable calls inherit the callee's timeout.
             header = block.partition("\n    steps:\n")[0]
             if "timeout-minutes:" not in header:
                 violations.append(f"job {index} in {workflow} has no timeout")
@@ -288,7 +281,7 @@ def test_every_workflow_job_has_a_timeout() -> None:
 
 def test_release_ready_is_one_stable_required_gate() -> None:
     workflow = (REPO_ROOT / ".github/workflows/repo-ci.yml").read_text(encoding="utf-8")
-    tsconfig_workflow = (REPO_ROOT / ".github/workflows/tsconfig-ci.yml").read_text(encoding="utf-8")
+    tsconfig_workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert (  # sarj-noqa: SARJ402 -- workflow text is the required-check contract
         workflow.startswith("name: release-ready\n")
@@ -322,24 +315,25 @@ def test_warning_first_gate_prints_an_executable_command_for_each_rule() -> None
 
 
 def test_parallel_package_workflows_are_always_present_with_stable_contexts() -> None:
-    expected_names = {
-        "bootstrap-ci.yml": "name: bootstrap package",
-        "python-ci.yml": "name: python package",
-        "typescript-ci.yml": "name: typescript plugin (${{ matrix.node }})",
-        "sql-ci.yml": "name: sql package",
-        "iac-ci.yml": "name: iac package",
-        "tsconfig-ci.yml": "name: tsconfig package",
-        "standards-ci.yml": "name: standards package",
-    }
-    for filename, job_name in expected_names.items():
-        workflow = (REPO_ROOT / ".github/workflows" / filename).read_text(encoding="utf-8")
-        trigger = workflow.partition("\npermissions:\n")[0]
-        assert "paths:" not in trigger
-        assert job_name in workflow
+    workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    trigger = workflow.partition("\npermissions:\n")[0]
+    assert "paths:" not in trigger
+    for job_name in (
+        "bootstrap package",
+        "python package",
+        "typescript plugin (${{ matrix.node }})",
+        "sql package",
+        "iac package",
+        "tsconfig package",
+        "standards package",
+    ):
+        assert (
+            f"name: {job_name}" in workflow
+        )  # sarj-noqa: SARJ402 -- exact required check names are the merge contract
 
 
 def test_standards_package_dogfoods_full_scope_on_pull_requests_and_pushes() -> None:
-    workflow = (REPO_ROOT / ".github/workflows/standards-ci.yml").read_text(encoding="utf-8")
+    workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
 
     assert (  # sarj-noqa: SARJ402 -- explicit root is the PR and push scope parity contract
         "uv run code-standards --root ../.. check ." in workflow
@@ -354,11 +348,13 @@ def test_pre_push_keeps_complete_tests_in_ci() -> None:
 
 
 def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site() -> None:
-    workflow = (REPO_ROOT / ".github/workflows/docs.yml").read_text(encoding="utf-8")
+    workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.mjs").read_text(encoding="utf-8")
 
     assert "branches: [main]" in workflow  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
-    assert "schedule:" not in workflow  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
+    assert (
+        "github.event_name == 'push' || github.event_name == 'workflow_dispatch'" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
     assert (
         "WORKERS_CI_COMMIT_SHA: ${{ github.sha }}" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
