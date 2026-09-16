@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rules.no_redundant_module_alias_exports import NoRedundantModuleAliasExports
 
 
@@ -20,6 +21,57 @@ _EXAMPLES = NoRedundantModuleAliasExports.public_examples()
 @pytest.mark.parametrize("example", _EXAMPLES, ids=tuple(example.example_id for example in _EXAMPLES))
 def test_documentation_examples(example: RuleExample) -> None:
     assert len(_check(example.focus_file.source, str(example.focus_path))) == example.expected_count
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "public_helper = _private_helper",
+        "public_helper: Callable[[], None] = _private_helper",
+        "first_helper = second_helper = _private_helper",
+    ],
+)
+def test_reports_public_aliases_for_private_names(assignment: str) -> None:
+    diagnostics = _check(f"def _private_helper(): ...\n{assignment}\n")
+
+    expected_names = ["first_helper", "second_helper"] if assignment.startswith("first_helper") else ["public_helper"]
+    assert [(finding.code, finding.line) for finding in diagnostics] == [("SARJ440", 2)] * len(expected_names)
+    assert all(f"public `{name}`" in finding.message for name, finding in zip(expected_names, diagnostics, strict=True))
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "_private_alias = public_helper",
+        "_second_private_alias = _private_helper",
+        "public_dunder = __version__",
+        "public_translation = _",
+        "public_attribute = owner._private_helper",
+        "public_one, public_two = _private_values",
+        "if enabled:\n    public_helper = _private_helper\n",
+        "try:\n    public_helper = _private_helper\nexcept ImportError:\n    pass\n",
+        "with lock:\n    public_helper = _private_helper\n",
+        "match mode:\n    case 'legacy':\n        public_helper = _private_helper\n",
+        "def configure():\n    public_helper = _private_helper\n",
+        "class Compatibility:\n    public_helper = _private_helper\n",
+        "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    public_helper = _private_helper\n",
+        "import typing\nif typing.TYPE_CHECKING:\n    public_helper = _private_helper\n",
+        "from implementation import _private_helper as public_helper",
+        "public_helper = public_implementation",
+    ],
+)
+def test_excludes_non_module_public_private_name_aliases(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_exact_suppression_allows_deliberate_compatibility_alias(tmp_path: Path) -> None:
+    source = tmp_path / "compatibility.py"
+    source.write_text(
+        "public_helper = _private_helper  # sarj-noqa: SARJ440 -- legacy import path until API-123\n",
+        encoding="utf-8",
+    )
+
+    assert analyze([NoRedundantModuleAliasExports.id], [source]) == []
 
 
 @pytest.mark.parametrize(
