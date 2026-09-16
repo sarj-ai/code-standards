@@ -23,8 +23,8 @@ on:
         value: ${{ jobs.scope.outputs.mobile }}
       codeql-python:
         value: ${{ jobs.scope.outputs.codeql-python }}
-      codeql-javascript:
-        value: ${{ jobs.scope.outputs.codeql-javascript }}
+      codeql-javascript-typescript:
+        value: ${{ jobs.scope.outputs.codeql-javascript-typescript }}
       docs-audit:
         value: ${{ jobs.scope.outputs.docs-audit }}
 
@@ -46,7 +46,7 @@ jobs:
       docs: ${{ steps.scope.outputs.docs }}
       mobile: ${{ steps.scope.outputs.mobile }}
       codeql-python: ${{ steps.scope.outputs.codeql-python }}
-      codeql-javascript: ${{ steps.scope.outputs.codeql-javascript }}
+      codeql-javascript-typescript: ${{ steps.scope.outputs.codeql-javascript-typescript }}
       docs-audit: ${{ steps.scope.outputs.docs-audit }}
     steps:
       - name: Harden the runner

@@ -22,7 +22,7 @@ SCOPES = frozenset(
         "docs",
         "mobile",
         "codeql-python",
-        "codeql-javascript",
+        "codeql-javascript-typescript",
         "docs-audit",
     }
 )
@@ -67,7 +67,7 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         ),
         pytest.param(
             "packages/typescript/src/rule.ts",
-            {"typescript", "standards", "docs", "codeql-javascript"},
+            {"typescript", "standards", "docs", "codeql-javascript-typescript"},
             id="typescript-consumers",
         ),
         pytest.param("packages/sql/src/rule.py", {"sql", "standards", "docs", "codeql-python"}, id="sql-consumers"),
@@ -100,7 +100,7 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
         pytest.param("packages/standards/uv.lock", {"standards", "docs", "mobile"}, id="runner-dependencies"),
         pytest.param(
             "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
-            {"typescript", "standards", "docs", "codeql-javascript"},
+            {"typescript", "standards", "docs", "codeql-javascript-typescript"},
             id="eslint-consumer-config",
         ),
         pytest.param("new-package/source.py", SCOPES, id="unknown-owner"),
@@ -144,7 +144,7 @@ def test_cross_package_rename_checks_old_and_new_owners(repository: Path) -> Non
 @pytest.mark.parametrize(
     ("source_path", "owner", "local_linter", "security"),
     [
-        ("packages/typescript/src/rules/new-rule.ts", "typescript", None, "codeql-javascript"),
+        ("packages/typescript/src/rules/new-rule.ts", "typescript", None, "codeql-javascript-typescript"),
         ("packages/python/src/new_rule.py", "python", "sarj-python-lint", "codeql-python"),
         ("packages/sql/src/new_rule.py", "sql", "sarj-sql-lint", "codeql-python"),
         ("packages/iac/src/new_rule.py", "iac", "sarj-iac-lint", "codeql-python"),

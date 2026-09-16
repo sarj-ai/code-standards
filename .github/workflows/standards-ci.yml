@@ -162,13 +162,12 @@ jobs:
       - name: Restore compiled Swift analyzers
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/sarj-mint
+          # Analyzer subprocesses retain HOME but deliberately discard MINT_PATH.
+          path: ~/.mint
           key: mint-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.swift-toolchain.outputs.digest }}-${{ hashFiles('packages/standards/src/sarj_standards/configs/Mintfile.mobile.strict', 'packages/standards/src/sarj_standards/configs/mobile-tools.versions.json') }}
       - run: uv python install 3.14
       - run: uv sync --locked --dev
       - name: Provision and execute SwiftFormat, SwiftLint, and MobSF rules
-        env:
-          MINT_PATH: ${{ runner.temp }}/sarj-mint
         shell: bash
         run: |
           set -euo pipefail

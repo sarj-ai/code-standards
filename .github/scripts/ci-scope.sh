@@ -6,7 +6,7 @@ event=$1
 base=$2
 head=$3
 output=$4
-scopes=(bootstrap python sql iac typescript tsconfig standards docs mobile codeql-python codeql-javascript docs-audit)
+scopes=(bootstrap python sql iac typescript tsconfig standards docs mobile codeql-python codeql-javascript-typescript docs-audit)
 selected=" "
 
 select_scopes() {
@@ -15,12 +15,12 @@ select_scopes() {
 
 # Runner images provide Python 3.11+; no package installation is needed.
 # Local linter releases cannot affect mobile; retain their dependency/toolchain changes.
-version_only_change() {
-  python3 - "$comparison_base" "$head" "$path" <<'PY'
+release_metadata_only() {
+  python3 - "$1" "$2" "$3" <<'PY'
+import re
 import subprocess
 import sys
 import tomllib
-import re
 
 base, head, path = sys.argv[1:]
 local_sources = {
@@ -61,12 +61,12 @@ else
   trap 'rm -f "$changed"' EXIT
   # Disable rename detection so BOTH the old and new package owners run.
   # A failed diff must abort before any false outputs can be published.
-  git diff --no-renames --name-only -z "$base...$head" -- > "$changed"
   comparison_base=$(git merge-base "$base" "$head")
+  git diff --no-renames --name-only -z "$comparison_base" "$head" -- > "$changed"
   while IFS= read -r -d '' path; do
     case "$path" in
       *.py|*.pyi) select_scopes codeql-python ;;
-      *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.mts|*.cts|*.astro) select_scopes codeql-javascript ;;
+      *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx|*.mts|*.cts|*.astro) select_scopes codeql-javascript-typescript ;;
     esac
     case "$path" in
       packages/*/README.md) select_scopes docs standards ;;
@@ -96,18 +96,14 @@ else
         select_scopes tsconfig standards docs ;;
       packages/standards/tests/*)
         select_scopes standards ;;
-      packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json)
-        select_scopes standards docs ;;
-      packages/standards/src/sarj_standards/libs/linting/textlint.py)
+      packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json|packages/standards/src/sarj_standards/libs/linting/textlint.py)
         select_scopes standards docs ;;
       packages/standards/pyproject.toml|packages/standards/uv.lock)
         select_scopes standards docs
         # Missing/malformed files and comparison failures conservatively run mobile.
-        if ! version_only_change; then select_scopes mobile; fi ;;
-      packages/standards/src/*)
-        select_scopes standards docs mobile ;;
+        if ! release_metadata_only "$comparison_base" "$head" "$path"; then select_scopes mobile; fi ;;
       packages/standards/*)
-        # These dependencies belong to the runner, not the independent packages.
+        # Shared runner code and configuration can affect mobile execution.
         select_scopes standards docs mobile ;;
       packages/standards-compat/*)
         select_scopes standards docs ;;
