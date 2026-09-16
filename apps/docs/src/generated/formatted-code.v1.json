@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6704bd20a4d0c6d0a8ad5afeab1f6787c1a52c9ca8bcd975bbaacbec63e7205c",
+  "catalogSha256": "7a61ab96256a63dd839f0cabdb07d559f59f17af86622729d6398e7fdc14bdbc",
   "cliSha256": "7de3a0b982a87ae44ff534e4db92233e813f2c9214bedee122990fee11381570",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -4120,6 +4120,21 @@
     "python:complex-postgres-query-requires-architecture-review": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "import psycopg\n\ncursor.execute(\n    \"SELECT call.id FROM simulated_batch JOIN batch_call ON batch_call.batch_id = simulated_batch.batch_id JOIN call ON call.batch_call_id = batch_call.id JOIN campaign_call ON campaign_call.call_id = call.id JOIN campaign ON campaign.id = campaign_call.campaign_id WHERE simulated_batch.batch_id = %s\"\n)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "multi-join-root-discovery",
+          "outcome": "reject",
+          "scenarioId": "multi-join-review",
+          "title": "A read repeatedly discovers a derived root through multiple joins"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -4148,6 +4163,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A queue claim hides ranking inside nested derived relations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "import psycopg\n\ncursor.execute(\"SELECT root_call_id FROM canary_run WHERE id = %s\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "stored-root-lookup",
+          "outcome": "accept",
+          "scenarioId": "multi-join-review",
+          "title": "A read uses a root resolved and stored by its owning write workflow"
         }
       ],
       "optionsSchemaSource": null
