@@ -181,6 +181,7 @@
       "no-insecure-random-id",
       "no-json-stringify-error",
       "no-json-stringify-object-equality",
+      "no-known-value-widening",
       "no-log-only-catch",
       "no-long-comment",
       "no-offset-pagination",

@@ -340,6 +340,10 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
 @pytest.mark.parametrize(
     ("engine", "rule_id", "level", "expected_status"),
     [
+        ("eslint", "no-known-value-widening", "error", 0),
+        ("eslint", "no-known-value-widening", "off", 1),
+        ("python", "no-known-value-widening", "error", 1),
+        ("eslint", "no-known-value-widening-extra", "error", 1),
         ("python", "no-excessive-cognitive-complexity", "error", 0),
         ("eslint", "no-excessive-cognitive-complexity", "error", 0),
         ("python", "no-excessive-cognitive-complexity", "off", 1),
