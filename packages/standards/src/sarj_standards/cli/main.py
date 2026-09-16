@@ -26,6 +26,7 @@ from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.adoption.configs import CONFIG_NAMES
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleSelector
 
 
@@ -2007,7 +2008,7 @@ def cmd_baseline(args: _Args) -> int:
                 selected,
                 external=True,
                 trust=trust,
-                mode=AnalysisMode.RAW,
+                mode=AnalysisMode.CORPUS,
                 rules=scoped_rules,
                 include_react_doctor=False,
                 pass_on_unpruned_eslint_suppressions=args.baseline_cmd == "update" and bool(args.baseline_rules),
@@ -2028,6 +2029,7 @@ def cmd_baseline(args: _Args) -> int:
                 selected or [str(root)],
                 root=root,
                 trust=trust,
+                policy=_baseline_corpus_policy(root),
                 capabilities=frozenset({"eslint"}),
                 include_react_doctor=False,
                 pass_on_unpruned_eslint_suppressions=True,
@@ -2035,7 +2037,7 @@ def cmd_baseline(args: _Args) -> int:
         )
         reports.append(external)
     if _react_doctor_rules_for_baseline(args.baseline_rules):
-        reports.append(_react_doctor_baseline_report(root, selected, trust))
+        reports.append(_react_doctor_baseline_report(root, selected, trust, _baseline_corpus_policy(root)))
     if _shellcheck_rules_for_baseline(args.baseline_rules):
         from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
             report_from_tools,
@@ -2051,6 +2053,7 @@ def cmd_baseline(args: _Args) -> int:
                     selected or [str(root)],
                     root=root,
                     trust=trust,
+                    policy=_baseline_corpus_policy(root),
                     capabilities=frozenset({"shellcheck"}),
                     include_react_doctor=False,
                 ),
@@ -2104,7 +2107,16 @@ def _baseline_selected_paths(root: Path, files: Sequence[str], *, scoped: bool) 
     return list(dict.fromkeys((*verified, *baseline.tracked_terraform_test_paths(root))))
 
 
-def _react_doctor_baseline_report(root: Path, selected: Sequence[str] | None, trust: str) -> AnalysisReport:
+def _baseline_corpus_policy(root: Path) -> Policy:
+    return Policy.corpus_from_manifest(root, manifest.load(root))
+
+
+def _react_doctor_baseline_report(
+    root: Path,
+    selected: Sequence[str] | None,
+    trust: str,
+    policy: Policy,
+) -> AnalysisReport:
     from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
         report_from_tools,
     )
@@ -2118,6 +2130,7 @@ def _react_doctor_baseline_report(root: Path, selected: Sequence[str] | None, tr
             selected or [str(root)],
             root=root,
             trust=trust,
+            policy=policy,
             capabilities=frozenset({"react-doctor"}),
             include_react_doctor=True,
             force_react_doctor=True,

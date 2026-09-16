@@ -58,9 +58,11 @@ def test_mocked_terraform_test_can_be_excluded_by_path_rule_or_override(tmp_path
     manifest.manifest_path(tmp_path).write_text(adopted.render(), encoding="utf-8")
 
     raw = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
+    corpus = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.CORPUS)
     report = api.Standards(tmp_path).analyze([str(source)])
 
     assert [item.code for item in raw.diagnostics] == ["SARJ206"]
+    assert corpus.diagnostics == ()
     assert report.diagnostics == ()
 
 
