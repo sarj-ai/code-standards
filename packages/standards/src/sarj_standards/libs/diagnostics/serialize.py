@@ -84,14 +84,7 @@ def to_github(report: AnalysisReport, *, max_annotations_per_level: int = _GITHU
         for diagnostic in tool.diagnostics:
             counts[diagnostic.severity] += 1
     error_budget = max_annotations_per_level - len(issues)
-    selected = {
-        severity: nsmallest(
-            error_budget if severity is Severity.ERROR else max_annotations_per_level,
-            (diagnostic for tool in report.tools for diagnostic in tool.diagnostics if diagnostic.severity is severity),
-            key=_github_priority,
-        )
-        for severity in Severity
-    }
+    selected = _github_selection(report, error_budget, max_annotations_per_level)
     lines = [
         *issues,
         *(_github_diagnostic(item) for item in selected[Severity.ERROR]),
@@ -112,6 +105,19 @@ def to_github(report: AnalysisReport, *, max_annotations_per_level: int = _GITHU
     lines.extend(_baseline_lines(report))
     lines.append(_summary(report))
     return "\n".join(lines) + "\n"
+
+
+def _github_selection(
+    report: AnalysisReport, error_budget: int, max_annotations_per_level: int
+) -> dict[Severity, list[Diagnostic]]:
+    return {
+        severity: nsmallest(
+            error_budget if severity is Severity.ERROR else max_annotations_per_level,
+            (diagnostic for tool in report.tools for diagnostic in tool.diagnostics if diagnostic.severity is severity),
+            key=_github_priority,
+        )
+        for severity in Severity
+    }
 
 
 def _github_priority(diagnostic: Diagnostic) -> tuple[object, ...]:

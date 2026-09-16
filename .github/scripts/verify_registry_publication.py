@@ -50,19 +50,21 @@ NPM_INSTALL_TIMEOUT = timedelta(minutes=10)
 NPM_INITIAL_RETRY_DELAY = timedelta(seconds=5)
 NPM_MAX_RETRY_DELAY = timedelta(seconds=30)
 NPM_SUBPROCESS_TIMEOUT_SECONDS = 120
-NPM_ARTIFACT_PATHS = MappingProxyType({
-    "@sarj/eslint-plugin": (
-        "packages/typescript/LICENSE",
-        "packages/typescript/package.json",
-        "packages/typescript/src",
-    ),
-    "@sarj/tsconfig": (
-        "packages/tsconfig/LICENSE",
-        "packages/tsconfig/base.json",
-        "packages/tsconfig/package.json",
-        "packages/tsconfig/strict.json",
-    ),
-})
+NPM_ARTIFACT_PATHS = MappingProxyType(
+    {
+        "@sarj/eslint-plugin": (
+            "packages/typescript/LICENSE",
+            "packages/typescript/package.json",
+            "packages/typescript/src",
+        ),
+        "@sarj/tsconfig": (
+            "packages/tsconfig/LICENSE",
+            "packages/tsconfig/base.json",
+            "packages/tsconfig/package.json",
+            "packages/tsconfig/strict.json",
+        ),
+    }
+)
 GIT_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 RETRY_DELAY = timedelta(seconds=10)
 
@@ -198,6 +200,25 @@ def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes t
         f"{quote(artifact.name, safe='')}/provenance"
     )
     provenance = _json(provenance_url)
+    if not _pypi_provenance_matches(provenance, artifact, sha256, environment):
+        _fail(f"PyPI provenance does not bind {artifact.name} to {WORKFLOW}/{environment}")
+    subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is fixed and shell execution is disabled.
+        (  # ruff: ignore[start-process-with-partial-path] -- setup-uv provides trusted uvx.
+            "uvx",
+            "--from",
+            PYPI_ATTESTATIONS,
+            "pypi-attestations",
+            "verify",
+            "pypi",
+            "--repository",
+            REPOSITORY_URL,
+            entry["url"],
+        ),
+        check=True,
+    )
+
+
+def _pypi_provenance_matches(provenance: dict[str, Any], artifact: Path, sha256: str, environment: str) -> bool:
     bundles = provenance.get("attestation_bundles")
     matching_publisher = False
     matching_subject = False
@@ -226,22 +247,7 @@ def _verify_pypi_file(  # sarj-noqa: SARJ023 -- one-file verification precedes t
                         )
                         for attestation in attestations
                     )
-    if not matching_publisher or not matching_subject:
-        _fail(f"PyPI provenance does not bind {artifact.name} to {WORKFLOW}/{environment}")
-    subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- argv is fixed and shell execution is disabled.
-        (  # ruff: ignore[start-process-with-partial-path] -- setup-uv provides trusted uvx.
-            "uvx",
-            "--from",
-            PYPI_ATTESTATIONS,
-            "pypi-attestations",
-            "verify",
-            "pypi",
-            "--repository",
-            REPOSITORY_URL,
-            entry["url"],
-        ),
-        check=True,
-    )
+    return matching_publisher and matching_subject
 
 
 def verify_pypi(dist: Path, projects: tuple[str, ...], environment: str) -> None:
@@ -327,6 +333,10 @@ def _npm_provenance_commit(  # sarj-noqa: SARJ023 -- predicate decoding precedes
         return None
     if not isinstance(dependencies, list):
         return None
+    return _npm_dependency_commit(dependencies)
+
+
+def _npm_dependency_commit(dependencies: list[object]) -> str | None:
     for dependency in dependencies:
         if not isinstance(dependency, dict) or dependency.get("uri") != f"git+{REPOSITORY_URL}@{REF}":
             continue

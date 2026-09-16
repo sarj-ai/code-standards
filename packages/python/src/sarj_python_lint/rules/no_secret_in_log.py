@@ -55,11 +55,7 @@ def _is_secret_keyword(name: str) -> bool:
 def _unsafe_message_values(value: ast.expr) -> tuple[ast.expr, ...]:
     match value:
         case ast.JoinedStr(values=parts):
-            return tuple(
-                part.value
-                for part in parts
-                if isinstance(part, ast.FormattedValue) and _is_raw_secret_reference(part.value)
-            )
+            return _unsafe_formatted_values(parts)
         case ast.BinOp(op=ast.Mod(), right=right):
             values = right.elts if isinstance(right, (ast.Tuple, ast.List)) else (right,)
             return tuple(item for item in values if _is_raw_secret_reference(item))
@@ -137,18 +133,7 @@ class NoSecretInLog(Rule):
                 for arg in node.args[message_index + 1 :]
                 if _is_raw_secret_reference(arg)
             )
-            for kw in node.keywords:
-                # `**kwargs` has arg=None — nothing to inspect.
-                if kw.arg is None:
-                    continue
-                if kw.arg == "extra" and isinstance(kw.value, ast.Dict):
-                    diags.extend(
-                        _diagnostic(path, value, self.code, "literal `extra` field")
-                        for value in kw.value.values
-                        if _is_raw_secret_reference(value)
-                    )
-                elif _is_raw_secret_reference(kw.value):
-                    diags.append(_diagnostic(path, kw.value, self.code, f"`{kw.arg}` logging field"))
+            _collect_keyword_secrets(path, node, self.code, diags)
             diags.extend(
                 _diagnostic(path, value, self.code, "structured logger binding")
                 for value in _bound_logger_values(function.value)
@@ -181,3 +166,24 @@ def _is_logging_call(node: ast.Call) -> bool:
     if func.attr not in LOG_METHODS:
         return False
     return is_logger_expr(func.value)
+
+
+def _unsafe_formatted_values(parts: list[ast.expr]) -> tuple[ast.expr, ...]:
+    return tuple(
+        part.value for part in parts if isinstance(part, ast.FormattedValue) and _is_raw_secret_reference(part.value)
+    )
+
+
+def _collect_keyword_secrets(path: Path, node: ast.Call, code: str, diags: list[Diagnostic]) -> None:
+    for kw in node.keywords:
+        # `**kwargs` has arg=None — nothing to inspect.
+        if kw.arg is None:
+            continue
+        if kw.arg == "extra" and isinstance(kw.value, ast.Dict):
+            diags.extend(
+                _diagnostic(path, value, code, "literal `extra` field")
+                for value in kw.value.values
+                if _is_raw_secret_reference(value)
+            )
+        elif _is_raw_secret_reference(kw.value):
+            diags.append(_diagnostic(path, kw.value, code, f"`{kw.arg}` logging field"))

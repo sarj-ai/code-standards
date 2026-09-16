@@ -195,16 +195,9 @@ def _is_executable_sql(
         if parent is None:
             return False
         if isinstance(parent, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
-            targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
-            names = {target.id for target in targets if isinstance(target, ast.Name)}
-            return bool(names) and _binding_reaches_execution(owner, parent, names)
-        if isinstance(parent, ast.Call):
-            name = _call_name(parent.func)
-            is_query_argument = (bool(parent.args) and current is parent.args[0]) or (
-                isinstance(current, ast.keyword) and current in parent.keywords and current.arg in _SQL_KEYWORD
-            )
-            if is_query_argument and name is not None and name.lower() in _SQL_CALL:
-                return True
+            return _assigned_sql_reaches_execution(parent, owner)
+        if isinstance(parent, ast.Call) and _is_sql_call_argument(parent, current):
+            return True
         current = parent
     return False
 
@@ -230,52 +223,13 @@ def _sql_template_value(node: ast.expr) -> str | None:
     return None
 
 
-def _binding_reaches_execution(
-    owner: ast.FunctionDef | ast.AsyncFunctionDef,
-    assignment: ast.Assign | ast.AnnAssign | ast.NamedExpr,
-    names: set[str],
-) -> bool:
-    for call in nodes(owner, ast.Call):
-        if (
-            call.lineno <= assignment.lineno
-            or (_call_name(call.func) or "").lower() not in _SQL_CALL
-            or _enclosing_callable(owner, call) is not owner
-        ):
-            continue
-        arguments = [*call.args, *(keyword.value for keyword in call.keywords if keyword.arg in _SQL_KEYWORD)]
-        used = {argument.id for argument in arguments if isinstance(argument, ast.Name)} & names
-        if not used:
-            continue
-        if not any(
-            isinstance(candidate, ast.Name)
-            and isinstance(candidate.ctx, ast.Store)
-            and candidate.id in used
-            and assignment.lineno < candidate.lineno < call.lineno
-            for candidate in ast.walk(owner)
-        ):
-            return True
-    return False
-
-
 def _has_dynamic_duplicate_policy(
     node: ast.expr,
     owner: ast.FunctionDef | ast.AsyncFunctionDef,
     parents: dict[int, ast.AST],
 ) -> bool:
     if isinstance(node, ast.JoinedStr):
-        prefix = ""
-        for part in node.values:
-            if isinstance(part, ast.Constant) and isinstance(part.value, str):
-                prefix += part.value
-                continue
-            if (
-                isinstance(part, ast.FormattedValue)
-                and prefix.rstrip().endswith(")")
-                and _DYNAMIC_POLICY_NAME.fullmatch(ast.unparse(part.value)) is not None
-            ):
-                return True
-            prefix += "__dynamic__"
-        return False
+        return _has_interpolated_duplicate_policy(node)
     current: ast.AST = node
     while current is not owner:
         parent = parents.get(id(current))
@@ -315,3 +269,71 @@ def _select_filters_existing_target(statement: str) -> bool:
         re.IGNORECASE,
     )
     return guard.search(statement, match.end()) is not None
+
+
+def _is_sql_call_argument(parent: ast.Call, current: ast.AST) -> bool:
+    name = _call_name(parent.func)
+    is_query_argument = (bool(parent.args) and current is parent.args[0]) or (
+        isinstance(current, ast.keyword) and current in parent.keywords and current.arg in _SQL_KEYWORD
+    )
+    return is_query_argument and name is not None and name.lower() in _SQL_CALL
+
+
+def _has_interpolated_duplicate_policy(node: ast.JoinedStr) -> bool:
+    prefix = ""
+    for part in node.values:
+        if isinstance(part, ast.Constant) and isinstance(part.value, str):
+            prefix += part.value
+            continue
+        if (
+            isinstance(part, ast.FormattedValue)
+            and prefix.rstrip().endswith(")")
+            and _DYNAMIC_POLICY_NAME.fullmatch(ast.unparse(part.value)) is not None
+        ):
+            return True
+        prefix += "__dynamic__"
+    return False
+
+
+def _assigned_sql_reaches_execution(
+    parent: ast.Assign | ast.AnnAssign | ast.NamedExpr, owner: ast.FunctionDef | ast.AsyncFunctionDef
+) -> bool:
+    targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
+    names = {target.id for target in targets if isinstance(target, ast.Name)}
+    return bool(names) and _binding_reaches_execution(owner, parent, names)
+
+
+def _binding_reaches_execution(
+    owner: ast.FunctionDef | ast.AsyncFunctionDef,
+    assignment: ast.Assign | ast.AnnAssign | ast.NamedExpr,
+    names: set[str],
+) -> bool:
+    for call in nodes(owner, ast.Call):
+        if (
+            call.lineno <= assignment.lineno
+            or (_call_name(call.func) or "").lower() not in _SQL_CALL
+            or _enclosing_callable(owner, call) is not owner
+        ):
+            continue
+        arguments = [*call.args, *(keyword.value for keyword in call.keywords if keyword.arg in _SQL_KEYWORD)]
+        used = {argument.id for argument in arguments if isinstance(argument, ast.Name)} & names
+        if not used:
+            continue
+        if not _has_intervening_sql_rebinding(owner, assignment, call, used):
+            return True
+    return False
+
+
+def _has_intervening_sql_rebinding(
+    owner: ast.FunctionDef | ast.AsyncFunctionDef,
+    assignment: ast.Assign | ast.AnnAssign | ast.NamedExpr,
+    call: ast.Call,
+    used: set[str],
+) -> bool:
+    return any(
+        isinstance(candidate, ast.Name)
+        and isinstance(candidate.ctx, ast.Store)
+        and candidate.id in used
+        and assignment.lineno < candidate.lineno < call.lineno
+        for candidate in ast.walk(owner)
+    )

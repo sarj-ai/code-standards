@@ -196,13 +196,7 @@ def _record_has_declared_field_types(
             continue
         if not any(_is_annotations_target(target, name) for target in node.targets):
             continue
-        typed_fields = {
-            key.value
-            for key, value in zip(node.value.keys, node.value.values, strict=True)
-            if isinstance(key, ast.Constant)
-            and isinstance(key.value, str)
-            and not (isinstance(value, ast.Constant) and value.value is None)
-        }
+        typed_fields = _non_none_annotation_keys(node.value)
         if set(fields) <= typed_fields:
             return True
     return False
@@ -241,15 +235,9 @@ def _resolves_collections_namedtuple(
             if crossed_function or left_class_body:
                 continue
             left_class_body = True
-        bindings = (*events[id(scope)].get(root, ()), *events[id(scope)].get("*", ()))
-        prior = [event for event in bindings if (event.line, event.col) < position]
-        if prior:
-            latest = max(prior, key=lambda event: (event.line, event.col))
-            return latest.direct and latest.kind == expected
-        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and bindings:
-            return False
-        if isinstance(scope, ast.Module):
-            return False
+        resolution = _scope_factory_resolution(scope, events, root, position, expected)
+        if resolution is not None:
+            return resolution
         crossed_function = crossed_function or isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef))
     return False
 
@@ -309,16 +297,7 @@ def _collect_statement_bindings(
 ) -> None:
     match node:
         case ast.Import(names=names):
-            for alias in names:
-                local = alias.asname or alias.name.partition(".")[0]
-                kind = (
-                    _MODULE_FACTORY
-                    if alias.name == "collections" or (alias.name.startswith("collections.") and alias.asname is None)
-                    else _OTHER_BINDING
-                )
-                collected.setdefault(local, []).append(
-                    _BindingEvent(alias.lineno, alias.col_offset, kind, direct=direct)
-                )
+            _collect_module_import_events(names, collected, direct=direct)
             return
         case ast.ImportFrom(module=module, names=names):
             for alias in names:
@@ -364,3 +343,45 @@ def _inside_compatibility_branch(call: ast.Call, parents: dict[ast.AST, ast.AST]
             return True
         current = parents.get(current)
     return False
+
+
+def _non_none_annotation_keys(node: ast.Dict) -> set[str]:
+    return {
+        key.value
+        for key, value in zip(node.keys, node.values, strict=True)
+        if isinstance(key, ast.Constant)
+        and isinstance(key.value, str)
+        and not (isinstance(value, ast.Constant) and value.value is None)
+    }
+
+
+def _scope_factory_resolution(
+    scope: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+    events: dict[int, dict[str, tuple[_BindingEvent, ...]]],
+    root: str,
+    position: tuple[int, int],
+    expected: str,
+) -> bool | None:
+    bindings = (*events[id(scope)].get(root, ()), *events[id(scope)].get("*", ()))
+    prior = [event for event in bindings if (event.line, event.col) < position]
+    if prior:
+        latest = max(prior, key=lambda event: (event.line, event.col))
+        return latest.direct and latest.kind == expected
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)) and bindings:
+        return False
+    if isinstance(scope, ast.Module):
+        return False
+    return None
+
+
+def _collect_module_import_events(
+    names: list[ast.alias], collected: dict[str, list[_BindingEvent]], *, direct: bool
+) -> None:
+    for alias in names:
+        local = alias.asname or alias.name.partition(".")[0]
+        kind = (
+            _MODULE_FACTORY
+            if alias.name == "collections" or (alias.name.startswith("collections.") and alias.asname is None)
+            else _OTHER_BINDING
+        )
+        collected.setdefault(local, []).append(_BindingEvent(alias.lineno, alias.col_offset, kind, direct=direct))

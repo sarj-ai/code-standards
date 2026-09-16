@@ -24,6 +24,7 @@ from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import a
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from sqlglot import exp
@@ -80,25 +81,6 @@ def _docstring_node_ids(tree: ast.AST) -> set[int]:
     return result
 
 
-def _import_names(tree: ast.AST) -> frozenset[str]:
-    names: set[str] = set()
-    for node in nodes(tree, ast.Import, ast.ImportFrom):
-        if isinstance(node, ast.Import):
-            names.update(alias.name.lower() for alias in node.names)
-            continue
-        if node.level:
-            continue
-        module = (node.module or "").lower()
-        if module:
-            names.add(module)
-        names.update(f"{module}.{alias.name.lower()}" if module else alias.name.lower() for alias in node.names)
-    return frozenset(names)
-
-
-def _has_import_prefix(imports: frozenset[str], prefixes: tuple[str, ...]) -> bool:
-    return any(name == prefix or name.startswith(f"{prefix}.") for name in imports for prefix in prefixes)
-
-
 def _is_query_context(node: ast.expr, parents: dict[int, ast.AST], roots: frozenset[int]) -> bool:
     current: ast.AST = node
     while True:
@@ -118,45 +100,10 @@ def _query_roots(tree: ast.Module, parents: dict[int, ast.AST]) -> frozenset[int
         key = (id(owner), name)
         binding_counts[key] = binding_counts.get(key, 0) + 1
 
-    for name in nodes(tree, ast.Name):
-        if isinstance(name.ctx, (ast.Store, ast.Del)):
-            count(_scope(name, parents), name.id)
-    for argument in nodes(tree, ast.arg):
-        count(_scope(argument, parents), argument.arg)
-    for imported in nodes(tree, ast.Import, ast.ImportFrom):
-        owner = _scope(imported, parents)
-        for alias in imported.names:
-            if alias.name == "*":
-                wildcard_scopes.add(id(owner))
-                continue
-            count(owner, alias.asname or alias.name.split(".")[0])
-    for definition in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef):
-        parent = parents.get(id(definition))
-        if parent is not None:
-            count(_scope(parent, parents), definition.name)
-    for handler in nodes(tree, ast.ExceptHandler):
-        if handler.name:
-            count(_scope(handler, parents), handler.name)
-    for pattern in nodes(tree, ast.MatchAs, ast.MatchStar, ast.MatchMapping):
-        name = pattern.name if isinstance(pattern, (ast.MatchAs, ast.MatchStar)) else pattern.rest
-        if name:
-            count(_scope(pattern, parents), name)
-    for declaration in nodes(tree, ast.Global, ast.Nonlocal):
-        for name in declaration.names:
-            count(_scope(declaration, parents), name)
+    _count_query_bindings(tree, parents, count, wildcard_scopes)
 
     constructor_imports = _postgres_sql_constructors(tree, parents)
-    for assignment in nodes(tree, ast.Assign, ast.AnnAssign):
-        target: ast.expr | None = None
-        if isinstance(assignment, ast.Assign) and len(assignment.targets) == 1:
-            target = assignment.targets[0]
-        elif isinstance(assignment, ast.AnnAssign):
-            target = assignment.target
-        if not isinstance(target, ast.Name) or assignment.value is None:
-            continue
-        owner = _scope(assignment, parents)
-        if parents.get(id(assignment)) is owner:
-            binding_values[id(owner), target.id] = assignment.value
+    _query_binding_values(tree, parents, binding_values)
 
     roots: set[int] = set()
     for call in nodes(tree, ast.Call):
@@ -221,25 +168,7 @@ def _postgres_sql_constructors(tree: ast.Module, parents: dict[int, ast.AST]) ->
     constructors: set[_ConstructorImport] = set()
     for node in nodes(tree, ast.Import, ast.ImportFrom):
         owner_id = id(_scope(node, parents))
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name == "psycopg.sql":
-                    constructors.add(
-                        _ConstructorImport(owner_id, f"{alias.asname}.SQL" if alias.asname else "psycopg.sql.SQL")
-                    )
-            continue
-        if node.level:
-            continue
-        if node.module == "psycopg.sql":
-            constructors.update(
-                _ConstructorImport(owner_id, alias.asname or alias.name) for alias in node.names if alias.name == "SQL"
-            )
-        elif node.module == "psycopg":
-            constructors.update(
-                _ConstructorImport(owner_id, f"{alias.asname or alias.name}.SQL")
-                for alias in node.names
-                if alias.name == "sql"
-            )
+        _record_sql_constructors(node, owner_id, constructors)
     return frozenset(constructors)
 
 
@@ -308,64 +237,6 @@ def _expression_args(node: exp.Expr, key: str) -> tuple[exp.Expr, ...]:
     return tuple(child for child in node.iter_expressions() if child.arg_key == key)
 
 
-def _parse_signal(sql: str, *, include_extended_shapes: bool) -> str | None:
-    import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only SQL that passes cheap ownership and shape gates
-    from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
-
-    normalized = _COMPOSABLE_HOLE.sub(_SQL_HOLE, sql)
-    try:
-        statements = sqlglot.parse(normalized, read="postgres")
-    except SqlglotError:
-        return None
-    for statement in statements:
-        if (
-            statement is not None
-            and (signal := _architecture_signal(statement, include_extended_shapes=include_extended_shapes)) is not None
-        ):
-            return signal
-    return None
-
-
-def _architecture_signal(statement: exp.Expr, *, include_extended_shapes: bool) -> str | None:
-    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
-
-    if not isinstance(statement, exp.Query):
-        return None
-    maximum_joins = max(
-        (
-            sum(isinstance(join, exp.Join) and "pivots" in join.args for join in _expression_args(select, "joins"))
-            for select in statement.find_all(exp.Select)
-        ),
-        default=0,
-    )
-    if maximum_joins >= _JOIN_LIMIT:
-        return f"SELECT block has {maximum_joins} JOINs (4+ explicit JOINs)"
-    if not include_extended_shapes:
-        return None
-    nested_queries = sum(1 for query in statement.walk() if isinstance(query, exp.Query)) - 1
-    for select in _root_selects(statement):
-        for join in _expression_args(select, "joins"):
-            if not isinstance(join, exp.Join):
-                continue
-            if (derived := _derived_query(_expression_arg(join, "this"))) is not None and _has_complex_body(derived):
-                return "Complex JOIN-derived query"
-        from_clause = _expression_arg(select, "from_")
-        if not isinstance(from_clause, exp.From):
-            continue
-        if (derived := _derived_query(_expression_arg(from_clause, "this"))) is not None and _has_complex_body(derived):
-            return "Complex FROM-derived query"
-    if nested_queries >= _STAGE_LIMIT:
-        return f"Query has {nested_queries} CTE/subquery stages"
-    if maximum_joins >= _COMBINED_JOIN_LIMIT and nested_queries >= _COMBINED_STAGE_LIMIT:
-        return f"Query combines {maximum_joins} JOINs with {nested_queries} CTE/subquery stages"
-    for select in _root_selects(statement):
-        projections = tuple(_expression_args(select, "expressions"))
-        joins = tuple(join for join in _expression_args(select, "joins") if isinstance(join, exp.Join))
-        if len(projections) >= _WIDE_PROJECTION_LIMIT and len(joins) >= _WIDE_PROJECTION_JOIN_LIMIT:
-            return f"Joined query block has {len(projections)} projected expressions"
-    return None
-
-
 def _root_selects(query: exp.Query) -> tuple[exp.Select, ...]:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
@@ -378,26 +249,6 @@ def _root_selects(query: exp.Query) -> tuple[exp.Select, ...]:
         if isinstance((branch := _expression_arg(query, key)), exp.Query):
             branches.extend(_root_selects(branch))
     return tuple(branches)
-
-
-def _has_complex_body(query: exp.Query) -> bool:
-    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
-
-    if isinstance(query, exp.SetOperation):
-        return True
-    if not isinstance(query, exp.Select):
-        return False
-    if _expression_arg(query, "group") is not None or _expression_arg(query, "having") is not None:
-        return True
-    if any(window.parent_select is query for window in query.find_all(exp.Window)):
-        return True
-    from_clause = _expression_arg(query, "from_")
-    if isinstance(from_clause, exp.From) and _derived_query(_expression_arg(from_clause, "this")) is not None:
-        return True
-    for join in _expression_args(query, "joins"):
-        if isinstance(join, exp.Join) and _derived_query(_expression_arg(join, "this")) is not None:
-            return True
-    return False
 
 
 def _derived_query(node: exp.Expr | None) -> exp.Query | None:
@@ -517,10 +368,7 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
         tree = parse_or_none(path, source)
         if tree is None:
             return []
-        imports = _import_names(tree)
-        if not _has_import_prefix(imports, _POSTGRES_IMPORT_PREFIXES) or _has_import_prefix(
-            imports, _AMBIGUOUS_RELATIONAL_IMPORT_PREFIXES
-        ):
+        if not _is_postgres_module(tree):
             return []
 
         docstrings = _docstring_node_ids(tree)
@@ -537,27 +385,10 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             if isinstance(node, (ast.BinOp, ast.JoinedStr)):
                 consumed.update(id(child) for child in walk(node))
 
-            sql_without_noise = strip_sql_noise(text_value)
-            if (
-                _QUERY_SHAPE.search(sql_without_noise) is None
-                or _CLICKHOUSE_SQL.search(sql_without_noise)
-                or _BIGQUERY_SQL.search(sql_without_noise)
-                or (is_store_module(path) and analytical_signal(sql_without_noise) is not None)
-            ):
+            signal = _query_architecture_signal(text_value, path)
+            if signal is None:
                 continue
-            if (signal := _parse_signal(text_value, include_extended_shapes=is_store_module(path))) is None:
-                continue
-            coordination = re.search(
-                r"\b(?:FOR\s+(?:NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|SKIP\s+LOCKED)\b", text_value, re.IGNORECASE
-            )
-            guidance = (
-                " preserve the atomic statement; review bounds, ordering, and locks, then document its cardinality, "
-                "supporting indexes, and production-like plan."
-                if coordination is not None
-                else " review bounds, ordering, and locks; review cardinality and a production-like query plan, then "
-                "review whether repeated read-time reconstruction should become a stable derived fact maintained at "
-                "write-time, or otherwise simplify the query or read model when warranted."
-            )
+            guidance = _query_review_guidance(text_value)
             diagnostics.append(
                 Diagnostic(
                     path=path,
@@ -574,3 +405,226 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
             )
         diagnostics.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return diagnostics
+
+
+def _count_query_bindings(
+    tree: ast.Module, parents: dict[int, ast.AST], count: Callable[[ast.AST, str], None], wildcard_scopes: set[int]
+) -> None:
+    for name in nodes(tree, ast.Name):
+        if isinstance(name.ctx, (ast.Store, ast.Del)):
+            count(_scope(name, parents), name.id)
+    for argument in nodes(tree, ast.arg):
+        count(_scope(argument, parents), argument.arg)
+    _count_import_bindings(tree, parents, count, wildcard_scopes)
+    for definition in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef):
+        parent = parents.get(id(definition))
+        if parent is not None:
+            count(_scope(parent, parents), definition.name)
+    for handler in nodes(tree, ast.ExceptHandler):
+        if handler.name:
+            count(_scope(handler, parents), handler.name)
+    for pattern in nodes(tree, ast.MatchAs, ast.MatchStar, ast.MatchMapping):
+        name = pattern.name if isinstance(pattern, (ast.MatchAs, ast.MatchStar)) else pattern.rest
+        if name:
+            count(_scope(pattern, parents), name)
+    for declaration in nodes(tree, ast.Global, ast.Nonlocal):
+        for name in declaration.names:
+            count(_scope(declaration, parents), name)
+
+
+def _query_binding_values(
+    tree: ast.Module, parents: dict[int, ast.AST], binding_values: dict[tuple[int, str], ast.expr]
+) -> None:
+    for assignment in nodes(tree, ast.Assign, ast.AnnAssign):
+        target: ast.expr | None = None
+        if isinstance(assignment, ast.Assign) and len(assignment.targets) == 1:
+            target = assignment.targets[0]
+        elif isinstance(assignment, ast.AnnAssign):
+            target = assignment.target
+        if not isinstance(target, ast.Name) or assignment.value is None:
+            continue
+        owner = _scope(assignment, parents)
+        if parents.get(id(assignment)) is owner:
+            binding_values[id(owner), target.id] = assignment.value
+
+
+def _record_sql_constructors(
+    node: ast.Import | ast.ImportFrom, owner_id: int, constructors: set[_ConstructorImport]
+) -> None:
+    if isinstance(node, ast.Import):
+        _record_sql_module_imports(node, owner_id, constructors)
+        return
+    if node.level:
+        return
+    if node.module == "psycopg.sql":
+        constructors.update(
+            _ConstructorImport(owner_id, alias.asname or alias.name) for alias in node.names if alias.name == "SQL"
+        )
+    elif node.module == "psycopg":
+        constructors.update(
+            _ConstructorImport(owner_id, f"{alias.asname or alias.name}.SQL")
+            for alias in node.names
+            if alias.name == "sql"
+        )
+
+
+def _query_architecture_signal(text_value: str, path: Path) -> str | None:
+    sql_without_noise = strip_sql_noise(text_value)
+    if (
+        _QUERY_SHAPE.search(sql_without_noise) is None
+        or _CLICKHOUSE_SQL.search(sql_without_noise)
+        or _BIGQUERY_SQL.search(sql_without_noise)
+        or (is_store_module(path) and analytical_signal(sql_without_noise) is not None)
+    ):
+        return None
+    return _parse_signal(text_value, include_extended_shapes=is_store_module(path))
+
+
+def _parse_signal(sql: str, *, include_extended_shapes: bool) -> str | None:
+    import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only SQL that passes cheap ownership and shape gates
+    from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
+
+    normalized = _COMPOSABLE_HOLE.sub(_SQL_HOLE, sql)
+    try:
+        statements = sqlglot.parse(normalized, read="postgres")
+    except SqlglotError:
+        return None
+    for statement in statements:
+        if (
+            statement is not None
+            and (signal := _architecture_signal(statement, include_extended_shapes=include_extended_shapes)) is not None
+        ):
+            return signal
+    return None
+
+
+def _architecture_signal(statement: exp.Expr, *, include_extended_shapes: bool) -> str | None:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
+
+    if not isinstance(statement, exp.Query):
+        return None
+    maximum_joins = _maximum_query_joins(statement)
+    if maximum_joins >= _JOIN_LIMIT:
+        return f"SELECT block has {maximum_joins} JOINs (4+ explicit JOINs)"
+    if not include_extended_shapes:
+        return None
+    nested_queries = sum(1 for query in statement.walk() if isinstance(query, exp.Query)) - 1
+    if (derived_signal := _derived_architecture_signal(statement)) is not None:
+        return derived_signal
+    if nested_queries >= _STAGE_LIMIT:
+        return f"Query has {nested_queries} CTE/subquery stages"
+    if maximum_joins >= _COMBINED_JOIN_LIMIT and nested_queries >= _COMBINED_STAGE_LIMIT:
+        return f"Query combines {maximum_joins} JOINs with {nested_queries} CTE/subquery stages"
+    for select in _root_selects(statement):
+        projections = tuple(_expression_args(select, "expressions"))
+        joins = tuple(join for join in _expression_args(select, "joins") if isinstance(join, exp.Join))
+        if len(projections) >= _WIDE_PROJECTION_LIMIT and len(joins) >= _WIDE_PROJECTION_JOIN_LIMIT:
+            return f"Joined query block has {len(projections)} projected expressions"
+    return None
+
+
+def _derived_architecture_signal(statement: exp.Query) -> str | None:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
+
+    for select in _root_selects(statement):
+        for join in _expression_args(select, "joins"):
+            if not isinstance(join, exp.Join):
+                continue
+            if (derived := _derived_query(_expression_arg(join, "this"))) is not None and _has_complex_body(derived):
+                return "Complex JOIN-derived query"
+        from_clause = _expression_arg(select, "from_")
+        if not isinstance(from_clause, exp.From):
+            continue
+        if (derived := _derived_query(_expression_arg(from_clause, "this"))) is not None and _has_complex_body(derived):
+            return "Complex FROM-derived query"
+    return None
+
+
+def _has_complex_body(query: exp.Query) -> bool:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
+
+    if isinstance(query, exp.SetOperation):
+        return True
+    if not isinstance(query, exp.Select):
+        return False
+    if _expression_arg(query, "group") is not None or _expression_arg(query, "having") is not None:
+        return True
+    if any(window.parent_select is query for window in query.find_all(exp.Window)):
+        return True
+    from_clause = _expression_arg(query, "from_")
+    if isinstance(from_clause, exp.From) and _derived_query(_expression_arg(from_clause, "this")) is not None:
+        return True
+    for join in _expression_args(query, "joins"):
+        if isinstance(join, exp.Join) and _derived_query(_expression_arg(join, "this")) is not None:
+            return True
+    return False
+
+
+def _maximum_query_joins(statement: exp.Query) -> int:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
+
+    return max(
+        (
+            sum(isinstance(join, exp.Join) and "pivots" in join.args for join in _expression_args(select, "joins"))
+            for select in statement.find_all(exp.Select)
+        ),
+        default=0,
+    )
+
+
+def _count_import_bindings(
+    tree: ast.Module, parents: dict[int, ast.AST], count: Callable[[ast.AST, str], None], wildcard_scopes: set[int]
+) -> None:
+    for imported in nodes(tree, ast.Import, ast.ImportFrom):
+        owner = _scope(imported, parents)
+        for alias in imported.names:
+            if alias.name == "*":
+                wildcard_scopes.add(id(owner))
+                continue
+            count(owner, alias.asname or alias.name.split(".")[0])
+
+
+def _record_sql_module_imports(node: ast.Import, owner_id: int, constructors: set[_ConstructorImport]) -> None:
+    for alias in node.names:
+        if alias.name == "psycopg.sql":
+            constructors.add(_ConstructorImport(owner_id, f"{alias.asname}.SQL" if alias.asname else "psycopg.sql.SQL"))
+
+
+def _query_review_guidance(text_value: str) -> str:
+    coordination = re.search(
+        r"\b(?:FOR\s+(?:NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|SKIP\s+LOCKED)\b", text_value, re.IGNORECASE
+    )
+    return (
+        " preserve the atomic statement; review bounds, ordering, and locks, then document its cardinality, "
+        "supporting indexes, and production-like plan."
+        if coordination is not None
+        else " review bounds, ordering, and locks; review cardinality and a production-like query plan, then "
+        "review whether repeated read-time reconstruction should become a stable derived fact maintained at "
+        "write-time, or otherwise simplify the query or read model when warranted."
+    )
+
+
+def _is_postgres_module(tree: ast.Module) -> bool:
+    imports = _import_names(tree)
+    return _has_import_prefix(imports, _POSTGRES_IMPORT_PREFIXES) and not _has_import_prefix(
+        imports, _AMBIGUOUS_RELATIONAL_IMPORT_PREFIXES
+    )
+
+
+def _has_import_prefix(imports: frozenset[str], prefixes: tuple[str, ...]) -> bool:
+    return any(name == prefix or name.startswith(f"{prefix}.") for name in imports for prefix in prefixes)
+
+
+def _import_names(tree: ast.AST) -> frozenset[str]:
+    names: set[str] = set()
+    for node in nodes(tree, ast.Import, ast.ImportFrom):
+        if isinstance(node, ast.Import):
+            names.update(alias.name.lower() for alias in node.names)
+            continue
+        if node.level:
+            continue
+        module = (node.module or "").lower()
+        if module:
+            names.add(module)
+        names.update(f"{module}.{alias.name.lower()}" if module else alias.name.lower() for alias in node.names)
+    return frozenset(names)

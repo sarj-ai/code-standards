@@ -37,7 +37,7 @@ const visibleFixedFiles = before.fixedFiles.filter((file) => file.source.trim().
 <div class="rule-example-pair">
   <CodeComparison
     {id}
-    before={{ label: 'Before — rejected', title: before.title, files: beforeFiles }}
+    before={{ label: 'Before — flagged', title: before.title, files: beforeFiles }}
     after={{ label: 'After — preferred', title: after.title, files: afterFiles }}
   />
   {visibleFixedFiles.length > 0 && (

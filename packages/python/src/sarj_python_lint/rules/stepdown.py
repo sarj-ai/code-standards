@@ -136,25 +136,7 @@ def _check_module_scope(path: Path, tree: ast.Module, code: str, transparent: fr
 
     graph: dict[str, set[str]] = {}
     ref_lines: dict[tuple[str, str], int] = {}
-    for d in defs:
-        name = d.name
-        callees = graph.setdefault(name, set())
-        nodes = (
-            _resolved_function_loads(d, frozenset(all_defs))
-            if isinstance(d, _DEF_NODES)
-            else _runtime_nodes(_deferred_body(d))
-        )
-        local: set[str] = set() if isinstance(d, _DEF_NODES) else _locally_bound_names(d)
-        for n in nodes:
-            if (
-                isinstance(n, ast.Name)
-                and isinstance(n.ctx, ast.Load)
-                and n.id in all_defs
-                and n.id != name
-                and n.id not in local
-            ):
-                callees.add(n.id)
-                _record_ref_line(ref_lines, name, n.id, n.lineno)
+    _module_call_graph(defs, all_defs, graph, ref_lines)
 
     diags: list[Diagnostic] = []
     for name, d in unique_defs.items():
@@ -185,21 +167,7 @@ def _check_class_scope(
 
     graph: dict[str, set[str]] = {}
     ref_lines: dict[tuple[str, str], int] = {}
-    for m in methods:
-        name = m.name
-        callees = graph.setdefault(name, set())
-        for n in _runtime_nodes(m.body):
-            if not isinstance(n, ast.Attribute) or not isinstance(n.ctx, ast.Load) or n.attr not in all_methods:
-                continue
-            if _is_same_class_ref(n.value, cls.name):
-                if n.attr != name:
-                    callees.add(n.attr)
-                    _record_ref_line(ref_lines, name, n.attr, n.lineno)
-            else:
-                # `peer._helper()` may target another instance of this class.
-                # Without type information, claiming `self._helper()` is the
-                # sole caller would be noisier than conservatively pinning it.
-                pinned.add(n.attr)
+    _class_call_graph(cls, methods, all_methods, graph, ref_lines, pinned=pinned)
 
     diags: list[Diagnostic] = []
     for name, m in unique.items():
@@ -336,10 +304,6 @@ def _class_self_method_refs(cls: ast.ClassDef) -> set[str]:
     return out
 
 
-def _is_same_class_ref(value: ast.expr, class_name: str) -> bool:
-    return isinstance(value, ast.Name) and (value.id in _SELF_NAMES or value.id == class_name)
-
-
 def _is_self_like(value: ast.expr, class_name: str) -> bool:
     match value:
         case ast.Name(id=vid):
@@ -388,19 +352,6 @@ def _has_order_sensitive_decorator(node: ast.FunctionDef | ast.AsyncFunctionDef,
     return any(
         not isinstance(decorator, ast.Name) or decorator.id not in transparent for decorator in node.decorator_list
     )
-
-
-def _deferred_body(node: ast.stmt) -> list[ast.stmt]:
-    if isinstance(node, _DEF_NODES):
-        return node.body
-    if isinstance(node, ast.ClassDef):
-        return [
-            stmt
-            for child in node.body
-            if isinstance(child, (*_DEF_NODES, ast.ClassDef))
-            for stmt in _deferred_body(child)
-        ]
-    return []
 
 
 def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
@@ -546,41 +497,6 @@ def _self_attribute_stores(node: ast.stmt) -> set[str]:
     }
 
 
-def _locally_bound_names(node: ast.stmt) -> set[str]:
-    comp_targets = {
-        id(t)
-        for n in _walk(node)
-        if isinstance(n, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
-        for gen in n.generators
-        for t in _walk(gen.target)
-        if isinstance(t, ast.Name)
-    }
-    bound: set[str] = set()
-    for n in _walk(node):
-        match n:
-            case ast.Name(ctx=ast.Store() | ast.Del()) if id(n) not in comp_targets:
-                bound.add(n.id)
-            case ast.arg():
-                bound.add(n.arg)
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if n is not node:
-                bound.add(n.name)
-            case ast.alias(name=name, asname=asname):
-                bound.add((asname or name).split(".")[0])
-            case ast.MatchAs(name=str() as nm) | ast.MatchStar(name=str() as nm) | ast.MatchMapping(rest=str() as nm):
-                bound.add(nm)
-            case _:
-                pass
-    return bound
-
-
-def _resolved_function_loads(
-    node: ast.FunctionDef | ast.AsyncFunctionDef,
-    candidates: frozenset[str],
-) -> Iterator[ast.Name]:
-    blocked = _direct_scope_bindings(node) & candidates
-    yield from _resolved_loads(node.body, candidates, blocked)
-
-
 def _resolved_lambda_loads(node: ast.Lambda, candidates: frozenset[str]) -> Iterator[ast.Name]:
     blocked = _lambda_bindings(node) & candidates
     yield from _resolved_loads((node.body,), candidates, blocked)
@@ -592,36 +508,7 @@ def _resolved_loads(
     blocked: set[str],
 ) -> Iterator[ast.Name]:
     for node in nodes:
-        match node:
-            case ast.Name(id=name, ctx=ast.Load()) if name in candidates and name not in blocked:
-                yield node
-            case ast.FunctionDef() | ast.AsyncFunctionDef():
-                immediate = (*node.decorator_list, *node.args.defaults, *(d for d in node.args.kw_defaults if d))
-                yield from _resolved_loads(immediate, candidates, blocked)
-                child_blocked = (blocked | (_direct_scope_bindings(node) & candidates)) - _global_names(node)
-                yield from _resolved_loads(node.body, candidates, child_blocked)
-            case ast.Lambda():
-                immediate = (*node.args.defaults, *(d for d in node.args.kw_defaults if d))
-                yield from _resolved_loads(immediate, candidates, blocked)
-                child_blocked = blocked | (_lambda_bindings(node) & candidates)
-                yield from _resolved_loads((node.body,), candidates, child_blocked)
-            case ast.ListComp() | ast.SetComp() | ast.GeneratorExp() | ast.DictComp():
-                yield from _resolved_comprehension_loads(node, candidates, blocked)
-            case ast.If(test=test, orelse=orelse) if _is_type_checking_test(test):
-                yield from _resolved_loads(orelse, candidates, blocked)
-            case ast.AnnAssign(value=value):
-                if value is not None:
-                    yield from _resolved_loads((value,), candidates, blocked)
-            case ast.ClassDef():
-                # Class namespaces and method closures have different lookup rules.
-                # Abstain instead of flattening them into the enclosing function.
-                yield from _resolved_loads(
-                    (*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)),
-                    candidates,
-                    blocked,
-                )
-            case _:
-                yield from _resolved_loads(tuple(_child_nodes(node)), candidates, blocked)
+        yield from _resolved_node_loads(node, candidates, blocked)
 
 
 def _resolved_comprehension_loads(
@@ -724,3 +611,145 @@ def _reaches(graph: dict[str, set[str]], start: str, target: str) -> bool:
                 seen.add(nxt)
                 stack.append(nxt)
     return False
+
+
+def _module_call_graph(
+    defs: list[_Def | ast.ClassDef],
+    all_defs: dict[str, _Def | ast.ClassDef],
+    graph: dict[str, set[str]],
+    ref_lines: dict[tuple[str, str], int],
+) -> None:
+    for d in defs:
+        name = d.name
+        callees = graph.setdefault(name, set())
+        nodes = (
+            _resolved_function_loads(d, frozenset(all_defs))
+            if isinstance(d, _DEF_NODES)
+            else _runtime_nodes(_deferred_body(d))
+        )
+        local: set[str] = set() if isinstance(d, _DEF_NODES) else _locally_bound_names(d)
+        for n in nodes:
+            if (
+                isinstance(n, ast.Name)
+                and isinstance(n.ctx, ast.Load)
+                and n.id in all_defs
+                and n.id != name
+                and n.id not in local
+            ):
+                callees.add(n.id)
+                _record_ref_line(ref_lines, name, n.id, n.lineno)
+
+
+def _resolved_function_loads(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    candidates: frozenset[str],
+) -> Iterator[ast.Name]:
+    blocked = _direct_scope_bindings(node) & candidates
+    yield from _resolved_loads(node.body, candidates, blocked)
+
+
+def _locally_bound_names(node: ast.stmt) -> set[str]:
+    comp_targets = _comprehension_target_ids(node)
+    bound: set[str] = set()
+    for n in _walk(node):
+        match n:
+            case ast.Name(ctx=ast.Store() | ast.Del()) if id(n) not in comp_targets:
+                bound.add(n.id)
+            case ast.arg():
+                bound.add(n.arg)
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() if n is not node:
+                bound.add(n.name)
+            case ast.alias(name=name, asname=asname):
+                bound.add((asname or name).split(".")[0])
+            case ast.MatchAs(name=str() as nm) | ast.MatchStar(name=str() as nm) | ast.MatchMapping(rest=str() as nm):
+                bound.add(nm)
+            case _:
+                pass
+    return bound
+
+
+def _deferred_body(node: ast.stmt) -> list[ast.stmt]:
+    if isinstance(node, _DEF_NODES):
+        return node.body
+    if isinstance(node, ast.ClassDef):
+        return [
+            stmt
+            for child in node.body
+            if isinstance(child, (*_DEF_NODES, ast.ClassDef))
+            for stmt in _deferred_body(child)
+        ]
+    return []
+
+
+def _class_call_graph(
+    cls: ast.ClassDef,
+    methods: Sequence[ast.FunctionDef | ast.AsyncFunctionDef],
+    all_methods: Mapping[str, ast.FunctionDef | ast.AsyncFunctionDef],
+    graph: dict[str, set[str]],
+    ref_lines: dict[tuple[str, str], int],
+    *,
+    pinned: set[str],
+) -> None:
+    for m in methods:
+        name = m.name
+        callees = graph.setdefault(name, set())
+        for n in _runtime_nodes(m.body):
+            if not isinstance(n, ast.Attribute) or not isinstance(n.ctx, ast.Load) or n.attr not in all_methods:
+                continue
+            if _is_same_class_ref(n.value, cls.name):
+                if n.attr != name:
+                    callees.add(n.attr)
+                    _record_ref_line(ref_lines, name, n.attr, n.lineno)
+            else:
+                # `peer._helper()` may target another instance of this class.
+                # Without type information, claiming `self._helper()` is the
+                # sole caller would be noisier than conservatively pinning it.
+                pinned.add(n.attr)
+
+
+def _is_same_class_ref(value: ast.expr, class_name: str) -> bool:
+    return isinstance(value, ast.Name) and (value.id in _SELF_NAMES or value.id == class_name)
+
+
+def _comprehension_target_ids(node: ast.stmt) -> set[int]:
+    return {
+        id(t)
+        for n in _walk(node)
+        if isinstance(n, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp))
+        for gen in n.generators
+        for t in _walk(gen.target)
+        if isinstance(t, ast.Name)
+    }
+
+
+def _resolved_node_loads(node: ast.AST, candidates: frozenset[str], blocked: set[str]) -> Iterator[ast.Name]:
+    match node:
+        case ast.Name(id=name, ctx=ast.Load()) if name in candidates and name not in blocked:
+            yield node
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            immediate = (*node.decorator_list, *node.args.defaults, *(d for d in node.args.kw_defaults if d))
+            yield from _resolved_loads(immediate, candidates, blocked)
+            child_blocked = (blocked | (_direct_scope_bindings(node) & candidates)) - _global_names(node)
+            yield from _resolved_loads(node.body, candidates, child_blocked)
+        case ast.Lambda():
+            immediate = (*node.args.defaults, *(d for d in node.args.kw_defaults if d))
+            yield from _resolved_loads(immediate, candidates, blocked)
+            child_blocked = blocked | (_lambda_bindings(node) & candidates)
+            yield from _resolved_loads((node.body,), candidates, child_blocked)
+        case ast.ListComp() | ast.SetComp() | ast.GeneratorExp() | ast.DictComp():
+            yield from _resolved_comprehension_loads(node, candidates, blocked)
+        case ast.If(test=test, orelse=orelse) if _is_type_checking_test(test):
+            yield from _resolved_loads(orelse, candidates, blocked)
+        case ast.AnnAssign(value=value):
+            if value is not None:
+                yield from _resolved_loads((value,), candidates, blocked)
+        case ast.ClassDef():
+            # Class namespaces and method closures have different lookup rules.
+            # Abstain instead of flattening them into the enclosing function.
+            yield from _resolved_loads(
+                (*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)),
+                candidates,
+                blocked,
+            )
+        case _:
+            yield from _resolved_loads(tuple(_child_nodes(node)), candidates, blocked)

@@ -108,6 +108,30 @@ class NoNestedPydanticFieldValidator(Rule):
         imports = _module_scope_imports(tree)
         parents = _parent_index(tree)
         diagnostics: list[Diagnostic] = []
+
+        def collect_nested_validators(outer: ast.ClassDef, nested: ast.ClassDef, outer_fields: frozenset[str]) -> None:
+            nested_fields = _direct_fields(nested, imports)
+            for function in (
+                statement for statement in nested.body if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
+            ):
+                for decorator, fields in _field_validators(function, imports, parents):
+                    selected_fields = outer_fields if "*" in fields else fields & outer_fields
+                    misplaced = sorted(selected_fields - nested_fields)
+                    if not misplaced:
+                        continue
+                    diagnostics.append(
+                        Diagnostic(
+                            path=path,
+                            line=decorator.lineno,
+                            col=decorator.col_offset + 1,
+                            code=self.code,
+                            message=(
+                                f"Validator for outer field(s) {', '.join(f'`{name}`' for name in misplaced)} "
+                                f"is nested inside `{nested.name}`; move it to `{outer.name}`."
+                            ),
+                        )
+                    )
+
         for outer in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
             if not _is_direct_model(outer, imports, parents):
                 continue
@@ -118,29 +142,7 @@ class NoNestedPydanticFieldValidator(Rule):
                 # Config/helper classes provide a deterministic ownership mistake.
                 if nested.bases:
                     continue
-                nested_fields = _direct_fields(nested, imports)
-                for function in (
-                    statement
-                    for statement in nested.body
-                    if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
-                ):
-                    for decorator, fields in _field_validators(function, imports, parents):
-                        selected_fields = outer_fields if "*" in fields else fields & outer_fields
-                        misplaced = sorted(selected_fields - nested_fields)
-                        if not misplaced:
-                            continue
-                        diagnostics.append(
-                            Diagnostic(
-                                path=path,
-                                line=decorator.lineno,
-                                col=decorator.col_offset + 1,
-                                code=self.code,
-                                message=(
-                                    f"Validator for outer field(s) {', '.join(f'`{name}`' for name in misplaced)} "
-                                    f"is nested inside `{nested.name}`; move it to `{outer.name}`."
-                                ),
-                            )
-                        )
+                collect_nested_validators(outer, nested, outer_fields)
         return diagnostics
 
 

@@ -184,23 +184,7 @@ class PreferFstringOverConcat(Rule):
         parents = {id(child): parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
         regex_bindings = _regex_bindings(tree)
         for node in nodes(tree, ast.BinOp, ast.Call, ast.JoinedStr):
-            if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-                adds.append(node)
-                for side in (node.left, node.right):
-                    if isinstance(side, ast.BinOp) and isinstance(side.op, ast.Add):
-                        inner.add(id(side))
-            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
-                # `("%0" + width + "d") % args` builds a format template.
-                excluded.add(id(node.left))
-            elif isinstance(node, ast.Call) and _is_logging_call(node):
-                arguments: list[ast.expr] = [*node.args, *(kw.value for kw in node.keywords)]
-                excluded.update(id(sub) for arg in arguments for sub in walk(arg))
-            elif isinstance(node, ast.Call) and _is_regex_call(node, regex_bindings):
-                excluded.update(id(sub) for arg in node.args for sub in walk(arg))
-            elif isinstance(node, ast.JoinedStr):
-                # Rewriting a concat already nested in an f-string merely
-                # trades one interpolation expression for a nested f-string.
-                excluded.update(id(sub) for sub in walk(node) if isinstance(sub, ast.BinOp))
+            _classify_concat_context(node, inner, excluded, adds, regex_bindings)
 
         diags: list[Diagnostic] = []
         for node in adds:
@@ -223,6 +207,28 @@ class PreferFstringOverConcat(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _classify_concat_context(
+    node: ast.BinOp | ast.Call | ast.JoinedStr,
+    inner: set[int],
+    excluded: set[int],
+    adds: list[ast.BinOp],
+    regex_bindings: _RegexBindings,
+) -> None:
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        _collect_add_chain(node, adds, inner)
+    elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+        # `("%0" + width + "d") % args` builds a format template.
+        excluded.add(id(node.left))
+    elif isinstance(node, ast.Call) and _is_logging_call(node):
+        _exclude_logging_chains(node, excluded)
+    elif isinstance(node, ast.Call) and _is_regex_call(node, regex_bindings):
+        excluded.update(id(sub) for arg in node.args for sub in walk(arg))
+    elif isinstance(node, ast.JoinedStr):
+        # Rewriting a concat already nested in an f-string merely
+        # trades one interpolation expression for a nested f-string.
+        excluded.update(id(sub) for sub in walk(node) if isinstance(sub, ast.BinOp))
 
 
 def _is_logging_call(node: ast.Call) -> bool:
@@ -250,13 +256,7 @@ def _regex_bindings(tree: ast.Module) -> _RegexBindings:
         for alias in statement.names
         if alias.name == "re"
     }
-    functions = {
-        alias.asname or alias.name
-        for statement in tree.body
-        if isinstance(statement, ast.ImportFrom) and statement.module == "re"
-        for alias in statement.names
-        if alias.name in _REGEX_METHODS
-    }
+    functions = _regex_function_bindings(tree)
     return _RegexBindings(frozenset(modules), frozenset(functions))
 
 
@@ -284,27 +284,7 @@ def _verdict(node: ast.BinOp, evidence: _StringEvidence) -> str | None:
             literals.append(operand.value)
         else:
             dynamic.append(operand)
-    if not literals or not dynamic:
-        return None
-    if sum(len(text) for text in literals) > _MAX_LITERAL_CHARACTERS:
-        return None
-    # A literal is not sufficient type proof: libraries such as pandas and
-    # SQLAlchemy overload reflected ``+`` on their expression objects.  Only
-    # recommend an f-string when every runtime operand is provably a string.
-    if not all(_is_string_expr(expr, evidence) for expr in dynamic):
-        return None
-    if any("{" in text or "}" in text for text in literals):
-        return None
-    if any(_SQL_RE.search(text) for text in literals):
-        return None
-    if any(_PCT_FORMAT_RE.search(text) for text in literals):
-        return None
-    if any(
-        _is_join_call(expr) or _is_string_repetition(expr) or _is_lazy_call(expr) or _is_orm_expression(expr)
-        for expr in dynamic
-    ):
-        return None
-    if any(isinstance(expr, ast.IfExp | ast.BoolOp) for expr in dynamic):
+    if _unsupported_interpolation_operands(literals, dynamic, evidence):
         return None
     if len(operands) == _TERMINATOR_OPERANDS and all(not text.strip() for text in literals):
         return None
@@ -373,6 +353,32 @@ def _flatten(node: ast.expr) -> list[ast.expr]:
         else:
             operands.append(current)
     return operands
+
+
+def _unsupported_interpolation_operands(
+    literals: list[str], dynamic: list[ast.expr], evidence: _StringEvidence
+) -> bool:
+    if not literals or not dynamic:
+        return True
+    if sum(len(text) for text in literals) > _MAX_LITERAL_CHARACTERS:
+        return True
+    # A literal is not sufficient type proof: libraries such as pandas and
+    # SQLAlchemy overload reflected ``+`` on their expression objects.  Only
+    # recommend an f-string when every runtime operand is provably a string.
+    if not all(_is_string_expr(expr, evidence) for expr in dynamic):
+        return True
+    if any("{" in text or "}" in text for text in literals):
+        return True
+    if any(_SQL_RE.search(text) for text in literals):
+        return True
+    if any(_PCT_FORMAT_RE.search(text) for text in literals):
+        return True
+    if any(
+        _is_join_call(expr) or _is_string_repetition(expr) or _is_lazy_call(expr) or _is_orm_expression(expr)
+        for expr in dynamic
+    ):
+        return True
+    return bool(any(isinstance(expr, ast.IfExp | ast.BoolOp) for expr in dynamic))
 
 
 def _is_join_call(expr: ast.expr) -> bool:
@@ -468,22 +474,7 @@ def _string_evidence(node: ast.BinOp, parents: dict[int, ast.AST]) -> _StringEvi
 
     known: set[str] = set()
     if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-        args = scope.args
-        for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
-            if arg.annotation is not None and _annotation_is_string(arg.annotation, shadowed):
-                known.add(arg.arg)
-        if (
-            args.vararg is not None
-            and args.vararg.annotation is not None
-            and _annotation_is_string(args.vararg.annotation, shadowed)
-        ):
-            known.add(args.vararg.arg)
-        if (
-            args.kwarg is not None
-            and args.kwarg.annotation is not None
-            and _annotation_is_string(args.kwarg.annotation, shadowed)
-        ):
-            known.add(args.kwarg.arg)
+        _collect_string_parameters(scope, shadowed, known)
 
     body: list[ast.stmt] = []
     if isinstance(scope, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
@@ -491,24 +482,7 @@ def _string_evidence(node: ast.BinOp, parents: dict[int, ast.AST]) -> _StringEvi
     for statement in body:
         if statement.lineno >= node.lineno:
             break
-        if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
-            if _annotation_is_string(statement.annotation, shadowed):
-                known.add(statement.target.id)
-            else:
-                known.discard(statement.target.id)
-        elif isinstance(statement, ast.Assign):
-            for target in statement.targets:
-                if not isinstance(target, ast.Name):
-                    continue
-                evidence = _StringEvidence(frozenset(known), shadowed, modules)
-                if _is_string_expr(statement.value, evidence):
-                    known.add(target.id)
-                else:
-                    known.discard(target.id)
-        elif isinstance(statement, ast.AugAssign) and isinstance(statement.target, ast.Name):
-            known.discard(statement.target.id)
-        else:
-            known.difference_update(_bound_names(statement))
+        _update_string_bindings(statement, shadowed, modules, known)
     return _StringEvidence(frozenset(known), shadowed, modules)
 
 
@@ -612,3 +586,69 @@ def _stored_names(node: ast.AST) -> set[str]:
         for child in ast.walk(node)
         if isinstance(child, ast.Name) and isinstance(child.ctx, (ast.Store, ast.Del))
     }
+
+
+def _regex_function_bindings(tree: ast.Module) -> set[str]:
+    return {
+        alias.asname or alias.name
+        for statement in tree.body
+        if isinstance(statement, ast.ImportFrom) and statement.module == "re"
+        for alias in statement.names
+        if alias.name in _REGEX_METHODS
+    }
+
+
+def _collect_string_parameters(
+    scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, shadowed: frozenset[str], known: set[str]
+) -> None:
+    args = scope.args
+    for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
+        if arg.annotation is not None and _annotation_is_string(arg.annotation, shadowed):
+            known.add(arg.arg)
+    if (
+        args.vararg is not None
+        and args.vararg.annotation is not None
+        and _annotation_is_string(args.vararg.annotation, shadowed)
+    ):
+        known.add(args.vararg.arg)
+    if (
+        args.kwarg is not None
+        and args.kwarg.annotation is not None
+        and _annotation_is_string(args.kwarg.annotation, shadowed)
+    ):
+        known.add(args.kwarg.arg)
+
+
+def _update_string_bindings(
+    statement: ast.stmt, shadowed: frozenset[str], modules: frozenset[str], known: set[str]
+) -> None:
+    if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+        if _annotation_is_string(statement.annotation, shadowed):
+            known.add(statement.target.id)
+        else:
+            known.discard(statement.target.id)
+    elif isinstance(statement, ast.Assign):
+        for target in statement.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            evidence = _StringEvidence(frozenset(known), shadowed, modules)
+            if _is_string_expr(statement.value, evidence):
+                known.add(target.id)
+            else:
+                known.discard(target.id)
+    elif isinstance(statement, ast.AugAssign) and isinstance(statement.target, ast.Name):
+        known.discard(statement.target.id)
+    else:
+        known.difference_update(_bound_names(statement))
+
+
+def _exclude_logging_chains(node: ast.Call, excluded: set[int]) -> None:
+    arguments: list[ast.expr] = [*node.args, *(kw.value for kw in node.keywords)]
+    excluded.update(id(sub) for arg in arguments for sub in walk(arg))
+
+
+def _collect_add_chain(node: ast.BinOp, adds: list[ast.BinOp], inner: set[int]) -> None:
+    adds.append(node)
+    for side in (node.left, node.right):
+        if isinstance(side, ast.BinOp) and isinstance(side.op, ast.Add):
+            inner.add(id(side))

@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from .libs.adoption.manifest import Manifest, Profile
+    from .libs.linting.runner import GroupedPaths
 
 
 _INVALID_EXIT = 2
@@ -256,33 +257,13 @@ class Standards:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
             adopted = _analysis_manifest(self.root, normalized_mode)
-            selection_policy = (
-                Policy.corpus_from_manifest(self.root, adopted)
-                if normalized_mode is AnalysisMode.CORPUS
-                else (
-                    Policy.observe_from_manifest(self.root, adopted)
-                    if normalized_mode is AnalysisMode.OBSERVE
-                    else Policy.from_manifest(self.root, adopted)
-                )
-            )
+            selection_policy = _selection_policy(self.root, adopted, normalized_mode)
             rule_selection = _rule_selection(rules)
             selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
-            baseline_counts: dict[str, int]
-            baseline_counts = (
-                diagnostic_baseline.load(
-                    self.root / adopted.diagnostic_baseline,
-                    require_v2=True,
-                    expected_bundle_version=__version__,
-                    expected_catalog_digest=diagnostic_baseline.bundled_catalog_digest(),
-                )
-                if normalized_mode is AnalysisMode.POLICY
-                and adopted is not None
-                and adopted.diagnostic_baseline is not None
-                else {}
-            )
+            baseline_counts = _analysis_baseline(self.root, adopted, normalized_mode)
             changed_scope = diagnostic_baseline.changed_line_scope(self.root, staged=staged)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "baseline-failure", str(exc))
@@ -303,70 +284,12 @@ class Standards:
             rule_selection=rule_selection,
         )
         if rule_selection is None:
-            try:
-                policy = _filter_tool_report(_policy_report(self.root, active_selected), selection_policy)
-            except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
-                issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
-                policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
-            native = report_from_tools(self.root, (*native.tools, policy))
+            native = _with_library_policy(self.root, native, active_selected, selection_policy)
         if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
-            from .libs.linting.repo_standards import (  # ruff: ignore[import-outside-top-level]
-                analyze as analyze_repository,
-            )
-
-            try:
-                repository = analyze_repository(self.root, staged=staged)
-            except Exception as exc:  # ruff: ignore[blind-except] -- dependency contract failures must fail closed.
-                issue = ExecutionIssue(
-                    "repo-standards",
-                    "integration-failure",
-                    f"{type(exc).__name__}: {exc}",
-                )
-                repository = ToolReport("repo-standards", Completion.FAILED, issues=(issue,))
-            if repository is not None:
-                native = report_from_tools(self.root, (*native.tools, repository))
-        coverage: list[CoverageNotice] = []
-        excluded = sum(Path(item).is_file() and item not in active_selected for item in selected)
-        if excluded:
-            coverage.append(
-                CoverageNotice(
-                    "sarj-standards",
-                    "excluded by repository policy",
-                    excluded,
-                    CoverageDisposition.EXCLUDED,
-                )
-            )
-        routed = _routed_for_selection(selected_groups, rule_selection)
-        if rule_selection is None:
-            routed.update(
-                item
-                for item in active_selected
-                if Path(item).is_file() and library_policy_accepts_path(Path(item), self.root)
-            )
-        unsupported = sum(Path(item).is_file() and item not in routed for item in active_selected)
-        if unsupported:
-            coverage.append(
-                CoverageNotice(
-                    "sarj-standards",
-                    "no bundled analyzer accepts the selected file type",
-                    unsupported,
-                )
-            )
+            native = _with_repository_analysis(self.root, native, staged=staged)
+        coverage = _selection_coverage(self.root, selected, active_selected, selected_groups, rule_selection)
         if not external:
-            if selected_groups.typescript and (rule_selection is None or RuleEngine.ESLINT in rule_selection.engines):
-                eslint_enabled = adopted is None or "eslint" in adopted.configs
-                coverage.append(
-                    CoverageNotice(
-                        "eslint",
-                        (
-                            "native analysis does not run TypeScript; use check or external trusted analysis"
-                            if eslint_enabled
-                            else "disabled by repository capabilities"
-                        ),
-                        len(selected_groups.typescript),
-                        CoverageDisposition.FAILED if eslint_enabled else CoverageDisposition.NOT_REQUESTED,
-                    )
-                )
+            _native_typescript_coverage(selected_groups, adopted, rule_selection, coverage)
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
                 native = _with_warning_severity(native, _warning_rule_keys())
             return _with_coverage(
@@ -381,43 +304,20 @@ class Standards:
                     CoverageDisposition.NOT_REQUESTED,
                 )
             )
-        run_eslint = rule_selection is None or RuleEngine.ESLINT in rule_selection.engines
-        external_reports = (
-            (
-                analyze_external(
-                    active_selected,
-                    root=self.root,
-                    trust=normalized_trust,
-                    policy=selection_policy,
-                    capabilities=(
-                        frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.enabled_capabilities)
-                    ),
-                    grouped=selected_groups,
-                    include_react_doctor=include_react_doctor and rule_selection is None,
-                    force_react_doctor=react_doctor_triggered,
-                    react_doctor_staged=staged,
-                    react_doctor_full_scan=react_doctor_full_scan,
-                    pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
-                )
-                if adopted is not None
-                else analyze_external(
-                    active_selected,
-                    root=self.root,
-                    trust=normalized_trust,
-                    capabilities=frozenset({"eslint"}) if rule_selection is not None else None,
-                    grouped=selected_groups,
-                    include_react_doctor=include_react_doctor and rule_selection is None,
-                    force_react_doctor=react_doctor_triggered,
-                    react_doctor_staged=staged,
-                    react_doctor_full_scan=react_doctor_full_scan,
-                    pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
-                )
-            )
-            if run_eslint
-            else ()
+        external_reports = _selected_external_analysis(
+            active_selected,
+            root=self.root,
+            selected_groups=selected_groups,
+            adopted=adopted,
+            selection_policy=selection_policy,
+            rule_selection=rule_selection,
+            normalized_trust=normalized_trust,
+            include_react_doctor=include_react_doctor,
+            react_doctor_triggered=react_doctor_triggered,
+            staged=staged,
+            react_doctor_full_scan=react_doctor_full_scan,
+            pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
         )
-        if rule_selection is not None:
-            external_reports = tuple(_filter_report_selectors(report, rule_selection) for report in external_reports)
         combined = report_from_tools(self.root, (*native.tools, *external_reports))
         if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
             combined = _with_warning_severity(combined, _warning_rule_keys())
@@ -673,6 +573,173 @@ def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisM
 
 def _with_tracked_terraform_tests(root: Path, selected: list[str]) -> list[str]:
     return list(dict.fromkeys((*selected, *diagnostic_baseline.tracked_terraform_test_paths(root))))
+
+
+def _selection_policy(root: Path, adopted: Manifest | None, normalized_mode: AnalysisMode) -> Policy:
+    return (
+        Policy.corpus_from_manifest(root, adopted)
+        if normalized_mode is AnalysisMode.CORPUS
+        else (
+            Policy.observe_from_manifest(root, adopted)
+            if normalized_mode is AnalysisMode.OBSERVE
+            else Policy.from_manifest(root, adopted)
+        )
+    )
+
+
+def _selected_external_analysis(
+    active_selected: list[str],
+    *,
+    root: Path,
+    selected_groups: GroupedPaths,
+    adopted: Manifest | None,
+    selection_policy: Policy,
+    rule_selection: RuleSelection | None,
+    normalized_trust: TrustMode,
+    include_react_doctor: bool,
+    react_doctor_triggered: bool,
+    staged: bool,
+    react_doctor_full_scan: bool,
+    pass_on_unpruned_eslint_suppressions: bool,
+) -> tuple[ToolReport, ...]:
+    run_eslint = rule_selection is None or RuleEngine.ESLINT in rule_selection.engines
+    external_reports = (
+        (
+            analyze_external(
+                active_selected,
+                root=root,
+                trust=normalized_trust,
+                policy=selection_policy,
+                capabilities=(
+                    frozenset({"eslint"}) if rule_selection is not None else frozenset(adopted.enabled_capabilities)
+                ),
+                grouped=selected_groups,
+                include_react_doctor=include_react_doctor and rule_selection is None,
+                force_react_doctor=react_doctor_triggered,
+                react_doctor_staged=staged,
+                react_doctor_full_scan=react_doctor_full_scan,
+                pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+            )
+            if adopted is not None
+            else analyze_external(
+                active_selected,
+                root=root,
+                trust=normalized_trust,
+                capabilities=frozenset({"eslint"}) if rule_selection is not None else None,
+                grouped=selected_groups,
+                include_react_doctor=include_react_doctor and rule_selection is None,
+                force_react_doctor=react_doctor_triggered,
+                react_doctor_staged=staged,
+                react_doctor_full_scan=react_doctor_full_scan,
+                pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+            )
+        )
+        if run_eslint
+        else ()
+    )
+    if rule_selection is not None:
+        external_reports = tuple(_filter_report_selectors(report, rule_selection) for report in external_reports)
+    return external_reports
+
+
+def _with_library_policy(
+    root: Path, native: AnalysisReport, active_selected: list[str], selection_policy: Policy
+) -> AnalysisReport:
+    try:
+        policy = _filter_tool_report(_policy_report(root, active_selected), selection_policy)
+    except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
+        issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
+        policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
+    return report_from_tools(root, (*native.tools, policy))
+
+
+def _with_repository_analysis(root: Path, native: AnalysisReport, *, staged: bool) -> AnalysisReport:
+    from .libs.linting.repo_standards import (  # ruff: ignore[import-outside-top-level]
+        analyze as analyze_repository,
+    )
+
+    try:
+        repository = analyze_repository(root, staged=staged)
+    except Exception as exc:  # ruff: ignore[blind-except] -- dependency contract failures must fail closed.
+        issue = ExecutionIssue(
+            "repo-standards",
+            "integration-failure",
+            f"{type(exc).__name__}: {exc}",
+        )
+        repository = ToolReport("repo-standards", Completion.FAILED, issues=(issue,))
+    if repository is not None:
+        native = report_from_tools(root, (*native.tools, repository))
+    return native
+
+
+def _selection_coverage(
+    root: Path,
+    selected: list[str],
+    active_selected: list[str],
+    selected_groups: GroupedPaths,
+    rule_selection: RuleSelection | None,
+) -> list[CoverageNotice]:
+    coverage: list[CoverageNotice] = []
+    excluded = sum(Path(item).is_file() and item not in active_selected for item in selected)
+    if excluded:
+        coverage.append(
+            CoverageNotice(
+                "sarj-standards",
+                "excluded by repository policy",
+                excluded,
+                CoverageDisposition.EXCLUDED,
+            )
+        )
+    routed = _routed_for_selection(selected_groups, rule_selection)
+    if rule_selection is None:
+        routed.update(
+            item for item in active_selected if Path(item).is_file() and library_policy_accepts_path(Path(item), root)
+        )
+    unsupported = sum(Path(item).is_file() and item not in routed for item in active_selected)
+    if unsupported:
+        coverage.append(
+            CoverageNotice(
+                "sarj-standards",
+                "no bundled analyzer accepts the selected file type",
+                unsupported,
+            )
+        )
+    return coverage
+
+
+def _native_typescript_coverage(
+    selected_groups: GroupedPaths,
+    adopted: Manifest | None,
+    rule_selection: RuleSelection | None,
+    coverage: list[CoverageNotice],
+) -> None:
+    if selected_groups.typescript and (rule_selection is None or RuleEngine.ESLINT in rule_selection.engines):
+        eslint_enabled = adopted is None or "eslint" in adopted.configs
+        coverage.append(
+            CoverageNotice(
+                "eslint",
+                (
+                    "native analysis does not run TypeScript; use check or external trusted analysis"
+                    if eslint_enabled
+                    else "disabled by repository capabilities"
+                ),
+                len(selected_groups.typescript),
+                CoverageDisposition.FAILED if eslint_enabled else CoverageDisposition.NOT_REQUESTED,
+            )
+        )
+
+
+def _analysis_baseline(root: Path, adopted: Manifest | None, normalized_mode: AnalysisMode) -> dict[str, int]:
+    return (
+        diagnostic_baseline.load(
+            root / adopted.diagnostic_baseline,
+            require_v2=True,
+            expected_bundle_version=__version__,
+            expected_catalog_digest=diagnostic_baseline.bundled_catalog_digest(),
+        )
+        if normalized_mode is AnalysisMode.POLICY and adopted is not None and adopted.diagnostic_baseline is not None
+        else {}
+    )
 
 
 def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelection | None:

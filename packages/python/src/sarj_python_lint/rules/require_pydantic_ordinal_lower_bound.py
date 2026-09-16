@@ -135,45 +135,7 @@ class RequirePydanticOrdinalLowerBound(Rule):
         source_lines = source.splitlines()
         diagnostics: list[Diagnostic] = []
         for cls in (node for node in tree.body if isinstance(node, ast.ClassDef) and _is_model(node, imports)):
-            validators, validates_all = _validated_fields(cls, imports)
-            if validates_all:
-                continue
-            class_bindings = _class_bindings(cls)
-            for field in cls.body:
-                if not isinstance(field, ast.AnnAssign) or not isinstance(field.target, ast.Name):
-                    continue
-                if (
-                    field.target.id.startswith("_")
-                    or field.target.id in validators
-                    or not _is_ordinal_field_name(field.target.id)
-                    or _is_class_var(field.annotation, imports, aliases)
-                ):
-                    continue
-                contract = _field_contract(field, imports, aliases, class_bindings)
-                if contract is None:
-                    continue
-                default, description, field_calls = contract
-                if not isinstance(default, int) or isinstance(default, bool) or not isinstance(description, str):
-                    continue
-                match = _ORDINAL.search(description)
-                if (
-                    match is None
-                    or int(match.group("minimum")) != default
-                    or _describes_smaller_exception(description, default)
-                    or _lower_bound_status(field.annotation, field_calls, default, imports, aliases) is not False
-                    or is_suppressed(source_lines, field.lineno, self.code)
-                ):
-                    continue
-                diagnostics.append(
-                    Diagnostic(
-                        path=path,
-                        line=field.lineno,
-                        col=field.col_offset + 1,
-                        code=self.code,
-                        severity=Severity.WARNING,
-                        message=f"`{field.target.id}` maps the first position to {default} but accepts smaller integers; encode the ordinal origin with `ge={default}` or an equivalent top-level integer constraint",
-                    )
-                )
+            diagnostics.extend(_ordinal_class_findings(cls, imports, aliases, path, source_lines, code=self.code))
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
 
 
@@ -214,72 +176,6 @@ def _module_binding_counts(tree: ast.Module) -> Counter[str]:
     return counts
 
 
-def _class_bindings(cls: ast.ClassDef) -> frozenset[str]:
-    names: set[str] = set()
-    for statement in cls.body:
-        match statement:
-            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
-                names.add(name)
-            case ast.Assign(targets=targets):
-                names.update(target.id for target in targets if isinstance(target, ast.Name))
-            case ast.AnnAssign(target=ast.Name(id=name)) | ast.AugAssign(target=ast.Name(id=name)):
-                names.add(name)
-            case ast.Import(names=imported) | ast.ImportFrom(names=imported):
-                names.update(alias.asname or alias.name.partition(".")[0] for alias in imported)
-            case _:
-                pass
-    return frozenset(names)
-
-
-def _field_contract(
-    field: ast.AnnAssign,
-    imports: ImportIndex,
-    aliases: dict[str, ast.expr],
-    class_bindings: frozenset[str],
-) -> tuple[object, object, tuple[ast.Call, ...]] | None:
-    annotation_calls = tuple(
-        metadata
-        for metadata in _annotated_metadata(field.annotation, imports, aliases)
-        if isinstance(metadata, ast.Call) and _is_field_call(metadata, imports, class_bindings)
-    )
-    assignment_call = (
-        field.value
-        if isinstance(field.value, ast.Call) and _is_field_call(field.value, imports, class_bindings)
-        else None
-    )
-    calls = (*annotation_calls, *((assignment_call,) if assignment_call is not None else ()))
-    if not calls:
-        return None
-    description = next(
-        (value for call in reversed(calls) if (value := _literal_keyword(call, "description")) is not None),
-        None,
-    )
-    if assignment_call is not None:
-        default = _literal_keyword(assignment_call, "default")
-        if default is None and assignment_call.args:
-            default = _literal_value(assignment_call.args[0])
-    else:
-        default = _literal_value(field.value)
-        if default is None:
-            default = next(
-                (value for call in reversed(calls) if (value := _literal_keyword(call, "default")) is not None),
-                None,
-            )
-    return default, description, calls
-
-
-def _is_field_call(call: ast.Call, imports: ImportIndex, class_bindings: frozenset[str]) -> bool:
-    return imports.resolves(call.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field") and not (
-        (root := _root_name(call.func)) is not None and root in class_bindings
-    )
-
-
-def _root_name(node: ast.expr) -> str | None:
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
-
-
 def _literal_value(node: ast.expr | None) -> object:
     if isinstance(node, ast.Constant):
         return node.value
@@ -295,19 +191,6 @@ def _literal_keyword(call: ast.Call, name: str) -> object:
     if keyword is None:
         return None
     return _literal_value(keyword.value)
-
-
-def _lower_bound_status(
-    annotation: ast.expr,
-    field_calls: tuple[ast.Call, ...],
-    minimum: int,
-    imports: ImportIndex,
-    aliases: dict[str, ast.expr],
-) -> bool | None:
-    has_ordered_constraints, ordered_status = _ordered_bound_status(annotation, field_calls, minimum, imports, aliases)
-    if has_ordered_constraints:
-        return ordered_status
-    return _annotation_bound_status(annotation, minimum, imports, aliases, frozenset())
 
 
 def _ordered_bound_status(
@@ -335,15 +218,16 @@ def _ordered_bound_status(
             ge_specified, ge_value = True, call_ge
         if call_gt_specified:
             gt_specified, gt_value = True, call_gt
-    if not ge_specified and not gt_specified:
-        return False, None
-    sufficient = (ge_value is not None and ge_value >= minimum) or (gt_value is not None and gt_value >= minimum - 1)
-    if sufficient:
-        return True, None if unknown_metadata else True
-    if unknown_metadata:
-        return True, None
-    if (ge_specified and ge_value is None) or (gt_specified and gt_value is None):
-        return True, None
+    resolved = _resolved_ordered_bound_status(
+        ge_specified=ge_specified,
+        ge_value=ge_value,
+        gt_specified=gt_specified,
+        gt_value=gt_value,
+        minimum=minimum,
+        unknown_metadata=unknown_metadata,
+    )
+    if resolved is not None:
+        return resolved
     base_status = _annotation_bound_status(base, minimum, imports, aliases, frozenset())
     if base_status is True and not base_has_overridable_bound:
         return True, True
@@ -402,21 +286,7 @@ def _annotation_bound_status(
     if isinstance(annotation, ast.Subscript) and imports.resolves(
         annotation.value, sources=_TYPING_SOURCES, symbol="Annotated"
     ):
-        arguments = _subscript_arguments(annotation)
-        if not arguments:
-            return None
-        base_status = _annotation_bound_status(arguments[0], minimum, imports, aliases, resolving)
-        metadata = arguments[1:]
-        metadata_statuses = tuple(
-            _call_bound_status(item, minimum, imports) if isinstance(item, ast.Call) else None for item in metadata
-        )
-        if any(status is True for status in metadata_statuses):
-            return True
-        if any(status is None for status in metadata_statuses):
-            return None
-        if all(_is_known_constraint_metadata(item, imports) for item in metadata):
-            return base_status
-        return None
+        return _annotated_bound_status(annotation, minimum, imports, aliases, resolving)
     if isinstance(annotation, ast.Subscript) and imports.resolves(
         annotation.value, sources=_TYPING_SOURCES, symbol="Optional"
     ):
@@ -428,10 +298,7 @@ def _annotation_bound_status(
     if isinstance(annotation, ast.Subscript) and imports.resolves(
         annotation.value, sources=_TYPING_SOURCES, symbol="Literal"
     ):
-        values = tuple(_literal_value(item) for item in _subscript_arguments(annotation))
-        numeric_values = tuple(_numeric_value(value) for value in values)
-        if values and all(value is not None for value in numeric_values):
-            return all(value >= minimum for value in numeric_values if value is not None)
+        return _literal_bound_status(annotation, minimum)
     return None
 
 
@@ -505,29 +372,6 @@ def _bound_updates(call: ast.Call, imports: ImportIndex) -> tuple[bool, float | 
     return ge_keyword is not None, ge_value, gt_keyword is not None, gt_value
 
 
-def _is_known_constraint_metadata(node: ast.expr, imports: ImportIndex) -> bool:
-    return isinstance(node, ast.Call) and any(
-        imports.resolves(node.func, sources=sources, symbol=symbol)
-        for sources, symbol in (
-            (_PYDANTIC_FIELD_SOURCES, "Field"),
-            (_ANNOTATED_TYPES_SOURCES, "Ge"),
-            (_ANNOTATED_TYPES_SOURCES, "Gt"),
-            (_ANNOTATED_TYPES_SOURCES, "Interval"),
-        )
-    )
-
-
-def _annotated_metadata(
-    annotation: ast.expr, imports: ImportIndex, aliases: dict[str, ast.expr]
-) -> tuple[ast.expr, ...]:
-    resolved = _resolve_alias(annotation, aliases, frozenset())
-    if not isinstance(resolved, ast.Subscript) or not imports.resolves(
-        resolved.value, sources=_TYPING_SOURCES, symbol="Annotated"
-    ):
-        return ()
-    return _subscript_arguments(resolved)[1:]
-
-
 def _resolve_alias(annotation: ast.expr, aliases: dict[str, ast.expr], resolving: frozenset[str]) -> ast.expr:
     if isinstance(annotation, ast.Name) and annotation.id in aliases and annotation.id not in resolving:
         return _resolve_alias(aliases[annotation.id], aliases, resolving | {annotation.id})
@@ -552,6 +396,82 @@ def _numeric_value(value: object) -> float | None:
             return None
 
 
+def _ordinal_class_findings(
+    cls: ast.ClassDef,
+    imports: ImportIndex,
+    aliases: dict[str, ast.expr],
+    path: Path,
+    source_lines: list[str],
+    *,
+    code: str,
+) -> list[Diagnostic]:
+    diagnostics: list[Diagnostic] = []
+    validators, validates_all = _validated_fields(cls, imports)
+    if validates_all:
+        return []
+    class_bindings = _class_bindings(cls)
+    for field in cls.body:
+        if not isinstance(field, ast.AnnAssign) or not isinstance(field.target, ast.Name):
+            continue
+        if (
+            field.target.id.startswith("_")
+            or field.target.id in validators
+            or not _is_ordinal_field_name(field.target.id)
+            or _is_class_var(field.annotation, imports, aliases)
+        ):
+            continue
+        contract = _field_contract(field, imports, aliases, class_bindings)
+        if contract is None:
+            continue
+        default, description, field_calls = contract
+        if not isinstance(default, int) or isinstance(default, bool) or not isinstance(description, str):
+            continue
+        match = _ORDINAL.search(description)
+        if (
+            match is None
+            or int(match.group("minimum")) != default
+            or _describes_smaller_exception(description, default)
+            or _lower_bound_status(field.annotation, field_calls, default, imports, aliases) is not False
+            or is_suppressed(source_lines, field.lineno, code)
+        ):
+            continue
+        diagnostics.append(
+            Diagnostic(
+                path=path,
+                line=field.lineno,
+                col=field.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=f"`{field.target.id}` maps the first position to {default} but accepts smaller integers; encode the ordinal origin with `ge={default}` or an equivalent top-level integer constraint",
+            )
+        )
+    return diagnostics
+
+
+def _validated_fields(cls: ast.ClassDef, imports: ImportIndex) -> tuple[frozenset[str], bool]:
+    fields: set[str] = set()
+    validates_all = False
+    for function in cls.body:
+        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in function.decorator_list:
+            if not isinstance(decorator, ast.Call):
+                continue
+            validates_all = _record_validated_fields(decorator, imports, fields) or validates_all
+    return frozenset(fields), validates_all
+
+
+def _is_class_var(annotation: ast.expr, imports: ImportIndex, aliases: dict[str, ast.expr]) -> bool:
+    resolved = _resolve_alias(annotation, aliases, frozenset())
+    return isinstance(resolved, ast.Subscript) and imports.resolves(
+        resolved.value, sources=_TYPING_SOURCES, symbol="ClassVar"
+    )
+
+
+def _is_ordinal_field_name(name: str) -> bool:
+    return bool(_ORDINAL_NAME_TOKENS & set(name.lower().split("_")))
+
+
 def _describes_smaller_exception(description: str, minimum: int) -> bool:
     matches = (
         *((match, match.group("meaning")) for match in _SENTINEL_MAPPING.finditer(description)),
@@ -569,47 +489,193 @@ def _sentinel_is_smaller(value: str, minimum: int) -> bool:
     return minimum >= 0 if value.startswith(("negative", "nonpositive")) or value == "zero" else float(value) < minimum
 
 
-def _is_ordinal_field_name(name: str) -> bool:
-    return bool(_ORDINAL_NAME_TOKENS & set(name.lower().split("_")))
+def _lower_bound_status(
+    annotation: ast.expr,
+    field_calls: tuple[ast.Call, ...],
+    minimum: int,
+    imports: ImportIndex,
+    aliases: dict[str, ast.expr],
+) -> bool | None:
+    has_ordered_constraints, ordered_status = _ordered_bound_status(annotation, field_calls, minimum, imports, aliases)
+    if has_ordered_constraints:
+        return ordered_status
+    return _annotation_bound_status(annotation, minimum, imports, aliases, frozenset())
 
 
-def _is_class_var(annotation: ast.expr, imports: ImportIndex, aliases: dict[str, ast.expr]) -> bool:
+def _field_contract(
+    field: ast.AnnAssign,
+    imports: ImportIndex,
+    aliases: dict[str, ast.expr],
+    class_bindings: frozenset[str],
+) -> tuple[object, object, tuple[ast.Call, ...]] | None:
+    annotation_calls = tuple(
+        metadata
+        for metadata in _annotated_metadata(field.annotation, imports, aliases)
+        if isinstance(metadata, ast.Call) and _is_field_call(metadata, imports, class_bindings)
+    )
+    assignment_call = (
+        field.value
+        if isinstance(field.value, ast.Call) and _is_field_call(field.value, imports, class_bindings)
+        else None
+    )
+    calls = (*annotation_calls, *((assignment_call,) if assignment_call is not None else ()))
+    if not calls:
+        return None
+    description = next(
+        (value for call in reversed(calls) if (value := _literal_keyword(call, "description")) is not None),
+        None,
+    )
+    default = _ordinal_field_default(field, assignment_call, calls)
+    return default, description, calls
+
+
+def _annotated_metadata(
+    annotation: ast.expr, imports: ImportIndex, aliases: dict[str, ast.expr]
+) -> tuple[ast.expr, ...]:
     resolved = _resolve_alias(annotation, aliases, frozenset())
-    return isinstance(resolved, ast.Subscript) and imports.resolves(
-        resolved.value, sources=_TYPING_SOURCES, symbol="ClassVar"
+    if not isinstance(resolved, ast.Subscript) or not imports.resolves(
+        resolved.value, sources=_TYPING_SOURCES, symbol="Annotated"
+    ):
+        return ()
+    return _subscript_arguments(resolved)[1:]
+
+
+def _is_field_call(call: ast.Call, imports: ImportIndex, class_bindings: frozenset[str]) -> bool:
+    return imports.resolves(call.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field") and not (
+        (root := _root_name(call.func)) is not None and root in class_bindings
     )
 
 
-def _validated_fields(cls: ast.ClassDef, imports: ImportIndex) -> tuple[frozenset[str], bool]:
-    fields: set[str] = set()
+def _root_name(node: ast.expr) -> str | None:
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _class_bindings(cls: ast.ClassDef) -> frozenset[str]:
+    names: set[str] = set()
+    for statement in cls.body:
+        match statement:
+            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+                names.add(name)
+            case ast.Assign(targets=targets):
+                names.update(target.id for target in targets if isinstance(target, ast.Name))
+            case ast.AnnAssign(target=ast.Name(id=name)) | ast.AugAssign(target=ast.Name(id=name)):
+                names.add(name)
+            case ast.Import(names=imported) | ast.ImportFrom(names=imported):
+                names.update(alias.asname or alias.name.partition(".")[0] for alias in imported)
+            case _:
+                pass
+    return frozenset(names)
+
+
+def _ordinal_field_default(
+    field: ast.AnnAssign, assignment_call: ast.Call | None, calls: tuple[ast.Call, ...]
+) -> object:
+    if assignment_call is not None:
+        default = _literal_keyword(assignment_call, "default")
+        if default is None and assignment_call.args:
+            default = _literal_value(assignment_call.args[0])
+    else:
+        default = _literal_value(field.value)
+        if default is None:
+            default = next(
+                (value for call in reversed(calls) if (value := _literal_keyword(call, "default")) is not None),
+                None,
+            )
+    return default
+
+
+def _annotated_bound_status(
+    annotation: ast.Subscript,
+    minimum: int,
+    imports: ImportIndex,
+    aliases: dict[str, ast.expr],
+    resolving: frozenset[str],
+) -> bool | None:
+    arguments = _subscript_arguments(annotation)
+    if not arguments:
+        return None
+    base_status = _annotation_bound_status(arguments[0], minimum, imports, aliases, resolving)
+    metadata = arguments[1:]
+    metadata_statuses = tuple(
+        _call_bound_status(item, minimum, imports) if isinstance(item, ast.Call) else None for item in metadata
+    )
+    if any(status is True for status in metadata_statuses):
+        return True
+    if any(status is None for status in metadata_statuses):
+        return None
+    if all(_is_known_constraint_metadata(item, imports) for item in metadata):
+        return base_status
+    return None
+
+
+def _is_known_constraint_metadata(node: ast.expr, imports: ImportIndex) -> bool:
+    return isinstance(node, ast.Call) and any(
+        imports.resolves(node.func, sources=sources, symbol=symbol)
+        for sources, symbol in (
+            (_PYDANTIC_FIELD_SOURCES, "Field"),
+            (_ANNOTATED_TYPES_SOURCES, "Ge"),
+            (_ANNOTATED_TYPES_SOURCES, "Gt"),
+            (_ANNOTATED_TYPES_SOURCES, "Interval"),
+        )
+    )
+
+
+def _literal_bound_status(annotation: ast.Subscript, minimum: int) -> bool | None:
+    values = tuple(_literal_value(item) for item in _subscript_arguments(annotation))
+    numeric_values = tuple(_numeric_value(value) for value in values)
+    if values and all(value is not None for value in numeric_values):
+        return all(value >= minimum for value in numeric_values if value is not None)
+    return None
+
+
+def _record_validated_fields(decorator: ast.Call, imports: ImportIndex, fields: set[str]) -> bool:
     validates_all = False
-    for function in cls.body:
-        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for decorator in function.decorator_list:
-            if not isinstance(decorator, ast.Call):
-                continue
-            if any(
-                imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol=symbol)
-                for symbol in ("model_validator", "root_validator")
-            ):
-                validates_all = True
-            if any(
-                imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol=symbol)
-                for symbol in ("field_validator", "validator")
-            ):
-                if any(isinstance(argument, ast.Starred) for argument in decorator.args) or not all(
-                    isinstance(argument, ast.Constant) and isinstance(argument.value, str)
-                    for argument in decorator.args
-                ):
-                    validates_all = True
-                    continue
-                if any(argument.value == "*" for argument in decorator.args if isinstance(argument, ast.Constant)):
-                    validates_all = True
-                    continue
-                fields.update(
-                    argument.value
-                    for argument in decorator.args
-                    if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
-                )
-    return frozenset(fields), validates_all
+    if any(
+        imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol=symbol)
+        for symbol in ("model_validator", "root_validator")
+    ):
+        validates_all = True
+    if any(
+        imports.resolves(decorator.func, sources=_PYDANTIC_VALIDATOR_SOURCES, symbol=symbol)
+        for symbol in ("field_validator", "validator")
+    ):
+        return _record_field_validator_targets(decorator, fields) or validates_all
+    return validates_all
+
+
+def _resolved_ordered_bound_status(
+    *,
+    ge_specified: bool,
+    ge_value: float | None,
+    gt_specified: bool,
+    gt_value: float | None,
+    minimum: int,
+    unknown_metadata: bool,
+) -> tuple[bool, bool | None] | None:
+    if not ge_specified and not gt_specified:
+        return False, None
+    sufficient = (ge_value is not None and ge_value >= minimum) or (gt_value is not None and gt_value >= minimum - 1)
+    if sufficient:
+        return True, None if unknown_metadata else True
+    if unknown_metadata:
+        return True, None
+    if (ge_specified and ge_value is None) or (gt_specified and gt_value is None):
+        return True, None
+    return None
+
+
+def _record_field_validator_targets(decorator: ast.Call, fields: set[str]) -> bool:
+    if any(isinstance(argument, ast.Starred) for argument in decorator.args) or not all(
+        isinstance(argument, ast.Constant) and isinstance(argument.value, str) for argument in decorator.args
+    ):
+        return True
+    if any(argument.value == "*" for argument in decorator.args if isinstance(argument, ast.Constant)):
+        return True
+    fields.update(
+        argument.value
+        for argument in decorator.args
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+    )
+    return False

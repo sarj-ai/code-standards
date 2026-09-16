@@ -170,19 +170,8 @@ export default createRule<Options, MessageIds>({
       let node = sourceCode.getNodeByRangeIndex(token.range[0]);
       while (node !== null && node.type !== "Program") {
         if (node.range[1] <= comment.range[0]) {
-          if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && node.init !== null) {
-            return { name: node.id, value: node.init };
-          }
-          if (node.type === "Property" && !node.computed && node.kind === "init" && node.parent.type === "ObjectExpression") {
-            return { name: node.key, value: node.value };
-          }
-          if (node.type === "PropertyDefinition" && !node.computed && node.value !== null) {
-            return { name: node.key, value: node.value };
-          }
-          if (node.type === "AssignmentExpression" && node.operator === "=") {
-            if (node.left.type !== "Identifier" && (node.left.type !== "MemberExpression" || node.left.computed)) return null;
-            return { name: node.left, value: node.right };
-          }
+          const value = namedValue(node);
+          if (value !== undefined) return value;
         }
         node = node.parent ?? null;
       }
@@ -191,10 +180,10 @@ export default createRule<Options, MessageIds>({
 
     return {
       Program(): void {
-        for (const comment of sourceCode.getAllComments()) {
-          if (!isTrailing(comment) || isInsideBrackets(comment)) continue;
+        function checkTrailingComment(comment: TSESTree.Comment): void {
+          if (!isTrailing(comment) || isInsideBrackets(comment)) return;
           const attached = attachedValue(comment);
-          if (attached === null) continue;
+          if (attached === null) return;
           const code = `${sourceCode.getText(attached.name)} ${sourceCode.getText(attached.value)}`;
           const codeNumbers = new Set(sourceCode.getTokens(attached.value)
             .filter((token) => token.type === AST_TOKEN_TYPES.Numeric)
@@ -202,9 +191,9 @@ export default createRule<Options, MessageIds>({
           const body = comment.value.replace(/^\*+/, "").replace(/\*+$/, "").trim();
           if (narratesValue(body, code, codeNumbers)) {
             const namedUnit = identifierUnit(attached.name);
-            if (namedUnit !== null && (attached.value.type !== "Literal" || typeof attached.value.value !== "number")) continue;
+            if (namedUnit !== null && (attached.value.type !== "Literal" || typeof attached.value.value !== "number")) return;
             const units = (body.match(WORD_RE) ?? []).map((word) => word.toLowerCase()).filter((word) => UNIT_WORDS.has(word));
-            if (namedUnit !== null && !units.every((word) => canonicalUnit(word) === namedUnit)) continue;
+            if (namedUnit !== null && !units.every((word) => canonicalUnit(word) === namedUnit)) return;
             const canDelete = namedUnit !== null;
             const removal = canDelete
               ? trailingCommentRemovalRange(sourceCode.text, comment)
@@ -215,15 +204,35 @@ export default createRule<Options, MessageIds>({
               suggest: removal === null
                 ? null
                 : [
-                    {
-                      messageId: "removeNarration",
-                      fix: (fixer) => fixer.removeRange(removal.range),
-                    },
-                  ],
+                  {
+                    messageId: "removeNarration",
+                    fix: (fixer) => fixer.removeRange(removal.range),
+                  },
+                ],
             });
           }
         }
+
+        for (const comment of sourceCode.getAllComments()) { checkTrailingComment(comment); }
       },
     };
   },
 });
+
+function namedValue(node: TSESTree.Node): { name: TSESTree.Node; value: TSESTree.Node } | null | undefined {
+  if (node.type === "VariableDeclarator" && node.id.type === "Identifier" && node.init !== null) {
+    return { name: node.id, value: node.init };
+  }
+  if (node.type === "Property" && !node.computed && node.kind === "init" && node.parent.type === "ObjectExpression") {
+    return { name: node.key, value: node.value };
+  }
+  if (node.type === "PropertyDefinition" && !node.computed && node.value !== null) {
+    return { name: node.key, value: node.value };
+  }
+  if (node.type === "AssignmentExpression" && node.operator === "=") {
+    if (node.left.type !== "Identifier" && (node.left.type !== "MemberExpression" || node.left.computed)) return null;
+    return { name: node.left, value: node.right };
+  }
+
+  return undefined;
+}

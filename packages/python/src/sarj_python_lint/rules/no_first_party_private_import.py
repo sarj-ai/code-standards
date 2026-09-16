@@ -186,11 +186,7 @@ def _stable_import_module_bindings(tree: ast.Module) -> _ImportModuleBindings:
     import_binding_counts: dict[str, int] = {}
     for node in nodes(tree, ast.Import, ast.ImportFrom):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                local = alias.asname or alias.name.partition(".")[0]
-                import_binding_counts[local] = import_binding_counts.get(local, 0) + 1
-                if alias.name == "importlib":
-                    module_candidates.add(local)
+            _collect_importlib_modules(node, import_binding_counts, module_candidates)
         else:
             for alias in node.names:
                 local = alias.asname or alias.name
@@ -276,3 +272,13 @@ def _private_segment(module: str) -> str | None:
 def _is_private_name(name: str) -> bool:
     # `__version__` / `__all__` are module metadata by convention, not internals.
     return name.startswith("_") and not (name.startswith("__") and name.endswith("__"))
+
+
+def _collect_importlib_modules(
+    node: ast.Import, import_binding_counts: dict[str, int], module_candidates: set[str]
+) -> None:
+    for alias in node.names:
+        local = alias.asname or alias.name.partition(".")[0]
+        import_binding_counts[local] = import_binding_counts.get(local, 0) + 1
+        if alias.name == "importlib":
+            module_candidates.add(local)

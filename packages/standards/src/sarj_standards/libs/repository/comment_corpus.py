@@ -83,30 +83,36 @@ def records(roots: Sequence[Path]) -> Iterator[Record]:
                 ".", topdown=True, follow_symlinks=False, dir_fd=root_descriptor
             ):
                 names[:] = [name for name in names if name not in _SKIP_PARTS and not name.startswith(".")]
-                for filename in filenames:
-                    relative = Path(directory, filename)
-                    language = _SUFFIXES.get(relative.suffix.lower())
-                    if language is None:
-                        continue
-                    try:
-                        source = _read_regular_file(directory_descriptor, filename)
-                    except OSError:
-                        continue
-                    if source is None:
-                        continue
-                    comments = _comments(language, source)
-                    for line, kind, value in comments:
-                        yield {
-                            "repository": resolved_root.name,
-                            "path": relative.as_posix().removeprefix("./"),
-                            "line": line,
-                            "language": language,
-                            "kind": kind,
-                            "sentences": _sentence_units(value),
-                            "text": value,
-                        }
+                yield from _directory_records(directory, filenames, directory_descriptor, resolved_root)
         finally:
             os.close(root_descriptor)
+
+
+def _directory_records(
+    directory: str, filenames: list[str], directory_descriptor: int, resolved_root: Path
+) -> Iterator[Record]:
+    for filename in filenames:
+        relative = Path(directory, filename)
+        language = _SUFFIXES.get(relative.suffix.lower())
+        if language is None:
+            continue
+        try:
+            source = _read_regular_file(directory_descriptor, filename)
+        except OSError:
+            continue
+        if source is None:
+            continue
+        comments = _comments(language, source)
+        for line, kind, value in comments:
+            yield {
+                "repository": resolved_root.name,
+                "path": relative.as_posix().removeprefix("./"),
+                "line": line,
+                "language": language,
+                "kind": kind,
+                "sentences": _sentence_units(value),
+                "text": value,
+            }
 
 
 def _read_regular_file(directory_descriptor: int, filename: str) -> str | None:
@@ -345,13 +351,7 @@ def _javascript_comments(source: str) -> list[_CommentUnit]:
         char = source[index]
         following = source[index + 1] if index + 1 < len(source) else ""
         if quote is not None:
-            if char == "\\":
-                index += 2
-                continue
-            if char == quote:
-                quote = None
-            line += char == "\n"
-            index += 1
+            index, line, quote = _javascript_quoted_character(source, index, line, quote)
             continue
         if char in {'"', "'", "`"}:
             quote = char
@@ -364,12 +364,7 @@ def _javascript_comments(source: str) -> list[_CommentUnit]:
             index = end
             continue
         if char == "/" and following == "*":
-            end = source.find("*/", index + 2)
-            end = len(source) - 2 if end < 0 else end
-            value = source[index + 2 : end]
-            found.append(_CommentUnit(line, "jsdoc" if value.startswith("*") else "comment", value.strip("* \n")))
-            line += value.count("\n")
-            index = end + 2
+            index, line = _javascript_block_comment(source, index, line, found)
             continue
         line += char == "\n"
         index += 1
@@ -394,13 +389,7 @@ def _sql_comments(source: str) -> list[_CommentUnit]:
             index += 1
             continue
         if quote is not None:
-            if char == quote and source[index + 1 : index + 2] == quote:
-                index += 2
-                continue
-            if char == quote:
-                quote = None
-            line += char == "\n"
-            index += 1
+            index, line, quote = _sql_quoted_character(source, index, line, quote)
             continue
         if char in {"'", '"'}:
             quote = char
@@ -417,12 +406,7 @@ def _sql_comments(source: str) -> list[_CommentUnit]:
             index = end
             continue
         if pair == "/*":
-            end = source.find("*/", index + 2)
-            end = len(source) if end < 0 else end
-            value = source[index + 2 : end]
-            found.append(_CommentUnit(line, "comment", value.strip("* \n")))
-            line += value.count("\n")
-            index = min(len(source), end + 2)
+            index, line = _sql_block_comment(source, index, line, found)
             continue
         line += char == "\n"
         index += 1
@@ -502,10 +486,7 @@ def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-m
         stripped = raw.lstrip()
         if not in_html and (match := re.match(r"(`{3,}|~{3,})", stripped)):
             marker = match.group(1)
-            if not in_fence:
-                in_fence, fence = True, marker[0]
-            elif marker[0] == fence:
-                in_fence, fence = False, ""
+            in_fence, fence = _markdown_fence_state(marker, in_fence=in_fence, fence=fence)
             continue
         if in_fence:
             continue
@@ -534,3 +515,55 @@ def _markdown_comments(source: str) -> list[_CommentUnit]:  # ruff: ignore[too-m
     if in_html:
         found.append(_CommentUnit(html_start, "comment", "\n".join(html_parts).strip()))
     return found
+
+
+def _javascript_block_comment(source: str, index: int, line: int, found: list[_CommentUnit]) -> tuple[int, int]:
+    end = source.find("*/", index + 2)
+    end = len(source) - 2 if end < 0 else end
+    value = source[index + 2 : end]
+    found.append(_CommentUnit(line, "jsdoc" if value.startswith("*") else "comment", value.strip("* \n")))
+    line += value.count("\n")
+    index = end + 2
+    return index, line
+
+
+def _sql_block_comment(source: str, index: int, line: int, found: list[_CommentUnit]) -> tuple[int, int]:
+    end = source.find("*/", index + 2)
+    end = len(source) if end < 0 else end
+    value = source[index + 2 : end]
+    found.append(_CommentUnit(line, "comment", value.strip("* \n")))
+    line += value.count("\n")
+    index = min(len(source), end + 2)
+    return index, line
+
+
+def _sql_quoted_character(source: str, index: int, line: int, quote: str | None) -> tuple[int, int, str | None]:
+    char = source[index]
+    if char == quote and source[index + 1 : index + 2] == quote:
+        index += 2
+        return index, line, quote
+    if char == quote:
+        quote = None
+    line += char == "\n"
+    index += 1
+    return index, line, quote
+
+
+def _markdown_fence_state(marker: str, *, in_fence: bool, fence: str) -> tuple[bool, str]:
+    if not in_fence:
+        in_fence, fence = True, marker[0]
+    elif marker[0] == fence:
+        in_fence, fence = False, ""
+    return in_fence, fence
+
+
+def _javascript_quoted_character(source: str, index: int, line: int, quote: str | None) -> tuple[int, int, str | None]:
+    char = source[index]
+    if char == "\\":
+        index += 2
+        return index, line, quote
+    if char == quote:
+        quote = None
+    line += char == "\n"
+    index += 1
+    return index, line, quote

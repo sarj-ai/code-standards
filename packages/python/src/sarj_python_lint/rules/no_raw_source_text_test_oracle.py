@@ -209,27 +209,33 @@ def top_level_test_functions(tree: ast.Module, imports: ImportIndex | None = Non
         ):
             functions.append(TestFunction(statement, unittest_style=False))
         elif isinstance(statement, ast.ClassDef):
-            unittest_style = any(
-                resolved_imports.resolves(base, sources=_UNITTEST, symbol="TestCase") for base in statement.bases
-            )
-            pytest_style = _collectible_pytest_class(statement, resolved_imports, opted_out)
-            if not unittest_style and not pytest_style:
-                continue
-            functions.extend(
-                TestFunction(child, unittest_style)
-                for child in statement.body
-                if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
-                and child.name.startswith("test")
-                and (
-                    unittest_style
-                    or _safe_pytest_decorators(
-                        child.decorator_list,
-                        resolved_imports,
-                        shadowed=_class_bound_names_before(statement, child),
-                    )
-                )
-            )
+            functions.extend(_class_test_functions(statement, resolved_imports, opted_out))
     return functions
+
+
+def _class_test_functions(
+    statement: ast.ClassDef, resolved_imports: ImportIndex, opted_out: frozenset[str]
+) -> list[TestFunction]:
+    unittest_style = any(
+        resolved_imports.resolves(base, sources=_UNITTEST, symbol="TestCase") for base in statement.bases
+    )
+    pytest_style = _collectible_pytest_class(statement, resolved_imports, opted_out)
+    if not unittest_style and not pytest_style:
+        return []
+    return [
+        TestFunction(child, unittest_style)
+        for child in statement.body
+        if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef)
+        and child.name.startswith("test")
+        and (
+            unittest_style
+            or _safe_pytest_decorators(
+                child.decorator_list,
+                resolved_imports,
+                shadowed=_class_bound_names_before(statement, child),
+            )
+        )
+    ]
 
 
 def _collectible_pytest_class(
@@ -824,26 +830,9 @@ def _raw_text_oracle(
     node: ast.expr,
     flow: _TextFlow,
 ) -> bool:
-    if isinstance(node, ast.Compare):
-        operands = [node.left, *node.comparators]
-        if any(_raw_text_measurement(operand, flow) for operand in operands) and any(
-            isinstance(operator, (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)) for operator in node.ops
-        ):
-            return True
-        if any(_raw_text_expression(operand, flow) for operand in operands) and any(
-            isinstance(operator, (ast.In, ast.NotIn, ast.Eq, ast.NotEq)) for operator in node.ops
-        ):
-            return True
-    if (
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id in {"all", "any"}
-        and any(
-            isinstance(argument, ast.GeneratorExp)
-            and any(_raw_text_line_iteration(item.iter, flow) for item in argument.generators)
-            for argument in node.args
-        )
-    ):
+    if isinstance(node, ast.Compare) and _raw_text_comparison(node, flow):
+        return True
+    if _is_raw_text_iteration_call(node, flow):
         return True
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
         if node.func.attr in _TEXT_ASSERTIONS and _raw_text_expression(node.func.value, flow):
@@ -863,6 +852,19 @@ def _raw_text_measurement(
         and node.func.id == "len"
         and len(node.args) == 1
         and _raw_text_expression(node.args[0], flow)
+    )
+
+
+def _is_raw_text_iteration_call(node: ast.expr, flow: _TextFlow) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"all", "any"}
+        and any(
+            isinstance(argument, ast.GeneratorExp)
+            and any(_raw_text_line_iteration(item.iter, flow) for item in argument.generators)
+            for argument in node.args
+        )
     )
 
 
@@ -910,3 +912,15 @@ def _expression_origins(
         ):
             origins.add(child.lineno)
     return origins
+
+
+def _raw_text_comparison(node: ast.Compare, flow: _TextFlow) -> bool:
+    operands = [node.left, *node.comparators]
+    if any(_raw_text_measurement(operand, flow) for operand in operands) and any(
+        isinstance(operator, (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)) for operator in node.ops
+    ):
+        return True
+    return bool(
+        any(_raw_text_expression(operand, flow) for operand in operands)
+        and any(isinstance(operator, (ast.In, ast.NotIn, ast.Eq, ast.NotEq)) for operator in node.ops)
+    )

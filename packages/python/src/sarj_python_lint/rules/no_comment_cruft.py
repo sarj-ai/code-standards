@@ -527,55 +527,54 @@ class NoCommentCruft(Rule):
         by_line = {line: (col, body) for line, col, body in standalone}
         skip = _doctest_block_lines(standalone) | _illustration_block_lines(standalone)
         referenced = _externally_referenced_lines(standalone)
-        rationale_runs = frozenset(
-            line
-            for run in comment_runs(standalone)
-            if len(run) > 1 and any(_RATIONALE_RUN_RE.search(body) for _, _, body in run)
-            for line, _, _ in run
-        )
+        rationale_runs = _rationale_comment_lines(standalone)
         nested = nested_comment_lines(source)
         enumerated = [line for line, _, body in standalone if _ENUMERATION_RE.match(body)]
         license_header = _license_header_lines(standalone)
         walls = statement_comment_walls(path, source, standalone)
         wall_members = frozenset(line for members in walls.values() for line in members)
-        for line, col, body in standalone:
-            if line in walls:
-                diags[line] = Diagnostic(
-                    path=path,
-                    line=line,
-                    col=col + 1,
-                    code=self.code,
-                    message=(
-                        f"Statement comment wall ({len(walls[line])} narrated steps) — "
-                        "delete the walkthrough and name the operations in code; keep only constraints or rationale."
-                    ),
-                    column_encoding=ColumnEncoding.CODEPOINTS,
+
+        def classify_comments() -> None:
+            for line, col, body in standalone:
+                if line in walls:
+                    diags[line] = Diagnostic(
+                        path=path,
+                        line=line,
+                        col=col + 1,
+                        code=self.code,
+                        message=(
+                            f"Statement comment wall ({len(walls[line])} narrated steps) — "
+                            "delete the walkthrough and name the operations in code; keep only constraints or rationale."
+                        ),
+                        column_encoding=ColumnEncoding.CODEPOINTS,
+                    )
+                    continue
+                if line in wall_members:
+                    continue
+                if _is_directive(body) or _is_coding_cookie(body) or line in skip:
+                    continue
+                previous = by_line.get(line - 1)
+                prev_body = previous[1] if previous is not None and previous[0] == col else None
+                msg = self._classify(
+                    body,
+                    prev_body,
+                    narration_protected=line in referenced,
+                    isolated_enumeration=enumerated == [line],
+                    nested=line in nested,
+                    in_license_header=line in license_header,
+                    in_rationale_run=line in rationale_runs,
                 )
-                continue
-            if line in wall_members:
-                continue
-            if _is_directive(body) or _is_coding_cookie(body) or line in skip:
-                continue
-            previous = by_line.get(line - 1)
-            prev_body = previous[1] if previous is not None and previous[0] == col else None
-            msg = self._classify(
-                body,
-                prev_body,
-                narration_protected=line in referenced,
-                isolated_enumeration=enumerated == [line],
-                nested=line in nested,
-                in_license_header=line in license_header,
-                in_rationale_run=line in rationale_runs,
-            )
-            if msg is not None:
-                diags[line] = Diagnostic(
-                    path=path,
-                    line=line,
-                    col=col + 1,
-                    code=self.code,
-                    message=msg,
-                    column_encoding=ColumnEncoding.CODEPOINTS,
-                )
+                if msg is not None:
+                    diags[line] = Diagnostic(
+                        path=path,
+                        line=line,
+                        col=col + 1,
+                        code=self.code,
+                        message=msg,
+                        column_encoding=ColumnEncoding.CODEPOINTS,
+                    )
+
+        classify_comments()
         self._flag_leading_preamble(standalone, first_code_line, path, diags)
         return [diags[k] for k in sorted(diags)]
 
@@ -611,17 +610,7 @@ class NoCommentCruft(Rule):
                 return None
             return "Section-banner / region comment — use named code boundaries, not ASCII rules."
         if _looks_like_code(body):
-            if prev_body is not None and _is_prose_line(prev_body):
-                return None
-            if (
-                prev_body is not None
-                and _is_sentence_continuation(prev_body)
-                and not _looks_like_code(prev_body)
-                and not _is_banner(prev_body)
-                and _is_assign_or_call(body)
-            ):
-                return None
-            return "Commented-out code — delete it; git history remembers."
+            return _commented_code_message(body, prev_body)
         if narration_protected:
             return None
         if in_rationale_run:
@@ -672,3 +661,26 @@ class NoCommentCruft(Rule):
                     ),
                     column_encoding=ColumnEncoding.CODEPOINTS,
                 )
+
+
+def _commented_code_message(body: str, prev_body: str | None) -> str | None:
+    if prev_body is not None and _is_prose_line(prev_body):
+        return None
+    if (
+        prev_body is not None
+        and _is_sentence_continuation(prev_body)
+        and not _looks_like_code(prev_body)
+        and not _is_banner(prev_body)
+        and _is_assign_or_call(body)
+    ):
+        return None
+    return "Commented-out code — delete it; git history remembers."
+
+
+def _rationale_comment_lines(standalone: list[PositionedComment]) -> frozenset[int]:
+    return frozenset(
+        line
+        for run in comment_runs(standalone)
+        if len(run) > 1 and any(_RATIONALE_RUN_RE.search(body) for _, _, body in run)
+        for line, _, _ in run
+    )

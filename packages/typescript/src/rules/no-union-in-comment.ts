@@ -133,6 +133,23 @@ export default createRule<Options, MessageIds>({
     }
 
     function annotated(comment: TSESTree.Comment): Target | null {
+      const anchor = commentAnchor(comment);
+      for (
+        let node: TSESTree.Node | undefined | null = anchor;
+        node != null && node.type !== AST_NODE_TYPES.Program;
+        node = node.parent
+      ) {
+        const target = targetOf(node);
+        if (target !== null) {
+          const follows = target.node.range[1] <= comment.range[0] && target.node.loc.end.line === comment.loc.start.line;
+          const precedes = comment.range[1] <= target.node.range[0] && comment.loc.end.line + 1 === target.node.loc.start.line;
+          return follows || precedes ? target : null;
+        }
+      }
+      return null;
+    }
+
+    function commentAnchor(comment: TSESTree.Comment): TSESTree.Node | null {
       const before = sourceCode.getTokenBefore(comment, { includeComments: false });
       let anchor: TSESTree.Node | null;
       if (before !== null && before.loc.end.line === comment.loc.start.line) {
@@ -148,19 +165,7 @@ export default createRule<Options, MessageIds>({
         if (after === null || after.loc.start.line !== comment.loc.end.line + 1) return null;
         anchor = sourceCode.getNodeByRangeIndex(after.range[0]);
       }
-      for (
-        let node: TSESTree.Node | undefined | null = anchor;
-        node != null && node.type !== AST_NODE_TYPES.Program;
-        node = node.parent
-      ) {
-        const target = targetOf(node);
-        if (target !== null) {
-          const follows = target.node.range[1] <= comment.range[0] && target.node.loc.end.line === comment.loc.start.line;
-          const precedes = comment.range[1] <= target.node.range[0] && comment.loc.end.line + 1 === target.node.loc.start.line;
-          return follows || precedes ? target : null;
-        }
-      }
-      return null;
+      return anchor;
     }
 
     return {

@@ -245,10 +245,7 @@ class _Scanner:
             case ast.Import(names=aliases):
                 exact.difference_update(alias.asname or alias.name.split(".")[0] for alias in aliases)
             case ast.ImportFrom(names=aliases):
-                if any(alias.name == "*" for alias in aliases):
-                    exact.clear()
-                else:
-                    exact.difference_update(alias.asname or alias.name for alias in aliases)
+                _invalidate_imported_bindings(aliases, exact)
             case (
                 ast.If()
                 | ast.While()
@@ -358,3 +355,10 @@ def _shadowed_builtins(tree: ast.Module) -> frozenset[str]:
         elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in _TRACKED_BUILTINS:
             shadowed.add(node.asname or node.name.split(".")[0])
     return frozenset(shadowed)
+
+
+def _invalidate_imported_bindings(aliases: list[ast.alias], exact: set[str]) -> None:
+    if any(alias.name == "*" for alias in aliases):
+        exact.clear()
+    else:
+        exact.difference_update(alias.asname or alias.name for alias in aliases)

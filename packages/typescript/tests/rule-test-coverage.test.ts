@@ -95,6 +95,17 @@ function caseCounts(filePath: string): CaseCounts {
   ): number | undefined =>
     running === undefined || addition === undefined ? undefined : running + addition;
 
+  function collectConfiguredCases(config: ts.ObjectLiteralExpression): void {
+    for (const property of config.properties) {
+      if (!ts.isPropertyAssignment(property) || !ts.isIdentifier(property.name)) {
+        continue;
+      }
+      const count = countCases(property.initializer, constants);
+      if (property.name.text === "valid") valid = add(valid, count);
+      if (property.name.text === "invalid") invalid = add(invalid, count);
+    }
+  }
+
   const visit = (node: ts.Node): void => {
     if (
       ts.isCallExpression(node) &&
@@ -103,14 +114,7 @@ function caseCounts(filePath: string): CaseCounts {
     ) {
       const config = node.arguments[2];
       if (config !== undefined && ts.isObjectLiteralExpression(config)) {
-        for (const property of config.properties) {
-          if (!ts.isPropertyAssignment(property) || !ts.isIdentifier(property.name)) {
-            continue;
-          }
-          const count = countCases(property.initializer, constants);
-          if (property.name.text === "valid") valid = add(valid, count);
-          if (property.name.text === "invalid") invalid = add(invalid, count);
-        }
+        collectConfiguredCases(config);
       }
     }
     ts.forEachChild(node, visit);
@@ -144,7 +148,7 @@ describe("every shipped rule is exercised by its own tests", () => {
     expect(
       existsSync(path),
       `${name} is wired into a preset but has no tests/rules/${name}.test.ts. ` +
-        `A rule nobody has run is a rule nobody has read the findings of.`,
+      `A rule nobody has run is a rule nobody has read the findings of.`,
     ).toBe(true);
   });
 
@@ -154,25 +158,25 @@ describe("every shipped rule is exercised by its own tests", () => {
     expect(
       valid,
       `${name}: could not statically count RuleTester \`valid\` cases in ` +
-        `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
-        `\`const\` array in the same file.`,
+      `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
+      `\`const\` array in the same file.`,
     ).not.toBeUndefined();
     expect(
       invalid,
       `${name}: could not statically count RuleTester \`invalid\` cases in ` +
-        `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
-        `\`const\` array in the same file.`,
+      `tests/rules/${name}.test.ts — declare them as an array literal, or as a ` +
+      `\`const\` array in the same file.`,
     ).not.toBeUndefined();
     expect(
       valid,
       `${name}: no \`valid\` cases. Without one, nothing pins that the rule stays ` +
-        `quiet on the code it is supposed to allow.`,
+      `quiet on the code it is supposed to allow.`,
     ).toBeGreaterThan(0);
     expect(
       invalid,
       `${name}: no \`invalid\` cases. Without one, nothing pins that the rule fires ` +
-        `at all — which is how ban-loose-type-guards-in-tests shipped at "error", ` +
-        `untested, for its whole life.`,
+      `at all — which is how ban-loose-type-guards-in-tests shipped at "error", ` +
+      `untested, for its whole life.`,
     ).toBeGreaterThan(0);
   });
 });

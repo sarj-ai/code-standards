@@ -393,22 +393,28 @@ class _MockNames:
                 self.qualified[alias.asname] = alias.name
 
     def _add_from_import(self, node: ast.ImportFrom) -> None:
+        self._add_mock_symbols(node)
+        # A relative import has no absolute path to resolve a bare name onto.
+        if node.module is not None and node.level == 0:
+            for alias in node.names:
+                self.qualified[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+
+    def _add_mock_symbols(self, node: ast.ImportFrom) -> None:
         if node.module == "unittest":
             for alias in node.names:
                 if alias.name == _MOCK_BACKPORT:
                     self.modules.add(alias.asname or _MOCK_BACKPORT)
         elif node.module in {_MOCK_MODULE, _MOCK_BACKPORT}:
-            for alias in node.names:
-                if alias.name == _PATCH or alias.name in _MOCK_FACTORIES:
-                    self.symbols[alias.asname or alias.name] = alias.name
+            self._add_mock_factories(node)
         elif node.module == "pytest.mark":
             for alias in node.names:
                 if alias.name == _PARAMETRIZE:
                     self.pytest_parametrize.add(alias.asname or alias.name)
-        # A relative import has no absolute path to resolve a bare name onto.
-        if node.module is not None and node.level == 0:
-            for alias in node.names:
-                self.qualified[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+
+    def _add_mock_factories(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.name == _PATCH or alias.name in _MOCK_FACTORIES:
+                self.symbols[alias.asname or alias.name] = alias.name
 
     def _remove_bound_names(self, bound: frozenset[str]) -> None:
         self.modules.difference_update(bound)
@@ -761,14 +767,7 @@ def _parametrized_arguments(
         if not isinstance(decorator, ast.Call) or not names.is_parametrize(decorator.func):
             continue
         argnames = _call_argument(decorator, 0, "argnames")
-        if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
-            parametrized.update(stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip()))
-        elif isinstance(argnames, (ast.List, ast.Tuple)):
-            parametrized.update(
-                element.value
-                for element in argnames.elts
-                if isinstance(element, ast.Constant) and isinstance(element.value, str)
-            )
+        _collect_parametrized_names(argnames, parametrized)
     return frozenset(parametrized)
 
 
@@ -817,3 +816,14 @@ def _dotted(node: ast.expr) -> str | None:
         return None
     parts.append(current.id)
     return ".".join(reversed(parts))
+
+
+def _collect_parametrized_names(argnames: ast.expr | None, parametrized: set[str]) -> None:
+    if isinstance(argnames, ast.Constant) and isinstance(argnames.value, str):
+        parametrized.update(stripped_name for name in argnames.value.split(",") if (stripped_name := name.strip()))
+    elif isinstance(argnames, (ast.List, ast.Tuple)):
+        parametrized.update(
+            element.value
+            for element in argnames.elts
+            if isinstance(element, ast.Constant) and isinstance(element.value, str)
+        )

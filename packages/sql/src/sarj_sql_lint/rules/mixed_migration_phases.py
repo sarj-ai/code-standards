@@ -134,7 +134,7 @@ class MixedMigrationPhases(Rule):
             line = next((fragment.line for fragment in statement if fragment.text.strip()), statement[0].line)
             phases.add(phase)
             first_lines.setdefault(phase, line)
-            if (_Phase.BACKFILL in phases and _Phase.CONTRACT in phases) or len(phases) >= _PHASE_REVIEW_LIMIT:
+            if _requires_phase_review(phases):
                 ordered = sorted(phases, key=lambda item: first_lines[item])
                 detail = ", ".join(f"{item.value} at line {first_lines[item]}" for item in ordered)
                 return [
@@ -202,17 +202,7 @@ def _classify(statement: str, fresh_tables: set[str]) -> _Phase | None:
             else _Phase.CONTRACT
         )
     if match := _ALTER_TABLE.match(normalized):
-        table = _normalize_identifier(match.group("table"))
-        body = match.group("body").upper()
-        if table in fresh_tables:
-            return _Phase.EXPAND
-        if re.search(r"\b(?:DROP|RENAME)\b|\b(?:ALTER\s+COLUMN\s+)?TYPE\b|\bSET\s+DATA\s+TYPE\b", body):
-            return _Phase.CONTRACT
-        if re.search(r"\bVALIDATE\s+CONSTRAINT\b|\bSET\s+NOT\s+NULL\b", body) or (
-            "ADD CONSTRAINT" in body and "NOT VALID" not in body
-        ):
-            return _Phase.ENFORCE
-        return _Phase.EXPAND
+        return _alter_phase(match, fresh_tables)
     if upper.startswith(("CREATE ", "COMMENT ON ")):
         return _Phase.EXPAND
     return None
@@ -220,3 +210,21 @@ def _classify(statement: str, fresh_tables: set[str]) -> _Phase | None:
 
 def _normalize_identifier(value: str) -> str:
     return re.sub(r"\s*\.\s*", ".", value).replace('"', "").casefold()
+
+
+def _alter_phase(match: re.Match[str], fresh_tables: set[str]) -> _Phase:
+    table = _normalize_identifier(match.group("table"))
+    body = match.group("body").upper()
+    if table in fresh_tables:
+        return _Phase.EXPAND
+    if re.search(r"\b(?:DROP|RENAME)\b|\b(?:ALTER\s+COLUMN\s+)?TYPE\b|\bSET\s+DATA\s+TYPE\b", body):
+        return _Phase.CONTRACT
+    if re.search(r"\bVALIDATE\s+CONSTRAINT\b|\bSET\s+NOT\s+NULL\b", body) or (
+        "ADD CONSTRAINT" in body and "NOT VALID" not in body
+    ):
+        return _Phase.ENFORCE
+    return _Phase.EXPAND
+
+
+def _requires_phase_review(phases: set[_Phase]) -> bool:
+    return (_Phase.BACKFILL in phases and _Phase.CONTRACT in phases) or len(phases) >= _PHASE_REVIEW_LIMIT

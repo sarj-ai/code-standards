@@ -113,6 +113,32 @@ class NoRedundantLiteralDescription(Rule):
         imports = _module_import_index(tree)
         local_domains = _local_closed_domains(tree, imports)
         diagnostics: list[Diagnostic] = []
+
+        def collect_field_descriptions(statement: ast.AnnAssign, field_name: str, domain: frozenset[str]) -> None:
+            for field_call in _field_calls(statement, imports):
+                description = next(
+                    (keyword.value for keyword in field_call.keywords if keyword.arg == "description"), None
+                )
+                if not (
+                    isinstance(description, ast.Constant)
+                    and isinstance(description.value, str)
+                    and _repeats_domain(description.value, domain)
+                ):
+                    continue
+                diagnostics.append(
+                    Diagnostic(
+                        path=path,
+                        line=description.lineno,
+                        col=description.col_offset + 1,
+                        code=self.code,
+                        message=(
+                            f"`{field_name}` repeats values already emitted by its Literal or Enum schema; "
+                            "remove the repeated domain while preserving behavioral guidance."
+                        ),
+                        severity=Severity.WARNING,
+                    )
+                )
+
         for model in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
             if not _is_direct_model(model, imports) or _has_custom_schema_hook(model):
                 continue
@@ -122,29 +148,7 @@ class NoRedundantLiteralDescription(Rule):
                 domain = _closed_domain(statement.annotation, imports, local_domains)
                 if domain is None or _has_schema_override(statement.annotation, imports):
                     continue
-                for field_call in _field_calls(statement, imports):
-                    description = next(
-                        (keyword.value for keyword in field_call.keywords if keyword.arg == "description"), None
-                    )
-                    if not (
-                        isinstance(description, ast.Constant)
-                        and isinstance(description.value, str)
-                        and _repeats_domain(description.value, domain)
-                    ):
-                        continue
-                    diagnostics.append(
-                        Diagnostic(
-                            path=path,
-                            line=description.lineno,
-                            col=description.col_offset + 1,
-                            code=self.code,
-                            message=(
-                                f"`{statement.target.id}` repeats values already emitted by its Literal or Enum schema; "
-                                "remove the repeated domain while preserving behavioral guidance."
-                            ),
-                            severity=Severity.WARNING,
-                        )
-                    )
+                collect_field_descriptions(statement, statement.target.id, domain)
         return diagnostics
 
 
@@ -222,13 +226,7 @@ def _closed_domain(
     if not isinstance(node, ast.Subscript):
         return None
     if imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Literal"):
-        members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
-        values: set[str] = set()
-        for member in members:
-            if not isinstance(member, ast.Constant) or not isinstance(member.value, str):
-                return None
-            values.add(member.value)
-        return frozenset(values)
+        return _literal_domain(node)
     if imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Annotated"):
         members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
         return _closed_domain(members[0], imports, local_domains) if members else None
@@ -285,3 +283,13 @@ def _field_calls(statement: ast.AnnAssign, imports: ImportIndex) -> tuple[ast.Ca
         if isinstance(candidate, ast.Call)
         and imports.resolves(candidate.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field")
     )
+
+
+def _literal_domain(node: ast.Subscript) -> frozenset[str] | None:
+    members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
+    values: set[str] = set()
+    for member in members:
+        if not isinstance(member, ast.Constant) or not isinstance(member.value, str):
+            return None
+        values.add(member.value)
+    return frozenset(values)

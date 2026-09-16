@@ -161,17 +161,7 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
 
 def _type_index(tree: ast.Module) -> _TypeIndex:
     counts = _module_binding_counts(tree)
-    aliases: dict[str, ast.expr] = {}
-    for statement in tree.body:
-        match statement:
-            case ast.TypeAlias(name=ast.Name(id=name), value=value):
-                if counts.get(name) == 1:
-                    aliases[name] = value
-            case ast.Assign(targets=[ast.Name(id=name)], value=value) if isinstance(value, ast.Name | ast.Attribute):
-                if counts.get(name) == 1:
-                    aliases[name] = value
-            case _:
-                continue
+    aliases = _module_type_aliases(tree, counts)
     preliminary = _TypeIndex(
         ImportIndex.from_tree(tree, module_scope_only=True),
         aliases,
@@ -224,11 +214,7 @@ def _annotation_kind(
     seen: frozenset[str] = frozenset(),
 ) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        try:
-            parsed = ast.parse(node.value, mode="eval")
-        except SyntaxError:
-            return None
-        return _annotation_kind(parsed.body, types, seen)
+        return _string_annotation_kind(node.value, types, seen)
     if isinstance(node, ast.Name) and node.id in types.aliases and node.id not in seen:
         return _annotation_kind(types.aliases[node.id], types, seen | {node.id})
     if _root_name(node) in types.ambiguous:
@@ -240,21 +226,7 @@ def _annotation_kind(
             return "connection"
     match node:
         case ast.Subscript(value=value, slice=content):
-            direct = _annotation_kind(value, types, seen)
-            if direct is not None:
-                return direct
-            tail = _tail(value)
-            match tail:
-                case "Annotated":
-                    first = content.elts[0] if isinstance(content, ast.Tuple) and content.elts else content
-                    return _annotation_kind(first, types, seen)
-                case "Optional":
-                    return _annotation_kind(content, types, seen)
-                case "Union":
-                    elements = content.elts if isinstance(content, ast.Tuple) else [content]
-                    return _compatible_union_kind(elements, types, seen)
-                case _:
-                    return None
+            return _subscript_annotation_kind(value, content, types, seen)
         case ast.BinOp(left=left, op=ast.BitOr(), right=right):
             return _compatible_union_kind([left, right], types, seen)
         case ast.Tuple(elts=elements):
@@ -272,13 +244,7 @@ def _class_ownership(cls: ast.ClassDef, types: _TypeIndex) -> _ClassOwnership:
     injected: set[str] = set()
     external: set[str] = set()
     if len(constructors) == 1:
-        constructor = constructors[0]
-        parameters = {
-            argument.arg for argument in _arguments(constructor) if _database_annotation(argument.annotation, types)
-        }
-        origins = dict.fromkeys(parameters, _Origin.INJECTED)
-        for statement in constructor.body:
-            _apply_constructor_statement(statement, types, origins, injected, external)
+        _constructor_ownership(constructors[0], types, injected, external)
     methods = [
         method
         for method in cls.body
@@ -290,7 +256,47 @@ def _class_ownership(cls: ast.ClassDef, types: _TypeIndex) -> _ClassOwnership:
     return _ClassOwnership(frozenset(injected - mutated), frozenset(external - mutated))
 
 
+def _constructor_ownership(
+    constructor: ast.FunctionDef | ast.AsyncFunctionDef,
+    types: _TypeIndex,
+    injected: set[str],
+    external: set[str],
+) -> None:
+    parameters = {
+        argument.arg for argument in _arguments(constructor) if _database_annotation(argument.annotation, types)
+    }
+    origins = dict.fromkeys(parameters, _Origin.INJECTED)
+    for statement in constructor.body:
+        _apply_constructor_statement(statement, types, origins, injected, external)
+
+
 def _apply_constructor_statement(
+    statement: ast.stmt,
+    types: _TypeIndex,
+    origins: dict[str, _Origin],
+    injected: set[str],
+    external: set[str],
+) -> None:
+    _assign_constructor_attribute(statement, types, origins, injected, external)
+    if not isinstance(statement, ast.Assign):
+        if not isinstance(statement, ast.AnnAssign) or statement.value is None:
+            return
+        value = statement.value
+        targets = [statement.target]
+    else:
+        value = statement.value
+        targets = statement.targets
+    origin = origins.get(value.id) if isinstance(value, ast.Name) else None
+    origin = _Origin.EXTERNAL if origin is None and _database_creator(value, types) else origin
+    for target in targets:
+        for name in _target_names(target):
+            if origin is None:
+                origins.pop(name, None)
+            else:
+                origins[name] = origin
+
+
+def _assign_constructor_attribute(
     statement: ast.stmt,
     types: _TypeIndex,
     origins: dict[str, _Origin],
@@ -308,22 +314,6 @@ def _apply_constructor_statement(
             injected.add(attribute)
         elif origin is _Origin.EXTERNAL:
             external.add(attribute)
-    if not isinstance(statement, ast.Assign):
-        if not isinstance(statement, ast.AnnAssign) or statement.value is None:
-            return
-        value = statement.value
-        targets = [statement.target]
-    else:
-        value = statement.value
-        targets = statement.targets
-    origin = origins.get(value.id) if isinstance(value, ast.Name) else None
-    origin = _Origin.EXTERNAL if origin is None and _database_creator(value, types) else origin
-    for target in targets:
-        for name in _target_names(target):
-            if origin is None:
-                origins.pop(name, None)
-            else:
-                origins[name] = origin
 
 
 def _self_attribute_assignment(statement: ast.stmt) -> tuple[str, ast.expr] | None:
@@ -483,14 +473,19 @@ class _FunctionAnalyzer:
                     self._shadowed.update(_target_names(target))
                 return current
             case ast.With(items=items, body=body) | ast.AsyncWith(items=items, body=body):
-                for item in items:
-                    self._inspect(item.context_expr, current)
-                    if item.optional_vars is not None:
-                        self._bind(item.optional_vars, self._context_origin(item.context_expr, current), current)
-                        self._shadowed.update(_target_names(item.optional_vars))
-                return self._block(body, current)
+                return self._with_statement(items, body, current)
             case _:
                 return self._control_statement(statement, current)
+
+    def _with_statement(
+        self, items: list[ast.withitem], body: list[ast.stmt], current: dict[str, _Origin]
+    ) -> dict[str, _Origin] | None:
+        for item in items:
+            self._inspect(item.context_expr, current)
+            if item.optional_vars is not None:
+                self._bind(item.optional_vars, self._context_origin(item.context_expr, current), current)
+                self._shadowed.update(_target_names(item.optional_vars))
+        return self._block(body, current)
 
     def _control_statement(self, statement: ast.stmt, current: dict[str, _Origin]) -> dict[str, _Origin] | None:
         match statement:
@@ -521,23 +516,10 @@ class _FunctionAnalyzer:
                 ast.Try(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody)
                 | ast.TryStar(body=body, handlers=handlers, orelse=orelse, finalbody=finalbody)
             ):
-                body_exit = self._block(body, current)
-                normal = None if body_exit is None else self._block(orelse, body_exit)
-                exits: list[dict[str, _Origin] | None] = [normal]
-                for handler in handlers:
-                    handler_state = dict(current)
-                    if handler.name is not None:
-                        handler_state.pop(handler.name, None)
-                        self._shadowed.add(handler.name)
-                    exits.append(self._block(handler.body, handler_state))
-                merged = exits[0]
-                for exit_state in exits[1:]:
-                    merged = _join_exits(merged, exit_state)
-                final_exit = self._block(finalbody, merged or current)
-                return None if merged is None else final_exit
+                return self._try_statement(body, handlers, orelse, finalbody, current)
             case ast.Match(subject=subject, cases=cases):
                 self._inspect(subject, current)
-                exits = [current]
+                exits: list[dict[str, _Origin] | None] = [current]
                 for case in cases:
                     case_state = dict(current)
                     pattern_names = _pattern_names(case.pattern)
@@ -559,6 +541,29 @@ class _FunctionAnalyzer:
             case _:
                 self._inspect(statement, current)
                 return current
+
+    def _try_statement(
+        self,
+        body: list[ast.stmt],
+        handlers: list[ast.ExceptHandler],
+        orelse: list[ast.stmt],
+        finalbody: list[ast.stmt],
+        current: dict[str, _Origin],
+    ) -> dict[str, _Origin] | None:
+        body_exit = self._block(body, current)
+        normal = None if body_exit is None else self._block(orelse, body_exit)
+        exits: list[dict[str, _Origin] | None] = [normal]
+        for handler in handlers:
+            handler_state = dict(current)
+            if handler.name is not None:
+                handler_state.pop(handler.name, None)
+                self._shadowed.add(handler.name)
+            exits.append(self._block(handler.body, handler_state))
+        merged = exits[0]
+        for exit_state in exits[1:]:
+            merged = _join_exits(merged, exit_state)
+        final_exit = self._block(finalbody, merged or current)
+        return None if merged is None else final_exit
 
     def _inspect(self, node: ast.AST, state: dict[str, _Origin]) -> None:
         analyzer = self
@@ -775,6 +780,26 @@ def _node_is_suppressed(source_lines: list[str], node: ast.AST, code: str) -> bo
     return any(is_suppressed(source_lines, line, code) for line in range(start, end + 1))
 
 
+def _subscript_annotation_kind(
+    value: ast.expr, content: ast.expr, types: _TypeIndex, seen: frozenset[str]
+) -> str | None:
+    direct = _annotation_kind(value, types, seen)
+    if direct is not None:
+        return direct
+    tail = _tail(value)
+    match tail:
+        case "Annotated":
+            first = content.elts[0] if isinstance(content, ast.Tuple) and content.elts else content
+            return _annotation_kind(first, types, seen)
+        case "Optional":
+            return _annotation_kind(content, types, seen)
+        case "Union":
+            elements = content.elts if isinstance(content, ast.Tuple) else [content]
+            return _compatible_union_kind(elements, types, seen)
+        case _:
+            return None
+
+
 def _tail(node: ast.expr | None) -> str:
     match node:
         case ast.Name(id=name) | ast.Attribute(attr=name):
@@ -804,3 +829,26 @@ def _is_connection_probe(call: ast.Call) -> bool:
         return False
     query = call.args[0]
     return isinstance(query, ast.Constant) and isinstance(query.value, str) and query.value.strip(" ;") == "SELECT 1"
+
+
+def _module_type_aliases(tree: ast.Module, counts: dict[str, int]) -> dict[str, ast.expr]:
+    aliases: dict[str, ast.expr] = {}
+    for statement in tree.body:
+        match statement:
+            case ast.TypeAlias(name=ast.Name(id=name), value=value):
+                if counts.get(name) == 1:
+                    aliases[name] = value
+            case ast.Assign(targets=[ast.Name(id=name)], value=value) if isinstance(value, ast.Name | ast.Attribute):
+                if counts.get(name) == 1:
+                    aliases[name] = value
+            case _:
+                continue
+    return aliases
+
+
+def _string_annotation_kind(value: str, types: _TypeIndex, seen: frozenset[str]) -> str | None:
+    try:
+        parsed = ast.parse(value, mode="eval")
+    except SyntaxError:
+        return None
+    return _annotation_kind(parsed.body, types, seen)

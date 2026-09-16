@@ -19,6 +19,7 @@ import noDuplicateLifecycleRefreshListeners from "./rules/no-duplicate-lifecycle
 import noDangerouslyAllowSvg from "./rules/no-dangerously-allow-svg.js";
 import noDynamicSql from "./rules/no-dynamic-sql.js";
 import noEnum from "./rules/no-enum.js";
+import noExcessiveCognitiveComplexity from "./rules/no-excessive-cognitive-complexity.js";
 import noFatTryBlocks from "./rules/no-fat-try-blocks.js";
 import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
 import noHandRolledSpinner from "./rules/no-hand-rolled-spinner.js";
@@ -130,6 +131,7 @@ const RULES = {
   "no-dangerously-allow-svg": noDangerouslyAllowSvg,
   "no-dynamic-sql": noDynamicSql,
   "no-enum": noEnum,
+  "no-excessive-cognitive-complexity": noExcessiveCognitiveComplexity,
   "no-fat-try-blocks": noFatTryBlocks,
   "no-hand-rolled-sleep": noHandRolledSleep,
   "no-hand-rolled-spinner": noHandRolledSpinner,
@@ -222,7 +224,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.21.0",
+  version: "15.21.1",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -276,6 +278,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-native-random-uuid": "error",
   "@sarj/prefer-shadcn-primitives": "error",
   "@sarj/excessive-commentary": "warn",
+  "@sarj/no-excessive-cognitive-complexity": "error",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",
@@ -381,6 +384,7 @@ const STRICT_RULES = {
   "@sarj/prefer-native-random-uuid": "error",
   "@sarj/prefer-shadcn-primitives": "error",
   "@sarj/excessive-commentary": "warn",
+  "@sarj/no-excessive-cognitive-complexity": "error",
   "@sarj/interface-contract-members-private": "error",
   "@sarj/iac-source-coupled-test": "error",
   "@sarj/duplicate-test-body": "error",

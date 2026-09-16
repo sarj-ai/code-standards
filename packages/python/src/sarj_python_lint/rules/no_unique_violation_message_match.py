@@ -160,14 +160,7 @@ def _module_import_index(tree: ast.Module) -> ImportIndex:
     body: list[ast.stmt] = []
     for statement in tree.body:
         if isinstance(statement, ast.ImportFrom) and statement.module in {"psycopg", "psycopg2"}:
-            regular_names = [alias for alias in statement.names if alias.name != "errors"]
-            if regular_names:
-                body.append(ast.ImportFrom(module=statement.module, names=regular_names, level=statement.level))
-            body.extend(
-                ast.Import(names=[ast.alias(name=f"{statement.module}.errors", asname=alias.asname or alias.name)])
-                for alias in statement.names
-                if alias.name == "errors"
-            )
+            _expand_psycopg_errors_import(statement, body)
             continue
         if isinstance(statement, (ast.Import, ast.ImportFrom)):
             body.append(statement)
@@ -275,13 +268,7 @@ def _binds_name(node: ast.AST, names: set[str]) -> bool:
 def _stable_message_aliases(handler: ast.ExceptHandler, exception_name: str) -> frozenset[str]:
     stores: dict[str, int] = {}
     assignments: list[tuple[str, ast.expr]] = []
-    for statement in handler.body:
-        for node in _walk_same_scope(statement):
-            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
-                stores[node.id] = stores.get(node.id, 0) + 1
-        if isinstance(statement, (ast.Assign, ast.AnnAssign)) and isinstance(statement.value, ast.expr):
-            targets = statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
-            assignments.extend((target.id, statement.value) for target in targets if isinstance(target, ast.Name))
+    _collect_message_assignments(handler, stores, assignments)
     aliases: set[str] = set()
     changed = True
     empty_imports = ImportIndex.from_tree(ast.Module(body=[], type_ignores=[]))
@@ -397,3 +384,26 @@ def _message(context: _HandlerContext) -> str:
         "Unique-violation control flow depends on unstable rendered message text; compare the driver's structured "
         f"diagnostics instead (for constraint identity, `{field}`)."
     )
+
+
+def _expand_psycopg_errors_import(statement: ast.ImportFrom, body: list[ast.stmt]) -> None:
+    regular_names = [alias for alias in statement.names if alias.name != "errors"]
+    if regular_names:
+        body.append(ast.ImportFrom(module=statement.module, names=regular_names, level=statement.level))
+    body.extend(
+        ast.Import(names=[ast.alias(name=f"{statement.module}.errors", asname=alias.asname or alias.name)])
+        for alias in statement.names
+        if alias.name == "errors"
+    )
+
+
+def _collect_message_assignments(
+    handler: ast.ExceptHandler, stores: dict[str, int], assignments: list[tuple[str, ast.expr]]
+) -> None:
+    for statement in handler.body:
+        for node in _walk_same_scope(statement):
+            if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)):
+                stores[node.id] = stores.get(node.id, 0) + 1
+        if isinstance(statement, (ast.Assign, ast.AnnAssign)) and isinstance(statement.value, ast.expr):
+            targets = statement.targets if isinstance(statement, ast.Assign) else (statement.target,)
+            assignments.extend((target.id, statement.value) for target in targets if isinstance(target, ast.Name))

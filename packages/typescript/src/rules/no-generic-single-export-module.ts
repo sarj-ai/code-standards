@@ -69,39 +69,29 @@ function runtimeExports(program: TSESTree.Program): RuntimeExports {
   const exports: Array<{ key: string; name: string; node: TSESTree.Node }> = [];
   const typeBindings = typeOnlyBindings(program);
   let ambiguous = false;
-  for (const statement of program.body) {
+  function collectRuntimeExport(statement: TSESTree.ProgramStatement): void {
     if (statement.type === AST_NODE_TYPES.ExportAllDeclaration) {
       if (statement.exportKind !== "type") ambiguous = true;
-      continue;
+      return;
     }
     if (statement.type === AST_NODE_TYPES.ExportDefaultDeclaration) {
-      const declaration = statement.declaration;
-      if (declaration.type === AST_NODE_TYPES.Identifier) {
-        if (!typeBindings.has(declaration.name)) {
-          exports.push({ key: "default", name: declaration.name, node: statement });
-        }
-      }
-      else if (
-        (declaration.type === AST_NODE_TYPES.FunctionDeclaration || declaration.type === AST_NODE_TYPES.ClassDeclaration) &&
-        declaration.id !== null &&
-        declaration.declare !== true
-      ) exports.push({ key: "default", name: declaration.id.name, node: declaration });
-      else if (
-        declaration.type !== AST_NODE_TYPES.TSInterfaceDeclaration &&
-        declaration.type !== AST_NODE_TYPES.TSTypeAliasDeclaration
-      ) ambiguous = true;
-      continue;
+      collectDefaultExport(statement);
+      return;
     }
-    if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration || statement.exportKind === "type") continue;
+    if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration || statement.exportKind === "type") return;
     if (statement.source !== null) {
       if (statement.specifiers.some((specifier) => specifier.exportKind !== "type")) ambiguous = true;
-      continue;
+      return;
     }
     if (statement.declaration !== null) {
       const declaration = statement.declaration;
       if (declaration.type === AST_NODE_TYPES.VariableDeclaration && declaration.declarations.some((item) => item.id.type !== AST_NODE_TYPES.Identifier)) ambiguous = true;
       exports.push(...declaredNames(declaration).map((name) => ({ key: name, name, node: declaration })));
     }
+    collectExportSpecifiers(statement);
+  }
+
+  function collectExportSpecifiers(statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>): void {
     for (const specifier of statement.specifiers) {
       if (specifier.exportKind === "type" || typeBindings.has(specifier.local.name)) continue;
       const exported = specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value;
@@ -109,6 +99,27 @@ function runtimeExports(program: TSESTree.Program): RuntimeExports {
       exports.push({ key: exported, name: exported === "default" ? local : exported, node: specifier });
     }
   }
+
+  function collectDefaultExport(statement: TSESTree.ExportDefaultDeclaration): void {
+    const declaration = statement.declaration;
+    if (declaration.type === AST_NODE_TYPES.Identifier) {
+      if (!typeBindings.has(declaration.name)) {
+        exports.push({ key: "default", name: declaration.name, node: statement });
+      }
+    }
+    else if (
+      (declaration.type === AST_NODE_TYPES.FunctionDeclaration || declaration.type === AST_NODE_TYPES.ClassDeclaration) &&
+      declaration.id !== null &&
+      declaration.declare !== true
+    ) exports.push({ key: "default", name: declaration.id.name, node: declaration });
+    else if (
+      declaration.type !== AST_NODE_TYPES.TSInterfaceDeclaration &&
+      declaration.type !== AST_NODE_TYPES.TSTypeAliasDeclaration
+    ) ambiguous = true;
+
+  }
+
+  for (const statement of program.body) { collectRuntimeExport(statement); }
   const unique = new Map(exports.map((entry) => [entry.key, entry]));
   return { exports: [...unique.values()], ambiguous };
 }
@@ -117,7 +128,7 @@ function runtimeExports(program: TSESTree.Program): RuntimeExports {
 function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
   const names = new Set<string>();
   const runtimeNames = new Set<string>();
-  for (const statement of program.body) {
+  function collectTypeBinding(statement: TSESTree.ProgramStatement): void {
     const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
       ? statement.declaration
       : statement;
@@ -126,44 +137,23 @@ function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
       declaration?.type === AST_NODE_TYPES.TSTypeAliasDeclaration
     ) {
       names.add(declaration.id.name);
-      continue;
+      return;
     }
     if (declaration?.type === AST_NODE_TYPES.TSEnumDeclaration && declaration.const) {
       names.add(declaration.id.name);
-      continue;
+      return;
     }
     if (statement.type === AST_NODE_TYPES.ImportDeclaration) {
-      for (const specifier of statement.specifiers) {
-        if (
-          statement.importKind === "type" ||
-          (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.importKind === "type")
-        ) {
-          names.add(specifier.local.name);
-        } else {
-          runtimeNames.add(specifier.local.name);
-        }
-      }
-      continue;
+      collectImportBindings(statement);
+      return;
     }
     if (declaration?.type === AST_NODE_TYPES.TSDeclareFunction && declaration.id !== null) {
       names.add(declaration.id.name);
-      continue;
+      return;
     }
     if (declaration !== null && (declaration as { declare?: boolean }).declare === true) {
-      if (
-        (declaration.type === AST_NODE_TYPES.ClassDeclaration ||
-          declaration.type === AST_NODE_TYPES.FunctionDeclaration ||
-          declaration.type === AST_NODE_TYPES.TSEnumDeclaration ||
-          declaration.type === AST_NODE_TYPES.TSModuleDeclaration) &&
-        declaration.id !== null &&
-        declaration.id.type === AST_NODE_TYPES.Identifier
-      ) names.add(declaration.id.name);
-      if (declaration.type === AST_NODE_TYPES.VariableDeclaration) {
-        for (const item of declaration.declarations) {
-          if (item.id.type === AST_NODE_TYPES.Identifier) names.add(item.id.name);
-        }
-      }
-      continue;
+      collectDeclaredNames(declaration);
+      return;
     }
     if (declaration !== null && "type" in declaration) {
       for (const name of declaredNames(declaration as TSESTree.NamedExportDeclarations)) {
@@ -171,6 +161,39 @@ function typeOnlyBindings(program: TSESTree.Program): ReadonlySet<string> {
       }
     }
   }
+
+  function collectImportBindings(statement: TSESTree.ImportDeclaration): void {
+    for (const specifier of statement.specifiers) {
+      if (
+        statement.importKind === "type" ||
+        (specifier.type === AST_NODE_TYPES.ImportSpecifier && specifier.importKind === "type")
+      ) {
+        names.add(specifier.local.name);
+      } else {
+        runtimeNames.add(specifier.local.name);
+      }
+    }
+
+  }
+
+  function collectDeclaredNames(declaration: TSESTree.Node): void {
+    if (
+      (declaration.type === AST_NODE_TYPES.ClassDeclaration ||
+        declaration.type === AST_NODE_TYPES.FunctionDeclaration ||
+        declaration.type === AST_NODE_TYPES.TSEnumDeclaration ||
+        declaration.type === AST_NODE_TYPES.TSModuleDeclaration) &&
+      declaration.id !== null &&
+      declaration.id.type === AST_NODE_TYPES.Identifier
+    ) names.add(declaration.id.name);
+    if (declaration.type === AST_NODE_TYPES.VariableDeclaration) {
+      for (const item of declaration.declarations) {
+        if (item.id.type === AST_NODE_TYPES.Identifier) names.add(item.id.name);
+      }
+    }
+
+  }
+
+  for (const statement of program.body) { collectTypeBinding(statement); }
   return new Set([...names].filter((name) => !runtimeNames.has(name)));
 }
 

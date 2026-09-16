@@ -217,6 +217,27 @@ class RuleSpec:
     since: str | None = None
 
     def __post_init__(self) -> None:
+        self._validate_identity()
+        example_ids = tuple(example.example_id for example in self.examples)
+        if len(example_ids) != len(set(example_ids)):
+            msg = "rule example IDs must be unique"
+            raise ValueError(msg)
+        if self.autofix is AutofixPolicy.NONE and any(example.fixed_files for example in self.examples):
+            msg = "rules without autofix must not publish fixed example files"
+            raise ValueError(msg)
+        self._validate_metadata()
+        if self.options_schema is not None:
+            try:
+                parsed_schema: object = json.loads(self.options_schema)  # pyright: ignore[reportAny]
+            except json.JSONDecodeError as exc:
+                msg = "rule options schema must be valid JSON"
+                raise ValueError(msg) from exc
+            if not isinstance(parsed_schema, dict):
+                msg = "rule options schema must be a JSON object"
+                raise ValueError(msg)
+        self._validate_public_scenarios()
+
+    def _validate_identity(self) -> None:
         if not _KEBAB_CASE.fullmatch(self.rule_id):
             msg = "rule ID must be non-empty lowercase kebab-case"
             raise ValueError(msg)
@@ -242,13 +263,8 @@ class RuleSpec:
         ):
             msg = "rule aliases must be unique historical lowercase kebab-case IDs"
             raise ValueError(msg)
-        example_ids = tuple(example.example_id for example in self.examples)
-        if len(example_ids) != len(set(example_ids)):
-            msg = "rule example IDs must be unique"
-            raise ValueError(msg)
-        if self.autofix is AutofixPolicy.NONE and any(example.fixed_files for example in self.examples):
-            msg = "rules without autofix must not publish fixed example files"
-            raise ValueError(msg)
+
+    def _validate_metadata(self) -> None:
         if len(self.message_ids) != len(set(self.message_ids)) or any(not value.strip() for value in self.message_ids):
             msg = "rule message IDs must be unique and non-empty"
             raise ValueError(msg)
@@ -266,15 +282,8 @@ class RuleSpec:
         if self.since is not None and not self.since.strip():
             msg = "rule since version must not be empty when present"
             raise ValueError(msg)
-        if self.options_schema is not None:
-            try:
-                parsed_schema: object = json.loads(self.options_schema)  # pyright: ignore[reportAny]
-            except json.JSONDecodeError as exc:
-                msg = "rule options schema must be valid JSON"
-                raise ValueError(msg) from exc
-            if not isinstance(parsed_schema, dict):
-                msg = "rule options schema must be a JSON object"
-                raise ValueError(msg)
+
+    def _validate_public_scenarios(self) -> None:
         public_scenarios = {example.scenario for example in self.examples if example.public}
         for scenario in public_scenarios:
             pair = tuple(example for example in self.examples if example.public and example.scenario == scenario)

@@ -94,18 +94,7 @@ class IndexBudget(Rule):
         indexes = authored_indexes(path, source)
         table_positions: Counter[str] = Counter()
         findings: list[Diagnostic] = []
-        seen_names: set[str] = set()
-        seen_signatures: set[IndexSignature] = set()
-        distinct_indexes: list[IndexDefinition] = []
-        for index in indexes:
-            namespace_key = index_namespace_key(index)
-            has_reused_name = namespace_key is not None and namespace_key in seen_names
-            if has_reused_name or index.signature in seen_signatures:
-                continue
-            if namespace_key is not None:
-                seen_names.add(namespace_key)
-            seen_signatures.add(index.signature)
-            distinct_indexes.append(index)
+        distinct_indexes = _distinct_indexes(indexes)
         for total_position, index in enumerate(distinct_indexes, start=1):
             table_positions[index.table] += 1
             exceeds_total = total_position > _MIGRATION_INDEX_LIMIT
@@ -133,3 +122,19 @@ class IndexBudget(Rule):
                 )
             )
         return findings
+
+
+def _distinct_indexes(indexes: tuple[IndexDefinition, ...]) -> list[IndexDefinition]:
+    seen_names: set[str] = set()
+    seen_signatures: set[IndexSignature] = set()
+    distinct_indexes: list[IndexDefinition] = []
+    for index in indexes:
+        namespace_key = index_namespace_key(index)
+        has_reused_name = namespace_key is not None and namespace_key in seen_names
+        if has_reused_name or index.signature in seen_signatures:
+            continue
+        if namespace_key is not None:
+            seen_names.add(namespace_key)
+        seen_signatures.add(index.signature)
+        distinct_indexes.append(index)
+    return distinct_indexes

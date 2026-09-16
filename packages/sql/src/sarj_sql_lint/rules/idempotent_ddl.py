@@ -127,12 +127,7 @@ class IdempotentDdl(Rule):
         model_owned = is_generated_migration(path, source)
 
         masked = mask_sql(source)
-        if is_mysql(source):
-            checks = [check for check in _CHECKS if check.mysql_supported]
-        elif is_sqlite(source):
-            checks = [check for check in _CHECKS if check.sqlite_supported]
-        else:
-            checks = list(_CHECKS)
+        checks = _dialect_checks(source)
 
         diags: list[Diagnostic] = []
 
@@ -154,3 +149,11 @@ class IdempotentDdl(Rule):
                         )
                     )
         return redirect_to_model(diags, model_owned=model_owned)
+
+
+def _dialect_checks(source: str) -> list[_DdlCheck]:
+    if is_mysql(source):
+        return [check for check in _CHECKS if check.mysql_supported]
+    if is_sqlite(source):
+        return [check for check in _CHECKS if check.sqlite_supported]
+    return list(_CHECKS)

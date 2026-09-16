@@ -124,12 +124,7 @@ def _proven_override_imports(tree: ast.Module) -> tuple[frozenset[str], frozense
     conflicting: set[str] = set()
     for statement in tree.body:
         if isinstance(statement, ast.ImportFrom) and statement.module in _OVERRIDE_MODULES:
-            for alias in statement.names:
-                name = alias.asname or alias.name
-                if alias.name == "override" and name not in direct:
-                    direct.add(name)
-                else:
-                    conflicting.add(name)
+            _collect_override_aliases(statement, direct, conflicting)
             continue
         if isinstance(statement, ast.Import):
             for alias in statement.names:
@@ -251,3 +246,12 @@ def _bare_delete_names(target: ast.expr) -> list[ast.Name]:
     if isinstance(target, (ast.Tuple, ast.List)):
         return [name for item in target.elts for name in _bare_delete_names(item)]
     return []
+
+
+def _collect_override_aliases(statement: ast.ImportFrom, direct: set[str], conflicting: set[str]) -> None:
+    for alias in statement.names:
+        name = alias.asname or alias.name
+        if alias.name == "override" and name not in direct:
+            direct.add(name)
+        else:
+            conflicting.add(name)

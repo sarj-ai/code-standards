@@ -154,81 +154,51 @@ class FastapiIndex:
             if self._node_scopes[id(node)] != 0:
                 continue
             if isinstance(node, ast.Import):
-                for alias in node.names:
-                    local = alias.asname or alias.name.split(".")[0]
-                    if alias.name == "fastapi" or alias.name.startswith(("fastapi.", "starlette.")):
-                        self.modules.add(local)
-                        self.module_symbols[local] = alias.name.rsplit(".", 1)[-1]
-                    if alias.name in {"typing", "typing_extensions"}:
-                        self.annotation_modules.add(local)
-                    if alias.name == "http":
-                        self.http_modules.add(local)
+                self._read_import(node)
             elif isinstance(node, ast.ImportFrom):
-                module = node.module or ""
-                if module in {"typing", "typing_extensions"}:
-                    for alias in node.names:
-                        if alias.name == "Annotated":
-                            self.annotated.add(alias.asname or alias.name)
-                    continue
-                if module == "http":
-                    for alias in node.names:
-                        if alias.name == "HTTPStatus":
-                            self.symbols[alias.asname or alias.name] = "HTTPStatus"
-                    continue
-                if module != "fastapi" and not module.startswith(("fastapi.", "starlette.")):
-                    continue
-                for alias in node.names:
-                    local = alias.asname or alias.name
-                    self.symbols[local] = alias.name
-                    if alias.name in {"FastAPI", "APIRouter"}:
-                        self.constructors.add(local)
+                self._read_import_from(node)
+
+    def _read_import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            local = alias.asname or alias.name.split(".")[0]
+            if alias.name == "fastapi" or alias.name.startswith(("fastapi.", "starlette.")):
+                self.modules.add(local)
+                self.module_symbols[local] = alias.name.rsplit(".", 1)[-1]
+            if alias.name in {"typing", "typing_extensions"}:
+                self.annotation_modules.add(local)
+            if alias.name == "http":
+                self.http_modules.add(local)
+
+    def _read_import_from(self, node: ast.ImportFrom) -> None:
+        module = node.module or ""
+        if module in {"typing", "typing_extensions"}:
+            self._read_annotated_import(node)
+            return
+        if module == "http":
+            for alias in node.names:
+                if alias.name == "HTTPStatus":
+                    self.symbols[alias.asname or alias.name] = "HTTPStatus"
+            return
+        if module != "fastapi" and not module.startswith(("fastapi.", "starlette.")):
+            return
+        for alias in node.names:
+            local = alias.asname or alias.name
+            self.symbols[local] = alias.name
+            if alias.name in {"FastAPI", "APIRouter"}:
+                self.constructors.add(local)
+
+    def _read_annotated_import(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.name == "Annotated":
+                self.annotated.add(alias.asname or alias.name)
 
     def _read_aliases(self, tree: ast.Module) -> None:
         assignments: list[tuple[int, str, ast.expr]] = []
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
-                arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-                if node.args.vararg is not None:
-                    arguments.append(node.args.vararg)
-                if node.args.kwarg is not None:
-                    arguments.append(node.args.kwarg)
-                self.bound_names.update(_ReceiverKey(node.lineno, argument.arg) for argument in arguments)
-            elif isinstance(node, ast.ClassDef):
-                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
-            elif isinstance(node, (ast.Import, ast.ImportFrom)):
-                self.bound_names.update(
-                    _ReceiverKey(self._node_scopes[id(node)], alias.asname or alias.name.split(".")[0])
-                    for alias in node.names
-                )
-            elif isinstance(node, (ast.For, ast.AsyncFor)):
-                self.bound_names.update(
-                    _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
-                )
-            elif isinstance(node, ast.With):
-                for item in node.items:
-                    if item.optional_vars is not None:
-                        self.bound_names.update(
-                            _ReceiverKey(self._node_scopes[id(node)], name)
-                            for name in self._target_names(item.optional_vars)
-                        )
-            elif isinstance(node, ast.ExceptHandler) and node.name is not None:
-                self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
-            elif isinstance(node, ast.NamedExpr):
-                self.bound_names.update(
-                    _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
-                )
-            if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                name = _binding_name(node.targets[0])
-                if name:
-                    assignments.append((self._assignment_scope(node, name), name, node.value))
-            elif isinstance(node, ast.AnnAssign) and node.value is not None:
-                name = _binding_name(node.target)
-                if name:
-                    assignments.append((self._assignment_scope(node, name), name, node.value))
-            elif isinstance(node, ast.TypeAlias):
-                assignments.append((self._node_scopes[id(node)], node.name.id, node.value))
-
+            self._read_bound_names(node)
+            assignment = self._alias_assignment(node)
+            if assignment is not None:
+                assignments.append(assignment)
         changed = True
         counts = Counter(_ReceiverKey(scope, name) for scope, name, _value in assignments)
         self.bound_names.update(counts)
@@ -240,38 +210,95 @@ class FastapiIndex:
                     continue
                 if key in self.receivers or key in self.decorators:
                     continue
-                source = self._receiver_key(scope, _binding_name(value))
-                constructor_kind = self._constructor_kind(value)
-                if constructor_kind is not None:
-                    self.receivers.add(key)
-                    self.receiver_origins[key] = key
-                    self.receiver_kinds[key] = constructor_kind
-                    if isinstance(value, ast.Call):
-                        self.receiver_defaults[key] = {
-                            keyword.arg: keyword.value
-                            for keyword in value.keywords
-                            if keyword.arg in {"responses", "default_response_class"}
-                        }
-                    if self._constructor_is_hidden(value):
-                        self.hidden_receivers.add(key)
+                if self._resolve_alias(key, value):
                     changed = True
-                    continue
-                if source is not None:
-                    self.receivers.add(key)
-                    self.receiver_origins[key] = self.receiver_origins[source]
-                    self.receiver_kinds[key] = self.receiver_kinds[source]
-                    if source in self.hidden_receivers:
-                        self.hidden_receivers.add(key)
-                    changed = True
-                    continue
-                if isinstance(value, ast.Attribute) and value.attr in HTTP_METHODS:
-                    receiver = _binding_name(value.value)
-                    if self._receiver_key(scope, receiver) is not None:
-                        self.decorators[key] = _DecoratorBinding(receiver, value.attr)
-                        changed = True
-                        continue
-                if self._is_annotated(value) or (isinstance(value, ast.Name) and value.id in self.type_aliases):
-                    self.type_aliases[name] = value
+
+    def _read_bound_names(self, node: ast.AST) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            self._bind_function_names(node)
+        elif isinstance(node, ast.ClassDef):
+            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            self.bound_names.update(
+                _ReceiverKey(self._node_scopes[id(node)], alias.asname or alias.name.split(".")[0])
+                for alias in node.names
+            )
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            self.bound_names.update(
+                _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
+            )
+        elif isinstance(node, ast.With):
+            self._bind_with_targets(node)
+        elif isinstance(node, ast.ExceptHandler) and node.name is not None:
+            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+        elif isinstance(node, ast.NamedExpr):
+            self.bound_names.update(
+                _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
+            )
+
+    def _bind_function_names(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+        arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+        if node.args.vararg is not None:
+            arguments.append(node.args.vararg)
+        if node.args.kwarg is not None:
+            arguments.append(node.args.kwarg)
+        self.bound_names.update(_ReceiverKey(node.lineno, argument.arg) for argument in arguments)
+
+    def _bind_with_targets(self, node: ast.With) -> None:
+        for item in node.items:
+            if item.optional_vars is not None:
+                self.bound_names.update(
+                    _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(item.optional_vars)
+                )
+
+    def _alias_assignment(self, node: ast.AST) -> tuple[int, str, ast.expr] | None:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            name = _binding_name(node.targets[0])
+            if name:
+                return self._assignment_scope(node, name), name, node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            name = _binding_name(node.target)
+            if name:
+                return self._assignment_scope(node, name), name, node.value
+        elif isinstance(node, ast.TypeAlias):
+            return self._node_scopes[id(node)], node.name.id, node.value
+        return None
+
+    def _resolve_alias(self, key: _ReceiverKey, value: ast.expr) -> bool:
+        source = self._receiver_key(key.scope, _binding_name(value))
+        constructor_kind = self._constructor_kind(value)
+        if constructor_kind is not None:
+            self._register_constructor(key, value, constructor_kind)
+            return True
+        if source is not None:
+            self.receivers.add(key)
+            self.receiver_origins[key] = self.receiver_origins[source]
+            self.receiver_kinds[key] = self.receiver_kinds[source]
+            if source in self.hidden_receivers:
+                self.hidden_receivers.add(key)
+            return True
+        if isinstance(value, ast.Attribute) and value.attr in HTTP_METHODS:
+            receiver = _binding_name(value.value)
+            if self._receiver_key(key.scope, receiver) is not None:
+                self.decorators[key] = _DecoratorBinding(receiver, value.attr)
+                return True
+        if self._is_annotated(value) or (isinstance(value, ast.Name) and value.id in self.type_aliases):
+            self.type_aliases[key.name] = value
+        return False
+
+    def _register_constructor(self, key: _ReceiverKey, value: ast.expr, kind: Literal["FastAPI", "APIRouter"]) -> None:
+        self.receivers.add(key)
+        self.receiver_origins[key] = key
+        self.receiver_kinds[key] = kind
+        if isinstance(value, ast.Call):
+            self.receiver_defaults[key] = {
+                keyword.arg: keyword.value
+                for keyword in value.keywords
+                if keyword.arg in {"responses", "default_response_class"}
+            }
+        if self._constructor_is_hidden(value):
+            self.hidden_receivers.add(key)
 
     def _target_names(self, node: ast.expr) -> tuple[str, ...]:
         if isinstance(node, ast.Name):
@@ -332,44 +359,44 @@ class FastapiIndex:
         for decorator in function.decorator_list:
             if not isinstance(decorator, ast.Call):
                 continue
-            method = ""
-            receiver = ""
-            receiver_key = None
-            if isinstance(decorator.func, ast.Attribute):
-                receiver = _binding_name(decorator.func.value)
-                lookup_scope = self._node_classes[id(function)] if receiver.startswith("self.") else scope
-                receiver_key = self._receiver_key(lookup_scope or scope, receiver)
-                if receiver_key is not None:
-                    method = decorator.func.attr
-            elif isinstance(decorator.func, ast.Name) and (resolved := self._decorator(scope, decorator.func.id)):
-                receiver = resolved.receiver
-                method = resolved.method
-                receiver_key = self._receiver_key(scope, receiver)
-            if method not in HTTP_METHODS or receiver_key is None:
-                continue
-            path_node = (
-                decorator.args[0]
-                if decorator.args
-                else next((keyword.value for keyword in decorator.keywords if keyword.arg == "path"), None)
-            )
-            path = path_node.value if isinstance(path_node, ast.Constant) and isinstance(path_node.value, str) else None
-            route_methods = self._route_methods(decorator) if method == "api_route" else (method,)
-            origin = self.receiver_origins[receiver_key]
-            defaults = self.receiver_defaults.get(origin, {})
-            routes.extend(
-                Route(
-                    decorator=decorator,
-                    receiver=f"{origin.scope}:{origin.name}",
-                    method=route_method,
-                    path=path,
-                    receiver_kind=self.receiver_kinds[receiver_key],
-                    inherited_hidden=receiver_key in self.hidden_receivers,
-                    inherited_responses=defaults.get("responses"),
-                    inherited_response_class=defaults.get("default_response_class"),
-                )
-                for route_method in route_methods
-            )
+            routes.extend(self._decorator_routes(function, scope, decorator))
         return tuple(routes)
+
+    def _decorator_routes(
+        self, function: ast.FunctionDef | ast.AsyncFunctionDef, scope: int, decorator: ast.Call
+    ) -> tuple[Route, ...]:
+        method = ""
+        receiver = ""
+        receiver_key = None
+        if isinstance(decorator.func, ast.Attribute):
+            receiver = _binding_name(decorator.func.value)
+            lookup_scope = self._node_classes[id(function)] if receiver.startswith("self.") else scope
+            receiver_key = self._receiver_key(lookup_scope or scope, receiver)
+            if receiver_key is not None:
+                method = decorator.func.attr
+        elif isinstance(decorator.func, ast.Name) and (resolved := self._decorator(scope, decorator.func.id)):
+            receiver = resolved.receiver
+            method = resolved.method
+            receiver_key = self._receiver_key(scope, receiver)
+        if method not in HTTP_METHODS or receiver_key is None:
+            return ()
+        path = _route_path(decorator)
+        route_methods = self._route_methods(decorator) if method == "api_route" else (method,)
+        origin = self.receiver_origins[receiver_key]
+        defaults = self.receiver_defaults.get(origin, {})
+        return tuple(
+            Route(
+                decorator=decorator,
+                receiver=f"{origin.scope}:{origin.name}",
+                method=route_method,
+                path=path,
+                receiver_kind=self.receiver_kinds[receiver_key],
+                inherited_hidden=receiver_key in self.hidden_receivers,
+                inherited_responses=defaults.get("responses"),
+                inherited_response_class=defaults.get("default_response_class"),
+            )
+            for route_method in route_methods
+        )
 
     def _decorator(self, scope: int, name: str) -> _DecoratorBinding | None:
         current: int | None = scope
@@ -513,6 +540,15 @@ class FastapiIndex:
         return self.canonical(node) == "HTTPException"
 
 
+def _route_path(decorator: ast.Call) -> str | None:
+    path_node = (
+        decorator.args[0]
+        if decorator.args
+        else next((keyword.value for keyword in decorator.keywords if keyword.arg == "path"), None)
+    )
+    return path_node.value if isinstance(path_node, ast.Constant) and isinstance(path_node.value, str) else None
+
+
 def _imported_reference(tree: ast.Module, node: ast.expr) -> _ImportedReference | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
@@ -520,34 +556,47 @@ def _imported_reference(tree: ast.Module, node: ast.expr) -> _ImportedReference 
         except SyntaxError:
             return None
     if isinstance(node, ast.Name):
-        binding = _unique_module_binding(tree, node.id)
-        if not isinstance(binding, ast.ImportFrom):
-            return None
-        imported = next(
-            (alias for alias in binding.names if alias.name != "*" and (alias.asname or alias.name) == node.id),
-            None,
-        )
-        if imported is None:
-            return None
-        return _ImportedReference(binding.module or "", binding.level, imported.name)
+        return _imported_name_reference(tree, node)
     if not (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)):
         return None
-    binding = _unique_module_binding(tree, node.value.id)
+    return _imported_attribute_reference(tree, node, node.value.id)
+
+
+def _imported_name_reference(tree: ast.Module, node: ast.Name) -> _ImportedReference | None:
+    binding = _unique_module_binding(tree, node.id)
+    if not isinstance(binding, ast.ImportFrom):
+        return None
+    imported = next(
+        (alias for alias in binding.names if alias.name != "*" and (alias.asname or alias.name) == node.id),
+        None,
+    )
+    if imported is None:
+        return None
+    return _ImportedReference(binding.module or "", binding.level, imported.name)
+
+
+def _imported_attribute_reference(tree: ast.Module, node: ast.Attribute, owner: str) -> _ImportedReference | None:
+    binding = _unique_module_binding(tree, owner)
     if isinstance(binding, ast.Import):
         imported = next(
-            (alias for alias in binding.names if alias.asname == node.value.id),
+            (alias for alias in binding.names if alias.asname == owner),
             None,
         )
         if imported is not None:
             return _ImportedReference(imported.name, 0, node.attr)
     if isinstance(binding, ast.ImportFrom):
-        imported = next(
-            (alias for alias in binding.names if alias.name != "*" and (alias.asname or alias.name) == node.value.id),
-            None,
-        )
-        if imported is not None:
-            module = ".".join(part for part in (binding.module or "", imported.name) if part)
-            return _ImportedReference(module, binding.level, node.attr)
+        return _imported_attribute_from(binding, node, owner)
+    return None
+
+
+def _imported_attribute_from(binding: ast.ImportFrom, node: ast.Attribute, owner: str) -> _ImportedReference | None:
+    imported = next(
+        (alias for alias in binding.names if alias.name != "*" and (alias.asname or alias.name) == owner),
+        None,
+    )
+    if imported is not None:
+        module = ".".join(part for part in (binding.module or "", imported.name) if part)
+        return _ImportedReference(module, binding.level, node.attr)
     return None
 
 
@@ -640,14 +689,9 @@ def _resolve_module_path_without_checkout(current: Path, reference: _ImportedRef
     module_parts = tuple(part for part in reference.module.split(".") if part)
     candidates: set[Path] = set()
     if 0 < reference.level <= _MAX_PATH_ANCESTORS:
-        package = current.parent
-        if not (package / "__init__.py").is_file():
+        package = _relative_package(current, reference.level)
+        if package is None:
             return None
-        for _ in range(reference.level - 1):
-            parent = package.parent
-            if not (parent / "__init__.py").is_file():
-                return None
-            package = parent
         candidates.update(_existing_module_files(package.joinpath(*module_parts), package))
     elif module_parts:
         first = module_parts[0]
@@ -662,6 +706,18 @@ def _resolve_module_path_without_checkout(current: Path, reference: _ImportedRef
         # import root. Do not search any of its parents for an unrelated module.
         candidates.update(_existing_module_files(current.parent.joinpath(*module_parts), current.parent))
     return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _relative_package(current: Path, level: int) -> Path | None:
+    package = current.parent
+    if not (package / "__init__.py").is_file():
+        return None
+    for _ in range(level - 1):
+        parent = package.parent
+        if not (parent / "__init__.py").is_file():
+            return None
+        package = parent
+    return package
 
 
 def _checkout_root(current: Path) -> Path | None:
@@ -735,12 +791,7 @@ def _module_symbol_is_dependency_alias(
                 module_cache,
                 depth + 1,
             )
-        index = FastapiIndex(tree)
-        parts = index.annotated_parts(expression)
-        if parts is None:
-            return False
-        markers = [marker for item in parts.metadata if (marker := index.marker(item)) is not None]
-        return len(markers) == 1 and markers[0].name in _DEPENDENCY_MARKERS
+        return _expression_is_dependency_alias(tree, expression)
     if isinstance(binding, ast.ImportFrom):
         imported = _imported_reference(tree, ast.Name(id=symbol))
         if imported is None:
@@ -754,6 +805,15 @@ def _module_symbol_is_dependency_alias(
             depth + 1,
         )
     return False
+
+
+def _expression_is_dependency_alias(tree: ast.Module, expression: ast.expr) -> bool:
+    index = FastapiIndex(tree)
+    parts = index.annotated_parts(expression)
+    if parts is None:
+        return False
+    markers = [marker for item in parts.metadata if (marker := index.marker(item)) is not None]
+    return len(markers) == 1 and markers[0].name in _DEPENDENCY_MARKERS
 
 
 def _binding_expression(binding: ast.stmt | None, symbol: str) -> ast.expr | None:

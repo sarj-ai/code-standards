@@ -170,15 +170,7 @@ export default createRule<Options, MessageIds>({
         return null;
       }
       const actual = expectCall.arguments[0];
-      const variable = ASTUtils.findVariable(sourceCode.getScope(expectCall.callee), expectCall.callee.name);
-      if (variable !== null && variable.defs.some((definition) => {
-        if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
-        const declaration = definition.node.parent;
-        const imported = definition.node.imported;
-        return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
-          !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
-          (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
-      })) return null;
+      if (!isTestExpect(expectCall.callee)) return null;
       if (actual === undefined || actual.type !== AST_NODE_TYPES.MemberExpression || actual.optional) {
         return null;
       }
@@ -202,6 +194,10 @@ export default createRule<Options, MessageIds>({
         receiver = access.receiver;
       }
 
+      return assertionExpectation(statement, call, receiver, key, matcher);
+    }
+
+    function assertionExpectation(statement: TSESTree.ExpressionStatement, call: TSESTree.CallExpression, receiver: TSESTree.Expression | TSESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
       const synthetic = SYNTHETIC_LITERAL_MATCHERS.get(matcher);
       if (synthetic !== undefined && call.arguments.length === 0) {
         return { statement, receiver, key, matcher, expectedText: synthetic, expectedIsLiteral: true };
@@ -224,6 +220,19 @@ export default createRule<Options, MessageIds>({
       };
     }
 
+    function isTestExpect(callee: TSESTree.Identifier): boolean {
+      const variable = ASTUtils.findVariable(sourceCode.getScope(callee), callee.name);
+      if (variable !== null && variable.defs.some((definition) => {
+        if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
+        const declaration = definition.node.parent;
+        const imported = definition.node.imported;
+        return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
+          !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
+          (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
+      })) return false;
+      return true;
+    }
+
     /** Distinct literal expectations are candidates, not proof of equivalent runtime reads. */
     function reportPropertyRun(run: readonly Assertion[]): void {
       type ObjectTree = Map<string, string | ObjectTree>;
@@ -239,34 +248,39 @@ export default createRule<Options, MessageIds>({
         paths.push([...assertion.key.path]);
       }
       const commonPrefix: string[] = [];
-      for (let index = 0; ; index += 1) {
+      for (let index = 0;;index += 1) {
         const candidate = paths[0]?.[index];
         if (candidate === undefined || paths.some((path) => path[index] !== candidate || path.length === index + 1)) {
           break;
         }
         commonPrefix.push(candidate);
       }
-      for (const [assertionIndex, assertion] of run.entries()) {
-        if (assertion.key.kind !== "property") return;
-        let branch = tree;
-        const relativePath = paths[assertionIndex]?.slice(commonPrefix.length) ?? [];
-        for (const [index, name] of relativePath.entries()) {
-          const leaf = index === relativePath.length - 1;
-          const existing = branch.get(name);
-          if (leaf) {
-            if (existing !== undefined) return;
-            branch.set(name, assertion.expectedText);
-          } else if (existing === undefined) {
-            const nested: ObjectTree = new Map();
-            branch.set(name, nested);
-            branch = nested;
-          } else if (existing instanceof Map) {
-            branch = existing;
-          } else {
-            return;
+      if (!populateAssertionTree()) return;
+      function populateAssertionTree(): boolean {
+        for (const [assertionIndex, assertion] of run.entries()) {
+          if (assertion.key.kind !== "property") return false;
+          let branch = tree;
+          const relativePath = paths[assertionIndex]?.slice(commonPrefix.length) ?? [];
+          for (const [index, name] of relativePath.entries()) {
+            const leaf = index === relativePath.length - 1;
+            const existing = branch.get(name);
+            if (leaf) {
+              if (existing !== undefined) return false;
+              branch.set(name, assertion.expectedText);
+            } else if (existing === undefined) {
+              const nested: ObjectTree = new Map();
+              branch.set(name, nested);
+              branch = nested;
+            } else if (existing instanceof Map) {
+              branch = existing;
+            } else {
+              return false;
+            }
           }
         }
+        return true;
       }
+
       const first = run[0];
       if (first === undefined) {
         return;

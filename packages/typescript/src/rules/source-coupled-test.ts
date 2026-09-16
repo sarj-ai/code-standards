@@ -170,30 +170,15 @@ export function createSourceCoupledRule(
         return node.name === "assert" || node.name === "expect" ? node.name : null;
       }
       for (const definition of binding.defs) {
-        const specifier = definition.node;
-        if (
-          (specifier.type !== AST_NODE_TYPES.ImportSpecifier &&
-            specifier.type !== AST_NODE_TYPES.ImportDefaultSpecifier &&
-            specifier.type !== AST_NODE_TYPES.ImportNamespaceSpecifier) ||
-          specifier.parent.type !== AST_NODE_TYPES.ImportDeclaration
-        ) continue;
-        const source = importSource(specifier.parent);
-        if (source !== null && ASSERT_MODULES.has(source)) {
-          if (specifier.type !== AST_NODE_TYPES.ImportSpecifier) return "assert";
-          const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
-          if (imported === "strict" || ASSERT_MATCHERS.has(imported)) return "assert";
-          continue;
-        }
-        if (source === null || !EXPECT_MODULES.has(source) || specifier.type !== AST_NODE_TYPES.ImportSpecifier) continue;
-        const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
-        if (imported === "assert" || imported === "expect") return imported;
+        const kind = importedAssertionKind(definition.node);
+        if (kind !== null) return kind;
       }
       return null;
     };
     const visible = (kind: "collections" | "fsObjects" | "fsReaders" | "paths", node: TSESTree.Identifier): boolean => {
       const name = bindingOf(node);
       if (name === null || name.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
-      for (let index = scopes.length - 1; index >= 0; index--) {
+      for (let index = scopes.length - 1;index >= 0;index--) {
         const scope = scopes[index]!;
         if (scope.declared.has(name)) return scope[kind].has(name);
       }
@@ -202,7 +187,7 @@ export function createSourceCoupledRule(
     const visibleRawOrigins = (node: TSESTree.Identifier): Set<string> => {
       const name = bindingOf(node);
       if (name === null || name.references.some((reference) => reference.isWrite() && reference.init !== true)) return new Set();
-      for (let index = scopes.length - 1; index >= 0; index--) {
+      for (let index = scopes.length - 1;index >= 0;index--) {
         const scope = scopes[index]!;
         if (scope.declared.has(name)) return scope.rawOrigins.get(name) ?? new Set();
       }
@@ -307,6 +292,14 @@ export function createSourceCoupledRule(
     };
     const exitFunction = (): void => { scopes.pop(); };
 
+    function declareFsReaders(pattern: TSESTree.ObjectPattern): void {
+      for (const property of pattern.properties) {
+        if (property.type !== AST_NODE_TYPES.Property || property.value.type !== AST_NODE_TYPES.Identifier) continue;
+        const key = property.key.type === AST_NODE_TYPES.Identifier ? property.key.name : property.key.type === AST_NODE_TYPES.Literal ? String(property.key.value) : "";
+        if (FS_READERS.has(key)) declare(property.value, { fsReader: true });
+      }
+    }
+
     return {
       ImportDeclaration(node): void {
         const source = importSource(node);
@@ -332,11 +325,7 @@ export function createSourceCoupledRule(
           return;
         }
         if (node.id.type === AST_NODE_TYPES.ObjectPattern && required !== null && FS_MODULES.has(required)) {
-          for (const property of node.id.properties) {
-            if (property.type !== AST_NODE_TYPES.Property || property.value.type !== AST_NODE_TYPES.Identifier) continue;
-            const key = property.key.type === AST_NODE_TYPES.Identifier ? property.key.name : property.key.type === AST_NODE_TYPES.Literal ? String(property.key.value) : "";
-            if (FS_READERS.has(key)) declare(property.value, { fsReader: true });
-          }
+          declareFsReaders(node.id);
           return;
         }
         if (node.id.type !== AST_NODE_TYPES.Identifier) return;
@@ -367,3 +356,23 @@ export default createSourceCoupledRule(
   SOURCE_COUPLED_TEST_DOCUMENTATION,
   GENERAL_SOURCE_SUFFIX_RE,
 );
+
+function importedAssertionKind(specifier: TSESTree.Node): "assert" | "expect" | null {
+  if (
+    (specifier.type !== AST_NODE_TYPES.ImportSpecifier &&
+      specifier.type !== AST_NODE_TYPES.ImportDefaultSpecifier &&
+      specifier.type !== AST_NODE_TYPES.ImportNamespaceSpecifier) ||
+    specifier.parent.type !== AST_NODE_TYPES.ImportDeclaration
+  ) return null;
+  const source = importSource(specifier.parent);
+  if (source !== null && ASSERT_MODULES.has(source)) {
+    if (specifier.type !== AST_NODE_TYPES.ImportSpecifier) return "assert";
+    const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
+    if (imported === "strict" || ASSERT_MATCHERS.has(imported)) return "assert";
+    return null;
+  }
+  if (source === null || !EXPECT_MODULES.has(source) || specifier.type !== AST_NODE_TYPES.ImportSpecifier) return null;
+  const imported = specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
+  if (imported === "assert" || imported === "expect") return imported;
+  return null;
+}

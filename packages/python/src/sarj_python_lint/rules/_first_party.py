@@ -214,14 +214,20 @@ def _scan_first_party_packages(root: Path) -> tuple[tuple[str, Path], ...]:
         for entry in entries:
             if entry.name.startswith(".") or entry.name in _SKIP_DIR_NAMES:
                 continue
-            try:
-                if not entry.is_dir():
-                    continue
-                is_package = (entry / "__init__.py").exists()
-            except OSError:
+            is_package = _package_directory(entry)
+            if is_package is None:
                 continue
             if is_package:
                 found.append((entry.name, entry))
             elif depth + 1 < _MAX_SCAN_DEPTH:
                 queue.append((entry, depth + 1))
     return tuple(found)
+
+
+def _package_directory(entry: Path) -> bool | None:
+    try:
+        if not entry.is_dir():
+            return None
+        return (entry / "__init__.py").exists()
+    except OSError:
+        return None

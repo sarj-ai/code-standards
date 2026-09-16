@@ -139,11 +139,7 @@ def _has_additional_public_export(tree: ast.Module, primary_name: str) -> bool:
                 targets.append(target)
             case _:
                 pass
-    assigned_names = (node for target in targets for node in ast.walk(target) if isinstance(node, ast.Name))
-    return any(
-        not name.id.startswith("_") and name.id == name.id.upper() and any(c.isalpha() for c in name.id)
-        for name in assigned_names
-    )
+    return _has_public_constant(targets)
 
 
 def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
@@ -197,3 +193,11 @@ def _annotation_name(node: ast.expr) -> str:
 
 def _is_skipped_path(path: Path) -> bool:
     return "tests" in path.parts
+
+
+def _has_public_constant(targets: list[ast.expr]) -> bool:
+    assigned_names = (node for target in targets for node in ast.walk(target) if isinstance(node, ast.Name))
+    return any(
+        not name.id.startswith("_") and name.id == name.id.upper() and any(c.isalpha() for c in name.id)
+        for name in assigned_names
+    )

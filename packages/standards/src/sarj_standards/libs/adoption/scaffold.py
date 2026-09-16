@@ -367,15 +367,19 @@ def _swift_roots(root: Path) -> list[Path]:
     for parent, directories, _filenames in os.walk(root, topdown=True, followlinks=False):
         directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
         base = Path(parent)
-        configured = [
-            name
-            for name in directories
-            if name.endswith(".xcodeproj") and not is_link_like(base / name) and _xcode_project_is_mobile(base / name)
-        ]
+        configured = _mobile_xcode_projects(base, directories)
         if configured:
             projects.append(base)
             directories[:] = [name for name in directories if name not in configured]
     return projects
+
+
+def _mobile_xcode_projects(base: Path, directories: list[str]) -> list[str]:
+    return [
+        name
+        for name in directories
+        if name.endswith(".xcodeproj") and not is_link_like(base / name) and _xcode_project_is_mobile(base / name)
+    ]
 
 
 def _swift_package_is_mobile(path: Path) -> bool:
@@ -402,18 +406,22 @@ def _kotlin_roots(root: Path) -> list[Path]:
         base = Path(parent)
         project_sources = tuple(base / name for name in _GRADLE_PROJECT_FILES if name in filenames)
         texts = tuple(_read_detection_source(path) for path in project_sources)
-        combined = "\n".join(
-            line
-            for text in texts
-            if text is not None
-            for line in text.splitlines()
-            if _GRADLE_APPLY_FALSE.search(line) is None
-        )
+        combined = _active_gradle_lines(texts)
         if not combined:
             continue
         if _ANDROID_PLUGIN.search(combined) or (_KMP_PLUGIN.search(combined) and _KMP_MOBILE_TARGET.search(combined)):
             configured.append(_gradle_build_root(base, root))
     return configured
+
+
+def _active_gradle_lines(texts: tuple[str | None, ...]) -> str:
+    return "\n".join(
+        line
+        for text in texts
+        if text is not None
+        for line in text.splitlines()
+        if _GRADLE_APPLY_FALSE.search(line) is None
+    )
 
 
 def _gradle_build_root(module: Path, repository: Path) -> Path:
@@ -441,33 +449,14 @@ def _read_detection_source(path: Path) -> str | None:
 def _strip_detection_comments(source: str) -> str:
     output: list[str] = []
     index = 0
-    quote: str | None = None
-    escaped = False
     while index < len(source):
         current = source[index]
         following = source[index + 1] if index + 1 < len(source) else ""
-        if quote is not None:
-            output.append(current)
-            if escaped:
-                escaped = False
-            elif current == "\\":
-                escaped = True
-            elif current == quote:
-                quote = None
-            index += 1
-            continue
         if current in {'"', "'"}:
-            quote = current
-            output.append(current)
-            index += 1
+            index = _append_detection_string(source, index, output)
             continue
         if current == "/" and following == "*":
-            index += 2
-            while index < len(source) and source[index : index + 2] != "*/":
-                if source[index] == "\n":
-                    output.append("\n")
-                index += 1
-            index = min(index + 2, len(source))
+            index = _skip_detection_block_comment(source, index, output)
             continue
         if (current == "/" and following == "/") or current == "#":
             index += 2 if current == "/" else 1
@@ -477,6 +466,33 @@ def _strip_detection_comments(source: str) -> str:
         output.append(current)
         index += 1
     return "".join(output)
+
+
+def _skip_detection_block_comment(source: str, index: int, output: list[str]) -> int:
+    index += 2
+    while index < len(source) and source[index : index + 2] != "*/":
+        if source[index] == "\n":
+            output.append("\n")
+        index += 1
+    return min(index + 2, len(source))
+
+
+def _append_detection_string(source: str, index: int, output: list[str]) -> int:
+    quote = source[index]
+    output.append(quote)
+    index += 1
+    escaped = False
+    while index < len(source):
+        current = source[index]
+        output.append(current)
+        index += 1
+        if escaped:
+            escaped = False
+        elif current == "\\":
+            escaped = True
+        elif current == quote:
+            break
+    return index
 
 
 def _strip_quoted_literals(source: str) -> str:
@@ -570,33 +586,12 @@ def build_plan(
         hook_manager=selected_hook_manager,
     )
 
-    for label, explicit, roots, enabled in (
-        ("Swift", swift_dest, _swift_roots(root), any(name in selected for name in manifest.SWIFT_CONFIGS)),
-        ("Kotlin", kotlin_dest, _kotlin_roots(root), any(name in selected for name in manifest.KOTLIN_CONFIGS)),
-    ):
-        if not enabled:
-            continue
-        independent = tuple(dict.fromkeys(path.resolve() for path in roots))
-        if explicit is None and len(independent) > 1:
-            destinations = ", ".join(path.relative_to(root).as_posix() for path in independent)
-            option = "--swift-dest" if label == "Swift" else "--kotlin-dest"
-            plan.errors.append(
-                f"multiple independent {label} mobile roots detected: {destinations}; "
-                f"rerun with {option} for one reviewed owning root"
-            )
+    _report_mobile_roots(root, plan, swift_dest, kotlin_dest)
     if plan.errors:
         return plan
 
     if configs is not None:
-        unsupported = tuple(
-            name
-            for name in selected
-            if (name in manifest.PYTHON_CONFIGS and not ecosystems.python)
-            or (name in manifest.TYPESCRIPT_CONFIGS and not ecosystems.typescript)
-            or (name in manifest.SWIFT_CONFIGS and not ecosystems.swift)
-            or (name in manifest.KOTLIN_CONFIGS and not ecosystems.kotlin)
-            or (name in manifest.MOBILE_CONFIGS and not ecosystems.mobile)
-        )
+        unsupported = _unsupported_configs(selected, ecosystems)
         if unsupported:
             names = ", ".join(unsupported)
             plan.errors.append(
@@ -622,23 +617,7 @@ def build_plan(
     _plan_manifest(root, plan, force=force, update_existing=update_manifest)
     _plan_repo_commit_message_policy(root, plan)
     _plan_retired_repository_launcher(root, plan)
-    if (
-        ecosystems.python
-        and ecosystems.python_root is not None
-        and any(name in selected for name in manifest.PYTHON_CONFIGS)
-    ):
-        _plan_python(ecosystems.python_root, plan, force=force)
-    if (
-        ecosystems.typescript
-        and ecosystems.typescript_root is not None
-        and any(name in selected for name in manifest.TYPESCRIPT_CONFIGS)
-    ):
-        _plan_typescript(ecosystems.typescript_root, plan, force=force)
-        # Nested configs are only Standards' concern when ESLint was actually
-        # selected. At this point eslint.strict.mjs is either present or a
-        # target in the config sync plan built by ``plan_init``.
-        if "eslint" in selected and not allow_existing_nested_eslint:
-            _report_unwired_nested_eslint_configs(root, ecosystems.typescript_root, plan)
+    _plan_language_configs(root, plan, force=force, allow_existing_nested_eslint=allow_existing_nested_eslint)
     match plan.hook_manager:
         case "pre-commit":
             _plan_precommit(root, plan, force=force)
@@ -647,6 +626,44 @@ def build_plan(
             _plan_lefthook(root, plan)
         case _:
             plan.notes.append(f"preserving {plan.hook_manager} hook management; no pre-commit config was generated")
+    _plan_standards_workflow(root, plan, force=force)
+    _plan_commit_policy_workflow(root, plan, force=force)
+    _note_subproject_destinations(root, plan)
+    return plan
+
+
+def _unsupported_configs(selected: Sequence[str], ecosystems: Ecosystems) -> tuple[str, ...]:
+    return tuple(
+        name
+        for name in selected
+        if (name in manifest.PYTHON_CONFIGS and not ecosystems.python)
+        or (name in manifest.TYPESCRIPT_CONFIGS and not ecosystems.typescript)
+        or (name in manifest.SWIFT_CONFIGS and not ecosystems.swift)
+        or (name in manifest.KOTLIN_CONFIGS and not ecosystems.kotlin)
+        or (name in manifest.MOBILE_CONFIGS and not ecosystems.mobile)
+    )
+
+
+def _report_mobile_roots(root: Path, plan: Plan, swift_dest: str | None, kotlin_dest: str | None) -> None:
+    for label, explicit, roots, enabled in (
+        ("Swift", swift_dest, _swift_roots(root), any(name in plan.configs for name in manifest.SWIFT_CONFIGS)),
+        ("Kotlin", kotlin_dest, _kotlin_roots(root), any(name in plan.configs for name in manifest.KOTLIN_CONFIGS)),
+    ):
+        if not enabled:
+            continue
+        independent = tuple(dict.fromkeys(path.resolve() for path in roots))
+        if explicit is None and len(independent) > 1:
+            destinations = ", ".join(path.relative_to(root).as_posix() for path in independent)
+            option = "--swift-dest" if label == "Swift" else "--kotlin-dest"
+            plan.errors.append(
+                f"multiple independent {label} mobile roots detected: {destinations}; "
+                f"rerun with {option} for one reviewed owning root"
+            )
+
+
+def _plan_standards_workflow(root: Path, plan: Plan, *, force: bool) -> None:
+    ecosystems = plan.ecosystems
+    selected = plan.configs
     workflow = root / ".github" / "workflows" / "standards.yml"
     workflow_contents = github_ci_workflow(root, ecosystems=configured_ecosystems(ecosystems, selected))
     existing_gates = standards_check_workflows(root)
@@ -656,15 +673,7 @@ def build_plan(
         else:
             plan.writes.append((workflow, workflow_contents))
     elif existing_gates:
-        incompatible = tuple(
-            path
-            for path in existing_gates
-            if not _workflow_supports_mobile(
-                path,
-                swift=configured_ecosystems(ecosystems, selected).swift,
-                kotlin=configured_ecosystems(ecosystems, selected).kotlin,
-            )
-        )
+        incompatible = _incompatible_mobile_workflows(existing_gates, ecosystems, selected)
         if incompatible:
             names = ", ".join(path.relative_to(root).as_posix() for path in incompatible)
             plan.errors.append(
@@ -691,9 +700,42 @@ def build_plan(
                 "`code-standards show ci --output .github/workflows/standards.yml`"
             ),
         )
-    _plan_commit_policy_workflow(root, plan, force=force)
-    _note_subproject_destinations(root, plan)
-    return plan
+
+
+def _incompatible_mobile_workflows(
+    existing_gates: Sequence[Path], ecosystems: Ecosystems, selected: Sequence[str]
+) -> tuple[Path, ...]:
+    return tuple(
+        path
+        for path in existing_gates
+        if not _workflow_supports_mobile(
+            path,
+            swift=configured_ecosystems(ecosystems, selected).swift,
+            kotlin=configured_ecosystems(ecosystems, selected).kotlin,
+        )
+    )
+
+
+def _plan_language_configs(root: Path, plan: Plan, *, force: bool, allow_existing_nested_eslint: bool) -> None:
+    ecosystems = plan.ecosystems
+    selected = plan.configs
+    if (
+        ecosystems.python
+        and ecosystems.python_root is not None
+        and any(name in selected for name in manifest.PYTHON_CONFIGS)
+    ):
+        _plan_python(ecosystems.python_root, plan, force=force)
+    if (
+        ecosystems.typescript
+        and ecosystems.typescript_root is not None
+        and any(name in selected for name in manifest.TYPESCRIPT_CONFIGS)
+    ):
+        _plan_typescript(ecosystems.typescript_root, plan, force=force)
+        # Nested configs are only Standards' concern when ESLint was actually
+        # selected. At this point eslint.strict.mjs is either present or a
+        # target in the config sync plan built by ``plan_init``.
+        if "eslint" in selected and not allow_existing_nested_eslint:
+            _report_unwired_nested_eslint_configs(root, ecosystems.typescript_root, plan)
 
 
 def build_commit_policy_plan(
@@ -953,9 +995,52 @@ def _note_subproject_destinations(root: Path, plan: Plan) -> None:
 def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool) -> None:
     path = manifest.manifest_path(root)
     current = manifest.load_for_setup(root) if path.is_file() else None
+    desired = _desired_manifest(root, plan, current)
+    contents = desired.render()
+    if current is not None:
+        try:
+            strict = manifest.load(root)
+        except ValueError:
+            strict = None
+        if strict is None:
+            _plan_legacy_manifest(path, contents, desired, plan)
+            return
+        if strict != desired:
+            if not force and not update_existing:
+                plan.skips.append((path, "exists; preserve repository-specific adoption settings"))
+                return
+            current_text = path.read_text(encoding="utf-8")
+            try:
+                updated = _render_manifest_preserving_extensions(current_text, contents)
+            except ValueError as exc:
+                plan.errors.append(str(exc))
+                return
+            plan.writes.append((path, updated))
+            plan.notes.append("updated the manifest to match the requested capabilities")
+            return
+    _record(plan, path, contents, force=force, reason="already declares an adopted version")
+
+
+def _plan_legacy_manifest(path: Path, contents: str, desired: manifest.Manifest, plan: Plan) -> None:
+    legacy_text = path.read_text(encoding="utf-8")
+    if re.search(r"(?m)^\s*schema\s*=", legacy_text):
+        try:
+            migrated = _render_manifest_preserving_extensions(legacy_text, contents)
+        except ValueError as exc:
+            plan.errors.append(str(exc))
+            return
+        plan.writes.append((path, migrated))
+        plan.notes.append("migrated the schema 3 manifest to the current schema")
+        return
+    plan.writes.append((path, _migrate_schema_less_manifest(legacy_text, desired)))
+    plan.notes.append("migrated the legacy manifest to the current schema")
+    return
+
+
+def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None) -> manifest.Manifest:
     detected_generated = _generated_python_exclusions(root, plan.ecosystems.python_root)
     existing_exclusions = () if current is None else current.excluded_paths
-    desired = manifest.Manifest(
+    return manifest.Manifest(
         version=manifest.adopted_version(),
         configs=plan.configs,
         python_dest=dest_of(root, plan.ecosystems.python_root),
@@ -974,40 +1059,6 @@ def _plan_manifest(root: Path, plan: Plan, *, force: bool, update_existing: bool
         diagnostic_baseline=None if current is None else current.diagnostic_baseline,
         ci_bootstrap=() if current is None else current.ci_bootstrap,
     )
-    contents = desired.render()
-    if current is not None:
-        try:
-            strict = manifest.load(root)
-        except ValueError:
-            strict = None
-        if strict is None:
-            legacy_text = path.read_text(encoding="utf-8")
-            if re.search(r"(?m)^\s*schema\s*=", legacy_text):
-                try:
-                    migrated = _render_manifest_preserving_extensions(legacy_text, contents)
-                except ValueError as exc:
-                    plan.errors.append(str(exc))
-                    return
-                plan.writes.append((path, migrated))
-                plan.notes.append("migrated the schema 3 manifest to the current schema")
-                return
-            plan.writes.append((path, _migrate_schema_less_manifest(legacy_text, desired)))
-            plan.notes.append("migrated the legacy manifest to the current schema")
-            return
-        if strict != desired:
-            if not force and not update_existing:
-                plan.skips.append((path, "exists; preserve repository-specific adoption settings"))
-                return
-            current_text = path.read_text(encoding="utf-8")
-            try:
-                updated = _render_manifest_preserving_extensions(current_text, contents)
-            except ValueError as exc:
-                plan.errors.append(str(exc))
-                return
-            plan.writes.append((path, updated))
-            plan.notes.append("updated the manifest to match the requested capabilities")
-            return
-    _record(plan, path, contents, force=force, reason="already declares an adopted version")
 
 
 def _plan_retired_repository_launcher(root: Path, plan: Plan) -> None:
@@ -1161,9 +1212,7 @@ def _openapi_python_client_package(project: Path) -> Path | None:
     return package
 
 
-def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserves consumer policy while wiring bases.
-    root: Path, plan: Plan, *, force: bool
-) -> None:
+def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
     standalone_ruff = [root / name for name in _STANDALONE_RUFF_CONFIG_NAMES if (root / name).is_file()]
     if standalone_ruff:
         names = ", ".join(path.name for path in standalone_ruff)
@@ -1185,64 +1234,85 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
         project = manifest.table_field(document, "project")
         requires_python = project.get("requires-python")
         python_target = _python_target(document)
-        # Transaction validation owns link rejection. Do not inspect a linked
-        # document deeply enough to replace the clearer mutation-safety error.
-        if not is_link_like(pyproject) and (not isinstance(requires_python, str) or python_target is None):
-            plan.errors.append(
-                f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
-                "[project].requires-python must be a valid specifier that includes Python 3.14"
-            )
-            return
-        if not is_link_like(pyproject) and python_target != "3.14":
-            plan.errors.append(
-                f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
-                f"the project targets Python {python_target}; use a Python 3.14-compatible range or the advisory "
-                "Python 3.15 watch profile"
-            )
+        if not _validate_python_project(pyproject, document, requires_python, python_target, plan):
             return
         tool = manifest.as_table(document.get("tool"))
-        pyright_tables = tuple(name for name in ("pyright", "basedpyright") if name in tool)
-        if pyright_tables:
-            tables = " and ".join(f"[tool.{name}]" for name in pyright_tables)
-            plan.errors.append(
-                f"cannot safely wire {pyproject}: {tables} cannot inherit the canonical JSON configuration; "
-                "move those settings to pyrightconfig.json, remove the TOML table, then rerun setup"
-            )
-            return
         ruff = manifest.as_table(tool.get("ruff"))
-        lint = manifest.as_table(ruff.get("lint"))
-        conflicts = tuple(
-            (key, f"extend-{key}")
-            for key in ("select", "ignore")
-            if key in lint and f"extend-{key}" in lint and not (key == "select" and lint.get("select") == ["ALL"])
-        )
-        if conflicts:
-            rendered = ", ".join(f"{first}/{second}" for first, second in conflicts)
-            plan.errors.append(
-                f"cannot safely wire {pyproject}: [tool.ruff.lint] defines both {rendered}; "
-                "combine each pair under the extend-* key, then rerun setup"
-            )
-            return
-        existing_extend = ruff.get("extend")
-        if existing_extend is not None and existing_extend != ".ruff-strict.toml":
-            plan.errors.append(
-                f"cannot safely wire {pyproject}: [tool.ruff] already extends {existing_extend!r}; "
-                "preserve that config chain manually before adding .ruff-strict.toml"
-            )
-            return
-        updated = _extend_ruff_replacement_policy(text)
-        if ruff.get("extend") == ".ruff-strict.toml" and updated != text:
-            plan.writes.append((pyproject, updated))
-        elif ruff.get("extend") == ".ruff-strict.toml":
-            plan.skips.append((pyproject, "already extends .ruff-strict.toml"))
-        elif _RUFF_EXTEND.search(updated):
-            wired = _RUFF_EXTEND.sub('[tool.ruff]\nextend = ".ruff-strict.toml"', updated, count=1)
-            plan.writes.append((pyproject, wired))
-        elif updated != text:
-            plan.writes.append((pyproject, f'{updated}\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
-        else:
-            plan.edits.append((pyproject, '\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
+        _plan_ruff_extension(pyproject, text, ruff, plan)
+    _plan_python_typechecker(root, plan, python_target, force=force)
 
+
+def _validate_python_project(
+    pyproject: Path, document: Mapping[str, object], requires_python: object, python_target: str | None, plan: Plan
+) -> bool:
+    # Transaction validation owns link rejection. Do not inspect a linked
+    # document deeply enough to replace the clearer mutation-safety error.
+    if not is_link_like(pyproject) and (not isinstance(requires_python, str) or python_target is None):
+        plan.errors.append(
+            f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
+            "[project].requires-python must be a valid specifier that includes Python 3.14"
+        )
+        return False
+    if not is_link_like(pyproject) and python_target != "3.14":
+        plan.errors.append(
+            f"cannot safely adopt the Python 3.14 Standards profile in {pyproject}: "
+            f"the project targets Python {python_target}; use a Python 3.14-compatible range or the advisory "
+            "Python 3.15 watch profile"
+        )
+        return False
+    tool = manifest.as_table(document.get("tool"))
+    pyright_tables = tuple(name for name in ("pyright", "basedpyright") if name in tool)
+    if pyright_tables:
+        tables = " and ".join(f"[tool.{name}]" for name in pyright_tables)
+        plan.errors.append(
+            f"cannot safely wire {pyproject}: {tables} cannot inherit the canonical JSON configuration; "
+            "move those settings to pyrightconfig.json, remove the TOML table, then rerun setup"
+        )
+        return False
+    ruff = manifest.as_table(tool.get("ruff"))
+    lint = manifest.as_table(ruff.get("lint"))
+    conflicts = _ruff_policy_conflicts(lint)
+    if conflicts:
+        rendered = ", ".join(f"{first}/{second}" for first, second in conflicts)
+        plan.errors.append(
+            f"cannot safely wire {pyproject}: [tool.ruff.lint] defines both {rendered}; "
+            "combine each pair under the extend-* key, then rerun setup"
+        )
+        return False
+    existing_extend = ruff.get("extend")
+    if existing_extend is not None and existing_extend != ".ruff-strict.toml":
+        plan.errors.append(
+            f"cannot safely wire {pyproject}: [tool.ruff] already extends {existing_extend!r}; "
+            "preserve that config chain manually before adding .ruff-strict.toml"
+        )
+        return False
+    return True
+
+
+def _ruff_policy_conflicts(lint: Mapping[str, object]) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (key, f"extend-{key}")
+        for key in ("select", "ignore")
+        if key in lint and f"extend-{key}" in lint and not (key == "select" and lint.get("select") == ["ALL"])
+    )
+
+
+def _plan_ruff_extension(pyproject: Path, text: str, ruff: Mapping[str, object], plan: Plan) -> None:
+    updated = _extend_ruff_replacement_policy(text)
+    if ruff.get("extend") == ".ruff-strict.toml" and updated != text:
+        plan.writes.append((pyproject, updated))
+    elif ruff.get("extend") == ".ruff-strict.toml":
+        plan.skips.append((pyproject, "already extends .ruff-strict.toml"))
+    elif _RUFF_EXTEND.search(updated):
+        wired = _RUFF_EXTEND.sub('[tool.ruff]\nextend = ".ruff-strict.toml"', updated, count=1)
+        plan.writes.append((pyproject, wired))
+    elif updated != text:
+        plan.writes.append((pyproject, f'{updated}\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
+    else:
+        plan.edits.append((pyproject, '\n[tool.ruff]\nextend = ".ruff-strict.toml"\n'))
+
+
+def _plan_python_typechecker(root: Path, plan: Plan, python_target: str | None, *, force: bool) -> None:
     pyright = root / _PYRIGHT_CONFIG
     pyright_jsonc = root / "pyrightconfig.jsonc"
     if pyright_jsonc.is_file():
@@ -1253,27 +1323,7 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
         )
         return
     if pyright.is_file():
-        document, error = _json_object(pyright)
-        if error is not None:
-            plan.errors.append(f"cannot safely wire {pyright}: {error}")
-        elif document is not None:
-            existing_pyright_extend = document.get("extends")
-            if existing_pyright_extend not in {None, _LEGACY_PYRIGHT_POLICY_PARENT, _PYRIGHT_POLICY_PARENT}:
-                plan.errors.append(
-                    f"cannot safely wire {pyright}: it already extends {existing_pyright_extend!r}; "
-                    f"Pyright supports one parent, so preserve that config chain manually before adding "
-                    f"{_PYRIGHT_POLICY_PARENT}"
-                )
-                return
-            changed = existing_pyright_extend != _PYRIGHT_POLICY_PARENT
-            document["extends"] = _PYRIGHT_POLICY_PARENT
-            if python_target is not None and "pythonVersion" not in document:
-                document["pythonVersion"] = python_target
-                changed = True
-            if changed:
-                plan.writes.append((pyright, json.dumps(document, indent=_indent_of(pyright.read_text())) + "\n"))
-            else:
-                plan.skips.append((pyright, f"already extends {_PYRIGHT_POLICY_PARENT}"))
+        _plan_existing_pyright(pyright, plan, python_target)
     else:
         generated_document: dict[str, object] = {"extends": _PYRIGHT_POLICY_PARENT}
         if python_target is not None:
@@ -1285,6 +1335,32 @@ def _plan_python(  # ruff: ignore[too-many-locals] -- one TOML boundary preserve
             force=force,
             reason=f'exists; add `"extends": "{_PYRIGHT_POLICY_PARENT}"` yourself',
         )
+
+
+def _plan_existing_pyright(pyright: Path, plan: Plan, python_target: str | None) -> None:
+    document, error = _json_object(pyright)
+    if error is not None:
+        plan.errors.append(f"cannot safely wire {pyright}: {error}")
+    elif document is not None:
+        existing_pyright_extend = document.get("extends")
+        if existing_pyright_extend not in {None, _LEGACY_PYRIGHT_POLICY_PARENT, _PYRIGHT_POLICY_PARENT}:
+            plan.errors.append(
+                f"cannot safely wire {pyright}: it already extends {existing_pyright_extend!r}; "
+                f"Pyright supports one parent, so preserve that config chain manually before adding "
+                f"{_PYRIGHT_POLICY_PARENT}"
+            )
+            return
+        changed = existing_pyright_extend != _PYRIGHT_POLICY_PARENT
+        document["extends"] = _PYRIGHT_POLICY_PARENT
+        if python_target is not None and "pythonVersion" not in document:
+            document["pythonVersion"] = python_target
+            changed = True
+        if changed:
+            plan.writes.append(
+                (pyright, json.dumps(document, indent=_indent_of(pyright.read_text(encoding=None))) + "\n")
+            )
+        else:
+            plan.skips.append((pyright, f"already extends {_PYRIGHT_POLICY_PARENT}"))
 
 
 def _python_target(document: Mapping[str, object]) -> str | None:
@@ -1531,9 +1607,7 @@ def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
     return text[:insertion] + rendered + text[insertion:]
 
 
-def _merged_npm_overrides(  # ruff: ignore[too-many-locals] -- explicit JSON merge state preserves consumer fields.
-    text: str, overrides: Overrides | None, *, client: PackageManager
-) -> str | None:
+def _merged_npm_overrides(text: str, overrides: Overrides | None, *, client: PackageManager) -> str | None:
     parsed: object = json.loads(text)  # pyright: ignore[reportAny] -- untyped stdlib boundary
     data = manifest.as_table(parsed)
     if not data:
@@ -1568,30 +1642,35 @@ def _merged_npm_overrides(  # ruff: ignore[too-many-locals] -- explicit JSON mer
         data["devDependencies"] = updated_peers
         changed = True
     if overrides is not None:
-        *outer, final = overrides.key_path
-        container = data
-        for key in outer:
-            container = manifest.table_field(container, key)
-        existing = manifest.table_field(container, final)
-        updated = dict(existing)
-        for name, value in overrides.entries.items():
-            # A consumer may already override the same package for a different
-            # reason, so merge the inner table rather than replacing it.
-            current_value = updated.get(name)
-            current_entry = manifest.table_field(updated, name)
-            new_entry = manifest.as_table(value)
-            if new_entry and current_value is not None and not isinstance(current_value, dict):
-                current_entry = {".": current_value}
-            updated[name] = {**current_entry, **new_entry} if new_entry else value
-        if client is PackageManager.NPM:
-            _align_npm_direct_dependency_overrides(updated)
-        if updated != existing or not _has_path(data, overrides.key_path):
-            _set_path(data, overrides.key_path, updated)
-            changed = True
+        changed = _merge_override_entries(data, overrides, client=client) or changed
     if not changed:
         return None
     rendered = json.dumps(data, indent=_indent_of(text), ensure_ascii=False)
     return rendered + "\n" if text.endswith("\n") else rendered
+
+
+def _merge_override_entries(data: dict[str, object], overrides: Overrides, *, client: PackageManager) -> bool:
+    *outer, final = overrides.key_path
+    container = data
+    for key in outer:
+        container = manifest.table_field(container, key)
+    existing = manifest.table_field(container, final)
+    updated = dict(existing)
+    for name, value in overrides.entries.items():
+        # A consumer may already override the same package for a different
+        # reason, so merge the inner table rather than replacing it.
+        current_value = updated.get(name)
+        current_entry = manifest.table_field(updated, name)
+        new_entry = manifest.as_table(value)
+        if new_entry and current_value is not None and not isinstance(current_value, dict):
+            current_entry = {".": current_value}
+        updated[name] = {**current_entry, **new_entry} if new_entry else value
+    if client is PackageManager.NPM:
+        _align_npm_direct_dependency_overrides(updated)
+    if updated != existing or not _has_path(data, overrides.key_path):
+        _set_path(data, overrides.key_path, updated)
+        return True
+    return False
 
 
 def _align_npm_direct_dependency_overrides(overrides: dict[str, object]) -> None:
@@ -1682,54 +1761,59 @@ def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:
     path = existing[0] if existing else root / _PRECOMMIT_CONFIG_NAMES[0]
     block = precommit_block()
     if path.is_file():
-        try:
-            text = path.read_bytes().decode("utf-8")
-            hooks.validate_precommit_configuration(text)
-        except (OSError, UnicodeError, ValueError) as exc:
-            plan.errors.append(f"cannot safely read {path}: {exc}")
-            return
-        runner_prefix = launcher.repository_command()
-        migrated, migration_error = _migrate_official_remote_hook(text, runner_prefix)
-        if migration_error is not None:
-            plan.errors.append(f"cannot safely migrate {path}: {migration_error}")
-            return
-        if migrated is not None:
-            migrated = _match_newline_style(text, migrated)
-            hooks.validate_precommit_configuration(migrated)
-            plan.writes.append((path, migrated))
-            return
-        custom_legacy = re.search(r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards['\"]?\s*$", text) is not None
-        owned_hook = _has_owned_hooks(text)
-        if custom_legacy:
-            if owned_hook and not hooks.precommit_runs_commit_message_check(root):
-                plan.errors.append(
-                    "cannot safely converge a customized legacy `sarj-standards` hook beside a "
-                    "noncanonical managed hook; keep exactly one canonical hook owner"
-                )
-            elif hooks.precommit_runs_commit_message_check(root):
-                plan.skips.append((path, "preserving custom legacy checks and managed commit messages"))
-            else:
-                missing = _precommit_commit_message_block(
-                    runner_prefix,
-                    item_indent=_precommit_item_indent(text),
-                )
-                plan.writes.append((path, hooks.insert_precommit_repository(text, missing)))
-                plan.notes.append("preserved custom legacy checks and added managed commit messages")
-        elif owned_hook:
-            canonical = _canonicalize_owned_hooks(text, runner_prefix)
-            canonical = _match_newline_style(text, canonical)
-            if canonical == text:
-                plan.skips.append((path, "already runs the canonical sarj-standards hook"))
-            else:
-                hooks.validate_precommit_configuration(canonical)
-                plan.writes.append((path, canonical))
-        elif re.search(r"(?m)^repos:\s*(?:\[\s*\]\s*)?(?:#.*)?$", text):
-            missing = _precommit_check_block(runner_prefix, item_indent=_precommit_item_indent(text))
-            plan.writes.append((path, hooks.insert_precommit_repository(text, missing)))
-        else:
-            plan.errors.append(f"cannot safely merge hooks into {path}; add this block under `repos:`:\n{block}")
+        _plan_existing_precommit(root, path, block, plan)
         return
     _record(plan, path, f"repos:\n{block}", force=force, reason="exists")
+
+
+def _plan_existing_precommit(root: Path, path: Path, block: str, plan: Plan) -> None:
+    try:
+        text = path.read_bytes().decode("utf-8")
+        hooks.validate_precommit_configuration(text)
+    except (OSError, UnicodeError, ValueError) as exc:
+        plan.errors.append(f"cannot safely read {path}: {exc}")
+        return
+    runner_prefix = launcher.repository_command()
+    migrated, migration_error = _migrate_official_remote_hook(text, runner_prefix)
+    if migration_error is not None:
+        plan.errors.append(f"cannot safely migrate {path}: {migration_error}")
+        return
+    if migrated is not None:
+        migrated = _match_newline_style(text, migrated)
+        hooks.validate_precommit_configuration(migrated)
+        plan.writes.append((path, migrated))
+        return
+    custom_legacy = re.search(r"(?m)^\s*-\s+id:\s+['\"]?sarj-standards['\"]?\s*$", text) is not None
+    owned_hook = _has_owned_hooks(text)
+    if custom_legacy:
+        if owned_hook and not hooks.precommit_runs_commit_message_check(root):
+            plan.errors.append(
+                "cannot safely converge a customized legacy `sarj-standards` hook beside a "
+                "noncanonical managed hook; keep exactly one canonical hook owner"
+            )
+        elif hooks.precommit_runs_commit_message_check(root):
+            plan.skips.append((path, "preserving custom legacy checks and managed commit messages"))
+        else:
+            missing = _precommit_commit_message_block(
+                runner_prefix,
+                item_indent=_precommit_item_indent(text),
+            )
+            plan.writes.append((path, hooks.insert_precommit_repository(text, missing)))
+            plan.notes.append("preserved custom legacy checks and added managed commit messages")
+    elif owned_hook:
+        canonical = _canonicalize_owned_hooks(text, runner_prefix)
+        canonical = _match_newline_style(text, canonical)
+        if canonical == text:
+            plan.skips.append((path, "already runs the canonical sarj-standards hook"))
+        else:
+            hooks.validate_precommit_configuration(canonical)
+            plan.writes.append((path, canonical))
+    elif re.search(r"(?m)^repos:\s*(?:\[\s*\]\s*)?(?:#.*)?$", text):
+        missing = _precommit_check_block(runner_prefix, item_indent=_precommit_item_indent(text))
+        plan.writes.append((path, hooks.insert_precommit_repository(text, missing)))
+    else:
+        plan.errors.append(f"cannot safely merge hooks into {path}; add this block under `repos:`:\n{block}")
+    return
 
 
 def _plan_precommit_commit_message(root: Path, plan: Plan, *, force: bool) -> None:
@@ -1805,31 +1889,9 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigrati
     if not official:
         return _HookMigration(None, None)
     for block in official:
-        try:
-            parsed: object = yaml.safe_load(f"repos:\n{block.text}")  # pyright: ignore[reportAny] -- narrowed below.
-        except yaml.YAMLError as exc:
-            return _HookMigration(None, f"official Standards hook contains invalid YAML: {exc}")
-        repos = manifest.list_field(manifest.as_table(parsed), "repos")
-        if len(repos) != 1:
-            return _HookMigration(None, "official Standards repository block is not a single YAML list item")
-        repository = manifest.as_table(repos[0])
-        hook_values = manifest.list_field(repository, "hooks")
-        if not hook_values:
-            return _HookMigration(None, "official Standards repository block has no hooks")
-        for hook_value in hook_values:
-            hook = manifest.as_table(hook_value)
-            hook_id = hook.get("id")
-            custom_keys = sorted(set(hook) - {"id"})
-            is_owned = isinstance(hook_id, str) and (
-                hook_id in {"repo-standards-check", "sarj-standards"} or hook_id.startswith("sarj-")
-            )
-            if not is_owned or custom_keys:
-                detail = (
-                    f"hook {hook_id!r} has custom keys {custom_keys}"
-                    if custom_keys
-                    else f"hook {hook_id!r} is not owned by Standards"
-                )
-                return _HookMigration(None, f"{detail}; preserve its scope manually before replacing the remote block")
+        error = _official_hook_error(block)
+        if error is not None:
+            return _HookMigration(None, error)
     first = official[0].start
     removed = text
     for block in reversed(official):
@@ -1840,6 +1902,35 @@ def _migrate_official_remote_hook(text: str, runner_prefix: str) -> _HookMigrati
     insertion = _precommit_check_block(runner_prefix, item_indent=item_indents.pop())
     migrated = removed[:first] + insertion + removed[first:]
     return _HookMigration(_canonicalize_owned_hooks(migrated, runner_prefix), None)
+
+
+def _official_hook_error(block: hooks.PrecommitRepoBlock) -> str | None:
+    try:
+        parsed: object = yaml.safe_load(f"repos:\n{block.text}")  # pyright: ignore[reportAny] -- narrowed below.
+    except yaml.YAMLError as exc:
+        return f"official Standards hook contains invalid YAML: {exc}"
+    repos = manifest.list_field(manifest.as_table(parsed), "repos")
+    if len(repos) != 1:
+        return "official Standards repository block is not a single YAML list item"
+    repository = manifest.as_table(repos[0])
+    hook_values = manifest.list_field(repository, "hooks")
+    if not hook_values:
+        return "official Standards repository block has no hooks"
+    for hook_value in hook_values:
+        hook = manifest.as_table(hook_value)
+        hook_id = hook.get("id")
+        custom_keys = sorted(set(hook) - {"id"})
+        is_owned = isinstance(hook_id, str) and (
+            hook_id in {"repo-standards-check", "sarj-standards"} or hook_id.startswith("sarj-")
+        )
+        if not is_owned or custom_keys:
+            detail = (
+                f"hook {hook_id!r} has custom keys {custom_keys}"
+                if custom_keys
+                else f"hook {hook_id!r} is not owned by Standards"
+            )
+            return f"{detail}; preserve its scope manually before replacing the remote block"
+    return None
 
 
 def _precommit_item_indent(text: str) -> int:
@@ -2110,34 +2201,8 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     root = root.resolve()
     adopted = manifest.load_for_setup(root)
     python_dest = "." if adopted is None else adopted.python_dest
-    python_override = (
-        None
-        if adopted is None or not any(name in adopted.configs for name in manifest.PYTHON_CONFIGS)
-        else adopted.python_dest
-    )
-    typescript_override = (
-        None
-        if adopted is None or not any(name in adopted.configs for name in manifest.TYPESCRIPT_CONFIGS)
-        else adopted.typescript_dest
-    )
-    swift_override = (
-        None
-        if adopted is None or not any(name in adopted.configs for name in manifest.SWIFT_CONFIGS)
-        else adopted.swift_dest
-    )
-    kotlin_override = (
-        None
-        if adopted is None or not any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
-        else adopted.kotlin_dest
-    )
     if ecosystems is None:
-        ecosystems = detect(
-            root,
-            python_dest=python_override,
-            typescript_dest=typescript_override,
-            swift_dest=swift_override,
-            kotlin_dest=kotlin_override,
-        )
+        ecosystems = _workflow_ecosystems(root, adopted)
     install_root = ecosystems.typescript_install_root or ecosystems.typescript_root
     runner = launcher.repository_command()
     lines = [
@@ -2191,34 +2256,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     )
     if ecosystems.typescript:
-        if ecosystems.client is PackageManager.BUN:
-            lines.append("      - uses: oven-sh/setup-bun@v2")
-        else:
-            lines.extend(
-                (
-                    "      - uses: actions/setup-node@v7",
-                    "        with:",
-                    "          node-version: 24",
-                )
-            )
-        if (
-            ecosystems.client is PackageManager.NPM
-            and install_root is not None
-            and (npm_version := packagemanager.declared_version(install_root, PackageManager.NPM)) is not None
-        ):
-            lines.extend(
-                (
-                    "      - name: Activate declared npm version",
-                    f"        run: npm install --global npm@{npm_version} --ignore-scripts",
-                )
-            )
-        javascript_command = _ci_javascript_install(ecosystems.client, ecosystems.yarn)
-        if ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
-            javascript_command = f"corepack enable && {javascript_command}"
-        lines.extend(("      - name: Install JavaScript dependencies", f"        run: {javascript_command}"))
-        if install_root is not None and install_root != root:
-            relative_install_root = install_root.relative_to(root).as_posix()
-            lines.append(f"        working-directory: {json.dumps(relative_install_root)}")
+        _append_javascript_ci(lines, root, ecosystems, install_root)
     if ecosystems.python:
         python_install = python_ci_install_argv(root, python_dest)
         if python_install:
@@ -2235,6 +2273,67 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     )
     return "\n".join(lines) + "\n"
+
+
+def _workflow_ecosystems(root: Path, adopted: manifest.Manifest | None) -> Ecosystems:
+    python_override = (
+        None
+        if adopted is None or not any(name in adopted.configs for name in manifest.PYTHON_CONFIGS)
+        else adopted.python_dest
+    )
+    typescript_override = (
+        None
+        if adopted is None or not any(name in adopted.configs for name in manifest.TYPESCRIPT_CONFIGS)
+        else adopted.typescript_dest
+    )
+    swift_override = (
+        None
+        if adopted is None or not any(name in adopted.configs for name in manifest.SWIFT_CONFIGS)
+        else adopted.swift_dest
+    )
+    kotlin_override = (
+        None
+        if adopted is None or not any(name in adopted.configs for name in manifest.KOTLIN_CONFIGS)
+        else adopted.kotlin_dest
+    )
+    return detect(
+        root,
+        python_dest=python_override,
+        typescript_dest=typescript_override,
+        swift_dest=swift_override,
+        kotlin_dest=kotlin_override,
+    )
+
+
+def _append_javascript_ci(lines: list[str], root: Path, ecosystems: Ecosystems, install_root: Path | None) -> None:
+    if ecosystems.client is PackageManager.BUN:
+        lines.append("      - uses: oven-sh/setup-bun@v2")
+    else:
+        lines.extend(
+            (
+                "      - uses: actions/setup-node@v7",
+                "        with:",
+                "          node-version: 24",
+            )
+        )
+    if (
+        ecosystems.client is PackageManager.NPM
+        and install_root is not None
+        and (npm_version := packagemanager.declared_version(install_root, PackageManager.NPM)) is not None
+    ):
+        lines.extend(
+            (
+                "      - name: Activate declared npm version",
+                f"        run: npm install --global npm@{npm_version} --ignore-scripts",
+            )
+        )
+    javascript_command = _ci_javascript_install(ecosystems.client, ecosystems.yarn)
+    if ecosystems.client in {PackageManager.PNPM, PackageManager.YARN}:
+        javascript_command = f"corepack enable && {javascript_command}"
+    lines.extend(("      - name: Install JavaScript dependencies", f"        run: {javascript_command}"))
+    if install_root is not None and install_root != root:
+        relative_install_root = install_root.relative_to(root).as_posix()
+        lines.append(f"        working-directory: {json.dumps(relative_install_root)}")
 
 
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:

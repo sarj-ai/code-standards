@@ -276,85 +276,114 @@ def _check_parameters(
     routes: tuple[Route, ...],
     index: FastapiIndex,
 ) -> list[_Finding]:
-    findings: list[_Finding] = []
-    contract_markers: dict[str, tuple[str | None, ast.arg]] = {}
-    has_dynamic_alias = False
+    contract = _ParameterContract(routes, index)
     for parameter, default in _function_parameters(function):
+        contract.read(parameter, default)
+    if not contract.has_dynamic_alias:
+        contract.check_missing_paths(function)
+    return contract.findings
+
+
+class _ParameterContract:
+    def __init__(self, routes: tuple[Route, ...], index: FastapiIndex) -> None:
+        self.routes: tuple[Route, ...] = routes
+        self.index: FastapiIndex = index
+        self.findings: list[_Finding] = []
+        self.contract_markers: dict[str, tuple[str | None, ast.arg]] = {}
+        self.has_dynamic_alias: bool = False
+
+    def read(self, parameter: ast.arg, default: ast.expr | None) -> None:
         if parameter.arg in {"self", "cls"} or parameter.annotation is None:
-            continue
-        if index.is_injection(parameter.annotation) or index.is_imported_dependency_alias(parameter.annotation):
-            continue
-        parts = index.annotated_parts(parameter.annotation)
+            return
+        if self.index.is_injection(parameter.annotation) or self.index.is_imported_dependency_alias(
+            parameter.annotation
+        ):
+            return
+        parts = self.index.annotated_parts(parameter.annotation)
         if parts is None:
-            findings.append(_Finding(parameter, f"[parameter] `{parameter.arg}` requires explicit Annotated metadata."))
-            contract_markers[parameter.arg] = (None, parameter)
-            continue
+            self.findings.append(
+                _Finding(parameter, f"[parameter] `{parameter.arg}` requires explicit Annotated metadata.")
+            )
+            self.contract_markers[parameter.arg] = (None, parameter)
+            return
         value_type, metadata = parts
-        markers = [resolved for item in metadata if (resolved := index.marker(item)) is not None]
+        markers = [resolved for item in metadata if (resolved := self.index.marker(item)) is not None]
         if len(markers) != 1:
-            findings.append(
+            self.findings.append(
                 _Finding(parameter, f"[parameter] `{parameter.arg}` requires exactly one FastAPI parameter marker.")
             )
-            contract_markers[parameter.arg] = (None, parameter)
-            continue
-        marker_name, marker_call = markers[0]
+            self.contract_markers[parameter.arg] = (None, parameter)
+            return
+        self.read_marker(parameter, default, value_type, markers[0])
+
+    def read_marker(
+        self, parameter: ast.arg, default: ast.expr | None, value_type: ast.expr, marker: tuple[str, ast.Call]
+    ) -> None:
+        marker_name, marker_call = marker
         alias = _keyword(marker_call, "alias")
         if alias is None:
-            contract_markers[parameter.arg] = (marker_name, parameter)
+            self.contract_markers[parameter.arg] = (marker_name, parameter)
         elif isinstance(alias, ast.Constant) and isinstance(alias.value, str):
-            contract_markers[alias.value] = (marker_name, parameter)
+            self.contract_markers[alias.value] = (marker_name, parameter)
         else:
-            has_dynamic_alias = True
+            self.has_dynamic_alias = True
         if _has_embedded_default(marker_name, marker_call):
-            findings.append(
+            self.findings.append(
                 _Finding(parameter, f"[parameter] `{parameter.arg}` default belongs after `=`, not inside Annotated.")
             )
-        if isinstance(default, ast.Call) and index.marker(default) is not None:
-            findings.append(
+        if isinstance(default, ast.Call) and self.index.marker(default) is not None:
+            self.findings.append(
                 _Finding(parameter, f"[parameter] `{parameter.arg}` must not duplicate FastAPI marker metadata.")
             )
-        if marker_name in SCHEMA_MARKERS and _schema_erasing(value_type, index):
-            findings.append(
+        if marker_name in SCHEMA_MARKERS and _schema_erasing(value_type, self.index):
+            self.findings.append(
                 _Finding(
                     parameter, f"[parameter] `{parameter.arg}` uses a schema-erasing request type; define a model."
                 )
             )
         if marker_name == "Path":
-            if default is not None or _contains_none(value_type, index):
-                findings.append(
-                    _Finding(parameter, f"[parameter] Path `{parameter.arg}` must be required and non-nullable.")
-                )
-            literal_paths = [route.path for route in routes if route.path is not None]
-            contract_name = alias.value if isinstance(alias, ast.Constant) and isinstance(alias.value, str) else None
-            if alias is None:
-                contract_name = parameter.arg
-            if (
-                contract_name is not None
-                and literal_paths
-                and any(contract_name not in _path_parameters(path) for path in literal_paths)
-            ):
-                findings.append(
-                    _Finding(parameter, f"[parameter] Path `{contract_name}` is not present in route path.")
-                )
-        if marker_name in _BODY_MARKERS and any(route.method in {"get", "head"} for route in routes):
-            bodyless_method = next(route.method for route in routes if route.method in {"get", "head"})
-            findings.append(
+            self.check_path(parameter, default, value_type, alias)
+        if marker_name in _BODY_MARKERS and any(route.method in {"get", "head"} for route in self.routes):
+            bodyless_method = next(route.method for route in self.routes if route.method in {"get", "head"})
+            self.findings.append(
                 _Finding(
                     parameter, f"[parameter] {bodyless_method.upper()} operations must not declare a request body."
                 )
             )
-    if not has_dynamic_alias:
-        for route in routes:
+
+    def check_path(
+        self, parameter: ast.arg, default: ast.expr | None, value_type: ast.expr, alias: ast.expr | None
+    ) -> None:
+        if default is not None or _contains_none(value_type, self.index):
+            self.findings.append(
+                _Finding(parameter, f"[parameter] Path `{parameter.arg}` must be required and non-nullable.")
+            )
+        literal_paths = [route.path for route in self.routes if route.path is not None]
+        contract_name = alias.value if isinstance(alias, ast.Constant) and isinstance(alias.value, str) else None
+        if alias is None:
+            contract_name = parameter.arg
+        if (
+            contract_name is not None
+            and literal_paths
+            and any(contract_name not in _path_parameters(path) for path in literal_paths)
+        ):
+            self.findings.append(
+                _Finding(parameter, f"[parameter] Path `{contract_name}` is not present in route path.")
+            )
+
+    def check_missing_paths(self, function: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        for route in self.routes:
             if route.path is None:
                 continue
             for path_name in sorted(_path_parameters(route.path)):
-                marker = contract_markers.get(path_name)
+                marker = self.contract_markers.get(path_name)
                 if marker is not None and marker[0] is None:
                     continue
                 if marker is None or marker[0] != "Path":
                     node = marker[1] if marker is not None else function
-                    findings.append(_Finding(node, f"[parameter] route path `{path_name}` requires a Path marker."))
-    return findings
+                    self.findings.append(
+                        _Finding(node, f"[parameter] route path `{path_name}` requires a Path marker.")
+                    )
 
 
 def _keyword(call: ast.Call, name: str) -> ast.expr | None:
@@ -399,11 +428,7 @@ def _schema_erasing(node: ast.expr, index: FastapiIndex) -> bool:
     name = flat_name(resolved.value) if isinstance(resolved, ast.Subscript) else flat_name(resolved)
     if name in {"Any", "object"}:
         return True
-    if name in _RAW_MAPPINGS:
-        if not isinstance(resolved, ast.Subscript):
-            return True
-        return any(_schema_erasing(item, index) for item in _slice_items(resolved.slice))
-    if name in _CONTAINERS:
+    if name in _RAW_MAPPINGS or name in _CONTAINERS:
         if not isinstance(resolved, ast.Subscript):
             return True
         return any(_schema_erasing(item, index) for item in _slice_items(resolved.slice))
@@ -416,6 +441,14 @@ def _slice_items(node: ast.expr) -> tuple[ast.expr, ...]:
     return tuple(node.elts) if isinstance(node, ast.Tuple) else (node,)
 
 
+@dataclass(frozen=True, slots=True)
+class _ReturnContract:
+    annotation: ast.expr
+    erases_schema: bool
+    is_response: bool
+    is_none: bool
+
+
 def _check_return(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     routes: tuple[Route, ...],
@@ -423,65 +456,85 @@ def _check_return(
 ) -> list[_Finding]:
     annotation = index.resolve_annotation(function.returns)
     if annotation is None:
-        if not builds_fixed_record(function):
-            return []
-        for route in _operations(routes):
-            if route.has_unpack:
-                continue
-            response_model = route.keywords.get("response_model")
-            status = _status_code(route.keywords.get("status_code"), index) or HTTPStatus.OK
-            if _concrete_response_model(response_model, index) or any(
-                _documents_response_model(node, status, index) for node in _route_response_nodes(route)
-            ):
-                continue
-            return [
-                _Finding(
-                    function,
-                    "[return] fixed-shape dictionary requires a named return type or concrete response_model.",
-                )
-            ]
-        return []
+        return _check_inferred_return(function, routes, index)
     problems: set[str] = set()
-    annotation_erases_schema = _schema_erasing(annotation, index)
-    is_response = index.is_response(annotation)
-    is_none = _is_none_annotation(annotation, index)
+    contract = _ReturnContract(
+        annotation,
+        _schema_erasing(annotation, index),
+        index.is_response(annotation),
+        _is_none_annotation(annotation, index),
+    )
     for route in _operations(routes):
-        if route.has_unpack:
-            continue
-        keywords = route.keywords
-        response_model = keywords.get("response_model")
-        response_model_none = response_model is not None and _literal_none(response_model)
-        if annotation_erases_schema and not _concrete_response_model(response_model, index):
-            problems.add("response annotation erases its OpenAPI schema; define an output model")
-        status = _status_code(keywords.get("status_code"), index)
-        response_class = keywords.get("response_class") or route.inherited_response_class
-        if is_response and status not in _NO_CONTENT_STATUSES and response_class is None:
-            problems.add("direct Response return requires response_class= for accurate OpenAPI")
-        response_name = index.response_name(annotation)
-        class_name = index.response_name(response_class)
-        response_class_is_unresolved = response_class is not None and not class_name
-        has_documented_body = (
-            _concrete_response_model(response_model, index)
-            or any(_documents_response_content(node, status, index) for node in _route_response_nodes(route))
-            or class_name in _SELF_DOCUMENTING_RESPONSE_CLASSES
-            or response_class_is_unresolved
-        )
-        if response_name not in {"", "Response"} and class_name and response_name != class_name:
-            problems.add(f"return type {response_name} conflicts with response_class={class_name}")
-        if is_response and status not in _NO_CONTENT_STATUSES and not has_documented_body:
-            problems.add("direct Response return requires a concrete response_model or responses content schema")
-        elif not is_response and not is_none and response_model_none:
-            problems.add("response_model=None suppresses the declared response schema")
-        if response_model is not None and not response_model_none and _schema_erasing(response_model, index):
-            problems.add("response_model erases its OpenAPI schema; define an output model")
-        if status in _NO_CONTENT_STATUSES:
-            if response_model is not None and not response_model_none:
-                problems.add(f"status {status} must not declare a response model")
-            if not (is_none or is_response):
-                problems.add(f"status {status} requires -> None/Response")
+        if not route.has_unpack:
+            _check_return_route(route, contract, index, problems)
     if not problems:
         return []
     return [_Finding(function, f"[return] {'; '.join(sorted(problems))}.")]
+
+
+def _check_inferred_return(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, routes: tuple[Route, ...], index: FastapiIndex
+) -> list[_Finding]:
+    if not builds_fixed_record(function):
+        return []
+    for route in _operations(routes):
+        if route.has_unpack:
+            continue
+        response_model = route.keywords.get("response_model")
+        status = _status_code(route.keywords.get("status_code"), index) or HTTPStatus.OK
+        if _concrete_response_model(response_model, index) or any(
+            _documents_response_model(node, status, index) for node in _route_response_nodes(route)
+        ):
+            continue
+        return [
+            _Finding(
+                function,
+                "[return] fixed-shape dictionary requires a named return type or concrete response_model.",
+            )
+        ]
+    return []
+
+
+def _check_return_route(route: Route, contract: _ReturnContract, index: FastapiIndex, problems: set[str]) -> None:
+    keywords = route.keywords
+    response_model = keywords.get("response_model")
+    response_model_none = response_model is not None and _literal_none(response_model)
+    if contract.erases_schema and not _concrete_response_model(response_model, index):
+        problems.add("response annotation erases its OpenAPI schema; define an output model")
+    status = _status_code(keywords.get("status_code"), index)
+    response_class = keywords.get("response_class") or route.inherited_response_class
+    if contract.is_response and status not in _NO_CONTENT_STATUSES and response_class is None:
+        problems.add("direct Response return requires response_class= for accurate OpenAPI")
+    _check_response_body(route, contract, index, problems)
+    if response_model is not None and not response_model_none and _schema_erasing(response_model, index):
+        problems.add("response_model erases its OpenAPI schema; define an output model")
+    if status in _NO_CONTENT_STATUSES:
+        if response_model is not None and not response_model_none:
+            problems.add(f"status {status} must not declare a response model")
+        if not (contract.is_none or contract.is_response):
+            problems.add(f"status {status} requires -> None/Response")
+
+
+def _check_response_body(route: Route, contract: _ReturnContract, index: FastapiIndex, problems: set[str]) -> None:
+    response_model = route.keywords.get("response_model")
+    response_model_none = response_model is not None and _literal_none(response_model)
+    status = _status_code(route.keywords.get("status_code"), index)
+    response_class = route.keywords.get("response_class") or route.inherited_response_class
+    response_name = index.response_name(contract.annotation)
+    class_name = index.response_name(response_class)
+    response_class_is_unresolved = response_class is not None and not class_name
+    has_documented_body = (
+        _concrete_response_model(response_model, index)
+        or any(_documents_response_content(node, status, index) for node in _route_response_nodes(route))
+        or class_name in _SELF_DOCUMENTING_RESPONSE_CLASSES
+        or response_class_is_unresolved
+    )
+    if response_name not in {"", "Response"} and class_name and response_name != class_name:
+        problems.add(f"return type {response_name} conflicts with response_class={class_name}")
+    if contract.is_response and status not in _NO_CONTENT_STATUSES and not has_documented_body:
+        problems.add("direct Response return requires a concrete response_model or responses content schema")
+    elif not contract.is_response and not contract.is_none and response_model_none:
+        problems.add("response_model=None suppresses the declared response schema")
 
 
 def _is_none_annotation(node: ast.expr, index: FastapiIndex) -> bool:
@@ -594,40 +647,7 @@ def _check_direct_responses(
     routes: tuple[Route, ...],
     index: FastapiIndex,
 ) -> list[_Finding]:
-    statuses: set[int] = set()
-    invalid: dict[int, ast.Call] = {}
-    stack: list[tuple[ast.AST, bool]] = [(node, False) for node in function.body]
-    while stack:
-        current, catches_http_exception = stack.pop()
-        if current is not function and isinstance(
-            current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
-        ):
-            continue
-        if isinstance(current, (ast.Try, ast.TryStar)):
-            catches_here = any(_catches_http_exception(handler, index) for handler in current.handlers)
-            stack.extend((node, catches_http_exception or catches_here) for node in current.body)
-            stack.extend((node, catches_http_exception) for node in current.orelse)
-            stack.extend((node, catches_http_exception) for node in current.finalbody)
-            for handler in current.handlers:
-                stack.extend((node, catches_http_exception) for node in handler.body)
-            continue
-        call = current.exc if isinstance(current, ast.Raise) else None
-        if isinstance(call, ast.Call) and index.is_http_exception(call.func) and not catches_http_exception:
-            status = _status_code(_keyword(call, "status_code") or (call.args[0] if call.args else None), index)
-            if status is not None:
-                if _valid_http_status(status):
-                    statuses.add(status)
-                else:
-                    invalid.setdefault(status, call)
-        returned = current.value if isinstance(current, ast.Return) else None
-        if isinstance(returned, ast.Call) and index.is_response(returned.func):
-            status = _status_code(_keyword(returned, "status_code"), index)
-            if status is not None:
-                if _valid_http_status(status):
-                    statuses.add(status)
-                else:
-                    invalid.setdefault(status, returned)
-        stack.extend((child, catches_http_exception) for child in children(current))
+    statuses, invalid = _direct_response_statuses(function, index)
     findings = [
         _Finding(node, f"[status] {status} is outside the HTTP status range 100..599.")
         for status, node in invalid.items()
@@ -651,6 +671,62 @@ def _check_direct_responses(
                 )
             )
     return findings
+
+
+def _direct_response_statuses(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, index: FastapiIndex
+) -> tuple[set[int], dict[int, ast.Call]]:
+    statuses: set[int] = set()
+    invalid: dict[int, ast.Call] = {}
+    stack: list[tuple[ast.AST, bool]] = [(node, False) for node in function.body]
+    while stack:
+        current, catches_http_exception = stack.pop()
+        if current is not function and isinstance(
+            current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+        ):
+            continue
+        if isinstance(current, (ast.Try, ast.TryStar)):
+            _extend_response_try(stack, current, index, catches_http_exception=catches_http_exception)
+            continue
+        for call, status in _direct_statuses(current, index, catches_http_exception=catches_http_exception):
+            if _valid_http_status(status):
+                statuses.add(status)
+            else:
+                invalid.setdefault(status, call)
+        stack.extend((child, catches_http_exception) for child in children(current))
+    return statuses, invalid
+
+
+def _extend_response_try(
+    stack: list[tuple[ast.AST, bool]],
+    current: ast.Try | ast.TryStar,
+    index: FastapiIndex,
+    *,
+    catches_http_exception: bool,
+) -> None:
+    catches_here = any(_catches_http_exception(handler, index) for handler in current.handlers)
+    stack.extend((node, catches_http_exception or catches_here) for node in current.body)
+    stack.extend((node, catches_http_exception) for node in current.orelse)
+    stack.extend((node, catches_http_exception) for node in current.finalbody)
+    for handler in current.handlers:
+        stack.extend((node, catches_http_exception) for node in handler.body)
+
+
+def _direct_statuses(
+    current: ast.AST, index: FastapiIndex, *, catches_http_exception: bool
+) -> list[tuple[ast.Call, int]]:
+    statuses: list[tuple[ast.Call, int]] = []
+    call = current.exc if isinstance(current, ast.Raise) else None
+    if isinstance(call, ast.Call) and index.is_http_exception(call.func) and not catches_http_exception:
+        status = _status_code(_keyword(call, "status_code") or (call.args[0] if call.args else None), index)
+        if status is not None:
+            statuses.append((call, status))
+    returned = current.value if isinstance(current, ast.Return) else None
+    if isinstance(returned, ast.Call) and index.is_response(returned.func):
+        status = _status_code(_keyword(returned, "status_code"), index)
+        if status is not None:
+            statuses.append((returned, status))
+    return statuses
 
 
 def _catches_http_exception(handler: ast.ExceptHandler, index: FastapiIndex) -> bool:

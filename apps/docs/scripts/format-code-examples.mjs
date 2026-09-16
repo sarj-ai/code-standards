@@ -82,7 +82,6 @@ function runFormatter(command, args, source, label) {
   }
 }
 
-// eslint-disable-next-line @sarj/stepdown -- path normalization is part of the formatter dispatch table.
 function virtualPath(path) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".tftest.hcl")) return "example.tftest.hcl";
@@ -143,6 +142,40 @@ async function formatMarkdownFences(source, context) {
   return output.join("");
 }
 
+async function formatWithPrettier(source, path, context) {
+  const lower = path.toLowerCase();
+  let parser;
+  let plugins = [];
+  if (/\.(?:ts|cts|mts)$/u.test(lower)) parser = "typescript";
+  else if (lower.endsWith(".tsx")) parser = "typescript";
+  else if (/\.(?:js|cjs|mjs)$/u.test(lower)) parser = "babel";
+  else if (lower.endsWith(".jsx")) parser = "babel";
+  else if (lower.endsWith(".json")) parser = "json";
+  else if (lower.endsWith(".jsonc")) parser = "json-stringify";
+  else if (/\.(?:yaml|yml)$/u.test(lower)) parser = "yaml";
+  else if (/\.(?:md|mdx)$/u.test(lower)) {
+    parser = lower.endsWith(".mdx") ? "mdx" : "markdown";
+    source = await formatMarkdownFences(source, context);
+  } else if (lower.endsWith(".toml")) {
+    parser = "toml";
+    plugins = [prettierPluginToml];
+  } else if (/\.(?:sh|bash|zsh)$/u.test(lower)) {
+    parser = "sh";
+    plugins = [prettierPluginSh];
+  }
+  if (!parser)
+    throw new Error(
+      `${context}: no formatter is registered for ${basename(path)}`,
+    );
+  return prettierFormat(normalize(source), {
+    filepath: virtualPath(path),
+    parser,
+    plugins,
+    printWidth: 88,
+    tabWidth: 2,
+  });
+}
+
 async function formatCode(source, path, context) {
   if (typeof source !== "string" || source.length === 0)
     throw new TypeError(`${context}: source must be nonempty`);
@@ -179,36 +212,7 @@ async function formatCode(source, path, context) {
       tabWidth: 2,
     });
   } else {
-    let parser;
-    let plugins = [];
-    if (/\.(?:ts|cts|mts)$/u.test(lower)) parser = "typescript";
-    else if (lower.endsWith(".tsx")) parser = "typescript";
-    else if (/\.(?:js|cjs|mjs)$/u.test(lower)) parser = "babel";
-    else if (lower.endsWith(".jsx")) parser = "babel";
-    else if (lower.endsWith(".json")) parser = "json";
-    else if (lower.endsWith(".jsonc")) parser = "json-stringify";
-    else if (/\.(?:yaml|yml)$/u.test(lower)) parser = "yaml";
-    else if (/\.(?:md|mdx)$/u.test(lower)) {
-      parser = lower.endsWith(".mdx") ? "mdx" : "markdown";
-      source = await formatMarkdownFences(source, context);
-    } else if (lower.endsWith(".toml")) {
-      parser = "toml";
-      plugins = [prettierPluginToml];
-    } else if (/\.(?:sh|bash|zsh)$/u.test(lower)) {
-      parser = "sh";
-      plugins = [prettierPluginSh];
-    }
-    if (!parser)
-      throw new Error(
-        `${context}: no formatter is registered for ${basename(path)}`,
-      );
-    formatted = await prettierFormat(normalize(source), {
-      filepath: virtualPath(path),
-      parser,
-      plugins,
-      printWidth: 88,
-      tabWidth: 2,
-    });
+    formatted = await formatWithPrettier(source, path, context);
   }
 
   const normalized = normalize(formatted);

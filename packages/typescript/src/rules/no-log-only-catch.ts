@@ -173,18 +173,22 @@ export default createRule<Options, MessageIds>({
       const owner = node.parent;
       const statement = owner.block.body[0];
       if (node.body.body.length !== 0 || owner.finalizer !== null || owner.block.body.length !== 1 ||
-          statement?.type !== AST_NODE_TYPES.ExpressionStatement ||
-          statement.expression.type !== AST_NODE_TYPES.AssignmentExpression || statement.expression.operator !== "=") return false;
+        statement?.type !== AST_NODE_TYPES.ExpressionStatement ||
+        statement.expression.type !== AST_NODE_TYPES.AssignmentExpression || statement.expression.operator !== "=") return false;
       const { left, right } = statement.expression;
       if (left.type !== AST_NODE_TYPES.MemberExpression || left.computed || left.object.type !== AST_NODE_TYPES.Identifier ||
-          right.type !== AST_NODE_TYPES.CallExpression || right.optional || right.callee.type !== AST_NODE_TYPES.Identifier ||
-          !["String", "Number", "Boolean", "BigInt"].includes(right.callee.name) || right.arguments.length !== 1) return false;
+        right.type !== AST_NODE_TYPES.CallExpression || right.optional || right.callee.type !== AST_NODE_TYPES.Identifier ||
+        !["String", "Number", "Boolean", "BigInt"].includes(right.callee.name) || right.arguments.length !== 1) return false;
       const argument = right.arguments[0];
       if (argument === undefined || sourceCode.getText(left) !== sourceCode.getText(argument)) return false;
       const global = ASTUtils.findVariable(sourceCode.getScope(right.callee), right.callee.name);
       if (global !== null && global.defs.length > 0) return false;
       const root = ASTUtils.findVariable(sourceCode.getScope(left.object), left.object.name);
       if (root === null || root.references.some((reference) => reference.isWrite() && !reference.init)) return false;
+      return hasFollowingCoercionCheck(owner, left, right.callee.name);
+    }
+
+    function hasFollowingCoercionCheck(owner: TSESTree.TryStatement, left: TSESTree.MemberExpression, coercion: string): boolean {
       let current: TSESTree.Node = owner;
       let slot = statementSlot(current);
       while (slot === null && current.parent !== undefined && !FUNCTION_TYPES.has(current.parent.type)) {
@@ -206,7 +210,7 @@ export default createRule<Options, MessageIds>({
       const test = condition.left;
       return test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "typeof" &&
         sourceCode.getText(test.argument) === target &&
-        condition.right.type === AST_NODE_TYPES.Literal && condition.right.value === right.callee.name.toLowerCase();
+        condition.right.type === AST_NODE_TYPES.Literal && condition.right.value === coercion.toLowerCase();
     }
 
     /** True when a statement is exactly a bare logging call, e.g. `console.error(err);`. */

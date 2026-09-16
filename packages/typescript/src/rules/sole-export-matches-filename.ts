@@ -65,7 +65,7 @@ function reflectsExportName(fileStem: string, exportedStem: string): boolean {
   const compactFile = fileTokens.join("");
   if (compactFile.length < 6) return false;
   const boundaryPhrases = new Set<string>();
-  for (let index = 1; index <= exportTokens.length; index += 1) {
+  for (let index = 1;index <= exportTokens.length;index += 1) {
     boundaryPhrases.add(exportTokens.slice(0, index).join(""));
     boundaryPhrases.add(exportTokens.slice(-index).join(""));
   }
@@ -118,9 +118,9 @@ export default createRule<Options, MessageIds>({
       "Program:exit"(program): void {
         const exports: NamedExport[] = [];
         const publicExports = new Set<string>();
-        for (const statement of program.body) {
+        function collectPublicExport(statement: TSESTree.ProgramStatement): boolean {
           if (statement.type === AST_NODE_TYPES.ExportAllDeclaration ||
-              (statement.type === AST_NODE_TYPES.ExportNamedDeclaration && statement.source !== null)) return;
+            (statement.type === AST_NODE_TYPES.ExportNamedDeclaration && statement.source !== null)) return false;
           if (statement.type === AST_NODE_TYPES.ExportDefaultDeclaration) {
             publicExports.add("default");
             const declaration = statement.declaration;
@@ -128,15 +128,19 @@ export default createRule<Options, MessageIds>({
               (declaration.type === AST_NODE_TYPES.ClassDeclaration || declaration.type === AST_NODE_TYPES.FunctionDeclaration) &&
               declaration.id !== null
             ) exports.push({ name: declaration.id.name, node: declaration });
-            else return;
+            else return false;
           }
-          if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration) continue;
+          if (statement.type !== AST_NODE_TYPES.ExportNamedDeclaration) return true;
+          return collectNamedExport(statement);
+        }
+
+        function collectNamedExport(statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>): boolean {
           const declaration = statement.declaration;
           if (declaration !== null && "id" in declaration && declaration.id?.type === AST_NODE_TYPES.Identifier) {
             publicExports.add(declaration.id.name);
           }
           if (declaration?.type === AST_NODE_TYPES.VariableDeclaration) {
-            if (declaration.declarations.some((item) => item.id.type !== AST_NODE_TYPES.Identifier)) return;
+            if (declaration.declarations.some((item) => item.id.type !== AST_NODE_TYPES.Identifier)) return false;
             for (const item of declaration.declarations) {
               if (item.id.type === AST_NODE_TYPES.Identifier) publicExports.add(item.id.name);
             }
@@ -145,8 +149,13 @@ export default createRule<Options, MessageIds>({
             const exported = specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value;
             publicExports.add(String(exported));
           }
-          if (statement.exportKind === "type") continue;
+          if (statement.exportKind === "type") return true;
           exports.push(...declarationExport(statement));
+          collectRuntimeSpecifiers(statement);
+          return true;
+        }
+
+        function collectRuntimeSpecifiers(statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>): void {
           for (const specifier of statement.specifiers) {
             const exported = specifier.exported.type === AST_NODE_TYPES.Identifier ? specifier.exported.name : specifier.exported.value;
             publicExports.add(String(exported));
@@ -154,7 +163,10 @@ export default createRule<Options, MessageIds>({
             if (exported === "default") exports.push({ name: specifier.local.name, node: specifier });
             else exports.push({ name: String(exported), node: specifier });
           }
+
         }
+
+        for (const statement of program.body) { if (!collectPublicExport(statement)) return; }
         const unique = new Map(exports.map((item) => [item.name, item]));
         if (unique.size !== 1 || publicExports.size !== 1) return;
         const only = [...unique.values()][0];

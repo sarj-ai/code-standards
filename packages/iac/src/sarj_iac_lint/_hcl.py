@@ -80,12 +80,7 @@ def mask_block_comments(source: str) -> str:
             index += 1
             continue
         if in_string:
-            if char == "\\":
-                index += 2
-                continue
-            if char == '"':
-                in_string = False
-            index += 1
+            index, in_string = _advance_hcl_string(chars, index)
             continue
         if char == '"':
             in_string = True
@@ -108,34 +103,7 @@ def masked_hcl_lines(source: str) -> list[str]:
             if raw_line.strip() == heredoc_term:
                 heredoc_term = None
             continue
-        chars = list(raw_line)
-        in_string = False
-        index = 0
-        while index < len(chars):
-            char = chars[index]
-            following = chars[index + 1] if index + 1 < len(chars) else ""
-            if in_block_comment:
-                if char == "*" and following == "/":
-                    chars[index] = chars[index + 1] = " "
-                    in_block_comment = False
-                    index += 2
-                    continue
-                chars[index] = " "
-            elif in_string:
-                if char == "\\":
-                    index += 2
-                    continue
-                if char == '"':
-                    in_string = False
-            elif char == '"':
-                in_string = True
-            elif char == "/" and following == "*":
-                chars[index] = chars[index + 1] = " "
-                in_block_comment = True
-                index += 2
-                continue
-            index += 1
-        line = "".join(chars)
+        line, in_block_comment = _mask_hcl_line_blocks(raw_line, in_block_comment=in_block_comment)
         output.append(line)
         if (marker := _HEREDOC_RE.search(mask_line(line))) is not None:
             heredoc_term = marker.group(1)
@@ -309,3 +277,41 @@ def _rejoin(toks: list[_Tok], start: int, end: int, lines: list[str]) -> str:
         parts.append(lines[first.line - 1][first.col - 1 : last.col - 1 + len(last.text)].strip())
         i = j
     return " ".join(parts)
+
+
+def _mask_hcl_line_blocks(raw_line: str, *, in_block_comment: bool) -> tuple[str, bool]:
+    chars = list(raw_line)
+    in_string = False
+    index = 0
+    while index < len(chars):
+        char = chars[index]
+        following = chars[index + 1] if index + 1 < len(chars) else ""
+        if in_block_comment:
+            if char == "*" and following == "/":
+                chars[index] = chars[index + 1] = " "
+                in_block_comment = False
+                index += 2
+                continue
+            chars[index] = " "
+        elif in_string:
+            if char == "\\":
+                index += 2
+                continue
+            if char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char == "/" and following == "*":
+            chars[index] = chars[index + 1] = " "
+            in_block_comment = True
+            index += 2
+            continue
+        index += 1
+    line = "".join(chars)
+    return line, in_block_comment
+
+
+def _advance_hcl_string(chars: list[str], index: int) -> tuple[int, bool]:
+    if chars[index] == "\\":
+        return index + 2, True
+    return index + 1, chars[index] != '"'

@@ -262,18 +262,7 @@ const readWorkspaceGlobs = (dir: string): string[] => {
   if (existsSync(packageJson)) {
     try {
       const parsed: unknown = JSON.parse(readFileSync(packageJson, "utf8"));
-      const declared =
-        typeof parsed === "object" && parsed !== null && "workspaces" in parsed
-          ? (parsed as { workspaces?: unknown }).workspaces
-          : undefined;
-      const list = Array.isArray(declared)
-        ? declared
-        : typeof declared === "object" &&
-            declared !== null &&
-            Array.isArray((declared as { packages?: unknown }).packages)
-          ? (declared as { packages: unknown[] }).packages
-          : [];
-      for (const entry of list) if (typeof entry === "string") globs.push(entry);
+      globs.push(...packageWorkspaceGlobs(parsed));
     } catch {
       // A malformed package.json is not this rule's problem to report.
     }
@@ -590,17 +579,7 @@ export default createRule<Options, MessageIds>({
           }
           break;
         case AST_NODE_TYPES.ObjectExpression:
-          for (const property of node.properties) {
-            if (property.type !== AST_NODE_TYPES.Property) continue;
-            if (objectKeys) {
-              if (property.value.type === AST_NODE_TYPES.Literal && !property.value.value && !("regex" in property.value)) continue;
-              if (!property.computed && property.key.type === AST_NODE_TYPES.Literal) {
-                checkClassNode(property.key);
-              }
-            } else {
-              checkClassNode(property.value);
-            }
-          }
+          checkClassProperties(node, objectKeys);
           break;
         case AST_NODE_TYPES.ConditionalExpression:
           checkClassNode(node.consequent, objectKeys);
@@ -613,6 +592,20 @@ export default createRule<Options, MessageIds>({
           break;
       }
     };
+
+    function checkClassProperties(node: TSESTree.ObjectExpression, objectKeys: boolean): void {
+      for (const property of node.properties) {
+        if (property.type !== AST_NODE_TYPES.Property) continue;
+        if (objectKeys) {
+          if (property.value.type === AST_NODE_TYPES.Literal && !property.value.value && !("regex" in property.value)) continue;
+          if (!property.computed && property.key.type === AST_NODE_TYPES.Literal) {
+            checkClassNode(property.key);
+          }
+        } else {
+          checkClassNode(property.value);
+        }
+      }
+    }
 
     const checkColorValueNode = (node: TSESTree.Node): void => {
       if (
@@ -698,3 +691,20 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function packageWorkspaceGlobs(parsed: unknown): string[] {
+  const globs: string[] = [];
+  const declared =
+    typeof parsed === "object" && parsed !== null && "workspaces" in parsed
+      ? (parsed as { workspaces?: unknown }).workspaces
+      : undefined;
+  const list = Array.isArray(declared)
+    ? declared
+    : typeof declared === "object" &&
+      declared !== null &&
+      Array.isArray((declared as { packages?: unknown }).packages)
+      ? (declared as { packages: unknown[] }).packages
+      : [];
+  for (const entry of list) if (typeof entry === "string") globs.push(entry);
+  return globs;
+}

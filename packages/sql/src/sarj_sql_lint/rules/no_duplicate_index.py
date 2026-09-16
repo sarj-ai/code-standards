@@ -88,16 +88,7 @@ class NoDuplicateIndex(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        active: dict[str, IndexDefinition] = {}
-        for operation in authored_index_operations(path, source):
-            if isinstance(operation, IndexDrop):
-                for key in drop_namespace_keys(operation, set(active)):
-                    del active[key]
-                continue
-            index = operation
-            key = index_namespace_key(index) or f"<unnamed>@{index.start}"
-            active.setdefault(key, index)
-        indexes = sorted(active.values(), key=lambda definition: definition.start)
+        indexes = _active_indexes(path, source)
         findings: list[Diagnostic] = []
         reported: set[int] = set()
         seen: dict[IndexSignature, IndexDefinition] = {}
@@ -115,33 +106,7 @@ class NoDuplicateIndex(Rule):
                     f"Index `{index.name}` duplicates `{first.name}` on table `{index.table}`; remove the later index.",
                 )
             )
-        for position, index in enumerate(indexes):
-            if index.start in reported:
-                continue
-            counterpart = next(
-                (
-                    candidate
-                    for candidate in indexes[:position]
-                    if candidate.start not in reported
-                    and candidate.unique != index.unique
-                    and index_access_signature(candidate) == index_access_signature(index)
-                ),
-                None,
-            )
-            if counterpart is None:
-                continue
-            nonunique, unique = (counterpart, index) if index.unique else (index, counterpart)
-            reported.add(index.start)
-            findings.append(
-                Diagnostic(
-                    path,
-                    index.line,
-                    index.column,
-                    self.code,
-                    f"Non-unique index `{nonunique.name}` repeats unique access path `{unique.name}` on table "
-                    f"`{index.table}`; remove the non-unique copy unless an exact query plan proves distinct value.",
-                )
-            )
+        _find_repeated_access_paths(indexes, reported, findings, path, self.code)
         for position, later in enumerate(indexes):
             if later.start in reported:
                 continue
@@ -212,3 +177,48 @@ def _strict_prefix_pair(shorter: IndexDefinition, longer: IndexDefinition) -> bo
 
 def _prefix_context(index: IndexDefinition) -> tuple[str, bool, str, tuple[str, ...], str]:
     return index.table, index.only, index.predicate, index.storage_parameters, index.tablespace
+
+
+def _active_indexes(path: Path, source: str) -> list[IndexDefinition]:
+    active: dict[str, IndexDefinition] = {}
+    for operation in authored_index_operations(path, source):
+        if isinstance(operation, IndexDrop):
+            for key in drop_namespace_keys(operation, set(active)):
+                del active[key]
+            continue
+        index = operation
+        key = index_namespace_key(index) or f"<unnamed>@{index.start}"
+        active.setdefault(key, index)
+    return sorted(active.values(), key=lambda definition: definition.start)
+
+
+def _find_repeated_access_paths(
+    indexes: list[IndexDefinition], reported: set[int], findings: list[Diagnostic], path: Path, code: str
+) -> None:
+    for position, index in enumerate(indexes):
+        if index.start in reported:
+            continue
+        counterpart = next(
+            (
+                candidate
+                for candidate in indexes[:position]
+                if candidate.start not in reported
+                and candidate.unique != index.unique
+                and index_access_signature(candidate) == index_access_signature(index)
+            ),
+            None,
+        )
+        if counterpart is None:
+            continue
+        nonunique, unique = (counterpart, index) if index.unique else (index, counterpart)
+        reported.add(index.start)
+        findings.append(
+            Diagnostic(
+                path,
+                index.line,
+                index.column,
+                code,
+                f"Non-unique index `{nonunique.name}` repeats unique access path `{unique.name}` on table "
+                f"`{index.table}`; remove the non-unique copy unless an exact query plan proves distinct value.",
+            )
+        )

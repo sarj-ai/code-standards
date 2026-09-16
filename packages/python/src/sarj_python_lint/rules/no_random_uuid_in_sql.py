@@ -132,12 +132,7 @@ def _inside_uuidv7_builder(sql: str, position: int) -> bool:
     index = 0
     while index < position:
         if sql[index].isalpha() or sql[index] == "_":
-            end = index + 1
-            while end < position and (sql[end].isalnum() or sql[end] == "_"):
-                end += 1
-            after = end
-            while after < position and sql[after].isspace():
-                after += 1
+            end, after = _identifier_end(sql, index, position)
             if after < position and sql[after] == "(":
                 calls.append(sql[index:end].lower())
                 index = after + 1
@@ -150,3 +145,13 @@ def _inside_uuidv7_builder(sql: str, position: int) -> bool:
             calls.pop()
         index += 1
     return any(call in _UUIDV7_BUILDERS for call in calls)
+
+
+def _identifier_end(sql: str, index: int, position: int) -> tuple[int, int]:
+    end = index + 1
+    while end < position and (sql[end].isalnum() or sql[end] == "_"):
+        end += 1
+    after = end
+    while after < position and sql[after].isspace():
+        after += 1
+    return end, after

@@ -156,6 +156,7 @@ function walkWithinScope(
     }
   };
 
+
   recurse(node);
   return found;
 }
@@ -218,22 +219,7 @@ function subtreeReadsName(node: TSESTree.Node, name: string): boolean {
       if (key === "parent") {
         continue;
       }
-      // `{ error: 1 }` — the key names a field; it does not read the binding.
-      if (
-        key === "key" &&
-        current.type === AST_NODE_TYPES.Property &&
-        !current.computed
-      ) {
-        continue;
-      }
-      // `response.err` — the property names a field on some other object.
-      if (
-        key === "property" &&
-        current.type === AST_NODE_TYPES.MemberExpression &&
-        !current.computed
-      ) {
-        continue;
-      }
+      if (isNonReadingProperty(current, key)) continue;
       const value = (current as unknown as Record<string, unknown>)[key];
       if (Array.isArray(value)) {
         for (const child of value) {
@@ -448,6 +434,10 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
         return;
       }
     }
+    visitChildren(current);
+  };
+
+  function visitChildren(current: TSESTree.Node): void {
     for (const key of Object.keys(current)) {
       if (key === "parent") continue;
       const value = (current as unknown as Record<string, unknown>)[key];
@@ -456,7 +446,7 @@ function tryReturnsSafeParse(catchNode: TSESTree.CatchClause): boolean {
         if (isNode(child)) recurse(child);
       }
     }
-  };
+  }
 
   recurse(tryBlock);
   return sawSafeParse && !sawUnsafeOperation;
@@ -693,3 +683,23 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function isNonReadingProperty(current: TSESTree.Node, key: string): boolean {
+  // `{ error: 1 }` — the key names a field; it does not read the binding.
+  if (
+    key === "key" &&
+    current.type === AST_NODE_TYPES.Property &&
+    !current.computed
+  ) {
+    return true;
+  }
+  // `response.err` — the property names a field on some other object.
+  if (
+    key === "property" &&
+    current.type === AST_NODE_TYPES.MemberExpression &&
+    !current.computed
+  ) {
+    return true;
+  }
+  return false;
+}

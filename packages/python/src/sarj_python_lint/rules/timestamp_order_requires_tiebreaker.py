@@ -189,42 +189,75 @@ def _timestamp_ending_order_clause(sql: str) -> str | None:
     depths = _depths(sql)
     for order in _ORDER_BY.finditer(sql):
         clause_depth = depths[order.start()]
-        item_start = order.end()
-        clause_end = len(sql)
-        boundary = ""
-        item_starts = [item_start]
-        index = item_start
-        while index < len(sql):
-            if (
-                depths[index] < clause_depth
-                or sql[index] == ";"
-                or (sql[index] == ")" and depths[index] == clause_depth)
-            ):
-                clause_end = index
-                break
-            if depths[index] == clause_depth:
-                if sql[index] == ",":
-                    item_starts.append(index + 1)
-                elif (boundary_match := _CLAUSE_BOUNDARY.match(sql, index)) is not None:
-                    clause_end = index
-                    boundary = boundary_match.group(0).upper()
-                    break
-            index += 1
+        clause_end, boundary, item_starts = _order_clause_items(sql, depths, order.end(), clause_depth)
         if boundary not in {"LIMIT", "OFFSET", "FETCH"} or (
             boundary == "FETCH" and _WITH_TIES.match(sql[clause_end:]) is not None
         ):
             continue
         item_ends = [start - 1 for start in item_starts[1:]] + [clause_end]
         items = [sql[start:end].strip() for start, end in zip(item_starts, item_ends, strict=True)]
-        for item_index, item in enumerate(items):
-            timestamp = _TIMESTAMP_ITEM.fullmatch(item)
-            if timestamp is not None and (
-                item_index == len(items) - 1
-                or all(_UNSTABLE_ITEM.fullmatch(later) is not None for later in items[item_index + 1 :])
-            ):
-                if _selects_only_ordering_value(sql, depths, order.start(), clause_depth, item):
-                    continue
-                return timestamp.group("column")
+        timestamp = _unstable_timestamp_item(sql, depths, order.start(), clause_depth, items)
+        if timestamp is not None:
+            return timestamp
+    return None
+
+
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    owners = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+    found: set[int] = set()
+    for owner in walk(tree):
+        if not isinstance(owner, owners) or not owner.body:
+            continue
+        first = owner.body[0]
+        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+            found.add(id(first.value))
+    return found
+
+
+def _depths(sql: str) -> list[int]:
+    depths: list[int] = []
+    depth = 0
+    for character in sql:
+        depths.append(depth)
+        if character == "(":
+            depth += 1
+        elif character == ")" and depth:
+            depth -= 1
+    return depths
+
+
+def _order_clause_items(sql: str, depths: list[int], item_start: int, clause_depth: int) -> tuple[int, str, list[int]]:
+    clause_end = len(sql)
+    boundary = ""
+    item_starts = [item_start]
+    index = item_start
+    while index < len(sql):
+        if depths[index] < clause_depth or sql[index] == ";" or (sql[index] == ")" and depths[index] == clause_depth):
+            clause_end = index
+            break
+        if depths[index] == clause_depth:
+            if sql[index] == ",":
+                item_starts.append(index + 1)
+            elif (boundary_match := _CLAUSE_BOUNDARY.match(sql, index)) is not None:
+                clause_end = index
+                boundary = boundary_match.group(0).upper()
+                break
+        index += 1
+    return clause_end, boundary, item_starts
+
+
+def _unstable_timestamp_item(
+    sql: str, depths: list[int], order_start: int, clause_depth: int, items: list[str]
+) -> str | None:
+    for item_index, item in enumerate(items):
+        timestamp = _TIMESTAMP_ITEM.fullmatch(item)
+        if timestamp is not None and (
+            item_index == len(items) - 1
+            or all(_UNSTABLE_ITEM.fullmatch(later) is not None for later in items[item_index + 1 :])
+        ):
+            if _selects_only_ordering_value(sql, depths, order_start, clause_depth, item):
+                continue
+            return timestamp.group("column")
     return None
 
 
@@ -260,27 +293,3 @@ def _selects_only_ordering_value(
 
 def _normalize_column_reference(expression: str) -> str:
     return re.sub(r"\s*\.\s*", ".", expression).casefold()
-
-
-def _docstring_nodes(tree: ast.AST) -> set[int]:
-    owners = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-    found: set[int] = set()
-    for owner in walk(tree):
-        if not isinstance(owner, owners) or not owner.body:
-            continue
-        first = owner.body[0]
-        if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
-            found.add(id(first.value))
-    return found
-
-
-def _depths(sql: str) -> list[int]:
-    depths: list[int] = []
-    depth = 0
-    for character in sql:
-        depths.append(depth)
-        if character == "(":
-            depth += 1
-        elif character == ")" and depth:
-            depth -= 1
-    return depths

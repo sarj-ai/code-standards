@@ -104,16 +104,25 @@ def _grouped_reporting_signal(sql: str) -> str | None:
         if not isinstance(statement, exp.Query):
             continue
         for select in statement.find_all(exp.Select):
-            if _is_identity_bounded(select):
-                continue
-            group = select.args.get("group")
-            group_count = len(group.expressions) if isinstance(group, exp.Group) else 0
-            aggregate_count = sum(1 for aggregate in select.find_all(exp.AggFunc) if aggregate.parent_select is select)
-            if (
-                group_count >= _GROUP_KEYS_LIMIT and aggregate_count >= _GROUP_AGGREGATES_LIMIT
-            ) or aggregate_count >= _SINGLE_GROUP_AGGREGATES_LIMIT:
+            if _is_reporting_select(select):
                 return "grouped reporting shape"
     return None
+
+
+def _is_reporting_select(select: object) -> bool:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- shared with lazy parser path
+
+    if not isinstance(select, exp.Select):
+        return False
+    if _is_identity_bounded(select):
+        return False
+    group = select.args.get("group")
+    group_count = len(group.expressions) if isinstance(group, exp.Group) else 0
+    aggregate_count = sum(1 for aggregate in select.find_all(exp.AggFunc) if aggregate.parent_select is select)
+    return bool(
+        (group_count >= _GROUP_KEYS_LIMIT and aggregate_count >= _GROUP_AGGREGATES_LIMIT)
+        or aggregate_count >= _SINGLE_GROUP_AGGREGATES_LIMIT
+    )
 
 
 def _is_identity_bounded(select: object) -> bool:

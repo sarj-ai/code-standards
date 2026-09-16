@@ -162,30 +162,40 @@ def _inspect_members(
             msg = f"source maps are forbidden in package archive: {member.name}"
             raise ValueError(msg)
         if member.name == "package/package.json" and member.isfile():
-            manifest_file = archive.extractfile(member)
-            if manifest_file is None:
-                msg = "could not read package/package.json from package archive"
-                raise ValueError(msg)
-            try:
-                manifest: object = json.load(manifest_file)  # pyright: ignore[reportAny]
-            except json.JSONDecodeError as exc:
-                msg = "package archive contains invalid package/package.json"
-                raise ValueError(msg) from exc
-            manifest_data = string_object_dict(manifest, label="packed package.json")
-            for field, expected_value in (("name", expected_name), ("version", expected_version)):
-                if expected_value is not None and manifest_data.get(field) != expected_value:
-                    msg = f"packed package {field} does not match source manifest"
-                    raise ValueError(msg)
+            _inspect_package_manifest(archive, member, expected_name=expected_name, expected_version=expected_version)
             identity_verified = True
-            scripts = manifest_data.get("scripts")
-            if is_object_dict(scripts):
-                dangerous = _INSTALL_LIFECYCLE_SCRIPTS.intersection(scripts)
-                if dangerous:
-                    msg = f"install lifecycle script is forbidden in package archive: {min(dangerous)}"
-                    raise ValueError(msg)
         if member.name in expected:
             if not member.isfile() or member.size == 0:
                 msg = f"packed entry point is missing, empty, or not a regular file: {member.name}"
                 raise ValueError(msg)
             found.add(member.name)
     return _InspectedMembers(found, identity_verified)
+
+
+def _inspect_package_manifest(
+    archive: tarfile.TarFile,
+    member: tarfile.TarInfo,
+    *,
+    expected_name: str | None,
+    expected_version: str | None,
+) -> None:
+    manifest_file = archive.extractfile(member)
+    if manifest_file is None:
+        msg = "could not read package/package.json from package archive"
+        raise ValueError(msg)
+    try:
+        manifest: object = json.load(manifest_file)  # pyright: ignore[reportAny]
+    except json.JSONDecodeError as exc:
+        msg = "package archive contains invalid package/package.json"
+        raise ValueError(msg) from exc
+    manifest_data = string_object_dict(manifest, label="packed package.json")
+    for field, expected_value in (("name", expected_name), ("version", expected_version)):
+        if expected_value is not None and manifest_data.get(field) != expected_value:
+            msg = f"packed package {field} does not match source manifest"
+            raise ValueError(msg)
+    scripts = manifest_data.get("scripts")
+    if is_object_dict(scripts):
+        dangerous = _INSTALL_LIFECYCLE_SCRIPTS.intersection(scripts)
+        if dangerous:
+            msg = f"install lifecycle script is forbidden in package archive: {min(dangerous)}"
+            raise ValueError(msg)

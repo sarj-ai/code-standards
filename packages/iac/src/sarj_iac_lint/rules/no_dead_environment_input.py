@@ -10,7 +10,7 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import document
+from sarj_iac_lint._hcl import Block, document
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -438,16 +438,7 @@ def _variable_blocks(directory: Path) -> Iterator[tuple[str, str | None, _Scalar
             continue
         for block in document(text).blocks:
             if block.type == "variable" and block.labels:
-                default = block.attribute("default")
-                declared = block.attribute("type")
-                declared_type = None if declared is None else declared.value.strip()
-                try:
-                    scalar_type = None if declared_type is None else _ScalarType(declared_type)
-                except ValueError:
-                    scalar_type = None
-                sensitive_attr = block.attribute("sensitive")
-                sensitive = sensitive_attr is not None and _canonical(sensitive_attr.value) != _BOOL_SCALARS["false"]
-                yield block.labels[0], None if default is None else default.value, scalar_type, sensitive
+                yield _variable_contract(block)
 
 
 def _read_text(path: Path) -> str | None:
@@ -476,37 +467,7 @@ def _analyze_root(root: Path) -> _RootAnalysis:
     blind.extend(_auto_loaded_blind(files))
     for env, paths in files.items():
         for file in paths:
-            text = _read_text(file)
-            if text is None:
-                blind.append(_BlindEnvironment(env, f"`{file.name}` for environment `{env}` cannot be read"))
-                continue
-            for attr in document(text).attributes:
-                declaration = declarations.get(attr.name)
-                assignment = _AssignmentValue(
-                    attr.value,
-                    None
-                    if declaration is None or declaration.scalar_type is None
-                    else _canonical_for_type(attr.value, declaration.scalar_type),
-                    file,
-                )
-                previous = values.setdefault(attr.name, {}).get(env)
-                if previous is not None and env not in conflicted:
-                    # Terraform rejects a key redefined inside one file, so that
-                    # file's inputs are not a thing this rule can reason about;
-                    # only a disagreement BETWEEN files is a var-file ordering
-                    # question. Both leave the environment unknowable.
-                    same_file = previous.file == file
-                    if same_file or previous.canon != assignment.canon:
-                        conflicted.add(env)
-                        blind.append(
-                            _BlindEnvironment(
-                                env,
-                                _redefinition_reason(env, attr.name, file)
-                                if same_file
-                                else _conflict_reason(env, attr.name, paths),
-                            )
-                        )
-                values[attr.name][env] = assignment
+            _collect_environment_values(env, paths, file, declarations, values, blind=blind, conflicted=conflicted)
     blind.extend(_manifest_blind(root, frozenset(files)))
     return _RootAnalysis(
         root=root,
@@ -528,21 +489,6 @@ def _auto_loaded_blind(files: Mapping[str, Sequence[Path]]) -> Iterator[_BlindEn
         min(named),
         f"{listed} is auto-loaded into every plan, so beside the named environment files "
         f"({', '.join(sorted(named))}) it is a baseline whose precedence this rule cannot model",
-    )
-
-
-def _redefinition_reason(environment: str, name: str, file: Path) -> str:
-    return (
-        f"`{file.name}` assigns `{name}` twice, which Terraform rejects as a redefined attribute, "
-        f"so environment `{environment}` has no inputs this rule can read"
-    )
-
-
-def _conflict_reason(environment: str, name: str, paths: Sequence[Path]) -> str:
-    named = ", ".join(f"`{path.name}`" for path in paths)
-    return (
-        f"environment `{environment}` is defined by more than one file ({named}) and they assign "
-        f"`{name}` different values, so its effective inputs depend on var-file order"
     )
 
 
@@ -602,12 +548,7 @@ def _structural_blind(root: Path, files: dict[str, list[Path]]) -> Iterator[_Bli
         yield _BlindEnvironment(env_dir.name, f"`{file.relative_to(root)}` is JSON, which this rule does not parse")
     for json_file in sorted(root.glob(f"*{_TFVARS_JSON_SUFFIX}")):
         yield _BlindEnvironment(json_file.name, f"`{json_file.name}` is JSON, which this rule does not parse")
-    containers = {
-        path.parent.parent
-        for paths in files.values()
-        for path in paths
-        if root not in {path.parent.parent, path.parent}
-    }
+    containers = _environment_containers(root, files)
     for container in sorted(containers, key=str):
         for sibling in sorted(item for item in container.iterdir() if item.is_dir()):
             if sibling.name in _SKIP_DIR_NAMES or sibling.name in files:
@@ -788,3 +729,83 @@ def _parse_map_key(text: str, index: int) -> _MapKeyParseResult:
     if (ident := _IDENT_RE.match(text, index)) is not None:
         return _MapKeyParseResult(ident.group(0), ident.end())
     return _MapKeyParseResult(None, index)
+
+
+def _variable_contract(block: Block) -> tuple[str, str | None, _ScalarType | None, bool]:
+    default = block.attribute("default")
+    declared = block.attribute("type")
+    declared_type = None if declared is None else declared.value.strip()
+    try:
+        scalar_type = None if declared_type is None else _ScalarType(declared_type)
+    except ValueError:
+        scalar_type = None
+    sensitive_attr = block.attribute("sensitive")
+    sensitive = sensitive_attr is not None and _canonical(sensitive_attr.value) != _BOOL_SCALARS["false"]
+    return block.labels[0], None if default is None else default.value, scalar_type, sensitive
+
+
+def _collect_environment_values(
+    env: str,
+    paths: list[Path],
+    file: Path,
+    declarations: dict[str, _Declaration],
+    values: dict[str, dict[str, _AssignmentValue]],
+    *,
+    blind: list[_BlindEnvironment],
+    conflicted: set[str],
+) -> None:
+    text = _read_text(file)
+    if text is None:
+        blind.append(_BlindEnvironment(env, f"`{file.name}` for environment `{env}` cannot be read"))
+        return
+    for attr in document(text).attributes:
+        declaration = declarations.get(attr.name)
+        assignment = _AssignmentValue(
+            attr.value,
+            None
+            if declaration is None or declaration.scalar_type is None
+            else _canonical_for_type(attr.value, declaration.scalar_type),
+            file,
+        )
+        previous = values.setdefault(attr.name, {}).get(env)
+        if previous is not None and env not in conflicted:
+            # Terraform rejects a key redefined inside one file, so that
+            # file's inputs are not a thing this rule can reason about;
+            # only a disagreement BETWEEN files is a var-file ordering
+            # question. Both leave the environment unknowable.
+            same_file = previous.file == file
+            if same_file or previous.canon != assignment.canon:
+                conflicted.add(env)
+                blind.append(
+                    _BlindEnvironment(
+                        env,
+                        _redefinition_reason(env, attr.name, file)
+                        if same_file
+                        else _conflict_reason(env, attr.name, paths),
+                    )
+                )
+        values[attr.name][env] = assignment
+
+
+def _conflict_reason(environment: str, name: str, paths: Sequence[Path]) -> str:
+    named = ", ".join(f"`{path.name}`" for path in paths)
+    return (
+        f"environment `{environment}` is defined by more than one file ({named}) and they assign "
+        f"`{name}` different values, so its effective inputs depend on var-file order"
+    )
+
+
+def _redefinition_reason(environment: str, name: str, file: Path) -> str:
+    return (
+        f"`{file.name}` assigns `{name}` twice, which Terraform rejects as a redefined attribute, "
+        f"so environment `{environment}` has no inputs this rule can read"
+    )
+
+
+def _environment_containers(root: Path, files: dict[str, list[Path]]) -> set[Path]:
+    return {
+        path.parent.parent
+        for paths in files.values()
+        for path in paths
+        if root not in {path.parent.parent, path.parent}
+    }

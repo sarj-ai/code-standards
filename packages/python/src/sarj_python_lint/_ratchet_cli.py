@@ -111,6 +111,10 @@ def _run(args: _Options) -> int:
             allow_increase=args.allow_increase or not baseline_path.exists(),
         )
 
+    return _report_gate(measurement, baseline, packages)
+
+
+def _report_gate(measurement: Measurement, baseline: Baseline, packages: list[str]) -> int:
     sys.stdout.write(
         f"{measurement.total} suppressions across {len(measurement.codes)} codes "
         f"in {len(packages)} package(s) (baseline total {sum(baseline.codes.values())})\n"

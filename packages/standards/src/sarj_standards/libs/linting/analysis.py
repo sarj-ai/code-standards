@@ -175,24 +175,7 @@ def _contained_path(value: str, root: Path) -> str:
 
 
 def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
-    normalized = tuple(
-        replace(
-            report,
-            diagnostics=tuple(
-                sorted(
-                    (
-                        item
-                        if item.fingerprint is not None
-                        else replace(item, fingerprint=diagnostic_fingerprint(item, anchor=item.message))
-                        for item in report.diagnostics
-                    ),
-                    key=_diagnostic_key,
-                )
-            ),
-            issues=tuple(sorted(report.issues, key=lambda issue: (issue.source, issue.kind, issue.message))),
-        )
-        for report in sorted(reports, key=lambda report: report.name)
-    )
+    normalized = tuple(_normalized_tool_report(report) for report in sorted(reports, key=lambda report: report.name))
     issues = tuple(issue for report in normalized for issue in report.issues)
     diagnostics = tuple(item for report in normalized for item in report.diagnostics)
     if issues:
@@ -206,6 +189,24 @@ def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisRepo
         completion = Completion.COMPLETE
         conclusion = Conclusion.FINDINGS if diagnostics else Conclusion.PASSED
     return AnalysisReport(root, completion, conclusion, normalized)
+
+
+def _normalized_tool_report(report: ToolReport) -> ToolReport:
+    return replace(
+        report,
+        diagnostics=tuple(
+            sorted(
+                (
+                    item
+                    if item.fingerprint is not None
+                    else replace(item, fingerprint=diagnostic_fingerprint(item, anchor=item.message))
+                    for item in report.diagnostics
+                ),
+                key=_diagnostic_key,
+            )
+        ),
+        issues=tuple(sorted(report.issues, key=lambda issue: (issue.source, issue.kind, issue.message))),
+    )
 
 
 def _diagnostic_key(diagnostic: Diagnostic) -> tuple[object, ...]:

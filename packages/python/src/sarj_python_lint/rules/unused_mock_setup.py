@@ -176,38 +176,7 @@ def _overwritten_before_use(
 ) -> Iterator[_Finding]:
     has_mocker_fixture = _has_unshadowed_mocker_fixture(fn)
     for block in _blocks(fn):
-        pending: dict[str, ast.stmt] = {}
-        for stmt in block:
-            target = _config_target(stmt, origins)
-            if target is None:
-                initial = _initial_mock_configs(stmt, imports, has_mocker_fixture=has_mocker_fixture)
-                if initial and initial[0].partition(".")[0] in origins:
-                    if _constructor_observes_pending(stmt, pending):
-                        pending.clear()
-                    configured_name = initial[0].partition(".")[0]
-                    pending = {
-                        target: setup
-                        for target, setup in pending.items()
-                        if not target.startswith(f"{configured_name}.")
-                    }
-                    pending.update((configured, stmt) for configured in initial)
-                    continue
-                if not _is_inert(stmt):
-                    pending.clear()
-                continue
-            if _statement_observes_pending(stmt, pending):
-                pending.clear()
-            previous = pending.get(target)
-            if previous is not None:
-                yield _Finding(
-                    previous,
-                    (
-                        f"`{target}` is set here and overwritten on line {stmt.lineno} with nothing in "
-                        "between that could call the mock, so this value is never used. Delete the dead "
-                        "setup, or move the code under test between the two configurations"
-                    ),
-                )
-            pending[target] = stmt
+        yield from _overwritten_block_setups(block, imports, origins, has_mocker_fixture=has_mocker_fixture)
 
 
 def _has_unshadowed_mocker_fixture(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -261,19 +230,6 @@ def _mock_origins(fn: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportInd
     return frozenset(origins)
 
 
-def _initial_mock_configs(stmt: ast.stmt, imports: ImportIndex, *, has_mocker_fixture: bool) -> tuple[str, ...]:
-    match stmt:
-        case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call() as call):
-            pass
-        case ast.AnnAssign(target=ast.Name(id=name), value=ast.Call() as call):
-            pass
-        case _:
-            return ()
-    if not _is_mock_configurator(call.func, imports, has_mocker_fixture=has_mocker_fixture):
-        return ()
-    return tuple(f"{name}.{keyword.arg}" for keyword in call.keywords if keyword.arg in _CONFIG_ATTRS)
-
-
 def _is_mock_configurator(func: ast.expr, imports: ImportIndex, *, has_mocker_fixture: bool) -> bool:
     if has_mocker_fixture and isinstance(func, ast.Attribute):
         if isinstance(func.value, ast.Name) and func.value.id == _MOCKER:
@@ -305,16 +261,7 @@ def _asserted_never_called(fn: ast.FunctionDef | ast.AsyncFunctionDef, origins: 
             configured = target.rsplit(".", 1)[0]
             if any(_touches(configured, other) for other in introspected):
                 continue
-            for asserted, line in not_called.items():
-                if line > stmt.lineno and asserted == configured and last_effect <= line:
-                    yield _Finding(
-                        stmt,
-                        (
-                            f"`{target}` is configured here, but the test ends by proving `{asserted}` was never "
-                            "called, so its behavior cannot affect the test. Delete the contradictory configuration"
-                        ),
-                    )
-                    break
+            yield from _unused_asserted_setup(stmt, target, configured, not_called, last_effect)
 
 
 def _is_fixture(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -409,19 +356,6 @@ def _dotted(node: ast.expr) -> str | None:
     return ".".join(reversed(parts))
 
 
-def _is_inert(stmt: ast.stmt) -> bool:
-    if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
-        return True
-    if isinstance(stmt, ast.Expr):
-        return isinstance(stmt.value, ast.Constant)
-    if not isinstance(stmt, ast.Assign):
-        return False
-    if not all(isinstance(target, ast.Name) for target in stmt.targets):
-        # `obj.attr = 1` can hit a property setter, `d[k] = 1` a `__setitem__`.
-        return False
-    return _is_safe_value(stmt.value)
-
-
 def _is_safe_value(node: ast.expr) -> bool:
     match node:
         case ast.Constant() | ast.Name():
@@ -434,39 +368,6 @@ def _is_safe_value(node: ast.expr) -> bool:
             )
         case _:
             return False
-
-
-def _statement_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) -> bool:
-    if not pending:
-        return False
-    value = stmt.value if isinstance(stmt, (ast.Assign, ast.AnnAssign)) else None
-    if value is None:
-        return False
-    for node in walk(value):
-        if not isinstance(node, (ast.Name, ast.Attribute)) or not isinstance(node.ctx, ast.Load):
-            continue
-        path = _dotted(node)
-        if path is not None and any(_touches(path, target.rsplit(".", 1)[0]) for target in pending):
-            return True
-    return not _is_safe_value(value)
-
-
-def _constructor_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) -> bool:
-    value = stmt.value if isinstance(stmt, (ast.Assign, ast.AnnAssign)) else None
-    if not isinstance(value, ast.Call):
-        return True
-    expressions = (*value.args, *(keyword.value for keyword in value.keywords))
-    return any(
-        not _is_safe_value(expression)
-        or any(
-            isinstance(node, (ast.Name, ast.Attribute))
-            and isinstance(node.ctx, ast.Load)
-            and (path := _dotted(node)) is not None
-            and any(_touches(path, target.rsplit(".", 1)[0]) for target in pending)
-            for node in walk(expression)
-        )
-        for expression in expressions
-    )
 
 
 def _not_called_assertions(statements: list[ast.stmt], origins: frozenset[str]) -> dict[str, int]:
@@ -532,3 +433,122 @@ def _is_prefix(prefix: str, path: str) -> bool:
 
 def _touches(path: str, other: str) -> bool:
     return _is_prefix(path, other) or _is_prefix(other, path)
+
+
+def _overwritten_block_setups(
+    block: list[ast.stmt], imports: ImportIndex, origins: frozenset[str], *, has_mocker_fixture: bool
+) -> Iterator[_Finding]:
+    pending: dict[str, ast.stmt] = {}
+    for stmt in block:
+        target = _config_target(stmt, origins)
+        if target is None:
+            pending = _pending_after_statement(stmt, imports, origins, pending, has_mocker_fixture=has_mocker_fixture)
+            continue
+        if _statement_observes_pending(stmt, pending):
+            pending.clear()
+        previous = pending.get(target)
+        if previous is not None:
+            yield _Finding(
+                previous,
+                (
+                    f"`{target}` is set here and overwritten on line {stmt.lineno} with nothing in "
+                    "between that could call the mock, so this value is never used. Delete the dead "
+                    "setup, or move the code under test between the two configurations"
+                ),
+            )
+        pending[target] = stmt
+
+
+def _statement_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) -> bool:
+    if not pending:
+        return False
+    value = stmt.value if isinstance(stmt, (ast.Assign, ast.AnnAssign)) else None
+    if value is None:
+        return False
+    for node in walk(value):
+        if not isinstance(node, (ast.Name, ast.Attribute)) or not isinstance(node.ctx, ast.Load):
+            continue
+        path = _dotted(node)
+        if path is not None and any(_touches(path, target.rsplit(".", 1)[0]) for target in pending):
+            return True
+    return not _is_safe_value(value)
+
+
+def _unused_asserted_setup(
+    stmt: ast.stmt, target: str, configured: str, not_called: dict[str, int], last_effect: int
+) -> Iterator[_Finding]:
+    for asserted, line in not_called.items():
+        if line > stmt.lineno and asserted == configured and last_effect <= line:
+            yield _Finding(
+                stmt,
+                (
+                    f"`{target}` is configured here, but the test ends by proving `{asserted}` was never "
+                    "called, so its behavior cannot affect the test. Delete the contradictory configuration"
+                ),
+            )
+            break
+
+
+def _pending_after_statement(
+    stmt: ast.stmt,
+    imports: ImportIndex,
+    origins: frozenset[str],
+    pending: dict[str, ast.stmt],
+    *,
+    has_mocker_fixture: bool,
+) -> dict[str, ast.stmt]:
+    initial = _initial_mock_configs(stmt, imports, has_mocker_fixture=has_mocker_fixture)
+    if initial and initial[0].partition(".")[0] in origins:
+        if _constructor_observes_pending(stmt, pending):
+            pending.clear()
+        configured_name = initial[0].partition(".")[0]
+        pending = {target: setup for target, setup in pending.items() if not target.startswith(f"{configured_name}.")}
+        pending.update((configured, stmt) for configured in initial)
+        return pending
+    if not _is_inert(stmt):
+        pending.clear()
+    return pending
+
+
+def _constructor_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt]) -> bool:
+    value = stmt.value if isinstance(stmt, (ast.Assign, ast.AnnAssign)) else None
+    if not isinstance(value, ast.Call):
+        return True
+    expressions = (*value.args, *(keyword.value for keyword in value.keywords))
+    return any(
+        not _is_safe_value(expression)
+        or any(
+            isinstance(node, (ast.Name, ast.Attribute))
+            and isinstance(node.ctx, ast.Load)
+            and (path := _dotted(node)) is not None
+            and any(_touches(path, target.rsplit(".", 1)[0]) for target in pending)
+            for node in walk(expression)
+        )
+        for expression in expressions
+    )
+
+
+def _is_inert(stmt: ast.stmt) -> bool:
+    if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
+        return True
+    if isinstance(stmt, ast.Expr):
+        return isinstance(stmt.value, ast.Constant)
+    if not isinstance(stmt, ast.Assign):
+        return False
+    if not all(isinstance(target, ast.Name) for target in stmt.targets):
+        # `obj.attr = 1` can hit a property setter, `d[k] = 1` a `__setitem__`.
+        return False
+    return _is_safe_value(stmt.value)
+
+
+def _initial_mock_configs(stmt: ast.stmt, imports: ImportIndex, *, has_mocker_fixture: bool) -> tuple[str, ...]:
+    match stmt:
+        case ast.Assign(targets=[ast.Name(id=name)], value=ast.Call() as call):
+            pass
+        case ast.AnnAssign(target=ast.Name(id=name), value=ast.Call() as call):
+            pass
+        case _:
+            return ()
+    if not _is_mock_configurator(call.func, imports, has_mocker_fixture=has_mocker_fixture):
+        return ()
+    return tuple(f"{name}.{keyword.arg}" for keyword in call.keywords if keyword.arg in _CONFIG_ATTRS)

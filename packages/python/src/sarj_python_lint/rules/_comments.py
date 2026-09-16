@@ -457,32 +457,7 @@ def statement_comment_walls(
             statements = [item for item in value if _is_wall_statement(item)]
             if len(statements) < _WALL_MIN_STATEMENTS:
                 continue
-            attached: list[tuple[int, int, bool]] = []
-            for index, statement in enumerate(statements):
-                entry = comments.get(statement.lineno - 1)
-                if entry is None or entry[0] != statement.col_offset:
-                    continue
-                line = statement.lineno - 1
-                segment = ast.get_source_segment(source, statement) or ""
-                attached.append((index, line, _weak_walkthrough_comment(entry[1], segment)))
-            clusters: list[list[tuple[int, int, bool]]] = []
-            for item in attached:
-                if clusters and item[0] <= clusters[-1][-1][0] + 2:
-                    clusters[-1].append(item)
-                else:
-                    clusters.append([item])
-            for cluster in clusters:
-                span = cluster[-1][0] - cluster[0][0] + 1
-                weak = [line for _index, line, is_weak in cluster if is_weak]
-                if (
-                    span < _WALL_MIN_STATEMENTS
-                    or len(weak) < _WALL_MIN_COMMENTS
-                    or len(cluster) / span < _WALL_MIN_COMMENTED_RATIO
-                    or len(weak) / len(cluster) < _WALL_MIN_WEAK_RATIO
-                ):
-                    continue
-                leader = min(weak)
-                walls[leader] = frozenset(weak)
+            _collect_statement_walls(statements, comments, source, walls)
     return walls
 
 
@@ -513,6 +488,32 @@ def _is_wall_statement(node: ast.stmt) -> bool:
     )
 
 
+def _collect_statement_walls(
+    statements: list[ast.stmt], comments: dict[int, tuple[int, str]], source: str, walls: dict[int, frozenset[int]]
+) -> None:
+    attached: list[tuple[int, int, bool]] = []
+    for index, statement in enumerate(statements):
+        entry = comments.get(statement.lineno - 1)
+        if entry is None or entry[0] != statement.col_offset:
+            continue
+        line = statement.lineno - 1
+        segment = ast.get_source_segment(source, statement) or ""
+        attached.append((index, line, _weak_walkthrough_comment(entry[1], segment)))
+    clusters = _comment_clusters(attached)
+    for cluster in clusters:
+        span = cluster[-1][0] - cluster[0][0] + 1
+        weak = [line for _index, line, is_weak in cluster if is_weak]
+        if (
+            span < _WALL_MIN_STATEMENTS
+            or len(weak) < _WALL_MIN_COMMENTS
+            or len(cluster) / span < _WALL_MIN_COMMENTED_RATIO
+            or len(weak) / len(cluster) < _WALL_MIN_WEAK_RATIO
+        ):
+            continue
+        leader = min(weak)
+        walls[leader] = frozenset(weak)
+
+
 def _weak_walkthrough_comment(body: str, statement: str) -> bool:
     if (
         not body
@@ -533,3 +534,13 @@ def _weak_walkthrough_comment(body: str, statement: str) -> bool:
     matched = sum(1 for word in described if restates([word], known))
     novel = len(described) - matched
     return matched / len(described) >= _WALL_MIN_MATCHED_RATIO and novel <= _WALL_MAX_NOVEL_WORDS
+
+
+def _comment_clusters(attached: list[tuple[int, int, bool]]) -> list[list[tuple[int, int, bool]]]:
+    clusters: list[list[tuple[int, int, bool]]] = []
+    for item in attached:
+        if clusters and item[0] <= clusters[-1][-1][0] + 2:
+            clusters[-1].append(item)
+        else:
+            clusters.append([item])
+    return clusters

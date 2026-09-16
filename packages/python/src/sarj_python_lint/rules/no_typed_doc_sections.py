@@ -116,14 +116,18 @@ def _public_contract_docstring_lines(path: Path, source: str) -> frozenset[int]:
         first = node.body[0]
         if not (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)):
             continue
-        decorators = {_terminal_name(item.func if isinstance(item, ast.Call) else item) for item in node.decorator_list}
-        owner = parents.get(id(node))
-        protocol_method = isinstance(owner, ast.ClassDef) and any(
-            _terminal_name(base) in _PUBLIC_CONTRACT_BASES for base in owner.bases
-        )
-        if not decorators.isdisjoint(_PUBLIC_CONTRACT_DECORATORS) or protocol_method:
+        if _is_public_contract(node, parents):
             excluded.add(first.lineno)
     return frozenset(excluded)
+
+
+def _is_public_contract(node: ast.FunctionDef | ast.AsyncFunctionDef, parents: dict[int, ast.AST]) -> bool:
+    decorators = {_terminal_name(item.func if isinstance(item, ast.Call) else item) for item in node.decorator_list}
+    owner = parents.get(id(node))
+    protocol_method = isinstance(owner, ast.ClassDef) and any(
+        _terminal_name(base) in _PUBLIC_CONTRACT_BASES for base in owner.bases
+    )
+    return not decorators.isdisjoint(_PUBLIC_CONTRACT_DECORATORS) or protocol_method
 
 
 def _terminal_name(node: ast.expr) -> str | None:

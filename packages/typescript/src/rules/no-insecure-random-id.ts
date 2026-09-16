@@ -102,44 +102,17 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
 
   while (parent) {
     if (parent.type === "VariableDeclarator" && parent.init === current) {
-      if (directBinding && parent.id.type === "Identifier") {
-        names.push(parent.id.name);
-      }
+      appendDirectBindingName(parent.id, directBinding, names);
       return names;
     }
 
-    if (parent.type === "Property" && parent.value === current) {
-      const key = parent.key;
-      if (!parent.computed && key.type === "Identifier") {
-        names.push(key.name);
-      }
-      if (key.type === "Literal" && typeof key.value === "string") {
-        names.push(key.value);
-      }
-      directBinding = false;
-    }
-
-    if (parent.type === "PropertyDefinition" && parent.value === current) {
-      const key = parent.key;
-      if (!parent.computed && key.type === "Identifier") {
-        names.push(key.name);
-      }
-      if (key.type === "Literal" && typeof key.value === "string") {
-        names.push(key.value);
-      }
+    if ((parent.type === "Property" || parent.type === "PropertyDefinition") && parent.value === current) {
+      appendPropertyName(parent, names);
       directBinding = false;
     }
 
     if (parent.type === "AssignmentExpression" && parent.right === current) {
-      if (directBinding && parent.left.type === "Identifier") names.push(parent.left.name);
-      if (
-        directBinding &&
-        parent.left.type === "MemberExpression" &&
-        !parent.left.computed &&
-        parent.left.property.type === "Identifier"
-      ) {
-        names.push(parent.left.property.name);
-      }
+      appendAssignedName(parent, directBinding, names);
     }
 
     if (parent.type === "ObjectExpression" || parent.type === "ArrayExpression") {
@@ -147,7 +120,7 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
     }
 
     if (parent.type === "FunctionDeclaration") {
-      if (directBinding && parent.id !== null) names.push(parent.id.name);
+      appendDirectBindingName(parent.id, directBinding, names);
       return names;
     }
 
@@ -303,3 +276,20 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function appendPropertyName(property: TSESTree.Property | TSESTree.PropertyDefinition, names: string[]): void {
+  const key = property.key;
+  if (!property.computed && key.type === "Identifier") names.push(key.name);
+  if (key.type === "Literal" && typeof key.value === "string") names.push(key.value);
+}
+
+function appendAssignedName(assignment: TSESTree.AssignmentExpression, directBinding: boolean, names: string[]): void {
+  if (directBinding && assignment.left.type === "Identifier") names.push(assignment.left.name);
+  if (directBinding && assignment.left.type === "MemberExpression" && !assignment.left.computed && assignment.left.property.type === "Identifier") {
+    names.push(assignment.left.property.name);
+  }
+}
+
+function appendDirectBindingName(id: TSESTree.Node | null, directBinding: boolean, names: string[]): void {
+  if (directBinding && id?.type === "Identifier") names.push(id.name);
+}

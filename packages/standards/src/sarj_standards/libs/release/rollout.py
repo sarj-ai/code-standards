@@ -250,7 +250,7 @@ class ReactDoctorPolicy(NamedTuple):
     package_pin: str | None
 
 
-def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-locals] -- schema fields stay explicit
+def load_registry(path: Path) -> tuple[Consumer, ...]:
     with path.open("rb") as stream:
         parsed: object = tomllib.load(stream)
     if not is_object(parsed):
@@ -264,81 +264,7 @@ def load_registry(path: Path) -> tuple[Consumer, ...]:  # ruff: ignore[too-many-
     if not is_array(entries_value) or not entries_value:
         msg = "the rollout registry must contain at least one consumer"
         raise RolloutError(msg)
-    consumers: list[Consumer] = []
-    for entry_value in entries_value:
-        if not is_object(entry_value) or set(entry_value) - {
-            "name",
-            "repository",
-            "branch",
-            "verify",
-            "requires_approval",
-            "auto_merge",
-            "channel",
-            "baseline_rules",
-            "baseline_paths",
-            "baseline_update",
-        }:
-            msg = f"invalid registry entry keys: {entry_value!r}"
-            raise RolloutError(msg)
-        entry = entry_value
-        name = required_text(entry, "name")
-        repository = required_text(entry, "repository")
-        branch = required_text(entry, "branch")
-        verify_value = entry.get("verify")
-        requires_approval = optional_bool(entry, "requires_approval")
-        auto_merge = optional_bool(entry, "auto_merge")
-        channel_value = entry.get("channel", "stable")
-        baseline_rules_value = entry.get("baseline_rules", [])
-        baseline_paths_value = entry.get("baseline_paths", [])
-        baseline_update_value = entry.get("baseline_update", [])
-        if channel_value not in ROLLOUT_CHANNELS:
-            msg = f"invalid rollout channel: {channel_value!r}"
-            raise RolloutError(msg)
-        if not is_array(verify_value) or not verify_value:
-            msg = f"invalid registry verification command: {entry!r}"
-            raise RolloutError(msg)
-        if not is_array(baseline_rules_value) or not all(
-            isinstance(item, str) and item for item in baseline_rules_value
-        ):
-            msg = f"invalid promoted baseline rules: {entry!r}"
-            raise RolloutError(msg)
-        if not is_array(baseline_paths_value) or not all(
-            isinstance(item, str) and item for item in baseline_paths_value
-        ):
-            msg = f"invalid consumer baseline paths: {entry!r}"
-            raise RolloutError(msg)
-        if not is_array(baseline_update_value) or not all(
-            isinstance(item, str) and item for item in baseline_update_value
-        ):
-            msg = f"invalid consumer baseline update command: {entry!r}"
-            raise RolloutError(msg)
-        if bool(baseline_paths_value) != bool(baseline_update_value):
-            msg = "consumer baseline_paths and baseline_update must be declared together"
-            raise RolloutError(msg)
-        baseline_paths = tuple(item for item in baseline_paths_value if isinstance(item, str))
-        if len(set(baseline_paths)) != len(baseline_paths) or any(
-            Path(item).is_absolute() or "\\" in item or ".." in Path(item).parts or "baseline" not in item.casefold()
-            for item in baseline_paths
-        ):
-            msg = f"unsafe consumer baseline paths: {entry!r}"
-            raise RolloutError(msg)
-        if not all(isinstance(item, str) and item for item in verify_value):
-            msg = f"invalid registry values: {entry!r}"
-            raise RolloutError(msg)
-        verify = tuple(item for item in verify_value if isinstance(item, str))
-        consumer = Consumer(
-            name=name,
-            repository=repository,
-            branch=branch,
-            verify=verify,
-            requires_approval=requires_approval,
-            auto_merge=auto_merge,
-            channel=channel_value,
-            baseline_rules=tuple(item for item in baseline_rules_value if isinstance(item, str)),
-            baseline_paths=baseline_paths,
-            baseline_update=tuple(item for item in baseline_update_value if isinstance(item, str)),
-        )
-        consumers.append(consumer)
+    consumers = [_registry_consumer(entry_value) for entry_value in entries_value]
     identities = tuple((item.repository, item.branch) for item in consumers)
     if len(set(identities)) != len(consumers):
         msg = "registry consumers must have unique repository and branch identities"
@@ -897,32 +823,7 @@ def declared_workflow_tools(repo: Path) -> tuple[str, ...]:
         jobs = parsed.get("jobs")
         if not is_object(jobs):
             continue
-        for job_value in jobs.values():
-            if not is_object(job_value):
-                continue
-            steps = job_value.get("steps")
-            if not is_array(steps):
-                continue
-            for step_value in steps:
-                if not is_object(step_value):
-                    continue
-                uses = step_value.get("uses")
-                if not isinstance(uses, str):
-                    continue
-                action = uses.partition("@")[0]
-                declaration = WORKFLOW_TOOL_ACTIONS.get(action)
-                if declaration is None:
-                    continue
-                tool, version_key = declaration
-                options = step_value.get("with")
-                version = options.get(version_key) if is_object(options) else None
-                if not isinstance(version, str) or VERSION_RE.fullmatch(version) is None:
-                    msg = f"{path}: {action} must declare an exact {version_key} for rollout verification"
-                    raise RolloutError(msg)
-                previous = requirements.setdefault(tool, version)
-                if previous != version:
-                    msg = f"consumer workflows declare conflicting {tool} versions: {previous} and {version}"
-                    raise RolloutError(msg)
+        _collect_workflow_tools(jobs, path, requirements)
     return tuple(f"{tool}@{version}" for tool, version in sorted(requirements.items()))
 
 
@@ -933,23 +834,9 @@ def provision_consumer_tools(
     environment: Mapping[str, str],
 ) -> ProvisionedTools:
     prepared = dict(environment)
-    mise_prefix: tuple[str, ...] = ()
     has_mise_config = any((repo / relative).is_file() for relative in MISE_CONFIG_PATHS)
     workflow_tools = declared_workflow_tools(repo)
-    if has_mise_config or workflow_tools:
-        prepared["MISE_YES"] = "1"
-        prepared["MISE_TRUSTED_CONFIG_PATHS"] = str(repo.resolve())
-        if has_mise_config:
-            installed = runner.run(("mise", "install"), cwd=repo, env=prepared, check=False)
-            if installed.returncode != 0:
-                msg = "could not provision repository-declared mise tools:\n" + verification_detail(installed)
-                raise RolloutError(msg)
-        if workflow_tools:
-            installed = runner.run(("mise", "install", *workflow_tools), cwd=repo, env=prepared, check=False)
-            if installed.returncode != 0:
-                msg = "could not provision workflow-declared tools:\n" + verification_detail(installed)
-                raise RolloutError(msg)
-        mise_prefix = ("mise", "exec", *workflow_tools, "--")
+    mise_prefix = _provision_mise(repo, runner, prepared, workflow_tools, has_mise_config=has_mise_config)
 
     # Tool provisioning happens before `code-standards update`, so consumers
     # may still use the immediately preceding manifest schema here.
@@ -957,20 +844,7 @@ def provision_consumer_tools(
     python_root = None if adopted is None else repo / adopted.python_dest
     uv_source = adoption_uvtool.version_file(python_root)
     uv_required = None if uv_source is None else adoption_uvtool.required_version(uv_source)
-    if uv_required is not None:
-        shim_directory.mkdir(parents=True, exist_ok=True)
-        install_environment = dict(prepared)
-        install_environment["UV_TOOL_DIR"] = str(shim_directory.parent / "uv-tools")
-        install_environment["UV_TOOL_BIN_DIR"] = str(shim_directory)
-        installed = runner.run(
-            ("uv", "--no-config", "tool", "install", "--force", f"uv{uv_required}"),
-            cwd=repo,
-            env=install_environment,
-            check=False,
-        )
-        if installed.returncode != 0:
-            msg = "could not provision repository-declared uv:\n" + verification_detail(installed)
-            raise RolloutError(msg)
+    _provision_uv(repo, shim_directory, runner, prepared, uv_required)
 
     manager = _declared_corepack_manager(repo)
     if manager is not None:
@@ -1223,18 +1097,9 @@ def rollout_baseline_rules(
     retired = {(entry.kind, entry.id): entry for entry in rule_ledger.load().retired}
     selectors: list[str] = []
     for selector in consumer.baseline_rules:
-        source, separator, rule_id = selector.partition(":")
-        normalized = f"{BASELINE_ENGINE_BY_SOURCE.get(source, source)}:{rule_id}" if separator else selector
-        resolved = catalog.resolve(normalized)
-        if resolved not in catalog.canonical and separator:
-            engine, _, normalized_rule_id = normalized.partition(":")
-            retired_rule = retired.get((engine, normalized_rule_id))
-            if retired_rule is not None:
-                if retired_rule.status is rule_ledger.Status.REMOVED:
-                    continue
-                if retired_rule.replacement is not None:
-                    resolved = catalog.resolve(f"{engine}:{retired_rule.replacement}")
-        selectors.append(resolved)
+        resolved = _rollout_baseline_selector(selector, catalog, retired)
+        if resolved is not None:
+            selectors.append(resolved)
     if before != after and (after.config is not None or after.package_pin is not None):
         selectors.append("react-doctor:*")
     return tuple(dict.fromkeys(selectors))
@@ -1299,11 +1164,7 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             runner,
             unauthenticated_environment(),
         )
-        allowed_workflow_paths = frozenset(
-            relative
-            for update in adoption_doctor.plan_version_pin_updates(repo)
-            if (relative := update.path.relative_to(repo).as_posix()).startswith(".github/workflows/")
-        )
+        allowed_workflow_paths = _allowed_rollout_workflows(repo)
         allowed_paths = managed_rollout_paths(repo, allowed_workflow_paths)
         try:
             retired_rewrites = retirement.expected_rewrites(repo, allowed_paths, target_version=version)
@@ -1320,65 +1181,19 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             previous_react_doctor_policy,
             react_doctor_policy_snapshot(repo),
         )
-        adopted = adoption_manifest.load(repo)
-        baseline_relative = None if adopted is None else adopted.diagnostic_baseline
-        allowed_baseline_paths = frozenset(
-            (*(() if baseline_relative is None else (baseline_relative,)), *consumer.baseline_paths)
+        allowed_baseline_paths, baseline_path, expected_baseline = _prepare_rollout_baseline(
+            consumer, repo, runner, baseline_rules, tool_prefix, tool=tool, environment=unauthenticated
         )
-        baseline_path = None if baseline_relative is None else repo / baseline_relative
-        if baseline_rules and (baseline_path is None or baseline_relative is None):
-            msg = (
-                f"{consumer.name}: registry declares promoted baseline rules, but the updated "
-                "consumer manifest does not declare diagnostic_baseline"
-            )
-            raise RolloutError(msg)
-        if baseline_path is not None and baseline_relative is not None and baseline_rules:
-            baseline_command = [
-                *tool_prefix,
-                *tool,
-                "baseline",
-                "update",
-                "--output",
-                baseline_relative,
-                "--trust-repository-code",
-            ]
-            for selector in baseline_rules:
-                baseline_command.extend(("--rule", selector))
-            try:
-                runner.run(tuple(baseline_command), cwd=repo, env=unauthenticated)
-            except subprocess.CalledProcessError as exc:
-                msg = f"{consumer.name}: scoped diagnostic baseline generation failed:\n"
-                raise RolloutError(msg + process_failure_detail(exc)) from exc
-            if not baseline_path.is_file():
-                msg = f"{consumer.name}: scoped diagnostic baseline generation did not create {baseline_path}"
-                raise RolloutError(msg)
-        expected_baseline = None if baseline_path is None or not baseline_path.is_file() else baseline_path.read_bytes()
         doctor = runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
         if doctor.returncode != 0:
             failures.append("Standards doctor failed:\n" + verification_detail(doctor))
         bootstrap = run_consumer_bootstrap(repo, tool_prefix, runner, unauthenticated)
         assert_baseline_unchanged(baseline_path, expected_baseline)
-        if bootstrap is None and consumer.baseline_update:
-            baseline_update = runner.run(
-                (*tool_prefix, *consumer.baseline_update),
-                cwd=repo,
-                env=unauthenticated,
-                check=False,
-            )
-            if baseline_update.returncode != 0:
-                failures.append("consumer baseline update failed:\n" + verification_detail(baseline_update))
-        consumer_baselines: dict[Path, bytes] = {}
-        for relative in consumer.baseline_paths:
-            path = repo / relative
-            if not path.is_file():
-                msg = f"{consumer.name}: consumer baseline update did not create {path}"
-                raise RolloutError(msg)
-            consumer_baselines[path] = path.read_bytes()
+        consumer_baselines = _update_consumer_baselines(
+            consumer, repo, runner, tool_prefix, bootstrap, environment=unauthenticated, failures=failures
+        )
         worktree_paths = changed_paths(repo, runner)
-        try:
-            retired_paths = retirement.validate_rewrites(repo, retired_rewrites)
-        except ValueError as exc:
-            raise RolloutError(str(exc)) from exc
+        retired_paths = _validate_rollout_retirements(repo, retired_rewrites)
         retired_baselines = frozenset(path for path in retired_paths if "baseline" in path.lower())
         reject_unsafe_diff(
             worktree_paths,
@@ -1394,40 +1209,26 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
         if bootstrap is not None:
             failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
         else:
-            verification_failure_detail = ""
-            for attempt in range(MAX_VERIFICATION_ATTEMPTS):
-                verification = runner.run(
-                    (*tool_prefix, *consumer.verify),
-                    cwd=repo,
-                    env=consumer_verification_environment(unauthenticated, base_sha),
-                    check=False,
-                )
-                assert_baseline_unchanged(baseline_path, expected_baseline)
-                assert_baselines_unchanged(consumer_baselines)
-                mutated = amend_safe_changes(
-                    repo,
-                    runner,
-                    version=version,
-                    allowed_workflow_paths=allowed_workflow_paths,
-                    allowed_baseline_paths=allowed_baseline_paths,
-                    allowed_paths=allowed_paths,
-                )
-                if verification.returncode == 0 and not mutated:
-                    break
-                if mutated and attempt + 1 < MAX_VERIFICATION_ATTEMPTS:
-                    continue
-                verification_failure_detail = verification_detail(verification)
-                if mutated:
-                    verification_failure_detail += "\nconsumer verification did not converge after safe auto-fixes"
-                break
+            verification_failure_detail = _verify_rollout_patch(
+                consumer,
+                repo,
+                runner,
+                version,
+                tool_prefix,
+                environment=unauthenticated,
+                base_sha=base_sha,
+                baseline_path=baseline_path,
+                expected_baseline=expected_baseline,
+                consumer_baselines=consumer_baselines,
+                allowed_workflow_paths=allowed_workflow_paths,
+                allowed_baseline_paths=allowed_baseline_paths,
+                allowed_paths=allowed_paths,
+            )
             if verification_failure_detail:
                 failures.append("consumer verification failed:\n" + verification_failure_detail)
         verification_failure = "\n\n".join(failures)[-4000:]
         branch_paths = committed_paths(repo, consumer.branch, runner)
-        try:
-            retirement.validate_rewrites(repo, retired_rewrites)
-        except ValueError as exc:
-            raise RolloutError(str(exc)) from exc
+        _validate_rollout_retirements(repo, retired_rewrites)
         reject_unsafe_diff(
             branch_paths,
             allowed_source_paths=retired_paths,
@@ -1456,99 +1257,9 @@ def apply_one(  # ruff: ignore[too-many-locals] - one transaction keeps verifica
             cwd=repo,
             env=authenticated_git_environment(unauthenticated),
         )
-    pull = pull_request(consumer, version, runner)
-    body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
-    if verification_failure:
-        body += (
-            f"{VERIFICATION_FAILED_MARKER}\n\n"
-            f"Consumer verification is blocked:\n\n```text\n{verification_failure}\n```\n\n"
-        )
-    body += f"Desired bundle: `code-standards=={version}`.\n\nGenerated by `make rollout`."
-    if pull is None:
-        created = runner.run(
-            (
-                "gh",
-                "pr",
-                "create",
-                "--repo",
-                consumer.repository,
-                "--base",
-                consumer.branch,
-                "--head",
-                branch,
-                "--title",
-                BOT_COMMIT_PREFIX + version,
-                "--body",
-                body,
-            )
-        )
-        url = stdout(created)
-    else:
-        url = str(pull.get("url", ""))
-        runner.run(
-            (
-                "gh",
-                "pr",
-                "edit",
-                "--repo",
-                consumer.repository,
-                url,
-                "--title",
-                BOT_COMMIT_PREFIX + version,
-                "--body",
-                body,
-            )
-        )
-    refreshed_pull = pull_request(consumer, version, runner)
-    if refreshed_pull is None:
-        return Outcome(
-            consumer,
-            "blocked",
-            url,
-            "managed rollout PR could not be read after create or edit",
-        )
-    refreshed_url = str(refreshed_pull.get("url", url))
-    refreshed_identity_is_valid = (
-        refreshed_pull.get("headRefName") == rollout_branch(version)
-        and refreshed_pull.get("baseRefName") == consumer.branch
-        and pr_marker(consumer, version) in str(refreshed_pull.get("body", ""))
+    return _publish_rollout_pull(
+        consumer, version, runner, branch, pushed_head_sha=pushed_head_sha, verification_failure=verification_failure
     )
-    if not refreshed_identity_is_valid:
-        return Outcome(
-            consumer,
-            "blocked",
-            refreshed_url,
-            "rollout PR ownership marker, head, or base does not match after update",
-        )
-    if refreshed_pull.get("headRefOid") != pushed_head_sha:
-        return Outcome(
-            consumer,
-            "missing",
-            refreshed_url,
-            "managed rollout PR head has not refreshed to the pushed commit; reconcile will retry",
-        )
-    if (provenance := open_pull_commit_provenance(consumer, refreshed_pull, runner)) is not None:
-        return provenance
-    url = refreshed_url
-    if consumer.auto_merge and not verification_failure:
-        runner.run(
-            (
-                "gh",
-                "pr",
-                "merge",
-                "--repo",
-                consumer.repository,
-                "--auto",
-                "--squash",
-                "--match-head-commit",
-                pushed_head_sha,
-                url,
-            ),
-            check=False,
-        )
-    if verification_failure:
-        return Outcome(consumer, "blocked", url, "consumer verification failed; PR opened for remediation")
-    return Outcome(consumer, "pr-open", url)
 
 
 def plan(version: str, consumers: Sequence[Consumer], runner: CommandRunner) -> Plan:
@@ -1575,15 +1286,7 @@ def apply(
                 if item not in prior
             )
             return (*prior_status, *blocked)
-    outcomes: list[Outcome] = []
-    for consumer in consumers:
-        try:
-            outcomes.append(apply_one(consumer, version, runner, dry_run=dry_run))
-        except subprocess.CalledProcessError as exc:
-            outcomes.append(Outcome(consumer, "error", detail=process_failure_detail(exc)))
-        except (OSError, RolloutError) as exc:
-            outcomes.append(Outcome(consumer, "error", detail=str(exc)))
-    return tuple(outcomes)
+    return _apply_consumers(consumers, version, runner, dry_run=dry_run)
 
 
 def latest_version(runner: CommandRunner) -> str:
@@ -1735,6 +1438,441 @@ def _execute_cli(args: RolloutArgs, runner: CommandRunner) -> int:
     except (OSError, RolloutError) as exc:
         sys.stderr.write(f"standards-rollout: {exc}\n")
         return 2
+
+
+def _registry_consumer(entry_value: object) -> Consumer:
+    if not is_object(entry_value) or set(entry_value) - {
+        "name",
+        "repository",
+        "branch",
+        "verify",
+        "requires_approval",
+        "auto_merge",
+        "channel",
+        "baseline_rules",
+        "baseline_paths",
+        "baseline_update",
+    }:
+        msg = f"invalid registry entry keys: {entry_value!r}"
+        raise RolloutError(msg)
+    entry = entry_value
+    name = required_text(entry, "name")
+    repository = required_text(entry, "repository")
+    branch = required_text(entry, "branch")
+    verify_value = entry.get("verify")
+    requires_approval = optional_bool(entry, "requires_approval")
+    auto_merge = optional_bool(entry, "auto_merge")
+    channel_value = entry.get("channel", "stable")
+    baseline_rules_value = entry.get("baseline_rules", [])
+    baseline_paths_value = entry.get("baseline_paths", [])
+    baseline_update_value = entry.get("baseline_update", [])
+    if channel_value not in ROLLOUT_CHANNELS:
+        msg = f"invalid rollout channel: {channel_value!r}"
+        raise RolloutError(msg)
+    if not is_array(verify_value) or not verify_value:
+        msg = f"invalid registry verification command: {entry!r}"
+        raise RolloutError(msg)
+    baseline_paths = _validated_baseline_paths(entry, baseline_rules_value, baseline_paths_value, baseline_update_value)
+    if not all(isinstance(item, str) and item for item in verify_value):
+        msg = f"invalid registry values: {entry!r}"
+        raise RolloutError(msg)
+    verify = tuple(item for item in verify_value if isinstance(item, str))
+    return Consumer(
+        name=name,
+        repository=repository,
+        branch=branch,
+        verify=verify,
+        requires_approval=requires_approval,
+        auto_merge=auto_merge,
+        channel=channel_value,
+        baseline_rules=_registry_strings(baseline_rules_value),
+        baseline_paths=baseline_paths,
+        baseline_update=_registry_strings(baseline_update_value),
+    )
+
+
+def _validated_baseline_paths(
+    entry: dict[str, object], baseline_rules_value: object, baseline_paths_value: object, baseline_update_value: object
+) -> tuple[str, ...]:
+    if not is_array(baseline_rules_value) or not all(isinstance(item, str) and item for item in baseline_rules_value):
+        msg = f"invalid promoted baseline rules: {entry!r}"
+        raise RolloutError(msg)
+    if not is_array(baseline_paths_value) or not all(isinstance(item, str) and item for item in baseline_paths_value):
+        msg = f"invalid consumer baseline paths: {entry!r}"
+        raise RolloutError(msg)
+    if not is_array(baseline_update_value) or not all(isinstance(item, str) and item for item in baseline_update_value):
+        msg = f"invalid consumer baseline update command: {entry!r}"
+        raise RolloutError(msg)
+    if bool(baseline_paths_value) != bool(baseline_update_value):
+        msg = "consumer baseline_paths and baseline_update must be declared together"
+        raise RolloutError(msg)
+    baseline_paths = tuple(item for item in baseline_paths_value if isinstance(item, str))
+    if len(set(baseline_paths)) != len(baseline_paths) or any(
+        Path(item).is_absolute() or "\\" in item or ".." in Path(item).parts or "baseline" not in item.casefold()
+        for item in baseline_paths
+    ):
+        msg = f"unsafe consumer baseline paths: {entry!r}"
+        raise RolloutError(msg)
+    return baseline_paths
+
+
+def _registry_strings(value: object) -> tuple[str, ...]:
+    return tuple(item for item in value if isinstance(item, str)) if is_array(value) else ()
+
+
+def _collect_workflow_tools(jobs: dict[str, object], path: Path, requirements: dict[str, str]) -> None:
+    for job_value in jobs.values():
+        if not is_object(job_value):
+            continue
+        steps = job_value.get("steps")
+        if not is_array(steps):
+            continue
+        for step_value in steps:
+            if not is_object(step_value):
+                continue
+            _collect_step_tool(step_value, path, requirements)
+
+
+def _collect_step_tool(step_value: dict[str, object], path: Path, requirements: dict[str, str]) -> None:
+    uses = step_value.get("uses")
+    if not isinstance(uses, str):
+        return
+    action = uses.partition("@")[0]
+    declaration = WORKFLOW_TOOL_ACTIONS.get(action)
+    if declaration is None:
+        return
+    tool, version_key = declaration
+    options = step_value.get("with")
+    version = options.get(version_key) if is_object(options) else None
+    if not isinstance(version, str) or VERSION_RE.fullmatch(version) is None:
+        msg = f"{path}: {action} must declare an exact {version_key} for rollout verification"
+        raise RolloutError(msg)
+    previous = requirements.setdefault(tool, version)
+    if previous != version:
+        msg = f"consumer workflows declare conflicting {tool} versions: {previous} and {version}"
+        raise RolloutError(msg)
+
+
+def _provision_uv(
+    repo: Path, shim_directory: Path, runner: CommandRunner, prepared: Mapping[str, str], uv_required: str | None
+) -> None:
+    if uv_required is not None:
+        shim_directory.mkdir(parents=True, exist_ok=True)
+        install_environment = dict(prepared)
+        install_environment["UV_TOOL_DIR"] = str(shim_directory.parent / "uv-tools")
+        install_environment["UV_TOOL_BIN_DIR"] = str(shim_directory)
+        installed = runner.run(
+            ("uv", "--no-config", "tool", "install", "--force", f"uv{uv_required}"),
+            cwd=repo,
+            env=install_environment,
+            check=False,
+        )
+        if installed.returncode != 0:
+            msg = "could not provision repository-declared uv:\n" + verification_detail(installed)
+            raise RolloutError(msg)
+
+
+def _rollout_baseline_selector(
+    selector: str, catalog: rule_catalog_artifact.SelectorIndex, retired: dict[tuple[str, str], rule_ledger.Retired]
+) -> str | None:
+    source, separator, rule_id = selector.partition(":")
+    normalized = f"{BASELINE_ENGINE_BY_SOURCE.get(source, source)}:{rule_id}" if separator else selector
+    resolved = catalog.resolve(normalized)
+    if resolved not in catalog.canonical and separator:
+        engine, _, normalized_rule_id = normalized.partition(":")
+        retired_rule = retired.get((engine, normalized_rule_id))
+        if retired_rule is not None:
+            if retired_rule.status is rule_ledger.Status.REMOVED:
+                return None
+            if retired_rule.replacement is not None:
+                resolved = catalog.resolve(f"{engine}:{retired_rule.replacement}")
+    return resolved
+
+
+def _apply_consumers(
+    consumers: Sequence[Consumer], version: str, runner: CommandRunner, *, dry_run: bool
+) -> tuple[Outcome, ...]:
+    outcomes: list[Outcome] = []
+    for consumer in consumers:
+        try:
+            outcomes.append(apply_one(consumer, version, runner, dry_run=dry_run))
+        except subprocess.CalledProcessError as exc:
+            outcomes.append(Outcome(consumer, "error", detail=process_failure_detail(exc)))
+        except (OSError, RolloutError) as exc:
+            outcomes.append(Outcome(consumer, "error", detail=str(exc)))
+    return tuple(outcomes)
+
+
+def _provision_mise(
+    repo: Path,
+    runner: CommandRunner,
+    prepared: dict[str, str],
+    workflow_tools: tuple[str, ...],
+    *,
+    has_mise_config: bool,
+) -> tuple[str, ...]:
+    mise_prefix: tuple[str, ...] = ()
+    if has_mise_config or workflow_tools:
+        prepared["MISE_YES"] = "1"
+        prepared["MISE_TRUSTED_CONFIG_PATHS"] = str(repo.resolve())
+        if has_mise_config:
+            installed = runner.run(("mise", "install"), cwd=repo, env=prepared, check=False)
+            if installed.returncode != 0:
+                msg = "could not provision repository-declared mise tools:\n" + verification_detail(installed)
+                raise RolloutError(msg)
+        if workflow_tools:
+            installed = runner.run(("mise", "install", *workflow_tools), cwd=repo, env=prepared, check=False)
+            if installed.returncode != 0:
+                msg = "could not provision workflow-declared tools:\n" + verification_detail(installed)
+                raise RolloutError(msg)
+        mise_prefix = ("mise", "exec", *workflow_tools, "--")
+
+    return mise_prefix
+
+
+def _publish_rollout_pull(
+    consumer: Consumer,
+    version: str,
+    runner: CommandRunner,
+    branch: str,
+    *,
+    pushed_head_sha: str,
+    verification_failure: str,
+) -> Outcome:
+    pull = pull_request(consumer, version, runner)
+    body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
+    if verification_failure:
+        body += (
+            f"{VERIFICATION_FAILED_MARKER}\n\n"
+            f"Consumer verification is blocked:\n\n```text\n{verification_failure}\n```\n\n"
+        )
+    body += f"Desired bundle: `code-standards=={version}`.\n\nGenerated by `make rollout`."
+    if pull is None:
+        created = runner.run(
+            (
+                "gh",
+                "pr",
+                "create",
+                "--repo",
+                consumer.repository,
+                "--base",
+                consumer.branch,
+                "--head",
+                branch,
+                "--title",
+                BOT_COMMIT_PREFIX + version,
+                "--body",
+                body,
+            )
+        )
+        url = stdout(created)
+    else:
+        url = str(pull.get("url", ""))
+        runner.run(
+            (
+                "gh",
+                "pr",
+                "edit",
+                "--repo",
+                consumer.repository,
+                url,
+                "--title",
+                BOT_COMMIT_PREFIX + version,
+                "--body",
+                body,
+            )
+        )
+    refreshed_pull = pull_request(consumer, version, runner)
+    if refreshed_pull is None:
+        return Outcome(
+            consumer,
+            "blocked",
+            url,
+            "managed rollout PR could not be read after create or edit",
+        )
+    refreshed_url = str(refreshed_pull.get("url", url))
+    refreshed_identity_is_valid = (
+        refreshed_pull.get("headRefName") == rollout_branch(version)
+        and refreshed_pull.get("baseRefName") == consumer.branch
+        and pr_marker(consumer, version) in str(refreshed_pull.get("body", ""))
+    )
+    if not refreshed_identity_is_valid:
+        return Outcome(
+            consumer,
+            "blocked",
+            refreshed_url,
+            "rollout PR ownership marker, head, or base does not match after update",
+        )
+    if refreshed_pull.get("headRefOid") != pushed_head_sha:
+        return Outcome(
+            consumer,
+            "missing",
+            refreshed_url,
+            "managed rollout PR head has not refreshed to the pushed commit; reconcile will retry",
+        )
+    if (provenance := open_pull_commit_provenance(consumer, refreshed_pull, runner)) is not None:
+        return provenance
+    url = refreshed_url
+    if consumer.auto_merge and not verification_failure:
+        runner.run(
+            (
+                "gh",
+                "pr",
+                "merge",
+                "--repo",
+                consumer.repository,
+                "--auto",
+                "--squash",
+                "--match-head-commit",
+                pushed_head_sha,
+                url,
+            ),
+            check=False,
+        )
+    if verification_failure:
+        return Outcome(consumer, "blocked", url, "consumer verification failed; PR opened for remediation")
+    return Outcome(consumer, "pr-open", url)
+
+
+class _RolloutBaseline(NamedTuple):
+    allowed_paths: frozenset[str]
+    path: Path | None
+    expected: bytes | None
+
+
+def _prepare_rollout_baseline(
+    consumer: Consumer,
+    repo: Path,
+    runner: CommandRunner,
+    baseline_rules: tuple[str, ...],
+    tool_prefix: tuple[str, ...],
+    *,
+    tool: tuple[str, ...],
+    environment: Mapping[str, str],
+) -> _RolloutBaseline:
+    adopted = adoption_manifest.load(repo)
+    baseline_relative = None if adopted is None else adopted.diagnostic_baseline
+    allowed_baseline_paths = frozenset(
+        (*(() if baseline_relative is None else (baseline_relative,)), *consumer.baseline_paths)
+    )
+    baseline_path = None if baseline_relative is None else repo / baseline_relative
+    if baseline_rules and (baseline_path is None or baseline_relative is None):
+        msg = (
+            f"{consumer.name}: registry declares promoted baseline rules, but the updated "
+            "consumer manifest does not declare diagnostic_baseline"
+        )
+        raise RolloutError(msg)
+    if baseline_path is not None and baseline_relative is not None and baseline_rules:
+        baseline_command = [
+            *tool_prefix,
+            *tool,
+            "baseline",
+            "update",
+            "--output",
+            baseline_relative,
+            "--trust-repository-code",
+        ]
+        for selector in baseline_rules:
+            baseline_command.extend(("--rule", selector))
+        try:
+            runner.run(tuple(baseline_command), cwd=repo, env=environment)
+        except subprocess.CalledProcessError as exc:
+            msg = f"{consumer.name}: scoped diagnostic baseline generation failed:\n"
+            raise RolloutError(msg + process_failure_detail(exc)) from exc
+        if not baseline_path.is_file():
+            msg = f"{consumer.name}: scoped diagnostic baseline generation did not create {baseline_path}"
+            raise RolloutError(msg)
+    expected_baseline = None if baseline_path is None or not baseline_path.is_file() else baseline_path.read_bytes()
+    return _RolloutBaseline(allowed_baseline_paths, baseline_path, expected_baseline)
+
+
+def _verify_rollout_patch(
+    consumer: Consumer,
+    repo: Path,
+    runner: CommandRunner,
+    version: str,
+    tool_prefix: tuple[str, ...],
+    *,
+    environment: Mapping[str, str],
+    base_sha: str,
+    baseline_path: Path | None,
+    expected_baseline: bytes | None,
+    consumer_baselines: dict[Path, bytes],
+    allowed_workflow_paths: frozenset[str],
+    allowed_baseline_paths: frozenset[str],
+    allowed_paths: frozenset[str],
+) -> str:
+    verification_failure_detail = ""
+    for attempt in range(MAX_VERIFICATION_ATTEMPTS):
+        verification = runner.run(
+            (*tool_prefix, *consumer.verify),
+            cwd=repo,
+            env=consumer_verification_environment(environment, base_sha),
+            check=False,
+        )
+        assert_baseline_unchanged(baseline_path, expected_baseline)
+        assert_baselines_unchanged(consumer_baselines)
+        mutated = amend_safe_changes(
+            repo,
+            runner,
+            version=version,
+            allowed_workflow_paths=allowed_workflow_paths,
+            allowed_baseline_paths=allowed_baseline_paths,
+            allowed_paths=allowed_paths,
+        )
+        if verification.returncode == 0 and not mutated:
+            break
+        if mutated and attempt + 1 < MAX_VERIFICATION_ATTEMPTS:
+            continue
+        verification_failure_detail = verification_detail(verification)
+        if mutated:
+            verification_failure_detail += "\nconsumer verification did not converge after safe auto-fixes"
+        break
+    return verification_failure_detail
+
+
+def _update_consumer_baselines(
+    consumer: Consumer,
+    repo: Path,
+    runner: CommandRunner,
+    tool_prefix: tuple[str, ...],
+    bootstrap: subprocess.CompletedProcess[str] | None,
+    *,
+    environment: Mapping[str, str],
+    failures: list[str],
+) -> dict[Path, bytes]:
+    if bootstrap is None and consumer.baseline_update:
+        baseline_update = runner.run(
+            (*tool_prefix, *consumer.baseline_update),
+            cwd=repo,
+            env=environment,
+            check=False,
+        )
+        if baseline_update.returncode != 0:
+            failures.append("consumer baseline update failed:\n" + verification_detail(baseline_update))
+    consumer_baselines: dict[Path, bytes] = {}
+    for relative in consumer.baseline_paths:
+        path = repo / relative
+        if not path.is_file():
+            msg = f"{consumer.name}: consumer baseline update did not create {path}"
+            raise RolloutError(msg)
+        consumer_baselines[path] = path.read_bytes()
+    return consumer_baselines
+
+
+def _validate_rollout_retirements(repo: Path, retired_rewrites: Mapping[str, bytes]) -> frozenset[str]:
+    try:
+        return retirement.validate_rewrites(repo, retired_rewrites)
+    except ValueError as exc:
+        raise RolloutError(str(exc)) from exc
+
+
+def _allowed_rollout_workflows(repo: Path) -> frozenset[str]:
+    return frozenset(
+        relative
+        for update in adoption_doctor.plan_version_pin_updates(repo)
+        if (relative := update.path.relative_to(repo).as_posix()).startswith(".github/workflows/")
+    )
 
 
 if __name__ == "__main__":

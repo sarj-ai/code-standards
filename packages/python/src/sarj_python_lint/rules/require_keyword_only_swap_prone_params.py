@@ -422,47 +422,8 @@ def _trusted_hmac_bindings(tree: ast.Module) -> frozenset[str]:
     }
     if not top_level_imports:
         return frozenset()
-    rebound = {
-        node.id
-        for node in walk(tree)
-        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load) and node.id in top_level_imports
-    }
-    rebound.update(node.arg for node in walk(tree) if isinstance(node, ast.arg) and node.arg in top_level_imports)
-    rebound.update(
-        node.name
-        for node in walk(tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in top_level_imports
-    )
-    rebound.update(
-        node.name
-        for node in walk(tree)
-        if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar))
-        and node.name is not None
-        and node.name in top_level_imports
-    )
-    rebound.update(
-        node.name
-        for node in walk(tree)
-        if isinstance(node, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple)) and node.name in top_level_imports
-    )
-    rebound.update(
-        node.rest
-        for node in walk(tree)
-        if isinstance(node, ast.MatchMapping) and node.rest is not None and node.rest in top_level_imports
-    )
-    for node in walk(tree):
-        if not isinstance(node, (ast.Import, ast.ImportFrom)):
-            continue
-        for alias in node.names:
-            binding = alias.asname or alias.name.rsplit(".", maxsplit=1)[-1]
-            is_trusted_import = (
-                node in tree.body
-                and isinstance(node, ast.Import)
-                and alias.name == "hmac"
-                and binding in top_level_imports
-            )
-            if binding in top_level_imports and not is_trusted_import:
-                rebound.add(binding)
+    rebound = _rebound_hmac_names(tree, top_level_imports)
+    _record_hmac_import_rebindings(tree, top_level_imports, rebound)
     return frozenset(top_level_imports - rebound)
 
 
@@ -547,4 +508,56 @@ def _overload_stub_names(tree: ast.AST) -> frozenset[str]:
             or (isinstance(dec, ast.Attribute) and dec.attr == "overload")
             for dec in node.decorator_list
         )
+    )
+
+
+def _rebound_hmac_names(tree: ast.Module, top_level_imports: set[str]) -> set[str]:
+    rebound = {
+        node.id
+        for node in walk(tree)
+        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load) and node.id in top_level_imports
+    }
+    rebound.update(node.arg for node in walk(tree) if isinstance(node, ast.arg) and node.arg in top_level_imports)
+    _record_named_hmac_rebindings(tree, top_level_imports, rebound)
+    return rebound
+
+
+def _record_hmac_import_rebindings(tree: ast.Module, top_level_imports: set[str], rebound: set[str]) -> None:
+    for node in walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        for alias in node.names:
+            binding = alias.asname or alias.name.rsplit(".", maxsplit=1)[-1]
+            is_trusted_import = (
+                node in tree.body
+                and isinstance(node, ast.Import)
+                and alias.name == "hmac"
+                and binding in top_level_imports
+            )
+            if binding in top_level_imports and not is_trusted_import:
+                rebound.add(binding)
+
+
+def _record_named_hmac_rebindings(tree: ast.Module, top_level_imports: set[str], rebound: set[str]) -> None:
+    rebound.update(
+        node.name
+        for node in walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name in top_level_imports
+    )
+    rebound.update(
+        node.name
+        for node in walk(tree)
+        if isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar))
+        and node.name is not None
+        and node.name in top_level_imports
+    )
+    rebound.update(
+        node.name
+        for node in walk(tree)
+        if isinstance(node, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple)) and node.name in top_level_imports
+    )
+    rebound.update(
+        node.rest
+        for node in walk(tree)
+        if isinstance(node, ast.MatchMapping) and node.rest is not None and node.rest in top_level_imports
     )

@@ -3,6 +3,22 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-excessive-cognitive-complexity",
+      "family": "python",
+      "ruleId": "no-excessive-cognitive-complexity",
+      "state": "complete",
+      "evidence": "Boundary tests accept a cognitive complexity score of 20 and reject 21 at error severity. Syntax tests cover nesting, boolean operators, independent nested functions, and generated-source exclusions. Public before/after examples are fictional and checked against the implementation.",
+      "outcome": "Adopt a maximum score of 20 as an explicit team policy. Explain the largest score contributors, preserve behavior during refactoring, and provide no automatic fix. This metric flags review candidates; it does not prove a function is defective."
+    },
+    {
+      "task": "rule-audit/typescript/no-excessive-cognitive-complexity",
+      "family": "typescript",
+      "ruleId": "no-excessive-cognitive-complexity",
+      "state": "complete",
+      "evidence": "Boundary tests accept a cognitive complexity score of 20 and reject 21 at error severity. Syntax tests cover nesting, boolean operators, independent nested functions, and generated-source exclusions. Public before/after examples are fictional and checked against the implementation.",
+      "outcome": "Adopt a maximum score of 20 as an explicit team policy. Explain the largest score contributors, preserve behavior during refactoring, and provide no automatic fix. This metric flags review candidates; it does not prove a function is defective."
+    },
+    {
       "task": "rule-audit/python/no-redundant-module-alias-exports",
       "family": "python",
       "ruleId": "no-redundant-module-alias-exports",

@@ -276,24 +276,26 @@ function injectedMembers(
   }
   const body = constructor.value.body;
   if (body === null) return injected;
-  for (const statement of body.body) {
+  function collectInjectedMember(statement: TSESTree.Statement): void {
     if (
       statement.type !== AST_NODE_TYPES.ExpressionStatement ||
       statement.expression.type !== AST_NODE_TYPES.AssignmentExpression ||
       statement.expression.operator !== "="
-    ) continue;
+    ) return;
     const { left, right } = statement.expression;
-    if (left.type !== AST_NODE_TYPES.MemberExpression) continue;
+    if (left.type !== AST_NODE_TYPES.MemberExpression) return;
     const target = thisRootMember(left);
-    if (target === null) continue;
+    if (target === null) return;
     const source = right.type === AST_NODE_TYPES.Identifier
       ? right.name
       : right.type === AST_NODE_TYPES.MemberExpression &&
-          right.object.type === AST_NODE_TYPES.Identifier
+        right.object.type === AST_NODE_TYPES.Identifier
         ? right.object.name
         : null;
     if (source !== null && parameters.has(source)) injected.add(target);
   }
+
+  for (const statement of body.body) { collectInjectedMember(statement); }
   return injected;
 }
 

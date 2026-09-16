@@ -323,29 +323,7 @@ def _count_comment(
     standalone: bool,
     ruff_aliases: Mapping[str, str] | None,
 ) -> None:
-    if standalone and (file_ignore := _RUFF_FILE_IGNORE_RE.match(comment)):
-        counts.update(
-            f"file-noqa:{_normalized_ruff_selector(code, ruff_aliases)}" for code in file_ignore.group(1).split(",")
-        )
-        return
-    if standalone and (file_noqa := _FILE_NOQA_RE.match(comment)):
-        listed = file_noqa.group(1)
-        if listed:
-            counts.update(f"file-noqa:{_normalized_ruff_selector(code, ruff_aliases)}" for code in listed.split(","))
-        else:
-            counts[_BLANKET_KEY] += 1
-        return
-    if standalone and _FLAKE8_FILE_NOQA_RE.match(comment):
-        counts[_FLAKE8_BLANKET_KEY] += 1
-        return
-    if standalone and (disabled := _RUFF_DISABLE_RE.match(comment)):
-        counts.update(
-            f"ruff-range:{_normalized_ruff_selector(code, ruff_aliases)}" for code in disabled.group(1).split(",")
-        )
-        return
-    if standalone and _FILE_PYRIGHT_RE.match(comment):
-        rules: list[str] = _FILE_PYRIGHT_RULE_RE.findall(comment)
-        counts.update(f"file-pyright:{rule}" for rule in rules)
+    if standalone and _count_file_comment(comment, counts, ruff_aliases=ruff_aliases):
         return
     for match in _NOQA_RE.finditer(comment):
         listed = match.group(1)
@@ -358,6 +336,10 @@ def _count_comment(
         counts.update(f"{prefix}{_normalized_ruff_selector(code, ruff_aliases)}" for code in match.group(1).split(","))
     for match in _SARJ_NOQA_RE.finditer(comment):
         counts.update(f"sarj-noqa:{code.strip().upper()}" for code in match.group(1).split(","))
+    _count_type_checker_comments(comment, counts)
+
+
+def _count_type_checker_comments(comment: str, counts: Counter[str]) -> None:
     for match in _PYRIGHT_IGNORE_RE.finditer(comment):
         counts.update(f"pyright:{code.strip()}" for code in match.group(1).split(","))
     if re.search(r"#\s*pyright:\s*ignore\b(?!\s*\[)", comment):
@@ -368,6 +350,34 @@ def _count_comment(
             counts.update(f"type-ignore:{code.strip()}" for code in listed.split(","))
         else:
             counts[_BARE_TYPE_IGNORE_KEY] += 1
+
+
+def _count_file_comment(comment: str, counts: Counter[str], *, ruff_aliases: Mapping[str, str] | None) -> bool:
+    if file_ignore := _RUFF_FILE_IGNORE_RE.match(comment):
+        counts.update(
+            f"file-noqa:{_normalized_ruff_selector(code, ruff_aliases)}" for code in file_ignore.group(1).split(",")
+        )
+        return True
+    if file_noqa := _FILE_NOQA_RE.match(comment):
+        listed = file_noqa.group(1)
+        if listed:
+            counts.update(f"file-noqa:{_normalized_ruff_selector(code, ruff_aliases)}" for code in listed.split(","))
+        else:
+            counts[_BLANKET_KEY] += 1
+        return True
+    if _FLAKE8_FILE_NOQA_RE.match(comment):
+        counts[_FLAKE8_BLANKET_KEY] += 1
+        return True
+    if disabled := _RUFF_DISABLE_RE.match(comment):
+        counts.update(
+            f"ruff-range:{_normalized_ruff_selector(code, ruff_aliases)}" for code in disabled.group(1).split(",")
+        )
+        return True
+    if _FILE_PYRIGHT_RE.match(comment):
+        rules: list[str] = _FILE_PYRIGHT_RULE_RE.findall(comment)
+        counts.update(f"file-pyright:{rule}" for rule in rules)
+        return True
+    return False
 
 
 def _normalized_ruff_selector(selector: str, aliases: Mapping[str, str] | None) -> str:

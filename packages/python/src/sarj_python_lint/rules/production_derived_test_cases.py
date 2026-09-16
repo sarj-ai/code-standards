@@ -64,29 +64,34 @@ def _scope_binding_counts(statements: list[ast.stmt]) -> dict[str, int]:
     stack: list[ast.AST] = [*reversed(statements)]
     while stack:
         node = stack.pop()
-        names: set[str] = set()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            names.add(node.name)
-        elif isinstance(node, (ast.Import, ast.ImportFrom)):
-            names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, (ast.Assign, ast.Delete)):
-            names.update(*(_bound_target_names(target) for target in node.targets))
-        elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor)):
-            names.update(_bound_target_names(node.target))
-        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
-            names.add(node.name)
-        elif isinstance(node, ast.MatchMapping) and node.rest is not None:
-            names.add(node.rest)
-        elif isinstance(node, (ast.With, ast.AsyncWith)):
-            names.update(
-                *(_bound_target_names(item.optional_vars) for item in node.items if item.optional_vars is not None)
-            )
+        names = _node_binding_names(node)
         for name in names:
             counts[name] = counts.get(name, 0) + 1
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
             continue
         stack.extend(reversed(list(ast.iter_child_nodes(node))))
     return counts
+
+
+def _node_binding_names(node: ast.AST) -> set[str]:
+    names: set[str] = set()
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        names.add(node.name)
+    elif isinstance(node, (ast.Import, ast.ImportFrom)):
+        names.update(alias.asname or alias.name.split(".")[0] for alias in node.names)
+    elif isinstance(node, (ast.Assign, ast.Delete)):
+        names.update(*(_bound_target_names(target) for target in node.targets))
+    elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr, ast.For, ast.AsyncFor)):
+        names.update(_bound_target_names(node.target))
+    elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name is not None:
+        names.add(node.name)
+    elif isinstance(node, ast.MatchMapping) and node.rest is not None:
+        names.add(node.rest)
+    elif isinstance(node, (ast.With, ast.AsyncWith)):
+        names.update(
+            *(_bound_target_names(item.optional_vars) for item in node.items if item.optional_vars is not None)
+        )
+    return names
 
 
 def _bound_target_names(node: ast.AST) -> set[str]:
@@ -152,11 +157,7 @@ def _pytest_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> _Pytes
     marks: set[str] = set()
     for node in tree.body:
         if isinstance(node, ast.Import):
-            modules.update(
-                local
-                for alias in node.names
-                if alias.name == "pytest" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
-            )
+            _collect_pytest_modules(node, binding_counts, modules)
         elif isinstance(node, ast.ImportFrom) and node.module == "pytest":
             marks.update(
                 local
@@ -257,10 +258,7 @@ def _independently_asserted_collections(
 ) -> set[str]:
     expected = _independent_expected_bindings(tree, _scope_binding_counts(tree.body))
     asserted: set[str] = set()
-    assertions = [node for node in tree.body if isinstance(node, ast.Assert)]
-    assertions.extend(
-        statement for test in tests for statement in test.function.body if isinstance(statement, ast.Assert)
-    )
+    assertions = _direct_assertions(tree, tests)
     for node in assertions:
         if not isinstance(node.test, ast.Compare):
             continue
@@ -415,3 +413,19 @@ class ProductionDerivedTestCases(Rule):
                 )
         findings.sort(key=lambda finding: (finding.line, finding.col))
         return findings
+
+
+def _collect_pytest_modules(node: ast.Import, binding_counts: dict[str, int], modules: set[str]) -> None:
+    modules.update(
+        local
+        for alias in node.names
+        if alias.name == "pytest" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
+    )
+
+
+def _direct_assertions(tree: ast.Module, tests: list[_CollectedTest]) -> list[ast.Assert]:
+    assertions = [node for node in tree.body if isinstance(node, ast.Assert)]
+    assertions.extend(
+        statement for test in tests for statement in test.function.body if isinstance(statement, ast.Assert)
+    )
+    return assertions

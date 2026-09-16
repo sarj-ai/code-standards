@@ -236,50 +236,13 @@ def _comment_candidates(lines: list[str], in_heredoc: tuple[bool, ...]) -> list[
             continue
         raw = lines[index]
         if (line_match := _COMMENT_RE.match(raw)) is not None:
-            start = index
-            indent = len(line_match["indent"])
-            bodies = [line_match["body"]]
-            while index + 1 < len(lines) and (following := _COMMENT_RE.match(lines[index + 1])) is not None:
-                if len(following["indent"]) != indent:
-                    break
-                index += 1
-                bodies.append(following["body"])
-            declaration_index = index + 1
-            if declaration_index < len(lines) and not in_heredoc[declaration_index]:
-                declaration = lines[declaration_index]
-                if (subject := _declaration_subject(declaration.strip())) is not None:
-                    candidates.append(
-                        _CommentCandidate(
-                            " ".join(bodies),
-                            declaration,
-                            subject,
-                            start + 1,
-                            indent + 1,
-                            indent,
-                            declaration_index,
-                        )
-                    )
-            index += 1
+            index = _line_comment_candidate(lines, in_heredoc, index, line_match, candidates)
             continue
         block_match = _BLOCK_START_RE.match(raw)
         if block_match is None:
             index += 1
             continue
-        indent = len(block_match["indent"])
-        body_lines = [block_match["body"]]
-        end = index
-        while end < len(lines) and "*/" not in lines[end]:
-            end += 1
-            if end >= len(lines) or in_heredoc[end]:
-                break
-            body_lines.append(lines[end].strip().removeprefix("*").strip())
-        if end + 1 < len(lines) and "*/" in lines[end] and not in_heredoc[end + 1]:
-            body_lines[-1] = body_lines[-1].split("*/", 1)[0].strip()
-            body = " ".join(part for part in body_lines if part)
-            declaration = lines[end + 1]
-            if (subject := _declaration_subject(declaration.strip())) is not None:
-                candidates.append(_CommentCandidate(body, declaration, subject, index + 1, indent + 1, indent, end + 1))
-        index = max(index + 1, end + 1)
+        index = _block_comment_candidate(lines, in_heredoc, index, block_match, candidates)
     return candidates
 
 
@@ -379,3 +342,61 @@ def _stem(word: str) -> str:
         if word.endswith(suffix) and len(word) - len(suffix) >= _MIN_STEM_LENGTH:
             return word[: -len(suffix)]
     return word
+
+
+def _line_comment_candidate(
+    lines: list[str],
+    in_heredoc: tuple[bool, ...],
+    index: int,
+    line_match: re.Match[str],
+    candidates: list[_CommentCandidate],
+) -> int:
+    start = index
+    indent = len(line_match["indent"])
+    bodies = [line_match["body"]]
+    while index + 1 < len(lines) and (following := _COMMENT_RE.match(lines[index + 1])) is not None:
+        if len(following["indent"]) != indent:
+            break
+        index += 1
+        bodies.append(following["body"])
+    declaration_index = index + 1
+    if declaration_index < len(lines) and not in_heredoc[declaration_index]:
+        declaration = lines[declaration_index]
+        if (subject := _declaration_subject(declaration.strip())) is not None:
+            candidates.append(
+                _CommentCandidate(
+                    " ".join(bodies),
+                    declaration,
+                    subject,
+                    start + 1,
+                    indent + 1,
+                    indent,
+                    declaration_index,
+                )
+            )
+    index += 1
+    return index
+
+
+def _block_comment_candidate(
+    lines: list[str],
+    in_heredoc: tuple[bool, ...],
+    index: int,
+    block_match: re.Match[str],
+    candidates: list[_CommentCandidate],
+) -> int:
+    indent = len(block_match["indent"])
+    body_lines = [block_match["body"]]
+    end = index
+    while end < len(lines) and "*/" not in lines[end]:
+        end += 1
+        if end >= len(lines) or in_heredoc[end]:
+            break
+        body_lines.append(lines[end].strip().removeprefix("*").strip())
+    if end + 1 < len(lines) and "*/" in lines[end] and not in_heredoc[end + 1]:
+        body_lines[-1] = body_lines[-1].split("*/", 1)[0].strip()
+        body = " ".join(part for part in body_lines if part)
+        declaration = lines[end + 1]
+        if (subject := _declaration_subject(declaration.strip())) is not None:
+            candidates.append(_CommentCandidate(body, declaration, subject, index + 1, indent + 1, indent, end + 1))
+    return max(index + 1, end + 1)

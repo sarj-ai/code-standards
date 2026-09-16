@@ -166,8 +166,8 @@ const isDirectLocalFileRead = (
     callee?.type === AST_NODE_TYPES.Identifier
       ? callee.name
       : callee?.type === AST_NODE_TYPES.MemberExpression &&
-          !callee.computed &&
-          callee.property.type === AST_NODE_TYPES.Identifier
+        !callee.computed &&
+        callee.property.type === AST_NODE_TYPES.Identifier
         ? callee.property.name
         : null;
   return name !== null && FILE_READ_RE.test(name);
@@ -309,27 +309,23 @@ const bindingValidationPolarity = (
 ): ValidationPolarity | null => {
   if (test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "!") {
     const inner = bindingValidationPolarity(test.argument, bindingName);
-    return inner === "valid-when-true"
-      ? "valid-when-false"
-      : inner === "valid-when-false"
-        ? "valid-when-true"
-        : null;
+    return invertValidationPolarity(inner);
   }
   if (test.type === AST_NODE_TYPES.BinaryExpression) {
     const typeofName = (
       node: TSESTree.Expression | TSESTree.PrivateIdentifier,
     ): string | null =>
       node.type === AST_NODE_TYPES.UnaryExpression &&
-      node.operator === "typeof" &&
-      node.argument.type === AST_NODE_TYPES.Identifier
+        node.operator === "typeof" &&
+        node.argument.type === AST_NODE_TYPES.Identifier
         ? node.argument.name
         : null;
     const literalType = (
       node: TSESTree.Expression | TSESTree.PrivateIdentifier,
     ): string | null =>
       node.type === AST_NODE_TYPES.Literal &&
-      typeof node.value === "string" &&
-      PRIMITIVE_TYPEOF_RESULTS.has(node.value)
+        typeof node.value === "string" &&
+        PRIMITIVE_TYPEOF_RESULTS.has(node.value)
         ? node.value
         : null;
     const matches =
@@ -366,9 +362,9 @@ const plainMemberAccess = (
   node: TSESTree.Node,
 ): PlainMemberAccess | null =>
   node.type === AST_NODE_TYPES.MemberExpression &&
-  !node.computed &&
-  node.object.type === AST_NODE_TYPES.Identifier &&
-  node.property.type === AST_NODE_TYPES.Identifier
+    !node.computed &&
+    node.object.type === AST_NODE_TYPES.Identifier &&
+    node.property.type === AST_NODE_TYPES.Identifier
     ? { object: node.object.name, property: node.property.name }
     : null;
 
@@ -409,10 +405,7 @@ const isUseWithinValidatedBranch = (
     if (current.type === AST_NODE_TYPES.IfStatement) {
       const polarity = bindingValidationPolarity(current.test, bindingName);
       if (
-        (polarity === "valid-when-true" && nodeWithin(node, current.consequent)) ||
-        (polarity === "valid-when-false" &&
-          current.alternate !== null &&
-          nodeWithin(node, current.alternate))
+        validatedBranchContains(node, current, polarity)
       ) {
         return true;
       }
@@ -450,10 +443,7 @@ const isMemberUseWithinValidatedBranch = (
     if (current.type === AST_NODE_TYPES.IfStatement) {
       const polarity = memberValidationPolarity(current.test, access);
       if (
-        (polarity === "valid-when-true" && nodeWithin(node, current.consequent)) ||
-        (polarity === "valid-when-false" &&
-          current.alternate !== null &&
-          nodeWithin(node, current.alternate))
+        validatedBranchContains(node, current, polarity)
       ) {
         return true;
       }
@@ -476,11 +466,7 @@ const memberValidationPolarity = (
 ): ValidationPolarity | null => {
   if (test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "!") {
     const inner = memberValidationPolarity(test.argument, access);
-    return inner === "valid-when-true"
-      ? "valid-when-false"
-      : inner === "valid-when-false"
-        ? "valid-when-true"
-        : null;
+    return invertValidationPolarity(inner);
   }
   if (test.type === AST_NODE_TYPES.BinaryExpression) {
     const isMatchingTypeof = (node: TSESTree.Node): boolean =>
@@ -555,44 +541,8 @@ const isFullyValidatedExtractedBinding = (
     return false;
   };
 
-  const isGuardedUse = (identifier: TSESTree.Identifier): boolean => {
-    for (
-      let current: TSESTree.Node | undefined | null = identifier.parent;
-      current !== undefined && current !== null;
-      current = current.parent
-    ) {
-      if (current.type === AST_NODE_TYPES.ConditionalExpression) {
-        const polarity = bindingValidationPolarity(current.test, identifier.name);
-        if (polarity === "valid-when-true" && nodeWithin(identifier, current.consequent)) {
-          return true;
-        }
-        if (polarity === "valid-when-false" && nodeWithin(identifier, current.alternate)) {
-          return true;
-        }
-      }
-      if (current.type === AST_NODE_TYPES.IfStatement) {
-        const polarity = bindingValidationPolarity(current.test, identifier.name);
-        if (polarity === "valid-when-true" && nodeWithin(identifier, current.consequent)) {
-          return true;
-        }
-        if (
-          polarity === "valid-when-false" &&
-          current.alternate !== null &&
-          nodeWithin(identifier, current.alternate)
-        ) {
-          return true;
-        }
-      }
-      if (
-        current.type === AST_NODE_TYPES.FunctionDeclaration ||
-        current.type === AST_NODE_TYPES.FunctionExpression ||
-        current.type === AST_NODE_TYPES.ArrowFunctionExpression
-      ) {
-        return false;
-      }
-    }
-    return false;
-  };
+  const isGuardedUse = (identifier: TSESTree.Identifier): boolean =>
+    isUseWithinValidatedBranch(identifier, identifier.name);
 
   const declarator = member.parent;
   if (
@@ -698,27 +648,13 @@ export default createRule<Options, MessageIds>({
       while (positive && guard.parent.type === AST_NODE_TYPES.LogicalExpression && guard.parent.operator === "&&") guard = guard.parent;
       const branch = guard.parent;
       if (branch.type === AST_NODE_TYPES.IfStatement && branch.test === guard) {
-        if (positive && nodeWithin(use, branch.consequent)) return true;
-        if (!positive && branch.alternate !== null && nodeWithin(use, branch.alternate)) return true;
-        const terminal = branch.consequent.type === AST_NODE_TYPES.BlockStatement ? branch.consequent.body.at(-1) : branch.consequent;
-        if (!positive && (terminal?.type === AST_NODE_TYPES.ThrowStatement || terminal?.type === AST_NODE_TYPES.ReturnStatement)) {
-          let statement = use;
-          while (statement.parent !== undefined && statement.parent !== branch.parent && statement.parent.type !== AST_NODE_TYPES.Program) {
-            if (statement.type === AST_NODE_TYPES.FunctionDeclaration || statement.type === AST_NODE_TYPES.FunctionExpression || statement.type === AST_NODE_TYPES.ArrowFunctionExpression) return false;
-            statement = statement.parent;
-          }
-          return statement.parent === branch.parent && statement.range[0] > branch.range[1];
-        }
+        const dominated = ifGuardDominates(use, branch, positive);
+        if (dominated !== null) return dominated;
       }
       if (branch.type === AST_NODE_TYPES.ConditionalExpression && branch.test === guard) return nodeWithin(use, positive ? branch.consequent : branch.alternate);
       if (positive && branch.type === AST_NODE_TYPES.WhileStatement && branch.test === guard) return nodeWithin(use, branch.body);
       if (call.parent.type !== AST_NODE_TYPES.ExpressionStatement || call.callee.type !== AST_NODE_TYPES.Identifier || /^(?:is|has)[A-Z]/u.test(call.callee.name)) return false;
-      let statement = use;
-      while (statement.parent !== undefined && statement.parent !== call.parent.parent && statement.parent.type !== AST_NODE_TYPES.Program) {
-        if (statement.type === AST_NODE_TYPES.FunctionDeclaration || statement.type === AST_NODE_TYPES.FunctionExpression || statement.type === AST_NODE_TYPES.ArrowFunctionExpression) return false;
-        statement = statement.parent;
-      }
-      return statement.parent === call.parent.parent && statement.range[0] > call.parent.range[1];
+      return followsInSameContainer(use, call.parent);
     };
 
     /** Resolve a same-scope binding already proven to hold repository-local file text. */
@@ -995,3 +931,32 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function invertValidationPolarity(polarity: ValidationPolarity | null): ValidationPolarity | null {
+  if (polarity === "valid-when-true") return "valid-when-false";
+  return polarity === "valid-when-false" ? "valid-when-true" : null;
+}
+
+function validatedBranchContains(node: TSESTree.Node, branch: TSESTree.IfStatement, polarity: ValidationPolarity | null): boolean {
+  return (polarity === "valid-when-true" && nodeWithin(node, branch.consequent)) ||
+    (polarity === "valid-when-false" && branch.alternate !== null && nodeWithin(node, branch.alternate));
+}
+
+function followsInSameContainer(use: TSESTree.Node, preceding: TSESTree.Node): boolean {
+  let statement = use;
+  while (statement.parent !== undefined && statement.parent !== preceding.parent && statement.parent.type !== AST_NODE_TYPES.Program) {
+    if (statement.type === AST_NODE_TYPES.FunctionDeclaration || statement.type === AST_NODE_TYPES.FunctionExpression || statement.type === AST_NODE_TYPES.ArrowFunctionExpression) return false;
+    statement = statement.parent;
+  }
+  return statement.parent === preceding.parent && statement.range[0] > preceding.range[1];
+}
+
+function ifGuardDominates(use: TSESTree.Node, branch: TSESTree.IfStatement, positive: boolean): boolean | null {
+  if (positive && nodeWithin(use, branch.consequent)) return true;
+  if (!positive && branch.alternate !== null && nodeWithin(use, branch.alternate)) return true;
+  const terminal = branch.consequent.type === AST_NODE_TYPES.BlockStatement ? branch.consequent.body.at(-1) : branch.consequent;
+  if (!positive && (terminal?.type === AST_NODE_TYPES.ThrowStatement || terminal?.type === AST_NODE_TYPES.ReturnStatement)) {
+    return followsInSameContainer(use, branch);
+  }
+  return null;
+}

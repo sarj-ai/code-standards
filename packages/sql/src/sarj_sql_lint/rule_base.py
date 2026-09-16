@@ -161,19 +161,7 @@ class RuleDocumentation:
         if any(not limitation.strip() for limitation in self.limitations):
             msg = "rule limitations must not be empty"
             raise ValueError(msg)
-        example_ids = tuple(example.example_id for example in self.examples)
-        if len(example_ids) != len(set(example_ids)):
-            msg = "rule example IDs must be unique"
-            raise ValueError(msg)
-        public_scenarios = {example.scenario for example in self.examples if example.public}
-        for scenario in public_scenarios:
-            pair = tuple(example for example in self.examples if example.public and example.scenario == scenario)
-            if len(pair) != _PUBLIC_PAIR_SIZE or {example.outcome for example in pair} != {
-                ExampleOutcome.MATCH,
-                ExampleOutcome.NO_MATCH,
-            }:
-                msg = f"published example scenario {scenario!r} must contain both matching and non-matching cases exactly once"
-                raise ValueError(msg)
+        _validate_rule_examples(self.examples)
 
 
 @dataclass(frozen=True, slots=True)
@@ -432,10 +420,6 @@ def is_suppressed(source_lines: list[str], line: int, code: str) -> bool:
     return code.upper() in codes
 
 
-def _blank(segment: str) -> str:  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
-    return _NON_NEWLINE.sub(" ", segment)
-
-
 def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
     source: str, start: int, quote: str, *, backslash_escapes: bool = False
 ) -> int:
@@ -452,24 +436,6 @@ def _scan_quoted(  # sarj-noqa: SARJ023 — scanner primitive stays above the ca
             return j + 1
         j += 1
     return n
-
-
-def _scan_block_comment(source: str, start: int) -> int:
-    depth = 1
-    cursor = start + 2
-    while cursor < len(source):
-        if source.startswith("/*", cursor):
-            depth += 1
-            cursor += 2
-            continue
-        if source.startswith("*/", cursor):
-            depth -= 1
-            cursor += 2
-            if depth == 0:
-                return cursor
-            continue
-        cursor += 1
-    return len(source)
 
 
 def _dollar_open_tag(  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
@@ -492,118 +458,60 @@ def _closing_depth(  # sarj-noqa: SARJ023 — scanner primitive stays above the 
 
 
 @lru_cache(maxsize=32)
-# ruff: ignore[too-many-locals] -- single-pass scanner state is kept local for speed and isolation.
 def _scan(source: str, *, preserve_quoted_identifiers: bool = False) -> _ScanResult:
     # Preserve offsets while recursively masking comments and literals inside executable dollar-quoted bodies.
     out: list[str] = []
-    open_tags: list[str] = []
-    open_tag_depths: dict[str, list[int]] = {}
-    spans: list[tuple[int, int]] = []
+    bodies = _DollarBodies()
     comments: list[SourceComment] = []
-    body_start = 0
     i = 0
     chunk_start = 0
     n = len(source)
 
     while i < n:
         ch = source[i]
-        template_close = next(
-            (closer for opener, closer in (("{#", "#}"), ("{%", "%}"), ("{{", "}}")) if source.startswith(opener, i)),
-            None,
-        )
-        if template_close is not None:
-            if i > chunk_start:
-                out.append(source[chunk_start:i])
-            close = source.find(template_close, i + 2)
-            end = n if close < 0 else close + len(template_close)
-            out.append(_blank(source[i:end]))
-            i = end
+        template_end = _template_end(source, i)
+        if template_end is not None:
+            _append_masked_chunk(out, source, chunk_start, i, template_end)
+            i = template_end
             chunk_start = i
             continue
-        if ch == "$" and open_tags:
-            depth = _closing_depth(source, i, open_tag_depths)
-            if depth is not None:
-                if i > chunk_start:
-                    out.append(source[chunk_start:i])
-                tag = open_tags[depth]
-                for removed_depth in range(len(open_tags) - 1, depth - 1, -1):
-                    removed = open_tags[removed_depth]
-                    depths = open_tag_depths[removed]
-                    depths.pop()
-                    if not depths:
-                        del open_tag_depths[removed]
-                del open_tags[depth:]
-                out.append(" " * len(tag))
-                i += len(tag)
-                chunk_start = i
-                if not open_tags:
-                    spans.append((body_start, i))
-                continue
+        closed = bodies.close(source, i) if ch == "$" else None
+        if closed is not None:
+            _append_masked_chunk(out, source, chunk_start, i, closed)
+            i = closed
+            chunk_start = i
+            continue
         pair = source[i : i + 2]
-        if pair == "--":
-            end = source.find("\n", i)
-            end = n if end == -1 else end
-            comments.append(
-                SourceComment(
-                    line=source.count("\n", 0, i) + 1,
-                    column=i - source.rfind("\n", 0, i),
-                    body=source[i + 2 : end].strip(),
-                    block=False,
-                )
-            )
-        elif pair == "/*":
-            end = _scan_block_comment(source, i)
-            body_end = end - 2 if end < n or source.endswith("*/") else end
-            comments.append(
-                SourceComment(
-                    line=source.count("\n", 0, i) + 1,
-                    column=i - source.rfind("\n", 0, i),
-                    body=source[i + 2 : body_end].strip(),
-                    block=True,
-                )
-            )
+        if pair in {"--", "/*"}:
+            end, comment = _scan_source_comment(source, i, pair)
+            comments.append(comment)
         elif ch == '"' and preserve_quoted_identifiers:
             i = _scan_quoted(source, i, ch)
             continue
         elif ch in {"'", '"'}:
-            escape_string = (
-                ch == "'"
-                and i > 0
-                and source[i - 1] in {"E", "e"}
-                and (i == 1 or _IDENT_CHAR_RE.match(source, i - 2) is None)
-            )
-            end = _scan_quoted(source, i, ch, backslash_escapes=escape_string)
+            end = _scan_literal(source, i, ch)
         elif ch == "$":
             tag = _dollar_open_tag(source, i)
             if tag is None:
                 i += 1
                 continue
-            if i > chunk_start:
-                out.append(source[chunk_start:i])
-            if not open_tags:
-                body_start = i
-            open_tag_depths.setdefault(tag, []).append(len(open_tags))
-            open_tags.append(tag)
-            out.append(" " * len(tag))
-            i += len(tag)
+            end = bodies.open(tag, i)
+            _append_masked_chunk(out, source, chunk_start, i, end)
+            i = end
             chunk_start = i
             continue
         else:
             i += 1
             continue
 
-        if i > chunk_start:
-            out.append(source[chunk_start:i])
-        out.append(_blank(source[i:end]))
+        _append_masked_chunk(out, source, chunk_start, i, end)
         i = end
         chunk_start = i
 
     if chunk_start < n:
         out.append(source[chunk_start:n])
 
-    if open_tags:
-        spans.append((body_start, n))
-    return _ScanResult("".join(out), spans, comments)
+    return _ScanResult("".join(out), bodies.finish(n), comments)
 
 
 def mask_sql(source: str) -> str:
@@ -727,3 +635,123 @@ class Rule(ABC):
     def public_examples(cls) -> tuple[RuleExample, ...]:
         spec = cls.native_spec()
         return () if spec is None else spec.public_examples
+
+
+def _validate_rule_examples(examples: tuple[RuleExample, ...]) -> None:
+    example_ids = tuple(example.example_id for example in examples)
+    if len(example_ids) != len(set(example_ids)):
+        msg = "rule example IDs must be unique"
+        raise ValueError(msg)
+    public_scenarios = {example.scenario for example in examples if example.public}
+    for scenario in public_scenarios:
+        pair = tuple(example for example in examples if example.public and example.scenario == scenario)
+        if len(pair) != _PUBLIC_PAIR_SIZE or {example.outcome for example in pair} != {
+            ExampleOutcome.MATCH,
+            ExampleOutcome.NO_MATCH,
+        }:
+            msg = f"published example scenario {scenario!r} must contain both matching and non-matching cases exactly once"
+            raise ValueError(msg)
+
+
+def _close_dollar_tags(open_tags: list[str], open_tag_depths: dict[str, list[int]], depth: int) -> None:
+    for removed_depth in range(len(open_tags) - 1, depth - 1, -1):
+        removed = open_tags[removed_depth]
+        depths = open_tag_depths[removed]
+        depths.pop()
+        if not depths:
+            del open_tag_depths[removed]
+    del open_tags[depth:]
+
+
+def _scan_source_comment(source: str, start: int, pair: str) -> tuple[int, SourceComment]:
+    if pair == "--":
+        end = source.find("\n", start)
+        end = len(source) if end == -1 else end
+        body_end = end
+    else:
+        end = _scan_block_comment(source, start)
+        body_end = end - 2 if end < len(source) or source.endswith("*/") else end
+    return end, SourceComment(
+        line=source.count("\n", 0, start) + 1,
+        column=start - source.rfind("\n", 0, start),
+        body=source[start + 2 : body_end].strip(),
+        block=pair == "/*",
+    )
+
+
+def _scan_block_comment(source: str, start: int) -> int:
+    depth = 1
+    cursor = start + 2
+    while cursor < len(source):
+        if source.startswith("/*", cursor):
+            depth += 1
+            cursor += 2
+            continue
+        if source.startswith("*/", cursor):
+            depth -= 1
+            cursor += 2
+            if depth == 0:
+                return cursor
+            continue
+        cursor += 1
+    return len(source)
+
+
+def _scan_literal(source: str, i: int, ch: str) -> int:
+    escape_string = (
+        ch == "'" and i > 0 and source[i - 1] in {"E", "e"} and (i == 1 or _IDENT_CHAR_RE.match(source, i - 2) is None)
+    )
+    return _scan_quoted(source, i, ch, backslash_escapes=escape_string)
+
+
+class _DollarBodies:
+    def __init__(self) -> None:
+        self.tags: list[str] = []
+        self.depths: dict[str, list[int]] = {}
+        self.spans: list[tuple[int, int]] = []
+        self.start: int = 0
+
+    def close(self, source: str, offset: int) -> int | None:
+        if not self.tags:
+            return None
+        depth = _closing_depth(source, offset, self.depths)
+        if depth is None:
+            return None
+        end = offset + len(self.tags[depth])
+        _close_dollar_tags(self.tags, self.depths, depth)
+        if not self.tags:
+            self.spans.append((self.start, end))
+        return end
+
+    def open(self, tag: str, offset: int) -> int:
+        if not self.tags:
+            self.start = offset
+        self.depths.setdefault(tag, []).append(len(self.tags))
+        self.tags.append(tag)
+        return offset + len(tag)
+
+    def finish(self, end: int) -> list[tuple[int, int]]:
+        if self.tags:
+            self.spans.append((self.start, end))
+        return self.spans
+
+
+def _append_masked_chunk(out: list[str], source: str, chunk_start: int, start: int, end: int) -> None:
+    if start > chunk_start:
+        out.append(source[chunk_start:start])
+    out.append(_blank(source[start:end]))
+
+
+def _blank(segment: str) -> str:  # sarj-noqa: SARJ023 — scanner primitive stays above the cached engine.
+    return _NON_NEWLINE.sub(" ", segment)
+
+
+def _template_end(source: str, offset: int) -> int | None:
+    closer = next(
+        (closer for opener, closer in (("{#", "#}"), ("{%", "%}"), ("{{", "}}")) if source.startswith(opener, offset)),
+        None,
+    )
+    if closer is None:
+        return None
+    close = source.find(closer, offset + 2)
+    return len(source) if close < 0 else close + len(closer)

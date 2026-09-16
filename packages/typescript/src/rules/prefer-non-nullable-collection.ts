@@ -117,7 +117,7 @@ function emptyArray(node: TSESTree.Expression): boolean {
 function sameAccess(
   node: TSESTree.Node,
   access: { readonly kind: "identifier"; readonly name: string } |
-    { readonly kind: "member"; readonly object: string; readonly property: string },
+  { readonly kind: "member"; readonly object: string; readonly property: string },
 ): boolean {
   if (access.kind === "identifier") {
     return node.type === AST_NODE_TYPES.Identifier && node.name === access.name;
@@ -170,13 +170,13 @@ function hasEquivalentLeadingGuard(
     first.consequent.type === AST_NODE_TYPES.ReturnStatement ||
     first.consequent.type === AST_NODE_TYPES.ThrowStatement ||
     first.consequent.type === AST_NODE_TYPES.BlockStatement &&
-      first.consequent.body.length === 1 &&
-      (first.consequent.body[0]?.type === AST_NODE_TYPES.ReturnStatement ||
-        first.consequent.body[0]?.type === AST_NODE_TYPES.ThrowStatement);
+    first.consequent.body.length === 1 &&
+    (first.consequent.body[0]?.type === AST_NODE_TYPES.ReturnStatement ||
+      first.consequent.body[0]?.type === AST_NODE_TYPES.ThrowStatement);
   if (!terminating) return false;
   if (contains(first.consequent, visitorKeys, (node) => sameAccess(node, access))) return false;
   if (first.test.type === AST_NODE_TYPES.UnaryExpression && first.test.operator === "!" &&
-      optionalMemberLengthOf(first.test.argument, access)) return true;
+    optionalMemberLengthOf(first.test.argument, access)) return true;
   return (
     first.test.type === AST_NODE_TYPES.LogicalExpression && first.test.operator === "||" &&
     isNullGuard(first.test.left, access) && isEmptyGuard(first.test.right, access)
@@ -337,46 +337,16 @@ export default createRule<Options, MessageIds>({
     }
 
     function checkFunction(fn: FunctionNode): void {
-      for (const rawParameter of fn.params) {
+      function checkParameter(rawParameter: TSESTree.Parameter): void {
         const parameter = rawParameter.type === AST_NODE_TYPES.AssignmentPattern
           ? rawParameter.left
           : rawParameter;
         if (parameter.type === AST_NODE_TYPES.ObjectPattern) {
           const properties = propertiesFor(parameter.typeAnnotation?.typeAnnotation);
-          for (const property of properties) {
-            const bindingProperty = parameter.properties.find(
-              (entry): entry is TSESTree.Property =>
-                entry.type === AST_NODE_TYPES.Property &&
-                !entry.computed &&
-                entry.key.type === AST_NODE_TYPES.Identifier &&
-                entry.key.name === property.name,
-            );
-            if (bindingProperty === undefined) continue;
-            const value = bindingProperty.value;
-            const binding = value.type === AST_NODE_TYPES.AssignmentPattern ? value.left : value;
-            if (binding.type !== AST_NODE_TYPES.Identifier) {
-              record(property, false);
-              continue;
-            }
-            if (
-              value.type === AST_NODE_TYPES.AssignmentPattern &&
-              emptyArray(value.right) &&
-              property.acceptsUndefined &&
-              !property.acceptsNull
-            ) {
-              record(property, true);
-              continue;
-            }
-            const access = { kind: "identifier" as const, name: binding.name };
-            record(
-              property,
-              hasEquivalentLeadingGuard(fn, access, context.sourceCode.visitorKeys) ||
-                identifierIsOnlyCoalesced(context, binding, fn),
-            );
-          }
-          continue;
+          checkDestructuredProperties(parameter, properties);
+          return;
         }
-        if (parameter.type !== AST_NODE_TYPES.Identifier) continue;
+        if (parameter.type !== AST_NODE_TYPES.Identifier) return;
         const properties = propertiesFor(parameter.typeAnnotation?.typeAnnotation);
         for (const property of properties) {
           const access = {
@@ -387,10 +357,46 @@ export default createRule<Options, MessageIds>({
           record(
             property,
             hasEquivalentLeadingGuard(fn, access, context.sourceCode.visitorKeys) ||
-              memberIsOnlyCoalesced(context, parameter, property.name, fn),
+            memberIsOnlyCoalesced(context, parameter, property.name, fn),
           );
         }
       }
+
+      function checkDestructuredProperties(parameter: TSESTree.ObjectPattern, properties: readonly NullableProperty[]): void {
+        for (const property of properties) {
+          const bindingProperty = parameter.properties.find(
+            (entry): entry is TSESTree.Property =>
+              entry.type === AST_NODE_TYPES.Property &&
+              !entry.computed &&
+              entry.key.type === AST_NODE_TYPES.Identifier &&
+              entry.key.name === property.name,
+          );
+          if (bindingProperty === undefined) continue;
+          const value = bindingProperty.value;
+          const binding = value.type === AST_NODE_TYPES.AssignmentPattern ? value.left : value;
+          if (binding.type !== AST_NODE_TYPES.Identifier) {
+            record(property, false);
+            continue;
+          }
+          if (
+            value.type === AST_NODE_TYPES.AssignmentPattern &&
+            emptyArray(value.right) &&
+            property.acceptsUndefined &&
+            !property.acceptsNull
+          ) {
+            record(property, true);
+            continue;
+          }
+          const access = { kind: "identifier" as const, name: binding.name };
+          record(
+            property,
+            hasEquivalentLeadingGuard(fn, access, context.sourceCode.visitorKeys) ||
+            identifierIsOnlyCoalesced(context, binding, fn),
+          );
+        }
+      }
+
+      for (const rawParameter of fn.params) { checkParameter(rawParameter); }
     }
 
     return {

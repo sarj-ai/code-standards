@@ -216,10 +216,10 @@ function localParseReturnCandidates(
       parsed.method === "parse"
         ? identifier
         : parent.type === AST_NODE_TYPES.MemberExpression &&
-            parent.object === identifier &&
-            !parent.computed &&
-            parent.property.type === AST_NODE_TYPES.Identifier &&
-            parent.property.name === "data"
+          parent.object === identifier &&
+          !parent.computed &&
+          parent.property.type === AST_NODE_TYPES.Identifier &&
+          parent.property.name === "data"
           ? parent
           : null;
     if (output === null) continue;
@@ -382,20 +382,20 @@ function reportCandidates(
     readonly schemaSymbol: ts.Symbol;
   }> = [];
   const reported = new Set<ts.Symbol>();
-  for (const candidate of candidates) {
+  function collectEligibleCandidate(candidate: ParsedReturnCandidate): void {
     const tsSchema = services.esTreeNodeToTSNodeMap.get(candidate.schema);
     const schemaSymbol = checker.getSymbolAtLocation(tsSchema);
-    if (schemaSymbol === undefined) continue;
+    if (schemaSymbol === undefined) return;
     const schema = schemaSymbols.get(schemaSymbol);
-    if (schema === undefined) continue;
+    if (schema === undefined) return;
     const tsReference = services.esTreeNodeToTSNodeMap.get(candidate.typeReference);
     const contract = checker.getTypeAtLocation(tsReference);
     const contractSymbol = contract.aliasSymbol ?? contract.getSymbol();
-    if (contractSymbol === undefined) continue;
+    if (contractSymbol === undefined) return;
     const declaration = handWrittenObjectDeclaration(contractSymbol);
-    if (declaration === null || declaration.getSourceFile().isDeclarationFile) continue;
+    if (declaration === null || declaration.getSourceFile().isDeclarationFile) return;
     const source = declaration.getSourceFile();
-    if (isGeneratedFile(source.fileName, source.text)) continue;
+    if (isGeneratedFile(source.fileName, source.text)) return;
     const tsOutput = services.esTreeNodeToTSNodeMap.get(candidate.output);
     const parsed = checker.getTypeAtLocation(tsOutput);
     // A `z.ZodType<Contract>` constraint deliberately makes the TypeScript
@@ -403,7 +403,7 @@ function reportCandidates(
     const constrained =
       constrainedTypeNames.has(candidate.typeName) ||
       (parsed.aliasSymbol ?? parsed.getSymbol()) === contractSymbol;
-    if (constrained) continue;
+    if (constrained) return;
     if (declaration.getSourceFile() === tsSchema.getSourceFile()) {
       const estreeDeclaration = services.tsNodeToESTreeNodeMap.get(declaration);
       if (
@@ -419,7 +419,7 @@ function reportCandidates(
           zodNamespaces,
         })
       ) {
-        continue;
+        return;
       }
     }
     if (
@@ -429,10 +429,12 @@ function reportCandidates(
         checker.getNonNullableType(contract),
       )
     ) {
-      continue;
+      return;
     }
     eligible.push({ candidate, contractSymbol, schema, schemaSymbol });
   }
+
+  for (const candidate of candidates) { collectEligibleCandidate(candidate); }
   const schemasByContract = new Map<ts.Symbol, Set<ts.Symbol>>();
   for (const { contractSymbol, schemaSymbol } of eligible) {
     const contractSchemas = schemasByContract.get(contractSymbol) ?? new Set<ts.Symbol>();
@@ -586,7 +588,7 @@ export default createRule<Options, MessageIds>({
           typeName.type === AST_NODE_TYPES.Identifier
             ? typeName.name
             : typeName.type === AST_NODE_TYPES.TSQualifiedName &&
-                typeName.right.type === AST_NODE_TYPES.Identifier
+              typeName.right.type === AST_NODE_TYPES.Identifier
               ? typeName.right.name
               : null;
         if (name === null || !isPreferZodInferTypeConstraintName(name)) return;

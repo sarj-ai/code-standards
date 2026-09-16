@@ -45,6 +45,7 @@
       "no-docstring-type-restatement",
       "no-dunder-all",
       "no-duplicate-dunder-all-entry",
+      "no-excessive-cognitive-complexity",
       "no-fastapi-on-event",
       "no-file-level-escape-hatch-suppression",
       "no-first-party-private-import",
@@ -170,6 +171,7 @@
       "no-duplicate-lifecycle-refresh-listeners",
       "no-dynamic-sql",
       "no-enum",
+      "no-excessive-cognitive-complexity",
       "no-fat-try-blocks",
       "no-generic-single-export-module",
       "no-hand-rolled-sleep",
@@ -371,7 +373,8 @@
       "SARJ440",
       "SARJ441",
       "SARJ442",
-      "SARJ443"
+      "SARJ443",
+      "SARJ444"
     ],
     "sql": [
       "SARJ101",

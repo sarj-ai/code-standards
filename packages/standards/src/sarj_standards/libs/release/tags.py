@@ -19,7 +19,7 @@ from sarj_standards.libs.release.process import ProcessFailureError, ProcessRunn
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from sarj_standards.libs.release.registry import PublicationChecker
+    from sarj_standards.libs.release.registry import PublicationChecker, RegistryRequirement
 
 
 ManifestFormat = Literal["json", "toml"]
@@ -302,7 +302,6 @@ def create_release_tags(
 ) -> TagSyncResult:
     from sarj_standards.libs.release.registry import (  # ruff: ignore[import-outside-top-level] -- avoid the tags/registry import cycle
         publication_exists,
-        require_publication,
         target_requirements,
     )
 
@@ -340,15 +339,7 @@ def create_release_tags(
             existing.append(tag)
             continue
         requirements = target_requirements(resolved, target)
-        for attempt in range(attempts):
-            try:
-                for requirement in requirements:
-                    require_publication(requirement, checker=checker)
-                break
-            except OSError, ValueError:
-                if attempt + 1 == attempts:
-                    raise
-                _ = sleeper(delay_seconds)
+        _wait_for_publications(requirements, checker, attempts=attempts, delay_seconds=delay_seconds, sleeper=sleeper)
         if not _require_local_tag_commit(resolved, tag, resolved_commit, runner=runner):
             version = tag.removeprefix(f"{target}-v")
             runner(
@@ -370,6 +361,27 @@ def create_release_tags(
         runner(("git", "push", "origin", f"refs/tags/{tag}"), cwd=resolved)
         created.append(tag)
     return TagSyncResult(tuple(created), tuple(existing))
+
+
+def _wait_for_publications(
+    requirements: tuple[RegistryRequirement, ...],
+    checker: PublicationChecker,
+    *,
+    attempts: int,
+    delay_seconds: float,
+    sleeper: Callable[[float], object],
+) -> None:
+    from sarj_standards.libs.release.registry import require_publication  # ruff: ignore[import-outside-top-level] -- avoid tags/registry import cycle.
+
+    for attempt in range(attempts):
+        try:
+            for requirement in requirements:
+                require_publication(requirement, checker=checker)
+            break
+        except OSError, ValueError:
+            if attempt + 1 == attempts:
+                raise
+            _ = sleeper(delay_seconds)
 
 
 def _require_remote_tag_commit(

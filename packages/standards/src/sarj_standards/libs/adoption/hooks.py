@@ -341,13 +341,7 @@ def runs_direct_repo_standards_check(root: Path) -> bool:
             )
         except OSError, UnicodeError, yaml.YAMLError:
             parsed = None
-        if any(
-            _runs_direct_repo_standards_check(hook.get("entry"))
-            for raw_repository in manifest.list_field(manifest.as_table(parsed), "repos")
-            for raw_hook in manifest.list_field(manifest.as_table(raw_repository), "hooks")
-            if (hook := manifest.as_table(raw_hook)).get("id") == "repo-standards-check"
-            or hook.get("entry") is not None
-        ):
+        if _precommit_has_direct_repository_check(parsed):
             return True
     path = lefthook_config(root)
     if path is None:
@@ -358,6 +352,15 @@ def runs_direct_repo_standards_check(root: Path) -> bool:
         return False
     pre_commit = manifest.as_table(manifest.as_table(parsed).get("pre-commit"))
     return any(_runs_direct_repo_standards_check(value) for value in _lefthook_run_values(pre_commit))
+
+
+def _precommit_has_direct_repository_check(parsed: object) -> bool:
+    return any(
+        _runs_direct_repo_standards_check(hook.get("entry"))
+        for raw_repository in manifest.list_field(manifest.as_table(parsed), "repos")
+        for raw_hook in manifest.list_field(manifest.as_table(raw_repository), "hooks")
+        if (hook := manifest.as_table(raw_hook)).get("id") == "repo-standards-check" or hook.get("entry") is not None
+    )
 
 
 def lefthook_runs_staged_check(root: Path) -> bool:
@@ -398,7 +401,7 @@ def lefthook_runs_commit_message_check(root: Path, *, runner_prefix: str | None 
     return sum(values.count(command) for command in commands) == 1
 
 
-def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- parser-safe migration keeps semantic and textual state explicit.
+def wire_lefthook_commit_message_check(
     root: Path,
     *,
     contents: str | None = None,
@@ -416,49 +419,7 @@ def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- pars
         msg = f"cannot safely wire {path.name}: expected valid YAML"
         raise ValueError(msg) from exc
     if "commit-msg" in document:
-        commit_message = manifest.as_table(document.get("commit-msg"))
-        if "commands" in commit_message:
-            layout = "commands"
-            entries = manifest.as_table(commit_message.get("commands"))
-        elif "jobs" in commit_message:
-            layout = "jobs"
-            entries = {
-                str(job.get("name")): job
-                for raw_job in manifest.list_field(commit_message, "jobs")
-                if (job := manifest.as_table(raw_job)).get("name") is not None
-            }
-        else:
-            msg = f"cannot safely wire {path.name}: expected block-style commit-msg commands or jobs"
-            raise ValueError(msg)
-        values = tuple(
-            value for value in _lefthook_run_values_from_entries(entries) if _runs_commit_message_check(value)
-        )
-        if len(values) > 1:
-            msg = f"cannot safely wire {path.name}: multiple commit-message Standards commands are active"
-            raise ValueError(msg)
-        if values:
-            replacement = _replace_lefthook_run(
-                text,
-                old=values[0],
-                new=_canonical_commit_message_command(root, runner_prefix=runner_prefix),
-            )
-            if replacement is None:
-                msg = f"cannot safely wire {path.name}: commit-message Standards command is not a scalar run value"
-                raise ValueError(msg)
-            return LefthookWrite(path, replacement)
-        block_match, section_end = _locate_block(path, text, layout, hook_name="commit-msg")
-        name = (
-            "repo-standards-commit-message"
-            if "repo-standards-commit-message" not in entries
-            else "repo-standards-commit-message-check"
-        )
-        command = _canonical_commit_message_command(root, runner_prefix=runner_prefix)
-        updated = (
-            _insert_staged_command(path, text, block_match, section_end, name, run=command)
-            if layout == "commands"
-            else _insert_staged_job(path, text, block_match, section_end, name, run=command)
-        )
-        return LefthookWrite(path, updated)
+        return _wire_existing_commit_message(root, path, text, document, runner_prefix=runner_prefix)
     separator = "" if not text or text.endswith("\n") else "\n"
     addition = (
         "\ncommit-msg:\n"
@@ -467,6 +428,52 @@ def wire_lefthook_commit_message_check(  # ruff: ignore[too-many-locals] -- pars
         f"      run: {_canonical_commit_message_command(root, runner_prefix=runner_prefix)}\n"
     )
     return LefthookWrite(path, f"{text}{separator}{addition}")
+
+
+def _wire_existing_commit_message(
+    root: Path, path: Path, text: str, document: Mapping[str, object], *, runner_prefix: str | None
+) -> LefthookWrite:
+    commit_message = manifest.as_table(document.get("commit-msg"))
+    if "commands" in commit_message:
+        layout = "commands"
+        entries = manifest.as_table(commit_message.get("commands"))
+    elif "jobs" in commit_message:
+        layout = "jobs"
+        entries = {
+            str(job.get("name")): job
+            for raw_job in manifest.list_field(commit_message, "jobs")
+            if (job := manifest.as_table(raw_job)).get("name") is not None
+        }
+    else:
+        msg = f"cannot safely wire {path.name}: expected block-style commit-msg commands or jobs"
+        raise ValueError(msg)
+    values = tuple(value for value in _lefthook_run_values_from_entries(entries) if _runs_commit_message_check(value))
+    if len(values) > 1:
+        msg = f"cannot safely wire {path.name}: multiple commit-message Standards commands are active"
+        raise ValueError(msg)
+    if values:
+        replacement = _replace_lefthook_run(
+            text,
+            old=values[0],
+            new=_canonical_commit_message_command(root, runner_prefix=runner_prefix),
+        )
+        if replacement is None:
+            msg = f"cannot safely wire {path.name}: commit-message Standards command is not a scalar run value"
+            raise ValueError(msg)
+        return LefthookWrite(path, replacement)
+    block_match, section_end = _locate_block(path, text, layout, hook_name="commit-msg")
+    name = (
+        "repo-standards-commit-message"
+        if "repo-standards-commit-message" not in entries
+        else "repo-standards-commit-message-check"
+    )
+    command = _canonical_commit_message_command(root, runner_prefix=runner_prefix)
+    updated = (
+        _insert_staged_command(path, text, block_match, section_end, name, run=command)
+        if layout == "commands"
+        else _insert_staged_job(path, text, block_match, section_end, name, run=command)
+    )
+    return LefthookWrite(path, updated)
 
 
 def wire_lefthook_staged_check(root: Path) -> LefthookWrite:

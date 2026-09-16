@@ -46,70 +46,50 @@ def strip_sql_noise(
     mask_double_quotes: bool = True,
 ) -> str:
     out = list(text)
-    n = len(text)
     i = 0
-    while i < n:
-        ch = text[i]
-        if ch == '"' and not mask_double_quotes:
+    while i < len(text):
+        if text[i] == '"' and not mask_double_quotes:
+            i = _quoted_sql_end(text, i)
+            continue
+        end = _sql_noise_end(text, i, mask_dollar_quotes=mask_dollar_quotes)
+        if end is None:
             i += 1
-            while i < n:
-                if text[i] == '"':
-                    i += 1
-                    if i < n and text[i] == '"':
-                        i += 1
-                        continue
-                    break
-                i += 1
             continue
-        if ch in {"'", '"'}:
-            out[i] = " "
+        for offset in range(i, end):
+            if text[offset] != "\n":
+                out[offset] = " "
+        i = end
+    return "".join(out)
+
+
+def _quoted_sql_end(text: str, start: int) -> int:
+    quote = text[start]
+    i = start + 1
+    while i < len(text):
+        if text[i] != quote:
             i += 1
-            while i < n:
-                c = text[i]
-                if c == ch:
-                    if i + 1 < n and text[i + 1] == ch:
-                        out[i] = out[i + 1] = " "
-                        i += 2
-                        continue
-                    out[i] = " "
-                    i += 1
-                    break
-                if c != "\n":
-                    out[i] = " "
-                i += 1
-            continue
-        if ch == "-" and i + 1 < n and text[i + 1] == "-":
-            while i < n and text[i] != "\n":
-                out[i] = " "
-                i += 1
-            continue
-        if ch == "#" and (i == 0 or text[i - 1].isspace()):
-            while i < n and text[i] != "\n":
-                out[i] = " "
-                i += 1
-            continue
-        if ch == "/" and i + 1 < n and text[i + 1] == "*":
-            out[i] = out[i + 1] = " "
-            i += 2
-            while i < n and not (text[i] == "*" and i + 1 < n and text[i + 1] == "/"):
-                if text[i] != "\n":
-                    out[i] = " "
-                i += 1
-            if i < n:
-                out[i] = " "
-                i += 1
-                if i < n:
-                    out[i] = " "
-                    i += 1
-            continue
-        if mask_dollar_quotes and ch == "$" and (quote_end := _dollar_quote_end(text, i)) is not None:
-            while i < quote_end:
-                if text[i] != "\n":
-                    out[i] = " "
-                i += 1
             continue
         i += 1
-    return "".join(out)
+        if i < len(text) and text[i] == quote:
+            i += 1
+            continue
+        break
+    return i
+
+
+def _sql_noise_end(text: str, start: int, *, mask_dollar_quotes: bool) -> int | None:
+    ch = text[start]
+    if ch in {"'", '"'}:
+        return _quoted_sql_end(text, start)
+    if text.startswith("--", start) or (ch == "#" and (start == 0 or text[start - 1].isspace())):
+        end = text.find("\n", start)
+        return len(text) if end == -1 else end
+    if text.startswith("/*", start):
+        end = text.find("*/", start + 2)
+        return len(text) if end == -1 else end + 2
+    if mask_dollar_quotes and ch == "$":
+        return _dollar_quote_end(text, start)
+    return None
 
 
 def _dollar_quote_end(text: str, start: int) -> int | None:

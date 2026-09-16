@@ -223,19 +223,24 @@ def _mask_cross_dialect_noncode(masked: str, *, preserve_hash_operator: bool) ->
         if char not in {"`", "["}:
             cursor += 1
             continue
-        closer = "`" if char == "`" else "]"
-        index = cursor + 1
-        while index < len(chars):
-            if chars[index] != closer:
-                index += 1
-                continue
-            if index + 1 < len(chars) and chars[index + 1] == closer:
-                index += 2
-                continue
-            index += 1
-            break
+        index = _cross_dialect_identifier_end(chars, cursor, char)
         for blank_index in range(cursor, index):
             if chars[blank_index] != "\n":
                 chars[blank_index] = " "
         cursor = index
     return "".join(chars)
+
+
+def _cross_dialect_identifier_end(chars: list[str], cursor: int, char: str) -> int:
+    closer = "`" if char == "`" else "]"
+    index = cursor + 1
+    while index < len(chars):
+        if chars[index] != closer:
+            index += 1
+            continue
+        if index + 1 < len(chars) and chars[index + 1] == closer:
+            index += 2
+            continue
+        index += 1
+        break
+    return index

@@ -1010,15 +1010,8 @@ def check_paths(
     enabled_codes = None if rule_ids is None else frozenset(REGISTRY[rule_id].code for rule_id in rule_ids)
     deployment_boundary_enabled = rule_ids is None or "declarative-deployment-boundary" in rule_ids
     findings: list[Finding] = []
-    for raw in paths:
-        path = Path(raw)
-        try:
-            source = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        relative = _relative(path.resolve(), base)
-        if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
-            continue
+
+    def collect_path_findings(path: Path, relative: str, source: str) -> list[Finding]:
         path_findings: list[Finding] = []
         if enabled_codes is None or "SARJ302" in enabled_codes:
             path_findings.extend(_artifact_findings(path, relative, source, durable_patterns))
@@ -1045,12 +1038,19 @@ def check_paths(
             path_findings.extend(_claude_settings_secret_permission_findings(path, relative, source))
         if enabled_codes is None or enabled_codes.intersection({"SARJ300", "SARJ301", "SARJ306"}):
             path_findings.extend(_comment_findings(path, source))
-        findings.extend(
-            finding
-            for finding in path_findings
-            if enabled_codes is None or finding.code in enabled_codes
-            if not (path.suffix.lower() in {".md", ".mdx"} and _markdown_suppresses_finding(source, finding))
-        )
+        return path_findings
+
+    for raw in paths:
+        path = Path(raw)
+        try:
+            source = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        relative = _relative(path.resolve(), base)
+        if any(fnmatch(relative, pattern) for pattern in excluded_patterns):
+            continue
+        path_findings = collect_path_findings(path, relative, source)
+        findings.extend(_selected_text_findings(path_findings, path, source, enabled_codes))
     return sorted(findings, key=lambda item: (str(item.path), item.line, item.code))
 
 
@@ -1242,13 +1242,7 @@ def _workflow_run_embeds_program(source: str) -> bool:
                 control_flow_openers.append(segment.tokens[0])
             if segment.tokens and segment.tokens[0] in _WORKFLOW_SECONDARY_CONDITIONS:
                 has_secondary_condition = True
-            argv = _command_argv(segment.tokens)
-            if not argv:
-                continue
-            executable = _shell_command(argv[0])
-            if _shell_function_declaration(segment.tokens):
-                return True
-            if executable in _INLINE_INTERPRETERS and _interpreter_embeds_source(executable, argv):
+            if _segment_embeds_program(segment.tokens):
                 return True
     if any(opener != "if" for opener in control_flow_openers):
         return True
@@ -1290,11 +1284,21 @@ def _shell_without_quoted_content(source: str) -> str:
     return "".join(masked)
 
 
+def _segment_embeds_program(tokens: Sequence[str]) -> bool:
+    argv = _command_argv(tokens)
+    if not argv:
+        return False
+    executable = _shell_command(argv[0])
+    if _shell_function_declaration(tokens):
+        return True
+    return bool(executable in _INLINE_INTERPRETERS and _interpreter_embeds_source(executable, argv))
+
+
 def _interpreter_embeds_source(executable: str, argv: Sequence[str]) -> bool:
     flags = _INLINE_INTERPRETER_FLAGS[executable]
     short_source_options = _INLINE_INTERPRETER_SHORT_SOURCE_OPTIONS[executable]
     for argument in argv[1:]:
-        if argument in flags or any(argument.startswith(f"{flag}=") for flag in flags if flag.startswith("--")):
+        if _is_inline_source_flag(argument, flags):
             return True
         if argument in {"<<", "<<-"}:
             return True
@@ -1335,11 +1339,7 @@ def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
     while index < len(line):
         character = line[index]
         if quote is not None:
-            if character == quote:
-                quote = None
-            elif character == "\\" and quote == '"' and index + 1 < len(line):
-                index += 1
-            index += 1
+            index, quote = _skip_quoted_shell_character(line, index, quote)
             continue
         if character in {"'", '"'}:
             quote = character
@@ -1354,51 +1354,10 @@ def _shell_heredoc_specs(line: str) -> list[_HeredocSpec]:
             index += 1
             continue
 
-        cursor = index + 2
-        strip_tabs = cursor < len(line) and line[cursor] == "-"
-        if strip_tabs:
-            cursor += 1
-        while cursor < len(line) and line[cursor] in {" ", "\t"}:
-            cursor += 1
-
-        delimiter: list[str] = []
-        word_started = False
-        word_quote: str | None = None
-        literal = False
-        while cursor < len(line):
-            character = line[cursor]
-            if word_quote is not None:
-                word_started = True
-                if character == word_quote:
-                    word_quote = None
-                elif character == "\\" and word_quote == '"' and cursor + 1 < len(line):
-                    cursor += 1
-                    delimiter.append(line[cursor])
-                else:
-                    delimiter.append(character)
-                cursor += 1
-                continue
-            if character in {"'", '"'}:
-                word_started = True
-                word_quote = character
-                literal = True
-                cursor += 1
-                continue
-            if character == "\\" and cursor + 1 < len(line):
-                word_started = True
-                literal = True
-                cursor += 1
-                delimiter.append(line[cursor])
-                cursor += 1
-                continue
-            if character.isspace() or character in _HEREDOC_WORD_BREAKS:
-                break
-            word_started = True
-            delimiter.append(character)
-            cursor += 1
-
-        if word_started and word_quote is None:
-            specs.append(_HeredocSpec("".join(delimiter), strip_tabs, literal))
+        cursor, strip_tabs = _heredoc_word_start(line, index)
+        cursor, spec = _read_heredoc_word(line, cursor, strip_tabs=strip_tabs)
+        if spec is not None:
+            specs.append(spec)
         index = max(cursor, index + 2)
     return specs
 
@@ -1482,15 +1441,7 @@ def _workflow_step_nodes(source: str) -> list[MappingNode]:
             continue
         children = sequence.value  # pyright: ignore[reportAny]
         steps.extend(step for step in children if isinstance(step, MappingNode))
-    unique: list[MappingNode] = []
-    seen: set[int] = set()
-    for step in steps:
-        identity = id(step)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        unique.append(step)
-    return unique
+    return _unique_workflow_steps(steps)
 
 
 def _workflow_steps(source: str) -> list[_ShellLogicalLine]:
@@ -1653,9 +1604,7 @@ def _command_argv(tokens: Sequence[str]) -> list[str]:
     while argv and _shell_assignment_token(argv[0]):
         argv.pop(0)
     if argv and _shell_command(argv[0].lstrip("@+-")) == "env":
-        argv = _drop_env_prefix(argv[1:])
-        while argv and _shell_assignment_token(argv[0]):
-            argv.pop(0)
+        argv = _drop_environment_command(argv)
     if argv and _shell_command(argv[0].lstrip("@+-")) == "sudo":
         argv = _drop_leading_cli_options(
             argv[1:], frozenset({"--chdir", "--group", "--host", "--prompt", "--user", "-C", "-g", "-h", "-p", "-u"})
@@ -1667,6 +1616,13 @@ def _command_argv(tokens: Sequence[str]) -> list[str]:
 
 def _shell_assignment_token(token: str) -> bool:
     return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", token) is not None
+
+
+def _drop_environment_command(argv: list[str]) -> list[str]:
+    argv = _drop_env_prefix(argv[1:])
+    while argv and _shell_assignment_token(argv[0]):
+        argv.pop(0)
+    return argv
 
 
 def _drop_env_prefix(arguments: Sequence[str]) -> list[str]:
@@ -1825,6 +1781,17 @@ def _relative(path: Path, root: Path) -> str:
         return path.name
 
 
+def _selected_text_findings(
+    path_findings: list[Finding], path: Path, source: str, enabled_codes: frozenset[str] | None
+) -> list[Finding]:
+    return [
+        finding
+        for finding in path_findings
+        if enabled_codes is None or finding.code in enabled_codes
+        if not (path.suffix.lower() in {".md", ".mdx"} and _markdown_suppresses_finding(source, finding))
+    ]
+
+
 def _markdown_suppresses_finding(source: str, finding: Finding) -> bool:
     if finding.code == "SARJ302":
         prose = "\n".join(_markdown_prose_lines(source))
@@ -1887,22 +1854,7 @@ def _shell_iac_source_findings(path: Path, relative: str, source: str) -> list[F
                 tainted.add(assignment)
             continue
 
-        direct_assert = False
-        pipeline_iac = False
-        for separator, segment in _shell_segments(tokens):
-            if separator != "|":
-                pipeline_iac = False
-            command = _shell_command(segment[0]) if segment else ""
-            if command in _SHELL_SOURCE_ASSERT_COMMANDS and (
-                _shell_assertion_reads_iac(segment, path_names) or pipeline_iac
-            ):
-                direct_assert = True
-            if command in _SHELL_ASSERT_TOKENS and any(_shell_uses_variable(segment, name) for name in tainted):
-                direct_assert = True
-            if command in _SHELL_ASSERT_TOKENS and _shell_embeds_iac_read(segment, path_names):
-                direct_assert = True
-            pipeline_iac = _shell_reads_iac(segment, path_names) or pipeline_iac
-
+        direct_assert = _shell_asserts_source(tokens, path_names, tainted)
         if direct_assert:
             findings.append(
                 Finding(
@@ -1998,6 +1950,26 @@ def _iac_source_token(token: str) -> bool:
     return token.strip("'\"),;:[]{}>").casefold().endswith(_IAC_SOURCE_SUFFIXES)
 
 
+def _shell_asserts_source(tokens: list[str], path_names: set[str], tainted: set[str]) -> bool:
+    direct_assert = False
+    pipeline_iac = False
+    for separator, segment in _shell_segments(tokens):
+        if separator != "|":
+            pipeline_iac = False
+        command = _shell_command(segment[0]) if segment else ""
+        if command in _SHELL_SOURCE_ASSERT_COMMANDS and (
+            _shell_assertion_reads_iac(segment, path_names) or pipeline_iac
+        ):
+            direct_assert = True
+        if command in _SHELL_ASSERT_TOKENS and any(_shell_uses_variable(segment, name) for name in tainted):
+            direct_assert = True
+        if command in _SHELL_ASSERT_TOKENS and _shell_embeds_iac_read(segment, path_names):
+            direct_assert = True
+        pipeline_iac = _shell_reads_iac(segment, path_names) or pipeline_iac
+
+    return direct_assert
+
+
 def _shell_assertion_reads_iac(tokens: Sequence[str], path_names: set[str]) -> bool:
     if not tokens:
         return False
@@ -2040,14 +2012,8 @@ def _shell_operands(tokens: Sequence[str], value_options: frozenset[str], patter
             consume_value = not separator
             continue
         if options and item.startswith("-") and item != "-":
-            if any(
-                item.startswith(prefix) and len(item) > len(prefix)
-                for prefix in value_options
-                if prefix.startswith("-")
-            ):
-                explicit_pattern = explicit_pattern or any(
-                    item.startswith(prefix) and len(item) > len(prefix) for prefix in pattern_options
-                )
+            if _has_attached_option_value(item, value_options):
+                explicit_pattern = explicit_pattern or _has_attached_pattern_value(item, pattern_options)
             continue
         operands.append(item)
     return _ShellOperands(operands, explicit_pattern)
@@ -2140,37 +2106,7 @@ def _artifact_findings(
                 "Execution artifact — move durable knowledge into README/docs/ADR and delete the execution brief or report.",
             )
         ]
-    headings = [
-        number for number, line in enumerate(source_lines, start=1) if _EPHEMERAL_HEADING_RE.match(line.strip())
-    ]
-    has_change_diary = any(_STRONG_DIARY_HEADING_RE.match(line.strip()) for line in source_lines)
-    if len(headings) >= _MIN_EPHEMERAL_HEADINGS or has_change_diary:
-        return [
-            Finding(
-                path,
-                headings[0],
-                "SARJ302",
-                "Chronological execution log — keep current usage/design facts; remove passes, change diary, and session narration.",
-            )
-        ]
-    if _large_artifact(prose, path, source_lines):
-        line = next(
-            (
-                number
-                for number, source_line in enumerate(source_lines, start=1)
-                if _LIFECYCLE_HEADING_RE.match(source_line.strip())
-            ),
-            1,
-        )
-        return [
-            Finding(
-                path,
-                line,
-                "SARJ302",
-                "Point-in-time audit or execution report — move durable facts to maintained documentation and track findings in the issue system.",
-            )
-        ]
-    return []
+    return _artifact_content_findings(path, prose, source_lines)
 
 
 def _markdown_command_argument_findings(path: Path, relative: str, source: str) -> list[Finding]:
@@ -2195,26 +2131,7 @@ def _markdown_command_argument_findings(path: Path, relative: str, source: str) 
         if marker == fence_marker and marker_length >= fence_length and not stripped[marker_length:].strip():
             fence = None
             continue
-        executable_line = line
-        if language in _SHELL_LANGUAGE_NAMES:
-            if pending:
-                current = pending[0]
-                if (line.lstrip("\t") if current.strip_tabs else line) == current.delimiter:
-                    pending.pop(0)
-                    continue
-                if current.literal:
-                    continue
-            else:
-                pending.extend(_shell_heredoc_specs(line))
-                executable_line = _shell_without_comments(line)
-        if language not in _QUERY_LANGUAGE_NAMES | _SHELL_LANGUAGE_NAMES or not _COMMAND_ARGUMENT_RE.search(
-            executable_line
-        ):
-            continue
-        unsafe = language in _QUERY_LANGUAGE_NAMES or bool(_QUERY_TOKEN_RE.search(executable_line))
-        if not unsafe:
-            without_safe_arguments = _QUOTED_ARGUMENT_RE.sub("", executable_line)
-            unsafe = bool(_COMMAND_ARGUMENT_RE.search(without_safe_arguments))
+        unsafe = _unsafe_command_argument_line(line, language, pending)
         if unsafe:
             findings.append(
                 Finding(
@@ -2225,6 +2142,30 @@ def _markdown_command_argument_findings(path: Path, relative: str, source: str) 
                 )
             )
     return findings
+
+
+def _unsafe_command_argument_line(line: str, language: str, pending: list[_HeredocSpec]) -> bool:
+    executable_line = line
+    if language in _SHELL_LANGUAGE_NAMES:
+        if pending:
+            current = pending[0]
+            if (line.lstrip("\t") if current.strip_tabs else line) == current.delimiter:
+                pending.pop(0)
+                return False
+            if current.literal:
+                return False
+        else:
+            pending.extend(_shell_heredoc_specs(line))
+            executable_line = _shell_without_comments(line)
+    if language not in _QUERY_LANGUAGE_NAMES | _SHELL_LANGUAGE_NAMES or not _COMMAND_ARGUMENT_RE.search(
+        executable_line
+    ):
+        return False
+    unsafe = language in _QUERY_LANGUAGE_NAMES or bool(_QUERY_TOKEN_RE.search(executable_line))
+    if not unsafe:
+        without_safe_arguments = _QUOTED_ARGUMENT_RE.sub("", executable_line)
+        unsafe = bool(_COMMAND_ARGUMENT_RE.search(without_safe_arguments))
+    return unsafe
 
 
 def _shell_without_comments(line: str) -> str:
@@ -2355,6 +2296,40 @@ def _hidden_markdown_heading(body: str) -> bool:
     return any(_MARKDOWN_ATX_HEADING_RE.match(line) for line in lines)
 
 
+def _artifact_content_findings(path: Path, prose: str, source_lines: list[str]) -> list[Finding]:
+    headings = [
+        number for number, line in enumerate(source_lines, start=1) if _EPHEMERAL_HEADING_RE.match(line.strip())
+    ]
+    has_change_diary = any(_STRONG_DIARY_HEADING_RE.match(line.strip()) for line in source_lines)
+    if len(headings) >= _MIN_EPHEMERAL_HEADINGS or has_change_diary:
+        return [
+            Finding(
+                path,
+                headings[0],
+                "SARJ302",
+                "Chronological execution log — keep current usage/design facts; remove passes, change diary, and session narration.",
+            )
+        ]
+    if _large_artifact(prose, path, source_lines):
+        line = next(
+            (
+                number
+                for number, source_line in enumerate(source_lines, start=1)
+                if _LIFECYCLE_HEADING_RE.match(source_line.strip())
+            ),
+            1,
+        )
+        return [
+            Finding(
+                path,
+                line,
+                "SARJ302",
+                "Point-in-time audit or execution report — move durable facts to maintained documentation and track findings in the issue system.",
+            )
+        ]
+    return []
+
+
 def _large_artifact(source: str, path: Path, lines: list[str]) -> bool:
     if len(lines) < _LARGE_ARTIFACT_MIN_LINES and not _has_word_count(source, _LARGE_ARTIFACT_MIN_WORDS):
         return False
@@ -2431,17 +2406,18 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
             )
             for line in sorted(config_run_lines)
         )
-    for index, line in enumerate(lines):
+
+    def collect_comment(index: int, line: str) -> None:
         parsed = _standalone_comment(path, line)
         if parsed is None:
-            continue
+            return
         indent, body = parsed
         if path.suffix.lower() in {".yaml", ".yml"} and _inside_yaml_block_scalar(lines, index, indent):
-            continue
+            return
         if index + 1 in config_run_lines:
-            continue
+            return
         if not body or _DIRECTIVE_RE.match(body):
-            continue
+            return
         protected = bool(_PROTECTED_RE.search(body))
         unmasked_pair = (
             validated_literal_lines is not None
@@ -2464,7 +2440,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
                     "if the entry is unclear.",
                 )
             )
-            continue
+            return
         next_index = _next_content_line(lines, index + 1)
         if (
             generated_comment_wall
@@ -2472,11 +2448,14 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
             or index in validated_literal_lines
             or next_index is None
         ):
-            continue
+            return
         next_line = lines[next_index]
         if len(next_line) - len(next_line.lstrip()) != indent:
-            continue
+            return
         attached.append(_AttachedComment(index + 1, indent, False if protected else _weak_narration(body, next_line)))
+
+    for index, line in enumerate(lines):
+        collect_comment(index, line)
 
     for group in _attached_groups(attached, lines, path=path):
         weak = [line for line, _indent, is_weak in group if is_weak]
@@ -2530,40 +2509,9 @@ def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
         ):
             run.append((index + 1, parsed.body))
             index += 1
-        suppressions = {
-            code.upper()
-            for _line, body in run
-            if (match := _SARJ_SUPPRESSION_RE.match(body)) is not None
-            for code in (item.strip() for item in match.group("codes").split(","))
-        }
-        if "SARJ301" in suppressions:
-            continue
-        effective = [
-            (line, body)
-            for line, body in run
-            if _SARJ_SUPPRESSION_RE.match(body) is None and not _CONFIG_TOOL_DIRECTIVE_RE.match(body)
-        ]
-        if not effective:
-            continue
-        if any(_PROTECTED_RE.search(body) for _line, body in effective):
-            continue
-        shaped = [line for line, body in effective if _commented_config_key(path, body) is not None]
-        if len(shaped) != len(effective):
-            continue
-        shaped_key = next((_commented_config_key(path, body) for line, body in effective if line in shaped), None)
-        adjacent = (
-            any(
-                0 <= neighbor < len(lines)
-                and len(lines[neighbor]) - len(lines[neighbor].lstrip()) == first.indent
-                and _standalone_comment(path, lines[neighbor]) is None
-                and _commented_config_key(path, lines[neighbor].strip()) == shaped_key
-                for neighbor in (start - 1, index)
-            )
-            if len(shaped) == 1
-            else False
-        )
-        if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN or adjacent:
-            leaders.add(shaped[0])
+        leader = _inactive_config_run_leader(path, lines, first, run, start=start, end=index)
+        if leader is not None:
+            leaders.add(leader)
     return leaders
 
 
@@ -2821,3 +2769,144 @@ def _words(text: str) -> list[str]:
 
 def _normalize_word(word: str) -> str:
     return word.lower().replace("-", "_")
+
+
+def _is_inline_source_flag(argument: str, flags: frozenset[str]) -> bool:
+    return argument in flags or any(argument.startswith(f"{flag}=") for flag in flags if flag.startswith("--"))
+
+
+def _read_heredoc_word(line: str, cursor: int, *, strip_tabs: bool) -> tuple[int, _HeredocSpec | None]:
+    delimiter: list[str] = []
+    word_started = False
+    word_quote: str | None = None
+    literal = False
+    while cursor < len(line):
+        character = line[cursor]
+        if word_quote is not None:
+            word_started = True
+            if character == word_quote:
+                word_quote = None
+            elif character == "\\" and word_quote == '"' and cursor + 1 < len(line):
+                cursor += 1
+                delimiter.append(line[cursor])
+            else:
+                delimiter.append(character)
+            cursor += 1
+            continue
+        if character in {"'", '"'}:
+            word_started = True
+            word_quote = character
+            literal = True
+            cursor += 1
+            continue
+        if character == "\\" and cursor + 1 < len(line):
+            word_started = True
+            literal = True
+            cursor += 1
+            delimiter.append(line[cursor])
+            cursor += 1
+            continue
+        if character.isspace() or character in _HEREDOC_WORD_BREAKS:
+            break
+        word_started = True
+        delimiter.append(character)
+        cursor += 1
+
+    if word_started and word_quote is None:
+        return cursor, _HeredocSpec("".join(delimiter), strip_tabs, literal)
+    return cursor, None
+
+
+def _unique_workflow_steps(steps: list[MappingNode]) -> list[MappingNode]:
+    unique: list[MappingNode] = []
+    seen: set[int] = set()
+    for step in steps:
+        identity = id(step)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        unique.append(step)
+    return unique
+
+
+def _has_attached_option_value(item: str, value_options: frozenset[str]) -> bool:
+    return any(
+        item.startswith(prefix) and len(item) > len(prefix) for prefix in value_options if prefix.startswith("-")
+    )
+
+
+def _skip_quoted_shell_character(line: str, index: int, quote: str | None) -> tuple[int, str | None]:
+    character = line[index]
+    if character == quote:
+        quote = None
+    elif character == "\\" and quote == '"' and index + 1 < len(line):
+        index += 1
+    index += 1
+    return index, quote
+
+
+def _has_attached_pattern_value(item: str, pattern_options: set[str]) -> bool:
+    return any(item.startswith(prefix) and len(item) > len(prefix) for prefix in pattern_options)
+
+
+def _inactive_config_run_leader(
+    path: Path, lines: list[str], first: _StandaloneComment, run: list[tuple[int, str]], *, start: int, end: int
+) -> int | None:
+    suppressions = _comment_run_suppressions(run)
+    if "SARJ301" in suppressions:
+        return None
+    effective = [
+        (line, body)
+        for line, body in run
+        if _SARJ_SUPPRESSION_RE.match(body) is None and not _CONFIG_TOOL_DIRECTIVE_RE.match(body)
+    ]
+    if not effective:
+        return None
+    if any(_PROTECTED_RE.search(body) for _line, body in effective):
+        return None
+    shaped = [line for line, body in effective if _commented_config_key(path, body) is not None]
+    if len(shaped) != len(effective):
+        return None
+    shaped_key = next((_commented_config_key(path, body) for line, body in effective if line in shaped), None)
+    adjacent = _has_adjacent_config_key(
+        path, lines, first.indent, shaped_key, start=start, end=end, single_key=len(shaped) == 1
+    )
+    if len(shaped) >= _COMMENTED_CONFIG_RUN_MIN or adjacent:
+        return shaped[0]
+    return None
+
+
+def _heredoc_word_start(line: str, index: int) -> tuple[int, bool]:
+    cursor = index + 2
+    strip_tabs = cursor < len(line) and line[cursor] == "-"
+    if strip_tabs:
+        cursor += 1
+    while cursor < len(line) and line[cursor] in {" ", "\t"}:
+        cursor += 1
+
+    return cursor, strip_tabs
+
+
+def _has_adjacent_config_key(
+    path: Path, lines: list[str], indent: int, shaped_key: str | None, *, start: int, end: int, single_key: bool
+) -> bool:
+    return (
+        any(
+            0 <= neighbor < len(lines)
+            and len(lines[neighbor]) - len(lines[neighbor].lstrip()) == indent
+            and _standalone_comment(path, lines[neighbor]) is None
+            and _commented_config_key(path, lines[neighbor].strip()) == shaped_key
+            for neighbor in (start - 1, end)
+        )
+        if single_key
+        else False
+    )
+
+
+def _comment_run_suppressions(run: list[tuple[int, str]]) -> set[str]:
+    return {
+        code.upper()
+        for _line, body in run
+        if (match := _SARJ_SUPPRESSION_RE.match(body)) is not None
+        for code in (item.strip() for item in match.group("codes").split(","))
+    }

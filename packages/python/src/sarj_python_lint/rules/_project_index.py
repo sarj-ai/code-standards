@@ -82,31 +82,7 @@ class ProjectIndexSet:
         self._by_module = MappingProxyType(by_module)
         classes: dict[SymbolRef, ClassSummary] = {}
         nominals: dict[str, set[SymbolRef]] = {}
-        for unit in units.values():
-            if unit.module is None or unit.tree is None:
-                continue
-            for statement in unit.tree.body:
-                if isinstance(statement, ast.ClassDef):
-                    symbol = SymbolRef(unit.module, statement.name)
-                    fields = {
-                        item.target.id: item.annotation
-                        for item in statement.body
-                        if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
-                    }
-                    classes[symbol] = ClassSummary(
-                        symbol=symbol,
-                        fields=MappingProxyType(fields),
-                        bases=tuple(
-                            resolved
-                            for base in statement.bases
-                            if (resolved := _resolve(unit, base.value if isinstance(base, ast.Subscript) else base))
-                            is not None
-                        ),
-                        is_enum=any(_tail(base) in {"Enum", "IntEnum", "StrEnum"} for base in statement.bases),
-                    )
-                nominal = _new_type(statement, unit.module)
-                if nominal is not None:
-                    nominals.setdefault(_field_key(nominal.name), set()).add(nominal)
+        _collect_unit_symbols(units, classes, nominals)
         self._classes = MappingProxyType(classes)
         self._nominals = MappingProxyType({key: frozenset(value) for key, value in nominals.items()})
 
@@ -126,25 +102,7 @@ class ProjectIndexSet:
             except OSError:
                 continue
         for root in roots:
-            count = 0
-            source_chars = 0
-            for path in _python_files(root):
-                if count >= _MAX_FILES_PER_ROOT or source_chars >= _MAX_SOURCE_CHARS_PER_ROOT:
-                    break
-                try:
-                    if path.resolve() in sources:
-                        count += 1
-                        continue
-                except OSError:
-                    continue
-                loaded_source = _read_bounded_source(root, path)
-                if loaded_source is None:
-                    continue
-                if source_chars + len(loaded_source.source) > _MAX_SOURCE_CHARS_PER_ROOT:
-                    break
-                sources.setdefault(loaded_source.path, loaded_source.source)
-                source_chars += len(loaded_source.source)
-                count += 1
+            _load_root_sources(root, sources)
         return cls(_units(sources, roots))
 
     @classmethod
@@ -201,27 +159,7 @@ class ProjectIndexSet:
         for candidate in self._units.values():
             if candidate.tree is None:
                 continue
-            for owner in candidate.tree.body:
-                if not isinstance(owner, ast.ClassDef):
-                    continue
-                initializer = next(
-                    (
-                        statement
-                        for statement in owner.body
-                        if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
-                        and statement.name == "__init__"
-                    ),
-                    None,
-                )
-                if initializer is None:
-                    continue
-                parameters = (*initializer.args.posonlyargs, *initializer.args.args, *initializer.args.kwonlyargs)
-                if any(
-                    _annotation_contains_symbol(candidate, parameter.annotation, target)
-                    for parameter in parameters
-                    if parameter.arg != "self"
-                ):
-                    consumers.add((candidate.path, owner.name))
+            consumers.update(_unit_constructor_consumers(candidate, candidate.tree, target))
         return frozenset(consumers)
 
     def class_inherits_from(self, unit: SourceUnit, name: str, qualified_bases: frozenset[str]) -> bool:
@@ -284,19 +222,18 @@ def _module_name(path: Path, roots: Sequence[Path]) -> str | None:
     resolved = path.resolve()
     root = next((candidate for candidate in roots if resolved == candidate or candidate in resolved.parents), None)
     if root is not None:
-        package_dir: Path | None = None
-        for ancestor in resolved.parents:
-            if ancestor == root:
-                break
-            try:
-                if (ancestor / "__init__.py").is_file():
-                    package_dir = ancestor
-            except OSError:
-                return None
+        try:
+            package_dir = _outer_package_directory(resolved, root)
+        except OSError:
+            return None
         if package_dir is not None:
             relative = resolved.relative_to(package_dir)
             suffix = relative.parts[:-1] if relative.name == "__init__.py" else (*relative.parts[:-1], relative.stem)
             return ".".join((package_dir.name, *suffix))
+    return _package_module_name(path)
+
+
+def _package_module_name(path: Path) -> str | None:
     parts: list[str] = []
     parent = path.parent
     try:
@@ -339,38 +276,13 @@ def _project_roots(paths: Sequence[Path], *, facts: FirstPartyFacts | None = Non
     return tuple(roots)
 
 
-def _python_files(root: Path) -> Iterator[Path]:
-    for scanned, (directory, dir_names, file_names) in enumerate(os.walk(root), start=1):
-        if scanned > _MAX_DIRS_PER_ROOT:
-            return
-        parent = Path(directory)
-        dir_names[:] = [
-            name
-            for name in sorted(dir_names)
-            if not name.startswith(".") and name not in _SKIP_DIRS and not (parent / name / ".git").exists()
-        ]
-        for name in sorted(file_names):
-            if name.endswith(".py"):
-                yield parent / name
-
-
 def _imports(module: str | None, tree: ast.Module | None, *, is_package: bool) -> dict[str, SymbolRef]:
     if module is None or tree is None:
         return {}
     result: dict[str, SymbolRef] = {}
     package = module if is_package else module.rpartition(".")[0]
     for node in _module_import_statements(tree):
-        if isinstance(node, ast.ImportFrom) and not any(alias.name == "*" for alias in node.names):
-            target = _relative_module(package, node.level, node.module)
-            if target is None:
-                continue
-            for alias in node.names:
-                result[alias.asname or alias.name] = SymbolRef(target, alias.name)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                local_name = alias.asname or alias.name.partition(".")[0]
-                module = alias.name if alias.asname else local_name
-                result[local_name] = SymbolRef(module, "")
+        _record_import(node, package, result)
     return result
 
 
@@ -392,29 +304,44 @@ def _is_type_checking_guard(node: ast.expr) -> bool:
     )
 
 
-def _annotation_contains_symbol(unit: SourceUnit, annotation: ast.expr | None, target: SymbolRef) -> bool:
-    if annotation is None:
-        return False
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        with suppress(SyntaxError):
-            annotation = ast.parse(annotation.value, mode="eval").body
-    return any(
-        _resolve(unit, candidate) == target
-        for candidate in ast.walk(annotation)
-        if isinstance(candidate, (ast.Name, ast.Attribute))
-    )
+def _tail(node: ast.expr) -> str:
+    match node:
+        case ast.Name(id=name) | ast.Attribute(attr=name):
+            return name
+        case _:
+            return ""
 
 
-def _relative_module(package: str, level: int, module: str | None) -> str | None:
-    if level == 0:
-        return module
-    parts = package.split(".") if package else []
-    if level > len(parts) + 1:
+def _resolve(unit: SourceUnit, expression: ast.expr) -> SymbolRef | None:
+    if unit.module is None:
         return None
-    base = parts[: len(parts) - level + 1]
-    if module:
-        base.extend(module.split("."))
-    return ".".join(base) if base else None
+    if isinstance(expression, ast.Name):
+        return unit.imports.get(expression.id) or SymbolRef(unit.module, expression.id)
+    if isinstance(expression, ast.Attribute) and isinstance(expression.value, ast.Name):
+        root = unit.imports.get(expression.value.id)
+        if root is not None and not root.name:
+            return SymbolRef(root.module, expression.attr)
+    return None
+
+
+def _collect_unit_symbols(
+    units: Mapping[Path, SourceUnit], classes: dict[SymbolRef, ClassSummary], nominals: dict[str, set[SymbolRef]]
+) -> None:
+    for unit in units.values():
+        if unit.module is None or unit.tree is None:
+            continue
+        for statement in unit.tree.body:
+            if isinstance(statement, ast.ClassDef):
+                symbol = SymbolRef(unit.module, statement.name)
+                classes[symbol] = _class_summary(unit, statement, symbol)
+            nominal = _new_type(statement, unit.module)
+            if nominal is not None:
+                nominals.setdefault(_field_key(nominal.name), set()).add(nominal)
+
+
+def _field_key(type_name: str) -> str:
+    first = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", type_name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first).lower()
 
 
 def _new_type(statement: ast.stmt, module: str) -> SymbolRef | None:
@@ -440,29 +367,44 @@ def _new_type(statement: ast.stmt, module: str) -> SymbolRef | None:
     return SymbolRef(module, target.id)
 
 
-def _field_key(type_name: str) -> str:
-    first = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", type_name)
-    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first).lower()
+def _class_summary(unit: SourceUnit, statement: ast.ClassDef, symbol: SymbolRef) -> ClassSummary:
+    fields = {
+        item.target.id: item.annotation
+        for item in statement.body
+        if isinstance(item, ast.AnnAssign) and isinstance(item.target, ast.Name)
+    }
+    return ClassSummary(
+        symbol=symbol,
+        fields=MappingProxyType(fields),
+        bases=tuple(
+            resolved
+            for base in statement.bases
+            if (resolved := _resolve(unit, base.value if isinstance(base, ast.Subscript) else base)) is not None
+        ),
+        is_enum=any(_tail(base) in {"Enum", "IntEnum", "StrEnum"} for base in statement.bases),
+    )
 
 
-def _tail(node: ast.expr) -> str:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return ""
-
-
-def _resolve(unit: SourceUnit, expression: ast.expr) -> SymbolRef | None:
-    if unit.module is None:
-        return None
-    if isinstance(expression, ast.Name):
-        return unit.imports.get(expression.id) or SymbolRef(unit.module, expression.id)
-    if isinstance(expression, ast.Attribute) and isinstance(expression.value, ast.Name):
-        root = unit.imports.get(expression.value.id)
-        if root is not None and not root.name:
-            return SymbolRef(root.module, expression.attr)
-    return None
+def _load_root_sources(root: Path, sources: dict[Path, str]) -> None:
+    count = 0
+    source_chars = 0
+    for path in _python_files(root):
+        if count >= _MAX_FILES_PER_ROOT or source_chars >= _MAX_SOURCE_CHARS_PER_ROOT:
+            break
+        try:
+            if path.resolve() in sources:
+                count += 1
+                continue
+        except OSError:
+            continue
+        loaded_source = _read_bounded_source(root, path)
+        if loaded_source is None:
+            continue
+        if source_chars + len(loaded_source.source) > _MAX_SOURCE_CHARS_PER_ROOT:
+            break
+        sources.setdefault(loaded_source.path, loaded_source.source)
+        source_chars += len(loaded_source.source)
+        count += 1
 
 
 def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:
@@ -474,3 +416,92 @@ def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:
         return LoadedSource(resolved, resolved.read_text(encoding="utf-8", errors="replace"))
     except OSError, ValueError:
         return None
+
+
+def _python_files(root: Path) -> Iterator[Path]:
+    for scanned, (directory, dir_names, file_names) in enumerate(os.walk(root), start=1):
+        if scanned > _MAX_DIRS_PER_ROOT:
+            return
+        parent = Path(directory)
+        dir_names[:] = [
+            name
+            for name in sorted(dir_names)
+            if not name.startswith(".") and name not in _SKIP_DIRS and not (parent / name / ".git").exists()
+        ]
+        for name in sorted(file_names):
+            if name.endswith(".py"):
+                yield parent / name
+
+
+def _unit_constructor_consumers(
+    candidate: SourceUnit, tree: ast.Module, target: SymbolRef
+) -> Iterator[tuple[Path, str]]:
+    for owner in tree.body:
+        if not isinstance(owner, ast.ClassDef):
+            continue
+        initializer = next(
+            (
+                statement
+                for statement in owner.body
+                if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name == "__init__"
+            ),
+            None,
+        )
+        if initializer is None:
+            continue
+        parameters = (*initializer.args.posonlyargs, *initializer.args.args, *initializer.args.kwonlyargs)
+        if any(
+            _annotation_contains_symbol(candidate, parameter.annotation, target)
+            for parameter in parameters
+            if parameter.arg != "self"
+        ):
+            yield (candidate.path, owner.name)
+
+
+def _annotation_contains_symbol(unit: SourceUnit, annotation: ast.expr | None, target: SymbolRef) -> bool:
+    if annotation is None:
+        return False
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        with suppress(SyntaxError):
+            annotation = ast.parse(annotation.value, mode="eval").body
+    return any(
+        _resolve(unit, candidate) == target
+        for candidate in ast.walk(annotation)
+        if isinstance(candidate, (ast.Name, ast.Attribute))
+    )
+
+
+def _record_import(node: ast.stmt, package: str, result: dict[str, SymbolRef]) -> None:
+    if isinstance(node, ast.ImportFrom) and not any(alias.name == "*" for alias in node.names):
+        target = _relative_module(package, node.level, node.module)
+        if target is None:
+            return
+        for alias in node.names:
+            result[alias.asname or alias.name] = SymbolRef(target, alias.name)
+    elif isinstance(node, ast.Import):
+        for alias in node.names:
+            local_name = alias.asname or alias.name.partition(".")[0]
+            module = alias.name if alias.asname else local_name
+            result[local_name] = SymbolRef(module, "")
+
+
+def _relative_module(package: str, level: int, module: str | None) -> str | None:
+    if level == 0:
+        return module
+    parts = package.split(".") if package else []
+    if level > len(parts) + 1:
+        return None
+    base = parts[: len(parts) - level + 1]
+    if module:
+        base.extend(module.split("."))
+    return ".".join(base) if base else None
+
+
+def _outer_package_directory(resolved: Path, root: Path) -> Path | None:
+    package_dir: Path | None = None
+    for ancestor in resolved.parents:
+        if ancestor == root:
+            break
+        if (ancestor / "__init__.py").is_file():
+            package_dir = ancestor
+    return package_dir

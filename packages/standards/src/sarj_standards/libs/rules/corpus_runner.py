@@ -9,7 +9,7 @@ import threading
 import time
 from typing import TYPE_CHECKING, Final
 
-from sarj_standards.libs.corpus.snapshot import selected_files, snapshot_inventory, verify_inventory
+from sarj_standards.libs.corpus.snapshot import CorpusSnapshot, selected_files, snapshot_inventory, verify_inventory
 
 
 if TYPE_CHECKING:
@@ -109,18 +109,7 @@ def run_isolated_corpora(
     if not command or any(not argument for argument in command):
         msg = "isolated corpus evaluation requires a non-empty command"
         raise ValueError(msg)
-    if not 1 <= batch_size <= _MAX_BATCH_SIZE:
-        msg = f"batch size must be between 1 and {_MAX_BATCH_SIZE}"
-        raise ValueError(msg)
-    if timeout <= timedelta():
-        msg = "corpus batch timeout must be positive"
-        raise ValueError(msg)
-    if not 1 <= max_output_bytes <= _MAX_OUTPUT_BYTES:
-        msg = f"corpus batch output limit must be between 1 and {_MAX_OUTPUT_BYTES} bytes"
-        raise ValueError(msg)
-    if total_timeout <= timedelta():
-        msg = "corpus total timeout must be positive"
-        raise ValueError(msg)
+    _validate_corpus_limits(batch_size, timeout, max_output_bytes, total_timeout)
     if max_files_per_corpus <= 0 or max_batches <= 0:
         msg = "corpus file and batch limits must be positive"
         raise ValueError(msg)
@@ -157,17 +146,7 @@ def run_isolated_corpora(
             results.append(result)
             if observer is not None:
                 observer(source, result, execution.stdout, execution.stderr)
-        try:
-            if selected_files(source) != files:
-                msg = f"corpus {source.report_name} changed during evaluation"
-                raise CorpusLintError(msg)
-            after = snapshot_inventory(source, files)
-        except (OSError, ValueError) as error:
-            msg = f"corpus {source.report_name} changed during evaluation"
-            raise CorpusLintError(msg) from error
-        if after.digest != verified.digest or after.revision != verified.revision:
-            msg = f"corpus {source.report_name} changed during evaluation"
-            raise CorpusLintError(msg)
+        _assert_corpus_unchanged(source, files, verified)
     return IsolatedCorpusReport(tuple(results))
 
 
@@ -382,3 +361,34 @@ def _terminate_process_group(process: subprocess.Popen[bytes]) -> None:
             return
     else:  # pragma: no cover - CI exercises POSIX process-group cleanup.
         process.kill()
+
+
+def _assert_corpus_unchanged(source: CorpusSource, files: tuple[Path, ...], verified: CorpusSnapshot) -> None:
+    try:
+        if selected_files(source) != files:
+            msg = f"corpus {source.report_name} changed during evaluation"
+            raise CorpusLintError(msg)
+        after = snapshot_inventory(source, files)
+    except (OSError, ValueError) as error:
+        msg = f"corpus {source.report_name} changed during evaluation"
+        raise CorpusLintError(msg) from error
+    if after.digest != verified.digest or after.revision != verified.revision:
+        msg = f"corpus {source.report_name} changed during evaluation"
+        raise CorpusLintError(msg)
+
+
+def _validate_corpus_limits(
+    batch_size: int, timeout: timedelta, max_output_bytes: int, total_timeout: timedelta
+) -> None:
+    if not 1 <= batch_size <= _MAX_BATCH_SIZE:
+        msg = f"batch size must be between 1 and {_MAX_BATCH_SIZE}"
+        raise ValueError(msg)
+    if timeout <= timedelta():
+        msg = "corpus batch timeout must be positive"
+        raise ValueError(msg)
+    if not 1 <= max_output_bytes <= _MAX_OUTPUT_BYTES:
+        msg = f"corpus batch output limit must be between 1 and {_MAX_OUTPUT_BYTES} bytes"
+        raise ValueError(msg)
+    if total_timeout <= timedelta():
+        msg = "corpus total timeout must be positive"
+        raise ValueError(msg)

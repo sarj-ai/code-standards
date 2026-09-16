@@ -164,15 +164,7 @@ class PreferMatchValueDispatch(Rule):
         for node in ast.walk(tree):
             if not isinstance(node, ast.If) or id(node) in continuations:
                 continue
-            branches = [node]
-            current = node
-            while len(current.orelse) == 1:
-                child = current.orelse[0]
-                if not isinstance(child, ast.If) or not lines[child.lineno - 1].lstrip().startswith("elif"):
-                    break
-                continuations.add(id(child))
-                branches.append(child)
-                current = child
+            branches, current = _elif_chain(node, lines, continuations)
             if len(branches) < _MIN_TESTS or not current.orelse:
                 continue
             subject = _dispatch_subject(branches, constants)
@@ -208,18 +200,7 @@ def _terminal_sibling_dispatches(tree: ast.Module) -> list[list[ast.If]]:
     candidates: list[list[ast.If]] = []
     for node in ast.walk(tree):
         for field in _statement_lists(node):
-            branches: list[ast.If] = []
-            for statement in field:
-                if isinstance(statement, ast.If) and not statement.orelse:
-                    branches.append(statement)
-                    continue
-                if (
-                    len(branches) >= _MIN_EXPANDED_ARMS
-                    and isinstance(statement, (ast.Return, ast.Raise))
-                    and all(branch.body and isinstance(branch.body[-1], (ast.Return, ast.Raise)) for branch in branches)
-                ):
-                    candidates.append(branches)
-                branches = []
+            _collect_terminal_siblings(field, candidates)
     return candidates
 
 
@@ -255,16 +236,9 @@ def _expanded_dispatch_subject(branches: list[ast.If], constants: dict[str, _Lit
         if body in bodies:
             return None
         bodies.add(body)
-        selector = branch.test
-        if isinstance(selector, ast.BoolOp) and isinstance(selector.op, ast.And):
-            if index != len(branches) - 1 or len(selector.values) != _GUARDED_TEST_PARTS:
-                return None
-            if any(
-                isinstance(node, (ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom))
-                for node in ast.walk(selector.values[1])
-            ):
-                return None
-            selector = selector.values[0]
+        selector = _guarded_selector(branch.test, is_last=index == len(branches) - 1)
+        if selector is None:
+            return None
         parsed = _expanded_selector(selector, constants)
         if parsed is None:
             return None
@@ -392,3 +366,44 @@ def _subject(expression: ast.expr) -> str | None:
             return f"{parent}.{attribute}" if parent is not None else None
         case _:
             return None
+
+
+def _elif_chain(node: ast.If, lines: list[str], continuations: set[int]) -> tuple[list[ast.If], ast.If]:
+    branches = [node]
+    current = node
+    while len(current.orelse) == 1:
+        child = current.orelse[0]
+        if not isinstance(child, ast.If) or not lines[child.lineno - 1].lstrip().startswith("elif"):
+            break
+        continuations.add(id(child))
+        branches.append(child)
+        current = child
+    return branches, current
+
+
+def _collect_terminal_siblings(field: list[ast.stmt], candidates: list[list[ast.If]]) -> None:
+    branches: list[ast.If] = []
+    for statement in field:
+        if isinstance(statement, ast.If) and not statement.orelse:
+            branches.append(statement)
+            continue
+        if (
+            len(branches) >= _MIN_EXPANDED_ARMS
+            and isinstance(statement, (ast.Return, ast.Raise))
+            and all(branch.body and isinstance(branch.body[-1], (ast.Return, ast.Raise)) for branch in branches)
+        ):
+            candidates.append(branches)
+        branches = []
+
+
+def _guarded_selector(selector: ast.expr, *, is_last: bool) -> ast.expr | None:
+    if isinstance(selector, ast.BoolOp) and isinstance(selector.op, ast.And):
+        if not is_last or len(selector.values) != _GUARDED_TEST_PARTS:
+            return None
+        if any(
+            isinstance(node, (ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom))
+            for node in ast.walk(selector.values[1])
+        ):
+            return None
+        selector = selector.values[0]
+    return selector

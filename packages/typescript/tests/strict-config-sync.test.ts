@@ -42,9 +42,9 @@ function warnIfHistoryIsMissing(log: string, recorded: number): void {
   if (log.trim().length !== 0 || recorded === 0) return;
   console.warn(
     `[strict-config-sync] history corroborates 0 of ${recorded} entries in _retired.ts: ` +
-      `\`git log --diff-filter=D\` over src/rules is empty at ${gitOutput("rev-parse", "--short", "HEAD").trim()}. ` +
-      "The subset gate still catches a NEW deletion that forgets its entry; it cannot re-derive the existing ones. " +
-      "Expected after a history rewrite — investigate if the history was not rewritten.",
+    `\`git log --diff-filter=D\` over src/rules is empty at ${gitOutput("rev-parse", "--short", "HEAD").trim()}. ` +
+    "The subset gate still catches a NEW deletion that forgets its entry; it cannot re-derive the existing ones. " +
+    "Expected after a history rewrite — investigate if the history was not rewritten.",
   );
 }
 
@@ -68,6 +68,35 @@ function stripComments(source: string): string {
   const parts: string[] = [];
   let index = 0;
 
+  function skipBlockComment(): void {
+    index += 2;
+    while (
+      index < source.length &&
+      !(source[index] === "*" && source[index + 1] === "/")
+    ) {
+      if (source[index] === "\n") parts.push("\n");
+      index += 1;
+    }
+    index += 2;
+  }
+
+  function appendQuotedText(quote: string): void {
+    parts.push(quote);
+    index += 1;
+    while (index < source.length && source[index] !== quote) {
+      // A backslash escapes the next character, including the closing quote.
+      if (source[index] === "\\") {
+        parts.push(source.slice(index, index + 2));
+        index += 2;
+        continue;
+      }
+      parts.push(source[index] ?? "");
+      index += 1;
+    }
+    parts.push(quote);
+    index += 1;
+  }
+
   while (index < source.length) {
     const char = source[index] ?? "";
     const next = source[index + 1] ?? "";
@@ -78,34 +107,12 @@ function stripComments(source: string): string {
     }
 
     if (char === "/" && next === "*") {
-      index += 2;
-      while (
-        index < source.length &&
-        !(source[index] === "*" && source[index + 1] === "/")
-      ) {
-        if (source[index] === "\n") parts.push("\n");
-        index += 1;
-      }
-      index += 2;
+      skipBlockComment();
       continue;
     }
 
     if (QUOTES.has(char)) {
-      const quote = char;
-      parts.push(char);
-      index += 1;
-      while (index < source.length && source[index] !== quote) {
-        // A backslash escapes the next character, including the closing quote.
-        if (source[index] === "\\") {
-          parts.push(source.slice(index, index + 2));
-          index += 2;
-          continue;
-        }
-        parts.push(source[index] ?? "");
-        index += 1;
-      }
-      parts.push(quote);
-      index += 1;
+      appendQuotedText(char);
       continue;
     }
 
@@ -261,11 +268,11 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
       ({ rule }) => DECLARED_DEVIATIONS.has(rule),
     )) {
       const declared = DECLARED_DEVIATIONS.get(rule)!;
-        expect([rule, pluginSeverity, configSeverity]).toEqual([
-          rule,
-          declared[0],
-          declared[1],
-        ]);
+      expect([rule, pluginSeverity, configSeverity]).toEqual([
+        rule,
+        declared[0],
+        declared[1],
+      ]);
     }
     const drift = comparisons
       .filter(({ rule }) => !DECLARED_DEVIATIONS.has(rule))
@@ -377,7 +384,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
     expect(
       unrecorded,
       `git history has deleted rule files that _retired.ts never recorded: ${unrecorded.join(", ")}. ` +
-        "Add them, or record the move in _renames.ts if the rule was renamed rather than withdrawn.",
+      "Add them, or record the move in _renames.ts if the rule was renamed rather than withdrawn.",
     ).toEqual([]);
   });
 

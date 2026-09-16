@@ -82,7 +82,7 @@ def _check_comprehension_node(
     diags: list[Diagnostic] = []
     reported: set[str] = set()
 
-    for if_clause in gen.ifs:
+    def collect_filter_calls(if_clause: ast.expr) -> None:
         calls_in_if = _calls_in_immediate_scope(if_clause)
         for call in calls_in_if:
             signature = ast.dump(call, include_attributes=False)
@@ -112,6 +112,9 @@ def _check_comprehension_node(
                         ),
                     )
                 )
+
+    for if_clause in gen.ifs:
+        collect_filter_calls(if_clause)
 
     return diags
 

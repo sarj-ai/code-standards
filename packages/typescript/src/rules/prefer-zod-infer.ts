@@ -526,11 +526,7 @@ function twinSchemaFields(
     if (property.type !== AST_NODE_TYPES.Property || property.computed) return null;
     const { key } = property;
     const name =
-      key.type === AST_NODE_TYPES.Identifier
-        ? key.name
-        : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
-          ? key.value
-          : null;
+      staticFieldName(key);
     if (name === null) return null;
     fields.set(name, twinSchemaField(property.value, zodNamespaces));
   }
@@ -595,11 +591,7 @@ function twinTypeMembers(
     if (member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed) return null;
     const { key } = member;
     const name =
-      key.type === AST_NODE_TYPES.Identifier
-        ? key.name
-        : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string"
-          ? key.value
-          : null;
+      staticFieldName(key);
     if (name === null) return null;
     const annotation = member.typeAnnotation?.typeAnnotation ?? null;
     result.set(name, {
@@ -774,7 +766,7 @@ export default createRule<Options, MessageIds>({
           key.type === AST_NODE_TYPES.Identifier
             ? key.name
             : key.type === AST_NODE_TYPES.Literal &&
-                typeof key.value === "string"
+              typeof key.value === "string"
               ? key.value
               : null;
         if (propertyName === null) {
@@ -875,7 +867,7 @@ export default createRule<Options, MessageIds>({
           typeName.type === AST_NODE_TYPES.Identifier
             ? typeName.name
             : typeName.type === AST_NODE_TYPES.TSQualifiedName &&
-                typeName.right.type === AST_NODE_TYPES.Identifier
+              typeName.right.type === AST_NODE_TYPES.Identifier
               ? typeName.right.name
               : null;
         if (referenced === null || !isPreferZodInferTypeConstraintName(referenced)) {
@@ -942,31 +934,31 @@ export default createRule<Options, MessageIds>({
           }
         }
 
-        for (const declaration of typeDeclarations) {
+        function reportTwinDeclaration(declaration: typeof typeDeclarations[number]): void {
           if (constrainedTypeNames.has(declaration.name)) {
-            continue;
+            return;
           }
           if (ignorePatterns.some((pattern) => pattern.test(declaration.name))) {
-            continue;
+            return;
           }
           const schema = byName.get(normalizeTypeName(declaration.name));
           if (schema === undefined || reshapedSchemaNames.has(schema.name)) {
-            continue;
+            return;
           }
           if (
             requireIdenticalShape
               ? !preferZodInferOwnsDefaultTwin({
-                  constrained: constrainedTypeNames.has(declaration.name),
-                  declaration: declaration.declaration,
-                  initializer: schema.initializer,
-                  reshaped: reshapedSchemaNames.has(schema.name),
-                  schemaName: schema.name,
-                  typeName: declaration.name,
-                  zodNamespaces,
-                })
+                constrained: constrainedTypeNames.has(declaration.name),
+                declaration: declaration.declaration,
+                initializer: schema.initializer,
+                reshaped: reshapedSchemaNames.has(schema.name),
+                schemaName: schema.name,
+                typeName: declaration.name,
+                zodNamespaces,
+              })
               : false
           ) {
-            continue;
+            return;
           }
           twinTypeNames.add(declaration.name);
           context.report({
@@ -975,6 +967,8 @@ export default createRule<Options, MessageIds>({
             data: { typeName: declaration.name, schemaName: schema.name },
           });
         }
+
+        for (const declaration of typeDeclarations) { reportTwinDeclaration(declaration); }
 
         const aliasesBySchema = new Map<string, InferredAliasInfo[]>();
         for (const alias of inferredAliases) {
@@ -989,14 +983,14 @@ export default createRule<Options, MessageIds>({
           readonly schema: EnumSchemaInfo;
         }
         const groups = new Map<string, RepeatedGroup>();
-        for (const occurrence of literalUnionOccurrences) {
+        function collectLiteralUnionGroup(occurrence: LiteralUnionOccurrence): void {
           const { ownerName } = occurrence;
           if (
             twinTypeNames.has(ownerName ?? "") ||
             (ownerName !== null &&
               ignorePatterns.some((pattern) => pattern.test(ownerName)))
           ) {
-            continue;
+            return;
           }
           const candidates = enumSchemas.filter(
             (schema) =>
@@ -1006,11 +1000,11 @@ export default createRule<Options, MessageIds>({
           );
           const [schema] = candidates;
           if (candidates.length !== 1 || schema === undefined) {
-            continue;
+            return;
           }
           const [alias] = aliasesBySchema.get(schema.name) ?? [];
           if (alias === undefined || (occurrence.exported && !alias.exported)) {
-            continue;
+            return;
           }
           const key = `${schema.name}\0${occurrence.propertyName}`;
           const group = groups.get(key);
@@ -1020,6 +1014,8 @@ export default createRule<Options, MessageIds>({
             group.occurrences.push(occurrence);
           }
         }
+
+        for (const occurrence of literalUnionOccurrences) { collectLiteralUnionGroup(occurrence); }
 
         for (const { alias, occurrences, schema } of groups.values()) {
           if (
@@ -1046,3 +1042,7 @@ export default createRule<Options, MessageIds>({
     };
   },
 });
+
+function staticFieldName(key: TSESTree.Node): string | null {
+  return key.type === AST_NODE_TYPES.Identifier ? key.name : key.type === AST_NODE_TYPES.Literal && typeof key.value === "string" ? key.value : null;
+}

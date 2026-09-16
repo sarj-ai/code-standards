@@ -292,10 +292,7 @@ def _method_kind(
                 continue
             if _is_builtin(decorator, "property", imports, mutated_builtins):
                 continue
-            if any(
-                imports.resolves(decorator, sources=sources, symbol=symbol)
-                for sources, symbol in _TRANSPARENT_DECORATORS
-            ):
+            if _is_transparent_decorator(decorator, imports):
                 continue
         if _is_after_model_validator(decorator, imports):
             continue
@@ -432,13 +429,7 @@ def _metaclass_ids(
     mutated_builtins: frozenset[str],
 ) -> frozenset[int]:
     classes = [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
-    metaclass_type_names = {
-        node.name
-        for node in classes
-        if _looks_like_metaclass(node)
-        or _metaclass_shaped_name(node.name)
-        or any(_metaclass_shaped_name(_trailing_annotation_name(base) or "") for base in node.bases)
-    }
+    metaclass_type_names = _declared_metaclass_names(classes)
     aliases = _safe_module_assignment_aliases(tree)
     changed = True
     while changed:
@@ -449,12 +440,8 @@ def _metaclass_ids(
             if _is_metaclass_base(value, imports, mutated_builtins, metaclass_type_names):
                 metaclass_type_names.add(alias)
                 changed = True
-        for node in classes:
-            if node.name in metaclass_type_names:
-                continue
-            if any(_is_metaclass_base(base, imports, mutated_builtins, metaclass_type_names) for base in node.bases):
-                metaclass_type_names.add(node.name)
-                changed = True
+        if _register_metaclass_subclasses(classes, imports, mutated_builtins, metaclass_type_names):
+            changed = True
     return frozenset(id(node) for node in classes if node.name in metaclass_type_names)
 
 
@@ -469,6 +456,16 @@ def _is_metaclass_base(
         or imports.resolves(base, sources=frozenset({"abc"}), symbol="ABCMeta")
         or (isinstance(base, ast.Name) and base.id in local_metaclasses)
     )
+
+
+def _declared_metaclass_names(classes: list[ast.ClassDef]) -> set[str]:
+    return {
+        node.name
+        for node in classes
+        if _looks_like_metaclass(node)
+        or _metaclass_shaped_name(node.name)
+        or any(_metaclass_shaped_name(_trailing_annotation_name(base) or "") for base in node.bases)
+    }
 
 
 def _looks_like_metaclass(node: ast.ClassDef) -> bool:
@@ -647,3 +644,22 @@ def _ruff_owns_iterator_method(name: str, node: ast.ClassDef, imports: ImportInd
         )
         for base in node.bases
     )
+
+
+def _is_transparent_decorator(decorator: ast.expr, imports: ImportIndex) -> bool:
+    return any(
+        imports.resolves(decorator, sources=sources, symbol=symbol) for sources, symbol in _TRANSPARENT_DECORATORS
+    )
+
+
+def _register_metaclass_subclasses(
+    classes: list[ast.ClassDef], imports: ImportIndex, mutated_builtins: frozenset[str], metaclass_type_names: set[str]
+) -> bool:
+    changed = False
+    for node in classes:
+        if node.name in metaclass_type_names:
+            continue
+        if any(_is_metaclass_base(base, imports, mutated_builtins, metaclass_type_names) for base in node.bases):
+            metaclass_type_names.add(node.name)
+            changed = True
+    return changed

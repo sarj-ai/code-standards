@@ -113,12 +113,8 @@ class NoFrozenAfterValidatorFieldWrite(Rule):
             return []
         imports = ImportIndex.from_tree(tree)
         diagnostics: list[Diagnostic] = []
-        for class_node in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
-            if not _is_frozen_direct_model(class_node, imports):
-                continue
-            fields = _direct_public_fields(class_node, imports)
-            if not fields:
-                continue
+
+        def collect_validator_writes(class_node: ast.ClassDef, fields: frozenset[str]) -> None:
             for statement in class_node.body:
                 if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
@@ -138,6 +134,14 @@ class NoFrozenAfterValidatorFieldWrite(Rule):
                     )
                     for target in _declared_field_writes(statement, receiver, fields)
                 )
+
+        for class_node in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+            if not _is_frozen_direct_model(class_node, imports):
+                continue
+            fields = _direct_public_fields(class_node, imports)
+            if not fields:
+                continue
+            collect_validator_writes(class_node, fields)
         return diagnostics
 
 
@@ -181,14 +185,7 @@ def _model_config_frozen(node: ast.expr, imports: ImportIndex) -> bool | None:
         ]
         return values[0] if len(values) == 1 else None
     if isinstance(node, ast.Dict) and all(key is not None for key in node.keys):
-        values = [
-            value
-            for key, raw_value in zip(node.keys, node.values, strict=True)
-            if isinstance(key, ast.Constant)
-            and key.value == "frozen"
-            and (value := _literal_bool(raw_value)) is not None
-        ]
-        return values[0] if len(values) == 1 else None
+        return _dictionary_frozen_value(node)
     return None
 
 
@@ -278,3 +275,12 @@ def _matching_attributes(node: ast.expr, receiver: str, fields: frozenset[str]) 
     if isinstance(node, (ast.Tuple, ast.List)):
         return [match for element in node.elts for match in _matching_attributes(element, receiver, fields)]
     return []
+
+
+def _dictionary_frozen_value(node: ast.Dict) -> bool | None:
+    values = [
+        value
+        for key, raw_value in zip(node.keys, node.values, strict=True)
+        if isinstance(key, ast.Constant) and key.value == "frozen" and (value := _literal_bool(raw_value)) is not None
+    ]
+    return values[0] if len(values) == 1 else None

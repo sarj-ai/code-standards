@@ -93,49 +93,7 @@ class UnusedTestFactoryOption(Rule):
         for function in tree.body:
             if not _is_factory(function):
                 continue
-            calls = _direct_calls(tree, function)
-            if not calls:
-                continue
-            bound = _bound_calls(function, calls)
-            if bound is None:
-                continue
-            supplied = {name for arguments in bound for name in arguments}
-            positional = [*function.args.posonlyargs, *function.args.args]
-            defaults = [
-                *zip(positional[len(positional) - len(function.args.defaults) :], function.args.defaults, strict=True),
-                *zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True),
-            ]
-            used = {node.id for node in nodes(function, ast.Name) if isinstance(node.ctx, ast.Load)}
-            for argument, default in defaults:
-                if argument.arg not in used or not isinstance(default, ast.Constant):
-                    continue
-                if default.value is not None and not isinstance(default.value, (str, bytes, int, float)):
-                    continue
-                explicitly_supplied = argument.arg in supplied
-                if explicitly_supplied:
-                    values = [arguments.get(argument.arg, default) for arguments in bound]
-                    if len(values) < _MIN_INVARIANT_CALLS or any(
-                        not isinstance(value, ast.Constant) or ast.dump(value) != ast.dump(values[0])
-                        for value in values
-                    ):
-                        continue
-                if is_suppressed(lines, argument.lineno, self.code):
-                    continue
-                findings.append(
-                    Diagnostic(
-                        path=path,
-                        line=argument.lineno,
-                        col=argument.col_offset + 1,
-                        code=self.code,
-                        severity=Severity.WARNING,
-                        message=(
-                            f"Direct callers in this file always use the same literal for `{function.name}.{argument.arg}`; "
-                            "consider keeping that value in the factory instead of repeating an invariant option. Retain it if external callers need it."
-                            if explicitly_supplied
-                            else f"No direct caller in this file supplies `{function.name}.{argument.arg}`; keep its literal value in the factory instead of exposing an unused option. Retain it if external callers need it."
-                        ),
-                    )
-                )
+            findings.extend(_factory_findings(tree, function, path, lines, self.code))
         return sorted(findings, key=lambda item: (item.line, item.col))
 
 
@@ -152,34 +110,39 @@ def _is_factory(node: ast.stmt) -> TypeGuard[ast.FunctionDef]:
     )
 
 
-def _direct_calls(tree: ast.Module, function: ast.FunctionDef) -> list[ast.Call]:
-    name = function.name
-    if sum(node.name == name for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) != 1:
+def _factory_findings(
+    tree: ast.Module, function: ast.FunctionDef, path: Path, lines: list[str], code: str
+) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    calls = _direct_calls(tree, function)
+    if not calls:
         return []
-    if any(node.arg == name for node in nodes(tree, ast.arg)):
+    bound = _bound_calls(function, calls)
+    if bound is None:
         return []
-    if any((node.asname or node.name.split(".")[0]) == name for node in nodes(tree, ast.alias)):
-        return []
-    if any(node.attr == name for node in nodes(tree, ast.Attribute)):
-        return []
-    if any(node.value == name for node in nodes(tree, ast.Constant)):
-        return []
-    if any(node.name == name for node in nodes(tree, ast.MatchAs, ast.MatchStar, ast.ExceptHandler)):
-        return []
-    if any(node.rest == name for node in nodes(tree, ast.MatchMapping)):
-        return []
-    references = [node for node in nodes(tree, ast.Name) if node.id == name]
-    calls = [node for node in nodes(tree, ast.Call) if isinstance(node.func, ast.Name) and node.func.id == name]
-    if not calls or len(references) != len(calls) or any(not isinstance(node.ctx, ast.Load) for node in references):
-        return []
-    if any(
-        any(isinstance(arg, ast.Starred) for arg in call.args) or any(kw.arg is None for kw in call.keywords)
-        for call in calls
-    ):
-        return []
-    if any(function.lineno <= call.lineno <= (function.end_lineno or function.lineno) for call in calls):
-        return []
-    return calls
+    supplied = {name for arguments in bound for name in arguments}
+    for argument, default in _literal_factory_options(function):
+        explicitly_supplied = argument.arg in supplied
+        if explicitly_supplied and not _factory_argument_is_invariant(argument, default, bound):
+            continue
+        if is_suppressed(lines, argument.lineno, code):
+            continue
+        findings.append(
+            Diagnostic(
+                path=path,
+                line=argument.lineno,
+                col=argument.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=(
+                    f"Direct callers in this file always use the same literal for `{function.name}.{argument.arg}`; "
+                    "consider keeping that value in the factory instead of repeating an invariant option. Retain it if external callers need it."
+                    if explicitly_supplied
+                    else f"No direct caller in this file supplies `{function.name}.{argument.arg}`; keep its literal value in the factory instead of exposing an unused option. Retain it if external callers need it."
+                ),
+            )
+        )
+    return findings
 
 
 def _bound_calls(function: ast.FunctionDef, calls: list[ast.Call]) -> list[dict[str, ast.expr]] | None:
@@ -204,3 +167,66 @@ def _bound_calls(function: ast.FunctionDef, calls: list[ast.Call]) -> list[dict[
             return None
         bound.append(arguments)
     return bound
+
+
+def _direct_calls(tree: ast.Module, function: ast.FunctionDef) -> list[ast.Call]:
+    name = function.name
+    if not _has_unambiguous_factory_name(tree, name):
+        return []
+    references = [node for node in nodes(tree, ast.Name) if node.id == name]
+    calls = [node for node in nodes(tree, ast.Call) if isinstance(node.func, ast.Name) and node.func.id == name]
+    if not calls or len(references) != len(calls) or any(not isinstance(node.ctx, ast.Load) for node in references):
+        return []
+    if _has_dynamic_factory_arguments(calls):
+        return []
+    if any(function.lineno <= call.lineno <= (function.end_lineno or function.lineno) for call in calls):
+        return []
+    return calls
+
+
+def _has_unambiguous_factory_name(tree: ast.Module, name: str) -> bool:
+    if sum(node.name == name for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) != 1:
+        return False
+    if any(node.arg == name for node in nodes(tree, ast.arg)):
+        return False
+    if any((node.asname or node.name.split(".")[0]) == name for node in nodes(tree, ast.alias)):
+        return False
+    if any(node.attr == name for node in nodes(tree, ast.Attribute)):
+        return False
+    if any(node.value == name for node in nodes(tree, ast.Constant)):
+        return False
+    if any(node.name == name for node in nodes(tree, ast.MatchAs, ast.MatchStar, ast.ExceptHandler)):
+        return False
+    return not any(node.rest == name for node in nodes(tree, ast.MatchMapping))
+
+
+def _has_dynamic_factory_arguments(calls: list[ast.Call]) -> bool:
+    return any(
+        any(isinstance(arg, ast.Starred) for arg in call.args) or any(kw.arg is None for kw in call.keywords)
+        for call in calls
+    )
+
+
+def _factory_argument_is_invariant(argument: ast.arg, default: ast.Constant, bound: list[dict[str, ast.expr]]) -> bool:
+    values = [arguments.get(argument.arg, default) for arguments in bound]
+    return not (
+        len(values) < _MIN_INVARIANT_CALLS
+        or any(not isinstance(value, ast.Constant) or ast.dump(value) != ast.dump(values[0]) for value in values)
+    )
+
+
+def _literal_factory_options(function: ast.FunctionDef) -> list[tuple[ast.arg, ast.Constant]]:
+    options: list[tuple[ast.arg, ast.Constant]] = []
+    positional = [*function.args.posonlyargs, *function.args.args]
+    defaults = [
+        *zip(positional[len(positional) - len(function.args.defaults) :], function.args.defaults, strict=True),
+        *zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True),
+    ]
+    used = {node.id for node in nodes(function, ast.Name) if isinstance(node.ctx, ast.Load)}
+    for argument, default in defaults:
+        if argument.arg not in used or not isinstance(default, ast.Constant):
+            continue
+        if default.value is not None and not isinstance(default.value, (str, bytes, int, float)):
+            continue
+        options.append((argument, default))
+    return options

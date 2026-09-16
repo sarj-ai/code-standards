@@ -270,19 +270,23 @@ def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[s
         replacement = _rewrite_valid_directive(directive, retired)
         start = span.start
         if not replacement:
-            line_start = rewritten.rfind("\n", 0, start) + 1
-            prefix = rewritten[line_start:start]
-            trimmed = prefix.rstrip(" \t")
-            end = span.end
-            if not trimmed:
-                if rewritten.startswith("\r\n", end):
-                    end += 2
-                elif rewritten.startswith("\n", end):
-                    end += 1
-            rewritten = f"{rewritten[:line_start]}{trimmed}{rewritten[end:]}"
+            rewritten = _remove_directive_line(rewritten, span, start)
         else:
             rewritten = f"{rewritten[:start]}{replacement}{rewritten[span.end :]}"
     return _rewrite_eslint_config_keys(path, rewritten, eslint)
+
+
+def _remove_directive_line(rewritten: str, span: _CommentSpan, start: int) -> str:
+    line_start = rewritten.rfind("\n", 0, start) + 1
+    prefix = rewritten[line_start:start]
+    trimmed = prefix.rstrip(" \t")
+    end = span.end
+    if not trimmed:
+        if rewritten.startswith("\r\n", end):
+            end += 2
+        elif rewritten.startswith("\n", end):
+            end += 1
+    return f"{rewritten[:line_start]}{trimmed}{rewritten[end:]}"
 
 
 def _rewrite_eslint_config_keys(path: Path, text: str, retired: dict[str, str | None]) -> str:
@@ -312,30 +316,10 @@ def _eslint_rule_property_keys(text: str, expected: str) -> tuple[tuple[int, int
     matches: list[tuple[int, int]] = []
     for index, token in enumerate(tokens):
         if token.value in {"(", "["}:
-            previous = tokens[index - 1].value if index else "default"
-            eligible = (frames[-1].eligible if frames else True) and previous != ":"
-            frames.append(_JavaScriptFrame(")" if token.value == "(" else "]", eligible))
+            frames.append(_javascript_group_frame(tokens, index, frames, token))
             continue
         if token.value == "{":
-            previous = tokens[index - 1].value if index else "default"
-            property_name = (
-                tokens[index - _PROPERTY_KEY_OFFSET].value
-                if index >= _PROPERTY_KEY_OFFSET and previous == ":"
-                else None
-            )
-            parent_object = next((frame for frame in reversed(frames) if frame.closing == "}"), None)
-            if property_name == "rules" and parent_object is not None and parent_object.role == "config":
-                role = "rules"
-            elif (frames[-1].eligible if frames else True) and previous in {
-                "default",
-                "(",
-                "[",
-                ",",
-            }:
-                role = "config"
-            else:
-                role = "nested"
-            frames.append(_JavaScriptFrame(closing="}", eligible=False, role=role))
+            frames.append(_javascript_object_frame(tokens, index, frames))
             continue
         if token.value in {")", "]", "}"}:
             if not frames or frames[-1].closing != token.value:
@@ -345,6 +329,36 @@ def _eslint_rule_property_keys(text: str, expected: str) -> tuple[tuple[int, int
         if _is_expected_rule_key(tokens, index, frames, expected):
             matches.append((token.start, token.end))
     return tuple(matches) if not frames else None
+
+
+def _javascript_object_frame(
+    tokens: tuple[_JavaScriptToken, ...], index: int, frames: list[_JavaScriptFrame]
+) -> _JavaScriptFrame:
+    previous = tokens[index - 1].value if index else "default"
+    property_name = (
+        tokens[index - _PROPERTY_KEY_OFFSET].value if index >= _PROPERTY_KEY_OFFSET and previous == ":" else None
+    )
+    parent_object = next((frame for frame in reversed(frames) if frame.closing == "}"), None)
+    if property_name == "rules" and parent_object is not None and parent_object.role == "config":
+        role = "rules"
+    elif (frames[-1].eligible if frames else True) and previous in {
+        "default",
+        "(",
+        "[",
+        ",",
+    }:
+        role = "config"
+    else:
+        role = "nested"
+    return _JavaScriptFrame(closing="}", eligible=False, role=role)
+
+
+def _javascript_group_frame(
+    tokens: tuple[_JavaScriptToken, ...], index: int, frames: list[_JavaScriptFrame], token: _JavaScriptToken
+) -> _JavaScriptFrame:
+    previous = tokens[index - 1].value if index else "default"
+    eligible = (frames[-1].eligible if frames else True) and previous != ":"
+    return _JavaScriptFrame(")" if token.value == "(" else "]", eligible)
 
 
 def _is_expected_rule_key(
@@ -400,9 +414,7 @@ def _javascript_tokens(text: str) -> tuple[_JavaScriptToken, ...]:
             index += 1
             continue
         if character in {'"', "'", "`"}:
-            end = index + 1
-            while end < len(masked) and not (masked[end] == character and not _escaped(masked, end)):
-                end += 1
+            end = _javascript_string_end(masked, index, character)
             if end >= len(masked):
                 return ()
             tokens.append(
@@ -425,6 +437,13 @@ def _javascript_tokens(text: str) -> tuple[_JavaScriptToken, ...]:
         tokens.append(_JavaScriptToken("punctuation", character, index, index + 1))
         index += 1
     return tuple(tokens)
+
+
+def _javascript_string_end(masked: str, index: int, character: str) -> int:
+    end = index + 1
+    while end < len(masked) and not (masked[end] == character and not _escaped(masked, end)):
+        end += 1
+    return end
 
 
 def _is_jsx_comment_wrapper(path: Path, text: str, span: _CommentSpan, comment: str) -> bool:
@@ -523,23 +542,29 @@ def _javascript_comment_spans(text: str) -> tuple[_CommentSpan, ...]:
             index += 1
             continue
         if char == "/" and index + 1 < len(text) and not _escaped(text, index):
-            following = text[index + 1]
-            if following == "/":
-                newline = text.find("\n", index + 2)
-                end = len(text) if newline < 0 else newline - int(newline > 0 and text[newline - 1] == "\r")
-                spans.append(_CommentSpan(index, end))
-                index = len(text) if newline < 0 else newline
-                continue
-            if following == "*":
-                closing = text.find("*/", index + 2)
-                if closing < 0:
-                    spans.append(_CommentSpan(index, len(text)))
-                    return tuple(spans)
-                spans.append(_CommentSpan(index, closing + 2))
-                index = closing + 2
+            end = _append_javascript_comment(text, index, spans)
+            if end is not None:
+                index = end
                 continue
         index += 1
     return tuple(spans)
+
+
+def _append_javascript_comment(text: str, index: int, spans: list[_CommentSpan]) -> int | None:
+    following = text[index + 1]
+    if following == "/":
+        newline = text.find("\n", index + 2)
+        end = len(text) if newline < 0 else newline - int(newline > 0 and text[newline - 1] == "\r")
+        spans.append(_CommentSpan(index, end))
+        return len(text) if newline < 0 else newline
+    if following == "*":
+        closing = text.find("*/", index + 2)
+        if closing < 0:
+            spans.append(_CommentSpan(index, len(text)))
+            return len(text)
+        spans.append(_CommentSpan(index, closing + 2))
+        return closing + 2
+    return None
 
 
 def _line_offsets(text: str) -> tuple[int, ...]:

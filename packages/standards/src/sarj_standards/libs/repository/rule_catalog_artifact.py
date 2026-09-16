@@ -106,36 +106,8 @@ def selector_index(path: Path = RULE_CATALOG) -> SelectorIndex:
     canonical_by_selector: dict[str, str] = {}
     aliases_by_canonical: dict[str, tuple[str, ...]] = {}
     for value in rules:
-        if not _is_object(value):
-            msg = "shipped rule catalog rule must be an object"
-            raise ValueError(msg)
-        key = value.get("key")
-        engine = value.get("engine")
-        aliases = value.get("aliases")
-        if not isinstance(key, str) or not isinstance(engine, str) or not _is_array(aliases):
-            msg = "shipped rule catalog rule has invalid selector metadata"
-            raise ValueError(msg)
-        if key.count(":") != 1 or not key.startswith(f"{engine}:") or not key.removeprefix(f"{engine}:"):
-            msg = "shipped rule catalog rule has invalid selector metadata"
-            raise ValueError(msg)
-        if any(not isinstance(alias, str) or not alias or ":" in alias for alias in aliases):
-            msg = "shipped rule catalog rule has invalid selector metadata"
-            raise ValueError(msg)
-        raw_aliases = tuple(alias for alias in aliases if isinstance(alias, str))
-        if len(raw_aliases) != len(set(raw_aliases)):
-            msg = f"shipped rule catalog rule {key!r} repeats an alias"
-            raise ValueError(msg)
-        historical = tuple(
-            selector
-            for alias in raw_aliases
-            for selector in (
-                f"{engine}:{alias}",
-                *((f"eslint:@sarj/{alias}",) if engine == "eslint" and not alias.startswith("@") else ()),
-            )
-        )
-        if len(historical) != len(set(historical)):
-            msg = f"shipped rule catalog rule {key!r} has ambiguous aliases"
-            raise ValueError(msg)
+        key, engine, raw_aliases = _selector_metadata(value)
+        historical = _historical_selectors(key, engine, raw_aliases)
         if key in aliases_by_canonical:
             msg = f"shipped rule catalog repeats canonical selector {key!r}"
             raise ValueError(msg)
@@ -154,6 +126,44 @@ def selector_index(path: Path = RULE_CATALOG) -> SelectorIndex:
         MappingProxyType(canonical_by_selector),
         MappingProxyType(aliases_by_canonical),
     )
+
+
+def _historical_selectors(key: str, engine: str, raw_aliases: tuple[str, ...]) -> tuple[str, ...]:
+    historical = tuple(
+        selector
+        for alias in raw_aliases
+        for selector in (
+            f"{engine}:{alias}",
+            *((f"eslint:@sarj/{alias}",) if engine == "eslint" and not alias.startswith("@") else ()),
+        )
+    )
+    if len(historical) != len(set(historical)):
+        msg = f"shipped rule catalog rule {key!r} has ambiguous aliases"
+        raise ValueError(msg)
+    return historical
+
+
+def _selector_metadata(value: object) -> tuple[str, str, tuple[str, ...]]:
+    if not _is_object(value):
+        msg = "shipped rule catalog rule must be an object"
+        raise ValueError(msg)
+    key = value.get("key")
+    engine = value.get("engine")
+    aliases = value.get("aliases")
+    if not isinstance(key, str) or not isinstance(engine, str) or not _is_array(aliases):
+        msg = "shipped rule catalog rule has invalid selector metadata"
+        raise ValueError(msg)
+    if key.count(":") != 1 or not key.startswith(f"{engine}:") or not key.removeprefix(f"{engine}:"):
+        msg = "shipped rule catalog rule has invalid selector metadata"
+        raise ValueError(msg)
+    if any(not isinstance(alias, str) or not alias or ":" in alias for alias in aliases):
+        msg = "shipped rule catalog rule has invalid selector metadata"
+        raise ValueError(msg)
+    raw_aliases = tuple(alias for alias in aliases if isinstance(alias, str))
+    if len(raw_aliases) != len(set(raw_aliases)):
+        msg = f"shipped rule catalog rule {key!r} repeats an alias"
+        raise ValueError(msg)
+    return key, engine, raw_aliases
 
 
 class _StringEnum(Protocol):

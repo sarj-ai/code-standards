@@ -51,20 +51,6 @@ ASSIGNMENT_PATTERN = re.compile(
 POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?P<number>[0-9]*\.?[0-9]+)\s*(?:[a-zA-Z]+\s*)?['\"]?$", re.IGNORECASE)
 
 
-def _positive_timeout(value: str) -> bool:
-    match = POSITIVE_VAL_PATTERN.fullmatch(value)
-    return match is not None and Decimal(match.group("number")) > 0
-
-
-def _section_boundary_events(source: str) -> list[_SectionBoundaryEvent]:
-    dollar_lines = dollar_quoted_lines(source)
-    return [
-        _SectionBoundaryEvent(boundary_offset, "SECTION_BOUNDARY", match)
-        for match in SECTION_BOUNDARY_PATTERN.finditer(source)
-        if source.count("\n", 0, (boundary_offset := match.start())) + 1 not in dollar_lines
-    ]
-
-
 @final
 class RequireLockTimeout(Rule):
     id = "require-lock-timeout"
@@ -115,17 +101,7 @@ class RequireLockTimeout(Rule):
         masked = mask_sql(source)
         nontransactional = has_dbmate_directive(source, "no-transaction")
 
-        events: list[tuple[int, str, re.Match[str]]] = []
-        # Match raw quoted values, then require the assignment's offset to remain live after masking SQL noise.
-        for match in ASSIGNMENT_PATTERN.finditer(source):
-            start_pos = match.start()
-            if masked[start_pos : start_pos + 3].strip():
-                events.append((start_pos, "ASSIGNMENT", match))
-        events.extend((match.start(), "TX_END", match) for match in TX_END_PATTERN.finditer(masked))
-        events.extend(_section_boundary_events(source))
-        events.extend((match.start(), "DDL", match) for match in DDL_PATTERN.finditer(masked))
-
-        events.sort(key=operator.itemgetter(0))
+        events = _timeout_events(source, masked)
 
         active_global_timeouts: dict[str, bool] = {"lock_timeout": False, "statement_timeout": False}
         active_local_timeouts: dict[str, bool] = {"lock_timeout": False, "statement_timeout": False}
@@ -136,17 +112,9 @@ class RequireLockTimeout(Rule):
             if event_type != "DDL":
                 reported_for_current_state = False
             if event_type == "ASSIGNMENT":
-                cmd = match.group(0).upper()
-                is_local = "LOCAL" in cmd or (match.group(5) or "").lower() == "true"
-                target_var = (match.group(1) or match.group(3) or "").lower()
-                val = (match.group(2) or match.group(4) or "").strip().strip(";")
-
-                is_active = False if "RESET" in cmd else (bool(val) and _positive_timeout(val))
-
-                if is_local:
-                    active_local_timeouts[target_var] = is_active and not nontransactional
-                else:
-                    active_global_timeouts[target_var] = is_active
+                _apply_timeout_assignment(
+                    match, active_local_timeouts, active_global_timeouts, nontransactional=nontransactional
+                )
             elif event_type == "TX_END":
                 active_local_timeouts = {"lock_timeout": False, "statement_timeout": False}
             elif event_type == "SECTION_BOUNDARY":
@@ -176,3 +144,53 @@ class RequireLockTimeout(Rule):
                     )
 
         return diags
+
+
+def _timeout_events(source: str, masked: str) -> list[tuple[int, str, re.Match[str]]]:
+    events: list[tuple[int, str, re.Match[str]]] = []
+    # Match raw quoted values, then require the assignment's offset to remain live after masking SQL noise.
+    for match in ASSIGNMENT_PATTERN.finditer(source):
+        start_pos = match.start()
+        if masked[start_pos : start_pos + 3].strip():
+            events.append((start_pos, "ASSIGNMENT", match))
+    events.extend((match.start(), "TX_END", match) for match in TX_END_PATTERN.finditer(masked))
+    events.extend(_section_boundary_events(source))
+    events.extend((match.start(), "DDL", match) for match in DDL_PATTERN.finditer(masked))
+
+    events.sort(key=operator.itemgetter(0))
+
+    return events
+
+
+def _section_boundary_events(source: str) -> list[_SectionBoundaryEvent]:
+    dollar_lines = dollar_quoted_lines(source)
+    return [
+        _SectionBoundaryEvent(boundary_offset, "SECTION_BOUNDARY", match)
+        for match in SECTION_BOUNDARY_PATTERN.finditer(source)
+        if source.count("\n", 0, (boundary_offset := match.start())) + 1 not in dollar_lines
+    ]
+
+
+def _apply_timeout_assignment(
+    match: re.Match[str],
+    active_local_timeouts: dict[str, bool],
+    active_global_timeouts: dict[str, bool],
+    *,
+    nontransactional: bool,
+) -> None:
+    cmd = match.group(0).upper()
+    is_local = "LOCAL" in cmd or (match.group(5) or "").lower() == "true"
+    target_var = (match.group(1) or match.group(3) or "").lower()
+    val = (match.group(2) or match.group(4) or "").strip().strip(";")
+
+    is_active = False if "RESET" in cmd else (bool(val) and _positive_timeout(val))
+
+    if is_local:
+        active_local_timeouts[target_var] = is_active and not nontransactional
+    else:
+        active_global_timeouts[target_var] = is_active
+
+
+def _positive_timeout(value: str) -> bool:
+    match = POSITIVE_VAL_PATTERN.fullmatch(value)
+    return match is not None and Decimal(match.group("number")) > 0

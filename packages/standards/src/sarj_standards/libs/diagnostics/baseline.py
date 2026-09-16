@@ -146,6 +146,10 @@ def load(
     if not _is_object_list(entries):
         msg = "diagnostic baseline diagnostics must be a list"
         raise TypeError(msg)
+    return _baseline_fingerprints(entries)
+
+
+def _baseline_fingerprints(entries: list[object]) -> dict[str, int]:
     fingerprints: dict[str, int] = {}
     for index, value in enumerate(entries):
         entry = _string_object_dict(value, label=f"diagnostic baseline entry {index}")

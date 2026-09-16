@@ -50,9 +50,6 @@ def test_reference_contains_nested_commands_and_arguments() -> None:
 def test_reference_preserves_the_rule_authoring_flow_and_exit_contract() -> None:
     reference = cli_reference_artifact.load()
     commands = reference["commands"]
-    observe = next(command for command in commands if command["name"] == "observe")
-    assert "findings with exit 0" in observe["summary"]
-
     maintain = next(command for command in commands if command["name"] == "maintain")
     rules = next(command for command in maintain["commands"] if command["name"] == "rules")
     evaluate = next(command for command in rules["commands"] if command["name"] == "evaluate")
@@ -64,3 +61,9 @@ def test_reference_preserves_the_rule_authoring_flow_and_exit_contract() -> None
     selector = next(option for option in stage["options"] if option["names"] == ["selector"])
     assert selector["required"]
     assert selector["summary"] == "canonical ENGINE:ID selector"
+
+
+def test_reference_documents_observe_exit_contract() -> None:
+    commands = cli_reference_artifact.load()["commands"]
+    observe = next(command for command in commands if command["name"] == "observe")
+    assert "findings with exit 0" in observe["summary"]

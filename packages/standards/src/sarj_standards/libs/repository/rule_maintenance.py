@@ -107,18 +107,7 @@ def sync_ledger(root: Path, *, check: bool) -> SyncResult:
     known = {str(entry.get("id")) for entry in retired}
     old_rules = repository_table(previous.get("rules"))
     old_codes = repository_table(previous.get("codes"))
-    for family, raw_names in old_rules.items():
-        prefix = "@sarj/" if family == "eslint" else ""
-        for name in _string_list(raw_names):
-            identifier = f"{prefix}{name}"
-            if name not in rules.get(family, []) and identifier not in known:
-                retired.append(_retired_entry(identifier, family))
-                known.add(identifier)
-    for family, raw_codes in old_codes.items():
-        for code in _string_list(raw_codes):
-            if code not in codes.get(family, []) and code not in known:
-                retired.append(_retired_entry(code, "code"))
-                known.add(code)
+    _append_removed_entries(old_rules, old_codes, rules, codes, retired=retired, known=known)
     updated = {
         "$comment": previous.get("$comment", "Rule compatibility ledger."),
         "rules": rules,
@@ -134,6 +123,29 @@ def sync_ledger(root: Path, *, check: bool) -> SyncResult:
     path.write_text(rendered, encoding="utf-8")
     status = 1 if any(entry.get("note") == _PLACEHOLDER for entry in retired) else 0
     return SyncResult(status, f"wrote: {path}")
+
+
+def _append_removed_entries(
+    old_rules: dict[str, object],
+    old_codes: dict[str, object],
+    rules: dict[str, list[str]],
+    codes: dict[str, list[str]],
+    *,
+    retired: list[dict[str, object]],
+    known: set[str],
+) -> None:
+    for family, raw_names in old_rules.items():
+        prefix = "@sarj/" if family == "eslint" else ""
+        for name in _string_list(raw_names):
+            identifier = f"{prefix}{name}"
+            if name not in rules.get(family, []) and identifier not in known:
+                retired.append(_retired_entry(identifier, family))
+                known.add(identifier)
+    for family, raw_codes in old_codes.items():
+        for code in _string_list(raw_codes):
+            if code not in codes.get(family, []) and code not in known:
+                retired.append(_retired_entry(code, "code"))
+                known.add(code)
 
 
 def _native_ledger_state() -> _NativeLedgerState:

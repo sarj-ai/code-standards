@@ -24,6 +24,20 @@ export function exportedNextConfigProperty(
       binding?.references.some((reference) => reference.identifier !== node && reference.init !== true)) return null;
     return resolve(definition.node.init, seen);
   };
+  const exported = exportedConfig(sourceCode);
+  if (exported === null) return null;
+  let current: TSESTree.Node | null = resolve(exported);
+  let selected: TSESTree.Property | null = null;
+  for (const name of path) {
+    if (current?.type !== "ObjectExpression" || current.properties.some((property) => property.type !== "Property" || property.computed || property.kind !== "init")) return null;
+    selected = objectProperty(current, name);
+    if (selected === null) return null;
+    current = resolve(selected.value);
+  }
+  return selected;
+}
+
+function exportedConfig(sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.Node | null {
   let exported: TSESTree.Node | null = null;
   for (const statement of sourceCode.ast.body) {
     if (statement.type === "ExportDefaultDeclaration") exported = statement.declaration;
@@ -34,19 +48,15 @@ export function exportedNextConfigProperty(
     const binding = ASTUtils.findVariable(sourceCode.getScope(left.object), "module");
     if (binding === null || binding.defs.length === 0) exported = assignment.right;
   }
-  if (exported === null) return null;
-  let current: TSESTree.Node | null = resolve(exported);
+  return exported;
+}
+
+function objectProperty(node: TSESTree.ObjectExpression, name: string): TSESTree.Property | null {
   let selected: TSESTree.Property | null = null;
-  for (const name of path) {
-    if (current?.type !== "ObjectExpression" || current.properties.some((property) => property.type !== "Property" || property.computed || property.kind !== "init")) return null;
-    selected = null;
-    for (const property of current.properties) {
-      if (property.type !== "Property") continue;
-      const key = property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? property.key.value : null;
-      if (key === name) selected = property;
-    }
-    if (selected === null) return null;
-    current = resolve(selected.value);
+  for (const property of node.properties) {
+    if (property.type !== "Property") continue;
+    const key = property.key.type === "Identifier" ? property.key.name : property.key.type === "Literal" ? property.key.value : null;
+    if (key === name) selected = property;
   }
   return selected;
 }

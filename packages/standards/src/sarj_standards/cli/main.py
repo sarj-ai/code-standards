@@ -33,8 +33,8 @@ from sarj_standards.libs.rules import RuleSelector
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
-    from sarj_standards.libs.adoption import service
-    from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic
+    from sarj_standards.libs.adoption import doctor, lifecycle, service, upgrade
+    from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic, ExecutionIssue
     from sarj_standards.libs.repository import rule_catalog_artifact
 
 
@@ -304,8 +304,8 @@ def cmd_peers(args: _Args) -> int:
     return 0
 
 
-def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command renders repair and diagnosis state.
-    from sarj_standards.libs.adoption import doctor, hooks, service, upgrade  # ruff: ignore[import-outside-top-level]
+def cmd_doctor(args: _Args) -> int:
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
     repair = args.repair
@@ -313,58 +313,15 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
     repair_status = 0
     commit_policy_only = doctor.is_commit_policy_only(root)
     if repair:
-        try:
-            adopted = manifest.load(root)
-        except (OSError, TypeError, ValueError) as exc:
-            try:
-                adopted = _repair_legacy_manifest(root, install=not no_install)
-            except (OSError, TypeError, ValueError) as migration_error:
-                details = str(exc)
-                migration_details = str(migration_error)
-                if migration_details != details:
-                    details = f"{details}; {migration_details}"
-                print(f"error: cannot repair invalid adoption manifest: {details}", file=sys.stderr)
-                return 2
-        if adopted is None and not commit_policy_only:
-            print("error: repository is not adopted; run `code-standards setup`", file=sys.stderr)
+        if not _prepare_doctor_repair(root, install=not no_install, commit_policy_only=commit_policy_only):
             return 2
         if commit_policy_only:
-            init_plan = service.plan_commit_policy(root, hook_manager=hooks.detect_manager(root))
-            if init_plan.scaffold.errors:
-                for error in init_plan.scaffold.errors:
-                    print(f"error: {error}", file=sys.stderr)
+            commit_policy_status = _repair_commit_policy(root, install=not no_install)
+            if commit_policy_status is None:
                 return 2
-            current_findings = doctor.diagnose_commit_policy(root)
-            current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
-            missing_hooks = not no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
-            needs_repair = bool(
-                init_plan.scaffold.writes
-                or init_plan.scaffold.edits
-                or init_plan.scaffold.deletes
-                or current_drift
-                or missing_hooks
-            )
-            if needs_repair:
-                repair_status = service.apply_init(init_plan, install=not no_install).status
+            repair_status = commit_policy_status
         else:
-            plan = upgrade.build_plan(root)
-            blockers = upgrade.unsafe_retired_findings(plan)
-            if blockers:
-                print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
-                for finding in blockers:
-                    print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
-            current_findings = doctor.diagnose(root)
-            current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
-            missing_hooks = not no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
-            repair_status = (
-                0
-                if not plan.changes and not current_drift and not missing_hooks
-                else upgrade.apply(
-                    plan,
-                    install=not no_install,
-                    allow_retired_debt=bool(blockers),
-                )
-            )
+            repair_status = _repair_full_adoption(root, install=not no_install)
         if repair_status > 1:
             print(
                 "error: automatic repair did not converge; tracked configuration changes were restored",
@@ -372,21 +329,15 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             )
     findings = doctor.diagnose_commit_policy(root) if commit_policy_only else doctor.diagnose(root)
     if repair and no_install:
-        findings = [
-            doctor.Finding(
-                doctor.Level.WARN,
-                finding.where,
-                f"{finding.detail}; installation intentionally skipped",
-                finding.id,
-                finding.remediation,
-            )
-            if (
-                (finding.level is doctor.Level.DRIFT and upgrade.is_install_remediable(finding))
-                or finding.id in _HOOK_INSTALL_IDS
-            )
-            else finding
-            for finding in findings
-        ]
+        findings = _without_install_findings(findings)
+    return _report_doctor(args, root, findings, repair_status)
+
+
+def _report_doctor(args: _Args, root: Path, findings: list[doctor.Finding], repair_status: int) -> int:
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+
+    repair = args.repair
+    no_install = args.no_install
     drifted = sum(1 for finding in findings if finding.level is doctor.Level.DRIFT)
     warned = sum(1 for finding in findings if finding.level is doctor.Level.WARN)
     invalid = sum(finding.id in _INVALID_DOCTOR_IDS for finding in findings)
@@ -409,27 +360,120 @@ def cmd_doctor(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             )
         )
     else:
-        print(f"root:   {root}")
-        for finding in findings:
-            print(f"{finding.level.value:6s} {finding.id} {finding.where}  --  {finding.detail}")
-        print(f"\nchecked {len(findings)} configuration site(s); {drifted} drifted; {warned} warning(s).")
-        remediations = (
-            ["run `code-standards setup`"]
-            if unadopted
-            else list(
-                dict.fromkeys(
-                    finding.remediation
-                    for finding in findings
-                    if (finding.level is doctor.Level.DRIFT or finding.id in _HOOK_INSTALL_IDS) and finding.remediation
-                )
-            )
-        )
-        for remediation in remediations:
-            print(f"fix: {remediation}")
+        _print_doctor_findings(root, findings, drifted, warned, unadopted=unadopted)
     if invalid:
         return max(repair_status, 2)
     unresolved_install = repair and not no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in findings)
     return max(repair_status, 1 if drifted or unadopted or unresolved_install else 0)
+
+
+def _prepare_doctor_repair(root: Path, *, install: bool, commit_policy_only: bool) -> bool:
+    try:
+        adopted = manifest.load(root)
+    except (OSError, TypeError, ValueError) as exc:
+        try:
+            adopted = _repair_legacy_manifest(root, install=install)
+        except (OSError, TypeError, ValueError) as migration_error:
+            details = str(exc)
+            migration_details = str(migration_error)
+            if migration_details != details:
+                details = f"{details}; {migration_details}"
+            print(f"error: cannot repair invalid adoption manifest: {details}", file=sys.stderr)
+            return False
+    if adopted is None and not commit_policy_only:
+        print("error: repository is not adopted; run `code-standards setup`", file=sys.stderr)
+        return False
+    return True
+
+
+def _repair_commit_policy(root: Path, *, install: bool) -> int | None:
+    from sarj_standards.libs.adoption import doctor, hooks, service  # ruff: ignore[import-outside-top-level]
+
+    init_plan = service.plan_commit_policy(root, hook_manager=hooks.detect_manager(root))
+    if init_plan.scaffold.errors:
+        for error in init_plan.scaffold.errors:
+            print(f"error: {error}", file=sys.stderr)
+        return None
+    current_findings = doctor.diagnose_commit_policy(root)
+    current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
+    missing_hooks = install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
+    needs_repair = bool(
+        init_plan.scaffold.writes
+        or init_plan.scaffold.edits
+        or init_plan.scaffold.deletes
+        or current_drift
+        or missing_hooks
+    )
+    if needs_repair:
+        return service.apply_init(init_plan, install=install).status
+    return 0
+
+
+def _repair_full_adoption(root: Path, *, install: bool) -> int:
+    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+
+    plan = upgrade.build_plan(root)
+    blockers = upgrade.unsafe_retired_findings(plan)
+    if blockers:
+        print("warning: automatic repair cannot migrate these retired rule references:", file=sys.stderr)
+        for finding in blockers:
+            print(f"warning: {finding.where} -- {finding.detail}", file=sys.stderr)
+    current_findings = doctor.diagnose(root)
+    current_drift = [finding for finding in current_findings if finding.level is doctor.Level.DRIFT]
+    missing_hooks = install and any(finding.id in _HOOK_INSTALL_IDS for finding in current_findings)
+    return (
+        0
+        if not plan.changes and not current_drift and not missing_hooks
+        else upgrade.apply(
+            plan,
+            install=install,
+            allow_retired_debt=bool(blockers),
+        )
+    )
+
+
+def _without_install_findings(findings: list[doctor.Finding]) -> list[doctor.Finding]:
+    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+
+    return [
+        doctor.Finding(
+            doctor.Level.WARN,
+            finding.where,
+            f"{finding.detail}; installation intentionally skipped",
+            finding.id,
+            finding.remediation,
+        )
+        if (
+            (finding.level is doctor.Level.DRIFT and upgrade.is_install_remediable(finding))
+            or finding.id in _HOOK_INSTALL_IDS
+        )
+        else finding
+        for finding in findings
+    ]
+
+
+def _print_doctor_findings(
+    root: Path, findings: list[doctor.Finding], drifted: int, warned: int, *, unadopted: bool
+) -> None:
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+
+    print(f"root:   {root}")
+    for finding in findings:
+        print(f"{finding.level.value:6s} {finding.id} {finding.where}  --  {finding.detail}")
+    print(f"\nchecked {len(findings)} configuration site(s); {drifted} drifted; {warned} warning(s).")
+    remediations = (
+        ["run `code-standards setup`"]
+        if unadopted
+        else list(
+            dict.fromkeys(
+                finding.remediation
+                for finding in findings
+                if (finding.level is doctor.Level.DRIFT or finding.id in _HOOK_INSTALL_IDS) and finding.remediation
+            )
+        )
+    )
+    for remediation in remediations:
+        print(f"fix: {remediation}")
 
 
 def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
@@ -466,8 +510,8 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
     return adopted
 
 
-def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one command preserves preview/apply state.
-    from sarj_standards.libs.adoption import doctor, lifecycle, upgrade  # ruff: ignore[import-outside-top-level]
+def cmd_update(args: _Args) -> int:
+    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
 
     target_version: str | None = None
     if args.target_version is not None:
@@ -501,38 +545,61 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
         return 2
 
     if not args.offline and not bootstrapped:
-        executable = shutil.which("uvx")
-        if executable is None:
-            print(
-                "error: uvx is required to resolve the latest standards release; install uv and retry "
-                "(--offline only reconverges the executing bundle)",
-                file=sys.stderr,
-            )
-            return 2
-        from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level] -- lazy route
-
-        command = [
-            "--root",
-            str(_resolve_dest(args.dest)),
-            "update",
-        ]
-        if target_version is None:
-            command.append("--offline")
-        else:
-            command.extend(("--to", target_version))
-        if args.check:
-            command.append("--check")
-        if args.no_install:
-            command.append("--no-install")
-        environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve the caller environment for uvx
-        environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
-        return _run_resolved_update(
-            launcher.argv(executable=executable, version=target_version, refresh=True), command, environment
-        )
-
+        return _bootstrap_update(args, target_version)
     if args.offline:
         args.no_install = True
     root = _resolve_dest(args.dest)
+    migrated_legacy = _prepare_update_manifest(root, check=args.check)
+    if migrated_legacy is None:
+        return 2
+    try:
+        plan = upgrade.build_plan(root)
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
+        return 2
+    preflight_findings = doctor.diagnose(root)
+    if not _update_preflight(plan, preflight_findings):
+        return 2
+    preview = upgrade.render(plan.changes)
+    if args.check:
+        return _preview_update(root, plan, preflight_findings, preview)
+    return _apply_update(args, root, plan, preflight_findings, preview, migrated_legacy=migrated_legacy)
+
+
+def _bootstrap_update(args: _Args, target_version: str | None) -> int:
+
+    executable = shutil.which("uvx")
+    if executable is None:
+        print(
+            "error: uvx is required to resolve the latest standards release; install uv and retry "
+            "(--offline only reconverges the executing bundle)",
+            file=sys.stderr,
+        )
+        return 2
+    from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    command = [
+        "--root",
+        str(_resolve_dest(args.dest)),
+        "update",
+    ]
+    if target_version is None:
+        command.append("--offline")
+    else:
+        command.extend(("--to", target_version))
+    if args.check:
+        command.append("--check")
+    if args.no_install:
+        command.append("--no-install")
+    environment = dict(os.environ)  # ruff: ignore[banned-api] -- preserve the caller environment for uvx
+    environment["SARJ_STANDARDS_BOOTSTRAPPED"] = "1"
+    return _run_resolved_update(
+        launcher.argv(executable=executable, version=target_version, refresh=True), command, environment
+    )
+
+
+def _prepare_update_manifest(root: Path, *, check: bool) -> bool | None:
+
     migrated_legacy = False
     try:
         _ = manifest.load(root)
@@ -545,14 +612,14 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             migration_error = legacy_error
         if legacy is None:
             print(f"error: cannot plan upgrade: {migration_error or exc}", file=sys.stderr)
-            return 2
-        if args.check:
+            return None
+        if check:
             print(
                 "error: the adoption manifest needs a one-way migration; run "
                 "`code-standards doctor --repair --no-install`, then retry update",
                 file=sys.stderr,
             )
-            return 2
+            return None
         try:
             # The normal upgrade transaction owns dependency installation.  A
             # legacy-manifest repair must only establish the current manifest
@@ -562,44 +629,63 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             migrated_legacy = True
         except (OSError, TypeError, ValueError) as migration_error:
             print(f"error: cannot migrate legacy adoption before update: {migration_error}", file=sys.stderr)
-            return 2
+            return None
         print("migrated: legacy adoption manifest")
-    try:
-        plan = upgrade.build_plan(root)
-    except (OSError, TypeError, ValueError) as exc:
-        print(f"error: cannot plan upgrade: {exc}", file=sys.stderr)
-        return 2
-    preflight_findings = doctor.diagnose(root)
+    return migrated_legacy
+
+
+def _update_preflight(plan: upgrade.UpgradePlan, preflight_findings: list[doctor.Finding]) -> bool:
+    from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level]
+
     invalid = [finding for finding in preflight_findings if finding.id in _INVALID_DOCTOR_IDS]
     if invalid:
         for finding in invalid:
             print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
             if finding.remediation:
                 print(f"fix: {finding.remediation}", file=sys.stderr)
-        return 2
+        return False
     blockers = upgrade.unsafe_retired_findings(plan)
     if blockers:
         for finding in blockers:
             print(f"error: {finding.where} -- {finding.detail}", file=sys.stderr)
-        return 2
-    preview = upgrade.render(plan.changes)
-    if args.check:
-        drifted = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
-        if preview:
-            print(preview)
-        elif drifted:
-            print(
-                f"bundle current: {root} has standards {__version__},"
-                f" but doctor found {len(drifted)} configuration drift(s)"
-            )
-        else:
-            print(f"current: {root} already matches standards {__version__}")
-        for finding in drifted:
-            print(f"drift: {finding.id} {finding.where} -- {finding.detail}")
-        remediations = list(dict.fromkeys(finding.remediation for finding in drifted if finding.remediation))
-        for remediation in remediations:
-            print(f"fix: {remediation}")
-        return 1 if plan.changes or drifted else 0
+        return False
+    return True
+
+
+def _preview_update(
+    root: Path, plan: upgrade.UpgradePlan, preflight_findings: list[doctor.Finding], preview: str
+) -> int:
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+
+    drifted = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
+    if preview:
+        print(preview)
+    elif drifted:
+        print(
+            f"bundle current: {root} has standards {__version__},"
+            f" but doctor found {len(drifted)} configuration drift(s)"
+        )
+    else:
+        print(f"current: {root} already matches standards {__version__}")
+    for finding in drifted:
+        print(f"drift: {finding.id} {finding.where} -- {finding.detail}")
+    remediations = list(dict.fromkeys(finding.remediation for finding in drifted if finding.remediation))
+    for remediation in remediations:
+        print(f"fix: {remediation}")
+    return 1 if plan.changes or drifted else 0
+
+
+def _apply_update(
+    args: _Args,
+    root: Path,
+    plan: upgrade.UpgradePlan,
+    preflight_findings: list[doctor.Finding],
+    preview: str,
+    *,
+    migrated_legacy: bool,
+) -> int:
+    from sarj_standards.libs.adoption import doctor, lifecycle, upgrade  # ruff: ignore[import-outside-top-level]
+
     current_drift = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
     missing_hooks = not args.no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in preflight_findings)
     skipped_commands = (
@@ -613,13 +699,13 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
     print(preview or f"current: {root} already matches standards {__version__}")
     status = upgrade.apply(plan, install=not args.no_install)
     if status:
-        print("error: update failed; tracked configuration files were restored", file=sys.stderr)
-        remaining = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
-        for finding in remaining:
-            print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
-        for remediation in dict.fromkeys(finding.remediation for finding in remaining if finding.remediation):
-            print(f"fix: {remediation}", file=sys.stderr)
-        return status
+        return _report_failed_update(root, status)
+    return _update_postflight(root, skipped_commands, no_install=args.no_install)
+
+
+def _update_postflight(root: Path, skipped_commands: list[lifecycle.Command], *, no_install: bool) -> int:
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+
     postflight_findings = doctor.diagnose(root)
     invalid = [finding for finding in postflight_findings if finding.id in _INVALID_DOCTOR_IDS]
     if invalid:
@@ -627,17 +713,29 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
             print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
         return 2
     unresolved_hooks = [finding for finding in postflight_findings if finding.id in _HOOK_INSTALL_IDS]
-    if not args.no_install and unresolved_hooks:
+    if not no_install and unresolved_hooks:
         for finding in unresolved_hooks:
             print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
         return 1
+    return _report_updated(root, postflight_findings, skipped_commands, no_install=no_install)
+
+
+def _report_updated(
+    root: Path,
+    postflight_findings: list[doctor.Finding],
+    skipped_commands: list[lifecycle.Command],
+    *,
+    no_install: bool,
+) -> int:
+    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+
     pending = (
         [
             finding
             for finding in postflight_findings
             if finding.level is doctor.Level.DRIFT and upgrade.is_install_remediable(finding)
         ]
-        if args.no_install
+        if no_install
         else []
     )
     if pending or skipped_commands:
@@ -655,6 +753,18 @@ def cmd_update(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one comm
     print(f"updated: {root} now uses standards {__version__}")
     print("next: run `code-standards check --trust-repository-code` and review every new finding")
     return 0
+
+
+def _report_failed_update(root: Path, status: int) -> int:
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+
+    print("error: update failed; tracked configuration files were restored", file=sys.stderr)
+    remaining = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
+    for finding in remaining:
+        print(f"error: {finding.id} {finding.where} -- {finding.detail}", file=sys.stderr)
+    for remediation in dict.fromkeys(finding.remediation for finding in remaining if finding.remediation):
+        print(f"fix: {remediation}", file=sys.stderr)
+    return status
 
 
 def _run_resolved_update(
@@ -723,12 +833,6 @@ def _resolve_and_run_update(
 
 
 def cmd_setup(args: _Args) -> int:
-    from sarj_standards.libs.adoption import (  # ruff: ignore[import-outside-top-level] -- lazy route
-        doctor,
-        scaffold,
-        service,
-    )
-
     root = _resolve_dest(args.dest)
     selected_configs = tuple(dict.fromkeys((*args.configs, *args.only)))
     try:
@@ -762,41 +866,63 @@ def cmd_setup(args: _Args) -> int:
         print(f"detected: {', '.join(detected) or 'nothing'}")
         print(f"configs: {', '.join(plan.configs)}")
     if args.dry_run:
-        print("\n-- dry run; nothing is written --")
-        if init_plan.sync is not None:
-            pending_sync = 0
-            for target in init_plan.sync.targets:
-                if not target.destination.is_file() or target.destination.read_bytes() != target.source.read_bytes():
-                    print(f"would sync:  {target.destination}")
-                    pending_sync += 1
-            if not pending_sync:
-                print("configs are current")
-        if not args.no_install:
-            for command in init_plan.install_commands:
-                print(f"would run:   {shlex.join(command.argv)}  (in {command.cwd})")
+        _preview_setup(args, init_plan)
     else:
-        result = service.apply_init(init_plan, install=not args.no_install)
-        if result.status:
-            event = "interrupted" if result.failure is service.InitFailure.INTERRUPTED else "failed"
-            print(
-                f"error: initialization {event}; rollback and generated-environment cleanup were attempted",
-                file=sys.stderr,
-            )
-            if result.error:
-                print(f"detail: {result.error}", file=sys.stderr)
-            return result.status
-        if result.sync is not None:
-            _render_sync(result.sync)
-        if not args.no_install:
-            unresolved_hooks = [finding for finding in doctor.diagnose(root) if finding.id in _HOOK_INSTALL_IDS]
-            if unresolved_hooks:
-                for finding in unresolved_hooks:
-                    print(
-                        f"error: {finding.id} {finding.where} -- {finding.detail}",
-                        file=sys.stderr,
-                    )
-                return 1
+        status = _apply_setup(args, root, init_plan)
+        if status:
+            return status
 
+    _report_setup(args, root, init_plan)
+    return 0
+
+
+def _preview_setup(args: _Args, init_plan: service.InitPlan) -> None:
+    print("\n-- dry run; nothing is written --")
+    if init_plan.sync is not None:
+        pending_sync = 0
+        for target in init_plan.sync.targets:
+            if not target.destination.is_file() or target.destination.read_bytes() != target.source.read_bytes():
+                print(f"would sync:  {target.destination}")
+                pending_sync += 1
+        if not pending_sync:
+            print("configs are current")
+    if not args.no_install:
+        for command in init_plan.install_commands:
+            print(f"would run:   {shlex.join(command.argv)}  (in {command.cwd})")
+
+
+def _apply_setup(args: _Args, root: Path, init_plan: service.InitPlan) -> int:
+    from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level]
+
+    result = service.apply_init(init_plan, install=not args.no_install)
+    if result.status:
+        event = "interrupted" if result.failure is service.InitFailure.INTERRUPTED else "failed"
+        print(
+            f"error: initialization {event}; rollback and generated-environment cleanup were attempted",
+            file=sys.stderr,
+        )
+        if result.error:
+            print(f"detail: {result.error}", file=sys.stderr)
+        return result.status
+    if result.sync is not None:
+        _render_sync(result.sync)
+    if not args.no_install:
+        unresolved_hooks = [finding for finding in doctor.diagnose(root) if finding.id in _HOOK_INSTALL_IDS]
+        if unresolved_hooks:
+            for finding in unresolved_hooks:
+                print(
+                    f"error: {finding.id} {finding.where} -- {finding.detail}",
+                    file=sys.stderr,
+                )
+            return 1
+
+    return 0
+
+
+def _report_setup(args: _Args, root: Path, init_plan: service.InitPlan) -> None:
+    from sarj_standards.libs.adoption import scaffold  # ruff: ignore[import-outside-top-level]
+
+    plan = init_plan.scaffold
     verb_write = "would write" if args.dry_run else "wrote"
     verb_edit = "would append to" if args.dry_run else "appended to"
     verb_delete = "would remove" if args.dry_run else "removed"
@@ -824,7 +950,6 @@ def cmd_setup(args: _Args) -> int:
             print(f"\nCI:    {rendered} runs the pinned quality gate")
         else:
             print("\nCI:    would write .github/workflows/standards.yml")
-    return 0
 
 
 def _setup_plan(args: _Args, root: Path, selected_configs: tuple[str, ...]) -> service.InitPlan:
@@ -928,117 +1053,39 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
     return 1 if findings else 0
 
 
-def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged and PR scopes retain Doctor triggers.
-    from sarj_standards.libs.linting import external, runner  # ruff: ignore[import-outside-top-level]
+def cmd_check(args: _Args) -> int:
+    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
     catalog_status = _check_conventional_slack_catalog(args, root)
     if catalog_status:
         return catalog_status
-    repository_wide = not args.files
-    pull_request_scoped = False
-    react_doctor_triggered = False
-    if args.staged:
-        try:
-            staged_names = _staged_file_names(root)
-            react_doctor_triggered = _react_doctor_triggered_by(staged_names)
-            staged = _safe_staged_paths(root, staged_names)
-        except (OSError, subprocess.SubprocessError) as exc:
-            if args.output_format != "text":
-                return _emit_analysis_report(args, root, _machine_input_error(root, f"cannot read staged files: {exc}"))
-            print(f"error: cannot read staged files: {exc}", file=sys.stderr)
-            return 2
-        if args.files:
-            requested = frozenset(_repository_relative_names(root, args.files))
-            selected_staged_names = [name for name in staged_names if name in requested]
-            staged_set = frozenset(staged)
-            args.files = [path for path in _safe_staged_paths(root, args.files) if path in staged_set]
-        else:
-            selected_staged_names = staged_names
-            args.files = staged
-        drifted = _unstaged_versions(root, selected_staged_names)
-        if drifted:
-            message = (
-                "--staged found files with unstaged content; run through pre-commit "
-                "(which safely stashes it) or stage the intended versions: " + ", ".join(drifted)
-            )
-            if args.output_format != "text":
-                return _emit_analysis_report(args, root, _machine_input_error(root, message))
-            print(f"error: {message}", file=sys.stderr)
-            return 2
-    elif args.files:
-        try:
-            args.files = _selected_paths(root, args.files)
-        except ValueError as exc:
-            if args.output_format != "text":
-                return _emit_analysis_report(args, root, _machine_input_error(root, str(exc)))
-            print(f"error: {exc}", file=sys.stderr)
-            return 2
-    elif (root / ".git").exists() and (base := external.change_scope_base()):
-        try:
-            changed_names = _changed_file_names(root, base)
-            react_doctor_triggered = _react_doctor_triggered_by(changed_names)
-            args.files = [
-                path
-                for path in _safe_staged_paths(root, changed_names)
-                if runner.accepts_hook_path(Path(path), root=root)
-            ]
-            pull_request_scoped = True
-        except (OSError, subprocess.SubprocessError) as exc:
-            if args.output_format != "text":
-                return _emit_analysis_report(
-                    args,
-                    root,
-                    _machine_input_error(root, f"cannot read pull-request changes: {exc}"),
-                )
-            print(f"error: cannot read pull-request changes: {exc}", file=sys.stderr)
-            return 2
-    elif (root / ".git").exists() and external.is_non_default_github_push():
-        args.files = []
-        pull_request_scoped = True
+    scope = _CheckScope(repository_wide=not args.files)
+    selection_status = _select_check_scope(args, root, scope)
+    if selection_status is not None:
+        return selection_status
     if len(args.files) == 1 and Path(args.files[0]).resolve() == root:
         args.files = []
-        repository_wide = True
+        scope.repository_wide = True
     if args.staged:
         health_status = _check_staged_adoption_health(root, args.files, args=args)
         if health_status:
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path), root=root)]
-        if not args.files and not react_doctor_triggered:
+        if not args.files and not scope.react_doctor_triggered:
             return _run_canonical_check(root, (), trusted=args.trust_repository_code, staged=True)
     if args.output_format != "text":
-        if _validate_analysis_output(args, root):
-            return 2
-        args.external = True
-        args.trust = "trusted" if args.trust_repository_code else "safe"
-        args.analysis_mode = "policy"
-        if repository_wide:
-            adoption_report = _machine_adoption_gate(root)
-            if adoption_report is not None:
-                return _emit_analysis_report(args, root, adoption_report)
-        if pull_request_scoped and not args.files:
-            from sarj_standards.api import (  # ruff: ignore[import-outside-top-level]
-                AnalysisMode,
-                Standards,
-                TrustMode,
-            )
+        return _check_machine_output(args, root, scope)
+    return _check_text_output(args, root, scope)
 
-            report = Standards(root).analyze(
-                (),
-                external=True,
-                trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
-                mode=AnalysisMode.POLICY,
-                react_doctor_triggered=react_doctor_triggered,
-            )
-            return _emit_analysis_report(args, root, report)
-        args.react_doctor_triggered = react_doctor_triggered
-        return cmd_analyze(args)
-    if pull_request_scoped:
+
+def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
+    if scope.pull_request_scoped:
         adoption_report = _machine_adoption_gate(root)
         if adoption_report is not None:
             return _emit_analysis_report(args, root, adoption_report)
         if not args.files:
-            if react_doctor_triggered:
+            if scope.react_doctor_triggered:
                 return _run_canonical_check(
                     root,
                     (),
@@ -1052,9 +1099,124 @@ def cmd_check(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- staged an
         "trusted": args.trust_repository_code,
         "staged": args.staged,
     }
-    if react_doctor_triggered:
+    if scope.react_doctor_triggered:
         check_options["react_doctor_triggered"] = True
     return _run_canonical_check(root, list(args.files), **check_options)
+
+
+@dataclass(slots=True)
+class _CheckScope:
+    repository_wide: bool
+    pull_request_scoped: bool = False
+    react_doctor_triggered: bool = False
+
+
+def _select_check_scope(args: _Args, root: Path, scope: _CheckScope) -> int | None:
+    from sarj_standards.libs.linting import external  # ruff: ignore[import-outside-top-level]
+
+    if args.staged:
+        return _select_staged_check(args, root, scope)
+    if args.files:
+        return _select_explicit_check(args, root)
+    if (root / ".git").exists() and (base := external.change_scope_base()):
+        return _select_pull_request_check(args, root, scope, base)
+    if (root / ".git").exists() and external.is_non_default_github_push():
+        args.files = []
+        scope.pull_request_scoped = True
+    return None
+
+
+def _select_staged_check(args: _Args, root: Path, scope: _CheckScope) -> int | None:
+    try:
+        staged_names = _staged_file_names(root)
+        scope.react_doctor_triggered = _react_doctor_triggered_by(staged_names)
+        staged = _safe_staged_paths(root, staged_names)
+    except (OSError, subprocess.SubprocessError) as exc:
+        if args.output_format != "text":
+            return _emit_analysis_report(args, root, _machine_input_error(root, f"cannot read staged files: {exc}"))
+        print(f"error: cannot read staged files: {exc}", file=sys.stderr)
+        return 2
+    if args.files:
+        requested = frozenset(_repository_relative_names(root, args.files))
+        selected_staged_names = [name for name in staged_names if name in requested]
+        staged_set = frozenset(staged)
+        args.files = [path for path in _safe_staged_paths(root, args.files) if path in staged_set]
+    else:
+        selected_staged_names = staged_names
+        args.files = staged
+    drifted = _unstaged_versions(root, selected_staged_names)
+    if drifted:
+        message = (
+            "--staged found files with unstaged content; run through pre-commit "
+            "(which safely stashes it) or stage the intended versions: " + ", ".join(drifted)
+        )
+        if args.output_format != "text":
+            return _emit_analysis_report(args, root, _machine_input_error(root, message))
+        print(f"error: {message}", file=sys.stderr)
+        return 2
+    return None
+
+
+def _select_explicit_check(args: _Args, root: Path) -> int | None:
+    try:
+        args.files = _selected_paths(root, args.files)
+    except ValueError as exc:
+        if args.output_format != "text":
+            return _emit_analysis_report(args, root, _machine_input_error(root, str(exc)))
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return None
+
+
+def _select_pull_request_check(args: _Args, root: Path, scope: _CheckScope, base: str) -> int | None:
+    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level]
+
+    try:
+        changed_names = _changed_file_names(root, base)
+        scope.react_doctor_triggered = _react_doctor_triggered_by(changed_names)
+        args.files = [
+            path for path in _safe_staged_paths(root, changed_names) if runner.accepts_hook_path(Path(path), root=root)
+        ]
+        scope.pull_request_scoped = True
+    except (OSError, subprocess.SubprocessError) as exc:
+        if args.output_format != "text":
+            return _emit_analysis_report(
+                args,
+                root,
+                _machine_input_error(root, f"cannot read pull-request changes: {exc}"),
+            )
+        print(f"error: cannot read pull-request changes: {exc}", file=sys.stderr)
+        return 2
+    return None
+
+
+def _check_machine_output(args: _Args, root: Path, scope: _CheckScope) -> int:
+    if _validate_analysis_output(args, root):
+        return 2
+    args.external = True
+    args.trust = "trusted" if args.trust_repository_code else "safe"
+    args.analysis_mode = "policy"
+    if scope.repository_wide:
+        adoption_report = _machine_adoption_gate(root)
+        if adoption_report is not None:
+            return _emit_analysis_report(args, root, adoption_report)
+    if scope.pull_request_scoped and not args.files:
+        from sarj_standards.api import (  # ruff: ignore[import-outside-top-level]
+            AnalysisMode,
+            Standards,
+            TrustMode,
+        )
+
+        report = Standards(root).analyze(
+            (),
+            external=True,
+            trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
+            mode=AnalysisMode.POLICY,
+            react_doctor_triggered=scope.react_doctor_triggered,
+        )
+        return _emit_analysis_report(args, root, report)
+    args.react_doctor_triggered = scope.react_doctor_triggered
+    return cmd_analyze(args)
 
 
 def cmd_validate_slack_automations(args: _Args) -> int:
@@ -1225,22 +1387,7 @@ def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    command = [
-        sys.executable,
-        "-I",
-        "-m",
-        "sarj_standards",
-        "--root",
-        ".",
-        "maintain",
-        "rules",
-        "evaluate",
-    ]
-    for selector in args.selected_rules:
-        command.extend(("--rule", str(selector)))
-    command.extend(("--scope", "corpus", "--format", "json"))
-    if args.trust_repository_code:
-        command.append("--trust-repository-code")
+    command = _corpus_evaluation_command(args)
 
     diagnostics: list[dict[str, object]] = []
     batches: list[dict[str, object]] = []
@@ -1302,6 +1449,27 @@ def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
     else:
         _write_report(root, args.output, payload, output_format=args.output_format)
     return 1 if diagnostics else 0
+
+
+def _corpus_evaluation_command(args: _Args) -> list[str]:
+    command = [
+        sys.executable,
+        "-I",
+        "-m",
+        "sarj_standards",
+        "--root",
+        ".",
+        "maintain",
+        "rules",
+        "evaluate",
+    ]
+    for selector in args.selected_rules:
+        command.extend(("--rule", str(selector)))
+    command.extend(("--scope", "corpus", "--format", "json"))
+    if args.trust_repository_code:
+        command.append("--trust-repository-code")
+
+    return command
 
 
 def _corpus_diagnostic(
@@ -1508,40 +1676,53 @@ def _machine_adoption_gate(root: Path) -> object | None:
     except (OSError, TypeError, ValueError) as exc:
         issues = (*issues, ExecutionIssue("sarj-standards-config", "config-sync-invalid", str(exc), exit_code=2))
     else:
-        doctor_paths = {diagnostic.location.path for diagnostic in diagnostics}
-        sync_diagnostics_list: list[Diagnostic] = []
-        for record in sync.records:
-            relative = record.target.destination.relative_to(root).as_posix()
-            if record.outcome is not service.SyncOutcome.DRIFT or relative in doctor_paths:
-                continue
-            sync_diagnostics_list.append(
-                Diagnostic(
-                    "standards.config.sync",
-                    "generated configuration differs from the installed Standards version",
-                    Severity.ERROR,
-                    "sarj-standards-config",
-                    Location(relative),
-                    rule_id="standards.config.sync",
-                    help="run `code-standards update --offline`",
-                )
-            )
-        sync_diagnostics = tuple(sync_diagnostics_list)
-        diagnostics = (*diagnostics, *sync_diagnostics)
-        if any(record.outcome is service.SyncOutcome.INVALID for record in sync.records):
-            issues = (
-                *issues,
-                ExecutionIssue(
-                    "sarj-standards-config",
-                    "config-sync-invalid",
-                    "a generated configuration destination is not a regular file",
-                    exit_code=2,
-                ),
-            )
+        diagnostics, issues = _merge_sync_findings(root, sync, diagnostics, issues)
     if not diagnostics and not issues:
         return None
     completion = Completion.FAILED if issues else Completion.COMPLETE
     tool = ToolReport("sarj-standards-adoption", completion, diagnostics=diagnostics, issues=issues)
     return report_from_tools(root, (tool,))
+
+
+def _merge_sync_findings(
+    root: Path,
+    sync: service.SyncResult,
+    diagnostics: tuple[Diagnostic, ...],
+    issues: tuple[ExecutionIssue, ...],
+) -> tuple[tuple[Diagnostic, ...], tuple[ExecutionIssue, ...]]:
+    from sarj_standards.libs.adoption import service  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import Diagnostic, ExecutionIssue, Location, Severity  # ruff: ignore[import-outside-top-level]
+
+    doctor_paths = {diagnostic.location.path for diagnostic in diagnostics}
+    sync_diagnostics_list: list[Diagnostic] = []
+    for record in sync.records:
+        relative = record.target.destination.relative_to(root).as_posix()
+        if record.outcome is not service.SyncOutcome.DRIFT or relative in doctor_paths:
+            continue
+        sync_diagnostics_list.append(
+            Diagnostic(
+                "standards.config.sync",
+                "generated configuration differs from the installed Standards version",
+                Severity.ERROR,
+                "sarj-standards-config",
+                Location(relative),
+                rule_id="standards.config.sync",
+                help="run `code-standards update --offline`",
+            )
+        )
+    sync_diagnostics = tuple(sync_diagnostics_list)
+    diagnostics = (*diagnostics, *sync_diagnostics)
+    if any(record.outcome is service.SyncOutcome.INVALID for record in sync.records):
+        issues = (
+            *issues,
+            ExecutionIssue(
+                "sarj-standards-config",
+                "config-sync-invalid",
+                "a generated configuration destination is not a regular file",
+                exit_code=2,
+            ),
+        )
+    return diagnostics, issues
 
 
 def _machine_input_error(root: Path, message: str) -> object:
@@ -1657,42 +1838,7 @@ def _check_staged_adoption_health(
     invalid = any(finding.id in {"doctor.manifest.invalid", "doctor.package-json.invalid"} for finding in drifted)
     status = 2 if invalid else 1 if drifted else 0
     if args.output_format != "text" and status:
-        from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
-            Completion,
-            Diagnostic,
-            ExecutionIssue,
-            Location,
-            Severity,
-            ToolReport,
-        )
-        from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
-            report_from_tools,
-        )
-
-        issues = tuple(
-            ExecutionIssue("sarj-standards-doctor", finding.id, finding.detail, exit_code=2)
-            for finding in drifted
-            if finding.id in _INVALID_DOCTOR_IDS
-        )
-        diagnostics = tuple(
-            Diagnostic(
-                finding.id,
-                finding.detail,
-                Severity.ERROR,
-                "sarj-standards-doctor",
-                Location(_doctor_location(root, finding.where)),
-                rule_id=finding.id,
-                help=finding.remediation,
-            )
-            for finding in drifted
-            if finding.id not in _INVALID_DOCTOR_IDS
-        )
-        completion = Completion.FAILED if issues else Completion.COMPLETE
-        report = report_from_tools(
-            root,
-            (ToolReport("sarj-standards-adoption", completion, diagnostics=diagnostics, issues=issues),),
-        )
-        return _emit_analysis_report(args, root, report)
+        return _emit_staged_adoption_health(args, root, drifted)
     for finding in drifted:
         print(f"drift: {finding.id} {finding.where} -- {finding.detail}")
     remediations = list(dict.fromkeys(finding.remediation for finding in drifted if finding.remediation))
@@ -1701,6 +1847,45 @@ def _check_staged_adoption_health(
     if invalid:
         return 2
     return 1 if drifted else 0
+
+
+def _emit_staged_adoption_health(args: _Args, root: Path, drifted: list[doctor.Finding]) -> int:
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+        Completion,
+        Diagnostic,
+        ExecutionIssue,
+        Location,
+        Severity,
+        ToolReport,
+    )
+    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+        report_from_tools,
+    )
+
+    issues = tuple(
+        ExecutionIssue("sarj-standards-doctor", finding.id, finding.detail, exit_code=2)
+        for finding in drifted
+        if finding.id in _INVALID_DOCTOR_IDS
+    )
+    diagnostics = tuple(
+        Diagnostic(
+            finding.id,
+            finding.detail,
+            Severity.ERROR,
+            "sarj-standards-doctor",
+            Location(_doctor_location(root, finding.where)),
+            rule_id=finding.id,
+            help=finding.remediation,
+        )
+        for finding in drifted
+        if finding.id not in _INVALID_DOCTOR_IDS
+    )
+    completion = Completion.FAILED if issues else Completion.COMPLETE
+    report = report_from_tools(
+        root,
+        (ToolReport("sarj-standards-adoption", completion, diagnostics=diagnostics, issues=issues),),
+    )
+    return _emit_analysis_report(args, root, report)
 
 
 def _staged_file_names(root: Path) -> list[str]:
@@ -1977,7 +2162,6 @@ _DEFAULT_DIAGNOSTIC_BASELINE = "diagnostic-baseline.json"
 
 
 def cmd_baseline(args: _Args) -> int:
-    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
@@ -1999,6 +2183,51 @@ def cmd_baseline(args: _Args) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    reports = _baseline_analysis_reports(args, root, selected)
+    blocked = [issue for report in reports for issue in report.issues if issue.kind != "baseline-failure"]
+    if blocked:
+        for issue in blocked:
+            print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
+        return 2
+    eligible = _eligible_baseline_diagnostics(reports, args.baseline_rules)
+    provenance = {
+        "bundle_version": __version__,
+        "consumer_base_sha": baseline.repository_base_sha(root),
+        "catalog_digest": baseline.bundled_catalog_digest(),
+    }
+    if args.baseline_cmd == "update" and args.baseline_rules:
+        if not output.is_file():
+            print(f"error: scoped diagnostic baseline update requires an existing baseline: {output}", file=sys.stderr)
+            return 2
+        rendered = baseline.merge_scoped(
+            output,
+            eligible,
+            selectors=_baseline_merge_selectors(args.baseline_rules),
+            **provenance,
+        )
+    else:
+        rendered = baseline.render(eligible, **provenance)
+    return _write_diagnostic_baseline(root, output, rendered, len(eligible))
+
+
+def _write_diagnostic_baseline(root: Path, output: Path, rendered: str, recorded: int) -> int:
+    try:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot write diagnostic baseline {output}: {exc}", file=sys.stderr)
+        return 2
+    print(f"baseline written: {output} ({recorded} diagnostic(s) recorded)")
+    adopted = manifest.load(root)
+    if adopted is None or adopted.diagnostic_baseline is None:
+        relative = output.relative_to(root) if output.is_relative_to(root) else output
+        print(f'point the manifest at it: [baseline] diagnostics = "{relative}"')
+    return 0
+
+
+def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | None) -> list[AnalysisReport]:
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+
     trust = TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE
     reports: list[AnalysisReport] = []
     scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
@@ -2059,42 +2288,7 @@ def cmd_baseline(args: _Args) -> int:
                 ),
             )
         )
-    blocked = [issue for report in reports for issue in report.issues if issue.kind != "baseline-failure"]
-    if blocked:
-        for issue in blocked:
-            print(f"error: {issue.kind}: {issue.message}", file=sys.stderr)
-        return 2
-    eligible = _eligible_baseline_diagnostics(reports, args.baseline_rules)
-    provenance = {
-        "bundle_version": __version__,
-        "consumer_base_sha": baseline.repository_base_sha(root),
-        "catalog_digest": baseline.bundled_catalog_digest(),
-    }
-    if args.baseline_cmd == "update" and args.baseline_rules:
-        if not output.is_file():
-            print(f"error: scoped diagnostic baseline update requires an existing baseline: {output}", file=sys.stderr)
-            return 2
-        rendered = baseline.merge_scoped(
-            output,
-            eligible,
-            selectors=_baseline_merge_selectors(args.baseline_rules),
-            **provenance,
-        )
-    else:
-        rendered = baseline.render(eligible, **provenance)
-    try:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(rendered, encoding="utf-8")
-    except OSError as exc:
-        print(f"error: cannot write diagnostic baseline {output}: {exc}", file=sys.stderr)
-        return 2
-    recorded = len(eligible)
-    print(f"baseline written: {output} ({recorded} diagnostic(s) recorded)")
-    adopted = manifest.load(root)
-    if adopted is None or adopted.diagnostic_baseline is None:
-        relative = output.relative_to(root) if output.is_relative_to(root) else output
-        print(f'point the manifest at it: [baseline] diagnostics = "{relative}"')
-    return 0
+    return reports
 
 
 def _baseline_selected_paths(root: Path, files: Sequence[str], *, scoped: bool) -> list[str] | None:
@@ -3685,292 +3879,386 @@ def _cmd_repo(args: _Args) -> int:
         return 2
 
 
-def _run_repo(args: _Args) -> int:  # ruff: ignore[too-many-locals] -- one lazy CLI router covers independent repository subcommands.
+def _run_repo(args: _Args) -> int:
     if args.repo_cmd == "setup":
-        from sarj_standards.libs.setup import apply_setup, plan_setup  # ruff: ignore[import-outside-top-level]
-
-        plan = plan_setup(_resolve_dest(args.dest))
-        if args.check:
-            if plan.install_hooks:
-                print(f"would install: Lefthook repository hooks  (in {plan.root})")
-            for command in plan.commands:
-                print(f"would run: {shlex.join(command.argv)}  (in {command.cwd})")
-            return 0
-        return apply_setup(plan)
+        return _run_repo_setup(args)
     if args.repo_cmd == "release":
-        from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
-
-        root = _resolve_dest(args.dest)
-        if args.release_cmd == "check-tag":
-            validated = release.validate_release_tag(args.tag, root)
-            print(f"{validated.tag} exactly matches {validated.manifest}")
-            return 0
-        if args.release_cmd == "verify-tags":
-            missing = (
-                release.verify_remote_release_tags(root, commit=args.release_commit)
-                if args.release_commit
-                else release.missing_remote_release_tags(root)
-            )
-            if missing:
-                for tag_name in missing:
-                    print(f"missing release tag: {tag_name}")
-                return 1
-            print("all current package versions have release tags")
-            return 0
-        if args.release_cmd == "create-tags":
-            result = release.create_release_tags(
-                root,
-                tuple(args.release_targets),
-                commit=args.release_commit,
-                attempts=args.attempts,
-                delay=args.delay_seconds,
-            )
-            for tag_name in result.existing:
-                print(f"release tag already exists: {tag_name}")
-            for tag_name in result.created:
-                print(f"created release tag: {tag_name}")
-            return 0
-        if args.release_cmd == "changes" and args.github_output is not None:
-            changed = release.pending_release_targets(root, before=args.before, after=args.after)
-            with args.github_output.open("a", encoding="utf-8") as output:
-                for target, value in changed.items():
-                    _ = output.write(f"{target}={'true' if value else 'false'}\n")
-            return 0
-        if args.release_cmd == "causality":
-            report = release.check_release_causality(root, before=args.before, after=args.after)
-            if report.violations:
-                print("\n".join(violation.render() for violation in report.violations))
-                return 1
-            changed = ", ".join(report.changed_targets) or "none"
-            print(f"release causality ✓ (publishable targets changed: {changed})")
-            return 0
-        if args.release_cmd == "lock-age" and args.lockfile is not None:
-            environment_policy = release.ReleaseAgePolicy.from_strings(
-                os.environ.get("MIN_RELEASE_AGE_DAYS"),  # ruff: ignore[banned-api] -- compatibility with the retired release script.
-                os.environ.get("MIN_RELEASE_AGE_EXCLUDE"),  # ruff: ignore[banned-api] -- compatibility with the retired release script.
-            )
-            policy = release.ReleaseAgePolicy(
-                args.minimum_age if args.minimum_age is not None else environment_policy.minimum_age,
-                environment_policy.exclusions
-                | frozenset(args.release_exclude)
-                | frozenset(
-                    exclusion
-                    for exclusion_file in args.release_exclude_file
-                    for exclusion in release.load_exact_exclusions((root / exclusion_file).resolve())
-                ),
-            )
-            report = release.check_lockfile_release_age((root / args.lockfile).resolve(), policy)
-            if report.failures:
-                print("\n".join(str(failure) for failure in report.failures))
-                return 1
-            print(f"release-age policy ✓ ({len(report.checked)} package versions checked)")
-            return 0
-        if args.release_cmd == "typescript":
-            mode = args.release_mode
-            match mode:
-                case "check" | "pack" | "publish":
-                    release_mode = mode
-                case _:
-                    return 2
-            artifact = release.run_typescript_release(
-                release_mode,
-                root / "packages" / "typescript",
-                destination=args.output,
-            )
-            if artifact is not None:
-                print(f"packed and verified {artifact.path}")
-            return 0
-        if args.release_cmd == "verify-wheel":
-            for wheel in args.wheels:
-                release.verify_python_wheel_license(wheel.resolve())
-                print(f"verified wheel license: {wheel}")
-            return 0
-        if args.release_cmd == "verify-publications":
-            from sarj_standards.libs.release import registry  # ruff: ignore[import-outside-top-level]
-
-            return registry.main(
-                [
-                    "--root",
-                    str(root),
-                    "--attempts",
-                    str(args.attempts),
-                    "--delay-seconds",
-                    str(args.delay_seconds.total_seconds()),
-                ]
-            )
-        if args.release_cmd == "publish":
-            target = args.release_target
-            match target:
-                case "typescript" | "bootstrap" | "python" | "sql" | "iac" | "standards" | "tsconfig":
-                    publish_target = target
-                case _:
-                    return 2
-            release.publish_target(root, publish_target)
-            return 0
-        return 2
+        return _run_repo_release(args)
     if args.repo_cmd == "check":
-        from sarj_standards.libs.repository import repository  # ruff: ignore[import-outside-top-level]
-
-        findings = repository.check(
-            _resolve_dest(args.dest),
-            selected=frozenset(args.repo_only),
-            commits=args.commits,
-            policy_root=_resolve_dest(args.policy_dest) if args.policy_dest else None,
-            private_refs_path=Path(args.private_refs_file).resolve() if args.private_refs_file else None,
-        )
-        if args.quiet:
-            print("repository policy failed" if findings else "repository policy ✓")
-        else:
-            print("\n".join(finding.render() for finding in findings) or "repository policy ✓")
-        return 1 if findings else 0
+        return _run_repo_check(args)
     if args.repo_cmd == "sync-ledger":
-        from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level]
-
-        result = rule_maintenance.sync_ledger(_resolve_dest(args.dest), check=args.check)
-        print(result.message)
-        return result.status
+        return _run_repo_sync_ledger(args)
     if args.repo_cmd == "docs":
-        from sarj_standards.libs.repository import docs  # ruff: ignore[import-outside-top-level]
-
-        root = _resolve_dest(args.dest)
-        if args.docs_cmd == "check":
-            result = docs.check(root)
-            for path in result.changed:
-                print(f"drift: {path.relative_to(root)}")
-            print("documentation is current" if not result.changed else "run `code-standards maintain docs sync`")
-            return result.status
-        result = docs.sync(root)
-        for path in result.changed:
-            print(f"wrote: {path.relative_to(root)}")
-        return 0
+        return _run_repo_docs(args)
     if args.repo_cmd == "comment-corpus":
-        from sarj_standards.libs.repository import comment_corpus  # ruff: ignore[import-outside-top-level]
-
-        if args.include_text is not None:
-            return comment_corpus.write_records(args.roots, args.include_text)
-        return comment_corpus.emit_summary(args.roots, sys.stdout)
+        return _run_repo_comment_corpus(args)
     if args.repo_cmd == "hooks" and args.hooks_cmd == "install":
-        from sarj_standards.libs.repository import hooks  # ruff: ignore[import-outside-top-level]
-
-        return hooks.install(_resolve_dest(args.dest))
+        return _run_repo_hooks(args)
     if args.repo_cmd == "rules":
-        from sarj_standards.libs.repository import rule_inventory_artifact  # ruff: ignore[import-outside-top-level]
-
-        if args.rules_cmd == "manifest":
-            print(json.dumps(rule_inventory_artifact.load(), indent=2))
-            return 0
-        if args.rules_cmd == "changes":
-            from sarj_standards.libs.release.process import (  # ruff: ignore[import-outside-top-level]
-                ProcessFailureError,
-            )
-            from sarj_standards.libs.repository import rule_changes  # ruff: ignore[import-outside-top-level]
-
-            try:
-                comparison = rule_changes.compare(
-                    _resolve_dest(args.dest),
-                    before=args.before,
-                    after=args.after,
-                )
-            except (OSError, TypeError, ValueError, ProcessFailureError) as exc:
-                print(f"error: cannot compare rule revisions: {exc}", file=sys.stderr)
-                return 2
-            raw_required_level = args.required_added_level
-            required_added_level: rule_changes.RuleLevel | None = "warning" if raw_required_level == "warning" else None
-            if required_added_level is not None:
-                invalid = rule_changes.added_rules_at_other_levels(
-                    comparison,
-                    required=required_added_level,
-                )
-                if invalid:
-                    print(
-                        f"error: new judgment rules must enter the fleet at {required_added_level} level",
-                        file=sys.stderr,
-                    )
-                    for selector in invalid:
-                        print(f"Run: code-standards --root . maintain rules stage-warning {selector}", file=sys.stderr)
-                    return 1
-            print(
-                json.dumps(comparison, indent=2)
-                if args.output_format == "json"
-                else rule_changes.render_text(comparison)
-            )
-            return 0
-        if args.rules_cmd == "evaluate":
-            return cmd_rule_evaluate(args)
-        if args.rules_cmd == "new":
-            from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
-
-            if args.selector is None:  # pragma: no cover - Typer requires the positional value
-                msg = "new requires a rule selector"
-                raise TypeError(msg)
-            try:
-                plan = rule_authoring.plan_new(
-                    _resolve_dest(args.dest), args.selector, category=args.rule_category, summary=args.rule_summary
-                )
-                if args.apply_rule:
-                    rule_authoring.apply(plan, _resolve_dest(args.dest))
-            except (OSError, TypeError, ValueError) as exc:
-                print(f"error: cannot scaffold rule: {exc}", file=sys.stderr)
-                return 2
-            print(plan.render(_resolve_dest(args.dest)))
-            return 0
-        if args.rules_cmd == "verify":
-            from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
-
-            if args.selector is None:  # pragma: no cover - Typer requires the positional value
-                msg = "verify requires a rule selector"
-                raise TypeError(msg)
-            try:
-                result = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
-            except (OSError, TypeError, ValueError, RuntimeError) as exc:
-                print(f"error: cannot verify rule: {exc}", file=sys.stderr)
-                return 2
-            print(result.message)
-            return result.status
-        if args.rules_cmd in {"stage-warning", "prepare"}:
-            from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level]
-
-            if args.selector is None:  # pragma: no cover - Typer requires the positional value
-                msg = f"{args.rules_cmd} requires a rule selector"
-                raise TypeError(msg)
-            if args.rules_cmd == "prepare":
-                from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
-                    rule_authoring,
-                )
-
-                try:
-                    verified = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
-                except (OSError, TypeError, ValueError, RuntimeError) as exc:
-                    print(f"error: cannot verify rule before preparation: {exc}", file=sys.stderr)
-                    return 2
-                if verified.status != 0:
-                    print(verified.message)
-                    return verified.status
-            try:
-                result = rule_lifecycle.stage_warning(_resolve_dest(args.dest), args.selector, check=args.check)
-            except (OSError, TypeError, ValueError, RuntimeError) as exc:
-                print(f"error: cannot stage warning rule: {exc}", file=sys.stderr)
-                return 2
-            print(result.message)
-            if result.status == 0:
-                print(_rule_author_next_steps(args.selector))
-            return result.status
-        result = rule_inventory_artifact.sync(_resolve_dest(args.dest), check=args.rules_cmd == "check")
-        print(result.message)
-        return result.status
+        return _run_repo_rules(args)
     if args.repo_cmd == "catalog":
-        from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
-
-        result = rule_catalog_artifact.sync(_resolve_dest(args.dest), check=args.catalog_cmd == "check")
-        print(result.message)
-        return result.status
+        return _run_repo_catalog(args)
     if args.repo_cmd == "cli-reference":
-        from sarj_standards.libs.repository import cli_reference_artifact  # ruff: ignore[import-outside-top-level]
-
-        result = cli_reference_artifact.sync(_resolve_dest(args.dest), build_app(), check=args.reference_cmd == "check")
-        print(result.message)
-        return result.status
+        return _run_repo_cli_reference(args)
     return 2
+
+
+def _run_repo_setup(args: _Args) -> int:
+    from sarj_standards.libs.setup import apply_setup, plan_setup  # ruff: ignore[import-outside-top-level]
+
+    plan = plan_setup(_resolve_dest(args.dest))
+    if args.check:
+        if plan.install_hooks:
+            print(f"would install: Lefthook repository hooks  (in {plan.root})")
+        for command in plan.commands:
+            print(f"would run: {shlex.join(command.argv)}  (in {command.cwd})")
+        return 0
+    return apply_setup(plan)
+
+
+def _run_repo_release(args: _Args) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    root = _resolve_dest(args.dest)
+    if args.release_cmd == "check-tag":
+        validated = release.validate_release_tag(args.tag, root)
+        print(f"{validated.tag} exactly matches {validated.manifest}")
+        return 0
+    if args.release_cmd == "verify-tags":
+        return _run_repo_release_verify_tags(args, root)
+    if args.release_cmd == "create-tags":
+        return _run_repo_release_create_tags(args, root)
+    if args.release_cmd == "changes" and args.github_output is not None:
+        return _run_repo_release_changes(args, root, args.github_output)
+    if args.release_cmd == "causality":
+        return _run_repo_release_causality(args, root)
+    if args.release_cmd == "lock-age" and args.lockfile is not None:
+        return _run_repo_release_lock_age(args, root, args.lockfile)
+    if args.release_cmd == "typescript":
+        return _run_repo_release_typescript(args, root)
+    if args.release_cmd == "verify-wheel":
+        for wheel in args.wheels:
+            release.verify_python_wheel_license(wheel.resolve())
+            print(f"verified wheel license: {wheel}")
+        return 0
+    if args.release_cmd == "verify-publications":
+        from sarj_standards.libs.release import registry  # ruff: ignore[import-outside-top-level]
+
+        return registry.main(
+            [
+                "--root",
+                str(root),
+                "--attempts",
+                str(args.attempts),
+                "--delay-seconds",
+                str(args.delay_seconds.total_seconds()),
+            ]
+        )
+    if args.release_cmd == "publish":
+        return _run_repo_release_publish(args, root)
+    return 2
+
+
+def _run_repo_check(args: _Args) -> int:
+    from sarj_standards.libs.repository import repository  # ruff: ignore[import-outside-top-level]
+
+    findings = repository.check(
+        _resolve_dest(args.dest),
+        selected=frozenset(args.repo_only),
+        commits=args.commits,
+        policy_root=_resolve_dest(args.policy_dest) if args.policy_dest else None,
+        private_refs_path=Path(args.private_refs_file).resolve() if args.private_refs_file else None,
+    )
+    if args.quiet:
+        print("repository policy failed" if findings else "repository policy ✓")
+    else:
+        print("\n".join(finding.render() for finding in findings) or "repository policy ✓")
+    return 1 if findings else 0
+
+
+def _run_repo_sync_ledger(args: _Args) -> int:
+    from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level]
+
+    result = rule_maintenance.sync_ledger(_resolve_dest(args.dest), check=args.check)
+    print(result.message)
+    return result.status
+
+
+def _run_repo_docs(args: _Args) -> int:
+    from sarj_standards.libs.repository import docs  # ruff: ignore[import-outside-top-level]
+
+    root = _resolve_dest(args.dest)
+    if args.docs_cmd == "check":
+        result = docs.check(root)
+        for path in result.changed:
+            print(f"drift: {path.relative_to(root)}")
+        print("documentation is current" if not result.changed else "run `code-standards maintain docs sync`")
+        return result.status
+    result = docs.sync(root)
+    for path in result.changed:
+        print(f"wrote: {path.relative_to(root)}")
+    return 0
+
+
+def _run_repo_comment_corpus(args: _Args) -> int:
+    from sarj_standards.libs.repository import comment_corpus  # ruff: ignore[import-outside-top-level]
+
+    if args.include_text is not None:
+        return comment_corpus.write_records(args.roots, args.include_text)
+    return comment_corpus.emit_summary(args.roots, sys.stdout)
+
+
+def _run_repo_hooks(args: _Args) -> int:
+    from sarj_standards.libs.repository import hooks  # ruff: ignore[import-outside-top-level]
+
+    return hooks.install(_resolve_dest(args.dest))
+
+
+def _run_repo_rules(args: _Args) -> int:
+    from sarj_standards.libs.repository import rule_inventory_artifact  # ruff: ignore[import-outside-top-level]
+
+    if args.rules_cmd == "manifest":
+        print(json.dumps(rule_inventory_artifact.load(), indent=2))
+        return 0
+    if args.rules_cmd == "changes":
+        return _run_repo_rules_changes(args)
+    if args.rules_cmd == "evaluate":
+        return cmd_rule_evaluate(args)
+    if args.rules_cmd == "new":
+        return _run_repo_rules_new(args)
+    if args.rules_cmd == "verify":
+        return _run_repo_rules_verify(args)
+    if args.rules_cmd in {"stage-warning", "prepare"}:
+        return _run_repo_rules_stage_warning(args)
+    result = rule_inventory_artifact.sync(_resolve_dest(args.dest), check=args.rules_cmd == "check")
+    print(result.message)
+    return result.status
+
+
+def _run_repo_catalog(args: _Args) -> int:
+    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+
+    result = rule_catalog_artifact.sync(_resolve_dest(args.dest), check=args.catalog_cmd == "check")
+    print(result.message)
+    return result.status
+
+
+def _run_repo_cli_reference(args: _Args) -> int:
+    from sarj_standards.libs.repository import cli_reference_artifact  # ruff: ignore[import-outside-top-level]
+
+    result = cli_reference_artifact.sync(_resolve_dest(args.dest), build_app(), check=args.reference_cmd == "check")
+    print(result.message)
+    return result.status
+
+
+def _run_repo_release_verify_tags(args: _Args, root: Path) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    missing = (
+        release.verify_remote_release_tags(root, commit=args.release_commit)
+        if args.release_commit
+        else release.missing_remote_release_tags(root)
+    )
+    if missing:
+        for tag_name in missing:
+            print(f"missing release tag: {tag_name}")
+        return 1
+    print("all current package versions have release tags")
+    return 0
+
+
+def _run_repo_release_create_tags(args: _Args, root: Path) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    result = release.create_release_tags(
+        root,
+        tuple(args.release_targets),
+        commit=args.release_commit,
+        attempts=args.attempts,
+        delay=args.delay_seconds,
+    )
+    for tag_name in result.existing:
+        print(f"release tag already exists: {tag_name}")
+    for tag_name in result.created:
+        print(f"created release tag: {tag_name}")
+    return 0
+
+
+def _run_repo_release_changes(args: _Args, root: Path, github_output: Path) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    changed = release.pending_release_targets(root, before=args.before, after=args.after)
+    with github_output.open("a", encoding="utf-8") as output:
+        for target, value in changed.items():
+            _ = output.write(f"{target}={'true' if value else 'false'}\n")
+    return 0
+
+
+def _run_repo_release_causality(args: _Args, root: Path) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    report = release.check_release_causality(root, before=args.before, after=args.after)
+    if report.violations:
+        print("\n".join(violation.render() for violation in report.violations))
+        return 1
+    changed = ", ".join(report.changed_targets) or "none"
+    print(f"release causality ✓ (publishable targets changed: {changed})")
+    return 0
+
+
+def _run_repo_release_lock_age(args: _Args, root: Path, lockfile: Path) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    environment_policy = release.ReleaseAgePolicy.from_strings(
+        os.environ.get("MIN_RELEASE_AGE_DAYS"),  # ruff: ignore[banned-api] -- compatibility with the retired release script.
+        os.environ.get("MIN_RELEASE_AGE_EXCLUDE"),  # ruff: ignore[banned-api] -- compatibility with the retired release script.
+    )
+    policy = release.ReleaseAgePolicy(
+        args.minimum_age if args.minimum_age is not None else environment_policy.minimum_age,
+        environment_policy.exclusions
+        | frozenset(args.release_exclude)
+        | frozenset(
+            exclusion
+            for exclusion_file in args.release_exclude_file
+            for exclusion in release.load_exact_exclusions((root / exclusion_file).resolve())
+        ),
+    )
+    report = release.check_lockfile_release_age((root / lockfile).resolve(), policy)
+    if report.failures:
+        print("\n".join(str(failure) for failure in report.failures))
+        return 1
+    print(f"release-age policy ✓ ({len(report.checked)} package versions checked)")
+    return 0
+
+
+def _run_repo_release_typescript(args: _Args, root: Path) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    mode = args.release_mode
+    match mode:
+        case "check" | "pack" | "publish":
+            release_mode = mode
+        case _:
+            return 2
+    artifact = release.run_typescript_release(
+        release_mode,
+        root / "packages" / "typescript",
+        destination=args.output,
+    )
+    if artifact is not None:
+        print(f"packed and verified {artifact.path}")
+    return 0
+
+
+def _run_repo_release_publish(args: _Args, root: Path) -> int:
+    from sarj_standards.libs import release  # ruff: ignore[import-outside-top-level] -- lazy route
+
+    target = args.release_target
+    match target:
+        case "typescript" | "bootstrap" | "python" | "sql" | "iac" | "standards" | "tsconfig":
+            publish_target = target
+        case _:
+            return 2
+    release.publish_target(root, publish_target)
+    return 0
+
+
+def _run_repo_rules_changes(args: _Args) -> int:
+    from sarj_standards.libs.release.process import (  # ruff: ignore[import-outside-top-level]
+        ProcessFailureError,
+    )
+    from sarj_standards.libs.repository import rule_changes  # ruff: ignore[import-outside-top-level]
+
+    try:
+        comparison = rule_changes.compare(
+            _resolve_dest(args.dest),
+            before=args.before,
+            after=args.after,
+        )
+    except (OSError, TypeError, ValueError, ProcessFailureError) as exc:
+        print(f"error: cannot compare rule revisions: {exc}", file=sys.stderr)
+        return 2
+    raw_required_level = args.required_added_level
+    required_added_level: rule_changes.RuleLevel | None = "warning" if raw_required_level == "warning" else None
+    if required_added_level is not None:
+        invalid = rule_changes.added_rules_at_other_levels(
+            comparison,
+            required=required_added_level,
+        )
+        if invalid:
+            print(
+                f"error: new judgment rules must enter the fleet at {required_added_level} level",
+                file=sys.stderr,
+            )
+            for selector in invalid:
+                print(f"Run: code-standards --root . maintain rules stage-warning {selector}", file=sys.stderr)
+            return 1
+    print(json.dumps(comparison, indent=2) if args.output_format == "json" else rule_changes.render_text(comparison))
+    return 0
+
+
+def _run_repo_rules_new(args: _Args) -> int:
+    from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
+
+    if args.selector is None:  # pragma: no cover - Typer requires the positional value
+        msg = "new requires a rule selector"
+        raise TypeError(msg)
+    try:
+        plan = rule_authoring.plan_new(
+            _resolve_dest(args.dest), args.selector, category=args.rule_category, summary=args.rule_summary
+        )
+        if args.apply_rule:
+            rule_authoring.apply(plan, _resolve_dest(args.dest))
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"error: cannot scaffold rule: {exc}", file=sys.stderr)
+        return 2
+    print(plan.render(_resolve_dest(args.dest)))
+    return 0
+
+
+def _run_repo_rules_verify(args: _Args) -> int:
+    from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
+
+    if args.selector is None:  # pragma: no cover - Typer requires the positional value
+        msg = "verify requires a rule selector"
+        raise TypeError(msg)
+    try:
+        result = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        print(f"error: cannot verify rule: {exc}", file=sys.stderr)
+        return 2
+    print(result.message)
+    return result.status
+
+
+def _run_repo_rules_stage_warning(args: _Args) -> int:
+    from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level]
+
+    if args.selector is None:  # pragma: no cover - Typer requires the positional value
+        msg = f"{args.rules_cmd} requires a rule selector"
+        raise TypeError(msg)
+    if args.rules_cmd == "prepare":
+        from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
+            rule_authoring,
+        )
+
+        try:
+            verified = rule_authoring.verify(_resolve_dest(args.dest), args.selector)
+        except (OSError, TypeError, ValueError, RuntimeError) as exc:
+            print(f"error: cannot verify rule before preparation: {exc}", file=sys.stderr)
+            return 2
+        if verified.status != 0:
+            print(verified.message)
+            return verified.status
+    try:
+        result = rule_lifecycle.stage_warning(_resolve_dest(args.dest), args.selector, check=args.check)
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
+        print(f"error: cannot stage warning rule: {exc}", file=sys.stderr)
+        return 2
+    print(result.message)
+    if result.status == 0:
+        print(_rule_author_next_steps(args.selector))
+    return result.status
 
 
 def _rule_author_next_steps(selector: RuleSelector) -> str:
