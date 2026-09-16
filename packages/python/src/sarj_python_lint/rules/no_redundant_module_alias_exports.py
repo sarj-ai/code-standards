@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
 
 _SYS_SOURCES = frozenset({"sys"})
+_PRIVATE_ALIAS_CANDIDATE_RE = re.compile(r"(?m)^(?![\d_])\w+(?:\s*:[^=\n]+)?(?:\s*=\s*(?!_)\w+)*\s*=\s*_(?!_)\w")
 
 
 @final
@@ -31,25 +33,67 @@ class NoRedundantModuleAliasExports(Rule):
     id: str = "no-redundant-module-alias-exports"
     code: str = "SARJ440"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="Do not replace the current module through `sys.modules`.",
+        summary="Do not manufacture public APIs from private names or replace the current module.",
         rationale=(
-            "Replacing the current module mutates import identity at runtime in a way static tools cannot model. "
-            "It makes introspection, reloads, circular imports, state, and monkeypatch behavior surprising."
+            "Binding a public name to a private implementation creates two names for one API and disguises the "
+            "intended visibility boundary. Replacing the current module similarly mutates import identity at runtime "
+            "in a way static tools cannot model. Both forms make navigation, introspection, and compatibility ownership "
+            "surprising."
         ),
         remediation=(
-            "Import the canonical path inside maintained code. If a compatibility module is still required, expose "
-            "its supported names with explicit same-name imports grouped by source module."
+            "Define maintained APIs under their public names and update local callers directly. Import the canonical "
+            "path inside maintained code. If a compatibility module is still required, expose its supported names with "
+            "explicit same-name imports grouped by source module."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only module-scope assignments through an unconditional, unshadowed stdlib `sys` import are checked.",
-            "Assignments inside functions, classes, and `TYPE_CHECKING` branches are excluded.",
+            (
+                "Public-to-private name aliases are checked only as direct module-body assignments; assignments "
+                "through an unconditional, unshadowed stdlib `sys` import include module-level control flow."
+            ),
+            "Aliases inside module control flow, functions, classes, and `TYPE_CHECKING` branches are excluded.",
+            (
+                "Private targets, dunder sources, attribute values, destructuring, imports, and same-visibility aliases "
+                "are excluded."
+            ),
             "Literal-key registrations, child-module registrations, method calls, reads, and arbitrary registries are excluded.",
             "Generated source, malformed source, and stub files (`.pyi`) are outside this rule's scope.",
             "No autofix is offered because the intended compatibility surface and identity requirements need review.",
         ),
         examples=(
+            RuleExample(
+                example_id="public-alias-for-private-helper",
+                title="Define a public helper under its public name",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "pagination.py",
+                        "def _encode_cursor(value: str) -> str:\n"
+                        "    return value\n\n\n"
+                        "encode_phone_number_cursor = _encode_cursor\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("pagination.py"),
+                expected_count=1,
+                public=True,
+                scenario="public-private-alias",
+            ),
+            RuleExample(
+                example_id="public-helper-definition",
+                title="Give the implementation its intended public name",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "pagination.py",
+                        "def encode_phone_number_cursor(value: str) -> str:\n    return value\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("pagination.py"),
+                expected_count=0,
+                public=True,
+                scenario="public-private-alias",
+            ),
             RuleExample(
                 example_id="current-module-replacement",
                 title="Do not replace a compatibility module at runtime",
@@ -65,6 +109,7 @@ class NoRedundantModuleAliasExports(Rule):
                 focus_path=PurePosixPath("legacy/settings.py"),
                 expected_count=1,
                 public=True,
+                scenario="module-replacement",
             ),
             RuleExample(
                 example_id="explicit-compatibility-exports",
@@ -79,6 +124,7 @@ class NoRedundantModuleAliasExports(Rule):
                 focus_path=PurePosixPath("legacy/settings.py"),
                 expected_count=0,
                 public=True,
+                scenario="module-replacement",
             ),
         ),
     )
@@ -86,14 +132,17 @@ class NoRedundantModuleAliasExports(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if path.suffix != ".py" or "modules" not in source or "__name__" not in source or is_generated(path, source):
+        has_module_replacement_candidate = "modules" in source and "__name__" in source
+        if (
+            path.suffix != ".py"
+            or (not has_module_replacement_candidate and _PRIVATE_ALIAS_CANDIDATE_RE.search(source) is None)
+            or is_generated(path, source)
+        ):
             return []
         tree = parse_or_none(path, source)
         if tree is None:
             return []
         imports = ImportIndex.from_tree(tree, module_scope_only=True)
-        if not imports.builtin_is_unshadowed("__name__"):
-            return []
         direct_sys_bindings = _direct_sys_bindings(tree)
         findings = [
             Diagnostic(
@@ -102,15 +151,49 @@ class NoRedundantModuleAliasExports(Rule):
                 col=target.col_offset + 1,
                 code=self.code,
                 message=(
-                    "Do not replace the current module through `sys.modules[__name__]`; expose compatibility names "
-                    "with explicit imports and update maintained callers to the canonical module."
+                    f"Do not expose private `{source_name}` as public `{target.id}`; define the implementation under "
+                    "its public name and update local callers directly."
                 ),
             )
-            for statement in _module_statements(tree.body)
-            for target in _assignment_targets(statement)
-            if _is_current_module_target(target, imports, direct_sys_bindings)
+            for statement in tree.body
+            for target, source_name in _public_private_aliases(statement)
         ]
+        if imports.builtin_is_unshadowed("__name__"):
+            findings.extend(
+                Diagnostic(
+                    path=path,
+                    line=target.lineno,
+                    col=target.col_offset + 1,
+                    code=self.code,
+                    message=(
+                        "Do not replace the current module through `sys.modules[__name__]`; expose compatibility names "
+                        "with explicit imports and update maintained callers to the canonical module."
+                    ),
+                )
+                for statement in _module_statements(tree.body)
+                for target in _assignment_targets(statement)
+                if _is_current_module_target(target, imports, direct_sys_bindings)
+            )
         return sorted(findings, key=lambda finding: (finding.line, finding.col, finding.code))
+
+
+def _public_private_aliases(statement: ast.stmt) -> list[tuple[ast.Name, str]]:
+    match statement:
+        case ast.Assign(targets=targets, value=ast.Name(id=source_name)):
+            pass
+        case ast.AnnAssign(target=target, value=ast.Name(id=source_name)):
+            targets = [target]
+        case _:
+            return []
+    if not _is_private_name(source_name):
+        return []
+    return [
+        (target, source_name) for target in targets if isinstance(target, ast.Name) and not target.id.startswith("_")
+    ]
+
+
+def _is_private_name(name: str) -> bool:
+    return len(name) > 1 and name.startswith("_") and not name.startswith("__")
 
 
 def _direct_sys_bindings(tree: ast.Module) -> frozenset[str]:

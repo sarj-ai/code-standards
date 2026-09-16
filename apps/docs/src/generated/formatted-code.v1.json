@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "56da6981b341c83d3278395db75f4ab1c0bee8f61ef96d7fa5d2f54ec5fa2135",
-  "cliSha256": "778a0a5f561055a2ec90068a2d6ba46ba685728a844148858e283d384130c479",
+  "catalogSha256": "5e384681075c1492f85cfaa3a895b36f36a9b444249019ee0602a4fdaf39162a",
+  "cliSha256": "e4b3fcd29c7493d8a2a5aacceda1733104f6abd454689576893ab88405f59d5f",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -5888,7 +5888,7 @@
           "focusPath": "legacy/settings.py",
           "id": "current-module-replacement",
           "outcome": "reject",
-          "scenarioId": "primary",
+          "scenarioId": "module-replacement",
           "title": "Do not replace a compatibility module at runtime"
         },
         {
@@ -5903,8 +5903,38 @@
           "focusPath": "legacy/settings.py",
           "id": "explicit-compatibility-exports",
           "outcome": "accept",
-          "scenarioId": "primary",
+          "scenarioId": "module-replacement",
           "title": "Expose the supported compatibility surface explicitly"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "pagination.py",
+              "source": "def _encode_cursor(value: str) -> str:\n    return value\n\n\nencode_phone_number_cursor = _encode_cursor\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "pagination.py",
+          "id": "public-alias-for-private-helper",
+          "outcome": "reject",
+          "scenarioId": "public-private-alias",
+          "title": "Define a public helper under its public name"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "pagination.py",
+              "source": "def encode_phone_number_cursor(value: str) -> str:\n    return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "pagination.py",
+          "id": "public-helper-definition",
+          "outcome": "accept",
+          "scenarioId": "public-private-alias",
+          "title": "Give the implementation its intended public name"
         }
       ],
       "optionsSchemaSource": null
