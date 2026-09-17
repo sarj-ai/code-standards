@@ -1861,6 +1861,14 @@
       "outcome": "Introduce SARJ445 as a warning without autofix. Prefer explicit collaborators, settings, clocks, clients, and purpose-built fakes over pytest attribute mutation. Continue to allow scoped process-state operations. Require a local reasoned suppression when a runtime boundary is inherently global or interception of the lookup is the behavior under test; do not promote to an error until consumer migration and broader calibration demonstrate acceptable adoption cost."
     },
     {
+      "task": "rule-audit/python/prefer-monkeypatch-for-process-state-in-test",
+      "family": "python",
+      "ruleId": "prefer-monkeypatch-for-process-state-in-test",
+      "state": "pending",
+      "evidence": "Ten independent audit and adversarial reviews narrowed the rule from a broad process-state proposal to mutations with exact pytest restoring equivalents. Forty-two focused cases cover cwd, import-path and module-registry mutations; module/class bootstrap; environment and adjacent process APIs; import aliases and rebinding; nested helpers; matching try/finally restoration; consumed pop results; exact suppression; malformed/generated input; deterministic ordering; and SARJ445 interaction. A complete scan of 1,346 tracked Platform Python files totaling 10,643,113 bytes produced exactly two inspected findings, both genuine unscoped sys.modules leaks, with zero known false positives or duplicate locations. Code Standards self-evaluation produced zero findings. Candidate-only Platform scans took 2.70, 2.39 and 2.45 seconds under local load; broader fleet calibration and controlled baseline overhead measurement remain pending.",
+      "outcome": "Introduce SARJ446 as a warning without autofix. Report function-scoped os.chdir, sys.path.insert(0, ...), and direct sys.modules set, delete or unused pop operations; recommend pytest monkeypatch helpers that restore state after failures. Exclude module/class bootstrap, environment variables already owned by Ruff TID251/B003, consumed pop results, non-equivalent process APIs, uncertain provenance and structurally matching try/finally restoration. Do not promote until broader corpus evidence confirms precision and adoption cost."
+    },
+    {
       "task": "rule-audit/typescript/require-button-accessible-name",
       "family": "typescript",
       "ruleId": "require-button-accessible-name",

@@ -89,6 +89,7 @@
       "prefer-match-type-dispatch",
       "prefer-match-value-dispatch",
       "prefer-module-level-constant",
+      "prefer-monkeypatch-for-process-state-in-test",
       "prefer-namedtuple-over-tuple-return",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
@@ -378,7 +379,8 @@
       "SARJ442",
       "SARJ443",
       "SARJ444",
-      "SARJ445"
+      "SARJ445",
+      "SARJ446"
     ],
     "sql": [
       "SARJ101",

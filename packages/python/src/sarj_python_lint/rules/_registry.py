@@ -103,6 +103,9 @@ from sarj_python_lint.rules.prefer_match_value_dispatch import PreferMatchValueD
 from sarj_python_lint.rules.prefer_module_level_constant import (
     PreferModuleLevelConstant,
 )
+from sarj_python_lint.rules.prefer_monkeypatch_for_process_state_in_test import (
+    PreferMonkeypatchForProcessStateInTest,
+)
 from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import (
     PreferNamedtupleOverTupleReturn,
 )
@@ -204,6 +207,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,
         PreferInjectedDependencyOverMonkeypatch.id: PreferInjectedDependencyOverMonkeypatch,
+        PreferMonkeypatchForProcessStateInTest.id: PreferMonkeypatchForProcessStateInTest,
         MockWithoutSpec.id: MockWithoutSpec,
         OpaqueParametrizeCaseNeedsId.id: OpaqueParametrizeCaseNeedsId,
         PytestFixtureReturnsBareTuple.id: PytestFixtureReturnsBareTuple,
