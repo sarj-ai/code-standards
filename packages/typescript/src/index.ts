@@ -1,3 +1,6 @@
+import noConditionalEmptyObjectSpread from "./rules/no-conditional-empty-object-spread.js";
+import preferTypedReflection from "./rules/prefer-typed-reflection.js";
+import noBroadReturnType from "./rules/no-broad-return-type.js";
 import noReduceAccumulatorCopy from "./rules/no-reduce-accumulator-copy.js";
 import noKnownValueWidening from "./rules/no-known-value-widening.js";
 /**
@@ -115,6 +118,9 @@ import { RENAMED_RULES } from "./rules/_renames.js";
 import { RETIRED_RULES } from "./rules/_retired.js";
 
 const RULES = {
+  "no-conditional-empty-object-spread": noConditionalEmptyObjectSpread,
+  "prefer-typed-reflection": preferTypedReflection,
+  "no-broad-return-type": noBroadReturnType,
   "no-reduce-accumulator-copy": noReduceAccumulatorCopy,
   "no-known-value-widening": noKnownValueWidening,
   "require-button-accessible-name": requireButtonAccessibleName,
@@ -228,7 +234,7 @@ const RULES = {
 
 const meta = {
   name: "@sarj/eslint-plugin",
-  version: "15.23.0",
+  version: "15.24.0",
 } as const;
 
 /** @deprecated All repositories use one policy; retained for import compatibility. */
@@ -271,6 +277,9 @@ const ADVISORY_RULES = [
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "@sarj/no-conditional-empty-object-spread": "error",
+  "@sarj/prefer-typed-reflection": "error",
+  "@sarj/no-broad-return-type": "error",
   "@sarj/no-reduce-accumulator-copy": "error",
   "@sarj/no-known-value-widening": "error",
   "@sarj/require-button-accessible-name": "error",
@@ -379,6 +388,9 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/no-conditional-empty-object-spread": "error",
+  "@sarj/prefer-typed-reflection": "error",
+  "@sarj/no-broad-return-type": "error",
   "@sarj/no-reduce-accumulator-copy": "error",
   "@sarj/no-known-value-widening": "error",
   "@sarj/require-button-accessible-name": "error",
