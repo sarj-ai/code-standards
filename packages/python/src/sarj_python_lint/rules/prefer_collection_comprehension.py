@@ -61,6 +61,15 @@ class _InitializedCollection:
 class _Candidate:
     kind: _CollectionKind
     name: str
+    action: str = "populates"
+
+
+@dataclass(frozen=True)
+class _LoopReplacement:
+    kind: _CollectionKind
+    expression: str
+    action: str = "populates"
+    allow_multiline: bool = False
 
 
 @final
@@ -74,8 +83,9 @@ class PreferCollectionComprehension(Rule):
             "spreads a declarative map/filter across mutable scaffolding."
         ),
         remediation=(
-            "Build the fresh collection with one dict, list, or set comprehension. Keep the loop when mutation is "
-            "incremental, evaluation order is observable, or the imperative form carries additional behavior."
+            "Build the fresh collection with one dict, list, or set comprehension. When a list candidate must be "
+            "computed once and reused in the element, bind it in the filter with :=. Keep the loop when mutation "
+            "is incremental, evaluation order is observable, or the imperative form carries additional behavior."
         ),
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
@@ -83,16 +93,22 @@ class PreferCollectionComprehension(Rule):
             "Only function-local, adjacent empty initializers and one synchronous single-purpose loop are checked.",
             (
                 "The rule fills gaps left by Ruff PERF401, PERF403, and FURB142: derived dict projections, "
-                "destructured list projections, and filtered set builders."
+                "destructured list projections, narrowly filtered computed list candidates, and filtered set "
+                "builders."
             ),
             (
-                "Comments, loop-target leakage, try blocks, aliases, complex projections, and replacements wider "
-                "than 120 columns are excluded. No autofix is offered because dict key/value evaluation order can "
-                "differ."
+                "Comments, loop-target leakage, try blocks, aliases, complex projections, and replacements that "
+                "do not fit a 120-column line or a simple formatter-style multiline comprehension are excluded. "
+                "No autofix is offered because dict key/value evaluation order can differ."
             ),
             (
                 "Attribute projections can invoke properties or descriptors, so reviewers should keep the loop "
                 "when the relative order of those reads is observable."
+            ),
+            (
+                "Computed list candidates are limited to one local assignment, a truthiness or None filter, and "
+                "one bounded projection. Validation, logging, exceptions, multiple guards, and secondary mutation "
+                "remain imperative."
             ),
         ),
         examples=(
@@ -113,6 +129,47 @@ class PreferCollectionComprehension(Rule):
                 focus_path=PurePosixPath("app/capacity.py"),
                 expected_count=1,
                 public=True,
+            ),
+            RuleExample(
+                example_id="computed-filtered-list-loop",
+                title="Compute and filter a list candidate directly",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/intervals.py",
+                        "def clipped(items, bounds):\n"
+                        "    result: list[Interval] = []\n"
+                        "    for item in items:\n"
+                        "        value = item.clipped(bounds)\n"
+                        "        if value is not None:\n"
+                        "            result.append(value)\n"
+                        "    return result\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/intervals.py"),
+                expected_count=1,
+                public=True,
+                scenario="computed-filter",
+            ),
+            RuleExample(
+                example_id="computed-filtered-list-comprehension",
+                title="Keep a computed filtered list declarative",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/intervals.py",
+                        "def clipped(items, bounds):\n"
+                        "    return [\n"
+                        "        value\n"
+                        "        for item in items\n"
+                        "        if (value := item.clipped(bounds)) is not None\n"
+                        "    ]\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/intervals.py"),
+                expected_count=0,
+                public=True,
+                scenario="computed-filter",
             ),
             RuleExample(
                 example_id="direct-dict-comprehension",
@@ -163,10 +220,7 @@ class PreferCollectionComprehension(Rule):
                             line=loop.lineno,
                             col=loop.col_offset + 1,
                             code=self.code,
-                            message=(
-                                f"This loop only populates fresh {finding.kind} {finding.name!r} — prefer a "
-                                f"{finding.kind} comprehension."
-                            ),
+                            message=_message(finding),
                         )
                     )
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
@@ -223,10 +277,12 @@ def _candidate(
     ):
         return None
 
-    kind = _loop_kind(loop, name, initialized.kind, bound_names)
-    if kind is None or not _replacement_fits(init, loop, name, kind):
+    replacement = _loop_replacement(loop, name, initialized.kind, bound_names, owner)
+    if replacement is None or not _replacement_fits(
+        init, name, replacement.expression, allow_multiline=replacement.allow_multiline
+    ):
         return None
-    return _Candidate(kind=kind, name=name)
+    return _Candidate(kind=replacement.kind, name=name, action=replacement.action)
 
 
 def _initialized_collection(statement: _Init) -> _InitializedCollection | None:
@@ -251,25 +307,177 @@ def _initialized_collection(statement: _Init) -> _InitializedCollection | None:
             return None
 
 
-def _loop_kind(
-    loop: ast.For, name: str, initialized_kind: _CollectionKind, bound_names: frozenset[str]
-) -> _CollectionKind | None:
+def _loop_replacement(
+    loop: ast.For,
+    name: str,
+    initialized_kind: _CollectionKind,
+    bound_names: frozenset[str],
+    owner: _Callable,
+) -> _LoopReplacement | None:
     if initialized_kind is _CollectionKind.DICT and len(loop.body) == 1:
         match loop.body[0]:
             case ast.Assign(targets=[ast.Subscript(value=ast.Name(id=target), slice=key)], value=value) if (
                 target == name
             ):
                 if _valid_dict_projection(key, value, name, bound_names):
-                    return _CollectionKind.DICT
+                    return _LoopReplacement(
+                        _CollectionKind.DICT,
+                        f"{{{ast.unparse(key)}: {ast.unparse(value)} for {ast.unparse(loop.target)} "
+                        f"in {ast.unparse(loop.iter)}}}",
+                    )
             case _:
                 pass
-    if initialized_kind is _CollectionKind.LIST and len(bound_names) > 1 and len(loop.body) == 1:
+    if initialized_kind is _CollectionKind.LIST:
+        replacement = _list_replacement(loop, name, bound_names, owner)
+        if replacement is not None:
+            return replacement
+    if initialized_kind is _CollectionKind.SET and len(loop.body) == 1:
+        return _set_replacement(loop, name, bound_names)
+    return None
+
+
+def _list_replacement(
+    loop: ast.For, name: str, bound_names: frozenset[str], owner: _Callable
+) -> _LoopReplacement | None:
+    if len(bound_names) > 1 and len(loop.body) == 1:
         expression = _single_method_argument(loop.body[0], name, "append")
         if expression is not None and not _loads_name(expression, name) and _simple_projection(expression, bound_names):
-            return _CollectionKind.LIST
-    if initialized_kind is _CollectionKind.SET and len(loop.body) == 1:
-        return _set_loop_kind(loop, name, bound_names)
+            return _LoopReplacement(
+                _CollectionKind.LIST,
+                f"[{ast.unparse(expression)} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)}]",
+            )
+
+    filtered = _filtered_list_parts(loop.body, name)
+    if filtered is not None and len(bound_names) > 1:
+        expression, test, inverted = filtered
+        if (
+            not _loads_name(expression, name)
+            and not _loads_name(test, name)
+            and _simple_projection(expression, bound_names)
+            and not _contains_prohibited_expression(test)
+        ):
+            condition = _condition_source(test, inverted=inverted)
+            return _LoopReplacement(
+                _CollectionKind.LIST,
+                f"[{ast.unparse(expression)} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)} "
+                f"if {condition}]",
+                "filters and appends to",
+                allow_multiline=True,
+            )
+
+    return _computed_list_replacement(loop, name, bound_names, owner)
+
+
+def _filtered_list_parts(body: list[ast.stmt], name: str) -> tuple[ast.expr, ast.expr, bool] | None:
+    match body:
+        case [ast.If(test=test, body=[statement], orelse=[])]:
+            expression = _single_method_argument(statement, name, "append")
+            if expression is not None:
+                return expression, test, False
+        case [ast.If(test=test, body=[ast.Continue()], orelse=[]), statement]:
+            expression = _single_method_argument(statement, name, "append")
+            if expression is not None:
+                return expression, test, True
+        case _:
+            pass
     return None
+
+
+def _computed_list_replacement(
+    loop: ast.For, name: str, bound_names: frozenset[str], owner: _Callable
+) -> _LoopReplacement | None:
+    match loop.body:
+        case [ast.Assign(targets=[ast.Name(id=candidate)], value=value), *tail]:
+            pass
+        case _:
+            return None
+
+    if candidate == name or candidate in bound_names:
+        return None
+    if _target_binding_is_observable(owner, frozenset({candidate}), loop):
+        return None
+    if _loads_name(value, name) or _contains_prohibited_expression(value):
+        return None
+
+    filtered = _filtered_list_parts(tail, name)
+    if filtered is None:
+        return None
+    expression, test, inverted = filtered
+    condition_kind = _computed_condition_kind(test, candidate, inverted=inverted)
+    if condition_kind is None:
+        return None
+    if _loads_name(expression, name) or not _loads_name(expression, candidate):
+        return None
+    projection_names = bound_names | frozenset({candidate})
+    if not _bounded_list_projection(expression, projection_names):
+        return None
+
+    assignment = f"({candidate} := {ast.unparse(value)})"
+    condition = assignment if condition_kind == "truthy" else f"{assignment} is not None"
+    return _LoopReplacement(
+        _CollectionKind.LIST,
+        f"[{ast.unparse(expression)} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)} if {condition}]",
+        "computes, filters, and appends to",
+        allow_multiline=True,
+    )
+
+
+def _computed_condition_kind(test: ast.expr, candidate: str, *, inverted: bool) -> str | None:
+    if not inverted and isinstance(test, ast.Name) and test.id == candidate:
+        return "truthy"
+    if (
+        inverted
+        and isinstance(test, ast.UnaryOp)
+        and isinstance(test.op, ast.Not)
+        and isinstance(test.operand, ast.Name)
+        and test.operand.id == candidate
+    ):
+        return "truthy"
+    match test:
+        case ast.Compare(left=ast.Name(id=left), ops=[operator], comparators=[ast.Constant(value=None)]) if (
+            left == candidate
+            and ((not inverted and isinstance(operator, ast.IsNot)) or (inverted and isinstance(operator, ast.Is)))
+        ):
+            return "not-none"
+        case _:
+            return None
+
+
+def _bounded_list_projection(node: ast.expr, names: frozenset[str]) -> bool:
+    if _simple_projection(node, names):
+        return True
+    match node:
+        case ast.Call(func=func, args=args, keywords=keywords):
+            if any(isinstance(argument, ast.Starred) for argument in args):
+                return False
+            if any(keyword.arg is None for keyword in keywords):
+                return False
+            if not _dotted_name(func):
+                return False
+            values = (*args, *(keyword.value for keyword in keywords))
+            return all(
+                not any(isinstance(item, ast.Call) for item in ast.walk(value))
+                and not _contains_prohibited_expression(value)
+                for value in values
+            )
+        case _:
+            return False
+
+
+def _dotted_name(node: ast.expr) -> bool:
+    match node:
+        case ast.Name():
+            return True
+        case ast.Attribute(value=value):
+            return _dotted_name(value)
+        case _:
+            return False
+
+
+def _condition_source(test: ast.expr, *, inverted: bool) -> str:
+    if not inverted:
+        return ast.unparse(test)
+    return ast.unparse(ast.UnaryOp(op=ast.Not(), operand=test))
 
 
 def _single_method_argument(statement: ast.stmt, name: str, method: str) -> ast.expr | None:
@@ -383,37 +591,19 @@ def _set_is_shadowed(tree: ast.Module) -> bool:
     return False
 
 
-def _replacement_fits(init: _Init, loop: ast.For, name: str, kind: _CollectionKind) -> bool:
-    expression = _replacement_expression(loop, name, kind)
-    if expression is None:
-        return False
+def _replacement_fits(init: _Init, name: str, expression: str, *, allow_multiline: bool = False) -> bool:
     prefix = f"{name} = "
     if isinstance(init, ast.AnnAssign):
         prefix = f"{name}: {ast.unparse(init.annotation)} = "
-    return init.col_offset + len(prefix) + len(expression) <= _MAX_REPLACEMENT_WIDTH
-
-
-def _replacement_expression(loop: ast.For, name: str, kind: _CollectionKind) -> str | None:
-    match kind, loop.body:
-        case _CollectionKind.DICT, [ast.Assign(targets=[ast.Subscript(slice=key)], value=value)]:
-            return (
-                f"{{{ast.unparse(key)}: {ast.unparse(value)} for {ast.unparse(loop.target)} "
-                f"in {ast.unparse(loop.iter)}}}"
-            )
-        case _CollectionKind.LIST, [statement]:
-            argument = _single_method_argument(statement, name, "append")
-            if argument is not None:
-                return f"[{ast.unparse(argument)} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)}]"
-        case _CollectionKind.SET, [ast.If(test=test, body=[statement], orelse=[])]:
-            argument = _single_method_argument(statement, name, "add")
-            if argument is not None:
-                return (
-                    f"{{{ast.unparse(argument)} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)} "
-                    f"if {ast.unparse(test)}}}"
-                )
-        case _:
-            pass
-    return None
+    if init.col_offset + len(prefix) + len(expression) <= _MAX_REPLACEMENT_WIDTH:
+        return True
+    if not allow_multiline or not (expression.startswith("[") and expression.endswith("]")):
+        return False
+    content = expression[1:-1]
+    return (
+        init.col_offset + len(prefix) + 1 <= _MAX_REPLACEMENT_WIDTH
+        and init.col_offset + 4 + len(content) <= _MAX_REPLACEMENT_WIDTH
+    )
 
 
 def _comment_lines(source: str) -> frozenset[int]:
@@ -429,7 +619,7 @@ def _has_comment(init: _Init, loop: ast.For, comments: frozenset[int]) -> bool:
     return any(init.lineno <= line <= end_line for line in comments)
 
 
-def _set_loop_kind(loop: ast.For, name: str, bound_names: frozenset[str]) -> _CollectionKind | None:
+def _set_replacement(loop: ast.For, name: str, bound_names: frozenset[str]) -> _LoopReplacement | None:
     match loop.body[0]:
         case ast.If(test=test, body=[body], orelse=[]):
             expression = _single_method_argument(body, name, "add")
@@ -440,7 +630,19 @@ def _set_loop_kind(loop: ast.For, name: str, bound_names: frozenset[str]) -> _Co
                 and _simple_projection(expression, bound_names)
                 and not _contains_prohibited_expression(test)
             ):
-                return _CollectionKind.SET
+                return _LoopReplacement(
+                    _CollectionKind.SET,
+                    f"{{{ast.unparse(expression)} for {ast.unparse(loop.target)} in {ast.unparse(loop.iter)} "
+                    f"if {ast.unparse(test)}}}",
+                )
         case _:
             pass
     return None
+
+
+def _message(finding: _Candidate) -> str:
+    qualifier = "filtered " if finding.action != "populates" else ""
+    return (
+        f"This loop only {finding.action} fresh {finding.kind} {finding.name!r} — prefer a "
+        f"{qualifier}{finding.kind} comprehension."
+    )

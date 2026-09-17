@@ -56,11 +56,92 @@ def build_active(rows):
     ]
 
 
+def test_flags_filtered_destructured_list_builders() -> None:
+    source = """def build_positive(rows):
+    result: list[tuple[str, int]] = []
+    for key, value in rows:
+        if value > 0:
+            result.append((key, value))
+    return result
+
+def build_guarded(rows):
+    result: list[tuple[str, int]] = []
+    for key, value in rows:
+        if value <= 0:
+            continue
+        result.append((key, value))
+    return result
+"""
+
+    findings = _check(source)
+
+    assert [(finding.line, finding.message) for finding in findings] == [
+        (3, "This loop only filters and appends to fresh list 'result' — prefer a filtered list comprehension."),
+        (10, "This loop only filters and appends to fresh list 'result' — prefer a filtered list comprehension."),
+    ]
+
+
+def test_flags_single_computed_candidate_list_builders() -> None:
+    source = """def build_positive(values):
+    result: list[Parsed] = []
+    for value in values:
+        parsed = parse(value)
+        if parsed is not None:
+            result.append(Parsed(parsed))
+    return result
+
+def build_guarded(values):
+    result: list[Parsed] = []
+    for value in values:
+        parsed = parse(value)
+        if parsed is None:
+            continue
+        result.append(parsed.value)
+    return result
+"""
+
+    findings = _check(source)
+
+    assert [(finding.line, finding.message) for finding in findings] == [
+        (
+            3,
+            (
+                "This loop only computes, filters, and appends to fresh list 'result' — "
+                "prefer a filtered list comprehension."
+            ),
+        ),
+        (
+            11,
+            (
+                "This loop only computes, filters, and appends to fresh list 'result' — "
+                "prefer a filtered list comprehension."
+            ),
+        ),
+    ]
+
+
 @pytest.mark.parametrize(
     "source",
     [
         "def build(rows):\n    result = {}\n    for key, value in rows:\n        result[key] = value\n    return result\n",
         "def build(rows):\n    result = []\n    for row in rows:\n        result.append(row.value)\n    return result\n",
+        (
+            "def build(comments):\n"
+            "    result: list[Diagnostic] = []\n"
+            "    for comment in comments:\n"
+            "        if issue := suppression_issue(comment):\n"
+            "            result.append(Diagnostic(issue))\n"
+            "    result.sort(key=lambda diagnostic: diagnostic.line)\n"
+            "    return result\n"
+        ),
+        (
+            "def build(rows):\n"
+            "    result: list[str] = []\n"
+            "    for row in rows:\n"
+            "        if row.active:\n"
+            "            result.append(row.value)\n"
+            "    return result\n"
+        ),
         "def build(rows):\n    result = set()\n    for row in rows:\n        result.add(row.value)\n    return result\n",
     ],
 )
@@ -111,6 +192,50 @@ def test_excludes_non_equivalent_or_less_readable_forms(source: str) -> None:
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "first = parse(value)\n        second = normalize(first)\n        if second:\n            result.append(second)",
+        "candidate: Parsed = parse(value)\n        if candidate:\n            result.append(candidate)",
+        "holder.candidate = parse(value)\n        if holder.candidate:\n            result.append(holder.candidate)",
+        "candidate = parse(value)\n        if candidate and candidate.enabled:\n            result.append(candidate)",
+        "candidate = parse(value)\n        if candidate:\n            result.append(value)",
+        "candidate = parse(value)\n        if candidate:\n            result.append(candidate)\n        audit(candidate)",
+        "candidate = parse(value)\n        if candidate:\n            result.append(candidate)\n        else:\n            reject(value)",
+        "candidate = parse(value)\n        if candidate is None:\n            continue\n        audit(candidate)\n        result.append(candidate)",
+        "candidate = parse(value)\n        if candidate is None:\n            continue\n        result.extend(candidate)",
+        "candidate = [part for part in value]\n        if candidate:\n            result.append(candidate)",
+        "candidate = parse(result, value)\n        if candidate:\n            result.append(candidate)",
+    ],
+)
+def test_excludes_unsafe_or_dense_computed_candidate_forms(body: str) -> None:
+    source = f"def build(values):\n    result = []\n    for value in values:\n        {body}\n    return result\n"
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        ("    candidate = existing\n", ""),
+        ("", "    return result, candidate\n"),
+    ],
+)
+def test_excludes_observable_computed_candidate_binding(before: str, after: str) -> None:
+    source = (
+        "def build(values):\n"
+        f"{before}"
+        "    result = []\n"
+        "    for value in values:\n"
+        "        candidate = parse(value)\n"
+        "        if candidate is not None:\n"
+        "            result.append(candidate)\n"
+        f"{after or '    return result\n'}"
+    )
+
+    assert _check(source) == []
+
+
 def test_exact_suppression_is_local() -> None:
     source = """def build(rows):
     first = {}
@@ -127,6 +252,27 @@ def test_exact_suppression_is_local() -> None:
     assert [(finding.line, finding.code) for finding in _check(source)] == [(7, "SARJ430")]
 
 
+def test_filtered_list_suppression_is_local() -> None:
+    source = """def build_first(values):
+    first = []
+    for value in values:  # sarj-noqa: SARJ430 — incremental form is intentionally inspected
+        candidate = parse(value)
+        if candidate is not None:
+            first.append(candidate)
+    return first
+
+def build_second(values):
+    second = []
+    for value in values:
+        candidate = parse(value)
+        if candidate is not None:
+            second.append(candidate)
+    return second
+"""
+
+    assert [(finding.line, finding.code) for finding in _check(source)] == [(11, "SARJ430")]
+
+
 def test_skips_malformed_and_generated_sources() -> None:
     assert _check("def broken(:\n") == []
     assert (
@@ -141,6 +287,19 @@ def test_replacement_width_gate_is_bounded() -> None:
     for dispatchable_organization_capacity_row in rows_with_a_deliberately_long_and_specific_name:
         organization_capacities_by_identifier[dispatchable_organization_capacity_row.organization_identifier] = dispatchable_organization_capacity_row.organization_capacity
     return organization_capacities_by_identifier
+"""
+
+    assert _check(source) == []
+
+
+def test_filtered_replacement_width_gate_is_bounded() -> None:
+    source = """def build(rows_with_a_deliberately_long_and_specific_name):
+    projected_dispatchable_organization_capacity_rows: list[OrganizationCapacity] = []
+    for dispatchable_organization_capacity_row in rows_with_a_deliberately_long_and_specific_name:
+        projected_organization_capacity = dispatchable_organization_capacity_row.to_organization_capacity()
+        if projected_organization_capacity is not None:
+            projected_dispatchable_organization_capacity_rows.append(projected_organization_capacity)
+    return projected_dispatchable_organization_capacity_rows
 """
 
     assert _check(source) == []

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "eced7a84f72fba18a7c5b04b1d573f83f89ca6c649d4283f3189e7174cc2cf62",
+  "catalogSha256": "09a07081cdaa7e83708c80a91cf8521e2bbc5694962190db882fd1fdf728f844",
   "cliSha256": "7152f7119ee5081e0d1c7ce13f099c95eec904da946601f4525fbb4cf3cf22e7",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -6831,6 +6831,36 @@
     },
     "python:prefer-collection-comprehension": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/intervals.py",
+              "source": "def clipped(items, bounds):\n    return [value for item in items if (value := item.clipped(bounds)) is not None]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/intervals.py",
+          "id": "computed-filtered-list-comprehension",
+          "outcome": "accept",
+          "scenarioId": "computed-filter",
+          "title": "Keep a computed filtered list declarative"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/intervals.py",
+              "source": "def clipped(items, bounds):\n    result: list[Interval] = []\n    for item in items:\n        value = item.clipped(bounds)\n        if value is not None:\n            result.append(value)\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/intervals.py",
+          "id": "computed-filtered-list-loop",
+          "outcome": "reject",
+          "scenarioId": "computed-filter",
+          "title": "Compute and filter a list candidate directly"
+        },
         {
           "expectedCount": 1,
           "files": [
