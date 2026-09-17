@@ -1931,6 +1931,30 @@
       "state": "pending",
       "evidence": "Focused positive and negative cases cover built-in arrays, lexical scope, fresh seeds, generated source, and syntax-only parsing. Wider corpus calibration remains pending.",
       "outcome": "Introduce an advisory warning without autofix; require review of growth and ownership before changing behavior."
+    },
+    {
+      "task": "rule-audit/typescript/no-broad-return-type",
+      "family": "typescript",
+      "ruleId": "no-broad-return-type",
+      "state": "pending",
+      "evidence": "Synthetic positive and exclusion fixtures; source corpus calibration recorded in the PR.",
+      "outcome": "Explicitly requested error-first policy without automatic fixes. Broader consumer calibration remains pending."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-typed-reflection",
+      "family": "typescript",
+      "ruleId": "prefer-typed-reflection",
+      "state": "pending",
+      "evidence": "Synthetic positive and exclusion fixtures; source corpus calibration recorded in the PR.",
+      "outcome": "Explicitly requested error-first policy without automatic fixes. Broader consumer calibration remains pending."
+    },
+    {
+      "task": "rule-audit/typescript/no-conditional-empty-object-spread",
+      "family": "typescript",
+      "ruleId": "no-conditional-empty-object-spread",
+      "state": "pending",
+      "evidence": "Synthetic positive and exclusion fixtures; source corpus calibration recorded in the PR.",
+      "outcome": "Explicitly requested error-first policy without automatic fixes. Broader consumer calibration remains pending."
     }
   ]
 }

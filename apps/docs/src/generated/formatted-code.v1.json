@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "09a07081cdaa7e83708c80a91cf8521e2bbc5694962190db882fd1fdf728f844",
-  "cliSha256": "7c52509bd4d48f597c0d9d1a31225cbdd31ff69c7e67785abaa3a6764bd69044",
+  "catalogSha256": "58f5d60336e2ef60a65dd998eedd54b7d7eeae701c0707e395a8f3f8a5638e18",
+  "cliSha256": "3f7e62cdcf49755016f5a2c1f44ead1af382f06c9273ce47743af17f5bf92821",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -256,6 +256,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:no-broad-return-type": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "type Invoice = { reference: string; total: number };\nfunction toRequest(invoice: Invoice): Invoice {\n  return invoice;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "after",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the direct contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "type Invoice = { reference: string; total: number };\nfunction toRequest(invoice: Invoice): Record<string, unknown> {\n  return invoice;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "before",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Preserve the explicit contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-client-side-data-fetching": {
       "examples": [
         {
@@ -322,6 +357,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A comment repeats the statement below"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-conditional-empty-object-spread": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const includePage: boolean;\nconst query: { limit: number; page?: number } = { limit: 20 };\nif (includePage) query.page = 1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "after",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the direct contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const includePage: boolean;\nconst query = { limit: 20, ...(includePage ? { page: 1 } : {}) };\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "before",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Preserve the explicit contract"
         }
       ],
       "optionsSchemaSource": null
@@ -3112,6 +3182,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Make finite dispatch explicit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-typed-reflection": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const shipment: { status: string };\nconst status = shipment.status;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "after",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the direct contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/example.ts",
+              "source": "declare const shipment: { status: string };\nconst status = Reflect.get(shipment, \"status\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/example.ts",
+          "id": "before",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Preserve the explicit contract"
         }
       ],
       "optionsSchemaSource": null
