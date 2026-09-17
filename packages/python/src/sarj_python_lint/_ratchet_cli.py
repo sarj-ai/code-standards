@@ -63,6 +63,7 @@ def _run(args: _Options) -> int:
             packages=baseline.packages,
             per_file_ceiling=args.per_file_ceiling,
             file_exceptions=baseline.file_exceptions,
+            file_selector_ceilings=baseline.file_selector_ceilings,
             excluded_subtrees=baseline.excluded_subtrees,
         )
 
@@ -85,6 +86,7 @@ def _run(args: _Options) -> int:
         packages=baseline.packages,
         per_file_ceiling=baseline.per_file_ceiling,
         file_exceptions=baseline.file_exceptions,
+        file_selector_ceilings=baseline.file_selector_ceilings,
         excluded_subtrees=excluded_subtrees,
     )
     try:
@@ -182,7 +184,10 @@ class _Result:
 
 
 app = typer.Typer(
-    help="Ratchet on lint/type suppressions: per-code, per-package and per-file ceilings that may only shrink.",
+    help=(
+        "Ratchet on lint/type suppressions: per-selector, per-package, per-file, and per-file-selector ceilings that "
+        "may only shrink."
+    ),
     add_completion=False,
     no_args_is_help=False,
     pretty_exceptions_enable=False,

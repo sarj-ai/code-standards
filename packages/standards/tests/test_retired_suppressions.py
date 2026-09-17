@@ -19,14 +19,30 @@ def test_removes_only_retired_ratchet_code_budgets(tmp_path: Path, bom: str, new
         "codes": {"sarj-noqa:SARJ052": 1, "sarj-noqa:SARJ096": 2, "noqa:F401": 1},
         "packages_scanned": ["backend"],
         "packages": {"backend": 4},
-        "files": {"per_file_ceiling": 10, "exceptions": {}},
+        "files": {
+            "per_file_ceiling": 10,
+            "exceptions": {},
+            "selectors": {
+                "backend/retired.py": {"sarj-noqa:SARJ052": 1},
+                "backend/mixed.py": {"sarj-noqa:SARJ052": 1, "noqa:F401": 1},
+            },
+        },
     }
     source = bom + json.dumps(document, indent=2).replace("\n", newline) + (newline if trailing else "")
     target.write_text(source, encoding="utf-8", newline="")
 
     rewrites = retired_suppressions.plan((target,))
 
-    expected = source.replace(f'    "sarj-noqa:SARJ052": 1,{newline}', "")
+    expected_document = {
+        **document,
+        "codes": {"sarj-noqa:SARJ096": 2, "noqa:F401": 1},
+        "files": {
+            "per_file_ceiling": 10,
+            "exceptions": {},
+            "selectors": {"backend/mixed.py": {"noqa:F401": 1}},
+        },
+    }
+    expected = bom + json.dumps(expected_document, indent=2).replace("\n", newline) + (newline if trailing else "")
     assert rewrites == (retired_suppressions.Rewrite(target, expected),)
     target.write_text(expected, encoding="utf-8", newline="")
     assert retired_suppressions.plan((target,)) == ()
