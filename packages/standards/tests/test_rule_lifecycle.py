@@ -51,18 +51,20 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
     def build_catalog(_root: Path) -> object:
         return object()
 
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
         rule_inventory_artifact,
         "build",
         build_inventory,
     )
-    monkeypatch.setattr(rule_catalog_artifact, "build", build_catalog)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
+        rule_catalog_artifact, "build", build_catalog
+    )
 
     def sync_warning_levels(_root: Path, *, check: bool) -> bool:
         _ = check
         return True
 
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
         config_generation,
         "sync_warning_levels",
         sync_warning_levels,
@@ -80,17 +82,17 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
 
         return sync
 
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
         rule_inventory_artifact,
         "sync",
         sync_to("packages/standards/src/sarj_standards/configs/rule-inventory.v1.json"),
     )
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
         rule_maintenance,
         "sync_ledger",
         sync_to("packages/standards/src/sarj_standards/configs/rule-ledger.json"),
     )
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
         rule_catalog_artifact,
         "sync",
         sync_to(

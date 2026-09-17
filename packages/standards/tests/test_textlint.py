@@ -2138,7 +2138,9 @@ def test_manifest_is_read_once_per_textlint_run(monkeypatch: pytest.MonkeyPatch,
             manifest_reads += 1
         return real_read_text(path, *args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(Path, "read_text", recording_read_text)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- global file reads are counted to verify cache behavior.
+        Path, "read_text", recording_read_text
+    )
 
     assert textlint.check_paths([str(config)], root=tmp_path) == []
     assert manifest_reads == 1

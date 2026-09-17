@@ -102,7 +102,9 @@ def test_stub_selects_native_python_checker(monkeypatch: pytest.MonkeyPatch, tmp
 
         return _LoadedTool(checker, {"example-rule": object})
 
-    monkeypatch.setattr(runner, "_load_tool", load_tool)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_load_tool", load_tool
+    )
 
     assert runner.run([str(source)]) == 1
     assert seen == [("sarj_python_lint", ["check", "--rule", "example-rule", "--", str(source)])]
@@ -142,7 +144,9 @@ def test_directory_walk_prunes_ignored_directories(
             visited.append(str(root))
             yield root, dir_names, file_names
 
-    monkeypatch.setattr(os, "walk", recording_walk)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        os, "walk", recording_walk
+    )
 
     assert runner.group_paths([str(tmp_path)]).python == [str(source)]
     assert not any("node_modules" in root for root in visited)
@@ -275,7 +279,9 @@ def test_directory_walk_stats_only_supported_file_types(
         stat_paths.append(os.fspath(path))
         return real_stat(path, *args, **kwargs)
 
-    monkeypatch.setattr(os, "stat", recording_stat)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        os, "stat", recording_stat
+    )
 
     assert runner.group_paths([str(tmp_path)]).python == [str(source)]
     assert str(unsupported) not in stat_paths
@@ -396,7 +402,9 @@ def test_checker_file_list_is_protected_from_option_injection(
     ) -> _LoadedTool:
         return _LoadedTool(fake_checker, {"example-rule": object})
 
-    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_load_tool", fake_load_tool
+    )
     monkeypatch.chdir(tmp_path)
     (tmp_path / "--baseline=.evil.py").touch()
 
@@ -419,7 +427,9 @@ def test_run_imports_only_registries_with_routed_files(
         loaded.append(package)
         return _LoadedTool(checker, {"example-rule": object})
 
-    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_load_tool", fake_load_tool
+    )
     migration = tmp_path / "migration.sql"
     migration.touch()
 
@@ -443,7 +453,7 @@ def test_noise_only_imports_sql_registry_for_comment_cruft(
 
         return _LoadedTool(checker, {"no-comment-cruft": object})
 
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
         runner,
         "_load_tool",
         fake_load,
@@ -470,7 +480,9 @@ def test_python_baseline_is_forwarded_only_to_python_checker(
 
         return _LoadedTool(checker, {"example-rule": object})
 
-    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_load_tool", fake_load_tool
+    )
     monkeypatch.chdir(tmp_path)
     for name in ("app.py", "migration.sql", "main.tf"):
         (tmp_path / name).touch()
@@ -507,7 +519,9 @@ def test_create_python_baseline_uses_all_python_rules_and_update_mode(
 
         return _LoadedTool(checker, {"rule-b": object, "rule-a": object})
 
-    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_load_tool", fake_load_tool
+    )
     source = tmp_path / "app.py"
     source.touch()
 
@@ -542,8 +556,12 @@ def test_highest_status_is_propagated(
     def clean_text(_files: Sequence[str]) -> int:
         return 0
 
-    monkeypatch.setattr(runner, "_run", fake_run)
-    monkeypatch.setattr(runner.textlint, "run", clean_text)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_run", fake_run
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner.textlint, "run", clean_text
+    )
     monkeypatch.chdir(tmp_path)
     for name in ("app.py", "migration.sql", "main.tf"):
         (tmp_path / name).touch()
@@ -562,7 +580,9 @@ def test_empty_rule_selection_skips_checker(
     ) -> _LoadedTool:
         return _LoadedTool(checker, {})
 
-    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_load_tool", fake_load_tool
+    )
     monkeypatch.chdir(tmp_path)
     (tmp_path / "migration.sql").touch()
     assert runner.run(["migration.sql"], noise_only=True) == 0
@@ -607,8 +627,12 @@ def test_noise_only_selects_comment_and_docstring_rules(monkeypatch: pytest.Monk
         selected.append(set(registry))
         return 0
 
-    monkeypatch.setattr(runner, "_load_tool", fake_load_tool)
-    monkeypatch.setattr(runner, "_run", capture_rules)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_load_tool", fake_load_tool
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- tool loading and runner dispatch interception is the behavior under test.
+        runner, "_run", capture_rules
+    )
     monkeypatch.chdir(tmp_path)
     for name in ("app.py", "migration.sql", "main.tf"):
         (tmp_path / name).touch()

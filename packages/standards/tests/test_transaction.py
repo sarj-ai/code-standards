@@ -65,7 +65,9 @@ def test_rollback_reports_permission_failure_without_raising(tmp_path: Path, mon
         message = "read-only filesystem"
         raise PermissionError(message)
 
-    monkeypatch.setattr(transaction_module, "atomic_write_bytes", denied)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- write failure injection verifies transaction rollback.
+        transaction_module, "atomic_write_bytes", denied
+    )
 
     report = transaction.rollback()
 

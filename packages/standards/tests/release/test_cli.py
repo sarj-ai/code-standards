@@ -23,7 +23,9 @@ def test_changes_cli_passes_keyword_revisions(
         calls.append((root, before, after))
         return {target: target == "python" for target in release.RELEASE_TARGETS}
 
-    monkeypatch.setattr(release, "pending_release_targets", changed)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test intercepts CLI release-target discovery
+        release, "pending_release_targets", changed
+    )
     output = tmp_path / "github-output"
 
     status = cli.main(
@@ -61,7 +63,9 @@ def test_release_cli_preserves_release_age_environment(
         policies.append(policy)
         return release.ReleaseAgeReport((), ())
 
-    monkeypatch.setattr(release, "check_lockfile_release_age", check)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test intercepts CLI release-age dispatch
+        release, "check_lockfile_release_age", check
+    )
     monkeypatch.setenv("MIN_RELEASE_AGE_DAYS", "21")
     monkeypatch.setenv("MIN_RELEASE_AGE_EXCLUDE", "from-env,from-both")
     (tmp_path / "release-age.txt").write_text("from-file@1.0.0\n", encoding="utf-8")
@@ -100,7 +104,9 @@ def test_release_process_failure_is_a_clean_cli_error(
     def fail(_root: Path, _target: release.PublishTarget) -> None:
         raise release.ProcessFailureError(("uv", "publish"), 1)
 
-    monkeypatch.setattr(release, "publish_target", fail)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test intercepts the external publication boundary
+        release, "publish_target", fail
+    )
 
     status = cli.main(["--root", str(tmp_path), "maintain", "release", "publish", "python"])
 
@@ -118,7 +124,9 @@ def test_release_cli_accepts_publish_target(
     def publish(root: Path, target: release.PublishTarget) -> None:
         calls.append((root, target))
 
-    monkeypatch.setattr(release, "publish_target", publish)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test verifies CLI publication dispatch without publishing
+        release, "publish_target", publish
+    )
 
     status = cli.main(["--root", str(tmp_path), "maintain", "release", "publish", target])
 
@@ -136,7 +144,9 @@ def test_verify_tags_without_commit_preserves_missing_tag_mode(
         calls.append(root)
         return ()
 
-    monkeypatch.setattr(release, "missing_remote_release_tags", missing)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test intercepts remote tag lookup at the CLI boundary
+        release, "missing_remote_release_tags", missing
+    )
 
     status = cli.main(["--root", str(tmp_path), "maintain", "release", "verify-tags"])
 
@@ -153,7 +163,9 @@ def test_verify_tags_process_failure_is_not_reported_as_recovery(
         assert commit == "publish-sha"
         raise release.ProcessFailureError(("git", "ls-remote"), 128)
 
-    monkeypatch.setattr(release, "verify_remote_release_tags", fail)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test simulates failure at the remote Git boundary
+        release, "verify_remote_release_tags", fail
+    )
 
     status = cli.main(["--root", str(tmp_path), "maintain", "release", "verify-tags", "--commit", "publish-sha"])
 

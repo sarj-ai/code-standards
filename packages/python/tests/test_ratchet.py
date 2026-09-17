@@ -124,7 +124,9 @@ def test_ruff_catalog_is_decoded_as_utf8_on_every_platform(
             stderr="",
         )
 
-    monkeypatch.setattr("sarj_python_lint._ratchet_cli.subprocess.run", run)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- subprocess interception verifies the external CLI boundary.
+        "sarj_python_lint._ratchet_cli.subprocess.run", run
+    )
     package = tmp_path / "service"
     package.mkdir()
     _ = (package / "app.py").write_text(

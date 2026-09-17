@@ -83,6 +83,7 @@
       "prefer-constant-time-secret-compare",
       "prefer-fstring-over-concat",
       "prefer-immutable-module-constant",
+      "prefer-injected-dependency-over-monkeypatch",
       "prefer-library-fake",
       "prefer-match-assert-never",
       "prefer-match-type-dispatch",
@@ -376,7 +377,8 @@
       "SARJ441",
       "SARJ442",
       "SARJ443",
-      "SARJ444"
+      "SARJ444",
+      "SARJ445"
     ],
     "sql": [
       "SARJ101",

@@ -38,7 +38,9 @@ def test_cached_tool_is_checksum_verified_without_network(tmp_path: Path, monkey
         "https://github.com/example/example/releases/download/test/ktlint",
         hashlib.sha256(payload).hexdigest(),
     )
-    monkeypatch.setattr(mobile_tools, "_cache_root", lambda: tmp_path)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.
+        mobile_tools, "_cache_root", lambda: tmp_path
+    )
     cached = tmp_path / "ktlint-test"
     cached.write_bytes(payload)
 
@@ -52,7 +54,9 @@ def test_detekt_uses_the_pinned_jar_through_java(tmp_path: Path, monkeypatch: py
     def provision(_artifact: object) -> Path:
         return jar
 
-    monkeypatch.setattr(mobile_tools, "_provision", provision)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.
+        mobile_tools, "_provision", provision
+    )
 
     assert mobile_tools.command("detekt") == ("java", "-jar", str(jar))
 
@@ -84,8 +88,12 @@ def test_mobsf_rules_are_checksum_verified_and_exclude_presence_rules(
     cache.mkdir()
     cached_archive = cache / "mobsfscan-rules-test.tar.gz"
     cached_archive.write_bytes(archive.read_bytes())
-    monkeypatch.setattr(mobile_tools, "_cache_root", lambda: cache)
-    monkeypatch.setattr(mobile_tools, "_MOBSF_RULES", fixture)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.
+        mobile_tools, "_cache_root", lambda: cache
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.
+        mobile_tools, "_MOBSF_RULES", fixture
+    )
 
     rules = mobile_tools.mobsf_rules()
 
@@ -119,7 +127,9 @@ def test_mobsf_rule_extraction_enforces_an_aggregate_size_limit(
         member.size = len(payload)
         bundle.addfile(member, io.BytesIO(payload))
     _configure_mobsf_archive(tmp_path, monkeypatch, archive, version="oversized")
-    monkeypatch.setattr(mobile_tools, "_MAX_MOBSF_RULE_BYTES", len(payload) - 1)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.
+        mobile_tools, "_MAX_MOBSF_RULE_BYTES", len(payload) - 1
+    )
 
     with pytest.raises(OSError, match="extracted rules exceed"):
         mobile_tools.mobsf_rules()
@@ -142,5 +152,9 @@ def _configure_mobsf_archive(
     cache = tmp_path / "cache"
     cache.mkdir()
     (cache / f"mobsfscan-rules-{version}.tar.gz").write_bytes(archive.read_bytes())
-    monkeypatch.setattr(mobile_tools, "_cache_root", lambda: cache)
-    monkeypatch.setattr(mobile_tools, "_MOBSF_RULES", fixture)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.
+        mobile_tools, "_cache_root", lambda: cache
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.
+        mobile_tools, "_MOBSF_RULES", fixture
+    )

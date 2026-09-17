@@ -44,7 +44,9 @@ def test_each_corpus_and_bounded_batch_gets_a_fresh_process(
         empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
         return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
 
-    monkeypatch.setattr(corpus_runner, "_run_process", run)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts isolated corpus processes
+        corpus_runner, "_run_process", run
+    )
 
     report = run_isolated_corpora(
         (_source(first, "first"), _source(second, "second")),
@@ -125,7 +127,9 @@ def test_verified_inventory_mutation_fails_closed(
         empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
         return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
 
-    monkeypatch.setattr(corpus_runner, "_run_process", mutate)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts isolated corpus processes
+        corpus_runner, "_run_process", mutate
+    )
 
     with pytest.raises(CorpusLintError, match="changed during evaluation"):
         run_isolated_corpora((source,), ("existing-linter", "check"))
@@ -145,7 +149,9 @@ def test_matching_file_added_during_evaluation_fails_closed(
         empty = SimpleNamespace(retained_bytes=0, total_bytes=0, lines=0, truncated=False)
         return SimpleNamespace(returncode=0, stdout=empty, stderr=empty)
 
-    monkeypatch.setattr(corpus_runner, "_run_process", add_file)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts isolated corpus processes
+        corpus_runner, "_run_process", add_file
+    )
 
     with pytest.raises(CorpusLintError, match="changed during evaluation"):
         run_isolated_corpora((source,), ("existing-linter", "check"))
@@ -161,7 +167,9 @@ def test_unexpected_linter_exit_does_not_leak_output(monkeypatch: pytest.MonkeyP
         private = SimpleNamespace(retained_bytes=15, total_bytes=15, lines=1, truncated=False)
         return SimpleNamespace(returncode=2, stdout=private, stderr=private)
 
-    monkeypatch.setattr(corpus_runner, "_run_process", fail)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts isolated corpus processes
+        corpus_runner, "_run_process", fail
+    )
 
     with pytest.raises(CorpusLintError, match="exited with 2") as error:
         run_isolated_corpora((_source(corpus, "sample"),), ("linter",))

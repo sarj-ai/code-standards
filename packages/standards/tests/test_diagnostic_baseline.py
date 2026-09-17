@@ -398,7 +398,7 @@ def test_scoped_baseline_update_normalizes_native_sarj_rule_source(
         )
         return report_from_tools(tmp_path, ())
 
-    monkeypatch.setattr(api.Standards, "analyze", analyze)
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
 
     assert (
         cli_main(
@@ -448,7 +448,9 @@ def test_scoped_baseline_update_runs_only_shellcheck_for_native_selector(
         calls.append((files, kwargs.get("capabilities"), kwargs.get("include_react_doctor")))
         return (ToolReport("shellcheck", Completion.COMPLETE, (finding,)),)
 
-    monkeypatch.setattr(external, "analyze_external", analyze_shellcheck)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
+        external, "analyze_external", analyze_shellcheck
+    )
 
     status = cli_main(
         [
@@ -562,7 +564,7 @@ def test_scoped_baseline_update_replaces_native_debt_for_canonical_selector(
         _ = self, paths, kwargs
         return report_from_tools(tmp_path, (ToolReport(source, Completion.COMPLETE, (replacement,)),))
 
-    monkeypatch.setattr(api.Standards, "analyze", analyze)
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
 
     assert (
         cli_main(
@@ -621,7 +623,7 @@ def test_scoped_baseline_update_replaces_debt_recorded_under_a_catalogued_alias(
         _ = self, paths, kwargs
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, (replacement,)),))
 
-    monkeypatch.setattr(api.Standards, "analyze", analyze)
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
 
     assert (
         cli_main(
@@ -681,7 +683,7 @@ def test_scoped_baseline_update_replaces_plugin_qualified_eslint_alias_debt(
             (ToolReport("eslint", Completion.COMPLETE, (replacement,)),),
         )
 
-    monkeypatch.setattr(api.Standards, "analyze", analyze)
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
 
     assert (
         cli_main(
@@ -768,7 +770,9 @@ def test_scoped_baseline_update_captures_react_doctor_and_preserves_unrelated_de
         )
         return (ToolReport("react-doctor", Completion.COMPLETE, (replacement, unrelated)),)
 
-    monkeypatch.setattr(external, "analyze_external", analyze_react_doctor)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
+        external, "analyze_external", analyze_react_doctor
+    )
 
     assert (
         cli_main(
@@ -836,7 +840,9 @@ def test_scoped_react_doctor_wildcard_replaces_every_react_doctor_rule(
         assert kwargs.get("react_doctor_full_scan") is True
         return (ToolReport("react-doctor", Completion.COMPLETE, (replacement,)),)
 
-    monkeypatch.setattr(external, "analyze_external", analyze_react_doctor)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
+        external, "analyze_external", analyze_react_doctor
+    )
 
     assert (
         cli_main(
@@ -879,7 +885,9 @@ def test_scoped_baseline_update_uses_manifest_verification_paths(
         captured.append(files)
         return ()
 
-    monkeypatch.setattr(external, "analyze_external", analyze_eslint)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
+        external, "analyze_external", analyze_eslint
+    )
 
     assert (
         cli_main(
@@ -938,7 +946,7 @@ def test_scoped_baseline_update_includes_tracked_terraform_tests_outside_verific
         diagnostics = (finding,) if isinstance(paths, list) and str(source) in paths else ()
         return report_from_tools(tmp_path, (ToolReport("sarj-iac-lint", Completion.COMPLETE, diagnostics),))
 
-    monkeypatch.setattr(api.Standards, "analyze", analyze)
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
 
     assert (
         cli_main(
@@ -987,7 +995,7 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
         captured.append((paths, kwargs.get("rules")))
         return report_from_tools(tmp_path, ())
 
-    monkeypatch.setattr(api.Standards, "analyze", analyze)
+    monkeypatch.setattr(api.Standards, "analyze", analyze)  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
 
     external_calls: list[object] = []
 
@@ -1005,7 +1013,9 @@ def test_scoped_baseline_update_runs_only_eslint_for_upstream_selector(
         )
         return ()
 
-    monkeypatch.setattr(external, "analyze_external", analyze_eslint)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts baseline analyzer routing
+        external, "analyze_external", analyze_eslint
+    )
 
     assert (
         cli_main(

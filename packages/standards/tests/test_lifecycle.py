@@ -108,8 +108,10 @@ def test_fix_routes_to_the_adopted_nested_typescript_destination(
         planned.extend(commands)
         return 0
 
-    monkeypatch.setattr(doctor, "diagnose", clean_diagnosis)
-    monkeypatch.setattr(lifecycle, "execute", capture)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts installation process routing
+        doctor, "diagnose", clean_diagnosis
+    )
+    monkeypatch.setattr(lifecycle, "execute", capture)  # sarj-noqa: SARJ445 -- intercepts installation process routing
 
     assert cli.main(["--root", str(tmp_path), "fix"]) == 0
     assert [command.cwd for command in planned] == [web]
@@ -180,7 +182,9 @@ def test_lefthook_install_uses_the_managed_durable_installer(
     def environment_binary(_name: str) -> str:
         return str(executable)
 
-    monkeypatch.setattr(lifecycle, "_environment_binary", environment_binary)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts installation process routing
+        lifecycle, "_environment_binary", environment_binary
+    )
 
     [command] = lifecycle.install_commands(
         tmp_path,
@@ -224,7 +228,9 @@ def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
         assert hook_type == "pre-commit"
         return hook
 
-    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle._precommit_hook_path", installed_hook)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts installation process routing
+        "sarj_standards.libs.adoption.lifecycle._precommit_hook_path", installed_hook
+    )
     binaries = tmp_path / "bin"
     binaries.mkdir()
     capture = tmp_path / "uvx-args"
@@ -236,7 +242,9 @@ def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
     def select_binary(name: str, mode: int = os.F_OK | os.X_OK, path: str | None = None) -> str | None:
         return str(uvx) if name == "uvx" else original_which(name, mode=mode, path=path)
 
-    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle.shutil.which", select_binary)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts installation process routing
+        "sarj_standards.libs.adoption.lifecycle.shutil.which", select_binary
+    )
     bash = original_which("bash")
     assert bash is not None
 
@@ -259,7 +267,9 @@ def test_precommit_installer_hardens_the_generated_hook(
 ) -> None:
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     hardened: list[Path] = []
-    monkeypatch.setattr(lifecycle, "harden_precommit_hooks", hardened.append)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts installation process routing
+        lifecycle, "harden_precommit_hooks", hardened.append
+    )
 
     status = lifecycle.execute(
         [lifecycle.Command("pre-commit hooks", (sys.executable, "-c", "raise SystemExit(0)"), tmp_path)]
@@ -332,7 +342,9 @@ def test_linked_worktree_hook_survives_its_install_cache_deletion(
     def select_binary(name: str, mode: int = os.F_OK | os.X_OK, path: str | None = None) -> str | None:
         return str(uvx) if name == "uvx" else original_which(name, mode=mode, path=path)
 
-    monkeypatch.setattr("sarj_standards.libs.adoption.lifecycle.shutil.which", select_binary)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts installation process routing
+        "sarj_standards.libs.adoption.lifecycle.shutil.which", select_binary
+    )
     lifecycle.harden_precommit_hook(linked)
 
     bash = original_which("bash")

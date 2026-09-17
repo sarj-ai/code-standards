@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8a0d6df0f15b4188d4d31312993baa6eafd0c4fc150ced3a8f40aec4b3dd83c8",
-  "cliSha256": "c06830a4ff65e3be0fbd5eceeab3bfe73b41f20f4e9a3483506a2c99540236c7",
+  "catalogSha256": "c62ad3494c37039c9043faefed278be6170dddbe7a88b0285803ffd38475af8c",
+  "cliSha256": "e717069838d44c7be4f7204bf35fd7bf2c8675d636cee2ffba9bbfbf9738324e",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.19.0",
@@ -6995,6 +6995,41 @@
           "outcome": "reject",
           "scenarioId": "keyed-values",
           "title": "Dictionary exposed as a module constant"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-injected-dependency-over-monkeypatch": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_checkout.py",
+              "source": "def test_checkout(recording_gateway):\n    service = CheckoutService(payment_gateway=recording_gateway)\n    assert service.run() == \"paid\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_checkout.py",
+          "id": "injected-recording-collaborator",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Test injects a purpose-built collaborator"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_checkout.py",
+              "source": "def test_checkout(monkeypatch):\n    monkeypatch.setattr(checkout, \"charge_card\", lambda _card: True)\n    assert checkout.run() == \"paid\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_checkout.py",
+          "id": "patched-first-party-collaborator",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Test replaces an application collaborator"
         }
       ],
       "optionsSchemaSource": null

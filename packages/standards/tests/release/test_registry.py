@@ -42,7 +42,9 @@ def test_registry_cli_preserves_typed_retry_options(tmp_path: Path, monkeypatch:
         calls.append((root, attempts, delay))
         return ()
 
-    monkeypatch.setattr(registry_module, "wait_for_lint_config_dependencies", wait)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test verifies registry CLI dispatch without network polling
+        registry_module, "wait_for_lint_config_dependencies", wait
+    )
 
     assert registry_module.main(["--root", str(tmp_path), "--attempts", "3", "--delay-seconds", "0.5"]) == 0
     assert calls == [(tmp_path, 3, timedelta(seconds=0.5))]
@@ -54,7 +56,9 @@ def test_registry_cli_preserves_failure_exit(tmp_path: Path, monkeypatch: pytest
         msg = "publication unavailable"
         raise ValueError(msg)
 
-    monkeypatch.setattr(registry_module, "wait_for_lint_config_dependencies", wait)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test injects registry polling failure into the CLI boundary
+        registry_module, "wait_for_lint_config_dependencies", wait
+    )
 
     assert registry_module.main(["--root", str(tmp_path)]) == 2
 
@@ -246,7 +250,9 @@ def test_pypi_publication_requires_exact_version_in_simple_api(monkeypatch: pyte
         seen.append(request)
         return Response()
 
-    monkeypatch.setattr(registry_module, "urlopen", open_url)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies a deterministic registry HTTP response
+        registry_module, "urlopen", open_url
+    )
 
     assert registry_module.publication_exists(RegistryRequirement("pypi", "sarj-python-lint", "1.2.3"))
     assert seen
@@ -274,6 +280,8 @@ def test_pypi_simple_metadata_without_exact_version_is_not_ready(monkeypatch: py
         _ = timeout
         return Response()
 
-    monkeypatch.setattr(registry_module, "urlopen", open_url)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies a deterministic registry HTTP failure response
+        registry_module, "urlopen", open_url
+    )
 
     assert not registry_module.publication_exists(RegistryRequirement("pypi", "sarj-python-lint", "1.2.3"))

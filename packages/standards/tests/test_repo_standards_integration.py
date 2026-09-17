@@ -162,7 +162,9 @@ def test_repository_adapter_failures_become_execution_issues(
         message = "incompatible dependency contract"
         raise TypeError(message)
 
-    monkeypatch.setattr(repo_standards, "analyze", fail)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- repository adapter interception is the behavior under test.
+        repo_standards, "analyze", fail
+    )
     subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
     _commit(tmp_path)
 
@@ -207,7 +209,9 @@ def test_repository_diagnostic_preserves_ranges_and_related_locations(
     def analyze_repository(_request: RepositoryAnalysisRequest) -> FindingsReport:
         return report
 
-    monkeypatch.setattr(repo_standards, "analyze_repository", analyze_repository)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- repository adapter interception is the behavior under test.
+        repo_standards, "analyze_repository", analyze_repository
+    )
     _adopt(tmp_path)
     baseline = tmp_path / ".repo-standards" / "baseline.json"
     baseline.write_text("{}\n", encoding="utf-8")
@@ -249,7 +253,9 @@ def test_ratchet_baseline_is_selected_from_the_exact_git_tree(
             ratchet=RatchetComparison(()) if request.mode is Mode.RATCHET else None,
         )
 
-    monkeypatch.setattr(repo_standards, "analyze_repository", analyze_repository)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- repository adapter interception is the behavior under test.
+        repo_standards, "analyze_repository", analyze_repository
+    )
     _adopt(tmp_path)
     baseline = tmp_path / ".repo-standards" / "baseline.json"
     baseline.write_text("{}\n", encoding="utf-8")

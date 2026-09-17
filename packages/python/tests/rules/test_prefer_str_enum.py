@@ -1856,7 +1856,7 @@ def test_closed_domain_dominance_scans_a_long_prefix_linearly(monkeypatch: pytes
         calls += 1
         return True
 
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception measures the global control-flow helper calls.
         "sarj_python_lint.rules.prefer_str_enum._statement_always_falls_through",
         counted_fallthrough,
     )

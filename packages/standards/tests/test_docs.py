@@ -268,7 +268,9 @@ def test_sync_uses_validated_atomic_writes(tmp_path: Path, monkeypatch: pytest.M
         written.append(path)
         real_write(root, path, contents)
 
-    monkeypatch.setattr(transaction, "atomic_write_text", record_write)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- records transactional documentation writes
+        transaction, "atomic_write_text", record_write
+    )
 
     docs.sync(tmp_path)
 

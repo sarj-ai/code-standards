@@ -65,7 +65,9 @@ def verifier(monkeypatch: pytest.MonkeyPatch) -> PublicationVerifier:
     def identity(_tarball: Path) -> PackageIdentity:
         return PackageIdentity("@example/plugin", "1.2.3")
 
-    monkeypatch.setattr(module, "_npm_identity", identity)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fixture replaces live npm identity discovery
+        module, "_npm_identity", identity
+    )
     assert isinstance(module, PublicationVerifier)
     return module
 
@@ -106,9 +108,15 @@ def test_publish_command_is_idempotent(
         events.append("verify")
         assert (tarball, commit, environment) == (Path("package.tgz"), "commit", "publisher")
 
-    monkeypatch.setattr(verifier, "_npm_version_exists", lookup)
-    monkeypatch.setattr(subprocess, "run", run)
-    monkeypatch.setattr(verifier, "verify_npm", verify)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test controls the remote npm registry lookup
+        verifier, "_npm_version_exists", lookup
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records npm publication without spawning npm
+        subprocess, "run", run
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records post-publication registry verification
+        verifier, "verify_npm", verify
+    )
 
     assert verifier.main(_argv()) == 0
     assert events == expected_events
@@ -118,7 +126,9 @@ def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
     verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = 0
-    monkeypatch.setattr(verifier, "_npm_version_exists", _missing)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test forces the remote npm package to be absent
+        verifier, "_npm_version_exists", _missing
+    )
 
     def publish(_argv: tuple[str, ...], *, check: bool, timeout: int) -> None:
         _ = check, timeout
@@ -129,8 +139,12 @@ def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
         _ = commit, environment
         calls += 1
 
-    monkeypatch.setattr(subprocess, "run", publish)
-    monkeypatch.setattr(verifier, "verify_npm", verify)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test injects an ambiguous npm subprocess failure
+        subprocess, "run", publish
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test controls registry convergence after npm failure
+        verifier, "verify_npm", verify
+    )
 
     assert verifier.main(_argv()) == 0
     assert calls == 1
@@ -139,7 +153,9 @@ def test_ambiguous_publish_failure_is_accepted_only_after_exact_verification(
 def test_ambiguous_publish_and_verification_failure_reports_failure(
     verifier: PublicationVerifier, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(verifier, "_npm_version_exists", _missing)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test forces the remote npm package to be absent
+        verifier, "_npm_version_exists", _missing
+    )
 
     def publish(_argv: tuple[str, ...], *, check: bool, timeout: int) -> None:
         _ = check, timeout
@@ -150,8 +166,12 @@ def test_ambiguous_publish_and_verification_failure_reports_failure(
         msg = "registry never converged"
         raise OSError(msg)
 
-    monkeypatch.setattr(subprocess, "run", publish)
-    monkeypatch.setattr(verifier, "verify_npm", reject)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test injects an ambiguous npm subprocess failure
+        subprocess, "run", publish
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test injects registry non-convergence after npm failure
+        verifier, "verify_npm", reject
+    )
 
     assert verifier.main(_argv()) == 2
     error = capsys.readouterr().err
@@ -262,11 +282,21 @@ def test_npm_verification_has_independent_stage_budgets(
     def verify_installability(_identity: PackageIdentity) -> None:
         return None
 
-    monkeypatch.setattr(verifier, "retry_npm_stage", retry)
-    monkeypatch.setattr(verifier, "_npm_identity", read_identity)
-    monkeypatch.setattr(verifier, "_npm_artifact", read_artifact)
-    monkeypatch.setattr(verifier, "_verify_npm_provenance", verify_provenance)
-    monkeypatch.setattr(verifier, "_verify_npm_installability", verify_installability)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records retry orchestration around remote npm stages
+        verifier, "retry_npm_stage", retry
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic npm registry identity metadata
+        verifier, "_npm_identity", read_identity
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic npm registry artifact metadata
+        verifier, "_npm_artifact", read_artifact
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records remote npm provenance verification
+        verifier, "_verify_npm_provenance", verify_provenance
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records remote npm install verification
+        verifier, "_verify_npm_installability", verify_installability
+    )
 
     verifier.verify_npm(Path("package.tgz"), commit="commit", environment="publisher")
 
@@ -311,9 +341,15 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
     def delayed_install(_identity: PackageIdentity) -> object:
         return delayed("install")
 
-    monkeypatch.setattr(verifier, "_npm_artifact", delayed_metadata)
-    monkeypatch.setattr(verifier, "_verify_npm_provenance", delayed_provenance)
-    monkeypatch.setattr(verifier, "_verify_npm_installability", delayed_install)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models delayed npm registry metadata convergence
+        verifier, "_npm_artifact", delayed_metadata
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models delayed npm provenance convergence
+        verifier, "_verify_npm_provenance", delayed_provenance
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models delayed npm installability convergence
+        verifier, "_verify_npm_installability", delayed_install
+    )
 
     if metadata_ready_at > 900:
         with pytest.raises(Exception, match="metadata and exact bytes did not converge"):
@@ -359,8 +395,12 @@ def test_wrong_registry_bytes_are_permanent_and_never_retried(
     def registry_bytes(_url: str) -> bytes:
         return b"different artifact"
 
-    monkeypatch.setattr(verifier, "_json", registry_metadata)
-    monkeypatch.setattr(verifier, "_bytes", registry_bytes)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic registry metadata responses
+        verifier, "_json", registry_metadata
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic registry artifact bytes
+        verifier, "_bytes", registry_bytes
+    )
     sleeps: list[float] = []
 
     with pytest.raises(Exception, match="bytes differ"):
@@ -394,7 +434,9 @@ def test_attested_commit_must_be_an_unchanged_ancestor(
         calls.append(argv)
         return subprocess.CompletedProcess(argv, next(codes))
 
-    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test simulates gh attestation subprocess outcomes
+        subprocess, "run", run
+    )
     attested = "a" * 40
     current = "b" * 40
 

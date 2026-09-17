@@ -218,7 +218,9 @@ def test_no_target_lookup_without_candidate(tmp_path: Path, monkeypatch: pytest.
     def unexpected_lookup(_facts: PythonTargetFacts, _path: Path, _minimum: tuple[int, int]) -> bool:
         pytest.fail("Target metadata must not be queried without a syntactic candidate")
 
-    monkeypatch.setattr(PythonTargetFacts, "has_declared_support_before", unexpected_lookup)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception proves syntax gating skips target lookup.
+        PythonTargetFacts, "has_declared_support_before", unexpected_lookup
+    )
     for rule in (PreferMatchValueDispatch(), PreferMatchTypeDispatch()):
         rule.prepare_session(AnalysisSession())
         assert rule.check(tmp_path / "module.py", source) == []

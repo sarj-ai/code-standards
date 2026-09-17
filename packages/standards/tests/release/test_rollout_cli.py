@@ -23,7 +23,9 @@ def test_rollout_cli_preserves_command_options(command: str, tmp_path: Path, mon
         calls.append(args)
         return 1
 
-    monkeypatch.setattr(rollout, "execute", execute)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records CLI rollout dispatch without changing repositories
+        rollout, "execute", execute
+    )
     path = tmp_path / "fleet.toml"
     argv = ["--registry", str(path), command, "--version", "7.10.2", "--channel", "canary"]
     if command in {"apply", "reconcile"}:
@@ -52,7 +54,9 @@ def test_rollout_cli_rejects_invalid_arguments_before_execution(
     def execute(_args: rollout.RolloutArgs, _runner: rollout.CommandRunner) -> int:
         pytest.fail("invalid arguments must not execute a rollout")
 
-    monkeypatch.setattr(rollout, "execute", execute)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test proves invalid CLI input never reaches rollout execution
+        rollout, "execute", execute
+    )
 
     with pytest.raises(SystemExit) as stopped:
         rollout.main(argv, runner=FakeRolloutRunner())
@@ -65,7 +69,9 @@ def test_reconcile_cli_preserves_optional_latest_version(monkeypatch: pytest.Mon
         assert args.channel == "stable"
         return 0
 
-    monkeypatch.setattr(rollout, "execute", execute)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records reconcile dispatch without changing repositories
+        rollout, "execute", execute
+    )
 
     assert rollout.main(["reconcile"], runner=FakeRolloutRunner()) == 0
 

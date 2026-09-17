@@ -58,8 +58,12 @@ def test_groups_extracts_once_for_adjacent_rules(monkeypatch: pytest.MonkeyPatch
         calls += 1
         return [_prose_budget.ProseGroup(1, 1, "Fact.", "comment")]
 
-    monkeypatch.setattr(_prose_budget, "_last_groups", None)
-    monkeypatch.setattr(_prose_budget, "_extract_groups", extract)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- this test resets the module cache it verifies.
+        _prose_budget, "_last_groups", None
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- extraction lookup interception verifies cache reuse.
+        _prose_budget, "_extract_groups", extract
+    )
     source = "# Fact.\n"
 
     first = groups(Path("app.py"), source)

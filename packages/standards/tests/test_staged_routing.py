@@ -69,7 +69,9 @@ def test_staged_check_routes_additions_renames_and_only_requested_files(
         routed.append(tuple(paths or ()))
         return 0
 
-    monkeypatch.setattr(cli, "_run_canonical_check", record_check)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- canonical staged routing interception is the behavior under test.
+        cli, "_run_canonical_check", record_check
+    )
 
     assert cli.main(["--root", str(repository), "check", "--staged"]) == 0
     assert cli.main(["--root", str(repository), "check", "--staged", "--", "added.py"]) == 0
@@ -104,7 +106,9 @@ def test_staged_check_uses_repository_relative_hook_paths_from_a_nested_cwd(
         routed.append(tuple(paths or ()))
         return 0
 
-    monkeypatch.setattr(cli, "_run_canonical_check", record_check)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- canonical staged routing interception is the behavior under test.
+        cli, "_run_canonical_check", record_check
+    )
     monkeypatch.chdir(nested)
 
     assert cli.main(["--root", str(repository), "check", "--staged", "--", "nested/child.py"]) == 0
@@ -152,7 +156,9 @@ def test_staged_check_still_runs_repository_policy_without_source_selections(
         routed.append((paths, staged))
         return 0
 
-    monkeypatch.setattr(cli, "_run_canonical_check", record_check)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- canonical staged routing interception is the behavior under test.
+        cli, "_run_canonical_check", record_check
+    )
 
     assert cli.main(["--root", str(adopted_git_repo), "check", "--staged"]) == 0
     subprocess.run(("git", "rm", "source.py"), cwd=adopted_git_repo, check=True, capture_output=True)

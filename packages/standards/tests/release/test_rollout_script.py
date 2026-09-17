@@ -221,7 +221,9 @@ class TestRegistry:
         def load_adopted(_root: Path) -> Adopted:
             return Adopted()
 
-        monkeypatch.setattr(adoption_manifest, "load_for_setup", load_adopted)
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies an adopted manifest snapshot to policy discovery
+            adoption_manifest, "load_for_setup", load_adopted
+        )
 
         assert rollout.react_doctor_policy_snapshot(tmp_path) == rollout.ReactDoctorPolicy(config, "0.9.12")
 
@@ -289,8 +291,12 @@ def test_later_wave_is_blocked_until_prior_wave_merges(monkeypatch: pytest.Monke
     ) -> tuple[rollout.Outcome, ...]:
         return (rollout.Outcome(canary, "pr-open"),)
 
-    monkeypatch.setattr(rollout, "verify_release", fake_verify_release)
-    monkeypatch.setattr(rollout, "status", fake_status)
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records release verification without querying registries
+        rollout, "verify_release", fake_verify_release
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic repository rollout status
+        rollout, "status", fake_status
+    )
 
     outcomes = rollout.apply("9.0.0", (canary, early), FakeRunner())
 
@@ -913,10 +919,18 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         def provisioned_tools(*_args: object) -> rollout.ProvisionedTools:
             return rollout.ProvisionedTools({"PATH": "/tools"}, ())
 
-        monkeypatch.setattr(rollout, "status_one", missing_status)
-        monkeypatch.setattr(rollout, "prepare_branch", fresh_branch)
-        monkeypatch.setattr(tempfile, "TemporaryDirectory", fixed_temporary_directory)
-        monkeypatch.setattr(rollout, "provision_consumer_tools", provisioned_tools)
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic remote repository status
+            rollout, "status_one", missing_status
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test avoids changing a real consumer repository branch
+            rollout, "prepare_branch", fresh_branch
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test owns the exact temporary checkout used by rollout
+            tempfile, "TemporaryDirectory", fixed_temporary_directory
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test avoids provisioning tools from remote registries
+            rollout, "provision_consumer_tools", provisioned_tools
+        )
         runner = FakeRunner([(0, ""), (0, base_sha), (7, "quarantined package")])
 
         with pytest.raises(rollout.RolloutError, match="before a coherent rollout patch"):
@@ -979,7 +993,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             (Path(__file__).parents[1] / "fixtures" / "retirement" / "suppression-baseline.json.txt").read_bytes()
         )
         retired_expected = retirement.expected_rewrites(repo, frozenset())
-        monkeypatch.setattr(retirement, "__version__", "5.8.1")
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models the installed bundle version process global
+            retirement, "__version__", "5.8.1"
+        )
         monkeypatch.setenv("GH_TOKEN", "push-secret")
         subprocess.run(("git", "init", "-b", "main"), cwd=repo, check=True, capture_output=True)
         subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=repo, check=True)
@@ -1156,13 +1172,27 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 "body": rollout.pr_marker(selected_consumer, "5.8.1"),
             }
 
-        monkeypatch.setattr(rollout, "status_one", missing_status)
-        monkeypatch.setattr(rollout, "prepare_branch", fresh_branch)
-        monkeypatch.setattr(tempfile, "TemporaryDirectory", fixed_temporary_directory)
-        monkeypatch.setattr(rollout, "provision_consumer_tools", provisioned_tools)
-        monkeypatch.setattr(adoption_doctor, "plan_version_pin_updates", no_version_pin_updates)
-        monkeypatch.setattr(rollout, "run_consumer_bootstrap", no_bootstrap)
-        monkeypatch.setattr(rollout, "pull_request", managed_pull_request)
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic remote repository status
+            rollout, "status_one", missing_status
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test avoids changing a real consumer repository branch
+            rollout, "prepare_branch", fresh_branch
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test owns the exact temporary checkout used by rollout
+            tempfile, "TemporaryDirectory", fixed_temporary_directory
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test avoids provisioning tools from remote registries
+            rollout, "provision_consumer_tools", provisioned_tools
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test isolates rollout from unrelated version-pin planning
+            adoption_doctor, "plan_version_pin_updates", no_version_pin_updates
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test avoids executing consumer bootstrap subprocesses
+            rollout, "run_consumer_bootstrap", no_bootstrap
+        )
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test records pull-request publication without remote writes
+            rollout, "pull_request", managed_pull_request
+        )
 
         result = rollout.apply_one(selected_consumer, "5.8.1", runner)
 
@@ -1649,7 +1679,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         ) -> rollout.Outcome:
             return blocked
 
-        monkeypatch.setattr(rollout, "status_one", blocked_status)
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies a blocked remote repository status
+            rollout, "status_one", blocked_status
+        )
 
         result = rollout.apply_one(consumer(), "5.8.1", FakeRunner(), dry_run=True)
 
