@@ -69,6 +69,7 @@ class Measurement:
     codes: Counter[str]
     packages: Counter[str]
     files: dict[str, int]
+    file_selectors: dict[str, Counter[str]]
 
     @property
     def total(self) -> int:
@@ -82,6 +83,7 @@ class Baseline:
     packages: dict[str, int] = field(default_factory=dict[str, int])
     per_file_ceiling: int = DEFAULT_PER_FILE_CEILING
     file_exceptions: dict[str, int] = field(default_factory=dict[str, int])
+    file_selector_ceilings: dict[str, dict[str, int]] | None = None
     excluded_subtrees: tuple[str, ...] = ()
 
 
@@ -113,6 +115,10 @@ _REMEDIATION: Final[Mapping[str, str]] = MappingProxyType(
             "burn one down here, or grandfather the file explicitly in the baseline's "
             "`files.exceptions`."
         ),
+        "file-selector": (
+            "A suppression for this selector is new to this file. Fix the finding instead of moving suppression debt "
+            "between files or selectors, or get the exact ceiling raise reviewed explicitly (`--update --allow-increase`)."
+        ),
     }
 )
 
@@ -128,6 +134,7 @@ def measure(
     codes: Counter[str] = Counter()
     package_counts: Counter[str] = Counter()
     files: dict[str, int] = {}
+    file_selectors: dict[str, Counter[str]] = {}
     excluded = tuple(_normalized_subtree(value) for value in excluded_subtrees)
     for package in packages:
         package_counts[package] = 0
@@ -142,7 +149,8 @@ def measure(
             n = sum(found.values())
             package_counts[package] += n
             files[relative] = n
-    return Measurement(codes=codes, packages=package_counts, files=files)
+            file_selectors[relative] = found
+    return Measurement(codes=codes, packages=package_counts, files=files, file_selectors=file_selectors)
 
 
 def count_source(source: str, *, ruff_aliases: Mapping[str, str] | None = None) -> Counter[str]:
@@ -173,6 +181,13 @@ def gate(measurement: Measurement, baseline: Baseline) -> list[Failure]:
         for key, n in sorted(measurement.files.items())
         if n > (ceiling := baseline.file_exceptions.get(key, baseline.per_file_ceiling))
     ]
+    if baseline.file_selector_ceilings is not None:
+        failures += [
+            Failure(dimension="file-selector", key=f"{path} [{code}]", ceiling=ceiling, actual=actual)
+            for path, codes in sorted(measurement.file_selectors.items())
+            for code, actual in sorted(codes.items())
+            if actual > (ceiling := baseline.file_selector_ceilings.get(path, {}).get(code, 0))
+        ]
     return failures
 
 
@@ -193,6 +208,9 @@ def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
         packages=dict(sorted(measurement.packages.items())),
         per_file_ceiling=baseline.per_file_ceiling,
         file_exceptions=dict(sorted(exceptions.items())),
+        file_selector_ceilings={
+            path: dict(sorted(codes.items())) for path, codes in sorted(measurement.file_selectors.items())
+        },
         excluded_subtrees=baseline.excluded_subtrees,
     )
 
@@ -214,6 +232,7 @@ def load_baseline(path: Path) -> Baseline:
         if isinstance(ceiling, int) and not isinstance(ceiling, bool)
         else DEFAULT_PER_FILE_CEILING,
         file_exceptions=_int_map(_get(files, "exceptions")),
+        file_selector_ceilings=_optional_nested_int_map(_get(files, "selectors")),
         excluded_subtrees=_string_tuple(_get(raw, "excluded_subtrees")),
     )
 
@@ -231,7 +250,8 @@ def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
             "Suppression ceilings, written by `sarj-ratchet --update`. Counts may "
             "only go DOWN: `codes` is per dialect+code, `packages` is per "
             "top-level package, `files.per_file_ceiling` caps any single file "
-            "with `files.exceptions` grandfathering the pre-existing hot spots. "
+            "with `files.exceptions` grandfathering the pre-existing hot spots, and "
+            "`files.selectors` prevents debt from moving between files or lint rules. "
             "Raising a ceiling requires `--update --allow-increase` and review."
         ),
         "packages_scanned": sorted(packages),
@@ -241,6 +261,7 @@ def dump_baseline(baseline: Baseline, packages: Iterable[str]) -> str:
         "files": {
             "per_file_ceiling": baseline.per_file_ceiling,
             "exceptions": baseline.file_exceptions,
+            "selectors": baseline.file_selector_ceilings or {},
         },
     }
     return json.dumps(payload, indent=2) + "\n"
@@ -258,13 +279,17 @@ def discover_packages(root: Path, excluded_dir_names: frozenset[str] = DEFAULT_E
 
 
 def _int_map(value: object) -> dict[str, int]:
-    if not isinstance(value, dict):
+    if not _is_string_object_mapping(value):
         return {}
-    return {
-        key: count
-        for key, count in value.items()  # pyright: ignore[reportUnknownVariableType] — json leaves are Any; narrowed in the guard
-        if isinstance(key, str) and isinstance(count, int) and not isinstance(count, bool)
-    }
+    return {key: count for key, count in value.items() if isinstance(count, int) and not isinstance(count, bool)}
+
+
+def _optional_nested_int_map(value: object) -> dict[str, dict[str, int]] | None:
+    if value is None:
+        return None
+    if not _is_string_object_mapping(value):
+        return {}
+    return {path: counts for path, raw_counts in value.items() if (counts := _int_map(raw_counts))}
 
 
 def _string_tuple(value: object) -> tuple[str, ...]:
@@ -280,6 +305,13 @@ def _string_tuple(value: object) -> tuple[str, ...]:
 
 def _is_object_list(value: object) -> TypeGuard[list[object]]:
     return isinstance(value, list)
+
+
+def _is_string_object_mapping(value: object) -> TypeGuard[dict[str, object]]:
+    return isinstance(value, dict) and all(
+        isinstance(key, str)
+        for key in value  # pyright: ignore[reportUnknownVariableType] — runtime validation narrows untyped JSON keys.
+    )
 
 
 def _normalized_subtree(value: str) -> str:

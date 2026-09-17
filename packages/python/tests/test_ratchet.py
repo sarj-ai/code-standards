@@ -203,6 +203,11 @@ def test_measure_buckets_by_code_package_and_file(tmp_path: Path):
     assert m.codes == {"noqa:E501": 2, "type-ignore": 1, "noqa:F401": 1}
     assert m.packages == {"svc_a": 3, "svc_b": 1}
     assert m.files == {"svc_a/one.py": 2, "svc_a/sub/two.py": 1, "svc_b/three.py": 1}
+    assert m.file_selectors == {
+        "svc_a/one.py": {"noqa:E501": 2},
+        "svc_a/sub/two.py": {"type-ignore": 1},
+        "svc_b/three.py": {"noqa:F401": 1},
+    }
     assert m.total == 4
 
 
@@ -251,11 +256,13 @@ def _measurement(
     codes: dict[str, int] | None = None,
     packages: dict[str, int] | None = None,
     files: dict[str, int] | None = None,
+    file_selectors: dict[str, dict[str, int]] | None = None,
 ) -> Measurement:
     return Measurement(
         codes=Counter(codes or {}),
         packages=Counter(packages or {}),
         files=dict(files or {}),
+        file_selectors={path: Counter(counts) for path, counts in (file_selectors or {}).items()},
     )
 
 
@@ -284,6 +291,93 @@ def test_gate_fails_a_package_over_its_ceiling_even_when_codes_hold():
     m = _measurement(codes={"noqa:A1": 2, "noqa:B2": 2}, packages={"svc": 4})
     baseline = Baseline(codes={"noqa:A1": 2, "noqa:B2": 2}, packages={"svc": 3})
     assert [(f.dimension, f.key) for f in gate(m, baseline)] == [("package", "svc")]
+
+
+def test_gate_fails_when_suppression_debt_moves_between_files() -> None:
+    measurement = _measurement(
+        codes={"noqa:A1": 1},
+        packages={"svc": 1},
+        files={"svc/new.py": 1},
+        file_selectors={"svc/new.py": {"noqa:A1": 1}},
+    )
+    baseline = Baseline(
+        codes={"noqa:A1": 1},
+        packages={"svc": 1},
+        file_selector_ceilings={"svc/old.py": {"noqa:A1": 1}},
+    )
+
+    failures = gate(measurement, baseline)
+
+    assert [(failure.dimension, failure.key) for failure in failures] == [("file-selector", "svc/new.py [noqa:A1]")]
+
+
+def test_gate_rejects_reusing_an_existing_banned_api_waiver_for_typing_cast(tmp_path: Path) -> None:
+    _tree(
+        tmp_path,
+        {
+            "svc/existing.py": "from unittest import mock\n",
+            "svc/analytics.py": "from typing import cast  # ruff: ignore[banned-api]\n",
+        },
+    )
+    measurement = measure(
+        tmp_path,
+        ["svc"],
+        ruff_aliases={"TID251": "TID251", "banned-api": "TID251"},
+    )
+    baseline = Baseline(
+        codes={"noqa:TID251": 1},
+        packages={"svc": 1},
+        file_selector_ceilings={"svc/existing.py": {"noqa:TID251": 1}},
+    )
+
+    assert [(failure.dimension, failure.key) for failure in gate(measurement, baseline)] == [
+        ("file-selector", "svc/analytics.py [noqa:TID251]"),
+    ]
+
+
+def test_gate_fails_when_a_file_swaps_one_selector_for_another() -> None:
+    measurement = _measurement(
+        codes={"noqa:B2": 1},
+        packages={"svc": 1},
+        files={"svc/app.py": 1},
+        file_selectors={"svc/app.py": {"noqa:B2": 1}},
+    )
+    baseline = Baseline(
+        codes={"noqa:B2": 1},
+        packages={"svc": 1},
+        file_selector_ceilings={"svc/app.py": {"noqa:A1": 1}},
+    )
+
+    assert [(failure.dimension, failure.key) for failure in gate(measurement, baseline)] == [
+        ("file-selector", "svc/app.py [noqa:B2]")
+    ]
+
+
+def test_gate_allows_an_existing_selector_to_move_within_its_file() -> None:
+    measurement = _measurement(
+        codes={"noqa:A1": 1},
+        packages={"svc": 1},
+        files={"svc/app.py": 1},
+        file_selectors={"svc/app.py": {"noqa:A1": 1}},
+    )
+    baseline = Baseline(
+        codes={"noqa:A1": 1},
+        packages={"svc": 1},
+        file_selector_ceilings={"svc/app.py": {"noqa:A1": 1}},
+    )
+
+    assert gate(measurement, baseline) == []
+
+
+def test_legacy_baseline_without_file_selectors_keeps_legacy_behavior() -> None:
+    measurement = _measurement(
+        codes={"noqa:A1": 1},
+        packages={"svc": 1},
+        files={"svc/new.py": 1},
+        file_selectors={"svc/new.py": {"noqa:A1": 1}},
+    )
+
+    assert gate(measurement, Baseline(codes={"noqa:A1": 1}, packages={"svc": 1})) == []
 
 
 def test_gate_fails_a_file_over_the_per_file_ceiling():
@@ -341,14 +435,18 @@ def test_seed_preserves_the_per_file_ceiling():
     assert seed(_measurement(), Baseline(per_file_ceiling=4)).per_file_ceiling == 4
 
 
-def test_load_baseline_reads_all_three_sections(tmp_path: Path):
+def test_load_baseline_reads_all_ceiling_dimensions(tmp_path: Path):
     path = tmp_path / "b.json"
     _ = path.write_text(
         json.dumps(
             {
                 "codes": {"noqa:E501": 3},
                 "packages": {"svc": 3},
-                "files": {"per_file_ceiling": 4, "exceptions": {"svc/a.py": 9}},
+                "files": {
+                    "per_file_ceiling": 4,
+                    "exceptions": {"svc/a.py": 9},
+                    "selectors": {"svc/a.py": {"noqa:E501": 2}},
+                },
             }
         ),
         encoding="utf-8",
@@ -358,6 +456,7 @@ def test_load_baseline_reads_all_three_sections(tmp_path: Path):
     assert baseline.packages == {"svc": 3}
     assert baseline.per_file_ceiling == 4
     assert baseline.file_exceptions == {"svc/a.py": 9}
+    assert baseline.file_selector_ceilings == {"svc/a.py": {"noqa:E501": 2}}
 
 
 def test_dumped_baseline_declares_its_schema_version(tmp_path: Path):
@@ -365,6 +464,7 @@ def test_dumped_baseline_declares_its_schema_version(tmp_path: Path):
     assert main([str(tmp_path), "--update"]) == 0
     text = (tmp_path / "suppression-baseline.json").read_text(encoding="utf-8")
     assert '"schema_version": 1' in text
+    assert '"selectors"' in text
 
 
 def test_load_baseline_rejects_an_unknown_schema_version(tmp_path: Path):
@@ -427,6 +527,34 @@ def test_cli_passes_when_counts_hold(tmp_path: Path):
     _tree(tmp_path, {"svc/app.py": "x = 1  # noqa: E501\n"})
     assert main([str(tmp_path), "--update"]) == 0
     assert main([str(tmp_path)]) == 0
+
+
+def test_cli_rejects_moving_suppression_debt_to_another_file(tmp_path: Path) -> None:
+    _tree(tmp_path, {"svc/old.py": "x = 1  # noqa: E501\n", "svc/new.py": "y = 2\n"})
+    assert main([str(tmp_path), "--update"]) == 0
+    _tree(tmp_path, {"svc/old.py": "x = 1\n", "svc/new.py": "y = 2  # noqa: E501\n"})
+
+    assert main([str(tmp_path)]) == 1
+
+
+def test_cli_update_migrates_a_legacy_baseline_to_file_selector_ceilings(tmp_path: Path) -> None:
+    _tree(tmp_path, {"svc/app.py": "x = 1  # noqa: E501\n"})
+    baseline_path = tmp_path / "suppression-baseline.json"
+    baseline_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "codes": {"noqa:E501": 1},
+                "packages": {"svc": 1},
+                "files": {"per_file_ceiling": 10, "exceptions": {}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main([str(tmp_path), "--update"]) == 0
+
+    assert load_baseline(baseline_path).file_selector_ceilings == {"svc/app.py": {"noqa:E501": 1}}
 
 
 def test_cli_fails_when_a_count_rises(tmp_path: Path):
